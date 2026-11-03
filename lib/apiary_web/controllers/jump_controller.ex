@@ -203,7 +203,7 @@ defmodule ApiaryWeb.JumpController do
     do: gettext("members users invitations")
 
   defp also(%Entry{key: :audit_log}), do: gettext("activity history")
-  defp also(%Entry{key: :nodes}), do: gettext("access keys machines enrolment pool")
+  defp also(%Entry{key: :nodes}), do: gettext("access keys nodes enrolment pool gateway")
   defp also(%Entry{key: :runs, section: :settings}), do: gettext("retention prune keep")
   defp also(%Entry{key: :secrets}), do: gettext("secret variable environment token value")
   defp also(%Entry{key: :theme}), do: gettext("dark light appearance")
@@ -242,7 +242,7 @@ defmodule ApiaryWeb.JumpController do
           item(
             run_label(run),
             run_detail(run),
-            ~p"/#{scope.organisation}/#{workspace}/runs/#{run.public_id}",
+            ~p"/#{scope.organisation}/#{workspace}/runs/#{run.number}",
             "hero-play-circle"
           )
         end
@@ -265,13 +265,13 @@ defmodule ApiaryWeb.JumpController do
   end
 
   defp run_label(run) do
-    short_id = ApiaryWeb.RunComponents.short_id(run.public_id)
+    name = gettext("Run %{run}", run: run.number)
 
     # A title with nothing left to show, or only whitespace, is no title
     # (`Apiary.ExternalText.present/1`).
     case Apiary.ExternalText.present(ApiaryWeb.RunComponents.given_title(run)) do
-      nil -> short_id
-      title -> "#{short_id} · #{title}"
+      nil -> name
+      title -> "#{name} · #{title}"
     end
   end
 

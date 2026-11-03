@@ -111,7 +111,7 @@ defmodule Apiary.IntegrationsTest do
                  Integrations.request_release(scope, %{source: source, version: "1.0.0"})
 
         assert errors_on(changeset) == %{
-                 source: ["is not on a forge this instance adds integrations from"]
+                 source: ["is not on a forge Qory Apiary adds integrations from"]
                }
       end
 

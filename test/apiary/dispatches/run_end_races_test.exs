@@ -473,7 +473,9 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
         sides = [
           fn -> {:lost, lose_prebuild(handed).()} end,
-          fn -> {:claim, Dispatches.claim(ctx.place.key, Dispatches.now())} end
+          fn ->
+            {:claim, Apiary.DispatchedRunsFixtures.walked_claim(ctx.place.key, Dispatches.now())}
+          end
         ]
 
         answers = together(Enum.take(sides, sides(length(sides))))

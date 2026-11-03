@@ -699,9 +699,13 @@ defmodule ApiaryWeb.TargetLive.Show do
             id="target-environment-no-registry"
             class="q-tgt-card-empty"
           >
-            {gettext(
-              "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
-            )}
+            <%= if Apiary.Access.instance_admin?(@scope) do %>
+              {gettext(
+                "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
+              )}
+            <% else %>
+              {gettext("Runs of this target start in the pool's default image.")}
+            <% end %>
           </p>
           <p
             :if={@environment.state == :no_environment}
@@ -791,14 +795,14 @@ defmodule ApiaryWeb.TargetLive.Show do
               {Format.date(@target.first_seen_at)}
               <span :if={@facts && @facts.first} class="text-faint">
                 ·
-                <.rich text={rich_gettext("run %{id}", id: {:part, :id})}>
-                  <:part name={:id}>
+                <.rich text={rich_gettext("run %{run}", run: {:part, :run})}>
+                  <:part name={:run}>
                     <.link
                       navigate={
-                        ~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@facts.first.public_id}"
+                        ~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@facts.first.number}"
                       }
-                      class="font-mono text-xs hover:underline"
-                    >{short_id(@facts.first.public_id)}</.link>
+                      class="text-xs hover:underline"
+                    >{@facts.first.number}</.link>
                   </:part>
                 </.rich>
               </span>

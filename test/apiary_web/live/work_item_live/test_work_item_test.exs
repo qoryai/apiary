@@ -9,7 +9,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
   import Phoenix.LiveViewTest
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Repo, WorkItems}
+  alias Apiary.{Edition, EditionStubs, Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.WorkItem
 
@@ -52,6 +52,10 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       conn: conn,
       scope: scope
     } do
+      # The rows of the list; `ApiaryWeb.WorkItemLive.WorkflowTest` tests the board, which
+      # replaces them under the feature `workflow_model`.
+      :ok = Edition.put_test_stub(EditionStubs.HidesNamed)
+      :ok = EditionStubs.HidesNamed.put([:workflow_model])
       test_item = test_item!(scope)
       listed = work_item_fixture(scope)
 
@@ -100,13 +104,13 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       assert has_element?(
                view,
                "#work-item-step-undo-line",
-               "Until a run starts, you can undo this."
+               "Until a run starts, you can undo the take in."
              )
 
       assert has_element?(
                view,
                "#work-item-step",
-               "The agent answers the line when the run starts."
+               "When the run starts, the agent writes a reply to the line."
              )
 
       assert has_element?(view, "#work-item-explore-wait", "The agent answers the line in it.")
@@ -127,7 +131,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
 
       {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
 
-      run_path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+      run_path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
       assert has_element?(view, "#work-item-details-runs a[href='#{run_path}']")
       assert has_element?(view, "#work-item-step .q-wi-badge", "No result")
       assert has_element?(view, "#work-item-step-again")
@@ -159,7 +163,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
 
       view |> element("#work-item-head-close") |> render_click()
-      assert has_element?(view, "#work-item-close", "Closing ends the work on it in Qory Apiary.")
+      assert has_element?(view, "#work-item-close", "The work item stays in Qory Apiary, closed.")
       refute has_element?(view, "#work-item-close", "label")
 
       view |> element("#work-item-close-go") |> render_click()
@@ -169,35 +173,17 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       refute has_element?(view, "#work-item-ended-again")
     end
 
-    test "Decline asks with no ticket in its words, then declines", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "the questions' line has no ticket in its words", %{conn: conn, scope: scope} do
       {test_item, _run} = ran!(scope, result: questions_result())
       {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
 
       assert has_element?(
                view,
                "#work-item-explore-questions",
-               "Qory runs Explore again from the start, with the line and the answers of this take in."
+               "Sending starts attempt 2 of 3, which reads the line and every answer of this take in."
              )
 
       refute has_element?(view, "#work-item-explore-questions", "its comments")
-
-      view |> element("#work-item-step-decline") |> render_click()
-
-      assert has_element?(
-               view,
-               "#work-item-step-decline",
-               "The work item stays in Qory Apiary, declined."
-             )
-
-      refute has_element?(view, "#work-item-step-decline", "label")
-
-      view |> element("#work-item-step-decline-go") |> render_click()
-
-      assert state(test_item) == :declined
-      refute has_element?(view, "#work-item-ended-again")
     end
   end
 

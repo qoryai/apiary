@@ -366,6 +366,39 @@ defmodule Apiary.Runs.DiagnosticsTest do
 
       assert text =~ "Setup failed with exit code 2."
     end
+
+    test "lists every step in number order, a push step too, and a failed push is no stop",
+         %{schema: schema} do
+      %{scope: scope} = sign_up_fixture()
+      run = run_fixture(scope, %{public_id: Run.new_public_id()})
+
+      step = fn sequence, number, name, kind, state ->
+        [
+          {sequence, "run.step_started", %{"step" => number, "name" => name, "kind" => kind}},
+          {sequence + 1, "run.step_exited",
+           %{"step" => number, "state" => state, "exit_code" => 0, "duration_ms" => 100}}
+        ]
+      end
+
+      events_fixture(
+        run,
+        [{1, "run.started", started_data()}] ++
+          step.(2, 1, "fetch acme/web-shop", "fetch", "succeeded") ++
+          step.(4, 2, "push acme/web-shop", "push", "failed") ++
+          step.(6, 3, "join session 2", "join", "succeeded")
+      )
+
+      {:ok, run} = Apiary.Runs.Projector.project(run)
+      document = valid!(schema, Diagnostics.document(run, :instance))
+
+      assert [
+               %{"number" => 1, "kind" => "fetch"},
+               %{"number" => 2, "kind" => "push", "state" => "failed"},
+               %{"number" => 3, "kind" => "join"}
+             ] = document["preparation"]["steps"]
+
+      refute Map.has_key?(document["preparation"], "stopped")
+    end
   end
 
   describe "a run of a workspace's queue" do
@@ -481,7 +514,9 @@ defmodule Apiary.Runs.DiagnosticsTest do
          %{schema: schema, scope: scope} = ctx do
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
       {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-      {:ok, %{dispatch: dispatch}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+      {:ok, %{dispatch: dispatch}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
       assert :ok =
                Dispatches.release(ctx.key, dispatch.public_id, %{

@@ -16,7 +16,9 @@ defmodule Apiary.Stacks.Resolution do
   # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`). In the
   # core, that is the organisation of a member who saved it there through that membership
   # (`Apiary.Stacks.saved_by/1`). For an instance admin who saved it with no such
-  # membership, it is the instance's organisation. It is nil once that organisation is
+  # membership, it is the instance's organisation. A row saved with `owner:`
+  # (`Apiary.Stacks.put_stack/4`) has that owner instead: a workspace made from the shared
+  # harness's template keeps the shared row's owner. It is nil once that organisation is
   # deleted.
   #
   # **Hidden.** `harness_hidden` is true when the run's organisation is operated
@@ -133,6 +135,9 @@ defmodule Apiary.Stacks.Resolution do
     end
   end
 
-  defp hidden?(_owner, %{operated: true}), do: true
-  defp hidden?(owner, %{organisation_id: organisation_id}), do: owner != organisation_id
+  @doc false
+  # hidden?/2 is `harness_hidden` for a document of `owner` (the moduledoc).
+  @spec hidden?(owner, %{operated: boolean, organisation_id: Ecto.UUID.t()}) :: boolean
+  def hidden?(_owner, %{operated: true}), do: true
+  def hidden?(owner, %{organisation_id: organisation_id}), do: owner != organisation_id
 end

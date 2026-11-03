@@ -1,0 +1,13 @@
+apiVersion: qory.dev/v1alpha1
+name: software
+description: The software factory harness, for a checkout to extend
+modules:
+  - name: core
+  - name: software-factory
+workflows:
+  explore-a-ticket: {access: read}
+extending:
+  kinds: [skills, agents, commands, output-styles]
+  instructions: true
+  # permissions.allow and permissions.deny are key paths of Claude Code's settings.
+  settings: [permissions.allow, permissions.deny]

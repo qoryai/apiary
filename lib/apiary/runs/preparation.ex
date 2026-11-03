@@ -1,20 +1,27 @@
 defmodule Apiary.Runs.Preparation do
   @moduledoc """
   How a run's machine was prepared, from the machine request to the start of its session,
-  as the run page's Prepare machine section and the run's diagnostics show it. Read from
-  records Qory Apiary keeps for every run: the run's dispatch, its steps
-  (`Apiary.Runs.Step`) with their log lines, and its first `dev.qory.session.started`.
+  as the run page's Prepare machine section and the run's diagnostics show it, and the
+  run's push steps, which the run page shows after the session. Read from records Qory
+  Apiary keeps for every run: the run's dispatch, its steps (`Apiary.Runs.Step`) with their
+  log lines, and its first `dev.qory.session.started`.
 
-  `read/2` returns a map with five members:
+  `read/2` returns a map with six members:
 
     * `machine`: the dispatch whose claim registered the run, nil for a run no node
-      pool claimed. `requested_at` is the claim; `started` spans from the starter's
-      `dispatched` to the redemption of the run's code, or to the failure that ended the
-      attempt (`t:machine/0`).
-    * `steps`: the run's steps by number, each with its output: the last 64 KiB of its
-      log lines as plain text (`Apiary.Runs.Record.plain_lines/1`), and whether that is
-      cut (`t:step/0`). The output is nil for a reader who may not read the run's log
-      (`run.read_log`), and empty once retention deleted the run's log lines.
+      pool claimed. `requested_at` is the claim, and `requested_ms` the time from the
+      claim to the starter's `dispatched`; `started` spans from that `dispatched` to the
+      redemption of the run's code, or to the failure that ended the attempt; `end` is
+      what the pool's starter last reported about the removal of the machine, nil while
+      it has reported nothing (`t:machine/0`).
+    * `steps`: the run's steps of every kind but `push`, by number, each with its output:
+      the last 64 KiB of its log lines as plain text
+      (`Apiary.Runs.Record.plain_lines/1`), and whether that is cut (`t:step/0`). The
+      output is nil for a reader who may not read the run's log (`run.read_log`), and
+      empty once retention deleted the run's log lines.
+    * `after_session`: the run's `push` steps by number, in the same shape. A push runs
+      after the last session, so it is no part of the preparation: `machine` and `stopped`
+      are read from `steps` alone, and a failed push is no failed preparation.
     * `log_pruned_at`: when retention deleted the run's log lines (`runs.log_pruned_at`),
       nil while they are kept.
     * `session_started_at`: the time of the run's first `dev.qory.session.started`; nil
@@ -39,13 +46,13 @@ defmodule Apiary.Runs.Preparation do
   # The most of a step's output that is kept, in bytes of UTF-8.
   @output_bytes 65_536
 
-  # The steps whose cause lies in the workspace: its targets, harness and set-up. A
-  # failure of any other kind of step the contract lists lies on the pool's machine; a
-  # kind outside the list counts as the workspace's.
+  # The kinds of step whose failure lies on the pool's machine. A failure of any other step
+  # lies in the workspace: its targets, harness, build and set-up, and a kind outside the
+  # contract's list counts as the workspace's.
   @pool_kinds ~w(image join wall)
 
   @typedoc "Where the cause of a failure lies, by who can fix it."
-  @type fixer :: :instance_admin | :operator_admin | :workspace_admin
+  @type fixer :: :support | :operator_admin | :workspace_admin
 
   @typedoc "Why a preparation failed."
   @type cause ::
@@ -64,17 +71,36 @@ defmodule Apiary.Runs.Preparation do
         }
 
   @typedoc """
+  What the pool's starter last reported about the removal of the machine, at
+  `POST /v1/dispatches/<dispatch_id>/machine-end`: `deleting`, the removal was requested
+  and the machine may still exist; `gone`, the starter confirmed that the machine no
+  longer exists; `delete_failed`, the removal failed and the machine still exists. `at`
+  is when Qory Apiary accepted the report.
+  """
+  @type machine_end :: %{state: :deleting | :gone | :delete_failed, at: DateTime.t()}
+
+  @typedoc """
   The machine part. `dispatch_id` is the dispatch's public id, `dp_…`. `machine_type` is
-  nil while the claim answer has no machine type. `release_reason` is the starter's
-  reason of a release, nil for any other dispatch. `started.state` is `running`,
-  `succeeded`, `failed` or `cancelled`, as a step's.
+  nil while the claim answer has no machine type. `requested_ms` is nil while the
+  dispatch has no `dispatched`. `release_reason` is the starter's reason of a release,
+  nil for any other dispatch. `started.state` is `running`, `succeeded`, `failed` or
+  `cancelled`, as a step's. `handed_over_at` is when the dispatch was handed over, so a
+  machine existed for it, nil for a dispatch never handed over. `ended_at` is when the
+  dispatch ended with its run; for a run that ended before its dispatch did, the run's
+  exit, loss or failed start, or else its last change; nil while both go on. `end` is
+  the starter's last report about the removal of the machine, nil before the first
+  (`t:machine_end/0`).
   """
   @type machine :: %{
           dispatch_id: String.t(),
           pool: pool,
           machine_type: String.t() | nil,
           requested_at: DateTime.t(),
+          requested_ms: non_neg_integer | nil,
           release_reason: String.t() | nil,
+          handed_over_at: DateTime.t() | nil,
+          ended_at: DateTime.t() | nil,
+          end: machine_end | nil,
           started: %{
             state: String.t(),
             started_at: DateTime.t() | nil,
@@ -115,6 +141,7 @@ defmodule Apiary.Runs.Preparation do
   @type t :: %{
           machine: machine | nil,
           steps: [step],
+          after_session: [step],
           log_pruned_at: DateTime.t() | nil,
           session_started_at: DateTime.t() | nil,
           stopped: stopped | nil
@@ -136,13 +163,15 @@ defmodule Apiary.Runs.Preparation do
     attempt = attempt(scope, run)
     log? = Keyword.get_lazy(opts, :log, fn -> Access.can?(scope, :"run.read_log", run) end)
     kept? = is_nil(run.log_pruned_at)
-    steps = for step <- Record.steps(scope, run), do: step(scope, run, step, log?, kept?)
+    every = for step <- Record.steps(scope, run), do: step(scope, run, step, log?, kept?)
+    {after_session, steps} = Enum.split_with(every, &(&1.kind == "push"))
     session_started_at = Record.session_started_at(scope, run)
     machine = machine(run, attempt, steps, session_started_at)
 
     %{
       machine: machine,
       steps: steps,
+      after_session: after_session,
       log_pruned_at: run.log_pruned_at,
       session_started_at: session_started_at,
       stopped:
@@ -245,7 +274,11 @@ defmodule Apiary.Runs.Preparation do
       pool: pool(dispatch.pool, run),
       machine_type: nil,
       requested_at: dispatch.claimed_at,
+      requested_ms: between(dispatch.claimed_at, started_at),
       release_reason: dispatch.release_reason,
+      handed_over_at: dispatch.handed_over_at,
+      ended_at: dispatch.ended_at || run_ended_at(run),
+      end: machine_end(dispatch),
       started: %{
         state: state,
         started_at: started_at,
@@ -254,6 +287,18 @@ defmodule Apiary.Runs.Preparation do
       }
     }
   end
+
+  # When a run that ended did so, for a dispatch that has not ended yet: its exit, its
+  # loss or its failed start, else its last change. Nil while the run is alive.
+  defp run_ended_at(%Run{state: state} = run) do
+    if state not in Run.alive_states(),
+      do: run.exited_at || run.lost_at || run.start_failed_at || run.updated_at
+  end
+
+  defp machine_end(%Dispatch{machine_end_state: nil}), do: nil
+
+  defp machine_end(%Dispatch{machine_end_state: state, machine_end_at: at}),
+    do: %{state: state, at: at}
 
   # When the machine started the run: the redemption of the run's code, which sets the
   # run key's issue time; for a run without a code, the dispatch's handover.
@@ -334,11 +379,11 @@ defmodule Apiary.Runs.Preparation do
 
   ## Why it stopped
 
-  defp stopped(scope, _run, %{failure: {cause, _at}}, machine, _steps, release_reason) do
-    {fixer, who} = pool_fixer(scope, machine.pool)
+  defp stopped(scope, run, %{failure: {cause, _at}}, machine, _steps, release_reason) do
+    {fixer, who} = pool_fixer(scope, machine.pool, run)
     machine = %{machine | release_reason: reason(machine.release_reason, release_reason)}
     {what, fix} = machine_line(cause, machine, who, log_place(machine.pool))
-    %{cause: cause, step: nil, fixer: fixer, text: what <> " " <> fix, fix: fix}
+    %{cause: cause, step: nil, fixer: fixer, text: what <> " " <> fix, what: what, fix: fix}
   end
 
   defp stopped(scope, run, _attempt, machine, steps, _release_reason) do
@@ -349,7 +394,7 @@ defmodule Apiary.Runs.Preparation do
       step ->
         {fixer, who} =
           if step.kind in @pool_kinds,
-            do: pool_fixer(scope, machine && machine.pool),
+            do: pool_fixer(scope, machine && machine.pool, run),
             else: workspace_fixer(scope)
 
         {what, fix} = step_line(step, who, run.log_pruned_at)
@@ -359,6 +404,7 @@ defmodule Apiary.Runs.Preparation do
           step: step.number,
           fixer: fixer,
           text: what <> " " <> fix,
+          what: what,
           fix: fix
         }
     end
@@ -377,7 +423,7 @@ defmodule Apiary.Runs.Preparation do
     pool = pool_name(machine.pool)
 
     {gettext("%{pool} did not start a machine within 10 minutes.", pool: pool),
-     gettext("%{who} checks that %{pool} is running.", who: who, pool: pool)}
+     checks_running(who, pool)}
   end
 
   defp machine_line(:code_not_redeemed, _machine, who, place) do
@@ -389,11 +435,13 @@ defmodule Apiary.Runs.Preparation do
     {gettext("The machine stopped before it started the run."), reads_why(who, place)}
   end
 
-  # The machine log of the instance's pool is on the run page, under Machine started, for
-  # an instance admin, who fixes its causes.
-  defp reads_why(_who, :machine_started) do
-    gettext("An instance admin finds the cause in the machine log of the Machine started step.")
-  end
+  # Only support reaches the cause in the Qory Pool, so the line names the run to give them.
+  defp checks_running({:support, line}, _pool), do: line
+
+  defp checks_running(who, pool),
+    do: gettext("%{who} checks that %{pool} is running.", who: who, pool: pool)
+
+  defp reads_why({:support, line}, _place), do: line
 
   defp reads_why(who, place),
     do: gettext("%{who} reads why in %{place}.", who: who, place: place)
@@ -410,6 +458,8 @@ defmodule Apiary.Runs.Preparation do
     do: {gettext("%{step} failed.", step: step_name(step)), reads_cause(who, pruned_at)}
 
   # Once retention deleted the run's log lines, the step's output is gone.
+  defp reads_cause({:support, line}, nil), do: line
+
   defp reads_cause(who, nil),
     do: gettext("%{who} reads the cause in the step's output.", who: who)
 
@@ -440,6 +490,10 @@ defmodule Apiary.Runs.Preparation do
 
   def stopped_step(_preparation), do: nil
 
+  @doc "Whether a push step of a preparation failed."
+  @spec push_failed?(t) :: boolean
+  def push_failed?(%{after_session: steps}), do: Enum.any?(steps, &(&1.state == "failed"))
+
   # The starter's reason as a line an external system sent, with its one closing full
   # stop left out for the sentence's, through the secret filter unless kept as stored.
   defp reason(nil, _how), do: gettext("n/a")
@@ -452,24 +506,22 @@ defmodule Apiary.Runs.Preparation do
 
   defp pool_name(%{name: name}), do: name
 
-  # Who fixes a cause in the pool: an instance admin for the instance's pool, an admin of
-  # the operator for an operator's, an admin of the workspace for the workspace's and for
-  # a pool that is not known.
-  defp pool_fixer(_scope, %{place: :instance}),
-    do: {:instance_admin, gettext("An instance admin")}
+  # Who fixes a cause in the pool: support for the instance's pool, an admin of the
+  # operator for an operator's, an admin of the workspace for the workspace's and for a
+  # pool that is not known.
+  defp pool_fixer(_scope, %{place: :instance}, %Run{number: run}),
+    do: {:support, {:support, gettext("Contact support with run %{run}.", run: run)}}
 
-  defp pool_fixer(_scope, %{place: :operator, operator: operator}),
+  defp pool_fixer(_scope, %{place: :operator, operator: operator}, _run),
     do: {:operator_admin, gettext("An admin of %{operator}", operator: operator)}
 
-  defp pool_fixer(scope, _pool), do: workspace_fixer(scope)
+  defp pool_fixer(scope, _pool, _run), do: workspace_fixer(scope)
 
   defp workspace_fixer(%Scope{workspace: workspace}),
     do: {:workspace_admin, gettext("An admin of %{workspace}", workspace: workspace.name)}
 
-  # Where the machine log of the instance's pool is read: under Machine started on the run
-  # page, by an instance admin. Any other pool's admins read it on the pool's host.
-  defp log_place(%{place: :instance}), do: :machine_started
-
+  # Where the machine log of a pool outside Qory Apiary is read: on the pool's host. The
+  # line for the instance's pool has no place (`pool_fixer/3`).
   defp log_place(pool),
     do: gettext("the log of %{pool} on its host", pool: pool_name(pool))
 end

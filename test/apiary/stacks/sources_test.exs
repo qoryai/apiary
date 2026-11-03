@@ -2,8 +2,9 @@ defmodule Apiary.Stacks.SourcesTest do
   # The harness sources Workspace settings › Workflow offers (`Apiary.Stacks.Sources`),
   # read through stub adapters (`Req.Test`): the linked repositories that have a stack,
   # the instance's assignments, a typed address and its refusals, the stacks and
-  # workflows each has, the save of the runs' workflow, the organisation's shared
-  # harness, and the stack chosen for a target, which a run's walk then reads.
+  # workflows each has, the templates each offers, the save of the runs' workflow, the
+  # organisation's shared harness, and the stack chosen for a target, which a run's walk
+  # then reads.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -11,12 +12,14 @@ defmodule Apiary.Stacks.SourcesTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Harnesses.{Assignment, Walk}
+  alias Apiary.Artifacts.TemplateTypes
+  alias Apiary.Harnesses.{Assignment, PublicGit, Walk}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Target
   alias Apiary.Stacks
   alias Apiary.Stacks.{Sources, Stack}
+  alias Apiary.PublicGitServer
 
   @moduletag needs: :factory
   @moduletag :capture_log
@@ -28,6 +31,10 @@ defmodule Apiary.Stacks.SourcesTest do
 
   @stack "modules:\n  - name: core\n    source: {path: modules/core}\n"
   @workflows "workflows:\n  triage: {}\n  fix:\n    access: write\n"
+
+  @template_source Path.expand("../../fixtures/harness/v1/sources/factory", __DIR__)
+  # A commit's full id, for an adapter's reads.
+  @commit "0123456789abcdef0123456789abcdef01234567"
 
   # acme/harness exports the stack `triage`; acme/app has no stack.
   @files %{
@@ -72,10 +79,73 @@ defmodule Apiary.Stacks.SourcesTest do
     instance_scope
   end
 
-  # The public reads among `calls`, in order: `{resource_ref, path, at}`.
-  defp public_reads(calls) do
-    for {"read-public", call} <- calls,
-        do: {call["resource_ref"], call["path"], call["at"]}
+  # A public repository on its host at `git` (`Apiary.PublicGitServer`) with `files`, a
+  # map of path to content, and one more file whose name no other test's has, so no
+  # commit of another test is in the cache: its commit.
+  defp public!(git, files, opts \\ []) do
+    unique = %{".test-#{System.unique_integer([:positive])}" => ""}
+    repo = PublicGitServer.repository!(Map.merge(files, unique), opts)
+    PublicGitServer.serve(%{git => repo.dir})
+    repo.commit
+  end
+
+  # The requests to public hosts so far, `{method, host, path}`.
+  defp git_requests do
+    receive do
+      {:git_request, method, host, path, _headers} -> [{method, host, path} | git_requests()]
+    after
+      0 -> []
+    end
+  end
+
+  # A module's `process.yaml`, the one of the fixture.
+  defp template_file,
+    do: File.read!(Path.join(@template_source, "modules/support-desk/process.yaml"))
+
+  # A root `qory.yaml` with the stack `support` and `modules`, written as YAML.
+  defp root(modules), do: "exports:\n  stacks: [support]\n  modules: #{modules}\n"
+
+  # `@harness` read through the adapter, with `root` as its `qory.yaml`, and `modules`, a
+  # map of a module's name to its `process.yaml` at the default path: the source.
+  defp template_source(ctx, root, modules, opts \\ []) do
+    files =
+      Map.new(modules, fn {name, file} -> {{"R_harness", module_path(name)}, file} end)
+      |> Map.put({"R_harness", "qory.yaml"}, root)
+
+    serve_calls([ctx.adapter], [covered: ctx.covered, files: files] ++ opts)
+    {:ok, source} = Sources.address(@harness)
+    source
+  end
+
+  defp module_path(name), do: "modules/#{name}/process.yaml"
+
+  # `@harness` narrowed by `narrowing`, whose root file lists a module with a template:
+  # no template, one read of `harness.yaml`, and one of the person's reads.
+  defp assert_narrowed_has_no_template(ctx, narrowing) do
+    source =
+      template_source(ctx, root("[a]"), %{"a" => template_file()},
+        versions: %{"R_harness" => @commit}
+      )
+
+    source = %{source | narrowing: narrowing}
+    calls()
+
+    assert Sources.templates(ctx.scope, source) ==
+             {:ok, %{commit: @commit, templates: [], not_readable: [], more: 0}}
+
+    assert read_paths() == ["harness.yaml"]
+
+    for _n <- 2..10, do: assert({:ok, _read} = Sources.templates(ctx.scope, source))
+    assert {:error, {:limited, _seconds}} = Sources.templates(ctx.scope, source)
+  end
+
+  # The paths of the reads so far, in order.
+  defp read_paths do
+    calls()
+    |> Enum.flat_map(fn
+      {"read", %{"path" => path}} -> [path]
+      _other -> []
+    end)
   end
 
   defp assignment(organisation_id, source, by) do
@@ -255,9 +325,17 @@ defmodule Apiary.Stacks.SourcesTest do
                  "acme/harness"
                ]
 
-        assert Sources.unplaced(ctx.scope) == [
-                 %{id: other.adapter.public_id, adapter: title, cause: cause}
-               ]
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            assert Sources.unplaced(ctx.scope) == [
+                     %{id: other.adapter.public_id, adapter: title, cause: cause}
+                   ]
+          end)
+
+        # The page shows only that support is needed; the cause is in the log.
+        assert log =~
+                 "an adapter's call address is not called " <>
+                   "adapter=#{other.adapter.public_id} cause=#{cause}"
       end
 
       # An instance whose public address has no host calls no adapter: each adapter with
@@ -364,21 +442,19 @@ defmodule Apiary.Stacks.SourcesTest do
              }
     end
 
-    test "a public one is read at its ref as public, with no grant", ctx do
-      covered = Map.put(ctx.covered, ctx.adapter.adapter.id, %{@public => {:public, "P_pub"}})
-      files = %{{"P_pub", "qory-stack.yaml"} => @stack <> @workflows}
-      serve_calls([ctx.adapter], covered: covered, files: files)
+    test "a public one is read at its ref from its host, with no grant", ctx do
+      serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
+      public!(@public, %{"qory-stack.yaml" => @stack <> @workflows}, tags: ["v1"])
       assignment(ctx.scope.organisation.id, %{"git" => @public, "ref" => "v1"}, ctx.scope)
       [source] = Sources.assigned(ctx.scope)
 
       assert {:ok, [%{base: %{"git" => @public, "ref" => "v1"}, workflows: ["fix", "triage"]}]} =
                Sources.read(ctx.scope, source)
 
-      calls = calls()
-      assert [] = for({"read", _call} <- calls, do: :read)
-      assert [_ | _] = public = for({"read-public", call} <- calls, do: call)
-      assert Enum.all?(public, &(&1["resource_ref"] == "P_pub" and &1["at"] in ["v1", "c-P_pub"]))
-      refute Enum.any?(public, &Map.has_key?(&1, "grant_ref"))
+      assert [] = for({"read", _call} <- calls(), do: :read)
+
+      assert [{"GET", "code.example.com", "/example-org/public-harness/info/refs"} | _] =
+               git_requests()
     end
 
     test "one is found past an adapter whose calls fail", ctx do
@@ -423,18 +499,17 @@ defmodule Apiary.Stacks.SourcesTest do
       end
     end
 
-    test "a public one is read at HEAD as public, and a run's walk reads a choice that extends it",
+    test "a public one is read at HEAD from its host, and a run's walk reads a choice that extends it",
          ctx do
-      covered = %{ctx.adapter.adapter.id => %{@public => {:public, "P_pub"}}}
-      files = %{{"P_pub", "qory-stack.yaml"} => @stack <> @workflows}
-      serve_calls([ctx.adapter], covered: covered, files: files)
+      serve_calls([ctx.adapter], covered: %{})
+      commit = public!(@public, %{"qory-stack.yaml" => @stack <> @workflows})
       {:ok, source} = Sources.address(@public)
 
       assert {:ok, [%{name: nil, base: base, workflows: ["fix", "triage"]}]} =
                Sources.read(ctx.scope, source)
 
       assert base == %{"git" => @public, "ref" => "HEAD"}
-      assert [{"P_pub", "harness.yaml", "HEAD"} | _] = public_reads(calls())
+      assert [{"GET", "code.example.com", _path} | _] = git_requests()
 
       assert {:ok, stored} = Sources.save(ctx.scope, base, "triage")
 
@@ -452,44 +527,68 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert {:ok, walked} = Walk.run(input)
       assert walked.harness_links == []
-      assert walked.pins == [%{"git" => @public, "ref" => "HEAD", "at" => "c-P_pub"}]
+      assert walked.pins == [%{"git" => @public, "ref" => "HEAD", "at" => commit}]
     end
 
-    test "a source a grant covers that the rule does not allow is read as public, at its public_ref",
+    test "a source a grant covers that the rule does not allow is read from its host, when public",
          ctx do
       instance = call_adapter_fixture()
       instance_scope = instance_admin_scope()
       {connection, _nonce} = connection_fixture(instance_scope, instance.adapter, :listed)
       live_grant_fixture(instance_scope.organisation.id, instance.adapter, connection, "G_i")
 
-      covered = %{instance.adapter.id => %{@team => {"G_i", "R_team", {:public, "P_team"}}}}
-      files = %{{"P_team", "qory-stack.yaml"} => @stack <> "workflows:\n  review: {}\n"}
-      serve_calls([ctx.adapter, instance], covered: covered, files: files)
+      covered = %{instance.adapter.id => %{@team => {"G_i", "R_team"}}}
+      serve_calls([ctx.adapter, instance], covered: covered, files: @files)
+      public!(@team, %{"qory-stack.yaml" => @stack <> "workflows:\n  review: {}\n"})
       {:ok, source} = Sources.address(@team)
 
       assert {:ok, [%{workflows: ["review"]}]} = Sources.read(ctx.scope, source)
-
-      calls = calls()
-      assert [] = for({"read", _call} <- calls, do: :read)
-      assert [_ | _] = reads = public_reads(calls)
-      assert Enum.all?(reads, fn {resource_ref, _path, _at} -> resource_ref == "P_team" end)
+      assert [] = for({"read", _call} <- calls(), do: :read)
     end
 
-    test "a link at a later adapter comes before a public result at an earlier one", ctx do
-      first = call_adapter_fixture(%{name: "a-public-#{System.unique_integer([:positive])}"})
-      assert first.adapter.name < ctx.adapter.adapter.name
-
-      covered =
-        Map.put(ctx.covered, first.adapter.id, %{@harness => {:public, "P_harness"}})
-
-      serve_calls([ctx.adapter, first], covered: covered, files: @files)
+    test "a linked source is read through its link, never from its host", ctx do
+      serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
+      public!(@harness, %{"qory-stack.yaml" => @stack <> "workflows:\n  other: {}\n"})
       {:ok, source} = Sources.address(@harness)
 
       assert {:ok, [%{name: "triage"}]} = Sources.read(ctx.scope, source)
+      assert [_ | _] = for({"read", %{"grant_ref" => "G_acme"}} <- calls(), do: :read)
+      assert git_requests() == []
+    end
 
-      calls = calls()
-      assert public_reads(calls) == []
-      assert [_ | _] = for({"read", %{"grant_ref" => "G_acme"}} <- calls, do: :read)
+    test "a public read that fails is a fetch failure, with its code and the host's rule",
+         ctx do
+      serve_calls([ctx.adapter], covered: %{})
+
+      for {git, code, seconds} <- [
+            {"https://private.example.org/acme/harness", :host_not_allowed, nil},
+            {"https://nowhere.example.org/acme/harness", :source_unreachable, 10}
+          ] do
+        {:ok, source} = Sources.address(git)
+        host = URI.parse(git).host
+        values = %{"host" => host, "port" => 443}
+        values = if seconds, do: Map.put(values, "seconds", seconds), else: values
+
+        assert Sources.read(ctx.scope, source) ==
+                 {:error, {:fetch, code, %{"rule" => "fetch", "values" => values}}}
+      end
+
+      PublicGitServer.serve(%{},
+        answer: fn conn -> Plug.Conn.send_resp(conn, 200, "<html></html>") end
+      )
+
+      {:ok, source} = Sources.address(@public)
+
+      assert {:error, {:fetch, :fetch_failed, %{"values" => %{"host" => "code.example.com"}}}} =
+               Sources.read(ctx.scope, source)
+
+      PublicGitServer.serve(%{}, answer: fn conn -> Plug.Conn.send_resp(conn, 429, "") end)
+      {:ok, source} = Sources.address(@public <> "/other")
+
+      assert Sources.read(ctx.scope, source) ==
+               {:error,
+                {:fetch, :rate_limited,
+                 %{"rule" => "fetch", "values" => %{"host" => "code.example.com", "port" => 443}}}}
     end
 
     test "a person reads sources at most 10 times a minute", ctx do
@@ -584,6 +683,762 @@ defmodule Apiary.Stacks.SourcesTest do
     end
   end
 
+  describe "a source's templates" do
+    test "reads the template of a listed module, with its fields", ctx do
+      source =
+        template_source(
+          ctx,
+          File.read!(Path.join(@template_source, "qory.yaml")),
+          %{"support-desk" => template_file()},
+          versions: %{"R_harness" => @commit}
+        )
+
+      assert {:ok, read} = Sources.templates(ctx.scope, source)
+      assert %{commit: @commit, not_readable: [], more: 0, templates: [template]} = read
+
+      assert %{
+               module: "support-desk",
+               name: "Support desk",
+               type: "qory.software",
+               stack: "support",
+               process: %{"schema" => "qory.process/v1", "stages" => [_answer, _check]}
+             } = template
+
+      assert template.summary =~ "Agents draft answers"
+      assert template.description =~ "two stages"
+    end
+
+    test "a source with no module, no exports or no root file has no template", ctx do
+      empty = %{commit: "c-R_harness", templates: [], not_readable: [], more: 0}
+
+      for root <- [root("[]"), root(""), "exports:\n  stacks: [support]\n", "apiVersion: v\n"] do
+        source = template_source(ctx, root, %{})
+        assert Sources.templates(ctx.scope, source) == {:ok, empty}
+      end
+
+      serve_calls([ctx.adapter], covered: ctx.covered, files: %{})
+      {:ok, source} = Sources.address(@harness)
+      assert Sources.templates(ctx.scope, source) == {:ok, empty}
+    end
+
+    test "reads the files of the first 20 modules; more is the rest", ctx do
+      names = for n <- 1..21, do: "m#{n}"
+      root = root("[" <> Enum.join(names, ", ") <> "]")
+      source = template_source(ctx, root, Map.new(names, &{&1, template_file()}))
+
+      assert {:ok, %{templates: templates, not_readable: [], more: 1}} =
+               Sources.templates(ctx.scope, source)
+
+      assert Enum.map(templates, & &1.module) == Enum.take(names, 20)
+
+      assert read_paths() ==
+               ["harness.yaml", "qory.yaml"] ++ Enum.map(Enum.take(names, 20), &module_path/1)
+    end
+
+    test "a module without the file is in neither list", ctx do
+      source =
+        template_source(ctx, root("[support-desk, plain]"), %{"support-desk" => template_file()})
+
+      assert {:ok, %{templates: [%{module: "support-desk"}], not_readable: [], more: 0}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    test "a stack the exports do not list is not readable, one space included", ctx do
+      for stack <- ["other", ~s(" ")] do
+        file = String.replace(template_file(), "stack: support", "stack: " <> stack)
+        source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+        assert {:ok, read} = Sources.templates(ctx.scope, source)
+        assert [%{module: "b"}] = read.templates
+        assert read.not_readable == [%{module: "a", reason: :stack_not_exported}]
+      end
+    end
+
+    test "the stack is checked before the process", ctx do
+      file =
+        template_file()
+        |> String.replace("stack: support", "stack: other")
+        |> String.replace("name: Check", "name: Answer")
+
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{not_readable: [%{module: "a", reason: :stack_not_exported}]}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    test "a type that is no domain's is not readable, and a known type is listed", ctx do
+      for type <- ["customer-care", "software"] do
+        file = String.replace(template_file(), "type: qory.software", "type: " <> type)
+        source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+        assert {:ok, read} = Sources.templates(ctx.scope, source)
+        assert [%{module: "b", type: "qory.software"}] = read.templates
+        assert read.not_readable == [%{module: "a", reason: {:unknown_type, type}}]
+      end
+    end
+
+    test "the type is checked after the stack and before the process", ctx do
+      file = String.replace(template_file(), "type: qory.software", "type: customer-care")
+      other_stack = String.replace(file, "stack: support", "stack: other")
+      bad_process = String.replace(file, "name: Check", "name: Answer")
+
+      source = template_source(ctx, root("[a, b]"), %{"a" => other_stack, "b" => bad_process})
+
+      assert {:ok, %{templates: [], not_readable: not_readable}} =
+               Sources.templates(ctx.scope, source)
+
+      assert not_readable == [
+               %{module: "a", reason: :stack_not_exported},
+               %{module: "b", reason: {:unknown_type, "customer-care"}}
+             ]
+    end
+
+    test "a process Processes.validate/1 does not pass is not readable, with its errors", ctx do
+      file = String.replace(template_file(), "name: Check", "name: Answer")
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: reason}]}} =
+               Sources.templates(ctx.scope, source)
+
+      assert reason ==
+               {:invalid, [%{path: "#/stages/1/name", error: :duplicate_stage_name, detail: nil}]}
+    end
+
+    test "artifact_types that do not pass the check are not readable, with the refusals", ctx do
+      file = template_file() <> "artifact_types:\n  - name: reply-draft\n"
+      source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+      assert {:ok, read} = Sources.templates(ctx.scope, source)
+      assert [%{module: "b"}] = read.templates
+
+      assert [%{module: "a", reason: {:types, [refusal]}}] = read.not_readable
+      assert refusal == {:not_standard, "reply-draft"}
+
+      assert TemplateTypes.message(refusal) ==
+               "reply-draft is not a standard type, so it needs a definition"
+    end
+
+    test "a standard type listed twice is not readable, with the type's name", ctx do
+      file = template_file() <> "artifact_types:\n  - name: mockup\n  - name: mockup\n"
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: {:types, [refusal]}}]}} =
+               Sources.templates(ctx.scope, source)
+
+      assert refusal == {:repeated, "mockup"}
+
+      assert TemplateTypes.message(refusal) ==
+               "list mockup once in artifact_types"
+    end
+
+    test "an entry of artifact_types the schema refuses is not readable, with the type's name",
+         ctx do
+      file = template_file() <> "artifact_types:\n  - {name: reply-draft, base_view: document}\n"
+      source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+      assert {:ok, read} = Sources.templates(ctx.scope, source)
+      assert [%{module: "b"}] = read.templates
+      assert [%{module: "a", reason: {:types, [refusal]}}] = read.not_readable
+      assert refusal == {:schema, "reply-draft"}
+
+      assert TemplateTypes.message(refusal) ==
+               "the entry reply-draft in artifact_types does not match process.schema.json"
+    end
+
+    test "the process is checked before the types", ctx do
+      file =
+        String.replace(template_file(), "name: Check", "name: Answer") <>
+          "artifact_types:\n  - name: reply-draft\n"
+
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{not_readable: [%{module: "a", reason: {:invalid, _errors}}]}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    test "artifact_types that pass reach the template", ctx do
+      file =
+        template_file() <>
+          """
+          artifact_types:
+            - name: screenshot
+            - name: reply-draft
+              base_view: document
+              size_limit: 65536
+              max_files: 1
+          """
+
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [template], not_readable: []}} =
+               Sources.templates(ctx.scope, source)
+
+      assert template.artifact_types == [
+               %{"name" => "screenshot"},
+               %{
+                 "name" => "reply-draft",
+                 "base_view" => "document",
+                 "size_limit" => 65_536,
+                 "max_files" => 1
+               }
+             ]
+    end
+
+    test "a file without artifact_types is a template with nil for them", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => template_file()})
+
+      assert {:ok, %{templates: [%{module: "a", artifact_types: nil}], not_readable: []}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    # A clock of the read's checks, on time for the first `on_time` reads and 60 s past the
+    # read's deadline from then on.
+    defp clock(on_time) do
+      reads = :counters.new(1, [])
+
+      fn ->
+        :counters.add(reads, 1, 1)
+        now = System.monotonic_time(:millisecond)
+        if :counters.get(reads, 1) > on_time, do: now + 60_000, else: now
+      end
+    end
+
+    defp module_reads do
+      for {"read", %{"path" => "modules/" <> path}} <- calls(), do: path
+    end
+
+    test "a source past its deadline stops before the next module, as a late read fails", ctx do
+      source =
+        template_source(ctx, root("[a, b]"), %{"a" => template_file(), "b" => template_file()})
+
+      # Two reads for the module a: before it, and for the check of its types.
+      assert {:error, {:call, %{cause: :late, seconds: 30}}} =
+               Sources.templates(ctx.scope, source, clock(2))
+
+      assert module_reads() == ["a/process.yaml"]
+    end
+
+    test "a source past its deadline reads no module", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => template_file()})
+
+      assert {:error, {:call, %{cause: :late}}} = Sources.templates(ctx.scope, source, clock(0))
+      assert module_reads() == []
+    end
+
+    defp typed_file(json_schema) do
+      template_file() <>
+        """
+        artifact_types:
+          - name: customer-facts
+            base_view: structured
+            size_limit: 65536
+            max_files: 1
+            json_schema: #{json_schema}
+        """
+    end
+
+    test "a check of a module's types out of time fails as a late read fails", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => typed_file("{type: object}")})
+
+      assert {:error, {:call, %{cause: :late, seconds: 30}}} =
+               Sources.templates(ctx.scope, source, clock(1))
+    end
+
+    test "too long a check of a module's types with time left stays the file's refusal", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => typed_file("{type: object}")})
+
+      # The clock's second read, the check's time, is past the deadline and the third is
+      # on time: `:schemas_too_long` as from a check over its reductions, which no test
+      # file reaches.
+      reads = :counters.new(1, [])
+
+      clock = fn ->
+        :counters.add(reads, 1, 1)
+        now = System.monotonic_time(:millisecond)
+        if :counters.get(reads, 1) == 2, do: now + 60_000, else: now
+      end
+
+      assert {:ok, %{templates: [], not_readable: [not_readable]}} =
+               Sources.templates(ctx.scope, source, clock)
+
+      assert not_readable == %{module: "a", reason: {:types, [:schemas_too_long]}}
+    end
+
+    test "a bad schema found in time stays its refusal", ctx do
+      source = template_source(ctx, root("[a]"), %{"a" => typed_file("{type: 5}")})
+
+      assert {:ok, %{templates: [], not_readable: [not_readable]}} =
+               Sources.templates(ctx.scope, source, clock(2))
+
+      assert not_readable == %{
+               module: "a",
+               reason: {:types, [{:invalid, "customer-facts", :json_schema}]}
+             }
+    end
+
+    test "a file Reader.template/1 does not pass is unreadable", ctx do
+      unnamed = template_file() <> "artifact_types:\n  - {base_view: document}\n"
+
+      for file <- ["name: Support desk\n", "a: [", "- a\n", unnamed] do
+        source = template_source(ctx, root("[a]"), %{"a" => file})
+
+        assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: :unreadable}]}} =
+                 Sources.templates(ctx.scope, source)
+      end
+    end
+
+    test "reads a module's folder as the exports' dir places it", ctx do
+      for {dir, path} <- [
+            {"harness", "harness/modules/a/process.yaml"},
+            {"{stacks: s, modules: m}", "m/a/process.yaml"}
+          ] do
+        files = %{
+          {"R_harness", "qory.yaml"} =>
+            "exports:\n  dir: #{dir}\n  stacks: [support]\n  modules: [a]\n",
+          {"R_harness", path} => template_file()
+        }
+
+        serve_calls([ctx.adapter], covered: ctx.covered, files: files)
+        {:ok, source} = Sources.address(@harness)
+
+        assert {:ok, %{templates: [%{module: "a"}]}} = Sources.templates(ctx.scope, source)
+      end
+    end
+
+    test "a module whose folder is at no path a read takes is one unreadable module", ctx do
+      for dir <- ["/srv/harness", "../outside"] do
+        root = "exports:\n  dir: #{dir}\n  stacks: [support]\n  modules: [a, b]\n"
+        source = template_source(ctx, root, %{})
+        calls()
+
+        assert {:ok, read} = Sources.templates(ctx.scope, source)
+        assert read.templates == []
+
+        assert read.not_readable == [
+                 %{module: "a", reason: :unreadable},
+                 %{module: "b", reason: :unreadable}
+               ]
+
+        assert read_paths() == ["harness.yaml", "qory.yaml"]
+      end
+    end
+
+    test "a listed name that is not one path segment is one unreadable module", ctx do
+      source = template_source(ctx, root("[..]"), %{})
+
+      assert {:ok, %{not_readable: [%{module: "..", reason: :unreadable}]}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    test "modules that are not a list of text are listed as not readable", ctx do
+      for modules <- ["[1]", "a", "{a: b}"] do
+        source = template_source(ctx, root(modules), %{})
+        calls()
+
+        assert Sources.templates(ctx.scope, source) ==
+                 {:ok,
+                  %{
+                    commit: "c-R_harness",
+                    templates: [],
+                    not_readable: [%{module: nil, reason: :modules_invalid}],
+                    more: 0
+                  }}
+
+        assert read_paths() == ["harness.yaml", "qory.yaml"]
+      end
+    end
+
+    test "a name listed twice gives one entry and one read", ctx do
+      source =
+        template_source(ctx, root("[a, b, a]"), %{
+          "a" => template_file(),
+          "b" => String.replace(template_file(), "stack: support", "stack: other")
+        })
+
+      assert {:ok, %{templates: [%{module: "a"}], not_readable: [%{module: "b"}]}} =
+               Sources.templates(ctx.scope, source)
+
+      assert read_paths() == ["harness.yaml", "qory.yaml", module_path("a"), module_path("b")]
+    end
+
+    test "names listed twice do not count toward the limit or toward more", ctx do
+      names = for n <- 1..22, do: "m#{n}"
+      root = root("[m1, m1, " <> Enum.join(names, ", ") <> ", m22]")
+      source = template_source(ctx, root, Map.new(names, &{&1, template_file()}))
+
+      assert {:ok, %{templates: templates, more: 2}} = Sources.templates(ctx.scope, source)
+      assert Enum.map(templates, & &1.module) == Enum.take(names, 20)
+    end
+
+    test "a read of one file that fails is one unreadable module", ctx do
+      for code <- ["document_not_text", "internal"] do
+        source =
+          template_source(ctx, root("[a, b]"), %{"b" => template_file()},
+            refuse_path: %{module_path("a") => code}
+          )
+
+        assert {:ok, %{templates: [%{module: "b"}], not_readable: [not_readable]}} =
+                 Sources.templates(ctx.scope, source)
+
+        assert not_readable == %{module: "a", reason: :unreadable}
+      end
+    end
+
+    test "a failure of the source at a module's file returns the error of read/2", ctx do
+      title = Apiary.Adapters.title(ctx.adapter.adapter)
+
+      unreachable =
+        {:call, %{adapter: title, cause: :unreachable, code: nil, seconds: nil, refusal: nil}}
+
+      opts = [refuse_path: %{module_path("a") => "resource_not_covered"}]
+      source = template_source(ctx, root("[a, b]"), %{"b" => template_file()}, opts)
+      assert Sources.templates(ctx.scope, source) == {:error, :not_covered}
+
+      opts = [
+        refuse_path: %{module_path("a") => "version_not_found"},
+        versions: %{"R_harness" => @commit}
+      ]
+
+      source = template_source(ctx, root("[a, b]"), %{"b" => template_file()}, opts)
+      assert Sources.templates(ctx.scope, source) == {:error, {:no_version, @commit}}
+
+      opts = [down_path: [module_path("a")]]
+      source = template_source(ctx, root("[a, b]"), %{"b" => template_file()}, opts)
+      assert Sources.templates(ctx.scope, source) == {:error, unreachable}
+    end
+
+    test "a source that does not read returns the errors of read/2", ctx do
+      title = Apiary.Adapters.title(ctx.adapter.adapter)
+
+      serve_calls([ctx.adapter], covered: ctx.covered, files: @files, down: true)
+      {:ok, source} = Sources.address(@harness)
+
+      assert {:error, {:call, %{adapter: ^title, cause: :unreachable}}} =
+               Sources.templates(ctx.scope, source)
+
+      serve_calls([ctx.adapter], covered: ctx.covered)
+      {:ok, source} = Sources.address(@app <> "/other")
+      assert Sources.templates(ctx.scope, source) == {:error, :not_covered}
+
+      files = %{{"R_harness", "harness.yaml"} => "a: b\n", {"R_harness", "qory.yaml"} => "a: b\n"}
+      serve_calls([ctx.adapter], covered: ctx.covered, files: files)
+      {:ok, source} = Sources.address(@harness)
+
+      assert {:error, {:invalid, "harness.yaml", %{"rule" => "both_files"}}} =
+               Sources.templates(ctx.scope, source)
+
+      source = template_source(ctx, "exports: 1\n", %{})
+
+      assert Sources.templates(ctx.scope, source) ==
+               {:error, {:invalid_section, "qory.yaml", :exports}}
+    end
+
+    test "a source narrowed to a folder has no template", ctx do
+      assert_narrowed_has_no_template(ctx, %{"path" => "stacks/other"})
+    end
+
+    test "a source narrowed to a stack has no template", ctx do
+      assert_narrowed_has_no_template(ctx, %{"stack" => "other"})
+    end
+
+    test "a narrowed source does not read the exports of its root", ctx do
+      source = template_source(ctx, "exports: 1\n", %{})
+
+      assert {:ok, %{commit: "c-R_harness", templates: [], not_readable: []}} =
+               Sources.templates(ctx.scope, %{source | narrowing: %{"stack" => "other"}})
+    end
+
+    test "a narrowed source whose read fails returns the error of read/2", ctx do
+      source =
+        template_source(ctx, root("[a]"), %{},
+          refuse_path: %{"harness.yaml" => "resource_not_covered"}
+        )
+
+      assert Sources.templates(ctx.scope, %{source | narrowing: %{"path" => "stacks/other"}}) ==
+               {:error, :not_covered}
+    end
+
+    test "commit is the full commit, and every file is read at it", ctx do
+      source =
+        template_source(ctx, root("[a]"), %{"a" => template_file()},
+          versions: %{"R_harness" => @commit}
+        )
+
+      calls()
+      assert {:ok, %{commit: @commit}} = Sources.templates(ctx.scope, source)
+
+      assert [
+               {"read", %{"path" => "harness.yaml", "at" => "HEAD"}},
+               {"read", %{"path" => "qory.yaml", "at" => @commit}},
+               {"read", %{"path" => "modules/a/process.yaml", "at" => @commit}}
+             ] = Enum.filter(calls(), &match?({"read", _call}, &1))
+    end
+
+    test "a linked source at a commit is read at that commit and returns it", ctx do
+      source =
+        template_source(ctx, root("[a]"), %{"a" => template_file()},
+          versions: %{"R_harness" => @commit}
+        )
+
+      calls()
+
+      assert {:ok, %{commit: @commit, templates: [%{module: "a"}]}} =
+               Sources.templates(ctx.scope, %{source | ref: @commit})
+
+      assert [
+               {"read", %{"path" => "harness.yaml", "at" => @commit}},
+               {"read", %{"path" => "qory.yaml", "at" => @commit}},
+               {"read", %{"path" => "modules/a/process.yaml", "at" => @commit}}
+             ] = Enum.filter(calls(), &match?({"read", _call}, &1))
+    end
+
+    test "an assigned source at a ref other than the assignment's is not covered", ctx do
+      admin = instance_grant(ctx)
+      assignment(ctx.scope.organisation.id, %{"git" => @team, "ref" => "v1"}, admin)
+      [source] = Sources.assigned(ctx.scope)
+
+      assert {:ok, %{commit: "c-R_team"}} = Sources.templates(ctx.scope, source)
+      calls()
+
+      assert Sources.templates(ctx.scope, %{source | ref: @commit}) == {:error, :not_covered}
+      assert [] = for({"read", _call} <- calls(), do: :read)
+    end
+
+    test "a public source is read from its host, at the full commit", ctx do
+      serve_calls([ctx.adapter], covered: %{})
+
+      commit =
+        public!(@public, %{
+          "qory.yaml" => root("[a, b, c, d]"),
+          module_path("a") => template_file(),
+          module_path("b") => "not text: " <> <<0>>,
+          module_path("c") => String.duplicate("a", PublicGit.file_bytes() + 1)
+        })
+
+      {:ok, source} = Sources.address(@public)
+
+      assert {:ok, read} = Sources.templates(ctx.scope, source)
+      assert %{commit: ^commit, templates: [%{module: "a"}], more: 0} = read
+      assert byte_size(commit) == 40
+
+      assert read.not_readable == [
+               %{module: "b", reason: :unreadable},
+               %{module: "c", reason: :unreadable}
+             ]
+    end
+
+    test "a public source past its deadline fails as a late read fails", ctx do
+      serve_calls([ctx.adapter], covered: %{})
+      public!(@public, %{"qory.yaml" => root("[a]"), module_path("a") => template_file()})
+      {:ok, source} = Sources.address(@public)
+
+      assert {:error, {:fetch, :source_unreachable, rule}} =
+               Sources.templates(ctx.scope, source, clock(0))
+
+      assert %{"rule" => "fetch", "values" => %{"host" => "code.example.com", "seconds" => 30}} =
+               rule
+    end
+
+    test "a public host that stops at a module's file returns the error of read/2", ctx do
+      serve_calls([ctx.adapter], covered: %{})
+      files = %{"qory.yaml" => root("[a]"), module_path("a") => template_file()}
+      {:ok, source} = Sources.address(@public)
+
+      # The last request of a read is the one for the module's file.
+      public!(@public, files)
+      assert {:ok, %{templates: [%{module: "a"}]}} = Sources.templates(ctx.scope, source)
+      requests = length(git_requests())
+
+      {:ok, served} = Agent.start_link(fn -> 0 end)
+
+      answer = fn conn ->
+        if Agent.get_and_update(served, &{&1 + 1, &1 + 1}) == requests,
+          do: Plug.Conn.send_resp(conn, 429, "")
+      end
+
+      repo = PublicGitServer.repository!(Map.put(files, ".other", "#{System.unique_integer()}"))
+      PublicGitServer.serve(%{@public => repo.dir}, answer: answer)
+
+      assert {:error, {:fetch, :rate_limited, %{"rule" => "fetch"}}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    test "each call is one read of the person, whatever the number of modules", ctx do
+      names = for n <- 1..21, do: "m#{n}"
+      root = root("[" <> Enum.join(names, ", ") <> "]")
+      source = template_source(ctx, root, Map.new(names, &{&1, template_file()}))
+
+      for _n <- 1..9, do: assert({:ok, _read} = Sources.templates(ctx.scope, source))
+      assert {:ok, _stacks} = Sources.exports(ctx.scope, source)
+
+      assert {:error, {:limited, seconds}} = Sources.templates(ctx.scope, source)
+      assert seconds in 1..60
+      assert {:error, {:limited, _seconds}} = Sources.read(ctx.scope, source)
+    end
+  end
+
+  describe "the places New workspace lists" do
+    # The organisation's shared harness, a harness repository at `git` and `ref`.
+    defp share!(ctx, git, ref \\ "HEAD") do
+      document =
+        "extends:\n  git: #{Jason.encode!(git)}\n  stack: \"support\"\n  ref: #{Jason.encode!(ref)}\n"
+
+      {:ok, row} =
+        Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, document,
+          choice: :repository,
+          version: {:branch, ref}
+        )
+
+      row
+    end
+
+    test "the Qory template, the shared harness, the assigned sources, then the connected repositories",
+         ctx do
+      share!(ctx, @public)
+      admin = instance_admin_scope()
+      assignment(nil, %{"git" => @team, "ref" => "v1"}, admin)
+      calls()
+
+      assert [qory, shared, assigned, app, harness] = Sources.listed(ctx.scope)
+
+      assert %{group: :qory, prefix: "qory", source: nil, hidden: false} = qory
+
+      assert %{
+               group: :shared,
+               prefix: "shared",
+               hidden: false,
+               source: %{
+                 git: @public,
+                 ref: "HEAD",
+                 narrowing: %{},
+                 label: "example-org/public-harness"
+               }
+             } = shared
+
+      assert %{group: :assigned, prefix: "assigned-" <> _, source: %{git: @team, ref: "v1"}} =
+               assigned
+
+      assert %{group: :connected, prefix: "sc_" <> _, source: %{label: "acme/app"}} = app
+      assert %{group: :connected, source: %{label: "acme/harness", git: @harness}} = harness
+      assert harness.prefix == "sc_" <> String.replace_prefix(harness.source.id, "linked:sc_", "")
+
+      # Nothing is called to list.
+      assert calls() == []
+    end
+
+    test "the Qory harness shared, or nothing shared, lists no shared place", ctx do
+      assert [%{group: :qory}, %{group: :connected}, %{group: :connected}] =
+               Sources.listed(ctx.scope)
+
+      {:ok, _shared} = Sources.choose(ctx.scope, :qory, shared: true)
+      assert Enum.map(Sources.listed(ctx.scope), & &1.group) == [:qory, :connected, :connected]
+    end
+
+    test "an assigned source narrowed to a stack or a folder is not listed", ctx do
+      admin = instance_admin_scope()
+      assignment(nil, %{"git" => @team, "ref" => "v1", "stack" => "web"}, admin)
+      assignment(nil, %{"git" => @team, "ref" => "v2", "path" => "stacks/web"}, admin)
+      assignment(nil, %{"git" => @team, "ref" => "v3", "module" => "m"}, admin)
+
+      assert Enum.map(Sources.listed(ctx.scope), & &1.group) == [:qory, :connected, :connected]
+    end
+
+    test "a repository an earlier place has at the same ref is listed once", ctx do
+      share!(ctx, @harness)
+      admin = instance_admin_scope()
+      assignment(nil, %{"git" => @app, "ref" => "HEAD"}, admin)
+
+      assert [
+               %{group: :qory},
+               %{group: :shared, source: %{git: @harness}},
+               %{group: :assigned, source: %{git: @app}}
+             ] = Sources.listed(ctx.scope)
+
+      # The same address at another ref is another read.
+      share!(ctx, @harness, "v1")
+
+      assert [
+               %{group: :qory},
+               %{group: :shared, source: %{git: @harness, ref: "v1"}},
+               %{group: :assigned, source: %{git: @app}},
+               %{group: :connected, source: %{git: @harness, ref: "HEAD"}}
+             ] = Sources.listed(ctx.scope)
+    end
+
+    test "a shared harness that runs hide has no label, and the others show their address",
+         ctx do
+      row = share!(ctx, @public)
+      instance_org = Apiary.Edition.instance_organisation_id()
+
+      {1, _} =
+        Repo.update_all(from(s in Stack, where: s.id == ^row.id),
+          set: [owner_organisation_id: instance_org]
+        )
+
+      assert [_qory, %{group: :shared, hidden: true, source: %{label: ""}}, _app, _harness] =
+               Sources.listed(ctx.scope)
+    end
+
+    test "only a person workspace.create allows lists anything", ctx do
+      %{scope: member} = member_fixture(ctx.scope)
+      %{scope: admin} = member_fixture(ctx.scope, :admin)
+
+      assert Sources.listed(member) == []
+      assert Sources.listed(admin) == []
+      assert Sources.find_listed(admin, "qory.software") == :error
+    end
+
+    test "a page key splits at its first dot, as a module's name may have dots", ctx do
+      share!(ctx, @public)
+      [_qory, _shared, app | _] = Sources.listed(ctx.scope)
+
+      assert {:ok, %{prefix: "shared"}, "a.b.c"} = Sources.find_listed(ctx.scope, "shared.a.b.c")
+      assert {:ok, %{prefix: prefix}, "x"} = Sources.find_listed(ctx.scope, app.prefix <> ".x")
+      assert prefix == app.prefix
+
+      for key <- ["qory.software", "shared.", "shared", "nobody.x", "assigned-none.x", ""] do
+        assert Sources.find_listed(ctx.scope, key) == :error
+      end
+    end
+
+    test "a shared row of a repository lists its templates", ctx do
+      share!(ctx, @harness)
+
+      files = %{
+        {"R_harness", "qory.yaml"} => root("[support-desk]"),
+        {"R_harness", module_path("support-desk")} => template_file()
+      }
+
+      serve_calls([ctx.adapter], covered: ctx.covered, files: files)
+      [_qory, %{group: :shared, source: source}, _app] = Sources.listed(ctx.scope)
+
+      assert source.narrowing == %{}
+
+      assert {:ok, %{templates: [%{module: "support-desk", stack: "support"}]}} =
+               Sources.templates(ctx.scope, source)
+    end
+
+    test "a shared row whose repository only a narrowed assignment covers has no template",
+         ctx do
+      admin = instance_grant(ctx)
+
+      assignment(
+        ctx.scope.organisation.id,
+        %{"git" => @team, "ref" => "v1", "stack" => "web"},
+        admin
+      )
+
+      share!(ctx, @team, "v1")
+      calls()
+
+      assert [_qory, %{group: :shared, source: source}, _app, _harness] =
+               Sources.listed(ctx.scope)
+
+      assert source.narrowing == %{}
+      assert Sources.templates(ctx.scope, source) == {:error, :not_covered}
+    end
+  end
+
   describe "the save" do
     setup ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
@@ -618,7 +1473,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert {:ok, walked} = Walk.run(input)
       assert walked.origin == :setting
       assert walked.stack_id == nil
-      assert walked.document == %{"extends" => qory.harness}
+      assert walked.document == %{"extends" => Map.put(qory.harness, "stack", "software")}
     end
 
     test "another workflow replaces the one before, so the runs have one", ctx do
@@ -662,7 +1517,7 @@ defmodule Apiary.Stacks.SourcesTest do
       git = qory.harness["git"]
       pin = qory.harness["ref"]
 
-      qory_chosen = %{choice: :qory, git: git, stack: "core", version: :latest, pin: pin}
+      qory_chosen = %{choice: :qory, git: git, stack: "software", version: :latest, pin: pin}
 
       assert Sources.chosen(ctx.scope.workspace) ==
                Map.merge(qory_chosen, %{saved: false, shared: false})
@@ -857,7 +1712,7 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert calls() == []
 
-      assert %{choice: :qory, git: git, stack: "core", version: :latest, pin: pin} =
+      assert %{choice: :qory, git: git, stack: "software", version: :latest, pin: pin} =
                Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
 
       assert {git, pin} == {qory.harness["git"], qory.harness["ref"]}
@@ -1352,7 +2207,9 @@ defmodule Apiary.Stacks.SourcesTest do
       assert {:ok, %Stack{version_kind: :latest, version_name: nil}} =
                Sources.choose(ctx.scope, {:qory, :latest})
 
-      assert %{version: :latest, pin: pin, stack: "core"} = Sources.chosen(ctx.scope.workspace)
+      assert %{version: :latest, pin: pin, stack: "software"} =
+               Sources.chosen(ctx.scope.workspace)
+
       assert pin == qory.latest
       assert Sources.choose(ctx.scope, {:qory, "v1"}) == {:error, :invalid}
     end

@@ -127,7 +127,7 @@ defmodule Apiary.Lingo.DomainTest do
   describe "a domain's definition" do
     @harness %{
       "git" => "https://github.com/qoryai/harness",
-      "ref" => "fe3b3ab4a02cd7c57d9efa16bbaf498d5f5de305",
+      "ref" => "5c88f508fb117760489c65c5fe2990cbc167ec3b",
       "stack" => "core"
     }
 
@@ -146,6 +146,25 @@ defmodule Apiary.Lingo.DomainTest do
 
         assert Domain.definition(domain) == domain.definition()
       end
+    end
+
+    test "known_type?/1 is true for the key of each domain's definition and for no other" do
+      for {_name, domain} <- Domain.domains() do
+        assert Domain.known_type?(Domain.definition(domain).key)
+      end
+
+      refute Domain.known_type?("customer-care")
+      refute Domain.known_type?("software")
+    end
+
+    test "for_type/1 is the domain with the key of each definition, and nil for any other" do
+      for {_name, domain} <- Domain.domains() do
+        assert Domain.for_type(Domain.definition(domain).key) == domain
+      end
+
+      assert Domain.for_type("qory.example") == Example
+      assert Domain.for_type("customer-care") == nil
+      assert Domain.for_type("software") == nil
     end
 
     test "every domain there is has a definition, and no two share a key" do

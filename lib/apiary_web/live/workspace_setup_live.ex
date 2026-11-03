@@ -6,16 +6,28 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # the steps with a tick on each one done and the step current (`ApiaryWeb.Layouts.app/1`),
   # so the frame shows no indicator.
   #
-  # **New workspace.** A page of the organisation, in its sidebar: the kind cards
-  # (`ApiaryWeb.SetUpComponents.kind_cards/1`) under "What will this workspace do?", which
-  # the empty organisation overview shows too (`ApiaryWeb.OrganisationLive`). Choose creates
-  # the workspace at once, named after its type, and opens its Name step
-  # (`ApiaryWeb.SetUpComponents.choose_kind/3`). The page is only for a person
-  # `workspace.create` allows (`Apiary.Access`); where the organisation has as many
+  # **New workspace.** A page of the organisation, in its sidebar: the template cards
+  # (`ApiaryWeb.SetUpComponents.template_cards/1`) under "What will this workspace do?",
+  # in groups: the Qory harness, and, with the `factory` feature, the organisation's shared
+  # harness, the sources assigned to it and its connected repositories
+  # (`Apiary.Stacks.Sources.listed/1`). The Qory card is on the page at once. Once the
+  # socket is connected, `ApiaryWeb.TemplateReads` reads the templates of each other place
+  # outside the page's process, at most 4 at a time, and each result shows when its read
+  # ends. A read that the person's limit stops (`{:limited, seconds}`) keeps the results
+  # shown, shows the limit line, and the reads start again after `seconds`
+  # (`:templates_resume`). Each card leads to its template's page
+  # (`ApiaryWeb.WorkspaceTypeLive`), whose Create workspace creates the workspace at once
+  # and opens its Name step: named after its type for the Qory template
+  # (`ApiaryWeb.SetUpComponents.choose_kind/3`), and after the template for a template of a
+  # harness repository (`ApiaryWeb.SetUpComponents.choose_template/4`). Without the
+  # `factory` feature the page shows the kind cards
+  # (`ApiaryWeb.SetUpComponents.kind_cards/1`) with no groups and reads nothing, and the
+  # empty organisation overview shows them too. The page is only for a
+  # person `workspace.create` allows (`Apiary.Access`); where the organisation has as many
   # workspaces as the edition allows (`c:Apiary.Edition.limits/0`), the page is headed
-  # "New workspace" and shows the edition's line on why
-  # (`c:Apiary.Edition.workspace_limit_line/1`) in an information notice, in place of the
-  # cards.
+  # "New workspace", shows the edition's line on why
+  # (`c:Apiary.Edition.workspace_limit_line/1`) in an information notice in place of the
+  # cards, and reads nothing.
   #
   # **The flow.** A step is named by its id in the path (`Apiary.WorkspaceSetup.flow/0`);
   # a step the person does not see, or no step's id, is a path that does not exist. The
@@ -38,17 +50,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     and the account's, how many of the grant's collections are chosen for the
   #     workspace, of how many, or All, and Choose, which opens the chooser
   #     (`ApiaryWeb.ChooseCollectionsLive`). An adapter connected with no grant yet shows
-  #     Connected. Connect another source, or Connect another destination, lists the
-  #     instance's configured adapters that serve the type
-  #     (`Apiary.Adapters.list_configured/1`) and that the organisation has not connected,
-  #     each Connecting… while its connection is pending, with Connect, the Install of
-  #     Organisation settings › Integrations (`ApiaryWeb.IntegrationComponents.install_form/1`),
-  #     whose return leads back to the step (`ApiaryWeb.ConnectSession.back?/1`); it is
-  #     open while the step has no card. In the context column, for each adapter whose
-  #     Connect can be pressed and whose guide has steps for connecting it
-  #     (`Apiary.Adapters.guide/2`), those steps. Skip while the step is not done, else
-  #     Continue. A person whom `adapter.connect` does not allow sees the adapters with no
-  #     Connect, and who may connect (`ApiaryWeb.Access.who_may/3`); a person whom
+  #     Connected, and one whose connection is pending Connecting…. For a person whom
+  #     `adapter.connect` allows, the list of adapters to connect: the instance's
+  #     configured adapters that serve the type (`Apiary.Adapters.list_configured/1`) and
+  #     that the organisation has not connected, each Connecting… while its connection is
+  #     pending, with Connect, the Install of Organisation settings › Integrations
+  #     (`ApiaryWeb.IntegrationComponents.install_form/1`), whose return leads back to the
+  #     step (`ApiaryWeb.ConnectSession.back?/1`). The step shows the list while it has no
+  #     card and no Connected line; after that, "Connect another source", or "Connect
+  #     another destination", opens the step's Connect page,
+  #     `/:org/:workspace/set-up/<step>/connect` (`:connect`), with the list, or "Every
+  #     system is connected." In the context column beside a list, what Connect does, and
+  #     for each adapter whose Connect can be pressed and whose guide has steps for
+  #     connecting it (`Apiary.Adapters.guide/2`), those steps. The Connect page's
+  #     breadcrumb is the step, a link to it, then the page, and its Back leads to the step. Skip while
+  #     the step is not done, else Continue. A person whom `adapter.connect` does not allow
+  #     sees no Connect, and who may connect (`ApiaryWeb.Access.who_may/3`); a person whom
   #     `collection.assign` does not allow sees who may. The page listens to the
   #     organisation's collections and connections
   #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
@@ -130,11 +147,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     name; a pool that is not ready shows the reason
   #     (`t:Apiary.WorkspaceSetup.not_ready_reason/0`): no pool, no active key, a choice
   #     of Direct, no gateway, a chosen gateway that the pool's runs may not go through,
-  #     or a gateway with no active key. Under a pool that is not ready: for the
-  #     instance's pool, Check the nodes, to `/instance/nodes`, for an instance admin; for
+  #     or a gateway with no active key. Only an instance admin can fix the instance's
+  #     pool, so while it is not ready, anyone else sees no Qory Pool on this step, and
+  #     only the pool for the workspace is offered; a person who may not add one reads who
+  #     does. Under a pool that is not ready: for the instance's pool, Check the Qory Pool
+  #     and Qory Gateway, to `/instance/qory-pool-and-gateway`; for
   #     a pool of the workspace, its name links to its page for a person whom
   #     `access_key.create_code` allows on it. Anyone else reads who acts
-  #     (`c:Apiary.Edition.machines_who_may/3`). While the workspace has no pool, a person
+  #     (`c:Apiary.Edition.machines_who_may/2`). While the workspace has no pool, a person
   #     whom `node.create` allows on it chooses: Qory Pool, the instance's pool, chosen
   #     first, or A pool for the workspace, with the line that the Qory Pool then stops
   #     taking its runs, and Add pool, which makes a pool of the workspace
@@ -147,8 +167,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     line that the pool's machines stop taking runs where a machine enrolled on it
   #     (`Apiary.AccessKeys.active_key?/1`), Remove pool, which deletes the pool
   #     (`Apiary.Nodes.delete_node/2`), and Cancel. Then the instance's pool serves the
-  #     workspace again, shown chosen. Where the instance has no pool, Qory Pool shows not
-  #     ready for no pool, cannot be chosen, and the step offers no removal. Otherwise,
+  #     workspace again, shown chosen. Where the instance has no pool, for an instance
+  #     admin, Qory Pool shows not ready for no pool, cannot be chosen, and the step offers
+  #     no removal. Otherwise,
   #     once the workspace has a pool, its pools show with no choice, and a pool that is
   #     the only one shows chosen. With 2 pools or more, the step offers no removal. On
   #     each line of a pool whose
@@ -192,6 +213,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     Connections,
     Dispatches,
     Edition,
+    Features,
     ModelChoices,
     Organisations,
     Runs,
@@ -204,6 +226,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Dispatches.RunSettings
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
+  alias Apiary.Nodes.Node
   alias Apiary.Runs.{Preparation, Run}
   alias Apiary.Stacks.Sources
 
@@ -211,9 +234,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     HarnessComponents,
     HarnessTargets,
     IntegrationComponents,
+    NodeComponents,
     OverviewComponents,
     SetUpComponents,
-    SettingsComponents
+    SettingsComponents,
+    TemplateReads
   }
 
   alias ApiaryWeb.ProviderLive.Index, as: ProviderPage
@@ -243,7 +268,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
        listing: false,
        harness_exports: nil,
        workspace_stacks: nil,
-       workspace_stacks_of: nil
+       workspace_stacks_of: nil,
+       template_places: [],
+       template_reads: %{},
+       template_limit: nil,
+       template_groups: false
      )}
   end
 
@@ -258,21 +287,56 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         if not creates, do: raise(ApiaryWeb.NotFound, page: :new_workspace)
         {:noreply, assign_cards(socket)}
 
-      :step ->
+      action when action in [:step, :connect] ->
         workspace = scope.workspace
 
         flow =
           SetUpComponents.flow(organisation, Domain.for_workspace(workspace), workspace, :set_up)
 
-        {:noreply, open_step(socket, flow, params["step"])}
+        {:noreply, socket |> open_step(flow, params["step"]) |> assign_sub(action)}
     end
   end
 
-  # New workspace: the kind cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), or the line
-  # of an organisation that has as many workspaces as the edition allows.
+  # The page of the step: the step itself (`:step`), or Connect of Work sources or
+  # Destinations (`:connect`), whose Back leads to the step; Connect of any other step is a
+  # path that does not exist.
+  defp assign_sub(socket, :step), do: assign(socket, sub: nil)
+
+  defp assign_sub(%{assigns: %{step: step}} = socket, :connect)
+       when step in [:sources, :destinations] do
+    assign(socket,
+      sub: :connect,
+      page_title: connect_label(step, has_connection?(socket.assigns))
+    )
+  end
+
+  defp assign_sub(_socket, :connect), do: raise(ApiaryWeb.NotFound)
+
+  # Whether the step has a connection: a grant's card, or an adapter connected with no
+  # grant yet.
+  defp has_connection?(%{cards: cards, waiting: waiting}), do: cards != [] or waiting != []
+
+  # Connect's words, on the step's button, as the title of its page and in the
+  # breadcrumb: "Connect a source" while the step has no connection, else "Connect
+  # another source".
+  defp connect_label(:sources, false), do: gettext("Connect a source")
+  defp connect_label(:sources, true), do: gettext("Connect another source")
+  defp connect_label(:destinations, false), do: gettext("Connect a destination")
+  defp connect_label(:destinations, true), do: gettext("Connect another destination")
+
+  # New workspace: the template cards (`ApiaryWeb.SetUpComponents.template_cards/1`), or the
+  # line of an organisation that has as many workspaces as the edition allows.
   defp assign_cards(socket) do
     scope = socket.assigns.current_scope
     at_limit = SetUpComponents.at_limit?(scope)
+
+    # At the limit the page makes no read, and without the feature `factory` it has no group.
+    places =
+      if at_limit,
+        do: [],
+        else: Enum.reject(Sources.listed(scope), &(&1.group == :qory))
+
+    groups = Features.visible?(scope, :factory)
 
     assign(socket,
       view: :cards,
@@ -287,6 +351,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         ),
       limit: if(at_limit, do: SetUpComponents.limit_line(scope.organisation))
     )
+    |> assign(template_groups: groups)
+    |> TemplateReads.init(places)
+    |> TemplateReads.start()
   end
 
   ## The flow
@@ -360,17 +427,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     role = if step == :sources, do: :items, else: :targets
     may_connect = Access.can?(scope, :"adapter.connect", scope.organisation)
 
-    adapters =
-      for adapter <- Adapters.list_configured(flow.domain),
-          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
-          do: adapter
-
     connecting =
       for {adapter_id, %{state: :pending}} <- AdapterConnections.live_by_adapter(scope),
           into: MapSet.new(),
           do: adapter_id
 
     connected = WorkspaceSetup.connected_ids(flow.organisation, flow.domain, role)
+
+    adapters =
+      IntegrationComponents.offered(
+        scope,
+        for(
+          adapter <- Adapters.list_configured(flow.domain),
+          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
+          do: adapter
+        ),
+        Enum.concat(connected, connecting)
+      )
+
     cards = WorkspaceSetup.cards(scope, flow.domain, step, flow.workspace)
     carded = MapSet.new(cards, & &1.adapter.id)
 
@@ -391,12 +465,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       may: Access.can?(scope, :"collection.assign", scope.organisation),
       who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
       may_connect: may_connect,
-      who_connects:
-        ApiaryWeb.Access.who_may(
-          scope,
-          :"adapter.connect",
-          gettext("Only owners and admins change the integrations of the organisation.")
-        ),
+      who_connects: IntegrationComponents.who_connects(scope, step),
+      connects_line: Edition.connects_line(scope.organisation, step),
+      instance_admin: Access.instance_admin?(scope),
       sending: nil,
       done: step_done?(flow, step)
     )
@@ -502,7 +573,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # the step again as the first outstanding code expires (`pool_timer`).
   defp load_step(%{assigns: %{step: :machines}} = socket) do
     %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
-    pools = WorkspaceSetup.pools(workspace)
+    instance_line = WorkspaceSetup.instance_line()
+    qory_pool_ready = ready?(instance_line)
+    qory_pool_hidden = not (qory_pool_ready or Access.instance_admin?(scope))
+    pools = shown_pools(WorkspaceSetup.pools(workspace), qory_pool_hidden)
     workspace_pools = for %{instance: false, pool: pool} <- pools, do: pool
     socket = listen_to_pools(socket, workspace_pools)
 
@@ -528,7 +602,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           nil
       end
 
-    shared_line = if keeps_choice?(scope, workspace_pools), do: WorkspaceSetup.instance_line()
+    shared_line =
+      if not qory_pool_hidden and keeps_choice?(scope, workspace_pools), do: instance_line
+
     removable = removable_pool(workspace_pools, shared_line)
 
     removing =
@@ -542,17 +618,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       pool_removable: removable,
       pool_removing: removing,
       shared_line: shared_line,
-      instance_admin: Access.instance_admin?(scope),
+      qory_pool_ready: qory_pool_ready,
+      qory_pool_hidden: qory_pool_hidden,
       enrols: MapSet.new(Map.keys(pool_codes)),
       makes_pool: Access.can?(scope, :"node.create", workspace),
       pool_codes: pool_codes,
       pool_issued: issued,
-      pool_choice: if(workspace_pools == [], do: socket.assigns[:pool_choice] || "shared"),
+      pool_choice: pool_choice(socket, workspace_pools, qory_pool_hidden),
       pool_taken: if(workspace_pools == [], do: socket.assigns[:pool_taken]),
-      who_may: %{
-        instance: Edition.machines_who_may(scope, workspace, :instance),
-        workspace: Edition.machines_who_may(scope, workspace, :workspace)
-      },
+      who_may: Edition.machines_who_may(scope, workspace),
       done: step_done?(socket.assigns.flow, :machines)
     )
     |> schedule_pool_expiry(pool_codes)
@@ -568,13 +642,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       if match?(%{dispatch_run: %{state: state}} when state != :ended, test),
         do: socket.assigns.test_notice
 
+    machines = Edition.machines_ready(workspace)
+
     socket
     |> assign(
       test: test,
       test_state: test && test.state,
       test_preparation: test_preparation(scope, workspace, test),
       test_choice: test_choice(test),
-      machines: Edition.machines_ready(workspace),
+      test_machine: test_machine(scope, workspace, test),
+      test_pool: test_pool(machines, workspace),
+      machines: machines,
       may: Access.can?(scope, :"work_item.take_in", workspace),
       who_may:
         ApiaryWeb.Access.who_may(
@@ -587,11 +665,39 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     |> wait_for_machine()
   end
 
+  # The pool of a test run's no-machine line: the ready pool, else the first pool that
+  # serves the workspace's runs, not ready; nil where no pool serves them.
+  defp test_pool(%{pool: pool}, _workspace), do: pool
+
+  defp test_pool(nil, workspace),
+    do: workspace |> WorkspaceSetup.serving_pools() |> List.first()
+
   # How a failed test run's machine was prepared, for its run's step and cause line.
   defp test_preparation(scope, workspace, %{state: {:failed, _cause}, run: %Run{} = run}),
     do: Preparation.read(%{scope | workspace: workspace}, run)
 
   defp test_preparation(_scope, _workspace, _test), do: nil
+
+  # The name of the machine a lost test run ran on, for its line: the machine's, or for a
+  # pool's run the name its instance reported, else its instance id; nil for no node.
+  defp test_machine(_scope, _workspace, %{
+         state: {:failed, :silent},
+         run: %Run{node: %Node{kind: :node} = node}
+       }),
+       do: NodeComponents.shown_name(node)
+
+  defp test_machine(scope, workspace, %{
+         state: {:failed, :silent},
+         run: %Run{node: %Node{} = node, node_instance_id: instance_id}
+       })
+       when is_binary(instance_id) do
+    case Apiary.Nodes.get_instance(%{scope | workspace: workspace}, node, instance_id) do
+      %{name: name} when is_binary(name) -> name
+      _instance -> Apiary.ExternalText.sent(instance_id)
+    end
+  end
+
+  defp test_machine(_scope, _workspace, _test), do: nil
 
   # The model choice a new test run takes, for a test run that ended at its claim on a
   # cause of its model choice, so the line names the Model step only where its choice is
@@ -745,7 +851,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       |> put_flash(:error, socket.assigns.who_may)
 
   defp target_saved(socket, choice, {:error, reason}),
-    do: HarnessTargets.refused(socket, choice, reason, socket.assigns.flow.organisation.name)
+    do:
+      HarnessTargets.refused(
+        socket,
+        choice,
+        reason,
+        socket.assigns.flow.organisation.name,
+        socket.assigns.flow.workspace.name
+      )
 
   defp harness_targets(scope, flow),
     do: HarnessTargets.targets(scope, flow.workspace, flow.domain)
@@ -1137,9 +1250,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  def handle_event("choose_kind", %{"type" => type}, %{assigns: %{view: :cards}} = socket),
-    do: {:noreply, SetUpComponents.choose_kind(socket, type, :any)}
-
   def handle_event(
         "validate_name",
         %{"workspace" => params},
@@ -1300,8 +1410,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         %{"pool" => %{"choice" => choice}},
         %{assigns: %{step: :machines, makes_pool: true, workspace_pools: []}} = socket
       )
-      when choice in ["shared", "workspace"],
-      do: {:noreply, assign(socket, pool_choice: choice, pool_taken: nil)}
+      when choice in ["shared", "workspace"] do
+    choice = if socket.assigns.qory_pool_hidden, do: "workspace", else: choice
+    {:noreply, assign(socket, pool_choice: choice, pool_taken: nil)}
+  end
 
   # Once the workspace has its pool, for a person who may remove it: Qory Pool opens the
   # confirmation of the removal on the Qory Pool row, and the workspace's pool closes it.
@@ -1442,7 +1554,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
            ApiaryWeb.Access.who_may(
              scope,
              :"node.delete",
-             gettext("Only owners and admins delete nodes.")
+             gettext("Only owners and admins delete machines.")
            )
          )
          |> reload()}
@@ -1535,9 +1647,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp harness_saved(socket, choice, {:error, reason}) do
     {source, ref} = HarnessComponents.refused(choice)
 
-    organisation = socket.assigns.flow.organisation.name
+    flow = socket.assigns.flow
 
-    case HarnessComponents.refusal_words(reason, source, ref, organisation) do
+    case HarnessComponents.refusal_words(
+           reason,
+           source,
+           ref,
+           flow.organisation.name,
+           flow.workspace.name
+         ) do
       nil -> put_flash(socket, :error, gettext("Nothing was changed. Try again."))
       words -> assign(socket, :harness_refusal, {reason, words})
     end
@@ -1592,6 +1710,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   def handle_async(:harness_linked, _exit, socket),
     do: {:noreply, harness_listed(socket, [])}
+
+  def handle_async({:templates, prefix}, result, socket),
+    do: {:noreply, TemplateReads.done(socket, prefix, result)}
 
   def handle_async(:harness_exports, {:ok, {id, result}}, socket),
     do: {:noreply, exports_read(socket, id, result)}
@@ -1693,6 +1814,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_info({Dispatches, :changed}, socket), do: {:noreply, reload(socket)}
   def handle_info(:setup_tick, socket), do: {:noreply, reload(socket)}
 
+  # The window of the person's reads is over: New workspace reads the places left.
+  def handle_info(:templates_resume, socket),
+    do: {:noreply, TemplateReads.resume(socket)}
+
   # A change of the test run's registered run.
   def handle_info(
         {:run_changed, %Run{dispatch_run_id: id}},
@@ -1730,7 +1855,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       place={:workspace}
       set_up_step={@step}
     >
-      <:crumb>{SetUpComponents.step_label(@step)}</:crumb>
+      <:crumb :if={@sub} patch={SetUpComponents.flow_path(@flow, @step)}>
+        {SetUpComponents.step_label(@step)}
+      </:crumb>
+      <:crumb :if={@sub}>{connect_label(@step, has_connection?(assigns))}</:crumb>
+      <:crumb :if={!@sub}>{SetUpComponents.step_label(@step)}</:crumb>
       <.flow_step {assigns} />
     </Layouts.app>
     """
@@ -1746,21 +1875,113 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       place={:organisation}
     >
       <:crumb>{gettext("New workspace")}</:crumb>
-      <SetUpComponents.kind_cards title={@page_title} limit={@limit} />
+      <SetUpComponents.kind_cards
+        :if={!@template_groups}
+        title={@page_title}
+        limit={@limit}
+        organisation={@current_scope.organisation}
+      />
+      <SetUpComponents.template_cards
+        :if={@template_groups}
+        title={@page_title}
+        limit={@limit}
+        organisation={@current_scope.organisation}
+        places={@template_places}
+        reads={@template_reads}
+        limited={@template_limit}
+      />
     </Layouts.app>
     """
   end
 
-  defp flow_step(%{step: step} = assigns) when step in [:sources, :destinations] do
-    # The step exists once the workspace does, at `/:org/:workspace/set-up/<step>`.
+  # The second sentence of the step's About this step: the edition's, else the core's.
+  defp connects_sentence(nil, organisation),
+    do:
+      gettext("Owners and admins of %{organisation} connect it once for the organisation.",
+        organisation: organisation.name
+      )
+
+  defp connects_sentence(sentence, _organisation), do: sentence
+
+  # Connect of Work sources or Destinations, a page of the step: the configured adapters
+  # the organisation has not connected, each with its state and Connect, whose install
+  # returns to the step, or "Every system is connected."; Back leads to the step.
+  defp flow_step(%{sub: :connect} = assigns) do
     assigns =
-      assign(assigns, back: "set-up:#{step}:workspace=#{assigns.flow.workspace.public_id}")
+      assign(assigns,
+        back: "set-up:#{assigns.step}:workspace=#{assigns.flow.workspace.public_id}",
+        up: %{
+          path: SetUpComponents.flow_path(assigns.flow, assigns.step),
+          label: SetUpComponents.step_label(assigns.step)
+        }
+      )
+
+    ~H"""
+    <SetUpComponents.frame title={@title} page={@page_path}>
+      <SetUpComponents.heading>
+        {connect_label(@step, has_connection?(assigns))}
+      </SetUpComponents.heading>
+
+      <.adapter_list
+        :if={@unconnected != []}
+        unconnected={@unconnected}
+        connecting={@connecting}
+        may_connect={@may_connect}
+        current_scope={@current_scope}
+        back={@back}
+        ready={@ready}
+        sending={@sending}
+      />
+
+      <p :if={@adapters != [] and @unconnected == []} id="set-up-all-connected">
+        {pgettext("plain", "Every system is connected.")}
+      </p>
+
+      <.no_adapter :if={@adapters == []} step={@step} instance_admin={@instance_admin} />
+
+      <p
+        :if={!@may_connect}
+        id="set-up-connect-who-may"
+        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
+      >
+        {@who_connects}
+      </p>
+
+      <div class="q-su-acts">
+        <SetUpComponents.back steps={@steps} page={@page_path} up={@up} />
+      </div>
+
+      <:context :if={Enum.any?(@unconnected, &(&1.id in @ready))}>
+        <.connect_help unconnected={@unconnected} ready={@ready} />
+      </:context>
+    </SetUpComponents.frame>
+    """
+  end
+
+  # The step Work sources or Destinations: the grants' cards, the adapters connected with
+  # no grant yet, and those whose connection is pending. For a person `adapter.connect`
+  # allows: with nothing connected, the adapters to connect; after that, Connect another
+  # to the step's Connect page while an adapter is not connected.
+  defp flow_step(%{step: step} = assigns) when step in [:sources, :destinations] do
+    connected = has_connection?(assigns)
+
+    assigns =
+      assign(assigns,
+        connected: connected,
+        back: "set-up:#{step}:workspace=#{assigns.flow.workspace.public_id}",
+        pending:
+          if(connected,
+            do: for(a <- assigns.unconnected, MapSet.member?(assigns.connecting, a.id), do: a),
+            else: []
+          ),
+        connect_path: SetUpComponents.flow_path(assigns.flow, step) <> "/connect"
+      )
 
     ~H"""
     <SetUpComponents.frame title={@title} page={@page_path}>
       <SetUpComponents.heading>{@page_title}</SetUpComponents.heading>
 
-      <ul :if={@cards != [] or @waiting != []} id="set-up-grants" class="grid gap-3">
+      <ul :if={@cards != [] or @waiting != [] or @pending != []} id="set-up-grants" class="grid gap-3">
         <IntegrationComponents.grant_card
           :for={card <- @cards}
           id={"set-up-grant-#{card.grant.public_id}"}
@@ -1783,53 +2004,38 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <i aria-hidden="true"></i><span>{gettext("Connected")}</span>
           </span>
         </li>
+        <.adapter_row
+          :for={adapter <- @pending}
+          adapter={adapter}
+          connecting
+          may_connect={false}
+          current_scope={@current_scope}
+          back=""
+          ready={false}
+          sending={false}
+        />
       </ul>
 
-      <details
-        :if={@unconnected != []}
+      <.adapter_list
+        :if={!@connected and @may_connect and @unconnected != []}
+        unconnected={@unconnected}
+        connecting={@connecting}
+        may_connect={@may_connect}
+        current_scope={@current_scope}
+        back={@back}
+        ready={@ready}
+        sending={@sending}
+      />
+
+      <.button
+        :if={@connected and @may_connect and @unconnected != []}
         id="set-up-connect"
-        class="grid gap-3"
-        open={@cards == [] and @waiting == []}
+        size="sm"
+        class="w-fit"
+        patch={@connect_path}
       >
-        <summary id="set-up-connect-another" class="btn btn-sm w-fit">
-          <span :if={@step == :sources}>{gettext("Connect another source")}</span>
-          <span :if={@step == :destinations}>{gettext("Connect another destination")}</span>
-        </summary>
-        <ul id="set-up-adapters" class="mt-3 grid gap-3">
-          <li
-            :for={adapter <- @unconnected}
-            id={"set-up-adapter-#{adapter.public_id}"}
-            class="flex items-center gap-3 rounded-box border border-line bg-base-100 px-4 py-3"
-          >
-            <IntegrationComponents.mark class="size-5" />
-            <p class="min-w-0 flex-1 truncate font-medium">{Adapters.title(adapter)}</p>
-            <span
-              :if={MapSet.member?(@connecting, adapter.id)}
-              id={"set-up-adapter-#{adapter.public_id}-connecting"}
-              role="status"
-              class="q-sdot q-sdot-pending text-[13px]/5"
-            >
-              <i aria-hidden="true"></i><span>{gettext("Connecting…")}</span>
-            </span>
-            <span
-              :if={not MapSet.member?(@connecting, adapter.id)}
-              id={"set-up-adapter-#{adapter.public_id}-not-connected"}
-              class="q-sdot text-[13px]/5 text-muted"
-            >
-              <i aria-hidden="true"></i><span>{gettext("Not connected")}</span>
-            </span>
-            <IntegrationComponents.install_form
-              :if={@may_connect}
-              id={"set-up-adapter-#{adapter.public_id}-connect"}
-              adapter={adapter}
-              action={IntegrationComponents.paths(@current_scope, adapter).install <> "?" <> URI.encode_query(back: @back)}
-              ready={adapter.id in @ready}
-              sending={@sending == adapter.public_id}
-              label={gettext("Connect")}
-            />
-          </li>
-        </ul>
-      </details>
+        {connect_label(@step, true)}
+      </.button>
 
       <p
         :if={!@may and @cards != []}
@@ -1839,28 +2045,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {@who_may}
       </p>
 
-      <p
-        :if={@adapters == [] and @step == :sources}
-        id="set-up-no-adapter"
-        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
-      >
-        {gettext(
-          "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
-        )}
-      </p>
+      <.no_adapter :if={@adapters == []} step={@step} instance_admin={@instance_admin} />
 
       <p
-        :if={@adapters == [] and @step == :destinations}
-        id="set-up-no-adapter"
-        class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
-      >
-        {gettext(
-          "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
-        )}
-      </p>
-
-      <p
-        :if={!@may_connect}
+        :if={!@may_connect and is_nil(@connects_line)}
         id="set-up-connect-who-may"
         class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
       >
@@ -1878,21 +2066,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context :if={@step == :sources or guides(@unconnected, @ready) != []}>
+      <:context>
         <p :if={@step == :sources} id="set-up-what">
-          {pgettext("plain", "Bring tickets in from a system this instance has set up.")}
+          {pgettext("plain", "Bring tickets in from a system such as an issue tracker.")}
+          {connects_sentence(@connects_line, @flow.organisation)}
         </p>
-        <p :for={adapter <- @unconnected} :if={adapter.id in @ready}>
-          {gettext(
-            "Connect opens %{adapter} in this tab, and %{adapter} sends you back to Qory Apiary after its steps.",
-            adapter: Adapters.title(adapter)
-          )}
+        <p :if={@step == :destinations} id="set-up-what">
+          {gettext("Runs change targets in a system such as a ticket tracker or a document store.")}
+          {connects_sentence(@connects_line, @flow.organisation)}
         </p>
-        <SetUpComponents.outside
-          :for={{adapter, guide} <- guides(@unconnected, @ready)}
-          id={"set-up-help-#{adapter.public_id}"}
-          title={gettext("On %{adapter}", adapter: Adapters.title(adapter))}
-          guide={guide}
+        <.connect_help
+          :if={!@connected and @may_connect and Enum.any?(@unconnected, &(&1.id in @ready))}
+          unconnected={@unconnected}
+          ready={@ready}
         />
       </:context>
     </SetUpComponents.frame>
@@ -2141,7 +2327,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <.link
         :if={@test_state in [:waiting, :running] and @test.run}
         id="set-up-test-run-link"
-        navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+        navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.number}"}
         class="q-link text-[13.5px]/5"
       >
         {gettext("See the run")}
@@ -2160,7 +2346,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         <span id="set-up-test-passed">
           {OverviewComponents.passed_line(@test.run)}
           <.link
-            navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+            navigate={~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.number}"}
             class="q-link"
           >
             {gettext("See the run")}
@@ -2175,7 +2361,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             run={@test.run}
             preparation={@test_preparation}
             choice={@test_choice}
-            path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.public_id}"}
+            path={@test.run && ~p"/#{@organisation}/#{@workspace}/runs/#{@test.run.number}"}
+            item={@test.work_item && @test.work_item.number}
+            pool={@test_pool}
+            machine={@test_machine}
           />
         </span>
       </.notice>
@@ -2250,6 +2439,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             unplaced={@unplaced}
             exports={@exports}
             organisation={@flow.organisation.name}
+            workspace_name={@flow.workspace.name}
             disabled={!@may or @saving}
             shared={@shared_harness}
           />
@@ -2269,7 +2459,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
           <.notice :if={@harness_refusal} kind={:error}>
             <span id="set-up-harness-refusal" data-reason={harness_refusal_code(@harness_refusal)}>
-              {elem(@harness_refusal, 1)}
+              <.rich text={elem(@harness_refusal, 1)} />
             </span>
           </.notice>
         </.form>
@@ -2283,6 +2473,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           linked={@linked}
           assigned={@harness_assigned}
           organisation={@flow.organisation.name}
+          workspace_name={@flow.workspace.name}
         />
 
         <p
@@ -2324,11 +2515,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp flow_step(%{step: :machines} = assigns) do
-    %{pools: pools, instance_admin: admin?, enrols: enrols} = assigns
+    %{pools: pools, enrols: enrols} = assigns
 
     choosing = assigns.makes_pool and assigns.workspace_pools == []
     removable = assigns.pool_removable
-    shared = if(choosing, do: hd(pools), else: assigns.shared_line)
+    shared = if(choosing, do: List.first(pools), else: assigns.shared_line)
 
     assigns =
       assign(assigns,
@@ -2337,11 +2528,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           for(
             line <- pools,
             do:
-              {pool_line_id(line), line, pool_act(line, admin?, enrols),
+              {pool_line_id(line), line, pool_act(line, enrols),
                pool_way(line, assigns.pool_codes)}
           ),
         choosing: choosing,
-        shared: shared && {pool_line_id(shared), shared, pool_act(shared, admin?, enrols)},
+        shared: shared && {pool_line_id(shared), shared, pool_act(shared, enrols)},
         chosen:
           cond do
             choosing -> assigns.pool_choice
@@ -2390,12 +2581,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
               </span>
             </span>
             <span :if={act == :check} class="q-choice-p">
-              <.link id={"#{id}-check"} navigate={~p"/instance/nodes"} class="q-link">
-                {gettext("Check the nodes")}
+              <.link id={"#{id}-check"} navigate={~p"/instance/qory-pool-and-gateway"} class="q-link">
+                {gettext("Check the Qory Pool and Qory Gateway")}
               </.link>
-            </span>
-            <span :if={act == :instance} id={"#{id}-who-may"} class="q-choice-p">
-              {@who_may[act]}
             </span>
             <span :if={@pool_removing} id="set-up-pool-remove" class="q-choice-p grid gap-2">
               <span id="set-up-pool-remove-line" class="text-base-content">
@@ -2438,9 +2626,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <span id="set-up-pool-workspace-name" class="q-choice-h">
               {gettext("A pool for %{workspace}", workspace: @flow.workspace.name)}
             </span>
-            <span id="set-up-pool-workspace-line" class="q-choice-p">
+            <span :if={!@qory_pool_hidden} id="set-up-pool-workspace-line" class="q-choice-p">
               {gettext(
                 "Runs in %{workspace} then wait for this pool, and the Qory Pool stops taking them.",
+                workspace: @flow.workspace.name
+              )}
+            </span>
+            <span :if={@qory_pool_hidden} id="set-up-pool-workspace-line" class="q-choice-p">
+              {gettext("Runs in %{workspace} then wait for this pool.",
                 workspace: @flow.workspace.name
               )}
             </span>
@@ -2459,7 +2652,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </p>
       </div>
 
-      <ul :if={!@choosing} id="set-up-pools" class="q-choices grid gap-2">
+      <p
+        :if={!@choosing and @lines == []}
+        id="set-up-pool-who-may"
+        class="text-[13.5px]/5 text-muted"
+      >
+        {@who_may}
+      </p>
+
+      <ul :if={!@choosing and @lines != []} id="set-up-pools" class="q-choices grid gap-2">
         <li :for={{id, line, act, way} <- @lines} id={id} class="q-choice cursor-default">
           <input
             :if={@only}
@@ -2476,7 +2677,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             <span :if={!line.instance and act != :pool}>{line.pool.name}</span>
             <.link
               :if={act == :pool}
-              navigate={~p"/#{@flow.organisation}/#{@flow.workspace}/nodes/#{line.pool}"}
+              navigate={~p"/#{@flow.organisation}/#{@flow.workspace}/machines/#{line.pool}"}
               class="q-link"
             >
               {line.pool.name}
@@ -2488,12 +2689,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             </span>
           </span>
           <span :if={act == :check} class="q-choice-p">
-            <.link id={"#{id}-check"} navigate={~p"/instance/nodes"} class="q-link">
-              {gettext("Check the nodes")}
+            <.link id={"#{id}-check"} navigate={~p"/instance/qory-pool-and-gateway"} class="q-link">
+              {gettext("Check the Qory Pool and Qory Gateway")}
             </.link>
           </span>
-          <span :if={act in [:instance, :workspace]} id={"#{id}-who-may"} class="q-choice-p">
-            {@who_may[act]}
+          <span :if={act == :workspace} id={"#{id}-who-may"} class="q-choice-p">
+            {@who_may}
           </span>
           <span :if={way} class="q-choice-p">
             <.button
@@ -2550,9 +2751,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             workspace: @flow.workspace.name
           )}
         </p>
-        <p id="set-up-machines-pools">
+        <p :if={@qory_pool_ready} id="set-up-machines-pools">
           {gettext(
-            "The Qory Pool is the instance's pool, where the instance has one. It takes the runs of every workspace that has no pool. A pool for %{workspace} takes the runs of %{workspace} alone: once you add it, the Qory Pool stops taking them. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment.",
+            "The Qory Pool: machines Qory Apiary provides for the runs of every workspace that has no pool."
+          )}
+        </p>
+        <p id="set-up-machines-join">
+          {gettext(
+            "A pool for %{workspace} takes the runs of %{workspace} alone. To join a machine to the pool, get the command and run it on that machine. Every run gets an isolated environment.",
             workspace: @flow.workspace.name
           )}
         </p>
@@ -2566,15 +2772,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     """
   end
 
-  # Who acts on a pool's line: nil for a ready pool; for the instance's pool, `:check`,
-  # Check the nodes, for an instance admin, else `:instance`, who acts; for a pool of the
-  # workspace, `:pool`, the link to its page, for a person who may enrol it, else
-  # `:workspace`, who acts.
-  defp pool_act(%{state: {:ready, _gateway}}, _admin?, _enrols), do: nil
-  defp pool_act(%{instance: true}, true, _enrols), do: :check
-  defp pool_act(%{instance: true}, false, _enrols), do: :instance
+  # The lines of the step: without the instance's pool while it is hidden.
+  defp shown_pools(pools, false), do: pools
+  defp shown_pools(pools, true), do: Enum.reject(pools, & &1.instance)
 
-  defp pool_act(%{pool: pool}, _admin?, enrols),
+  # The choice while the workspace has no pool: the one kept, Qory Pool first, or the pool
+  # for the workspace, the only one offered while Qory Pool is hidden.
+  defp pool_choice(_socket, [_pool | _pools], _hidden), do: nil
+  defp pool_choice(_socket, [], true), do: "workspace"
+  defp pool_choice(socket, [], false), do: socket.assigns[:pool_choice] || "shared"
+
+  # Who acts on a pool's line: nil for a ready pool; `:check`, the link to the instance's
+  # settings, for the instance's pool, which only an instance admin sees while it is not
+  # ready; for a pool of the workspace, `:pool`, the link to its page, for a person who
+  # may enrol it, else `:workspace`, who acts.
+  defp pool_act(%{state: {:ready, _gateway}}, _enrols), do: nil
+  defp pool_act(%{instance: true}, _enrols), do: :check
+
+  defp pool_act(%{pool: pool}, enrols),
     do: if(MapSet.member?(enrols, pool.id), do: :pool, else: :workspace)
 
   defp pool_line_id(%{instance: true}), do: "set-up-pool-instance"
@@ -2715,7 +2930,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp pool_taken_line(name, workspace),
     do:
       gettext(
-        "Rename the node %{name} on the Nodes page, then add the pool. A node of %{workspace} already has that name.",
+        "Rename the machine %{name} on the Machines page, then add the pool. A machine of %{workspace} already has that name.",
         name: name,
         workspace: workspace.name
       )
@@ -2785,6 +3000,138 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # Each adapter whose Connect can be pressed, among the ids `ready`, and whose guide has
   # steps for connecting it, with them.
+  attr :unconnected, :list, required: true
+  attr :connecting, :any, required: true
+  attr :may_connect, :boolean, required: true
+  attr :current_scope, :any, required: true
+  attr :back, :string, required: true
+  attr :ready, :any, required: true
+  attr :sending, :any, required: true
+
+  # The adapters the organisation has not connected, each with its state and Connect.
+  defp adapter_list(assigns) do
+    ~H"""
+    <ul id="set-up-adapters" class="grid gap-3">
+      <.adapter_row
+        :for={adapter <- @unconnected}
+        adapter={adapter}
+        connecting={MapSet.member?(@connecting, adapter.id)}
+        may_connect={@may_connect}
+        current_scope={@current_scope}
+        back={@back}
+        ready={adapter.id in @ready}
+        sending={@sending == adapter.public_id}
+      />
+    </ul>
+    """
+  end
+
+  attr :unconnected, :list, required: true
+  attr :ready, :any, required: true
+
+  # What Connect does, once, then the guide of each adapter whose Connect can be pressed
+  # and whose guide has steps for connecting it (`Apiary.Adapters.guide/2`).
+  defp connect_help(assigns) do
+    ~H"""
+    <p id="set-up-connect-help">
+      {pgettext(
+        "plain",
+        "Connect opens the system in this tab. After its steps, it sends you back here."
+      )}
+    </p>
+    <SetUpComponents.outside
+      :for={{adapter, guide} <- guides(@unconnected, @ready)}
+      id={"set-up-help-#{adapter.public_id}"}
+      title={gettext("On %{adapter}", adapter: Adapters.title(adapter))}
+      guide={guide}
+    />
+    """
+  end
+
+  attr :adapter, :any, required: true
+  attr :connecting, :boolean, required: true
+  attr :may_connect, :boolean, required: true
+  attr :current_scope, :any, required: true
+  attr :back, :string, required: true
+  attr :ready, :boolean, required: true
+  attr :sending, :boolean, required: true
+
+  # An adapter the organisation has not connected: its title, Connecting… while its
+  # connection is pending, else Not connected, and Connect for a person who may.
+  defp adapter_row(assigns) do
+    ~H"""
+    <li
+      id={"set-up-adapter-#{@adapter.public_id}"}
+      class="flex items-center gap-3 rounded-box border border-line bg-base-100 px-4 py-3"
+    >
+      <IntegrationComponents.mark class="size-5" />
+      <p class="min-w-0 flex-1 truncate font-medium">{Adapters.title(@adapter)}</p>
+      <span
+        :if={@connecting}
+        id={"set-up-adapter-#{@adapter.public_id}-connecting"}
+        role="status"
+        class="q-sdot q-sdot-pending text-[13px]/5"
+      >
+        <i aria-hidden="true"></i><span>{gettext("Connecting…")}</span>
+      </span>
+      <span
+        :if={not @connecting}
+        id={"set-up-adapter-#{@adapter.public_id}-not-connected"}
+        class="q-sdot text-[13px]/5 text-muted"
+      >
+        <i aria-hidden="true"></i><span>{gettext("Not connected")}</span>
+      </span>
+      <IntegrationComponents.install_form
+        :if={@may_connect}
+        id={"set-up-adapter-#{@adapter.public_id}-connect"}
+        adapter={@adapter}
+        action={IntegrationComponents.paths(@current_scope, @adapter).install <> "?" <> URI.encode_query(back: @back)}
+        ready={@ready}
+        instance_admin={Access.instance_admin?(@current_scope)}
+        sending={@sending}
+        label={gettext("Connect")}
+      />
+    </li>
+    """
+  end
+
+  attr :step, :atom, required: true
+  attr :instance_admin, :boolean, required: true
+
+  # The line of a step with no adapter for the workspace's type on the instance.
+  defp no_adapter(assigns) do
+    ~H"""
+    <p id="set-up-no-adapter" class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted">
+      <span :if={@step == :sources and @instance_admin}>
+        {gettext(
+          "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+        )}
+      </span>
+      <span :if={@step == :sources and !@instance_admin}>
+        <.rich text={
+          rich_gettext(
+            "%{contact_support} to add a work source. Qory Apiary offers none for this type yet.",
+            contact_support: ApiaryWeb.Support.rich()
+          )
+        } />
+      </span>
+      <span :if={@step == :destinations and @instance_admin}>
+        {gettext(
+          "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+        )}
+      </span>
+      <span :if={@step == :destinations and !@instance_admin}>
+        <.rich text={
+          rich_gettext(
+            "%{contact_support} to add a work destination. Qory Apiary offers none for this type yet.",
+            contact_support: ApiaryWeb.Support.rich()
+          )
+        } />
+      </span>
+    </p>
+    """
+  end
+
   defp guides(adapters, ready) do
     for adapter <- adapters,
         adapter.id in ready,

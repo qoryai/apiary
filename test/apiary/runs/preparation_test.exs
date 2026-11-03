@@ -42,13 +42,16 @@ defmodule Apiary.Runs.PreparationTest do
         Dispatches.queue(Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope), 1)
       end)
 
-    case Dispatches.claim(ctx.key, Dispatches.now()) do
+    case Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) do
       {:ok, %{dispatch: %Dispatch{}} = claimed} ->
         claimed
 
       {:error, :no_gateway} ->
         _gateway = gateway_for!(ctx.scope, ctx.pool)
-        {:ok, %{dispatch: %Dispatch{}} = claimed} = Dispatches.claim(ctx.key, Dispatches.now())
+
+        {:ok, %{dispatch: %Dispatch{}} = claimed} =
+          Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
         claimed
     end
   end
@@ -190,6 +193,92 @@ defmodule Apiary.Runs.PreparationTest do
     end
   end
 
+  describe "a run's steps after the session" do
+    # A run whose session started and exited, then a step of `kind` ended in `state`.
+    defp after_session!(ctx, kind, state, exit_code) do
+      ctx.scope
+      |> run_fixture()
+      |> project!([
+        {1, "run.started", started_data()},
+        step_started(2, 1, "fetch git.example.com/acme/web-shop", "fetch"),
+        step_exited(3, 1),
+        step_started(4, 2, "build the environment image", "build"),
+        step_exited(5, 2),
+        {6, "session.started", session_started_data()},
+        {7, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+        step_started(8, 3, "push work to git.example.com/acme/web-shop", kind),
+        {9, "run.log", step_log_data(3, "To https://git.example.com/acme/web-shop.git\n")},
+        step_exited(10, 3, state, exit_code),
+        {11, "run.exited", %{"state" => state, "exit_code" => exit_code, "duration_ms" => 1000}}
+      ])
+    end
+
+    test "a push leaves `steps` for `after_session`, in the same shape; a build stays", ctx do
+      run = after_session!(ctx, "push", "succeeded", 0)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [%{number: 1, kind: "fetch"}, %{number: 2, kind: "build"}] = preparation.steps
+
+      assert [
+               %{
+                 number: 3,
+                 name: "Push work to git.example.com/acme/web-shop",
+                 kind: "push",
+                 state: "succeeded",
+                 exit_code: 0,
+                 duration_ms: 100,
+                 output: %{
+                   text: "To https://git.example.com/acme/web-shop.git",
+                   truncated: false
+                 }
+               }
+             ] = preparation.after_session
+
+      assert preparation.stopped == nil
+    end
+
+    test "a failed push is no stop, and no step name to stop at", ctx do
+      run = after_session!(ctx, "push", "failed", 1)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [%{number: 3, state: "failed"}] = preparation.after_session
+      assert preparation.stopped == nil
+      assert Preparation.stopped_step(preparation) == nil
+    end
+
+    test "a failed setup step still is one, in the same place of the run", ctx do
+      run = after_session!(ctx, "setup", "failed", 1)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert preparation.after_session == []
+      assert %{cause: :step_failed, step: 3} = preparation.stopped
+      assert Preparation.stopped_step(preparation) =~ "Push work"
+    end
+
+    test "a reader who may not read the log has the step, with no output", ctx do
+      run = after_session!(ctx, "push", "failed", 1)
+
+      assert %{after_session: [%{number: 3, output: nil}]} =
+               Preparation.read(ctx.scope, run, log: false)
+    end
+
+    test "the machine's start does not depend on the push", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          step_started(3, 1, "push work to git.example.com/acme/web-shop", "push")
+        ])
+
+      assert %{steps: [], after_session: [%{state: "running"}], machine: %{started: started}} =
+               Preparation.read(ctx.scope, run)
+
+      assert started.state == "succeeded"
+    end
+  end
+
   describe "each cause of a failed preparation" do
     test "a release: no machine was made, with the starter's reason", ctx do
       %{dispatch: dispatch, registered: registered} = claimed!(ctx)
@@ -219,6 +308,7 @@ defmodule Apiary.Runs.PreparationTest do
                step: nil,
                fixer: :workspace_admin,
                text: "No machine was made: No capacity in the region. " <> fix,
+               what: "No machine was made: No capacity in the region.",
                fix: fix
              }
     end
@@ -266,14 +356,19 @@ defmodule Apiary.Runs.PreparationTest do
       assert stopped == %{
                cause: :code_not_redeemed,
                step: nil,
-               fixer: :instance_admin,
+               fixer: :support,
                text:
                  "The machine did not start the run within 15 minutes of the request. " <>
-                   "An instance admin finds the cause in the machine log of the Machine " <>
-                   "started step.",
-               fix:
-                 "An instance admin finds the cause in the machine log of the Machine started step."
+                   "Contact support with run #{run.number}.",
+               what: "The machine did not start the run within 15 minutes of the request.",
+               fix: "Contact support with run #{run.number}."
              }
+
+      refute stopped.fix =~ run.public_id
+
+      # Version 1 of the diagnostics contract has `instance_admin` for this fixer.
+      document = Apiary.Runs.Diagnostics.document(run, :instance)
+      assert document["preparation"]["stopped"]["fixer"] == "instance_admin"
     end
 
     @tag :tmp_dir
@@ -299,6 +394,20 @@ defmodule Apiary.Runs.PreparationTest do
       assert stopped.text ==
                "The machine stopped before it started the run. An admin of " <>
                  "#{ctx.scope.workspace.name} reads why in the log of build-pool on its host."
+    end
+
+    test "Machine requested takes from the claim to the starter's `dispatched`", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+
+      change_dispatch!(dispatch,
+        dispatched_at: DateTime.add(dispatch.claimed_at, 2500, :millisecond)
+      )
+
+      assert %{machine: %{requested_ms: 2500}} = Preparation.read(ctx.scope, run)
+
+      # Handed over at the code's redemption, with no `dispatched`: no time is recorded.
+      change_dispatch!(dispatch, dispatched_at: nil)
+      assert %{machine: %{requested_ms: nil}} = Preparation.read(ctx.scope, run)
     end
 
     test "a pending run whose code is still good has not stopped", ctx do
@@ -328,6 +437,7 @@ defmodule Apiary.Runs.PreparationTest do
                text:
                  "Fetch git.example.com/acme/shop failed with exit code 128. An admin of " <>
                    "#{ctx.scope.workspace.name} reads the cause in the step's output.",
+               what: "Fetch git.example.com/acme/shop failed with exit code 128.",
                fix:
                  "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output."
              }
@@ -348,11 +458,11 @@ defmodule Apiary.Runs.PreparationTest do
         ])
 
       assert %{stopped: stopped} = Preparation.read(ctx.scope, run)
-      assert %{cause: :step_failed, step: 1, fixer: :instance_admin} = stopped
+      assert %{cause: :step_failed, step: 1, fixer: :support} = stopped
 
       assert stopped.text ==
-               "Fetch image registry.example/agent failed with exit code 0. An instance admin " <>
-                 "reads the cause in the step's output."
+               "Fetch image registry.example/agent failed with exit code 0. " <>
+                 "Contact support with run #{run.number}."
     end
 
     test "a refused join has no exit status: its line shows no exit code", ctx do
@@ -464,5 +574,45 @@ defmodule Apiary.Runs.PreparationTest do
     %{scope: other} = sign_up_fixture()
 
     assert %{machine: nil, steps: [], stopped: nil} = Preparation.read(other, run)
+  end
+
+  describe "the machine's end" do
+    test "is nil before the starter's first report, and the last report after", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+
+      assert %{machine: %{end: nil, handed_over_at: handed_over_at, ended_at: nil}} =
+               Preparation.read(ctx.scope, run)
+
+      assert handed_over_at == dispatch.handed_over_at
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :deleting})
+      at = Repo.get!(Dispatch, dispatch.id).machine_end_at
+
+      assert %{machine: %{end: %{state: :deleting, at: ^at}}} = Preparation.read(ctx.scope, run)
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :gone})
+      assert %{machine: %{end: %{state: :gone}}} = Preparation.read(ctx.scope, run)
+    end
+
+    test "ended_at is the dispatch's end, else the run's end once the run ended", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+      exited = DateTime.add(DateTime.utc_now(), -120, :second)
+      run = run |> Ecto.Changeset.change(state: "failed", exited_at: exited) |> Repo.update!()
+
+      assert %{machine: %{ended_at: ^exited}} = Preparation.read(ctx.scope, run)
+
+      ended = DateTime.add(DateTime.utc_now(), -60, :second)
+      change_dispatch!(dispatch, ended_at: ended, end_cause: :run_ended)
+      assert %{machine: %{ended_at: ^ended}} = Preparation.read(ctx.scope, run)
+    end
+
+    test "a dispatch released before its handover has no handover", ctx do
+      %{dispatch: dispatch, registered: registered} = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "No capacity."})
+      run = Repo.get!(Run, registered.id)
+
+      assert %{machine: %{handed_over_at: nil, end: nil, ended_at: %DateTime{}}} =
+               Preparation.read(ctx.scope, run)
+    end
   end
 end

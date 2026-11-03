@@ -747,11 +747,8 @@ defmodule Apiary.SetupTest do
              "Your account and your organisation."
   end
 
-  test "the core's lines on the first workspace" do
+  test "the core's line on the first workspace" do
     organisation = Apiary.OrganisationsFixtures.organisation_fixture()
-
-    assert Apiary.Edition.Core.first_workspace_line(organisation) ==
-             "Main is this instance's only workspace."
 
     assert Apiary.Edition.Core.first_workspace_waiting_line(organisation) ==
              "An owner of #{organisation.name} creates the first workspace."

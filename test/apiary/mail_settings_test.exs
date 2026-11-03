@@ -152,12 +152,14 @@ defmodule Apiary.MailSettingsTest do
   defp signed_in(scope, minutes \\ 0),
     do: put_in(scope.user.authenticated_at, DateTime.add(DateTime.utc_now(), -minutes, :minute))
 
-  # The trail's entries of `action` in the instance's organisation.
+  # The trail's entries of `action` in the instance's organisation, oldest first. Entries
+  # can share `inserted_at`; the version 7 UUID `id` keeps the order they were written in.
   defp entries(action) do
     Repo.all(
       from e in Apiary.Audit.Entry,
         where: e.action == ^action,
-        where: e.organisation_id == ^Apiary.Edition.instance_organisation_id()
+        where: e.organisation_id == ^Apiary.Edition.instance_organisation_id(),
+        order_by: [asc: e.inserted_at, asc: e.id]
     )
   end
 
@@ -881,7 +883,7 @@ defmodule Apiary.MailSettingsTest do
       refute Mail.test_link_waiting?(row())
 
       assert [_one, %{details: %{"result" => "rejected", "reply_code" => "550"}} = refused] =
-               Enum.sort_by(entries("instance.mail_resend"), & &1.inserted_at, DateTime)
+               entries("instance.mail_resend")
 
       assert Describer.sentence(:"instance.mail_resend", refused, %{}) ==
                "Tried to send the test link again; the relay did not accept it"

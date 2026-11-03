@@ -82,7 +82,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
                })
 
       assert [%DispatchRun{attempt: 1, end_cause: :run_refused}] = runs_of(handed.work_item)
-      assert {:ok, :none} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, :none} = Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
       assert Slots.held(ctx.pool.id) == 0
     end
 

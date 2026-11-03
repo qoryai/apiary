@@ -55,7 +55,8 @@ defmodule Apiary.Dispatches.Slots do
   #      prebuilds, `FOR SHARE`, by id, in one statement,
   #      `Apiary.Environments.hold_builds/3`). A path that
   #      holds a work item after them holds it next: the end of a prebuild handed over,
-  #      the work items whose runs wait for its build, `FOR KEY SHARE`, by id; the end of
+  #      the work items whose runs wait for its build, `FOR KEY SHARE` (`FOR UPDATE` with
+  #      the workflow model on), by id; the end of
   #      a run whose image was missing, its work item `FOR UPDATE`;
   #   2. a node pool's row: a claim takes it `FOR NO KEY UPDATE` (`Apiary.Dispatches`), so
   #      a registration on the pool, which takes it `FOR UPDATE`
@@ -107,7 +108,7 @@ defmodule Apiary.Dispatches.Slots do
   #
   # A release (`Apiary.Dispatches.Release`) keeps it as well, and holds one row before
   # the free of its run: for an explore run, its work item `FOR UPDATE`, as a close
-  # (`Apiary.WorkItems.close_locked/3`) and `Apiary.Dispatches.queue_next/2` hold a work
+  # (`Apiary.WorkItems.close_locked/3`) and `Apiary.Dispatches.queue_next/3` hold a work
   # item before its runs; for a prebuild, its environment record `FOR UPDATE`, as 3.
   # has it. Then the free of its run, which locks that record again where its lease
   # lapsed, its run of the queue, and its dispatch. A prebuild given back locks the one
@@ -127,8 +128,8 @@ defmodule Apiary.Dispatches.Slots do
   # The end of a prebuild handed over (`Apiary.Dispatches.RunEnd`), by the lost-run check
   # or by its exit, keeps it too: the connections and then the live collections of its
   # target that name an `environment_ref` `FOR SHARE`, by id, as 1. has a Rebuild hold
-  # them, then the work items in Explore whose runs wait for its build `FOR KEY SHARE`,
-  # by id, then the prebuild's environment record `FOR UPDATE`, as 3. has it, then its run
+  # them, then the work items in Explore whose runs wait for its build `FOR KEY SHARE`
+  # (`FOR UPDATE` with the workflow model on), by id, then the prebuild's environment record `FOR UPDATE`, as 3. has it, then its run
   # of the queue, its registered run and its dispatches; then, for a first loss of its
   # ref, the prebuild it queues again, as 5., or, for a failure, the waiting runs of those
   # work items it ends `build_failed`; then the free of its run, which finds none lapsed.
@@ -137,13 +138,14 @@ defmodule Apiary.Dispatches.Slots do
   # then locks the run of the queue, its dispatches, and the waiting runs it ends
   # `build_failed`.
   # The end of any other run handed over, by the check or by an exit's projection, holds
-  # its work item `FOR KEY SHARE` in place of the rows before the record, then the same.
+  # its work item `FOR KEY SHARE` (`FOR UPDATE` with the workflow model on) in place of
+  # the rows before the record, then the same.
   # The end of such a run whose exit says its image was missing first holds the
   # connections and then the collections of the records of that image `FOR SHARE`, by id,
   # as 1. has a Rebuild hold them, then its work item `FOR UPDATE`, then those records
   # `FOR UPDATE`, as 3. has them, then the same, then the prebuilds it queues, as 5., and
   # the next run of its take in, inserted under its work item's lock, as
-  # `Apiary.Dispatches.queue_next/2` inserts one.
+  # `Apiary.Dispatches.queue_next/3` inserts one.
   #
   # So a prebuild comes to wait under the lock of its record, or, for a claim, under the
   # pool's row, and whoever comes second sees what the first wrote, or, at the index of

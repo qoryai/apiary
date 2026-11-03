@@ -118,7 +118,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       view = open(conn, scope)
       refute subscribed_to_policy?(view, scope)
 
-      {:ok, nodes, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+      {:ok, nodes, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines")
       refute subscribed_to_policy?(nodes, scope)
     end
 
@@ -149,7 +149,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       refute html =~ ~r/Workspace default|Not served/
 
       # What the record says stays: the lost run is still an act, the denials are counted.
-      assert has_element?(view, "#att-run-#{lost.public_id}")
+      assert has_element?(view, "#att-run-#{lost.number}")
       assert has_element?(view, "#overview-strip-denied", "1")
       assert has_element?(view, "#overview-strip", "to 1 destination")
       assert has_element?(view, "#overview-retention")

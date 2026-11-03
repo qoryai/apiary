@@ -41,8 +41,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"instance.mail_save"), do: gettext("Mail settings saved")
   def label(:"instance.mail_resend"), do: gettext("Mail test link sent again")
   def label(:"instance.mail_on"), do: gettext("Mail turned on")
-  def label(:"instance.rename"), do: gettext("Instance renamed")
+  def label(:"instance.rename"), do: gettext("Name in the header changed")
   def label(:"instance.configure"), do: gettext("Configuration changed")
+  def label(:"instance.support_save"), do: gettext("Support address saved")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -55,10 +56,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"access_key.cancel_code"), do: gettext("Command cancelled")
   def label(:"access_key.add"), do: gettext("Access key added")
   def label(:"access_key.revoke"), do: gettext("Access key revoked")
-  def label(:"node.create"), do: gettext("Node created")
-  def label(:"node.edit"), do: gettext("Node changed")
-  def label(:"node.delete"), do: gettext("Node deleted")
-  def label(:"node.clear_instance"), do: gettext("Instance cleared")
+  def label(:"node.create"), do: gettext("Machine, pool or gateway created")
+  def label(:"node.edit"), do: gettext("Machine, pool or gateway changed")
+  def label(:"node.delete"), do: gettext("Machine, pool or gateway deleted")
+  def label(:"node.clear_instance"), do: gettext("Machine cleared")
   def label(:"retention.edit"), do: gettext("Retention changed")
   def label(:"security_policy.edit"), do: gettext("Policy rules changed")
   def label(:"security_policy.lock"), do: gettext("Policy rule locked or unlocked")
@@ -77,7 +78,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"target.set_further_repositories"), do: gettext("Also read")
   def label(:"work_item.take_in"), do: gettext("Work item taken in")
   def label(:"work_item.undo"), do: gettext("Take in undone")
-  def label(:"work_item.decline"), do: gettext("Work item declined")
   def label(:"work_item.close"), do: gettext("Work item closed")
   def label(:"work_item.answer"), do: gettext("Work item questions answered")
   def label(:"work_item.confirm"), do: gettext("Work item proposal confirmed")
@@ -87,6 +87,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"dispatch.handover"), do: gettext("Runs handed over")
   def label(:"dispatch.release"), do: gettext("Runs given back")
   def label(:"dispatch.prebuilt"), do: gettext("Images recorded")
+  def label(:"dispatch.machine_end"), do: gettext("Machine removal reports")
   def label(:"target.rebuild_environment"), do: gettext("Builds asked for")
   def label(:"adapter.install"), do: gettext("Adapter installed")
   def label(:"adapter.setup"), do: gettext("Adapter set-up started")
@@ -94,6 +95,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"adapter.app_values_seal"), do: gettext("Adapter secrets sent")
   def label(:"adapter.end_grant"), do: gettext("Ended a grant")
   def label(:"run_credential.issue"), do: gettext("Run access sent or refused")
+  def label(:"gate.approve"), do: gettext("Work item stage decided")
+  def label(:"process.edit"), do: gettext("Process changed")
+  def label(:"workspace_type.edit"), do: gettext("Workspace type changed")
+  def label(:"artifact.write"), do: gettext("Artifact version added")
+  def label(:"artifact_type.edit"), do: gettext("Artifact type changed")
   def label(_action), do: nil
 
   # Turning a target's Backlog on or off names the items of the organisation's sources:
@@ -126,7 +132,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # keys' likewise: their actions belong to the `secrets` feature, or to the part `nodes`
   # (`Apiary.Access.shown_as/1`), and they ask `visible?/2` of it. Their entries still
   # show, by their labels. Of the feature `factory`'s actions only those of a person on the
-  # work items (a take in, its undo, a decline, a close, an answer to Qory's questions, a
+  # work items (a take in, its undo, a close, an answer to Qory's questions, a
   # confirmation of its proposal, a run of Explore again and the comments), the assigning
   # of collections, the turning of a target's Backlog on or off, the release of a claimed
   # run, the choosing of what a target's runs also read, the setting of a model choice or
@@ -150,7 +156,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         action in [
           :"work_item.take_in",
           :"work_item.undo",
-          :"work_item.decline",
           :"work_item.close",
           :"work_item.answer",
           :"work_item.confirm",
@@ -170,6 +175,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"adapter.app_values_seal",
           :"adapter.end_grant",
           :"run_credential.issue"
+        ]
+
+      # The actions on a workspace's process with a label: a stage's decisions on a work
+      # item, the changes to the process and to a workspace type's default, a person's
+      # artifact versions, and the changes to the workspace's artifact types.
+      :workflow_model ->
+        action in [
+          :"gate.approve",
+          :"process.edit",
+          :"workspace_type.edit",
+          :"artifact.write",
+          :"artifact_type.edit"
         ]
 
       shown_as when shown_as in [:secrets, :nodes] ->
@@ -341,13 +358,106 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def sentence(_action, %{subject_kind: "time_limit", details: %{"change" => change}}, _names),
     do: said_time_limit(change)
 
-  def sentence(action, entry, _names) do
+  # An entry from before this action went: nothing writes it any more, and `Apiary.Access`
+  # has no such action, so `Apiary.Audit.action/1` reads nil for it.
+  def sentence(nil, %{action: "work_item.decline"}, _names), do: gettext("Declined a work item")
+
+  def sentence(action, entry, names) do
     details = entry.details || %{}
 
-    if left?(entry, action, details),
-      do: gettext("Left the organisation"),
-      else: said(action, details, entry.actor_kind)
+    cond do
+      left?(entry, action, details) -> gettext("Left the organisation")
+      words = node_said(action, details, entry.actor_kind, node_kind(entry, names)) -> words
+      true -> said(action, details, entry.actor_kind)
+    end
   end
+
+  # The kind of the machine, pool, gateway or adapter an entry is about: the kind its
+  # creation recorded, else the prefix of the public id its details have (`nd_`, `np_`,
+  # `ng_`, `na_`), else its subject's kind as it is now (`Apiary.Audit.names/2`); nil when
+  # none of them is there.
+  defp node_kind(%{after: %{"kind" => kind}}, _names) when is_binary(kind), do: kind
+
+  defp node_kind(%{details: %{"node_id" => public_id}}, _names) when is_binary(public_id) do
+    case public_id do
+      "nd_" <> _ -> "node"
+      "np_" <> _ -> "pool"
+      "ng_" <> _ -> "gateway"
+      "na_" <> _ -> "adapter"
+      _other -> nil
+    end
+  end
+
+  defp node_kind(%{subject_kind: "node", subject_id: id}, names),
+    do: (names[:node_kinds] || %{})[id]
+
+  defp node_kind(_entry, _names), do: nil
+
+  # What was done to a machine, a pool, a gateway or an adapter, by its kind
+  # (`node_kind/2`); nil for any other entry, and for those `said/3` words: a diagnostics
+  # key's, a code given to an installed adapter or cancelled for one, and a revoke but
+  # the one that came with its machine's deletion.
+  defp node_said(_action, %{"node_id" => "dg_" <> _}, _actor, _kind), do: nil
+  defp node_said(:"access_key.create_code", %{"installed" => true}, _actor, _kind), do: nil
+  defp node_said(:"access_key.cancel_code", _details, :instance, _kind), do: nil
+
+  defp node_said(:"access_key.revoke", %{"reason" => "node_deleted"}, _actor, kind),
+    do: revoked_with(kind)
+
+  defp node_said(:"node.create", _details, _actor, kind), do: created(kind)
+  defp node_said(:"node.edit", _details, _actor, kind), do: changed(kind)
+  defp node_said(:"node.delete", _details, _actor, kind), do: deleted(kind)
+  defp node_said(:"node.clear_instance", _details, _actor, kind), do: cleared(kind)
+  defp node_said(:"access_key.create_code", _details, _actor, kind), do: code_made(kind)
+  defp node_said(:"access_key.cancel_code", _details, _actor, kind), do: code_cancelled(kind)
+  defp node_said(:"access_key.add", _details, _actor, kind), do: key_added(kind)
+  defp node_said(_action, _details, _actor, _kind), do: nil
+
+  defp created("node"), do: gettext("Created a machine")
+  defp created("pool"), do: gettext("Created a pool")
+  defp created("gateway"), do: gettext("Created a gateway")
+  defp created(_kind), do: gettext("Created a machine, pool or gateway")
+
+  defp changed("node"), do: gettext("Changed a machine")
+  defp changed("pool"), do: gettext("Changed a pool")
+  defp changed("gateway"), do: gettext("Changed a gateway")
+  defp changed(_kind), do: gettext("Changed a machine, pool or gateway")
+
+  defp deleted("node"), do: gettext("Deleted a machine")
+  defp deleted("pool"), do: gettext("Deleted a pool")
+  defp deleted("gateway"), do: gettext("Deleted a gateway")
+  defp deleted(_kind), do: gettext("Deleted a machine, pool or gateway")
+
+  defp cleared("pool"), do: gettext("Cleared a machine of a pool")
+  defp cleared("gateway"), do: gettext("Cleared a machine of a gateway")
+  defp cleared(_kind), do: gettext("Cleared a machine")
+
+  defp code_made("node"), do: gettext("Made a command to connect a machine")
+  defp code_made("pool"), do: gettext("Made a command to connect a pool")
+  defp code_made("gateway"), do: gettext("Made a command to connect a gateway")
+  defp code_made("adapter"), do: gettext("Made a command to connect an adapter")
+  defp code_made(_kind), do: gettext("Made a command to connect a machine, pool or gateway")
+
+  defp code_cancelled("node"), do: gettext("Cancelled a command to connect a machine")
+  defp code_cancelled("pool"), do: gettext("Cancelled a command to connect a pool")
+  defp code_cancelled("gateway"), do: gettext("Cancelled a command to connect a gateway")
+  defp code_cancelled("adapter"), do: gettext("Cancelled a command to connect an adapter")
+
+  defp code_cancelled(_kind),
+    do: gettext("Cancelled a command to connect a machine, pool or gateway")
+
+  defp key_added("node"), do: gettext("Added an access key to a machine")
+  defp key_added("pool"), do: gettext("Added an access key to a pool")
+  defp key_added("gateway"), do: gettext("Added an access key to a gateway")
+  defp key_added("adapter"), do: gettext("Added an access key to an adapter")
+  defp key_added(_kind), do: gettext("Added an access key to a machine, pool or gateway")
+
+  defp revoked_with("node"), do: gettext("Revoked an access key with its deleted machine")
+  defp revoked_with("pool"), do: gettext("Revoked an access key with its deleted pool")
+  defp revoked_with("gateway"), do: gettext("Revoked an access key with its deleted gateway")
+
+  defp revoked_with(_kind),
+    do: gettext("Revoked an access key with its deleted machine, pool or gateway")
 
   # A person who removed their own membership left: the removal names them in `details`.
   defp left?(%{actor_kind: :person, actor_id: id}, :"member.remove", %{"user_id" => id} = details)
@@ -425,16 +535,19 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"instance.mail_on", _details, _actor),
     do: gettext("Turned mail on, by the test link")
 
-  defp said(:"instance.rename", _details, _actor), do: gettext("Renamed the instance")
+  defp said(:"instance.rename", _details, _actor), do: gettext("Changed the name in the header")
 
   defp said(:"instance.configure", _details, _actor),
-    do: gettext("Changed the instance's configuration")
+    do: gettext("Changed the configuration of Qory Apiary")
+
+  defp said(:"instance.support_save", _details, _actor),
+    do: gettext("Saved the support address")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
 
   defp said(:"audit.prune", _details, _actor),
-    do: gettext("Deleted the activity older than the instance keeps")
+    do: gettext("Deleted the activity older than the retention period")
 
   defp said(:"workspace.create", _details, _actor), do: gettext("Created the workspace")
   defp said(:"workspace.rename", _details, _actor), do: gettext("Renamed the workspace")
@@ -458,14 +571,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"access_key.create_code", %{"node_id" => "dg_" <> _}, _actor),
     do: gettext("Made a code for a diagnostics key")
 
-  defp said(:"access_key.create_code", _details, _actor),
-    do: gettext("Made a command to connect a node")
-
   defp said(:"access_key.cancel_code", _details, :instance),
     do: gettext("Cancelled an adapter's code it no longer needs")
-
-  defp said(:"access_key.cancel_code", _details, _actor),
-    do: gettext("Cancelled a command to connect a node")
 
   defp said(:"adapter.install", _details, _actor),
     do: gettext("Added an adapter installed with Qory Apiary")
@@ -488,21 +595,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"access_key.add", %{"node_id" => "dg_" <> _}, _actor),
     do: gettext("Added a diagnostics key")
 
-  defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
-
   defp said(:"access_key.revoke", %{"node_id" => "dg_" <> _}, _actor),
     do: gettext("Revoked a diagnostics key")
 
-  defp said(:"access_key.revoke", %{"reason" => "node_deleted"}, _actor),
-    do: gettext("Revoked an access key with its deleted node")
-
   defp said(:"access_key.revoke", _details, _actor), do: gettext("Revoked an access key")
-  defp said(:"node.create", _details, _actor), do: gettext("Created a node")
-  defp said(:"node.edit", _details, _actor), do: gettext("Changed a node")
-  defp said(:"node.delete", _details, _actor), do: gettext("Deleted a node")
-
-  defp said(:"node.clear_instance", _details, _actor),
-    do: gettext("Cleared an instance of a node")
 
   defp said(:"retention.edit", _details, _actor),
     do: gettext("Changed how long runs are kept")
@@ -518,8 +614,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"work_item.undo", _details, _actor),
     do: gettext("Undid a take in, before a run started")
 
-  defp said(:"work_item.decline", _details, _actor), do: gettext("Declined a work item")
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
+
+  # A comment on Qory's proposal is kept as an answer with no question.
+  defp said(:"work_item.answer", %{"comment" => true}, _actor),
+    do: gettext("Commented on Qory's proposal for a work item")
 
   # The count of questions answered, one where the entry says none.
   defp said(:"work_item.answer", details, _actor) do
@@ -560,6 +659,17 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"dispatch.release", %{"handed_over" => true}, _actor),
     do: gettext("Gave back a run handed over to its machine")
 
+  # What a pool's starter reported about the removal of a run's machine, by the state;
+  # the entry is the pool's.
+  defp said(:"dispatch.machine_end", %{"state" => "deleting"}, _actor),
+    do: gettext("Reported that the removal of a run's machine was requested")
+
+  defp said(:"dispatch.machine_end", %{"state" => "gone"}, _actor),
+    do: gettext("Reported that a run's machine was removed")
+
+  defp said(:"dispatch.machine_end", %{"state" => "delete_failed"}, _actor),
+    do: gettext("Reported that the removal of a run's machine failed")
+
   # The image a prebuild built, recorded; the entry is the run's.
   defp said(:"dispatch.prebuilt", _details, _actor),
     do: gettext("Recorded the image a prebuild built")
@@ -567,6 +677,47 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # A build of a target's environment asked for; the entry is the target's.
   defp said(:"target.rebuild_environment", _details, _actor),
     do: gettext("Asked for a build of its environment")
+
+  # A decision at a stage of a work item (`Apiary.Stages`), by its change; the entry is the
+  # work item's.
+  defp said(:"gate.approve", %{"change" => change}, _actor), do: said_stage(change)
+
+  # A change to the workspace's process (`Apiary.Processes`), by its change, with the
+  # version's number; the entry of an assign is the work item's.
+  defp said(:"process.edit", %{"change" => change, "number" => number}, _actor)
+       when is_integer(number),
+       do: said_process(change, number)
+
+  defp said(:"workspace_type.edit", _details, _actor), do: label(:"workspace_type.edit")
+
+  # A version a person added to an artifact (`Apiary.Artifacts.push/5`); the entry is the
+  # work item's. An artifact's name is left out where it is the default, `main`.
+  defp said(:"artifact.write", %{"type" => type, "name" => "main", "number" => number}, _actor),
+    do: gettext("Added version %{number} of %{type}", number: number, type: type)
+
+  defp said(:"artifact.write", %{"type" => type, "name" => name, "number" => number}, _actor),
+    do:
+      gettext("Added version %{number} of %{type} %{name}",
+        number: number,
+        type: type,
+        name: name
+      )
+
+  # A change to the workspace's artifact types (`Apiary.Artifacts`), by its change.
+  defp said(:"artifact_type.edit", %{"change" => "create", "type" => type}, _actor),
+    do: gettext("Added artifact type %{type}", type: type)
+
+  defp said(:"artifact_type.edit", %{"change" => "update", "type" => type}, _actor),
+    do: gettext("Saved artifact type %{type}", type: type)
+
+  defp said(:"artifact_type.edit", %{"change" => "delete", "type" => type}, _actor),
+    do: gettext("Deleted artifact type %{type}", type: type)
+
+  defp said(:"artifact_type.edit", %{"change" => "show", "type" => type}, _actor),
+    do: gettext("Switched on artifact type %{type}", type: type)
+
+  defp said(:"artifact_type.edit", %{"change" => "hide", "type" => type}, _actor),
+    do: gettext("Switched off artifact type %{type}", type: type)
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
@@ -596,6 +747,43 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Changed an integration")
 
   defp said(_action, _details, _actor), do: nil
+
+  defp said_stage("approve"), do: gettext("Approved a stage of a work item")
+  defp said_stage("request_changes"), do: gettext("Asked for changes in a stage of a work item")
+  defp said_stage("move"), do: gettext("Moved a work item to another stage")
+
+  defp said_stage("escalation_accept"),
+    do: gettext("Accepted an escalated stage of a work item as it is")
+
+  defp said_stage("escalation_another_round"),
+    do: gettext("Started another round of an escalated stage of a work item")
+
+  defp said_stage("escalation_move_back"),
+    do: gettext("Moved a work item back to an earlier stage to resolve an escalation")
+
+  defp said_stage("escalation_close"), do: gettext("Closed a work item to resolve an escalation")
+
+  defp said_stage("escalation_decline"),
+    do: gettext("Declined a work item to resolve an escalation")
+
+  defp said_stage(_change), do: nil
+
+  defp said_process("save", number),
+    do: gettext("Saved version %{number} of the process", number: number)
+
+  defp said_process("save_trial", number),
+    do: gettext("Saved version %{number} of the process as a trial", number: number)
+
+  defp said_process("make_current", number),
+    do: gettext("Made version %{number} the current process", number: number)
+
+  defp said_process("drop_trial", number),
+    do: gettext("Dropped the trial version %{number} of the process", number: number)
+
+  defp said_process("assign", number),
+    do: gettext("Assigned a work item to version %{number} of the process", number: number)
+
+  defp said_process(_change, _number), do: nil
 
   defp access_word("write"), do: gettext("write")
   defp access_word(_read), do: gettext("read")
@@ -752,19 +940,19 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         end
 
       "node" ->
-        text(names.nodes[id] || gettext("A node"))
+        text(names.nodes[id] || gettext("A machine, pool or gateway"))
 
       "run" ->
         case names.runs[id] do
           nil ->
             text(gettext("A run"))
 
-          public_id ->
+          number ->
             href =
               workspace && Features.visible?(scope, :observability) &&
-                ~p"/#{scope.organisation}/#{workspace}/runs/#{public_id}"
+                ~p"/#{scope.organisation}/#{workspace}/runs/#{number}"
 
-            %{text: String.slice(public_id, 0, 11), mono: true, href: href || nil}
+            %{text: gettext("Run %{run}", run: number), mono: false, href: href || nil}
         end
 
       "target" ->
@@ -882,6 +1070,15 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         after_["name"] || Apiary.ProductName.edition_name()
       )
 
+  # An address saved or emptied: an https address as it is, an email address, which the
+  # trail does not keep, in words, and none as "None".
+  def change(:"instance.support_save", before, after_, _details),
+    do:
+      from_to(
+        support_address(before["support_address"]),
+        support_address(after_["support_address"])
+      )
+
   def change(action, before, after_, _details)
       when action in [:"member.change_level", :"instance_admin.grant", :"instance_admin.revoke"] and
              is_map_key(before, "level"),
@@ -919,7 +1116,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(:"node.edit", before, after_, _details) do
     for {field, label} <- [
           {"name", gettext("Name")},
-          {"instance_limit", gettext("Instance limit")}
+          {"instance_limit", gettext("Machine limit")}
         ],
         Map.has_key?(after_, field) do
       rich_gettext("%{what}: %{from} → %{to}",
@@ -1066,9 +1263,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp level("member"), do: gettext("Member")
   defp level(other), do: other
 
-  defp kind_word("pool"), do: gettext("Node pool")
+  defp kind_word("pool"), do: gettext("Pool")
   defp kind_word("gateway"), do: gettext("Gateway")
-  defp kind_word(_node), do: gettext("Node")
+  defp kind_word(_node), do: gettext("Machine")
 
   defp limit_or_name("instance_limit", nil), do: gettext("No limit")
   defp limit_or_name("instance_limit", n) when is_integer(n), do: Format.number(n)
@@ -1077,6 +1274,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp configured("invitations_per_day", n) when is_integer(n), do: Format.number(n)
   defp configured("invitations_per_day", _other), do: gettext("n/a")
   defp configured(_days, n), do: days(n)
+
+  defp support_address(nil), do: gettext("None")
+  defp support_address("email"), do: gettext("An email address")
+  defp support_address(url) when is_binary(url), do: url
+  defp support_address(_other), do: gettext("n/a")
 
   defp days(nil), do: gettext("Forever")
 

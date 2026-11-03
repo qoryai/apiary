@@ -20,9 +20,18 @@ defmodule ApiaryWeb.Contract.SignedAnswer do
   `register/2` is how a verified request's answer is signed: it registers a callback that
   signs the answer as it is sent, from the status, body and digest headers the answer
   has by then, so a controller writes its answer as any other and the signature covers
-  exactly what goes out. `put_enrolment/3` signs an answer to an enrolment, written but
-  not yet sent, bound to its proof: a separate function, so an enrolment answer is never
-  signed under the request answers' domain line.
+  exactly what goes out.
+
+  One answer is signed over a digest in place of its body: a file of the run API
+  (`docs/contract/run-api.md`), sent from the store with `send_file` or in chunks, sets
+  `conn.private[:qory_body_sha256]`, the SHA-256 Qory Apiary computed from the file's
+  bytes when it stored them, and the answer string has that digest where it has the
+  body's (`SignedMessage.answer_digest/5`). Every other answer sets no such value and is
+  signed over its body.
+
+  `put_enrolment/3` signs an answer to an enrolment, written but not yet sent, bound to
+  its proof: a separate function, so an enrolment answer is never signed under the
+  request answers' domain line.
 
   Nothing here logs, and no error message carries a signature or a key.
   """
@@ -58,20 +67,46 @@ defmodule ApiaryWeb.Contract.SignedAnswer do
   @spec put(Plug.Conn.t(), String.t(), SigningKey.t() | nil) :: Plug.Conn.t()
   def put(%Plug.Conn{} = conn, request_signature, key \\ nil)
       when is_binary(request_signature) do
-    {cache_control, signature} =
-      headers(
+    configuration = single(conn, @configuration)
+    run_configuration = single(conn, @run_configuration)
+
+    message =
+      case conn.private do
+        # A file of the run API, sent from the store: signed over the stored digest.
+        %{qory_body_sha256: digest} when is_binary(digest) ->
+          if SignedMessage.sha256?(digest) do
+            SignedMessage.answer_digest(
+              conn.status,
+              request_signature,
+              digest,
+              configuration,
+              run_configuration
+            )
+          else
+            answer(conn, request_signature, configuration, run_configuration)
+          end
+
+        _body ->
+          answer(conn, request_signature, configuration, run_configuration)
+      end
+
+    conn
+    |> put_resp_header("cache-control", @cache_control)
+    |> put_resp_header(
+      @signature,
+      Ed25519.encode(SigningKey.sign(key || SigningKey.current(), message))
+    )
+  end
+
+  defp answer(conn, request_signature, configuration, run_configuration),
+    do:
+      SignedMessage.answer(
         conn.status,
         request_signature,
         conn.resp_body || "",
-        single(conn, @configuration),
-        single(conn, @run_configuration),
-        key || SigningKey.current()
+        configuration,
+        run_configuration
       )
-
-    conn
-    |> put_resp_header("cache-control", cache_control)
-    |> put_resp_header(@signature, signature)
-  end
 
   @doc """
   put_enrolment/3 sets the signature and `Cache-Control` of an answer to an enrolment

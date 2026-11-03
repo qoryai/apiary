@@ -11,9 +11,10 @@ defmodule ApiaryWeb.OrganisationLive do
   (`ApiaryWeb.SetUpComponents.workspace_set_up/1`).
 
   An organisation with no workspace in use yet shows, in place of its workspaces, the kind
-  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), as New workspace shows them, to a
-  person `workspace.create` allows there, whose Choose creates the first workspace and
-  opens its Name step, and to anyone else one line on who creates it
+  cards (`ApiaryWeb.SetUpComponents.kind_cards/1`), the Qory card alone, to a
+  person `workspace.create` allows there, each a link to its type's page, whose Create
+  workspace creates the first workspace and opens its Name step
+  (`ApiaryWeb.WorkspaceTypeLive`), and to anyone else one line on who creates it
   (`c:Apiary.Edition.first_workspace_waiting_line/1`). Its header has no actions: the
   edition's (the `:organisation_heading` slot) show once the organisation has a
   workspace. The page shows that organisation's people and details as for any other. A member who reaches no workspace yet, where the edition says
@@ -58,6 +59,7 @@ defmodule ApiaryWeb.OrganisationLive do
               :if={@creates}
               title={gettext("What will your first workspace do?")}
               heading="h2"
+              organisation={@current_scope.organisation}
             />
             <p :if={!@creates} id="first-workspace-waiting" class="text-sm/5 text-muted">
               {Edition.first_workspace_waiting_line(@current_scope.organisation)}
@@ -392,21 +394,6 @@ defmodule ApiaryWeb.OrganisationLive do
   end
 
   @impl true
-  # The page that creates the first workspace opens its Name step, not the overview again:
-  # it stops listening while it creates, and listens again where nothing was created.
-  def handle_event("choose_kind", %{"type" => type}, %{assigns: %{empty: true}} = socket) do
-    scope = socket.assigns.current_scope
-
-    Phoenix.PubSub.unsubscribe(
-      Apiary.PubSub,
-      Organisations.workspaces_topic(scope.organisation.id)
-    )
-
-    socket = SetUpComponents.choose_kind(socket, type, :first)
-    if is_nil(socket.redirected), do: Organisations.subscribe_workspaces(scope)
-    {:noreply, socket}
-  end
-
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true
@@ -418,10 +405,12 @@ defmodule ApiaryWeb.OrganisationLive do
   defp load_empty(socket) do
     scope = socket.assigns.current_scope
 
+    creates = Access.can?(scope, :"workspace.create", scope.organisation)
+
     assign(socket,
       empty: true,
       page_title: scope.organisation.name,
-      creates: Access.can?(scope, :"workspace.create", scope.organisation),
+      creates: creates,
       people: people(scope)
     )
   end

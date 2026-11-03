@@ -2,8 +2,9 @@ defmodule Apiary.WorkItems.WorkList do
   # WorkList reads the Work items list of a workspace for people
   # (`ApiaryWeb.WorkItemListComponents`): a page of its work items, by view, stage, search
   # and filters, with the count of each view and of each stage; the Open view's stage
-  # bands; the values the Filter menu offers; and how many work items wait for the
-  # reader, the sidebar's count.
+  # bands; how many live work items are at each stage of the workflow model; the values
+  # the Filter menu offers; and how many work items wait for the reader, the sidebar's
+  # count.
   #
   # **Who reads it.** Every read asks `work_item.read` of the scope's workspace first
   # (`Apiary.Access.can?/3`, from the scope as it was loaded), and answers an empty page,
@@ -17,8 +18,8 @@ defmodule Apiary.WorkItems.WorkList do
   #
   # **Views:** `:open`, the live work items, of one stage with `stage:`; `:you`, those that
   # wait for the reader: the live work items the reader owns whose proposal waits at
-  # Confirm, as the sidebar counts them (`waiting_on/1`); `:declined`; `:closed`, those
-  # closed or undone. The counts of each view and each stage come from one grouped query,
+  # Confirm, as the sidebar counts them (`waiting_on/1`); `:closed`, those closed or
+  # undone. The counts of each view and each stage come from one grouped query,
   # under the same search and filters as the page, without its view and stage.
   #
   # **A row** is a plain map: the work item's public id (`id`), its number in the
@@ -28,8 +29,9 @@ defmodule Apiary.WorkItems.WorkList do
   # came through (`integration`, `Apiary.Adapters.title/1`; nil for a test work item,
   # which came through none, and `test` true), its state and take in, where Explore stands
   # for it (`status`; for an ended one, that of its last take in), the attempt and the run
-  # limit of its take in's latest run (`attempt`, `of`, nil before its first run), its
-  # owner's account id, when it was taken in (`taken_in_at`, at its latest take in),
+  # limit of its take in's latest run (`attempt`, `of`, nil before its first run), the
+  # stage of the workflow model it is at (`stage_id`, nil where the process has not placed
+  # it), its owner's account id, when it was taken in (`taken_in_at`, at its latest take in),
   # created (`inserted_at`) and last changed, and for an ended one when and by whom it
   # ended (`ended_at`, `ended_by_id`, nil where no person did), with the reason the
   # instance gave where it closed the work item (`ended_reason`, nil otherwise). The
@@ -69,11 +71,11 @@ defmodule Apiary.WorkItems.WorkList do
   @max_search 1024
   @max_filter_values 100
   @max_title 1024
-  @views [:open, :you, :declined, :closed]
+  @views [:open, :you, :closed]
   @sorts [:updated, :created]
   @stages [:explore, :confirm, :shape]
   @explore_statuses [:queued, :running, :questions, :no_result, :lost, :cancelled, :used_up]
-  @no_counts %{open: 0, you: 0, declined: 0, closed: 0}
+  @no_counts %{open: 0, you: 0, closed: 0}
   @no_stages %{
     explore: 0,
     confirm: 0,
@@ -102,7 +104,7 @@ defmodule Apiary.WorkItems.WorkList do
   @cursor_microseconds -62_135_596_800_000_000..253_402_300_799_999_999
 
   @typedoc "A view of the Work items list."
-  @type view :: :open | :you | :declined | :closed
+  @type view :: :open | :you | :closed
 
   @typedoc "An order of the list: by the last change, or by when the work item was created."
   @type sort :: :updated | :created
@@ -124,6 +126,7 @@ defmodule Apiary.WorkItems.WorkList do
           status: Explore.status(),
           attempt: pos_integer | nil,
           of: pos_integer | nil,
+          stage_id: String.t() | nil,
           owner_id: Ecto.UUID.t(),
           taken_in_at: DateTime.t(),
           inserted_at: DateTime.t(),
@@ -137,13 +140,12 @@ defmodule Apiary.WorkItems.WorkList do
   @type counts :: %{
           open: non_neg_integer,
           you: non_neg_integer,
-          declined: non_neg_integer,
           closed: non_neg_integer
         }
 
   @typedoc """
-  The live work items in each stage, and what in each needs a look: how many Qory is
-  exploring (`exploring`), how many wait for answers (`answers`), how many Explore left
+  The live work items in each stage, and what in each needs a look: how many Explore
+  is running on (`exploring`), how many wait for answers (`answers`), how many Explore left
   without a result (`no_result`: no result, lost or cancelled), how many wait at Confirm
   (`waiting`) and how many of those for the reader (`waiting_you`), and how many are
   ready for Shape (`ready`).
@@ -175,6 +177,16 @@ defmodule Apiary.WorkItems.WorkList do
 
   @typedoc "The Open view by stage: each stage's first rows, with the counts."
   @type bands :: %{bands: %{stage => [row]}, counts: counts, stages: stages}
+
+  @typedoc """
+  How many live work items are at a stage of the workflow model on a process version:
+  `stage_id` is nil for those the process has not placed.
+  """
+  @type stage_count :: %{
+          stage_id: String.t() | nil,
+          process_version_id: Ecto.UUID.t() | nil,
+          count: pos_integer
+        }
 
   @typedoc "A value the Filter menu offers: its key, and how many work items have it."
   @type value :: %{key: String.t(), count: non_neg_integer}
@@ -284,6 +296,37 @@ defmodule Apiary.WorkItems.WorkList do
   end
 
   def bands(%Scope{}, _params, _now), do: @no_bands
+
+  # stage_counts/3 is how many live work items of the scope's workspace are at each stage
+  # of the workflow model, on each process version, to a person who may read its work
+  # items, under the search and the filters of `params` as `list/3` reads them (its view,
+  # stage and cursors aside). Nothing to anyone else.
+  @doc false
+  @spec stage_counts(Scope.t(), map | keyword, DateTime.t()) :: [stage_count]
+  def stage_counts(scope, params, now \\ DateTime.utc_now())
+
+  def stage_counts(%Scope{} = scope, params, %DateTime{} = now)
+      when is_map(params) or is_list(params) do
+    case workspace(scope) do
+      {:ok, organisation_id, workspace_id} ->
+        organisation_id
+        |> filtered(workspace_id, normalise(params), now)
+        |> view(:open, scope.user.id)
+        |> exclude(:select)
+        |> group_by([work_item: w], [w.stage_id, w.process_version_id])
+        |> select([work_item: w], %{
+          stage_id: w.stage_id,
+          process_version_id: w.process_version_id,
+          count: count(w.id)
+        })
+        |> Repo.all()
+
+      :error ->
+        []
+    end
+  end
+
+  def stage_counts(%Scope{}, _params, _now), do: []
 
   # waiting_on/1 is how many live work items of the scope's workspace wait for the scope's
   # person, the view `:you` with no search and no filter: those the person owns whose
@@ -399,14 +442,19 @@ defmodule Apiary.WorkItems.WorkList do
             where: e.work_item_id == parent_as(:work_item).id and e.kind in [:undone, :closed],
             order_by: [desc: e.at, desc: e.id],
             limit: 1,
-            select: %{
-              kind: e.kind,
-              at: e.at,
-              actor_id: e.actor_id,
-              reason: fragment("?->>'reason'", e.data)
-            }
+            select: %{kind: e.kind, at: e.at, actor_id: e.actor_id}
         ),
       as: :ended,
+      on: true,
+      left_lateral_join:
+        c in subquery(
+          from e in WorkItemEvent,
+            where: e.work_item_id == parent_as(:work_item).id and e.kind == :closed,
+            order_by: [desc: e.at, desc: e.id],
+            limit: 1,
+            select: %{reason: fragment("?->>'reason'", e.data)}
+        ),
+      as: :closed,
       on: true,
       where: w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id
     )
@@ -424,8 +472,6 @@ defmodule Apiary.WorkItems.WorkList do
         w.state == :exploring and w.owner_id == ^reader and
           s.status == ^Explore.status_name(:confirm)
       )
-
-  defp view(query, :declined, _reader), do: where(query, [work_item: w], w.state == :declined)
 
   defp view(query, :closed, _reader),
     do: where(query, [work_item: w], w.state in [:closed, :undone])
@@ -657,7 +703,15 @@ defmodule Apiary.WorkItems.WorkList do
     ])
     |> limit(^limit)
     |> select(
-      [work_item: w, ticket: t, ended: e, explore_status: s, adapter: n, latest_run: r],
+      [
+        work_item: w,
+        ticket: t,
+        ended: e,
+        closed: c,
+        explore_status: s,
+        adapter: n,
+        latest_run: r
+      ],
       %{
         id: w.public_id,
         number: w.number,
@@ -671,35 +725,33 @@ defmodule Apiary.WorkItems.WorkList do
         status: s.status,
         attempt: r.attempt,
         of: r.of,
+        stage_id: w.stage_id,
         owner_id: w.owner_id,
         taken_in_at: w.taken_in_at,
         inserted_at: w.inserted_at,
         updated_at: w.updated_at,
         ended_at:
           fragment(
-            "CASE ? WHEN 'declined' THEN ? WHEN 'closed' THEN ? WHEN 'undone' THEN (CASE WHEN ? = 'undone' THEN ? END) END",
+            "CASE ? WHEN 'closed' THEN ? WHEN 'undone' THEN (CASE WHEN ? = 'undone' THEN ? END) END",
             w.state,
-            w.declined_at,
             w.closed_at,
             e.kind,
             e.at
           ),
         ended_by_id:
           fragment(
-            "CASE ? WHEN 'declined' THEN ? WHEN 'closed' THEN ? WHEN 'undone' THEN (CASE WHEN ? = 'undone' THEN ? END) END",
+            "CASE ? WHEN 'closed' THEN ? WHEN 'undone' THEN (CASE WHEN ? = 'undone' THEN ? END) END",
             w.state,
-            w.declined_by_id,
             w.closed_by_id,
             e.kind,
             e.actor_id
           ),
         ended_reason:
           fragment(
-            "CASE WHEN ? = 'closed' AND ? IS NULL AND ? = 'closed' THEN ? END",
+            "CASE WHEN ? = 'closed' AND ? IS NULL THEN ? END",
             w.state,
             w.closed_by_id,
-            e.kind,
-            e.reason
+            c.reason
           )
       }
     )
@@ -816,8 +868,6 @@ defmodule Apiary.WorkItems.WorkList do
     |> bump(:stages, Explore.stage(status), n)
     |> attention(status, n, mine)
   end
-
-  defp add(acc, :declined, _status, n, _mine), do: bump(acc, :counts, :declined, n)
 
   defp add(acc, state, _status, n, _mine) when state in [:closed, :undone],
     do: bump(acc, :counts, :closed, n)

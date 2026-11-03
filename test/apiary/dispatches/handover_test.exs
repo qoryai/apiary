@@ -50,7 +50,8 @@ defmodule Apiary.Dispatches.HandoverTest do
     {collection, run}
   end
 
-  defp claim(ctx), do: Dispatches.claim(ctx.key, Dispatches.now(), @body)
+  defp claim(ctx),
+    do: Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
 
   # A claim that took a run: what it took.
   defp claimed!(ctx) do
@@ -553,6 +554,21 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
   end
 
+  describe "the first dispatched" do
+    test "broadcasts the run its claim registered as changed, and a later one does not",
+         ctx do
+      _queued = queued!(ctx)
+      %{registered: %Run{id: id} = run} = claimed = claimed!(ctx)
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Runs.topic(run.workspace_id, id))
+
+      assert dispatched(ctx.key, claimed) == :ok
+      assert_received {:run_changed, %Run{id: ^id}}
+
+      assert dispatched(ctx.key, claimed) == :ok
+      refute_received {:run_changed, %Run{}}
+    end
+  end
+
   # The target of the work items queued here, with `paths` its runs also read, saved as an
   # owner saves them.
   defp further!(ctx, paths) do
@@ -614,10 +630,19 @@ defmodule Apiary.Dispatches.HandoverTest do
 
   describe "a run the claim cannot form" do
     test "with run variables that break their rules ends variables_invalid", ctx do
-      {_work_item, queued} = queued!(ctx, %{target_path: "acme/shop/web"})
+      {work_item, queued} = queued!(ctx, %{target_path: "acme/shop/web"})
 
-      assert claim(ctx) == {:ok, :none}
+      log = ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
       ended!(ctx, queued, :variables_invalid)
+
+      # One line in the instance's log, with the run, the variable and its rule.
+      assert [line] =
+               log |> String.split("\n") |> Enum.filter(&(&1 =~ "end_cause=variables_invalid"))
+
+      assert line =~ "[warning]"
+      assert line =~ "run_id=#{queued.run_id} work_item=#{work_item.public_id}"
+      assert line =~ "variable=QORY_RUN_REPOSITORIES rule=repositories_invalid"
+      assert line =~ "target_path=acme/shop/web"
     end
 
     test "whose software work item has no target ends inputs_invalid", ctx do
@@ -640,6 +665,29 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert claim(ctx) == {:ok, :none}
       ended!(ctx, queued, :ticket_gone)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, escalates its work item's stage run_stopped", ctx do
+      {work_item, _queued} = queued!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [item_id: nil])
+
+      :ok = Apiary.Stages.subscribe(work_item)
+      assert claim(ctx) == {:ok, :none}
+
+      assert %WorkItem{stage_state: :escalated} = Repo.get!(WorkItem, work_item.id)
+
+      assert %Apiary.Stages.Escalation{
+               cause: :run_stopped,
+               gaps:
+                 "The run did not start, because the work item's ticket is no longer in Qory Apiary.\n" <>
+                   "Close the work item, or take the ticket in again."
+             } = Repo.get_by!(Apiary.Stages.Escalation, work_item_id: work_item.id)
+
+      public_id = work_item.public_id
+      assert_receive {:stage_changed, ^public_id}
     end
 
     test "whose input breaks the contract's rules ends inputs_invalid", ctx do
@@ -674,6 +722,7 @@ defmodule Apiary.Dispatches.HandoverTest do
         position: 1,
         question: "Which basket?",
         answer: "The one at checkout.",
+        custom: true,
         answered_by_id: member.id,
         answered_at: DateTime.utc_now()
       })

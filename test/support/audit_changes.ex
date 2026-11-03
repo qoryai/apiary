@@ -63,7 +63,6 @@ defmodule Apiary.AuditChanges do
   @work_item_moves [
     :"work_item.take_in",
     :"work_item.undo",
-    :"work_item.decline",
     :"work_item.close",
     :"work_item.answer",
     :"work_item.confirm",
@@ -94,6 +93,7 @@ defmodule Apiary.AuditChanges do
       :"instance.mail_on",
       :"instance.rename",
       :"instance.configure",
+      :"instance.support_save",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -138,10 +138,16 @@ defmodule Apiary.AuditChanges do
       :"collection.set_backlog",
       :"collection.move",
       :"dispatch.release",
+      :"dispatch.machine_end",
       :"target.set_further_repositories",
       :"target.rebuild_environment",
       :"secret.seal",
-      :"run_credential.issue"
+      :"run_credential.issue",
+      :"process.edit",
+      :"artifact.write",
+      :"artifact_type.edit",
+      :"gate.approve",
+      :"workspace_type.edit"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -158,7 +164,10 @@ defmodule Apiary.AuditChanges do
       Organisations.sign_up_user(valid_user_attributes(%{}), nil, open: true)
 
     scope = %Scope{user: user, organisation: organisation, workspace: signed_up.workspace}
-    %{scope: scope, subject: {"organisation", organisation.id}, before: before}
+
+    # The custom type of the Qory template leaves its entry beside the one looked for.
+    types = Enum.filter(entries(), &(&1.action == "artifact_type.edit"))
+    %{scope: scope, subject: {"organisation", organisation.id}, before: before ++ types}
   end
 
   def make(:"organisation.rename", %{scope: scope}) do
@@ -291,6 +300,24 @@ defmodule Apiary.AuditChanges do
     admin = password_link_admin()
     before = entries()
     {:ok, "Acme Agents"} = Apiary.ProductName.rename(admin, %{"product_name" => "Acme Agents"})
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
+    }
+  end
+
+  # An instance admin's, in the trail of the instance's organisation, about the
+  # organisation.
+  def make(:"instance.support_save", _ctx) do
+    admin = password_link_admin()
+    before = entries()
+
+    {:ok, "support@example.com"} =
+      Apiary.SupportAddress.save(admin, %{"support_address" => "support@example.com"})
+
     instance = instance_organisation()
 
     %{
@@ -792,13 +819,40 @@ defmodule Apiary.AuditChanges do
   def make(:"dispatch.release", %{scope: scope}) do
     %{key: key} = handover_place_fixture(scope)
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(key, Apiary.Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Apiary.Dispatches.now())
+
     before = entries()
 
     :ok =
       Apiary.Dispatches.release(key, dispatch.public_id, %{
         reason: "The job could not start."
       })
+
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+
+    %{
+      scope: Scope.for_access_key(key),
+      subject: {"node", key.node_id},
+      before: before,
+      actor: {:access_key, key.id}
+    }
+  end
+
+  # A node pool's starter reports the removal of the machine of a dispatch its pool
+  # claimed, in the trail of the workspace's organisation, about the pool; the entry's
+  # actor is the pool's key.
+  def make(:"dispatch.machine_end", %{scope: scope}) do
+    %{key: key} = handover_place_fixture(scope)
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Apiary.Dispatches.now())
+
+    before = entries()
+
+    :ok = Apiary.Dispatches.report_machine_end(key, dispatch.public_id, %{state: :gone})
 
     {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
 
@@ -819,7 +873,7 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: subject_of(work_item), before: before}
   end
 
-  # A member undoes, declines or closes a work item of the workspace, answers the questions
+  # A member undoes or closes a work item of the workspace, answers the questions
   # of its run, confirms its run's proposal or asks for another run, about it.
   def make(action, %{scope: scope} = ctx) when action in @work_item_moves do
     work_item = prepare(action, ctx)
@@ -932,6 +986,52 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
 
+  # An instance admin's save of a workspace type's default process, in the trail of the
+  # instance's organisation, about the organisation.
+  def make(:"workspace_type.edit", _ctx) do
+    admin = password_link_admin()
+    before = entries()
+    {:ok, _version} = attempt(:"workspace_type.edit", admin, nil)
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
+    }
+  end
+
+  # A save of the workspace's process, a new current version: the workspace's entry.
+  # A member approves Shape's gate on a work item of the workspace, about it.
+  def make(:"gate.approve", %{scope: scope} = ctx) do
+    work_item = prepare(:"gate.approve", ctx)
+    before = entries()
+    {:ok, _work_item} = attempt(:"gate.approve", scope, work_item)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
+  def make(:"process.edit", %{scope: scope}) do
+    before = entries()
+    {:ok, _version} = attempt(:"process.edit", scope, nil)
+    %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
+  end
+
+  # A person stores a version of an artifact on a work item of the workspace: the work
+  # item's entry.
+  def make(:"artifact.write", %{scope: scope} = ctx) do
+    work_item = prepare(:"artifact.write", ctx)
+    before = entries()
+    {:ok, _version} = attempt(:"artifact.write", scope, work_item)
+    %{scope: scope, subject: subject_of(work_item), before: before}
+  end
+
+  # A custom artifact type added to the workspace: the workspace's entry.
+  def make(:"artifact_type.edit", %{scope: scope}) do
+    before = entries()
+    {:ok, _type} = attempt(:"artifact_type.edit", scope, nil)
+    %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
+  end
+
   # The workspace's time limit for the runs of a workflow, in the workspace's trail, about
   # the limit.
   def make(:"time_limit.edit", %{scope: scope}) do
@@ -1026,6 +1126,17 @@ defmodule Apiary.AuditChanges do
   def refuse(:"instance.rename", %{scope: scope}) do
     before = entries()
     {before, Apiary.ProductName.rename(scope, %{"product_name" => "Acme Agents"})}
+  end
+
+  # Anyone but an instance admin: the owner of an organisation that is not the instance's.
+  def refuse(:"instance.support_save", %{scope: scope}) do
+    before = entries()
+    {before, Apiary.SupportAddress.save(scope, %{"support_address" => "support@example.com"})}
+  end
+
+  def refuse(:"workspace_type.edit", %{scope: scope}) do
+    before = entries()
+    {before, attempt(:"workspace_type.edit", scope, nil)}
   end
 
   # An instance admin whose sign-in is no longer recent signs in again first, for the
@@ -1203,13 +1314,30 @@ defmodule Apiary.AuditChanges do
     %{key: claimer} = handover_place_fixture(scope)
     %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
     {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
-    {:ok, %{dispatch: dispatch}} = Apiary.Dispatches.claim(claimer, Apiary.Dispatches.now())
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(claimer, Apiary.Dispatches.now())
+
     before = entries()
 
     {before,
      Apiary.Dispatches.release(other, dispatch.public_id, %{
        reason: "The job could not start."
      })}
+  end
+
+  # A dispatch another pool of the workspace claimed is not the key's to report on.
+  def refuse(:"dispatch.machine_end", %{scope: scope}) do
+    %{key: claimer} = handover_place_fixture(scope)
+    %{access_key: other} = enrolled_key_fixture(scope, pool_fixture(scope))
+    {:ok, _run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item_fixture(scope), 1) end)
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(claimer, Apiary.Dispatches.now())
+
+    before = entries()
+
+    {before, Apiary.Dispatches.report_machine_end(other, dispatch.public_id, %{state: :gone})}
   end
 
   # A member where the change is an owner's or an admin's; where every member may make it,
@@ -1448,6 +1576,9 @@ defmodule Apiary.AuditChanges do
     work_item
   end
 
+  defp prepare(:"gate.approve", %{scope: scope}),
+    do: Apiary.StagesFixtures.shape_gate_fixture(scope)
+
   defp prepare(:"work_item.explore_again", %{scope: scope}) do
     work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
     Apiary.WorkItemsFixtures.explore_run_fixture(work_item)
@@ -1464,6 +1595,8 @@ defmodule Apiary.AuditChanges do
   defp prepare(action, %{scope: scope})
        when action in @work_item_moves or action in @work_item_comments,
        do: Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
+  defp prepare(:"artifact.write", %{scope: scope}), do: work_item_fixture(scope)
 
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
@@ -1601,9 +1734,6 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"work_item.undo", scope, work_item), do: Apiary.WorkItems.undo(scope, work_item)
 
-  defp attempt(:"work_item.decline", scope, work_item),
-    do: Apiary.WorkItems.decline(scope, work_item)
-
   defp attempt(:"work_item.close", scope, work_item), do: Apiary.WorkItems.close(scope, work_item)
 
   defp attempt(:"work_item.answer", scope, work_item),
@@ -1648,6 +1778,53 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"model_choice.write", scope, _),
     do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
+
+  defp attempt(:"gate.approve", scope, work_item),
+    do: Apiary.Stages.approve(scope, work_item, nil, expect_stage: work_item.stage_id)
+
+  defp attempt(:"workspace_type.edit", scope, _) do
+    document = Apiary.Processes.default_document("software")
+    [explore | rest] = document["stages"]
+
+    Apiary.Processes.TypeTemplates.save(scope, "qory.software", %{
+      document
+      | "stages" => [%{explore | "name" => "Understand"} | rest]
+    })
+  end
+
+  defp attempt(:"process.edit", scope, _) do
+    document = Apiary.Processes.default_document("software")
+    [explore | rest] = document["stages"]
+
+    Apiary.Processes.save(scope, scope.workspace, %{
+      document
+      | "stages" => [%{explore | "name" => "Understand"} | rest]
+    })
+  end
+
+  # The push keeps its file in a store under the system's temporary folder, set for the
+  # push alone and removed after it.
+  defp attempt(:"artifact.write", scope, work_item) do
+    dir = Path.join(System.tmp_dir!(), "apiary-audit-#{System.unique_integer([:positive])}")
+    previous = Application.get_env(:apiary, :artifacts_dir)
+    Application.put_env(:apiary, :artifacts_dir, dir)
+
+    try do
+      Apiary.Artifacts.push({:person, scope}, work_item, "explainer", [
+        %{filename: "notes.md", binary: "# Notes\n\nThe gift card field."}
+      ])
+    after
+      Application.put_env(:apiary, :artifacts_dir, previous)
+      File.rm_rf!(dir)
+    end
+  end
+
+  defp attempt(:"artifact_type.edit", scope, _) do
+    Apiary.Artifacts.create_type(scope, scope.workspace, %{
+      "name" => "demo-findings",
+      "base_view" => "document"
+    })
+  end
 
   defp attempt(:"time_limit.edit", scope, _),
     do: Apiary.TimeLimits.put_limit(scope, :workspace, "hello", 90)

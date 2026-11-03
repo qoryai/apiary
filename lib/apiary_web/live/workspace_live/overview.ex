@@ -1386,14 +1386,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       for run <- assigns.lost ++ Enum.filter(runs, &(&1.state == "lost")),
           run.lost_at && DateTime.compare(run.lost_at, since_lost) != :lt,
           uniq: true,
-          do: %{id: "att-run-#{run.public_id}", kind: :lost, run: run, at: run.lost_at}
+          do: %{id: "att-run-#{run.number}", kind: :lost, run: run, at: run.lost_at}
 
     alive = assigns.alive_runs || []
 
     quiet =
       for run <- alive, seconds = quiet_for(run, now), is_integer(seconds) do
         %{
-          id: "att-run-#{run.public_id}",
+          id: "att-run-#{run.number}",
           kind: :quiet,
           run: run,
           at: run.last_heartbeat_at || run.inserted_at
@@ -1406,7 +1406,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           DateTime.diff(now, in_force.rendered_at, :second) >
             @thresholds.behind_intervals * beat(run) do
         %{
-          id: "att-run-#{run.public_id}",
+          id: "att-run-#{run.number}",
           kind: :behind,
           run: run,
           at: in_force.rendered_at,
@@ -1659,11 +1659,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp nodes_more(scope, count) do
     %{
       count: count,
-      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
+      navigate: ~p"/#{scope.organisation}/#{scope.workspace}/machines?#{%{"sort" => "seen"}}",
       title:
         ngettext(
-          "%{number} more item, on the nodes page",
-          "%{number} more items, on the nodes page",
+          "%{number} more item, on the Machines page",
+          "%{number} more items, on the Machines page",
           count,
           number: Format.number(count)
         )
@@ -1922,6 +1922,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       ApiaryWeb.Access.who_may(
         scope,
         :"access_key.create_code",
-        gettext("Only owners and admins connect a node.")
+        gettext("Only owners and admins connect a machine.")
       )
 end

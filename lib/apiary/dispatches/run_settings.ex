@@ -4,8 +4,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # The `run_settings` of a run's documents and the values a run keeps of them
   # (`Apiary.Runs.Run`): what the model choices of the run's workspace and target come to
   # (`Apiary.ModelChoices.Resolution`), checked again at the claim. The choices and the
-  # time limits are read for the run's workflow (`Apiary.Stacks.workflow/2`); for a run
-  # with no workflow, only the choices without one apply.
+  # time limits are read for the run's workflow (`Apiary.Stacks.workflow/2`, or, with the
+  # workflow model, the workflow of the run's stage entry, `Apiary.Stages.run_workflow/1`);
+  # for a run with no workflow, only the choices without one apply.
   # The claim (`Apiary.Dispatches.claim/3`) locks the pool's row, the gateway's row, the
   # records a lapse needs (`Apiary.Dispatches.Slots`), the run of the queue it took and the
   # dispatch it inserted, in that order; then `Apiary.Dispatches.Handover.register/2` calls
@@ -62,8 +63,10 @@ defmodule Apiary.Dispatches.RunSettings do
   # `time_limit_minutes`, the minutes the time limits of the run's workspace and target
   # come to for the run's workflow
   # (`Apiary.TimeLimits.Resolution`, `Apiary.Stacks.workflow/2`), left out when no limit
-  # resolves or the run has no workflow. The workflow and the limits are read without a
-  # lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
+  # resolves or the run has no workflow; with the workflow model, the lower of those
+  # minutes and the run's stage entry's time limit (`Apiary.Stages.limits/1`), which only
+  # lowers a limit that resolved and is left out with none. The
+  # workflow and the limits are read without a lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
   # has the stored copy. Beside it, the run keeps the provider's row id, its keys'
   # secret's row id, the chosen key's value id, the provider's chain and the API the run
   # uses (`provider_api`: its `format`, its `endpoint` with a setting resolved to its
@@ -97,6 +100,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The step of the queue whose runs have `run_settings`.
   @step "explore"
+  # The fewest minutes of a run's time limit (the contract's `time_limit_minutes`).
+  @least_minutes 15
   # The most bytes the run settings take, encoded: the column's check.
   @max_bytes 65_536
   # The most times `hold/1` locks providers: after each of the first three reads of the
@@ -131,12 +136,12 @@ defmodule Apiary.Dispatches.RunSettings do
   # locks anything: nil for a run that has no `run_settings`, else what `build/1` takes.
   @doc false
   @spec hold(DispatchRun.t()) :: map | :unstable | nil
-  def hold(%DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id}) do
+  def hold(%DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id} = dispatch_run) do
     if Features.on?(:factory) and Features.on?(:secrets) do
       workspace = Repo.get!(Workspace, workspace_id)
       organisation = Repo.get!(Organisation, workspace.organisation_id)
       target = target(workspace, id)
-      workflow = Stacks.workflow(workspace, target)
+      workflow = workflow(dispatch_run, workspace, target)
 
       case lock(workspace, target, workflow, [], @lock_rounds) do
         {:ok, input} ->
@@ -145,7 +150,7 @@ defmodule Apiary.Dispatches.RunSettings do
             workspace: workspace,
             target: target,
             input: input,
-            time_limit: time_limit(workspace, target, workflow)
+            time_limit: lowered(time_limit(workspace, target, workflow), dispatch_run)
           }
 
         :unstable ->
@@ -163,16 +168,23 @@ defmodule Apiary.Dispatches.RunSettings do
   @doc false
   @spec choice_in_effect(DispatchRun.t()) ::
           {ModelChoices.ModelChoice.level(), ModelChoices.ModelChoice.t()} | nil
-  def choice_in_effect(%DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id}) do
+  def choice_in_effect(
+        %DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id} = dispatch_run
+      ) do
     workspace = Repo.get!(Workspace, workspace_id)
     target = target(workspace, id)
 
     Resolution.in_effect(
-      ModelChoices.choices_for(workspace, target, Stacks.workflow(workspace, target))
+      ModelChoices.choices_for(workspace, target, workflow(dispatch_run, workspace, target))
     )
   end
 
   def choice_in_effect(%DispatchRun{}), do: nil
+
+  # The run's workflow: with the workflow model, the one its stage entry names
+  # (`Apiary.Stages.run_workflow/1`); else the one the Workflow page saved.
+  defp workflow(dispatch_run, workspace, target),
+    do: Apiary.Stages.run_workflow(dispatch_run) || Stacks.workflow(workspace, target)
 
   # The minutes the time limits come to for `workflow`, nil for no limit or no workflow.
   defp time_limit(_workspace, _target, nil), do: nil
@@ -181,6 +193,23 @@ defmodule Apiary.Dispatches.RunSettings do
     case TimeLimits.Resolution.resolve(TimeLimits.limits_for(workspace, target, workflow)) do
       {:ok, %TimeLimits.Resolution{minutes: minutes}} -> minutes
       :none -> nil
+    end
+  end
+
+  # Hand-over: with the workflow model, a run the stage runner queued takes the lower of
+  # the minutes resolved here and its stage entry's time limit (`Apiary.Stages.limits/1`),
+  # in whole minutes rounded up, and at least 15, the contract's least. The entry only
+  # lowers: with no limit resolved here, the run has none, and the stack's default
+  # applies, which Qory Apiary does not know.
+  defp lowered(nil, _dispatch_run), do: nil
+
+  defp lowered(minutes, dispatch_run) do
+    case Apiary.Stages.limits(dispatch_run) do
+      %{time_limit: seconds} when is_integer(seconds) ->
+        min(minutes, max(div(seconds + 59, 60), @least_minutes))
+
+      _none ->
+        minutes
     end
   end
 

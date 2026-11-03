@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.NodeLive.AccessKey do
   @moduledoc """
-  A node's Access key tab, `/:org/:workspace/nodes/:node_id/access-key`: how to connect
+  A node's Access key tab, `/:org/:workspace/machines/:node_id/access-key`: how to connect
   the node, its access keys, and the commands that wait to be run on it, over
   `Apiary.AccessKeys` as it is. Its header and tabs are the node's page's
   (`ApiaryWeb.NodeComponents`).
@@ -372,7 +372,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     cond do
       not socket.assigns.may.add_key ->
-        refused(socket, :"access_key.add", gettext("Only owners and admins add a node's keys."))
+        refused(
+          socket,
+          :"access_key.add",
+          gettext("Only owners and admins add a machine's keys.")
+        )
 
       at_limit?(keys) ->
         to_tab(socket, :error, limit_reached_words(node))
@@ -392,7 +396,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     case Enum.find(socket.assigns.keys, &(&1.key_id == key_id)) do
       nil ->
-        to_tab(socket, :error, gettext("This node has no such key."))
+        to_tab(socket, :error, gettext("This machine has no such key."))
 
       %AccessKey{} = key ->
         cond do
@@ -417,7 +421,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         refused(
           socket,
           :"access_key.create_code",
-          gettext("Only owners and admins connect a node.")
+          gettext("Only owners and admins connect a machine.")
         )
 
       socket.assigns.issued ->
@@ -436,11 +440,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         refused(
           socket,
           :"access_key.revoke",
-          gettext("Only owners and admins manage a node's keys.")
+          gettext("Only owners and admins manage a machine's keys.")
         )
 
       is_nil(key) ->
-        to_tab(socket, :error, gettext("This node has no such key."))
+        to_tab(socket, :error, gettext("This machine has no such key."))
 
       state(key) != :active ->
         to_tab(socket, :error, revoked_words(key))
@@ -454,7 +458,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp apply_action(socket, :forager_file, %{"key_id" => key_id}) do
     case Enum.find(socket.assigns.keys, &(&1.key_id == key_id)) do
       nil ->
-        to_tab(socket, :error, gettext("This node has no such key."))
+        to_tab(socket, :error, gettext("This machine has no such key."))
 
       key ->
         if state(key) == :active,
@@ -471,7 +475,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         refused(
           socket,
           :"access_key.cancel_code",
-          gettext("Only owners and admins manage a node's keys.")
+          gettext("Only owners and admins manage a machine's keys.")
         )
 
       is_nil(code) ->
@@ -526,7 +530,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            :"access_key.add",
-           gettext("Only owners and admins manage a node's keys.")
+           gettext("Only owners and admins manage a machine's keys.")
          )}
   end
 
@@ -567,7 +571,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
            refused(
              socket,
              :"access_key.create_code",
-             gettext("Only owners and admins connect a node.")
+             gettext("Only owners and admins connect a machine.")
            )}
       end
     end
@@ -591,7 +595,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            :"access_key.revoke",
-           gettext("Only owners and admins manage a node's keys.")
+           gettext("Only owners and admins manage a machine's keys.")
          )}
 
       {:error, _not_saved} ->
@@ -630,7 +634,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            :"access_key.cancel_code",
-           gettext("Only owners and admins manage a node's keys.")
+           gettext("Only owners and admins manage a machine's keys.")
          )}
 
       {:error, _not_saved} ->
@@ -652,7 +656,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            Keyword.fetch!(@acts, act),
-           gettext("Only owners and admins manage a node's keys.")
+           gettext("Only owners and admins manage a machine's keys.")
          )}
   end
 
@@ -767,7 +771,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
       {:error, :forbidden} ->
         {:reply, %{},
-         refused(socket, :"access_key.add", gettext("Only owners and admins add a node's keys."))}
+         refused(
+           socket,
+           :"access_key.add",
+           gettext("Only owners and admins add a machine's keys.")
+         )}
     end
   end
 
@@ -810,7 +818,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          to_tab(
            socket,
            :error,
-           gettext("That key or code is gone: this node's keys changed meanwhile.")
+           gettext("That key or code is gone: this machine's keys changed meanwhile.")
          ),
        else: gone(socket)
   end
@@ -823,7 +831,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       UserAuth.reload_scope(socket)
     else
       socket
-      |> put_flash(:error, gettext("This node is gone: it was deleted."))
+      |> put_flash(:error, gettext("This machine is gone: it was deleted."))
       |> push_navigate(
         to: NodeComponents.nodes_path(socket.assigns.current_scope, socket.assigns.place)
       )
@@ -1121,19 +1129,19 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp point_title(%Node{kind: :gateway}, _through),
     do: gettext("Point the gateway at Qory Apiary.")
 
-  defp point_title(%Node{kind: :pool}, nil), do: gettext("Point the node pool at Qory Apiary.")
+  defp point_title(%Node{kind: :pool}, nil), do: gettext("Point the pool at Qory Apiary.")
 
   defp point_title(%Node{kind: :pool}, gateway),
     do:
-      gettext("Point the node pool at Qory Apiary, through %{gateway}.",
+      gettext("Point the pool at Qory Apiary, through %{gateway}.",
         gateway: NodeComponents.in_text(gateway)
       )
 
-  defp point_title(_node, nil), do: gettext("Point the node at Qory Apiary.")
+  defp point_title(_node, nil), do: gettext("Point the machine at Qory Apiary.")
 
   defp point_title(_node, gateway),
     do:
-      gettext("Point the node at Qory Apiary, through %{gateway}.",
+      gettext("Point the machine at Qory Apiary, through %{gateway}.",
         gateway: NodeComponents.in_text(gateway)
       )
 
@@ -1187,7 +1195,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp connect_intro(%Node{kind: :pool, name: name}),
     do:
       gettext(
-        "%{name} connects to Qory Apiary with a key; its instances share one. Choose one of two ways to give it one.",
+        "%{name} connects to Qory Apiary with a key; its machines share one. Choose one of two ways to give it one.",
         name: name
       )
 
@@ -1208,7 +1216,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp keys_intro(%Node{kind: :pool, name: name}),
     do:
       gettext(
-        "The instances of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half.",
+        "The machines of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half.",
         name: name
       )
 
@@ -1229,7 +1237,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp full_words(%Node{kind: :pool, name: name}),
     do:
       gettext(
-        "%{name} holds two keys, the most a node pool can. Revoke the one it no longer uses to add another.",
+        "%{name} has two keys, the most a pool can have. Revoke the one it no longer uses to add another.",
         name: name
       )
 
@@ -1243,14 +1251,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp full_words(%Node{name: name}),
     do:
       gettext(
-        "%{name} holds two keys, the most a node can. Revoke the one it no longer uses to add another.",
+        "%{name} has two keys, the most a machine can have. Revoke the one it no longer uses to add another.",
         name: name
       )
 
   defp add_intro(%Node{kind: :pool, name: name}),
     do:
       gettext(
-        "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node pool holds two keys at most.",
+        "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A pool has two keys at most.",
         name: name
       )
 
@@ -1264,7 +1272,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp add_intro(%Node{name: name}),
     do:
       gettext(
-        "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node holds two keys at most.",
+        "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A machine has two keys at most.",
         name: name
       )
 
@@ -1393,7 +1401,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <div id="code-issued-state" class="grid gap-4" aria-live="polite">
             <%= case @state do %>
               <% :waiting -> %>
-                <NodeComponents.unreachable_server id="code-issued-unreachable" url={@server} />
+                <NodeComponents.unreachable_server
+                  id="code-issued-unreachable"
+                  url={@server}
+                  instance_admin={Apiary.Access.instance_admin?(@current_scope)}
+                />
                 <NodeComponents.through_gateway
                   id="code-issued-gateway"
                   node={@node}
@@ -1529,7 +1541,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {if @node.kind == :pool,
               do:
                 gettext(
-                  "This browser makes a key for %{name}. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the instances; Qory Apiary receives only the public half. The key's ID stays on the Access key tab.",
+                  "This browser makes a key for %{name}. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the machines; Qory Apiary receives only the public half. The key's ID stays on the Access key tab.",
                   name: @node.name
                 ),
               else:
@@ -1994,7 +2006,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {NodeComponents.managed_by(
               @current_scope,
               :"access_key.revoke",
-              gettext("Only owners and admins manage a node's keys.")
+              gettext("Only owners and admins manage a machine's keys.")
             )}
           </p>
           <ul id="node-keys-list" class="grid gap-3">
@@ -2580,10 +2592,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dt :if={@last_run} class="text-faint">{gettext("Last run")}</dt>
         <dd :if={@last_run}>
           <.link
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@last_run.public_id}"}
-            class="q-mono text-accent hover:underline"
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@last_run}"}
+            class="text-accent hover:underline"
           >
-            {gettext("run %{id}", id: short_id(@last_run.public_id))}
+            {gettext("run %{run}", run: @last_run.number)}
           </.link>
         </dd>
         <dt :if={@hosts} class="text-faint">{gettext("Hosts, 14 days")}</dt>

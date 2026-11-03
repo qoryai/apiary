@@ -396,7 +396,7 @@ defmodule Apiary.Nodes do
             Ecto.Changeset.add_error(
               changeset,
               :gateway_id,
-              dgettext_noop("errors", "is not a gateway this node may use")
+              dgettext_noop("errors", "is not a gateway this machine may use")
             )
 
       choice == :default and changed? and is_nil(Gateways.default_gateway_for(scope.workspace)) ->
@@ -708,8 +708,8 @@ defmodule Apiary.Nodes do
 
   @typedoc """
   An instance running now, as the pages show it: its id and name, since when it runs (the
-  start of its oldest run alive), its newest run alive (`run_public_id`, the run's
-  `public_id`) and the Forager version that run reported. `row_id` is the id of its row
+  start of its oldest run alive), its newest run alive (`run_public_id` and `run_number`,
+  the run's `public_id` and number) and the Forager version that run reported. `row_id` is the id of its row
   in `node_instances`, nil when it has none (rows are bounded and pruned): a page
   addresses the instance by `row_id`, and one with no row by `run_public_id`, never by
   the node's instance id (`instance_id`).
@@ -720,6 +720,7 @@ defmodule Apiary.Nodes do
           name: String.t() | nil,
           since: DateTime.t(),
           run_public_id: String.t(),
+          run_number: pos_integer,
           forager_version: String.t() | nil
         }
 
@@ -1181,7 +1182,7 @@ defmodule Apiary.Nodes do
   # `:instance` in place of a scope reads the instance's pool and gateway, which have no
   # organisation: their instances, their keys, and the runs of the pool in every workspace
   # it served. Only a caller that checked the person is an instance admin shows all of it
-  # (`Apiary.Nodes.Installed.activity/3`); a workspace's Nodes page takes from it only
+  # (`Apiary.Nodes.Installed.activity/3`); a workspace's Machines page takes from it only
   # when the nodes' keys were last used.
   @spec activity(Scope.t() | :instance, [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => activity}
   def activity(scope, nodes, now \\ DateTime.utc_now())
@@ -1228,6 +1229,7 @@ defmodule Apiary.Nodes do
            name: row && row.name,
            since: runs |> Enum.map(& &1.since) |> Enum.min(DateTime),
            run_public_id: newest.public_id,
+           run_number: newest.number,
            forager_version: newest.forager_version || (row && row.last_forager_version)
          }}
       end)
@@ -1293,6 +1295,7 @@ defmodule Apiary.Nodes do
         node_id: r.node_id,
         instance_id: r.node_instance_id,
         public_id: r.public_id,
+        number: r.number,
         since: coalesce(r.started_at, r.inserted_at),
         forager_version: r.forager_version
       }
@@ -1310,6 +1313,7 @@ defmodule Apiary.Nodes do
         node_id: r.node_id,
         instance_id: r.node_instance_id,
         public_id: r.public_id,
+        number: r.number,
         since: coalesce(r.started_at, r.inserted_at),
         forager_version: r.forager_version
       }
@@ -1319,8 +1323,10 @@ defmodule Apiary.Nodes do
   end
 
   @doc """
-  names/2 is the scope's workspace's nodes of `ids`, deleted ones too, by id: for a page
-  that shows the node a run ran on. A node of another workspace is not among them.
+  names/2 is the scope's workspace's nodes of `ids`, deleted ones too, and the instance's
+  pool where `ids` has it, by id: for a page that shows the node a run ran on, the Qory
+  Pool for a run the instance's pool claimed. A node of another workspace is not among
+  them.
   """
   @spec names(Scope.t(), [Ecto.UUID.t()]) :: %{Ecto.UUID.t() => Node.t()}
   def names(%Scope{}, []), do: %{}
@@ -1333,7 +1339,9 @@ defmodule Apiary.Nodes do
         ids
       ) do
     from(n in Node,
-      where: n.organisation_id == ^organisation_id and n.workspace_id == ^workspace_id,
+      where:
+        (n.organisation_id == ^organisation_id and n.workspace_id == ^workspace_id) or
+          (is_nil(n.organisation_id) and is_nil(n.workspace_id) and n.kind == :pool),
       where: n.id in ^Enum.uniq(ids)
     )
     |> Repo.all()

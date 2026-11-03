@@ -6,41 +6,20 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   one that passes and copies of it that do not.
   """
   # The sentences a software workspace says in its words, with no engine word in them: the
-  # Explore texts, which read the code and propose how to build it, the policy file's
-  # place, outside the checkout, and the harness choice's repository and its branch, tag or
-  # commit, the version's name among them.
+  # policy file's place, outside the checkout, and the harness choice's repository and its
+  # branch, tag or commit, the version's name among them.
   @software_sentences [
-    "%{source} has no version named %{ref}. An instance admin corrects the version of this harness source.",
+    "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+    "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source.",
     "%{source} has no version named %{ref}. Correct the version.",
     "%{source} has no version yet. Add a version with a qory.yaml or harness.yaml at its root that lists the stack under exports.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
-    "A work item starts when someone takes in one of the Backlog's %{items}. Qory then explores it and proposes what to do.",
     "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
     "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",
     "Keep a policy file outside the folder the runs work in.",
-    "Proposed what to do",
-    "Qory asked %{number} question before it can propose what to do.",
-    "Qory asked %{number} question before it can propose what to do. Answer it, and Qory explores again with your answer. Or decline the work item.",
-    "Qory is exploring again, with %{name}'s answers. It reads the %{item} and proposes what to do.",
-    "Qory is exploring again, with the answers of this take in. It reads the %{item} and proposes what to do.",
-    "Qory is exploring again, with your answers. It reads the %{item} and proposes what to do.",
-    "Qory is exploring. It reads the %{item} and proposes what to do.",
-    "Qory proposed what to do, after %{duration}.",
-    "Qory proposed what to do, after %{duration}. It waits for %{name} to confirm",
-    "Qory proposed what to do, after %{duration}. It waits for you to confirm",
-    "Qory proposed what to do. Confirm it, change it first, or decline the work item.",
-    "Qory reads the %{item}",
-    "Qory reads the %{item} and %{name}'s answers when the run starts, and proposes what to do.",
-    "Qory reads the %{item} and the answers of this take in when the run starts, and proposes what to do.",
-    "Qory reads the %{item} and your answers when the run starts, and proposes what to do.",
-    "Qory reads the %{item} when the run starts, and proposes what to do.",
-    "Qory starts run %{attempt} of %{of} when the workspace's node pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
-    "Run %{attempt} of %{of} reads the %{item} and these answers, from the start. It proposes what to do, or asks what it still needs to know.",
-    "Run %{attempt} of %{of} reads the %{item}. It proposes what to do, or asks what it needs to know.",
-    "Run %{attempt} of %{of} starts when the workspace's node pool takes it. It reads the %{item} and these answers, from the start.",
     "tag or version"
   ]
 
@@ -53,8 +32,8 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # every domain: the integration's code lives there.
   @integration_release_form [
     "Repository",
-    "is not on a forge this instance adds integrations from",
-    "must be a repository's path: this instance adds no integration from an address",
+    "is not on a forge Qory Apiary adds integrations from",
+    "must be a repository's path: Qory Apiary adds no integration from an address",
     "must be a repository's path or an https address of a description.json"
   ]
 

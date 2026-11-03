@@ -111,7 +111,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
   } do
     view = open(conn, path)
 
-    assert has_element?(view, "#target-last-runs tr:first-child", "fix-totals")
+    assert has_element?(view, "#target-last-runs tr:first-child", "Run #{last.number}")
     assert has_element?(view, "#target-last-runs-#{last.id} .q-sdot-failed", "Failed")
     assert has_element?(view, "#target-last-runs-#{old.id}")
 
@@ -155,8 +155,8 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
   } do
     view = open(conn, path)
 
-    send(view.pid, {:run_changed, %{last | about_title: "fix-totals-again"}})
-    assert has_element?(view, "#target-last-runs-#{last.id}", "fix-totals-again")
+    send(view.pid, {:run_changed, %{last | runtime: "runtime-in-place"}})
+    assert has_element?(view, "#target-last-runs-#{last.id}", "runtime-in-place")
 
     # The projector says so on the workspace's topic, which the page follows.
     new = started_run(scope, repo("github.example", "acme/shop"), ago: 5)

@@ -82,7 +82,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
   # registered run as `run` and its code as `run_code`.
   defp claimed!(ctx) do
     {:ok, %{registered: run, documents: documents, run_code: code}} =
-      Dispatches.claim(ctx.key, Dispatches.now(), @body)
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
 
     documents |> Map.put(:run, run) |> Map.put(:run_code, code)
   end
@@ -160,7 +160,8 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
       queued = queued!(ctx)
       put_limit(3_000)
 
-      assert Dispatches.claim(ctx.key, Dispatches.now(), @body) == {:error, :unavailable}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body) ==
+               {:error, :unavailable}
 
       assert %DispatchRun{state: :waiting, end_cause: nil} = Repo.get!(DispatchRun, queued.id)
       assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^queued.id), :count) == 0

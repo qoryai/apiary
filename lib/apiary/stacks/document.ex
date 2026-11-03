@@ -44,6 +44,8 @@ defmodule Apiary.Stacks.Document do
 
   @behaviour JSV.Resolver
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   alias Apiary.Harnesses.Reader
 
   @schema_path Path.join(__DIR__, "documents.schema.json")
@@ -471,12 +473,65 @@ defmodule Apiary.Stacks.Document do
         %{details: [%{instanceLocation: place, errors: [%{message: rule} | _]} | _]} =
           JSV.normalize_error(error)
 
+        bind_refusal(section, pointer(place))
+
         refuse("does not follow the harness format at %{place}: %{rule}",
           place: place,
           rule: rule
         )
     end
   end
+
+  # The kinds of a `bind` in the run contract's harness section.
+  @bind_kinds ~w(agents commands skills)
+
+  # A schema refusal under `bind` in words that start with the fix: a flat key such as
+  # `agents/developer`, a kind the contract does not define, or a list of names for one
+  # role. Any other refusal, such as a name's pattern, keeps the schema's words.
+  defp bind_refusal(_section, ["bind", key]) when key not in @bind_kinds do
+    if String.contains?(key, "/"),
+      do:
+        refuse(
+          dgettext_noop(
+            "errors",
+            "Write bind by kind, then by role, such as " <>
+              "bind: {agents: {developer: web-developer}}: %{key} is a flat key."
+          ),
+          key: key
+        ),
+      else:
+        refuse(
+          dgettext_noop(
+            "errors",
+            "Use agents, commands or skills under bind: %{key} is not a kind."
+          ),
+          key: key
+        )
+  end
+
+  defp bind_refusal(%{"bind" => bind}, ["bind", kind, role]) when kind in @bind_kinds do
+    case bind do
+      %{^kind => %{^role => names}} when is_list(names) ->
+        refuse(dgettext_noop("errors", "Give one name per role: %{place} is a list."),
+          place: "bind.#{kind}.#{role}"
+        )
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp bind_refusal(_section, _pointer), do: :ok
+
+  # The keys of a JSON pointer such as `#/bind/agents~1developer`: `["bind",
+  # "agents/developer"]`.
+  defp pointer("#" <> place) do
+    place
+    |> String.split("/", trim: true)
+    |> Enum.map(&(&1 |> String.replace("~1", "/") |> String.replace("~0", "~")))
+  end
+
+  defp pointer(_place), do: []
 
   defp refuse(message, values), do: throw({__MODULE__, {message, values}})
 

@@ -149,25 +149,42 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   describe "exports/1" do
     test "reads the stacks a root file exports, and where they are" do
-      assert {:ok, %{dir: nil, stacks: ["web", "api"]} = root} =
+      assert {:ok, %{dir: nil, stacks: ["web", "api"], modules: ["core"]} = root} =
                Reader.exports(source("exports-root/qory.yaml"))
 
       assert Reader.stack_file(root, "web") == "stacks/web/qory-stack.yaml"
 
-      assert {:ok, %{dir: "./harness", stacks: ["web"]} = dir} =
+      assert {:ok, %{dir: "./harness", stacks: ["web"], modules: ["core", "marketing"]} = dir} =
                Reader.exports(source("exports-dir/qory.yaml"))
 
       assert Reader.stack_file(dir, "web") == "./harness/stacks/web/qory-stack.yaml"
 
-      assert {:ok, %{dir: %{"stacks" => "delivered/stacks"}, stacks: ["web"]} = map} =
+      assert {:ok,
+              %{dir: %{"stacks" => "delivered/stacks"}, stacks: ["web"], modules: ["core"]} = map} =
                Reader.exports(source("exports-dir-map/harness.yaml"))
 
       assert Reader.stack_file(map, "web") == "delivered/stacks/web/qory-stack.yaml"
     end
 
+    test "a file that lists no modules exports none" do
+      assert Reader.exports("exports: {stacks: [web]}\n") ==
+               {:ok, %{dir: nil, stacks: ["web"], modules: []}}
+
+      assert Reader.exports("exports:\n  stacks: [web]\n  modules:\n") ==
+               {:ok, %{dir: nil, stacks: ["web"], modules: []}}
+    end
+
     test "a file without exports is :none" do
       assert Reader.exports(source("extends-export/qory.yaml")) == :none
       assert Reader.exports("") == :none
+    end
+
+    test "reads modules that are not a list of text as :invalid, and the section still reads" do
+      for modules <- ["[1]", "[0x10]", "[core, 1]", "core", "false", "1", "{core: 1}"] do
+        assert Reader.exports("exports:\n  stacks: [web]\n  modules: #{modules}\n") ==
+                 {:ok, %{dir: nil, stacks: ["web"], modules: :invalid}},
+               modules
+      end
     end
 
     test "refuses exports of the wrong shape" do
@@ -176,8 +193,412 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert Reader.exports("exports: {stacks: [1]}\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {dir: {stacks: a}}\n") == {:error, :invalid_exports}
       assert Reader.exports("exports: {dir: ''}\n") == {:error, :invalid_exports}
+
+      assert Reader.exports("exports: {dir: {stacks: a, modules: b, templates: c}}\n") ==
+               {:error, :invalid_exports}
     end
   end
+
+  describe "module_file/3" do
+    test "is in modules/<name> with no dir" do
+      {:ok, exports} = Reader.exports(source("exports-root/qory.yaml"))
+
+      assert Reader.module_file(exports, "core", "process.yaml") ==
+               {:ok, "modules/core/process.yaml"}
+    end
+
+    test "is in <dir>/modules/<name> with a dir of one folder" do
+      {:ok, exports} = Reader.exports(source("exports-dir/qory.yaml"))
+
+      assert Reader.module_file(exports, "marketing", "process.yaml") ==
+               {:ok, "harness/modules/marketing/process.yaml"}
+    end
+
+    test "is in <modules>/<name> with a dir map" do
+      {:ok, exports} = Reader.exports(source("exports-dir-map/harness.yaml"))
+
+      assert Reader.module_file(exports, "core", "process.yaml") ==
+               {:ok, "delivered/modules/core/process.yaml"}
+    end
+
+    test "cleans the folder as qory does" do
+      for {dir, folder} <- [
+            {".", "modules"},
+            {"./harness/", "harness/modules"},
+            {"a/./b", "a/b/modules"},
+            {"a//b", "a/b/modules"},
+            {"a/../b", "b/modules"},
+            {"a/..", "modules"},
+            {%{"stacks" => "s", "modules" => "."}, nil},
+            {%{"stacks" => "s", "modules" => "./lib/modules"}, "lib/modules"},
+            {%{"stacks" => "s", "modules" => "lib/../delivered"}, "delivered"}
+          ] do
+        path = Path.join(List.wrap(folder) ++ ["core", "process.yaml"])
+        assert Reader.module_file(%{dir: dir}, "core", "process.yaml") == {:ok, path}
+      end
+    end
+
+    test "refuses a dir that is absolute or leads outside the source" do
+      for modules <- ["/etc", "//etc", "/", "..", "../up", "../..", "a/../..", "./.."] do
+        assert Reader.module_file(%{dir: %{"stacks" => "s", "modules" => modules}}, "x", "f") ==
+                 {:error, :invalid_dir},
+               modules
+      end
+
+      for dir <- ["/etc", "/", "..", "../..", "../up", "a/../..", "a/../../b"] do
+        assert Reader.module_file(%{dir: dir}, "x", "f") == {:error, :invalid_dir}, dir
+      end
+
+      # The name and the file are refused first, whatever the dir.
+      assert Reader.module_file(%{dir: "/etc"}, "..", "f") == {:error, :invalid_name}
+      assert Reader.module_file(%{dir: "/etc"}, "x", "..") == {:error, :invalid_file}
+    end
+
+    test "refuses a name that is not one path segment" do
+      {:ok, exports} = Reader.exports(source("exports-root/qory.yaml"))
+
+      for name <- ["", ".", "..", "../core", "core/..", "a/b", "a\\b", ".hidden", "core@v1"],
+          do: assert(Reader.module_file(exports, name, "process.yaml") == {:error, :invalid_name})
+    end
+
+    test "refuses a file outside the module's folder" do
+      {:ok, exports} = Reader.exports(source("exports-root/qory.yaml"))
+
+      for file <- ["", "..", "../qory.yaml", "a/../../b", "/etc/passwd", "./process.yaml", "a\\b"],
+          do: assert(Reader.module_file(exports, "core", file) == {:error, :invalid_file}, file)
+
+      assert Reader.module_file(exports, "core", "skills/review/SKILL.md") ==
+               {:ok, "modules/core/skills/review/SKILL.md"}
+    end
+  end
+
+  describe "template/1" do
+    @template "factory/modules/support-desk/process.yaml"
+
+    test "reads a factory's process.yaml" do
+      {:ok, exports} = Reader.exports(source("factory/qory.yaml"))
+      assert exports.modules == ["support-desk"]
+
+      assert {:ok, path} = Reader.module_file(exports, "support-desk", "process.yaml")
+      assert "factory/" <> path == @template
+
+      assert {:ok, template} = Reader.template(source(@template))
+
+      assert %{
+               name: "Support desk",
+               summary: "Agents draft answers to support tickets. A person checks each answer.",
+               type: "qory.software",
+               stack: "support",
+               process: %{"schema" => "qory.process/v1", "stages" => [answer, check]}
+             } = template
+
+      assert template.description =~ ~r/^Each ticket goes through two stages\./
+      assert answer["name"] == "Answer"
+      assert check["gate"] == %{"kind" => "person", "approvers" => "members"}
+    end
+
+    test "leaves the process's other keys to the caller" do
+      text = String.replace(source(@template), "  stages:\n", "  machine: default\n  stages:\n")
+      assert {:ok, %{process: %{"machine" => "default"}}} = Reader.template(text)
+    end
+
+    test "refuses a file without each key" do
+      for key <- ~w(apiVersion name summary description type stack process),
+          do: assert(Reader.template(without(key)) == {:error, :invalid_template}, key)
+    end
+
+    test "refuses a key of the wrong type or value" do
+      for {key, value} <- [
+            {"apiVersion", "qory.dev/v1"},
+            {"name", "60"},
+            {"name", "[Support desk]"},
+            {"summary", "{text: x}"},
+            {"description", "true"},
+            {"type", "1"},
+            {"stack", "[support]"},
+            {"process", "qory.process/v1"},
+            {"process", "[]"}
+          ],
+          do: assert(Reader.template(with_value(key, value)) == {:error, :invalid_template}, key)
+    end
+
+    test "refuses a key the schema does not define" do
+      assert Reader.template(source(@template) <> "version: 2\n") == {:error, :invalid_template}
+    end
+
+    test "refuses a text over its limit, counted in characters" do
+      assert {:ok, _template} = Reader.template(with_value("name", String.duplicate("é", 60)))
+
+      assert Reader.template(with_value("name", String.duplicate("é", 61))) ==
+               {:error, :invalid_template}
+
+      # 60 characters of an e and a combining accent: 30 graphemes, 60 code points.
+      assert {:ok, _template} =
+               Reader.template(with_value("name", String.duplicate("e\u0301", 30)))
+
+      assert Reader.template(with_value("name", String.duplicate("e\u0301", 31))) ==
+               {:error, :invalid_template}
+
+      words = fn count -> Enum.map_join(1..count, " ", &"w#{&1}") end
+      assert {:ok, _template} = Reader.template(with_value("description", words.(80)))
+
+      assert Reader.template(with_value("description", words.(81))) ==
+               {:error, :invalid_template}
+    end
+
+    test "reads every Unicode space as white space, as qory's check of the file does" do
+      for space <- [" ", "\u00A0", "\u2003", "\u3000"] do
+        for key <- ~w(name summary description type) do
+          assert Reader.template(with_value(key, ~s("#{space}"))) == {:error, :invalid_template},
+                 key
+        end
+
+        words = Enum.map_join(1..81, space, &"w#{&1}")
+        assert Reader.template(with_value("description", words)) == {:error, :invalid_template}
+      end
+
+      # 80 words with those spaces between them.
+      words = Enum.map_join(1..80, "\u00A0", &"w#{&1}")
+      assert {:ok, %{description: ^words}} = Reader.template(with_value("description", words))
+    end
+
+    test "refuses a stack that is not one name" do
+      for stack <- ["../support", "a/b", ".support", "support@v1"],
+          do: assert(Reader.template(with_value("stack", stack)) == {:error, :invalid_template})
+    end
+
+    test "refuses a workflow of a stage that is not one line" do
+      for workflow <- [~s(""), ~s("  "), ~s("a\\nb")] do
+        text =
+          String.replace(source(@template), "workflow: draft-an-answer", "workflow: " <> workflow)
+
+        assert Reader.template(text) == {:error, :invalid_template}, workflow
+
+        text =
+          String.replace(source(@template), "workflow: check-the-tone", "workflow: " <> workflow)
+
+        assert Reader.template(text) == {:error, :invalid_template}, workflow
+      end
+    end
+
+    test "refuses a stage name with a line break" do
+      text = String.replace(source(@template), "name: Answer", ~s(name: "Ans\\nwer"))
+      assert Reader.template(text) == {:error, :invalid_template}
+    end
+
+    test "refuses a file the reader's limits refuse, or one that is not a mapping" do
+      assert Reader.template("- a\n") == {:error, :invalid_template}
+      assert Reader.template("") == {:error, :invalid_template}
+      assert Reader.template("a: &x 1\n") == {:error, :alias}
+    end
+
+    test "returns nil for artifact_types when the key is absent" do
+      assert {:ok, %{artifact_types: nil}} = Reader.template(source(@template))
+    end
+
+    test "returns artifact_types as written" do
+      text = """
+      artifact_types:
+        - name: screenshot
+        - name: reply-draft
+          base_view: document
+          size_limit: 65536
+          max_files: 1
+        - name: customer-facts
+          base_view: structured
+          size_limit: 65536
+          max_files: 1
+          json_schema:
+            type: object
+            required: [customer]
+      """
+
+      assert {:ok, template} = Reader.template(source(@template) <> text)
+
+      assert template.artifact_types == [
+               %{"name" => "screenshot"},
+               %{
+                 "name" => "reply-draft",
+                 "base_view" => "document",
+                 "size_limit" => 65_536,
+                 "max_files" => 1
+               },
+               %{
+                 "name" => "customer-facts",
+                 "base_view" => "structured",
+                 "size_limit" => 65_536,
+                 "max_files" => 1,
+                 "json_schema" => %{"type" => "object", "required" => ["customer"]}
+               }
+             ]
+    end
+
+    test "takes an empty artifact_types list" do
+      assert {:ok, %{artifact_types: []}} = Reader.template(with_value("artifact_types", "[]"))
+    end
+
+    test "takes a name alone: the schema has no list of standard types" do
+      for name <- ["screenshot", "not-a-standard-type", String.duplicate("a", 64)] do
+        assert {:ok, %{artifact_types: [%{"name" => ^name}]}} =
+                 Reader.template(with_types("{name: #{name}}"))
+      end
+    end
+
+    test "takes a custom type of each base view, up to its most" do
+      for {view, most} <- [
+            {"document", 10_485_760},
+            {"image", 52_428_800},
+            {"video", 2_147_483_648},
+            {"file", 1_073_741_824}
+          ] do
+        entry = "{name: draft, base_view: #{view}, size_limit: #{most}, max_files: 20}"
+
+        assert {:ok, %{artifact_types: [%{"size_limit" => ^most}]}} =
+                 entry |> with_types() |> read()
+
+        entry = "{name: draft, base_view: #{view}, size_limit: #{most + 1}, max_files: 20}"
+
+        assert entry |> with_types() |> read() == {:error, {:invalid_artifact_type, "draft"}},
+               view
+      end
+
+      entry =
+        "{name: facts, base_view: structured, size_limit: 1048576, max_files: 1, json_schema: {}}"
+
+      assert {:ok, %{artifact_types: [%{"json_schema" => %{}}]}} = entry |> with_types() |> read()
+
+      entry =
+        "{name: facts, base_view: structured, size_limit: 1048577, max_files: 1, json_schema: {}}"
+
+      assert entry |> with_types() |> read() == {:error, {:invalid_artifact_type, "facts"}}
+    end
+
+    test "refuses an entry with no name as text, and the refusal has no name" do
+      for entry <- [
+            "screenshot",
+            "1",
+            "{}",
+            "{base_view: document, size_limit: 1, max_files: 1}",
+            "{name: 1}"
+          ] do
+        assert entry |> with_types() |> read() == {:error, :invalid_template}, entry
+      end
+    end
+
+    test "refuses a name of no type's form, and the refusal has the name" do
+      for name <- ["Screenshot", "a--b", "-a", "a\nb", "a\n", String.duplicate("a", 63) <> "-"] do
+        assert ("{name: " <> Jason.encode!(name) <> "}") |> with_types() |> read() ==
+                 {:error, {:invalid_artifact_type, name}}
+      end
+    end
+
+    test "a refused name is cut to the 64 characters a name may have" do
+      assert ("{name: " <> String.duplicate("é", 70) <> "}") |> with_types() |> read() ==
+               {:error, {:invalid_artifact_type, String.duplicate("é", 64)}}
+    end
+
+    test "the refusal has the name of the first refused entry that has one" do
+      good = "{name: mockup}"
+      draft = "{name: draft, base_view: document}"
+      facts = "{name: facts, size_limit: 1}"
+
+      assert [good, "1", draft, facts] |> Enum.join(", ") |> with_types() |> read() ==
+               {:error, {:invalid_artifact_type, "draft"}}
+    end
+
+    test "an entry the schema refuses comes before any other key it refuses" do
+      text =
+        String.replace(
+          with_types("{name: draft, base_view: document}"),
+          "stack: ",
+          "stacks: "
+        )
+
+      assert read(text) == {:error, {:invalid_artifact_type, "draft"}}
+    end
+
+    test "a good list beside another key the schema refuses is no type's refusal" do
+      assert read(with_types("{name: mockup}") <> "version: 2\n") == {:error, :invalid_template}
+    end
+
+    test "refuses an entry that is neither a name alone nor a full definition" do
+      for entry <- [
+            "{name: draft, base_view: document}",
+            "{name: draft, size_limit: 1}",
+            "{name: draft, base_view: document, size_limit: 1}",
+            "{name: draft, base_view: document, max_files: 1}",
+            "{name: draft, base_view: spreadsheet, size_limit: 1, max_files: 1}",
+            "{name: draft, base_view: document, size_limit: 0, max_files: 1}",
+            "{name: draft, base_view: document, size_limit: 1, max_files: 0}",
+            "{name: draft, base_view: document, size_limit: 1, max_files: 21}",
+            "{name: draft, base_view: document, size_limit: one, max_files: 1}",
+            "{name: draft, base_view: document, size_limit: 1, max_files: 1, json_schema: {}}",
+            "{name: draft, base_view: document, size_limit: 1, max_files: 1, label: Draft}",
+            "{name: facts, base_view: structured, size_limit: 1, max_files: 1}",
+            "{name: facts, base_view: structured, size_limit: 1, max_files: 2, json_schema: {}}",
+            "{name: facts, base_view: structured, size_limit: 1, max_files: 1, json_schema: []}"
+          ] do
+        name = ~r/name: (\w+)/ |> Regex.run(entry) |> List.last()
+        assert entry |> with_types() |> read() == {:error, {:invalid_artifact_type, name}}, entry
+      end
+    end
+
+    test "refuses an artifact_types that is not a list" do
+      for value <- ["screenshot", "{name: screenshot}", "null", "1"],
+          do:
+            assert(
+              Reader.template(with_value("artifact_types", value)) == {:error, :invalid_template}
+            )
+    end
+  end
+
+  # qory's process.schema.json, vendored from the qory commit in the `.contract-ref` file
+  # beside it, by its SHA-256 there.
+  @qory_ref "82100a339393a94e282e0b9aa82492755a10f5e0"
+  @vendored "priv/contract/harness/v1"
+  @vendored_sha256 %{
+    "process.schema.json" => "b60e7757bfc4afdc40c31d9d41d86412488d4093583996af108c7900231f84ea"
+  }
+
+  describe "the file vendored from qory" do
+    test "is the bytes of the pinned commit" do
+      dir = Path.expand("../../../" <> @vendored, __DIR__)
+
+      assert File.read!(Path.join(dir, ".contract-ref")) == @qory_ref <> "\n"
+
+      assert dir |> File.ls!() |> Enum.sort() ==
+               Enum.sort([".contract-ref" | Map.keys(@vendored_sha256)])
+
+      for {file, sha256} <- @vendored_sha256 do
+        bytes = File.read!(Path.join(dir, file))
+        assert Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == sha256, file
+      end
+    end
+  end
+
+  # The fixture's process.yaml without the top-level `key` and its value.
+  defp without(key) do
+    {kept, _dropped} =
+      source(@template)
+      |> String.split("\n")
+      |> Enum.reduce({[], false}, fn line, {kept, dropping} ->
+        cond do
+          String.starts_with?(line, key <> ":") -> {kept, true}
+          dropping and String.starts_with?(line, " ") -> {kept, true}
+          true -> {[line | kept], false}
+        end
+      end)
+
+    kept |> Enum.reverse() |> Enum.join("\n")
+  end
+
+  # The fixture's process.yaml with the top-level `key` set to the YAML `value`.
+  defp with_value(key, value), do: without(key) <> key <> ": " <> value <> "\n"
+
+  # The fixture's process.yaml with one entry, in YAML, under `artifact_types`.
+  defp with_types(entry), do: with_value("artifact_types", "[" <> entry <> "]")
+
+  defp read(text), do: Reader.template(text)
 
   describe "document/2" do
     test "reads a settings row's document, the contents of a harness section" do
@@ -414,7 +835,7 @@ defmodule Apiary.Harnesses.ReaderTest do
 
     test "refuse !!binary and every other type but text, numbers, booleans and null" do
       assert Reader.parse("a: !!binary //79\n") == {:error, :unsupported_type}
-      assert Reader.parse("bind: {agents/x: !!binary //79}\n") == {:error, :unsupported_type}
+      assert Reader.parse("bind: {agents: {x: !!binary //79}}\n") == {:error, :unsupported_type}
       assert Reader.parse("a: !!binary aHR0cHM6Ly91OnBAaC9y\n") == {:error, :unsupported_type}
       assert Reader.parse("a: !!timestamp 2001-12-14\n") == {:error, :invalid_yaml}
     end

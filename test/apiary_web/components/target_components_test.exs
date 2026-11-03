@@ -124,6 +124,7 @@ defmodule ApiaryWeb.TargetComponentsTest do
           %Apiary.Runs.Run{
             id: Ecto.UUID.generate(),
             public_id: "rn_0123456789abcdef",
+            number: 14,
             state: "completed",
             denied_count: 0,
             duration_ms: 1000,

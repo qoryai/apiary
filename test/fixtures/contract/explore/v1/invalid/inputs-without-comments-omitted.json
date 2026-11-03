@@ -47,6 +47,7 @@
     }
   ],
   "answers": [],
+  "changes": [],
   "target": {
     "system": "code.example.com",
     "path": "example/service"

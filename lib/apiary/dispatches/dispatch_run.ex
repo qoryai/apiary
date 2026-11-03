@@ -149,6 +149,17 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :adapter_failure, Ecto.Enum, values: Apiary.Adapters.CallFailure.causes()
     field :adapter_failure_call, :string
     field :adapter_failure_code, :string
+    # Where the run is in its work item's process (`Apiary.Processes`): the version it
+    # started under, the stage, the round, the entry of the stage's sequence and, inside a
+    # loop, the entry of the loop's body, the workflow, and the machine type its entry
+    # asked for. Nil for a run the process did not start. No changeset casts them.
+    belongs_to :process_version, Apiary.Processes.Version
+    field :stage_id, :string
+    field :round, :integer
+    field :stage_entry, :integer
+    field :loop_entry, :integer
+    field :workflow, :string
+    field :machine_type, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

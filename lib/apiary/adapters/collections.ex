@@ -146,7 +146,8 @@ defmodule Apiary.Adapters.Collections do
   #      and a listing's part `FOR SHARE` (`hold_adapter/1`), before its connection; no
   #      other change here holds it;
   #   1. the connections: a listing's part holds its connection `FOR UPDATE`, and no other
-  #      connection; an assign and a collection's switch (`set_collection_backlog/4`) their
+  #      connection; a post of items (`Apiary.Sources.Ingest`) its connection
+  #      `FOR NO KEY UPDATE`, so a foreign key check on it does not wait; an assign and a collection's switch (`set_collection_backlog/4`) their
   #      connection `FOR SHARE`; a target's Backlog switch (`set_backlog/3`) and a
   #      workspace's unlink (`unlink_workspace/2`) the connections of the collections they
   #      change, `FOR SHARE`, by id;
@@ -184,7 +185,9 @@ defmodule Apiary.Adapters.Collections do
   #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
   #      `FOR SHARE` before the work item, and nothing locks a collection or a target after
   #      a work item; a work item's comment is held `FOR UPDATE` only right after its
-  #      work item, as a comment's deletion holds it (`Apiary.WorkItems.Moves`);
+  #      work item, as a comment's deletion holds it (`Apiary.WorkItems.Moves`); a post of
+  #      items that closes tickets holds its connection, its collection, the refs and the
+  #      items first, then their work items (`Apiary.Sources.Ingest`);
   #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
   #      right after the work item it numbers;
   #   7. the adapter's feed counter, last.

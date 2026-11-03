@@ -94,7 +94,7 @@ defmodule Apiary.Runs.ServedWithNodesHiddenTest do
     conn = log_in_user(build_conn(), ctx.user)
 
     assert_error_sent 404, fn ->
-      get(conn, ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}/nodes")
+      get(conn, ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}/machines")
     end
   end
 end

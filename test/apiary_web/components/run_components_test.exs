@@ -138,6 +138,96 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.reason_words(%{reason: nil}) == nil
     end
 
+    test "reason_words says qory's four reasons for a read-only run, each in the catalogue" do
+      pot = File.read!(Path.expand("../../../priv/gettext/default.pot", __DIR__))
+
+      for {reason, words} <- [
+            {"read_needs_wall", "read-only run with no wall"},
+            {"read_needs_setup_outside", "setup runs inside the agent's container"},
+            {"read_needs_no_nested_docker", "image has nested Docker"},
+            {"read_needs_setup_removed", "setup container not removed"}
+          ] do
+        # As the run page's header, rail and timeline read it, and as the list's preview does.
+        ended = %Apiary.Runs.Run{state: "failed", reason: reason, exited_at: DateTime.utc_now()}
+
+        assert RunComponents.reason_words(%{reason: reason, state: "failed"}) == words
+        assert RunComponents.reason_words(ended) == words
+        assert RunComponents.exit_note(ended) == words
+        assert pot =~ ~s(\nmsgid "#{words}"\n), reason
+      end
+    end
+
+    test "workflow_not_in_harness names the workflow and where the run's harness comes from" do
+      alias Apiary.Dispatches.DispatchRun
+      alias Apiary.Harnesses.RunHarness
+      alias Apiary.Runs.Run
+
+      ended = fn walk ->
+        %Run{
+          state: "failed",
+          reason: "workflow_not_in_harness",
+          exited_at: ~U[2026-11-02 09:00:00Z],
+          dispatch_run: %DispatchRun{
+            workflow: "explore-a-ticket",
+            harness_walk: walk && struct(%RunHarness{state: :resolved, workflow: "triage"}, walk),
+            work_item: %Apiary.WorkItems.WorkItem{target_path: "acme/web-shop"}
+          }
+        }
+      end
+
+      missing = "The run's harness has no skill named triage."
+      address = "https://code.example.com/acme/harness"
+      base = %{"git" => address, "ref" => "main"}
+      stack = Ecto.UUID.generate()
+
+      for {walk, from} <- [
+            {%{origin: :file},
+             " The harness comes from the harness file at the root of repository acme/web-shop."},
+            {%{
+               origin: :setting,
+               stack_id: stack,
+               document: %{"extends" => Map.put(base, "stack", "core")}
+             }, " The harness comes from #{address}, stack core."},
+            {%{
+               origin: :setting,
+               stack_id: stack,
+               document: %{"extends" => Map.put(base, "path", "web")}
+             }, " The harness comes from #{address}, folder web."},
+            {%{origin: :setting, stack_id: stack, document: %{"extends" => base}},
+             " The harness comes from #{address}."},
+            {%{origin: :setting, stack_id: stack, document: %{"modules" => []}},
+             " The harness is the workspace's harness."},
+            {%{origin: :setting, document: %{"extends" => base}},
+             " The harness is the Qory harness."},
+            {%{origin: :file, harness_hidden: true}, ""},
+            {%{origin: :setting, harness_hidden: true, document: %{"extends" => base}}, ""}
+          ] do
+        assert RunComponents.reason_words(ended.(walk)) == missing <> from, inspect(walk)
+      end
+
+      # The engine's words say target; the software domain's, repository.
+      Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+        assert RunComponents.reason_words(ended.(%{origin: :file})) ==
+                 missing <>
+                   " The harness comes from the harness file at the root of target acme/web-shop."
+      end)
+
+      # With no walk, the workflow of the run of the queue and no source; with no run of the
+      # queue loaded, neither, as an exit of the timeline without it reads.
+      assert RunComponents.reason_words(ended.(nil)) ==
+               "The run's harness has no skill named explore-a-ticket."
+
+      assert RunComponents.reason_words(%{reason: "workflow_not_in_harness", state: "failed"}) ==
+               "The run's harness has no skill with the name of the run's workflow."
+
+      assert RunComponents.reason_words(%Run{
+               state: "failed",
+               reason: "workflow_not_in_harness",
+               exited_at: ~U[2026-11-02 09:00:00Z]
+             }) ==
+               "The run's harness has no skill with the name of the run's workflow."
+    end
+
     test "a refused batch reads events refused, whatever the state" do
       for state <- [nil, "failed", :failed, "lost"] do
         assert RunComponents.reason_words(%{reason: "batch_refused", state: state}) ==
@@ -1199,7 +1289,10 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert [outcome] =
                html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-outcome") |> Enum.to_list()
 
-      assert outcome |> LazyHTML.query(".q-status") |> LazyHTML.text() == "429"
+      assert outcome |> LazyHTML.query(".q-outcome-code") |> LazyHTML.text() == "429"
+      # `.q-status` is a list's status region, which app.css takes out of the flow while it
+      # has no child element: a code with that class prints over "Connected".
+      assert outcome |> LazyHTML.query(".q-status") |> Enum.to_list() == []
       assert text(LazyHTML.to_html(outcome)) =~ ~r/^Connected\s?429$/
 
       assert html =~ "q-outcome-error"
@@ -1603,18 +1696,23 @@ defmodule ApiaryWeb.RunComponentsTest do
   describe "a run's title and what it is about" do
     @public_id "rn_7f3e9b205b1d4c7e"
 
-    test "the title is the one the run gave, else Run and its short id" do
-      titled = %{public_id: @public_id, about_title: "Fix the login redirect"}
-      assert RunComponents.run_title(titled) == "Fix the login redirect"
+    test "a run is Run and its number, with or without the title it gave" do
+      titled = %{public_id: @public_id, number: 14, about_title: "Fix the login redirect"}
+      assert RunComponents.run_title(titled) == "Run 14"
       assert RunComponents.given_title(titled) == "Fix the login redirect"
 
       for untitled <- [
-            %{public_id: @public_id, about_title: nil},
-            %{public_id: @public_id, about_title: ""},
+            %{public_id: @public_id, number: 14, about_title: nil},
+            %{public_id: @public_id, number: 14, about_title: ""},
             # A task is an ordinary label, never the title.
-            %{public_id: @public_id, about_title: nil, labels: %{"task" => "fix-login"}}
+            %{
+              public_id: @public_id,
+              number: 14,
+              about_title: nil,
+              labels: %{"task" => "fix-login"}
+            }
           ] do
-        assert RunComponents.run_title(untitled) == "Run rn_7f3e9b20"
+        assert RunComponents.run_title(untitled) == "Run 14"
         assert RunComponents.given_title(untitled) == nil
       end
     end
@@ -1653,21 +1751,21 @@ defmodule ApiaryWeb.RunComponentsTest do
       do: html |> LazyHTML.from_fragment() |> LazyHTML.query("bdi") |> Enum.map(&LazyHTML.text/1)
 
     test "the title as a page shows it, isolated in a row; one with nothing left is none" do
-      run = %{public_id: @public_id, about_title: @sent}
+      run = %{public_id: @public_id, number: 14, about_title: @sent}
       assert RunComponents.given_title(run) == @sent
       assert RunComponents.shown_run_title(run) == @shown
-      assert RunComponents.run_title(run) == @shown
-      assert bdis(render_component(&RunComponents.run_name/1, run: run)) == [@shown]
+      assert RunComponents.run_title(run) == "Run 14"
+      assert text(render_component(&RunComponents.run_name/1, run: run)) == "Run 14"
 
       blank = %{run | about_title: "\u202E\u200B"}
       assert RunComponents.given_title(blank) == "\u202E\u200B"
       assert RunComponents.shown_run_title(blank) == nil
-      assert RunComponents.run_title(blank) == "Run rn_7f3e9b20"
+      assert RunComponents.run_title(blank) == "Run 14"
       assert RunComponents.shown_run_title(%{run | about_title: " \u200B "}) == nil
 
       html = render_component(&RunComponents.run_name/1, run: blank)
       assert bdis(html) == []
-      assert text(html) == "rn_7f3e9b20"
+      assert text(html) == "Run 14"
     end
 
     test "the about line, a subject's words, its tooltip and its markup as a page shows them" do

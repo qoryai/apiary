@@ -63,8 +63,8 @@ defmodule ApiaryWeb.RegistryTokenController do
         conn,
         503,
         "UNAVAILABLE",
-        "Try the pull or push again in 1 minute. Qory Apiary could not issue a registry " <>
-          "token; the cause is in the instance's log."
+        "Try the pull or push again in 1 minute. If it fails again, contact support. " <>
+          "Qory Apiary could not issue a registry token."
       )
   end
 
@@ -141,7 +141,7 @@ defmodule ApiaryWeb.RegistryTokenController do
       :error ->
         unauthorized(
           "Send the token request through the gateway of a running run. The registry " <>
-            "credential in the request matches no run of this instance."
+            "credential in the request matches no run."
         )
     end
   end

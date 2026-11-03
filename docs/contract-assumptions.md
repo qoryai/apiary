@@ -454,7 +454,9 @@ the run's target (`Apiary.Stacks.chosen_for/4`): its stored document applies and
 documents' `harness`. Third, the workspace's harness choice, else the harness its
 organisation shares with every workspace: its document applies the same way. Last, the
 Qory harness: the harness of the workspace type's definition
-(`Apiary.Lingo.Domain.Definition`) at the newest version the release ships. A stored
+(`Apiary.Lingo.Domain.Definition`) at the newest version the release ships, at the stack
+the workspace recorded when it was made from the Qory template, else `core`
+(`Apiary.Organisations.Workspace.qory_stack/1`). A stored
 document's base is read at the `ref` of its row's version (`Apiary.Stacks.version_ref/3`):
 the Qory harness at "latest" at the commit of the newest version the release ships, a
 harness repository at the branch, tag or commit saved; the documents' `harness` has that
@@ -476,7 +478,11 @@ every other organisation, whether the instance has one organisation or several, 
 unknown owner is never the run's organisation. Workspace settings › Workflow and the
 set-up's Harness step write a stored stack at the workspace's level, and so do tests and
 the demo (`mix apiary.demo.console`, which stores one for the workspace Main); no
-endpoint sets one.
+endpoint sets one. A stored document's `bind` is set by kind, then by role, as the run
+contract's `harness_section` has it: `agents`, `commands` or `skills`, each with its roles
+set to the name of one entry of that kind, such as
+`bind: {agents: {developer: web-developer}}`. The save fails for a flat key such as
+`agents/developer`, for another kind, and for a list of names.
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first
@@ -651,6 +657,25 @@ rows. No audit entry is written for an upload. Once the log is kept, a dispatch 
 whose run has not redeemed its run code ends that run at once: the run is `failed`, with
 the reason `machine_stopped`, and its run of the queue and the dispatch end `lost`, as the
 lost-run check ends them at the code's expiry (`Apiary.Dispatches.RunEnd.machine_stopped/1`).
+
+The machine end is what the starter reports about the removal of the machine it created for
+a dispatch (`machine-end.schema.json`, `Apiary.Dispatches.MachineEnds`): `deleting`, the
+removal was requested and the machine may still exist; `gone`, the starter confirmed that
+the machine no longer exists; `delete_failed`, the removal failed and the machine still
+exists. The body is exactly `version` 1, `time` and `state`; anything else is `400`
+`invalid_request`. The refusals come in the contract's order: `403` `forbidden` for an
+unknown dispatch, another pool's, or a key the action is refused to, one answer; and `503`
+`unavailable` for a report that could not be stored, after which nothing was written. It is
+never `410` `gone` or `409` `lease_expired`. Else the signed `204`, with no body. Every
+accepted report replaces the state on the dispatch, `machine_end_state`, and its time,
+`machine_end_at`, in the order the reports take the dispatch's row lock; `gone` is final,
+and a later report changes nothing and is still `204`. The trail keeps three entries of
+`dispatch.machine_end` for a dispatch at most, about the pool: its first report, its first
+`delete_failed` and its `gone`. After each accepted report that the dispatch does not keep
+as `gone`, Qory Apiary broadcasts a message on the topic of the run registered at the claim,
+and the run's page shows the state in the Clean up row
+([ui.md](ui.md), The run page). The access action reaches every node pool's key, enrolled
+before or after, through the role `pool_key`.
 
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
@@ -1063,7 +1088,8 @@ and folds nothing from `dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's
 ## The steps of a run
 
 A step is one named unit of a run's host work or of a session's join, such as a fetch, a
-compose, the fetch of an image or the start of a wall. Each step is a
+compose, the fetch of an image, the start of a wall or a push. A host step runs before the
+first join, between joins, or after the last join and before the run's exit. Each step is a
 `dev.qory.run.step_started`, with `step`, its number in the run from 1, `name` and
 `kind`, then a `dev.qory.run.step_exited` with the same `step`, `state`, `exit_code` and
 `duration_ms`; the step's log lines are the `dev.qory.run.log` events with its number as
@@ -1077,7 +1103,7 @@ What the projection reads:
 - `step` is an integer from 1 to 2147483647; a step event whose `step` is anything else
   is stored and folded into nothing, and a log chunk with such a `step` has none.
 - `name` is cut to 1024 bytes on a character boundary. `kind` is `fetch`, `compose`,
-  `image`, `setup`, `join` or `wall`, and any other value is absent.
+  `image`, `build`, `setup`, `join`, `wall` or `push`, and any other value is absent.
 - The exit's `state` is `succeeded`, `failed` or `cancelled`; any other value, or none, is
   `failed`, as for a run's exit. `exit_code` outside -2147483647 to 2147483647 and a
   negative `duration_ms` are absent.
@@ -1114,7 +1140,11 @@ code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's
-starter gave, carried as given. Events are read as untrusted, so a `state` other than the
+starter gave, carried as given. qory gives `workflow_not_in_harness` when the harness it
+composed for a run has no skill or command with the name of the run's workflow: it closes
+the run failed before the runtime starts. Qory Apiary reads the code and shows the
+workflow and where the run's harness came from (`ApiaryWeb.RunComponents.reason_words/1`,
+`Apiary.Harnesses.WorkflowGap`). Events are read as untrusted, so a `state` other than the
 three, or a `reason` that breaks the pattern, is read as absent (`Apiary.Runs.Fold`).
 
 A run is in one of six states, in four families (`Apiary.Runs.Run.states/0`,
@@ -1418,9 +1448,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   Forager refuses a run whose `about` breaks any of these; the fold drops the part that
   breaks one, for whatever reaches it. A type is shown as given: Qory Apiary knows no
   subject types. A later `run.started` replaces all of it, like every other field. A run's
-  title is its `about` title; without one, the run page's heading says `Run` and its whole
-  `rn_` id, its breadcrumb and title `Run` and its short id, the lists the short id, and
-  the Overview its command line, else its short id. The
+  title is its `about` title, shown under the run page's heading, which says `Run` and its
+  number, as its breadcrumb and the lists do; the Overview shows the title, else its
+  command line, else `Run` and its number. The
   registration carries `about` beside the labels, held to these rules whole
   (`Apiary.Runs.About.validate/1`: a registration whose `about` breaks one is
   `400 invalid_request`), and kept on the run as `registration_about`. It never selects a

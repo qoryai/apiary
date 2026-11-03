@@ -46,16 +46,17 @@ Open the link, `http://localhost:4100/setup/<code>`, and enter your email addres
 password and your organisation's name. That creates the instance's organisation and your
 account as its owner, the instance's admin, with no workspace yet; everyone else joins by
 invitation. Two pages follow: **Connect Qory Apiary**, where you set up mail, skip it or
-continue with the server's mail settings, and **What will this workspace do?**, where you
-select **Choose** on **Software factory**, keep the name Main, and select **Create
-workspace**.
+continue with the server's mail settings, and **What will your first workspace do?**,
+where you select the **Software factory** card, then **Create workspace** on its page. The
+workspace is named Software factory; rename it on its first set-up step, **Name**, or keep
+the name.
 
 Mail is optional: with the mail lines of `.env` empty, Qory Apiary sends no email, you sign
 in with your password, and an invitation is a link you copy and send. To send mail, set
 `SMTP_RELAY` in `.env`, and the variables beside it, then run `docker compose up -d` again,
 or set it under **Instance settings › Mail** and follow the test link it sends you.
 
-Then add a node under **Nodes**, select **Get the command** on its **Access key** tab, and
+Then add a machine under **Machines**, select **Get the command** on its **Access key** tab, and
 run the command it gives, `qory access-key enrol <server> <code>`, on the machine, which
 needs the [`qory`](https://github.com/qoryai/qory) command, version 0.13.0, and runs each
 run behind a wall, in Docker, from an agent image you build, as [the quickstart's first
@@ -64,7 +65,7 @@ The run then shows up under **Runs**. With `PUBLIC_URL` on `localhost`, that mac
 this one; for other machines Qory Apiary needs an `https` address, as
 [Install](https://github.com/qoryai/apiary/blob/main/guides/install.md) says.
 [The quickstart](https://github.com/qoryai/apiary/blob/main/guides/quickstart.md) walks
-through set-up, the node and the first run step by step.
+through set-up, the machine and the first run step by step.
 
 To upgrade, set the new release's version in `APIARY_VERSION` in `.env`, then run
 `docker compose pull` and `docker compose up -d`. Back up first, and read
@@ -77,8 +78,8 @@ To upgrade, set the new release's version in `APIARY_VERSION` in `.env`, then ru
 - [Install](https://github.com/qoryai/apiary/blob/main/guides/install.md) and the
   [hosting checklist](https://github.com/qoryai/apiary/blob/main/guides/hosting-checklist.md):
   an instance other people sign in to, and every setting.
-- [Nodes and their keys](https://github.com/qoryai/apiary/blob/main/guides/nodes.md): how a
-  machine gets its access key, and what a node pool is.
+- [Machines, pools and their keys](https://github.com/qoryai/apiary/blob/main/guides/nodes.md):
+  how a machine gets its access key, and what a pool is.
 - [Security policy](https://github.com/qoryai/apiary/blob/main/guides/security-policy.md):
   read it before your first change.
 - [Upgrading](https://github.com/qoryai/apiary/blob/main/guides/upgrading.md) and

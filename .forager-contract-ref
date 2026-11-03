@@ -20,7 +20,7 @@
 # `model.keys`, the variables it reads a model key from, each for one API format and
 # auth, an OAuth token marked `oauth`; the sealed answer to the secrets request, with
 # its known answers under fixtures/sealed; and a policy's `egress.allow_first`, at most
-# 64 exact hosts that the gateway allows before `deny` and `allow`; the 13 event types
+# 64 exact hosts that the gateway allows before `deny` and `allow`; the event types
 # that a runtime descriptor produces, each `dev.qory.runtime.<name>`; and a run split
 # from its sessions: `dev.qory.run.started` with `opened_by` `run` and no runtime
 # members, a `dev.qory.session.started` with the runtime members and a
@@ -65,13 +65,20 @@
 # `hosts`, `paths` and `auth`, and its `purpose`, `work` or `harness`; a sealed value's
 # `expires_at` and `apply`, and a secrets request at a renewal for the entries that are
 # due; and a run configuration's `stack_hosts` and `harness_hidden`, and `channel`
-# `stack` on the stack proxy's `dev.qory.run.egress`.
+# `stack` on the stack proxy's `dev.qory.run.egress`; and `dev.qory.runtime.text` in place
+# of `dev.qory.runtime.message`, with `dev.qory.runtime.tool_result` and
+# `dev.qory.runtime.tool_denied`, `line` on every runtime event read from the session's
+# standard output, `truncated` on a text or a tool result cut at 64 KiB, and `summary` on
+# the three tool events.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-9002cf45e62166d0e16208c28a18ae59d0018d7f
+96e4986daa634e91c8f9ede44476445fe9202f2d
 priv/contract/api-format.schema.json
+priv/contract/events/runtime.text.schema.json
+priv/contract/events/runtime.tool_result.schema.json
+priv/contract/events/runtime.tool_denied.schema.json
 priv/contract/auth.schema.json
 priv/contract/policy.schema.json
 priv/contract/run-configuration.schema.json

@@ -14,7 +14,9 @@ defmodule Apiary.Dispatches.Inputs do
   #     the registry, and was queued again (`Apiary.Dispatches.requeue_for_image/1`),
   #     counts in neither. Such a requeue raises the take in's attempt and `of` by one
   #     each in Qory Apiary, so the input gives both less the take in's requeues up to
-  #     the run: `attempt` 1 to 3, and `of` the take in's 3, as the schema requires;
+  #     the run: `attempt` from 1, and `of` the take in's 3, or one more for each
+  #     comment on a proposal that the run limit let add a run
+  #     (`Apiary.Dispatches.queue_next/3`);
   #   - `ticket`: the ticket as the work item kept it when it was taken in, its ref, its
   #     address, its title and its collection's title, and as the ticket's row holds it now,
   #     its text, who filed it and when (`Apiary.Sources.Item`). A test work item has no
@@ -34,8 +36,16 @@ defmodule Apiary.Dispatches.Inputs do
   #   - `comments_omitted`: how many of the oldest were left out to keep the input within
   #     `max_bytes/0`, 768 KiB encoded, 0 for none;
   #   - `answers`: the answers given within the run's take in, oldest first
-  #     (`Apiary.WorkItems.take_in_answers/2`), each with who gave it, named as who took
-  #     the work item in is named and held to the same rule;
+  #     (`Apiary.WorkItems.take_in_answers/2`), each with whether it is the member's text
+  #     and who gave it, named as who took the work item in is named and held to the same
+  #     rule;
+  #   - `proposal`: the newest proposal of the run's take in, the `message` of the latest
+  #     run before it whose result is a proposal, as Markdown; left out where the take in
+  #     has none, or that run's result is cleared or was stored before the proposal was
+  #     Markdown;
+  #   - `changes`: the comments on the take in's proposals that no saved update of the
+  #     proposal has read yet, oldest first (`Apiary.WorkItems.take_in_changes/3`), each
+  #     with who wrote it, named as an answer's author is;
   #   - `target`: the run's target, the documents' `target`, left out where the
   #     work item has none;
   #   - `domain`: the name of the workspace's domain, the documents' `domain`.
@@ -125,10 +135,12 @@ defmodule Apiary.Dispatches.Inputs do
     with {:ok, item} <- ticket(work_item),
          {:ok, by} <- taken_in_by(work_item),
          :ok <- valid(work_item),
-         {:ok, answers} <- answers(work_item, dispatch_run) do
+         {:ok, answers} <- answers(work_item, dispatch_run),
+         {:ok, changes} <- changes(work_item, dispatch_run) do
       comments = Enum.map(comments(item), &comment/1)
       counted = started(dispatch_run)
-      document = &document(work_item, counted, item, by, answers, run, &1, &2)
+      given = %{answers: answers, proposal: proposal(dispatch_run), changes: changes}
+      document = &document(work_item, counted, item, by, given, run, &1, &2)
       inputs = bounded(document, comments, budget)
 
       # Every comment left out, the rest is within `max_bytes/0` by the columns' bounds; held
@@ -180,6 +192,32 @@ defmodule Apiary.Dispatches.Inputs do
       else: {:error, :inputs_invalid}
   end
 
+  # The comments the run reads, each with a name the contract takes.
+  defp changes(work_item, %DispatchRun{take_in: take_in, attempt: attempt}) do
+    changes = WorkItems.take_in_changes(work_item, take_in, attempt)
+
+    if Enum.all?(changes, &name?(&1["by"]["name"])),
+      do: {:ok, changes},
+      else: {:error, :inputs_invalid}
+  end
+
+  # The newest proposal of the take in, before the run: the Markdown of the latest run
+  # that gave one, nil for none.
+  defp proposal(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt}) do
+    Repo.one(
+      from r in DispatchRun,
+        where: r.work_item_id == ^id and r.take_in == ^take_in and r.attempt < ^attempt,
+        where: r.result_outcome == :proposal and not is_nil(r.result),
+        order_by: [desc: r.attempt],
+        limit: 1,
+        select: r.result
+    )
+    |> case do
+      %{"message" => message} when is_binary(message) -> message
+      _none -> nil
+    end
+  end
+
   defp name?(name),
     do:
       code_points(name) in 1..@max_name and not Regex.match?(@refused_in_text, name) and
@@ -224,7 +262,7 @@ defmodule Apiary.Dispatches.Inputs do
   defp person(name, kind),
     do: Jason.OrderedObject.new([{"name", name}, {"kind", Atom.to_string(kind)}])
 
-  defp document(work_item, {attempt, of}, item, by, answers, run, comments, omitted) do
+  defp document(work_item, {attempt, of}, item, by, given, run, comments, omitted) do
     Jason.OrderedObject.new(
       [
         {"version", @version},
@@ -246,8 +284,10 @@ defmodule Apiary.Dispatches.Inputs do
            ])},
           {"comments", comments},
           {"comments_omitted", omitted},
-          {"answers", answers}
-        ] ++ target(run.target) ++ [{"domain", run.domain}]
+          {"answers", given.answers}
+        ] ++
+        proposal_entry(given.proposal) ++
+        [{"changes", given.changes}] ++ target(run.target) ++ [{"domain", run.domain}]
     )
   end
 
@@ -284,6 +324,9 @@ defmodule Apiary.Dispatches.Inputs do
        ])}
     ]
   end
+
+  defp proposal_entry(nil), do: []
+  defp proposal_entry(message), do: [{"proposal", message}]
 
   defp target(nil), do: []
 

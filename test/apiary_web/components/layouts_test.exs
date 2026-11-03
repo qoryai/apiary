@@ -126,11 +126,14 @@ defmodule ApiaryWeb.LayoutsTest do
 
       # A workspace's things, for an owner: a node, a node pool, a secret and a variable
       # (with the secrets feature), each its own form page.
-      assert has_element?(view, "#new-menu-node[href='#{workspace_path(scope, "/nodes/new")}']")
+      assert has_element?(
+               view,
+               "#new-menu-node[href='#{workspace_path(scope, "/machines/new")}']"
+             )
 
       assert has_element?(
                view,
-               "#new-menu-node_pool[href='#{workspace_path(scope, "/nodes/new-pool")}']"
+               "#new-menu-node_pool[href='#{workspace_path(scope, "/machines/new-pool")}']"
              )
 
       assert has_element?(
@@ -255,7 +258,7 @@ defmodule ApiaryWeb.LayoutsTest do
               overview: workspace_path(scope),
               runs: workspace_path(scope, "/runs"),
               targets: workspace_path(scope, "/targets"),
-              nodes: workspace_path(scope, "/nodes"),
+              nodes: workspace_path(scope, "/machines"),
               network: workspace_path(scope, "/network")
             ] ++ List.wrap(policy) ++ [settings: workspace_path(scope, "/settings")] do
         assert has_element?(view, "#sidebar a#nav-#{key}[href='#{href}']"), "#{key}"
@@ -757,7 +760,7 @@ defmodule ApiaryWeb.LayoutsTest do
       {:ok, _membership} = Organisations.accept_invitation(user, token)
       org = scope.organisation.slug
 
-      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines")
 
       assert has_element?(
                view,
@@ -1059,7 +1062,7 @@ defmodule ApiaryWeb.LayoutsTest do
       ws = "#organisation-menu a#switch-#{other.organisation.slug}_#{other.workspace.slug}"
       org = "#organisation-menu a#switch-#{other.organisation.slug}"
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/machines")
       assert has_element?(view, "#{ws}[href='#{workspace_path(other, "/switch/nodes")}']")
       assert has_element?(view, "#{org}[href='/#{other.organisation.slug}/-/switch/nodes']")
 
@@ -1072,7 +1075,7 @@ defmodule ApiaryWeb.LayoutsTest do
       assert redirected_to(get(conn, href)) == workspace_path(other)
 
       # the workspace's page opens it, and the session remembers it for `/`
-      conn = get(conn, workspace_path(other, "/nodes"))
+      conn = get(conn, workspace_path(other, "/machines"))
       assert html_response(conn, 200) =~ other.organisation.name
       assert redirected_to(get(recycle(conn), ~p"/")) == workspace_path(other)
     end
@@ -1157,13 +1160,12 @@ defmodule ApiaryWeb.LayoutsTest do
       scope: scope
     } do
       run = Apiary.RunListFixtures.started_run(scope, Apiary.RunListFixtures.shop())
-      short = String.slice(run.public_id, 0, 11)
 
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
       assert has_element?(view, "#breadcrumb a[href='#{workspace_path(scope, "/runs")}']", "Runs")
-      assert has_element?(view, "#breadcrumb [aria-current='page']", "Run #{short}")
+      assert has_element?(view, "#breadcrumb [aria-current='page']", "Run #{run.number}")
       assert has_element?(view, "#nav-runs[aria-current='page']")
     end
 
@@ -1176,7 +1178,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       # A run: Runs is its parent, marked to stay on a phone, with the back chevron.
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
       html = render(view)
       assert has_element?(view, "#breadcrumb li.q-trail-up a[href='#{runs}'] .q-trail-back")

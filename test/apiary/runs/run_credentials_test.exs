@@ -114,7 +114,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
           where: i.id == ^item_id
       )
 
-  defp claim(ctx), do: Dispatches.claim(ctx.key, Dispatches.now())
+  defp claim(ctx), do: Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
   defp entries, do: Repo.all(from c in RunCredential, order_by: c.name)
 
@@ -210,6 +210,160 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       assert {:ok, %{registered: %Run{}}} = claim(ctx)
       assert [%RunCredential{access: :write}] = entries()
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, a stage entry with read access lowers a write walk", ctx do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Explore",
+        "inputs" => [],
+        "sequence" => [%{"workflow" => "explore-a-ticket", "access" => "read"}],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+
+      {_work_item, queued} = queued!(ctx)
+      assert %DispatchRun{stage_id: "st_r79kph11eg"} = Repo.get!(DispatchRun, queued.id)
+
+      case Repo.get_by(RunHarness, dispatch_run_id: queued.id) do
+        nil ->
+          Repo.insert!(%RunHarness{
+            dispatch_run_id: queued.id,
+            state: :resolved,
+            origin: :none,
+            access_level: :write
+          })
+
+        walk ->
+          set!(RunHarness, walk.id, access_level: :write)
+      end
+
+      assert {:ok, %{registered: %Run{}}} = claim(ctx)
+
+      # The adapter is asked for the entry's access when the run asks for its value
+      # (`Apiary.Runs.WorkCredential`), so the row is what it reads.
+      assert [%RunCredential{access: :read}] = entries()
+    end
+
+    # A version of the workspace's process, with `sequence` in its one stage.
+    defp process!(ctx, sequence) do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Build",
+        "inputs" => [],
+        "sequence" => sequence,
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+      version
+    end
+
+    # A run of the queue under a version with `from`, moved to a version with `to`.
+    defp moved!(ctx, from, to) do
+      process!(ctx, from)
+      {work_item, queued} = queued!(ctx)
+      assert {:ok, _assigned} = Apiary.Processes.assign(ctx.scope, work_item, process!(ctx, to))
+      queued
+    end
+
+    # The level of the claim of `queued`, whose walk resolved `write`: its documents' and
+    # its token's.
+    defp claimed_levels(ctx, queued) do
+      section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
+      walk_resolved!(queued, origin: :setting, document: section, access_level: :write)
+
+      assert {:ok, %{documents: %{harness: %{access: documents}}}} = claim(ctx)
+      assert [%RunCredential{access: token}] = entries()
+      {documents, token}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved onto an entry of another workflow reads, in its documents and its token",
+         ctx do
+      queued =
+        moved!(ctx, [%{"workflow" => "build", "access" => "read"}], [%{"workflow" => "lint"}])
+
+      assert {"build", 0} = {queued.workflow, queued.stage_entry}
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved to a version with no entry at its place reads", ctx do
+      queued = moved!(ctx, [%{"workflow" => "build", "access" => "read"}], [])
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run whose stage its version does not have reads", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+      set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved onto an entry of its workflow takes that entry's level", ctx do
+      queued =
+        moved!(ctx, [%{"workflow" => "build", "access" => "read"}], [%{"workflow" => "build"}])
+
+      assert claimed_levels(ctx, queued) == {:write, :write}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run moved onto a lowered entry of its workflow reads", ctx do
+      queued =
+        moved!(ctx, [%{"workflow" => "build"}], [%{"workflow" => "build", "access" => "read"}])
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a stage's run that stays on its version keeps its entry's level", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:write, :write}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an explore-a-ticket run moved onto an entry of another workflow reads", ctx do
+      queued = moved!(ctx, [%{"workflow" => "explore-a-ticket"}], [%{"workflow" => "lint"}])
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an explore-a-ticket run moved to a version with no entry at its place reads", ctx do
+      queued = moved!(ctx, [%{"workflow" => "explore-a-ticket"}], [])
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an explore-a-ticket run whose stage its version does not have reads", ctx do
+      process!(ctx, [%{"workflow" => "explore-a-ticket"}])
+      {_work_item, queued} = queued!(ctx)
+      set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an explore-a-ticket entry with read access reads, in its documents and its token",
+         ctx do
+      process!(ctx, [%{"workflow" => "explore-a-ticket", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
     end
 
     test "fills the target path exactly as the adapter wrote it", ctx do
@@ -599,6 +753,141 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert {:ok, %{registered: %Run{dispatch_run_id: id}}} = claim(ctx)
       assert id == queued.id
       assert entries() == []
+    end
+  end
+
+  describe "why a run ended, as a stage's escalation shows it" do
+    # A tracker's ticket, from one integration, whose target only a forge's collection,
+    # of another integration, can change: the work entry comes from the forge's.
+    defp two_integrations!(ctx, target \\ @target) do
+      {work_item, queued} = tracker_queued!(ctx)
+      set!(WorkItem, work_item.id, target_system: target.system, target_path: target.path)
+      forge = forge_collection!(ctx, target)
+      tracker = Repo.get!(Node, work_item.adapter_id)
+      forge_adapter = Repo.get!(Node, forge.adapter_id)
+      assert Apiary.Adapters.title(tracker) != Apiary.Adapters.title(forge_adapter)
+
+      %{
+        work_item: Repo.get!(WorkItem, work_item.id),
+        queued: queued,
+        forge: forge,
+        tracker: "the integration " <> Apiary.Adapters.title(tracker),
+        integration: "the integration " <> Apiary.Adapters.title(forge_adapter)
+      }
+    end
+
+    defp text(%{queued: queued, work_item: work_item}),
+      do: Apiary.Stages.StopCause.text(Repo.get!(DispatchRun, queued.id), work_item)
+
+    test "a collection that ended names the target's integration, not the ticket's", ctx do
+      two = two_integrations!(ctx)
+      set!(Collection, two.forge.id, ended_at: DateTime.utc_now(), ended_reason: :not_listed)
+
+      assert claim(ctx) == {:ok, :none}
+      gone!(two.queued)
+      org = ctx.scope.organisation.name
+
+      assert text(two) ==
+               "The run did not start, because #{two.integration} no longer reaches target acme/shop.\n" <>
+                 "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
+
+      refute text(two) =~ two.tracker
+    end
+
+    test "a path the access rules do not take names its first refused part, and links Destinations",
+         ctx do
+      ws = ctx.scope.workspace.name
+
+      fix = fn path, without ->
+        "Whoever manages #{path} where it is kept renames it without #{without}, or owners and admins of #{ws} remove it on the set-up step Destinations."
+      end
+
+      for {path, part, without} <- [
+            {"acme/shop?x#y", ~s(the character "?"), "that character"},
+            {"acme/sh\u00A0op", "the character U+00A0", "that character"},
+            {"acme/../shop", "two dots in a row", "two dots in a row"},
+            {"acme//shop", "two slashes in a row", "two slashes in a row"}
+          ] do
+        two = two_integrations!(ctx, %{system: "forge.example.com", path: path})
+
+        run = %{
+          Repo.get!(DispatchRun, two.queued.id)
+          | state: :ended,
+            end_cause: :target_access_gone
+        }
+
+        assert Apiary.Stages.StopCause.text(run, two.work_item) ==
+                 "The run did not start, because target #{path} has #{part} in its path, which Qory Apiary does not put in an access rule.\n" <>
+                   fix.(path, without),
+               inspect(path)
+
+        assert Apiary.Stages.StopCause.set_up_step(run) == :destinations
+      end
+    end
+
+    test "a path filled out of the grammar by the adapter's access rules sends the person to support",
+         ctx do
+      # A description's check refuses such apply items at the adapter's start; written
+      # here directly.
+      two = two_integrations!(ctx, %{system: "forge.example.com", path: "acme/shop"})
+
+      Repo.update_all(from(n in Node, where: n.id == ^two.forge.adapter_id),
+        set: [
+          source_apply: [
+            %{
+              "hosts" => ["git.example.com"],
+              "scheme" => "bearer",
+              "paths" => ["/{target.path} x"]
+            }
+          ]
+        ]
+      )
+
+      run = %{
+        Repo.get!(DispatchRun, two.queued.id)
+        | state: :ended,
+          end_cause: :target_access_gone
+      }
+
+      assert Apiary.Stages.StopCause.text(run, two.work_item) ==
+               "The run did not start, because Qory Apiary could not grant the run access to target acme/shop.\n" <>
+                 "Contact support with work item ##{two.work_item.number}."
+
+      assert Apiary.Stages.StopCause.set_up_step(run) == nil
+    end
+
+    test "a system that is no host name names the target's integration", ctx do
+      # A stored work item's system keeps the rule (`work_items_target_shape_check`), so
+      # the system is broken in memory, and on the forge's collection, whose check allows it.
+      two = two_integrations!(ctx)
+      set!(Collection, two.forge.id, target_system: "forge..example.com")
+      work_item = %{two.work_item | target_system: "forge..example.com"}
+
+      run = %{
+        Repo.get!(DispatchRun, two.queued.id)
+        | state: :ended,
+          end_cause: :variables_invalid
+      }
+
+      assert Apiary.Stages.StopCause.text(run, work_item) ==
+               "The run did not start, because its variable QORY_RUN_SYSTEM, the system forge..example.com of target acme/shop, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.\n" <>
+                 "Owners and admins of #{ctx.scope.organisation.name} check #{two.integration} in Organisation settings › Integrations."
+    end
+
+    test "a run a claim registered is named to support by its public id", ctx do
+      {work_item, queued} = queued!(ctx)
+      assert {:ok, %{registered: %Run{public_id: public_id}}} = claim(ctx)
+
+      run = %{
+        Repo.get!(DispatchRun, queued.id)
+        | state: :ended,
+          end_cause: :run_refused,
+          end_detail: "machine_busy"
+      }
+
+      assert Apiary.Stages.StopCause.text(run, work_item) ==
+               "The gateway did not start the run. Qory Apiary has no description for its refusal (machine_busy).\n" <>
+                 "Contact support with run #{public_id}."
     end
   end
 end

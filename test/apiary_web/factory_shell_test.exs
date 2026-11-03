@@ -201,11 +201,11 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:post, managed <> "/setup"},
                  # The instance's pool and gateway: the list, and a node's Overview, its
                  # keys and its settings.
-                 {:get, "/instance/nodes"},
-                 {:get, "/instance/nodes/x1"},
-                 {:get, "/instance/nodes/x1/keys"},
-                 {:get, "/instance/nodes/x1/keys/x1/revoke"},
-                 {:get, "/instance/nodes/x1/settings"},
+                 {:get, "/instance/qory-pool-and-gateway"},
+                 {:get, "/instance/qory-pool-and-gateway/x1"},
+                 {:get, "/instance/qory-pool-and-gateway/x1/keys"},
+                 {:get, "/instance/qory-pool-and-gateway/x1/keys/x1/revoke"},
+                 {:get, "/instance/qory-pool-and-gateway/x1/settings"},
                  # The organisation's model providers: the list, New model provider and a
                  # provider's page; and a workspace's Model.
                  {:get, "#{org}/settings/model-providers"},
@@ -217,7 +217,7 @@ defmodule ApiaryWeb.FactoryShellTest do
                ] ++
                  for(
                    rest <-
-                     ~w(/backlog /backlog/x1 /work /work/1 /work/1/explore /work/1/explore/edit
+                     ~w(/backlog /backlog/x1 /work /work/1 /work/1/explore
                         /work/1/thread /targets/x1/also-read /settings/work-sources
                         /settings/destinations /settings/choose /settings/workflow),
                    do: {:get, workspace_path(scope, rest)}
@@ -413,7 +413,6 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       assert {"work_item.take_in", "Work item taken in"} in options
       assert {"work_item.undo", "Take in undone"} in options
-      assert {"work_item.decline", "Work item declined"} in options
       assert {"work_item.close", "Work item closed"} in options
       assert {"work_item.answer", "Work item questions answered"} in options
       assert {"work_item.confirm", "Work item proposal confirmed"} in options
@@ -445,7 +444,6 @@ defmodule ApiaryWeb.FactoryShellTest do
           action not in [
             :"work_item.take_in",
             :"work_item.undo",
-            :"work_item.decline",
             :"work_item.close",
             :"work_item.answer",
             :"work_item.confirm",
@@ -506,7 +504,7 @@ defmodule ApiaryWeb.FactoryShellTest do
             assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
 
           # No such node of the instance.
-          String.starts_with?(path, "/instance/nodes/") ->
+          String.starts_with?(path, "/instance/qory-pool-and-gateway/") ->
             assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
 
           # No code just made, no such key, no such code: the page leads to the tab.
@@ -597,7 +595,11 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert [:adapters, :nodes | rest] = Enum.drop_while(keys, &(&1 != :adapters))
       assert rest in [[:mail, :configuration], [:diagnostics_keys, :mail, :configuration]]
 
-      assert %{label: "Nodes", path: "/instance/nodes", place: :instance} =
+      assert %{
+               label: "Pool and gateway",
+               path: "/instance/qory-pool-and-gateway",
+               place: :instance
+             } =
                Enum.find(Layouts.instance_sections(admin), &(&1.key == :nodes))
 
       assert %{label: "Adapters", path: "/instance/adapters", place: :instance} =

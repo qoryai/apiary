@@ -134,6 +134,12 @@ defmodule Apiary.Access do
       "change the instance's settings in Instance settings › Configuration: an instance admin after a recent sign-in, which no role takes (Apiary.InstanceConfig.save/3)",
       asked_of: :organisation
     ),
+    # The support address, in Instance settings › General.
+    Action.new(
+      :"instance.support_save",
+      "save the support address, where Contact support leads: an instance admin, which no role takes (Apiary.SupportAddress.save/2)",
+      asked_of: :organisation
+    ),
     # The audit trail.
     Action.new(:"audit.read", "read the organisation's audit trail, its Activity page",
       roles: @admins,
@@ -172,38 +178,42 @@ defmodule Apiary.Access do
     # The access keys of nodes and node pools: one Ed25519 public key each.
     Action.new(
       :"access_key.create_code",
-      "make an enrolment code for a node, with the settings of the key it brings",
+      "make an enrolment code for a machine, pool or gateway, with the settings of the key it brings",
       part: :nodes,
       roles: @admins
     ),
-    Action.new(:"access_key.cancel_code", "cancel a node's outstanding enrolment code",
+    Action.new(
+      :"access_key.cancel_code",
+      "cancel the outstanding enrolment code of a machine, pool or gateway",
       part: :nodes,
       roles: @admins
     ),
-    Action.new(:"access_key.add", "add an access key to a node by its public key",
+    Action.new(
+      :"access_key.add",
+      "add an access key to a machine, pool or gateway by its public key",
       part: :nodes,
       roles: @admins
     ),
-    Action.new(:"access_key.revoke", "revoke a node's access key",
+    Action.new(:"access_key.revoke", "revoke an access key of a machine, pool or gateway",
       part: :nodes,
       roles: @admins
     ),
     # The workspace's nodes and node pools, the places its runs run.
-    Action.new(:"node.read", "read the workspace's nodes and node pools, and each one's page",
+    Action.new(:"node.read", "read the workspace's machines and pools, and each one's page",
       part: :nodes,
       roles: @members,
       audited: {:not, @read}
     ),
     Action.new(
       :"node.create",
-      "make a node or a node pool, whose kind is fixed from then on",
+      "make a machine or a pool, whose kind is fixed from then on",
       part: :nodes,
       roles: @admins
     ),
-    Action.new(:"node.edit", "rename a node or a node pool", part: :nodes, roles: @admins),
+    Action.new(:"node.edit", "rename a machine or a pool", part: :nodes, roles: @admins),
     Action.new(
       :"node.set_limit",
-      "set a node pool's instance limit, as it is made or after",
+      "set a pool's machine limit, as it is made or after",
       part: :nodes,
       roles: @admins,
       audited:
@@ -211,10 +221,10 @@ defmodule Apiary.Access do
          "a pool's limit is set in the node's creation or its edit, whose entry, node.create or " <>
            "node.edit, records it with what else the change made"}
     ),
-    Action.new(:"node.delete", "delete a node or a node pool", part: :nodes, roles: @admins),
+    Action.new(:"node.delete", "delete a machine or a pool", part: :nodes, roles: @admins),
     Action.new(
       :"node.clear_instance",
-      "clear an instance of a node that stopped without saying so: its open runs are marked lost, and another instance can start",
+      "clear a machine that stopped without reporting that it stopped: its open runs are marked lost, and another machine can start",
       part: :nodes,
       roles: @admins
     ),
@@ -406,7 +416,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"node.install",
-      "make the instance's node pool or gateway, and give it its one-time codes: the instance, by itself (Apiary.Nodes.Installed.install/2)",
+      "make the instance's pool or gateway, and give it its one-time codes: the instance, by itself (Apiary.Nodes.Installed.install/2)",
       feature: :factory,
       roles: [:instance],
       asked_of: :organisation
@@ -460,10 +470,6 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: @members
     ),
-    Action.new(:"work_item.decline", "decline a work item",
-      feature: :factory,
-      roles: @members
-    ),
     Action.new(:"work_item.close", "close a work item", feature: :factory, roles: @members),
     Action.new(:"work_item.answer", "answer Qory's questions on a work item",
       feature: :factory,
@@ -484,6 +490,37 @@ defmodule Apiary.Access do
     Action.new(:"work_item.comment_delete", "delete a comment on a work item",
       feature: :factory,
       roles: @admins
+    ),
+    # A workspace's process, its stages and the artifacts its work items keep
+    # (`Apiary.Processes`). An action that no function takes yet says so in `audited`; the
+    # function that takes it makes it audited, with its entry.
+    Action.new(
+      :"process.edit",
+      "save a version of the workspace's process, as a trial or as the current one, make a trial current or drop it, assign a work item to a version, and export it",
+      feature: :workflow_model,
+      roles: @admins
+    ),
+    Action.new(
+      :"gate.approve",
+      "approve a stage's gate on a work item, move a work item past a stage, and act on an escalation. When a stage lists approvers, only those people approve its gate.",
+      feature: :workflow_model,
+      roles: @members
+    ),
+    Action.new(:"artifact.write", "store a version of an artifact on a work item",
+      feature: :workflow_model,
+      roles: @members
+    ),
+    Action.new(:"artifact_type.edit", "add, change or remove the workspace's artifact types",
+      feature: :workflow_model,
+      roles: @admins
+    ),
+    # A workspace type's default process, which new workspaces copy, in Instance settings
+    # › Workspace types (`Apiary.Processes.TypeTemplates`).
+    Action.new(
+      :"workspace_type.edit",
+      "save a version of a workspace type's default process, which new workspaces copy: an instance admin, which no role takes (Apiary.Processes.TypeTemplates.save/4)",
+      feature: :workflow_model,
+      asked_of: :organisation
     ),
     # An adapter's key at the server contract, asked of the adapter itself.
     Action.new(
@@ -607,6 +644,12 @@ defmodule Apiary.Access do
         {:not,
          "a machine log is kept as a file with its record, which has its size and when it was uploaded, not in the audit trail"}
     ),
+    # The trail keeps three entries of a dispatch at most: its first report, its first
+    # `delete_failed` and its `gone` (`Apiary.Dispatches.MachineEnds`).
+    Action.new(:"dispatch.machine_end", "report the removal of a claimed run's machine",
+      feature: :factory,
+      roles: [:pool_key]
+    ),
     # A member asks for a build of a target's environment, for each node pool of its
     # workspace (`Apiary.Environments.rebuild/2`).
     Action.new(:"target.rebuild_environment", "rebuild the environment of a target",
@@ -620,7 +663,8 @@ defmodule Apiary.Access do
     :"dispatch.claim",
     :"dispatch.dispatched",
     :"dispatch.release",
-    :"dispatch.machine_log"
+    :"dispatch.machine_log",
+    :"dispatch.machine_end"
   ]
 
   # The features whose actions the tables of this documentation leave out: those the
@@ -831,7 +875,8 @@ defmodule Apiary.Access do
   `instance.mail_on`, `Apiary.Mail.turn_on/2`) and changing the instance's settings
   (`instance.configure`, `Apiary.InstanceConfig.save/3`), which also ask for a recent
   sign-in, and setting the product's name (`instance.rename`,
-  `Apiary.ProductName.rename/2`), which asks for none.
+  `Apiary.ProductName.rename/2`) and saving the support address (`instance.support_save`,
+  `Apiary.SupportAddress.save/2`), which ask for none.
 
   ## Features
 

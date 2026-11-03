@@ -105,7 +105,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
   # documents are made from with the registered run as `run`; or the claim's answer.
   defp claim(ctx) do
     fn ->
-      case Dispatches.claim(ctx.key, Dispatches.now(), @body) do
+      case Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body) do
         {:ok, %{registered: run, documents: documents}} -> {:ok, Map.put(documents, :run, run)}
         other -> other
       end

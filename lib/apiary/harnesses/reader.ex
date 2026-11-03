@@ -2,7 +2,8 @@ defmodule Apiary.Harnesses.Reader do
   @moduledoc """
   Reads the YAML files of qory's harness format, version 1: the harness section of a
   `qory.yaml` or `harness.yaml`, the modules and the `workflows` of a `qory-stack.yaml`,
-  the `exports` of a root file, and a harness document as a settings row keeps it. Pure:
+  the `exports` of a root file, a factory's `process.yaml`, and a harness document as a
+  settings row keeps it. Pure:
   bytes in, a value or a reason out. Of a harness section and a stack's modules it reads
   the source keys and nothing else; a stack's `workflows` it returns as written, and of
   a workflow it reads the access level alone (`workflow_access/2`). It splits no URL.
@@ -42,9 +43,25 @@ defmodule Apiary.Harnesses.Reader do
   unknown tags included.
 
   An empty file is a file with no value: `harness/1` and `exports/1` read it as `:none`.
+  The `modules` of `exports` have no refusal: `exports/1` returns `:invalid` for them.
+
+  ## A factory's process.yaml
+
+  `template/1` checks a `process.yaml` against qory's `process.schema.json`, vendored under
+  `priv/contract/harness/v1/` from the qory commit in the `.contract-ref` file beside it.
+  One change to how the schema is built makes it read as qory reads it: each `minLength`
+  and `maxLength` counts code points, not graphemes, as the Explore result's schema does.
+  A `\\s` or `\\S` of a pattern reads every Unicode space, as qory's check of the file
+  does.
+
+  The schema takes an optional `artifact_types` list, whose entries are a name alone or a
+  custom type's full definition. `template/1` returns the list as written, and nil when
+  the key is absent. The schema has no list of standard types, so the caller checks what
+  the list means for the workspaces made from the template.
   """
 
-  alias Apiary.Kinds.Budget
+  alias Apiary.Explore.Result
+  alias Apiary.Kinds.{Budget, Schema}
 
   @max_bytes 65_536
   @max_depth 16
@@ -95,15 +112,41 @@ defmodule Apiary.Harnesses.Reader do
           | :invalid_harness
           | :invalid_stack
           | :invalid_exports
+          | :invalid_template
 
   @typedoc """
   The `exports` of a root file: `dir`, nil for the root, one folder, or a map of the
-  `"stacks"` and `"modules"` folders; and `stacks`, the names of the stacks it exports.
+  `"stacks"` and `"modules"` folders; `stacks`, the names of the stacks it exports; and
+  `modules`, the names of the modules it exports, or `:invalid` for a value that is not a
+  list of text.
   """
   @type exports :: %{
           dir: nil | String.t() | %{String.t() => String.t()},
-          stacks: [String.t()]
+          stacks: [String.t()],
+          modules: [String.t()] | :invalid
         }
+
+  @typedoc """
+  A factory's `process.yaml`: its texts, the workspace type, the stack its workflows run
+  on, `process`, the `qory.process/v1` document as written, and `artifact_types`, the
+  artifact types its workspaces use as written, nil when the key is absent.
+  """
+  @type template :: %{
+          name: String.t(),
+          summary: String.t(),
+          description: String.t(),
+          type: String.t(),
+          stack: String.t(),
+          process: map,
+          artifact_types: [map] | nil
+        }
+
+  # qory's process.schema.json, under the application's priv.
+  @template_schema ["contract", "harness", "v1", "process.schema.json"]
+
+  # The most characters of a type's name a refusal keeps: the most a name has. A name the
+  # schema refuses can be as long as the file.
+  @max_type_name 64
 
   @doc "The most bytes a file may have."
   @spec max_bytes() :: pos_integer
@@ -121,6 +164,11 @@ defmodule Apiary.Harnesses.Reader do
   @doc "The machine's keys of a harness section: a section with these alone is no document."
   @spec machine_keys() :: [String.t()]
   def machine_keys, do: @machine_keys
+
+  @doc false
+  # control_character?/1 is whether `text` has a control character no file may contain.
+  @spec control_character?(String.t()) :: boolean
+  def control_character?(text) when is_binary(text), do: Regex.match?(@control, text)
 
   @doc """
   harness/1 is the harness section of a `qory.yaml` or `harness.yaml`: `{:ok, section}`,
@@ -208,7 +256,10 @@ defmodule Apiary.Harnesses.Reader do
 
   @doc """
   exports/1 is the `exports` section of a root `qory.yaml` or `harness.yaml`: `{:ok,
-  exports}`, `:none` for a file without one, or `{:error, reason}`.
+  exports}`, `:none` for a file without one, or `{:error, reason}`. `modules` does not fail
+  the section, because a run reads none of it: `[]` for no value, and `:invalid` for a
+  value that is not a list of text, such as `[1]`. The value is not converted to text:
+  qory reads `0x10` as the name `"0x10"`, and this module as the integer 16.
   """
   @spec exports(binary) :: {:ok, exports} | :none | {:error, reason}
   def exports(bytes) when is_binary(bytes) do
@@ -227,10 +278,16 @@ defmodule Apiary.Harnesses.Reader do
     dir = Map.get(exports, "dir")
     stacks = Map.get(exports, "stacks", [])
 
-    if dir?(dir) and is_list(stacks) and Enum.all?(stacks, &is_binary/1),
-      do: {:ok, %{dir: dir, stacks: stacks}},
+    if dir?(dir) and names?(stacks),
+      do: {:ok, %{dir: dir, stacks: stacks, modules: module_names(exports["modules"])}},
       else: {:error, :invalid_exports}
   end
+
+  defp names?(names), do: is_list(names) and Enum.all?(names, &is_binary/1)
+
+  # `modules:` with no value lists no modules, as qory reads it.
+  defp module_names(nil), do: []
+  defp module_names(modules), do: if(names?(modules), do: modules, else: :invalid)
 
   defp dir?(nil), do: true
   defp dir?(dir) when is_binary(dir), do: dir != ""
@@ -256,6 +313,129 @@ defmodule Apiary.Harnesses.Reader do
 
     Path.join([stacks, name, "qory-stack.yaml"])
   end
+
+  @doc """
+  module_file/3 is the path of `file` in the folder of the module `name` in a source whose
+  root file has `exports`, from the source's root, as qory resolves it: `modules/<name>`
+  with no `dir`, `<dir>/modules/<name>` for a `dir` of one folder, and `<modules>/<name>`
+  for a `dir` map. The folder is cleaned as qory cleans it: a `.` part goes, and a `..`
+  part goes with the part before it.
+
+  `{:ok, path}`, or one of:
+
+    * `{:error, :invalid_name}` for a name that is not one path segment as qory's exports
+      allow it: empty, or with a slash, a backslash, an `@` or a leading dot, such as `..`;
+    * `{:error, :invalid_file}` for a `file` that is not a relative path inside the folder,
+      with no `.` or `..` part;
+    * `{:error, :invalid_dir}` for a `dir` that is absolute or leads outside the source.
+  """
+  @spec module_file(exports, String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, :invalid_name | :invalid_file | :invalid_dir}
+  def module_file(%{dir: dir}, name, file) when is_binary(name) and is_binary(file) do
+    cond do
+      not segment?(name) ->
+        {:error, :invalid_name}
+
+      not inside?(file) ->
+        {:error, :invalid_file}
+
+      true ->
+        with {:ok, folder} <- modules_folder(dir), do: {:ok, Path.join(folder ++ [name, file])}
+    end
+  end
+
+  # The parts of the folder of a source's modules, from its root.
+  defp modules_folder(nil), do: {:ok, ["modules"]}
+  defp modules_folder(dir) when is_binary(dir), do: cleaned(dir <> "/modules")
+  defp modules_folder(%{"modules" => modules}), do: cleaned(modules)
+
+  # A folder's parts as Go's `filepath.Clean` leaves them, or `:invalid_dir` where qory
+  # refuses the folder: an absolute one, and one whose cleaned path starts with `..`.
+  defp cleaned("/" <> _absolute), do: {:error, :invalid_dir}
+
+  defp cleaned(folder) do
+    folder
+    |> String.split("/")
+    |> Enum.reduce_while({:ok, []}, fn
+      part, {:ok, parts} when part in ["", "."] -> {:cont, {:ok, parts}}
+      "..", {:ok, []} -> {:halt, {:error, :invalid_dir}}
+      "..", {:ok, [_part | parts]} -> {:cont, {:ok, parts}}
+      part, {:ok, parts} -> {:cont, {:ok, [part | parts]}}
+    end)
+    |> case do
+      {:ok, parts} -> {:ok, Enum.reverse(parts)}
+      refused -> refused
+    end
+  end
+
+  # One path segment as qory's exports allow a name (qory internal/exports, `segment`).
+  defp segment?(name),
+    do:
+      name != "" and not String.contains?(name, ["/", "\\", "@"]) and
+        not String.starts_with?(name, ".")
+
+  defp inside?(file),
+    do:
+      file != "" and Path.type(file) == :relative and not String.contains?(file, "\\") and
+        Enum.all?(String.split(file, "/"), &(&1 not in ["", ".", ".."]))
+
+  @doc """
+  template/1 is a factory's `process.yaml`, checked against qory's `process.schema.json`
+  as the moduledoc says: `{:ok, template}` or `{:error, reason}`. A file the schema
+  refuses, such as one with a key missing, a key of the wrong type or a key the schema
+  does not define, is `:invalid_template`. Where the schema refuses an entry of
+  `artifact_types` whose `name` is text, whatever else it refuses, it is
+  `{:invalid_artifact_type, name}` for the first such entry, with the first
+  #{@max_type_name} characters of the name. The schema checks `process` loosely; the
+  caller checks it as a process, and checks what `artifact_types` means.
+  """
+  @spec template(binary) ::
+          {:ok, template} | {:error, reason | {:invalid_artifact_type, String.t()}}
+  def template(bytes) when is_binary(bytes) do
+    with {:ok, file} <- parse(bytes) do
+      case JSV.validate(file, template_root(), cast: false) do
+        {:ok, _file} ->
+          {:ok,
+           %{
+             name: file["name"],
+             summary: file["summary"],
+             description: file["description"],
+             type: file["type"],
+             stack: file["stack"],
+             process: file["process"],
+             artifact_types: file["artifact_types"]
+           }}
+
+        {:error, %JSV.ValidationError{errors: errors}} ->
+          {:error, template_refusal(file, errors)}
+      end
+    end
+  end
+
+  # An error's path is in JSV's order, the last key first.
+  defp template_refusal(%{"artifact_types" => listed}, errors) when is_list(listed) do
+    refused =
+      for %{data_path: path} <- errors,
+          ["artifact_types", index | _rest] when is_integer(index) <- [Enum.reverse(path)],
+          into: MapSet.new(),
+          do: index
+
+    listed
+    |> Enum.with_index()
+    |> Enum.find_value(:invalid_template, fn
+      {%{"name" => name}, index} when is_binary(name) ->
+        if index in refused,
+          do: {:invalid_artifact_type, String.slice(name, 0, @max_type_name)}
+
+      _entry ->
+        nil
+    end)
+  end
+
+  defp template_refusal(_file, _errors), do: :invalid_template
+
+  defp template_root,
+    do: Schema.file!(@template_schema, &Result.code_point_lengths/1)
 
   @doc """
   parse/1 is the value of one YAML file under the limits of the moduledoc: `{:ok,

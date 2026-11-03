@@ -1,7 +1,7 @@
 defmodule Apiary.RetentionResultsTest do
   # The result a run of the queue keeps (`Apiary.Dispatches.Settle`), cleared by the
   # retention job (`Apiary.Retention`) once the run registered for it is past the events
-  # cut-off and its take in no longer waits for a member: answered, confirmed, declined,
+  # cut-off and its take in no longer waits for a member: answered, confirmed,
   # closed, undone, or run again or taken in again. While the take in waits the result
   # stays, past the setting; the outcome stays either way, and the pages read a cleared
   # run as one whose events were pruned.
@@ -61,9 +61,6 @@ defmodule Apiary.RetentionResultsTest do
     confirmed = ran!(ctx.scope, understood_result())
     {:ok, _} = WorkItems.confirm(ctx.scope, current(confirmed), 1)
 
-    declined = ran!(ctx.scope, questions_result())
-    {:ok, _} = WorkItems.decline(ctx.scope, current(declined))
-
     closed = ran!(ctx.scope, understood_result())
     {:ok, _} = WorkItems.close(ctx.scope, current(closed))
 
@@ -86,7 +83,6 @@ defmodule Apiary.RetentionResultsTest do
     for {ran, outcome} <- [
           {answered, :questions},
           {confirmed, :proposal},
-          {declined, :questions},
           {closed, :proposal},
           {undone, :proposal},
           {run_again, :questions},
@@ -110,6 +106,7 @@ defmodule Apiary.RetentionResultsTest do
       position: 1,
       question: "Which basket?",
       answer: "The small one.",
+      custom: true,
       answered_at: DateTime.utc_now()
     })
 
@@ -154,6 +151,7 @@ defmodule Apiary.RetentionResultsTest do
       position: 1,
       question: "Which basket?",
       answer: "The small one.",
+      custom: true,
       answered_at: DateTime.utc_now()
     })
 

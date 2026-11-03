@@ -15,6 +15,7 @@ defmodule ApiaryWeb.Routes do
       organisation_routes()
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
+    `:docs_admin` (the files of the documentation for instance admins),
     `:contract` (a signed request of the server contract), `:contract_events` and
     `:contract_registration` (the same, each typing its body and held to a bucket of the key's rate
     limit) and `:path_scope` (the reserved names, `ApiaryWeb.ReservedSlugs`), with the
@@ -97,6 +98,16 @@ defmodule ApiaryWeb.Routes do
         plug :accepts, ["json"]
       end
 
+      # The files of the documentation for instance admins (`/docs/admin`): the signed-in
+      # person, with no `accepts`, since its pages load scripts, styles and fonts. The root
+      # layout is the one the usual 404 page has.
+      pipeline :docs_admin do
+        plug :fetch_session
+        plug :put_root_layout, html: {ApiaryWeb.Layouts, :root}
+        plug :put_secure_browser_headers
+        plug :fetch_current_scope_for_user
+      end
+
       # JSON for a signed-in person's page, such as the palette's answers: the browser's
       # session, cookie and words, without its HTML.
       pipeline :browser_json do
@@ -174,6 +185,16 @@ defmodule ApiaryWeb.Routes do
   """
   defmacro public_routes do
     quote do
+      # The documentation for instance admins, every guide included, which only a
+      # signed-in instance admin reaches; anyone else is answered 404
+      # (`ApiaryWeb.DocsController.admin/2`). Before /docs/*path, which would take it.
+      scope "/", ApiaryWeb do
+        pipe_through :docs_admin
+
+        get "/docs/admin", DocsController, :admin
+        get "/docs/admin/*path", DocsController, :admin
+      end
+
       scope "/", ApiaryWeb do
         pipe_through :browser
 
@@ -233,6 +254,19 @@ defmodule ApiaryWeb.Routes do
         post "/secrets", SecretsController, :create
       end
 
+      # The run API, a run's reads and writes of its work item and its artifacts through
+      # its gateway, with the feature `workflow_model` (`ApiaryWeb.Contract.RunApi.Controller`,
+      # docs/contract/run-api.md).
+      scope "/v1/runs/:run_id", ApiaryWeb.Contract.RunApi do
+        pipe_through :contract_registration
+
+        get "/work-item", Controller, :work_item
+        get "/artifacts", Controller, :index
+        get "/artifacts/:version_id/files/:filename", Controller, :file
+        post "/artifacts", Controller, :push
+        post "/verdict", Controller, :verdict
+      end
+
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_diagnostics
 
@@ -258,7 +292,8 @@ defmodule ApiaryWeb.Routes do
 
       # A node pool's starter's requests, with the `factory` feature: its claim of a run
       # waiting for the pool, and, for the dispatch that claim made, that the machine
-      # started, the run given back and the log of the machine the starter created.
+      # started, the run given back, the log of the machine the starter created and the
+      # removal of that machine.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_pool
 
@@ -266,6 +301,7 @@ defmodule ApiaryWeb.Routes do
         post "/dispatches/:dispatch_id/dispatched", DispatchController, :dispatched
         post "/dispatches/:dispatch_id/release", DispatchController, :release
         post "/dispatches/:dispatch_id/machine-log", DispatchController, :machine_log
+        post "/dispatches/:dispatch_id/machine-end", DispatchController, :machine_end
       end
 
       # An adapter's collections: a part of its listing, and one it no longer reaches.
@@ -464,6 +500,10 @@ defmodule ApiaryWeb.Routes do
           get "/instance", InstanceController, :show
           # Instance › Mail's test link, which turns mail on for the admin who saved it.
           get "/instance/mail/confirm/:token", InstanceMailController, :turn_on
+          # Instance settings › Qory Pool and Qory Gateway's old address, `/instance/nodes`,
+          # sent on to where it is now (`ApiaryWeb.MovedController`).
+          get "/instance/nodes", MovedController, :show
+          get "/instance/nodes/*rest", MovedController, :show
           # Set up, with the `factory` feature: an instance admin starts an adapter's
           # set-up, by its public id (`na_…`), and is sent on to its `setup_url`. A POST,
           # with the session's CSRF token.
@@ -519,16 +559,21 @@ defmodule ApiaryWeb.Routes do
                  InstanceLive.Adapter,
                  :remove
 
-            # Instance settings › Nodes, with the `factory` feature, for the instance's
-            # admins: the instance's node pool and gateway, which Qory Apiary makes from its
-            # settings, and each node's tabs, Overview, Access key (`…/keys`) and Settings, by
-            # its public id. Revoke is the one act on a key: the next code comes from Qory
-            # Apiary, never from a person.
-            live "/instance/nodes", InstanceLive.Nodes, :index
-            live "/instance/nodes/:node_id", InstanceLive.Node, :overview
-            live "/instance/nodes/:node_id/keys", InstanceLive.Node, :access_key
-            live "/instance/nodes/:node_id/keys/:key_id/revoke", InstanceLive.Node, :revoke
-            live "/instance/nodes/:node_id/settings", InstanceLive.Node, :settings
+            # Instance settings › Qory Pool and Qory Gateway, with the `factory` feature, for
+            # the instance's admins: the instance's pool and gateway, which Qory Apiary makes
+            # from its settings, and each one's tabs, Overview, Access key (`…/keys`) and
+            # Settings, by its public id. Revoke is the one act on a key: the next code comes
+            # from Qory Apiary, never from a person. `/instance/nodes`, the old address,
+            # sends on here.
+            live "/instance/qory-pool-and-gateway", InstanceLive.Nodes, :index
+            live "/instance/qory-pool-and-gateway/:node_id", InstanceLive.Node, :overview
+            live "/instance/qory-pool-and-gateway/:node_id/keys", InstanceLive.Node, :access_key
+
+            live "/instance/qory-pool-and-gateway/:node_id/keys/:key_id/revoke",
+                 InstanceLive.Node,
+                 :revoke
+
+            live "/instance/qory-pool-and-gateway/:node_id/settings", InstanceLive.Node, :settings
 
             # Instance settings › Diagnostics keys, with the `observability` feature, for
             # the instance's admins: the keys that read any run's diagnostics, the command
@@ -539,6 +584,12 @@ defmodule ApiaryWeb.Routes do
             live "/instance/diagnostics-keys/:key_id/revoke",
                  InstanceLive.DiagnosticsKeys,
                  :revoke
+
+            # Instance settings › Workspace types, with the `workflow_model` feature, for
+            # the instance's admins: each workspace type, and the stages a new workspace of
+            # one type starts with, edited on the Stages canvas, by the type's key.
+            live "/instance/workspace-types", InstanceLive.WorkspaceTypes, :index
+            live "/instance/workspace-types/:type", InstanceLive.WorkspaceTypes, :edit
 
             unquote(@block)
           end
@@ -595,6 +646,8 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/settings/retention", MovedController, :show
           get "/:org/:workspace/connections", MovedController, :show
           get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
+          get "/:org/:workspace/nodes", MovedController, :show
+          get "/:org/:workspace/nodes/*rest", MovedController, :show
         end
 
         # Install, with the `factory` feature: an owner or an admin connects the
@@ -622,10 +675,11 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              # New workspace: the kind cards for a further workspace, for an owner.
-              # Choose creates it; its steps are pages of the workspace
-              # (`/:org/:workspace/set-up/<step>`).
+              # New workspace: the kind cards for a further workspace, for an owner, each
+              # a link to its type's page, whose Create workspace creates it; its steps
+              # are pages of the workspace (`/:org/:workspace/set-up/<step>`).
               live "/workspaces/new", WorkspaceSetupLive, :new
+              live "/workspaces/new/:type", WorkspaceTypeLive, :show
               # The organisation's audit trail, a page of its sidebar beside the overview,
               # for the readers `audit.read` allows. It was a section of the settings,
               # `/settings/audit-log`, which sends on here (`ApiaryWeb.MovedController`).
@@ -703,7 +757,9 @@ defmodule ApiaryWeb.Routes do
               # (`Apiary.WorkspaceSetup.flow/0`), in the workspace's sidebar; and the
               # chooser of the steps Work sources and Destinations, with the `factory`
               # feature: which collections of one grant the workspace has, `?grant=<ag_…>`.
+              # Connect of those steps lists the adapters to connect, on a page of the step.
               live "/set-up/:step", WorkspaceSetupLive, :step
+              live "/set-up/:step/connect", WorkspaceSetupLive, :connect
               live "/set-up/:step/choose", ChooseCollectionsLive, :set_up
               # The record: the runs of the workspace, and where they reached out to (Network
               # access). Every filter is a query parameter.
@@ -716,8 +772,11 @@ defmodule ApiaryWeb.Routes do
               live "/work", WorkItemLive.Index, :index
               live "/work/:number", WorkItemLive.Show, :ticket
               live "/work/:number/explore", WorkItemLive.Show, :explore
-              live "/work/:number/explore/edit", WorkItemLive.Show, :edit
               live "/work/:number/thread", WorkItemLive.Show, :thread
+              # A work item's artifacts, with the `workflow_model` feature: Add a version by
+              # hand, and one version's page, by the version's public id (`av_…`).
+              live "/work/:number/artifacts/new", ArtifactLive.New, :new
+              live "/work/:number/artifacts/:version_id", ArtifactLive.Show, :show
               live "/backlog", BacklogLive.Index, :index
               live "/backlog/:item_id", BacklogLive.Ticket, :show
               # The targets the workspace's runs changed, and one target's page. `:target_id`
@@ -736,51 +795,56 @@ defmodule ApiaryWeb.Routes do
               live "/targets/:target_id/policy/rules/:id/edit", TargetLive.Show, :edit_rule
               # What a target's runs also read, a form page, with the `factory` feature.
               live "/targets/:target_id/also-read", TargetLive.FurtherRepositories, :edit
-              # The workspace's nodes, node pools and gateways: the list, with New node, New
-              # node pool and New gateway each a page of its own, and a node's page, Overview, Access key and
+              # The workspace's machines, pools and gateways (Machines): the list, with New
+              # machine, New pool and New gateway each a page of its own, and a node's page, Overview, Access key and
               # Settings, its deletion confirmed in place in Settings, and clearing an
               # instance in place in Overview. `:node_id` is the node's public id; an
               # instance is named by the id of its row in `node_instances`, or, with no row,
               # by an open run's public id (`rn_…`): the page links its newest open run, and
               # the address accepts any open run of that instance. Never by the node's
-              # instance id. The sidebar's Nodes leads here.
-              live "/nodes", NodeLive.Index, :index
-              live "/nodes/new", NodeLive.Index, :new
-              live "/nodes/new-pool", NodeLive.Index, :new_pool
-              live "/nodes/new-gateway", NodeLive.Index, :new_gateway
-              live "/nodes/:node_id", NodeLive.Show, :overview
-              live "/nodes/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
+              # instance id. The sidebar's Machines leads here; `/nodes`, the old address,
+              # sends on here (`ApiaryWeb.MovedController`).
+              live "/machines", NodeLive.Index, :index
+              live "/machines/new", NodeLive.Index, :new
+              live "/machines/new-pool", NodeLive.Index, :new_pool
+              live "/machines/new-gateway", NodeLive.Index, :new_gateway
+              live "/machines/:node_id", NodeLive.Show, :overview
+              live "/machines/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
 
-              live "/nodes/:node_id/runs/:run_id/clear-instance",
+              live "/machines/:node_id/runs/:run_id/clear-instance",
                    NodeLive.Show,
                    :clear_instance
 
-              live "/nodes/:node_id/settings", NodeLive.Show, :settings
-              live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
+              live "/machines/:node_id/settings", NodeLive.Show, :settings
+              live "/machines/:node_id/settings/delete", NodeLive.Show, :delete
               # A node's Access key tab: its keys and its outstanding enrolment codes;
               # generating a key in the browser and making a code, each a page of its own; and each act on a key or a code confirmed in place,
               # at a path of its own; an active key's Forager file, and the variables of a
               # key just made in the browser, each a page of its own. A key is named by its
               # key id (`ak_…`), a code by its row's id: never by the code, nor a secret.
-              live "/nodes/:node_id/access-key", NodeLive.AccessKey, :index
-              live "/nodes/:node_id/access-key/generate", NodeLive.AccessKey, :generate
-              live "/nodes/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
-              live "/nodes/:node_id/access-key/keys/:key_id/revoke", NodeLive.AccessKey, :revoke
+              live "/machines/:node_id/access-key", NodeLive.AccessKey, :index
+              live "/machines/:node_id/access-key/generate", NodeLive.AccessKey, :generate
+              live "/machines/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
 
-              live "/nodes/:node_id/access-key/keys/:key_id/forager-file",
+              live "/machines/:node_id/access-key/keys/:key_id/revoke",
+                   NodeLive.AccessKey,
+                   :revoke
+
+              live "/machines/:node_id/access-key/keys/:key_id/forager-file",
                    NodeLive.AccessKey,
                    :forager_file
 
-              live "/nodes/:node_id/access-key/keys/:key_id/generated",
+              live "/machines/:node_id/access-key/keys/:key_id/generated",
                    NodeLive.AccessKey,
                    :generated
 
-              live "/nodes/:node_id/access-key/codes/:code_id/revoke",
+              live "/machines/:node_id/access-key/codes/:code_id/revoke",
                    NodeLive.AccessKey,
                    :revoke_code
 
               # One run: three tabs of one LiveView, so a tab is a patch. `:run_id` is the
-              # run's `public_id`, `rn_…`, neither the node's run id nor the row's id.
+              # run's number; an address with its `public_id`, `rn_…`, is sent on to the
+              # number's address.
               # `/details` lands old links to the Details tab: the Timeline with Details
               # open, the address rewritten to the Timeline's.
               live "/runs/:run_id", RunLive.Show, :timeline
@@ -817,6 +881,16 @@ defmodule ApiaryWeb.Routes do
               # The workflow of the workspace's runs and the harness source it comes from,
               # with the `factory` feature.
               live "/settings/workflow", WorkflowLive, :edit
+              # The workspace's artifact types, with the `workflow_model` feature: the list,
+              # `?name=<type>` opening Add a type with that name; each form a page, and
+              # Delete confirmed on its row. A type is named by its public id (`at_…`).
+              live "/settings/artifact-types", ArtifactLive.Types, :index
+              live "/settings/artifact-types/new", ArtifactLive.Types, :new
+              live "/settings/artifact-types/:type_id/edit", ArtifactLive.Types, :edit
+              live "/settings/artifact-types/:type_id/delete", ArtifactLive.Types, :delete
+              # The workspace's stages, with the `factory` feature and the feature
+              # `workflow_model`; the Workflow page links to it.
+              live "/settings/stages", StagesLive.Index, :edit
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by
@@ -889,8 +963,18 @@ defmodule ApiaryWeb.Routes do
           # The raw bytes of a run's log, for the terminal of the run page. Not a page.
           get "/:org/:workspace/runs/:run_id/log", RunLogController, :show
 
+          # A file of a version of a work item's artifact, as an attachment, with the
+          # `workflow_model` feature. Not a page.
+          get "/:org/:workspace/work/:number/artifacts/:version_id/files/:filename",
+              ArtifactFileController,
+              :show
+
           # A run's diagnostics document, for Copy diagnostics on the run page. Not a page.
           get "/:org/:workspace/runs/:run_id/diagnostics", RunDiagnosticsController, :show
+
+          # The workspace's process as a `process.yaml`, as an attachment, for Export
+          # process.yaml on the Stages page, with the `workflow_model` feature. Not a page.
+          get "/:org/:workspace/settings/stages/process.yaml", ProcessExportController, :show
 
           # A target's policy had a page of its own, by the target row's id; it is the
           # Policy tab of the target's page now, where these send on to.

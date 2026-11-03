@@ -9,6 +9,7 @@ defmodule Apiary.Organisations.Workspace do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
+  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Organisations.Slug
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -39,6 +40,13 @@ defmodule Apiary.Organisations.Workspace do
     # definition (`Apiary.Lingo.Domain.definition/1`), such as `qory.software`. Set when the
     # workspace is created (`create_changeset/2`), never cast, and changed by nothing after.
     field :type, :string
+    # The names of the standard artifact types the workspace shows, nil for every standard
+    # type (`Apiary.Artifacts`). The list contains no always-on name
+    # (`Apiary.Artifacts.Type.always_on/0`). Never cast.
+    field :shown_standard_types, {:array, :string}
+    # The stack of the Qory harness the workspace uses, recorded when it is made from the
+    # Qory template, nil for `core` (`qory_stack/1`). Never cast.
+    field :qory_stack, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
 
@@ -92,6 +100,25 @@ defmodule Apiary.Organisations.Workspace do
       pair ->
         pair
     end)
+  end
+
+  @doc """
+  qory_stack/1 is the stack of the Qory harness `workspace` uses: the stack recorded when it
+  was made from the Qory template, else the stack of a workspace with no template, `core`
+  (`Apiary.Lingo.Domain.Definition.qory_harness/0`).
+  """
+  @spec qory_stack(%__MODULE__{}) :: String.t()
+  def qory_stack(%__MODULE__{qory_stack: nil}), do: Definition.qory_harness().stack
+  def qory_stack(%__MODULE__{qory_stack: stack}), do: stack
+
+  @doc """
+  put_qory_stack/2 records `stack` in the changeset of a new workspace, nil for `core`
+  (`qory_stack/1`).
+  """
+  def put_qory_stack(changeset, stack) do
+    if stack == Definition.qory_harness().stack,
+      do: changeset,
+      else: put_change(changeset, :qory_stack, stack)
   end
 
   @doc "The changeset of a workspace's name, on creation and on rename."

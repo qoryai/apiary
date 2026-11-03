@@ -23,6 +23,7 @@ defmodule Apiary.Runs.ProjectorTest do
           :__meta__,
           :id,
           :public_id,
+          :number,
           :node_run_id,
           :organisation_id,
           :workspace_id,

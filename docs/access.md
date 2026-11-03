@@ -203,9 +203,17 @@ the product's name in Instance settings › General (`instance.rename`,
 Changing the instance's settings in Instance settings › Configuration
 (`instance.configure`, `Apiary.InstanceConfig.save/3`) is an instance admin's too, asked
 by `Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in.
+Saving the support address in Instance settings › General (`instance.support_save`,
+`Apiary.SupportAddress.save/2`) is an instance admin's too, asked by
+`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
 Starting an adapter's set-up at the system it reads from (`adapter.setup`,
 `Apiary.Adapters.setup/2`) is an instance admin's too, asked by
 `Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
+Saving a version of a workspace type's default process, which new workspaces copy, in
+Instance settings › Workspace types (`workspace_type.edit`,
+`Apiary.Processes.TypeTemplates.save/4`), with the `workflow_model` feature, is an
+instance admin's too, asked by `Apiary.Access.instance_admin?/1` in the context function,
+with no recent sign-in.
 Revoking the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a
 new instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only the
 instance's log shows, or, with `QORY_SETUP_CODE_SHA256` set, only the install that made the

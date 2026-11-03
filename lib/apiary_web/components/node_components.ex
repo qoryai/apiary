@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.NodeComponents do
   @moduledoc """
-  What the Nodes list and a node's page say alike (`docs/ui.md`, Nodes): a node's state in
+  What the Machines list and a node's page say alike (`docs/ui.md`, Machines): a node's state in
   words, from what it is doing (`Apiary.Nodes.activity/3`), and the sentence that says what
   an instance is. And what a node's page's two LiveViews share: its header
   (`node_header/1`) and its tabs (`node_tabs/1`), Overview, Access key and Settings. And
@@ -91,7 +91,7 @@ defmodule ApiaryWeb.NodeComponents do
   def instance_sentence,
     do:
       gettext(
-        "An instance is what Forager, run with this node's key, reports itself as, and anyone with the key can report any instance: to cut off one machine alone, give it a separate node."
+        "Each machine here is what Forager, run with this key, reports itself as. Anyone with the key can report any machine: to cut off one machine alone, add it as a separate machine."
       )
 
   @doc """
@@ -332,20 +332,31 @@ defmodule ApiaryWeb.NodeComponents do
   @doc """
   unreachable_server/1 is the notice a command's page shows when the server's address,
   which the command carries, is a loopback one (`loopback?/1`): no other machine reaches
-  it, and `PUBLIC_URL` sets the one they use. Nothing where the address is any other.
+  it. `PUBLIC_URL` sets the one they use, which an instance admin reads here; anyone else
+  reads to contact support. Nothing where the address is any other.
   """
   attr :id, :string, required: true
   attr :url, :string, required: true, doc: "the server's address, as the command carries it"
+  attr :instance_admin, :boolean, default: false, doc: "whether the reader is an instance admin"
 
   def unreachable_server(assigns) do
     ~H"""
     <div :if={loopback?(@url)} id={@id}>
-      <.notice kind={:warning}>
+      <.notice :if={@instance_admin} kind={:warning}>
         <strong>{gettext("Machines can't reach this address.")}</strong>
         {gettext(
           "%{url} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it.",
           url: @url
         )}
+      </.notice>
+      <.notice :if={!@instance_admin} kind={:warning}>
+        <.rich text={
+          rich_gettext(
+            "%{contact_support}. Machines can't reach %{url}, the address in this command.",
+            contact_support: ApiaryWeb.Support.rich(),
+            url: @url
+          )
+        } />
       </.notice>
     </div>
     """
@@ -550,7 +561,7 @@ defmodule ApiaryWeb.NodeComponents do
   defp level_key(%Node{workspace_id: nil, organisation_id: id}), do: {:organisation, id}
   defp level_key(%Node{workspace_id: id}), do: {:workspace, id}
 
-  defp level_label(%Node{workspace_id: nil, organisation_id: nil}), do: gettext("This instance")
+  defp level_label(%Node{workspace_id: nil, organisation_id: nil}), do: gettext("Qory Apiary")
   defp level_label(%Node{workspace_id: nil} = gateway), do: organisation_name(gateway)
   defp level_label(%Node{}), do: gettext("This workspace")
 
@@ -609,14 +620,14 @@ defmodule ApiaryWeb.NodeComponents do
     cond do
       nodes && runs ->
         gettext(
-          "Nodes use this gateway: %{nodes}. Runs are going through it: %{runs}. Delete it once the nodes point elsewhere and the runs end.",
+          "Machines and pools use this gateway: %{nodes}. Runs are going through it: %{runs}. Delete it once the machines and pools point elsewhere and the runs end.",
           nodes: nodes,
           runs: runs
         )
 
       nodes ->
         gettext(
-          "Nodes use this gateway: %{nodes}. Point them to another gateway or to direct, then delete it.",
+          "Machines and pools use this gateway: %{nodes}. Point them to another gateway or to direct, then delete it.",
           nodes: nodes
         )
 
@@ -656,8 +667,8 @@ defmodule ApiaryWeb.NodeComponents do
   defp elsewhere_words(:nodes, nil, count),
     do:
       ngettext(
-        "%{number} node of another workspace",
-        "%{number} nodes of other workspaces",
+        "%{number} machine or pool of another workspace",
+        "%{number} machines or pools of other workspaces",
         count,
         number: Format.number(count)
       )
@@ -674,8 +685,8 @@ defmodule ApiaryWeb.NodeComponents do
   defp elsewhere_words(:nodes, _reached, count),
     do:
       ngettext(
-        "%{number} node in a workspace you don't have access to",
-        "%{number} nodes in workspaces you don't have access to",
+        "%{number} machine or pool in a workspace you don't have access to",
+        "%{number} machines or pools in workspaces you don't have access to",
         count,
         number: Format.number(count)
       )
@@ -697,7 +708,7 @@ defmodule ApiaryWeb.NodeComponents do
   node uses it now." when there are none.
   """
   @spec using_words([%Apiary.Organisations.Workspace{}], MapSet.t()) :: String.t()
-  def using_words([], _reached), do: gettext("No node uses it now.")
+  def using_words([], _reached), do: gettext("No machine or pool uses it now.")
 
   def using_words(workspaces, reached) do
     {named, others} = Enum.split_with(workspaces, &MapSet.member?(reached, &1.id))
@@ -729,7 +740,7 @@ defmodule ApiaryWeb.NodeComponents do
             )
       end
 
-    gettext("Nodes in %{list} use it now.", list: list)
+    gettext("Machines and pools in %{list} use it now.", list: list)
   end
 
   @doc """
@@ -770,7 +781,7 @@ defmodule ApiaryWeb.NodeComponents do
         public_id: public_id
       })
       when not is_nil(workspace),
-      do: ~p"/#{organisation}/#{workspace}/nodes/#{public_id}"
+      do: ~p"/#{organisation}/#{workspace}/machines/#{public_id}"
 
   def gateway_path(
         %Scope{user: %Apiary.Accounts.User{}} = scope,
@@ -823,14 +834,14 @@ defmodule ApiaryWeb.NodeComponents do
         ApiaryWeb.Access.who_may(scope, action, default)
 
   # The instance's gateway has no organisation: the sentences that name a gateway's
-  # organisation say "this instance" for it.
-  defp organisation_name(%Node{organisation_id: nil}), do: gettext("this instance")
+  # organisation say "Qory Apiary" for it.
+  defp organisation_name(%Node{organisation_id: nil}), do: gettext("Qory Apiary")
   defp organisation_name(%Node{organisation: %Organisation{name: name}}), do: name
 
   @doc """
   limit_refused/1 is what a node's pages say to a person of `scope` who changes the node
   but not a pool's instance limit (`node.set_limit`): the edition's words of who may
-  (`ApiaryWeb.Access.who_may/3`), else "You can't change the instance limit.".
+  (`ApiaryWeb.Access.who_may/3`), else "You can't change the machine limit.".
   """
   @spec limit_refused(Scope.t()) :: String.t()
   def limit_refused(scope),
@@ -838,7 +849,7 @@ defmodule ApiaryWeb.NodeComponents do
       ApiaryWeb.Access.who_may(
         scope,
         :"node.set_limit",
-        gettext("You can't change the instance limit.")
+        gettext("You can't change the machine limit.")
       )
 
   @doc """
@@ -867,20 +878,20 @@ defmodule ApiaryWeb.NodeComponents do
   the organisation's Gateways.
   """
   @spec nodes_path(Scope.t(), :workspace | :organisation) :: String.t()
-  def nodes_path(scope, :workspace), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes"
+  def nodes_path(scope, :workspace), do: ~p"/#{scope.organisation}/#{scope.workspace}/machines"
   def nodes_path(scope, :organisation), do: ~p"/#{scope.organisation}/gateways"
 
   @doc "node_base/3 is the path of the page at `place` of the node `public_id`."
   @spec node_base(Scope.t(), :workspace | :organisation, String.t()) :: String.t()
   def node_base(scope, :workspace, public_id),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{public_id}"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{public_id}"
 
   def node_base(scope, :organisation, public_id),
     do: ~p"/#{scope.organisation}/gateways/#{public_id}"
 
   @doc "nodes_label/1 is the name of the list a node's page at `place` belongs to."
   @spec nodes_label(:workspace | :organisation) :: String.t()
-  def nodes_label(:workspace), do: gettext("Nodes")
+  def nodes_label(:workspace), do: gettext("Machines")
   def nodes_label(:organisation), do: gettext("Gateways")
 
   @doc "nodes_nav/1 is the sidebar's entry of the list a node's page at `place` belongs to."
@@ -944,13 +955,13 @@ defmodule ApiaryWeb.NodeComponents do
   def url_hint(:new),
     do:
       gettext(
-        "Where your nodes will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
+        "Where your machines and pools will reach the machine you run qory gateway on: https://, a host, and a port if needed. You can change it later in the gateway's Settings."
       )
 
   def url_hint(:settings),
     do:
       gettext(
-        "Where your nodes reach the machine you run qory gateway on: https://, a host, and a port if needed."
+        "Where your machines and pools reach the machine you run qory gateway on: https://, a host, and a port if needed."
       )
 
   @doc """
@@ -1003,7 +1014,7 @@ defmodule ApiaryWeb.NodeComponents do
 
   @doc "kind_label/1 is a node's kind in a word or two: Node, Node pool, Gateway."
   @spec kind_label(Node.kind()) :: String.t()
-  def kind_label(:node), do: gettext("Node")
-  def kind_label(:pool), do: gettext("Node pool")
+  def kind_label(:node), do: gettext("Machine")
+  def kind_label(:pool), do: gettext("Pool")
   def kind_label(:gateway), do: gettext("Gateway")
 end

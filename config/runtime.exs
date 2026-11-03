@@ -136,6 +136,15 @@ if config_env() != :test do
   config :apiary, :invitations_per_day_setting, System.get_env("INVITATIONS_PER_DAY")
 end
 
+# SUPPORT_ADDRESS is where "Contact support" leads on the pages and in the emails people
+# in an organisation read: an https address or an email address. `Apiary.SupportAddress.boot!/0`
+# checks it at boot and stops a boot it refuses. Set and not blank, it wins over the
+# address an instance admin saves in Instance settings › General; unset or blank, that
+# address applies, else "Contact support" shows as plain text. Not read under test.
+if config_env() != :test do
+  config :apiary, :support_address_setting, System.get_env("SUPPORT_ADDRESS")
+end
+
 # APIARY_ACCEPT_SIGNING_FINGERPRINT makes a new signing key the instance's on purpose: the
 # fingerprint the boot's key check names as the key's when APIARY_SIGNING_SECRET is not the
 # one the machines pinned. `Apiary.KeyCheck` records it at boot when it equals the current
@@ -196,6 +205,25 @@ config :apiary, :machine_log_retention_setting, System.get_env("MACHINE_LOG_RETE
 # starter can send it again once the folder is set. Not read under test: the tests set it.
 if config_env() != :test do
   config :apiary, :machine_logs_dir, System.get_env("APIARY_MACHINE_LOGS_DIR")
+end
+
+# QORY_ARTIFACTS_DIR is the folder where the content of artifacts is kept, one file per
+# content, named by its SHA-256 digest (`Apiary.Artifacts.Store.Volume`). Unset or blank,
+# it is /var/lib/apiary/artifacts in a release, beside the keys in /var/lib/apiary/keys,
+# and tmp/artifacts under the checkout in development. Not read under test: the tests set
+# it.
+if config_env() != :test do
+  config :apiary,
+         :artifacts_dir,
+         (case System.get_env("QORY_ARTIFACTS_DIR") do
+            blank when blank in [nil, ""] ->
+              if config_env() == :prod,
+                do: "/var/lib/apiary/artifacts",
+                else: Path.expand("tmp/artifacts")
+
+            dir ->
+              dir
+          end)
 end
 
 # QORY_REGISTRY is the private image registry's address, with the opt-in feature

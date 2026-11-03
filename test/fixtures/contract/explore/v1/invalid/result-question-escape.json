@@ -1,9 +1,23 @@
 {
   "version": 1,
   "verdict": "not_understood",
-  "understanding": "The ticket says the parser fails on some dates, but names no date that fails.",
   "questions": [
-    "Which dates does the parser refuse?\u001b[31m",
-    "Should a two-digit year be read as a year from 2000?"
+    {
+      "question": "Which refund applies to this order?\u001b[31m",
+      "options": [
+        {
+          "title": "Full refund",
+          "explanation": "The policy covers a delivery this late."
+        },
+        {
+          "title": "Store credit",
+          "explanation": "The customer keeps the order, so no return is needed."
+        }
+      ]
+    },
+    {
+      "question": "When did the parcel arrive? The carrier's record shows no date.",
+      "options": []
+    }
   ]
 }

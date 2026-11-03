@@ -38,13 +38,12 @@ defmodule Apiary.DispatchesTest do
   defp queued!(scope), do: scope |> work_item_fixture() |> queue!()
 
   defp claimed!(key, now \\ Dispatches.now()) do
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, now)
+    {:ok, %{dispatch: dispatch}} = Apiary.DispatchedRunsFixtures.walked_claim(key, now)
     dispatch
   end
 
   # A work item's columns as it stands in an ended `state`, with the time it ended.
   defp ended_state(:closed), do: [state: :closed, closed_at: Dispatches.now()]
-  defp ended_state(:declined), do: [state: :declined, declined_at: Dispatches.now()]
   defp ended_state(:undone), do: [state: :undone]
 
   defp undo(work_item), do: Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
@@ -168,6 +167,12 @@ defmodule Apiary.DispatchesTest do
     test "counts up to the `of` of the take in's runs, not to of/0", ctx do
       work_item = work_item_fixture(ctx.scope)
       work_item |> queue!() |> set_run!(state: :ended, end_cause: :lost, of: 2)
+
+      # With the workflow model, the stage runner counts the runs of a work item it placed
+      # by the rounds of the stage's loop; this work item is one it did not place.
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [process_version_id: nil, stage_id: nil, stage_state: nil]
+      )
 
       second = queued_next!(work_item)
       assert %DispatchRun{attempt: 2, of: 2} = run!(second)
@@ -341,19 +346,26 @@ defmodule Apiary.DispatchesTest do
 
       # Another pool of the workspace passes it and takes the next run.
       assert {:ok, %{run: %{id: id}, work_item: %{}, collection: nil}} =
-               Dispatches.claim(other_key, Dispatches.now())
+               Apiary.DispatchedRunsFixtures.walked_claim(other_key, Dispatches.now())
 
       assert id == explore.id
-      assert Dispatches.claim(other_key, Dispatches.now()) == {:ok, :none}
+
+      assert Apiary.DispatchedRunsFixtures.walked_claim(other_key, Dispatches.now()) ==
+               {:ok, :none}
+
       assert run!(run).state == :waiting
 
       # Its pool takes the oldest of the prebuilds held for it and the workspace's other
       # runs.
       later = queued!(ctx.scope)
       run_id = run.id
-      assert {:ok, %{run: %{id: ^run_id}}} = Dispatches.claim(ctx.key, Dispatches.now())
 
-      assert {:ok, %{run: %{id: later_id}}} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, %{run: %{id: ^run_id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
+      assert {:ok, %{run: %{id: later_id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
       assert later_id == later.id
     end
 
@@ -398,7 +410,7 @@ defmodule Apiary.DispatchesTest do
       :ok = Dispatches.subscribe(ctx.scope.workspace.id)
 
       assert {:ok, %{run: %{id: id}, collection: %{id: kept_id}}} =
-               Dispatches.claim(ctx.key, Dispatches.now())
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
       assert {id, kept_id} == {next.id, kept.id}
 
@@ -424,13 +436,21 @@ defmodule Apiary.DispatchesTest do
       {:ok, _deleted} = Nodes.delete_node(ctx.scope, deleted)
 
       # The other pools take the runs in the queue's order, the oldest held for none.
-      assert {:ok, %{run: %{id: first}}} = Dispatches.claim(other_key, Dispatches.now())
-      assert {:ok, %{run: %{id: second}}} = Dispatches.claim(ctx.key, Dispatches.now())
-      assert {:ok, %{run: %{id: third}}} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, %{run: %{id: first}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(other_key, Dispatches.now())
+
+      assert {:ok, %{run: %{id: second}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
+      assert {:ok, %{run: %{id: third}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
       assert [first, second, third] == [explore.id, mine.id, later.id]
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
-      assert Dispatches.claim(other_key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
+
+      assert Apiary.DispatchedRunsFixtures.walked_claim(other_key, Dispatches.now()) ==
+               {:ok, :none}
 
       # It still waits, and counts toward no pool's slots.
       assert run!(held).state == :waiting
@@ -448,7 +468,7 @@ defmodule Apiary.DispatchesTest do
         set: [environment_ref: nil]
       )
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
       assert %DispatchRun{state: :ended, end_cause: :collection_ended} = run!(run)
     end
   end
@@ -462,7 +482,7 @@ defmodule Apiary.DispatchesTest do
 
       assert {:ok, :ok} = undo(work_item)
       assert %DispatchRun{state: :ended, end_cause: :undone} = run!(run)
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
     end
 
     test "while a claim holds the run is refused, and changes nothing", ctx do
@@ -489,7 +509,8 @@ defmodule Apiary.DispatchesTest do
       assert %Dispatch{stale_at: %DateTime{}, ended_at: %DateTime{}, end_cause: :run_ended} =
                dispatch!(dispatch)
 
-      assert Dispatches.claim(ctx.key, dispatch.lease_until) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, dispatch.lease_until) ==
+               {:ok, :none}
     end
 
     test "a lease that lapsed and was not yet swept is lapsed first, and the run ends undone",
@@ -635,7 +656,7 @@ defmodule Apiary.DispatchesTest do
       now = Dispatches.now()
 
       {:ok, %{dispatch: dispatch, run: run, work_item: work_item, pool: pool}} =
-        Dispatches.claim(ctx.key, now)
+        Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, now)
 
       assert run.id == first.id
       assert run!(first).state == :claimed
@@ -669,10 +690,13 @@ defmodule Apiary.DispatchesTest do
       next = queued!(scope)
 
       assert {:ok, %{run: %{id: id}, work_item: %WorkItem{target_system: nil}}} =
-               Dispatches.claim(ctx.key, Dispatches.now())
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
       assert id == none.id
-      assert {:ok, %{run: %{id: next_id}}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+      assert {:ok, %{run: %{id: next_id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
       assert next_id == next.id
     end
 
@@ -686,7 +710,10 @@ defmodule Apiary.DispatchesTest do
       )
 
       :ok = Dispatches.subscribe(ctx.scope.workspace.id)
-      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+      assert {:ok, %{run: %{id: id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
       assert id == next.id
       assert %DispatchRun{state: :ended, end_cause: :closed} = run!(gone_run)
       refute Repo.exists?(from d in Dispatch, where: d.dispatch_run_id == ^gone_run.id)
@@ -703,15 +730,14 @@ defmodule Apiary.DispatchesTest do
         set: [workspace_id: other.id]
       )
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
       assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
       assert Repo.aggregate(Dispatch, :count) == 0
     end
 
-    test "ends the waiting runs of work items closed, declined or undone, each with its cause",
-         ctx do
+    test "ends the waiting runs of work items closed or undone, each with its cause", ctx do
       ended =
-        for {state, cause} <- [closed: :closed, declined: :closed, undone: :undone] do
+        for {state, cause} <- [closed: :closed, undone: :undone] do
           work_item = work_item_fixture(ctx.scope)
           run = queue!(work_item)
 
@@ -723,7 +749,10 @@ defmodule Apiary.DispatchesTest do
         end
 
       next = queued!(ctx.scope)
-      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now())
+
+      assert {:ok, %{run: %{id: id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
       assert id == next.id
 
       for {run, cause} <- ended,
@@ -742,7 +771,9 @@ defmodule Apiary.DispatchesTest do
         set: ended_state(:closed)
       )
 
-      assert Dispatches.claim(ctx.key, dispatch.lease_until) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, dispatch.lease_until) ==
+               {:ok, :none}
+
       assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
 
       assert %Dispatch{ended_at: %DateTime{}, end_cause: :run_ended, slot_freed_at: ^freed_at} =
@@ -759,14 +790,14 @@ defmodule Apiary.DispatchesTest do
       run = queue!(gone)
       Repo.update_all(from(w in WorkItem, where: w.id == ^gone.id), set: ended_state(:closed))
 
-      assert Dispatches.claim(key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) == {:ok, :none}
       assert run!(run).state == :waiting
     end
 
     test "takes no run of another workspace", ctx do
       other = workspace_fixture(ctx.scope.organisation)
       queued!(workspace_scope(ctx.scope.user, other))
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
     end
 
     test "at the pool's limit takes nothing, and takes again once a slot is freed", ctx do
@@ -777,11 +808,14 @@ defmodule Apiary.DispatchesTest do
 
       dispatch = claimed!(key)
       assert Slots.held(pool.id) == 1
-      assert Dispatches.claim(key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) == {:ok, :none}
       assert run!(second).state == :waiting
 
       {:ok, true} = Repo.transact(fn -> {:ok, Slots.free_slot(dispatch, Dispatches.now())} end)
-      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(key, Dispatches.now())
+
+      assert {:ok, %{run: %{id: id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
       assert id == second.id
     end
 
@@ -790,7 +824,7 @@ defmodule Apiary.DispatchesTest do
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
       node_run_fixture(pool, "i_direct")
       queued!(ctx.scope)
-      assert Dispatches.claim(key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) == {:ok, :none}
     end
 
     test "a key revoked or of an organisation out of use since is unauthorized, and takes nothing",
@@ -799,11 +833,17 @@ defmodule Apiary.DispatchesTest do
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.OutOfUse)
       Process.put(:out_of_use, [ctx.scope.organisation.id])
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:error, :unauthorized}
+
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) ==
+               {:error, :unauthorized}
+
       Process.put(:out_of_use, [])
 
       {:ok, _} = AccessKeys.revoke_access_key(ctx.scope, ctx.key)
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:error, :unauthorized}
+
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) ==
+               {:error, :unauthorized}
+
       assert run!(run).state == :waiting
     end
 
@@ -811,7 +851,9 @@ defmodule Apiary.DispatchesTest do
       node = node_fixture(ctx.scope)
       %{access_key: key} = enrolled_key_fixture(ctx.scope, node)
       queued!(ctx.scope)
-      assert Dispatches.claim(key, Dispatches.now()) == {:error, :unauthorized}
+
+      assert Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) ==
+               {:error, :unauthorized}
     end
 
     test "dispatch.claim refused or not found is one answer, forbidden", ctx do
@@ -819,7 +861,10 @@ defmodule Apiary.DispatchesTest do
 
       for stub <- [Apiary.EditionStubs.NoClaim, Apiary.EditionStubs.HidesClaim] do
         :ok = Apiary.Edition.put_test_stub(stub)
-        assert Dispatches.claim(ctx.key, Dispatches.now()) == {:error, :forbidden}, inspect(stub)
+
+        assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) ==
+                 {:error, :forbidden},
+               inspect(stub)
       end
 
       assert Repo.aggregate(Dispatch, :count) == 0
@@ -832,14 +877,18 @@ defmodule Apiary.DispatchesTest do
         set: [gateway_choice: :direct]
       )
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:error, :no_gateway}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) ==
+               {:error, :no_gateway}
+
       assert run!(run).state == :waiting
 
       Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
         set: [gateway_choice: :named, gateway_id: nil]
       )
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:error, :no_gateway}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) ==
+               {:error, :no_gateway}
+
       assert run!(run).state == :waiting
       assert Repo.aggregate(Apiary.Runs.Run, :count) == 0
 
@@ -847,7 +896,9 @@ defmodule Apiary.DispatchesTest do
         set: [gateway_choice: :default]
       )
 
-      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, %{run: %{id: id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
       assert id == run.id
     end
   end
@@ -884,7 +935,7 @@ defmodule Apiary.DispatchesTest do
 
       # It is ahead of the run queued after it, under a new dispatch.
       assert {:ok, %{run: %{id: id}, dispatch: next}} =
-               Dispatches.claim(ctx.key, dispatch.lease_until)
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, dispatch.lease_until)
 
       assert id == first.id
       assert next.id != dispatch.id
@@ -905,7 +956,10 @@ defmodule Apiary.DispatchesTest do
       assert run!(run).state == :waiting
       other = pool_fixture(ctx.scope)
       %{access_key: other_key} = enrolled_key_fixture(ctx.scope, other)
-      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(other_key, dispatch.lease_until)
+
+      assert {:ok, %{run: %{id: id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(other_key, dispatch.lease_until)
+
       assert id == run.id
     end
 
@@ -916,7 +970,9 @@ defmodule Apiary.DispatchesTest do
       dispatch = claimed!(key)
 
       # No sweep ran: the claim at the lease's end frees the slot and takes the run back.
-      assert {:ok, %{run: %{id: id}}} = Dispatches.claim(key, dispatch.lease_until)
+      assert {:ok, %{run: %{id: id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(key, dispatch.lease_until)
+
       assert id == first.id
       assert %Dispatch{stale_at: %DateTime{}} = dispatch!(dispatch)
       assert Slots.held(pool.id) == 1
@@ -1032,6 +1088,29 @@ defmodule Apiary.DispatchesTest do
       assert Dispatches.sweep(Dispatches.now()) == []
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, a held run's end escalates its stage run_stopped", ctx do
+      queue_prebuild!(ctx.collection, ctx.deleted)
+      held = held!(ctx)
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, ctx.deleted)
+
+      assert {:work_item, ctx.scope.workspace.id,
+              Repo.get!(WorkItem, held.work_item_id).public_id} in Dispatches.sweep(
+               Dispatches.now()
+             )
+
+      assert %WorkItem{stage_state: :escalated} = Repo.get!(WorkItem, held.work_item_id)
+
+      target = Repo.get!(WorkItem, held.work_item_id).target_path
+
+      assert %Apiary.Stages.Escalation{cause: :run_stopped, gaps: gaps} =
+               Repo.get_by!(Apiary.Stages.Escalation, work_item_id: held.work_item_id)
+
+      assert gaps ==
+               "The run did not start, because the build of the environment for target #{target} failed.\n" <>
+                 "Read why on the page of target #{target}, under Targets, then choose Rebuild there."
+    end
+
     test "ends no held run while a live pool has the image for the target", ctx do
       prebuild = queue_prebuild!(ctx.collection, ctx.deleted)
       held = held!(ctx)
@@ -1065,7 +1144,7 @@ defmodule Apiary.DispatchesTest do
       prebuild = queue_prebuild!(ctx.collection, ctx.deleted)
 
       assert {:ok, %{run: %{id: id}, dispatch: dispatch}} =
-               Dispatches.claim(key, Dispatches.now())
+               Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
 
       assert id == prebuild.id
       {:ok, _deleted} = Nodes.delete_node(ctx.scope, ctx.deleted)

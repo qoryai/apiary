@@ -97,10 +97,12 @@ defmodule Apiary.Harnesses do
 
   def allowed?(_run_organisation_id, _owner_organisation_id, _source), do: false
 
-  # Whether an instance assignment of the run's organisation, or of every organisation,
-  # covers `source`.
-  defp assigned?(run_organisation_id, %{"git" => git, "ref" => ref} = source)
-       when is_binary(git) and is_binary(ref) do
+  @doc false
+  # assigned?/2 says whether an instance assignment of the run's organisation, or of every
+  # organisation, covers `source`, by the rule of the moduledoc: `ref` is compared as text.
+  @spec assigned?(Ecto.UUID.t(), source) :: boolean
+  def assigned?(run_organisation_id, %{"git" => git, "ref" => ref} = source)
+      when is_binary(git) and is_binary(ref) do
     Repo.all(
       from a in Assignment,
         where: a.every_organisation or a.organisation_id == ^run_organisation_id,
@@ -111,7 +113,7 @@ defmodule Apiary.Harnesses do
     |> Enum.any?(&covers?(&1, source))
   end
 
-  defp assigned?(_run_organisation_id, _source), do: false
+  def assigned?(_run_organisation_id, _source), do: false
 
   # An assignment of a root covers every source of its `git` and `ref`; any other covers
   # the source with the same narrowing key and value alone.

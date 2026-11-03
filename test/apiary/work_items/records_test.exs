@@ -31,6 +31,7 @@ defmodule Apiary.WorkItems.RecordsTest do
           position: 1,
           question: "Which basket?",
           answer: "The one at checkout.",
+          custom: true,
           answered_by_id: work_item.taken_in_by_id,
           answered_at: DateTime.utc_now()
         },
@@ -92,11 +93,11 @@ defmodule Apiary.WorkItems.RecordsTest do
       assert %{num_rows: 1} = update!("work_item_answers", answer.id, "position = 20")
     end
 
-    test "a question and an answer are 1 to 2,000 code points", %{work_item: item} do
+    test "an answer is 1 to 2,000 code points, a question 1 to 20,000", %{work_item: item} do
       answer = answer!(item)
 
-      for column <- ~w(question answer) do
-        for text <- ["", String.duplicate("é", 2001)] do
+      for {column, max} <- [answer: 2000, question: 20_000] do
+        for text <- ["", String.duplicate("é", max + 1)] do
           refused("work_item_answers_#{column}_check", fn ->
             update!("work_item_answers", answer.id, "#{column} = $2", [text])
           end)
@@ -104,9 +105,43 @@ defmodule Apiary.WorkItems.RecordsTest do
 
         assert %{num_rows: 1} =
                  update!("work_item_answers", answer.id, "#{column} = $2", [
-                   String.duplicate("é", 2000)
+                   String.duplicate("é", max)
                  ])
       end
+    end
+
+    test "an answer has custom and no version; a comment has a version, at position 1",
+         %{work_item: item} do
+      answer = answer!(item)
+
+      for assignment <- [
+            "custom = NULL",
+            "proposal_version = 1",
+            "done_version = 2, done_at = now()"
+          ] do
+        refused("work_item_answers_kind_check", fn ->
+          update!("work_item_answers", answer.id, assignment)
+        end)
+      end
+
+      comment = answer!(item, %{attempt: 2, question: nil, custom: nil, proposal_version: 1})
+
+      for assignment <- [
+            "custom = false",
+            "proposal_version = NULL",
+            "proposal_version = 0",
+            "position = 2",
+            "done_version = 2",
+            "done_at = now()",
+            "done_version = 0, done_at = now()"
+          ] do
+        refused("work_item_answers_kind_check", fn ->
+          update!("work_item_answers", comment.id, assignment)
+        end)
+      end
+
+      assert %{num_rows: 1} =
+               update!("work_item_answers", comment.id, "done_version = 2, done_at = now()")
     end
 
     test "one answer to a question of a run", %{work_item: item} do
@@ -146,21 +181,18 @@ defmodule Apiary.WorkItems.RecordsTest do
       end
     end
 
-    test "the result and the changes are JSON objects of 1 MiB at most", %{work_item: item} do
+    test "the result is a JSON object of 1 MiB at most", %{work_item: item} do
       confirmation = confirmation!(item)
-      assert Repo.reload!(confirmation).changes == %{}
 
-      for column <- ~w(result changes) do
-        for value <- [[], "text", %{"text" => String.duplicate("a", 1_048_576)}] do
-          refused("work_item_confirmations_#{column}_check", fn ->
-            update!("work_item_confirmations", confirmation.id, "#{column} = $2::jsonb", [value])
-          end)
-        end
+      for value <- [[], "text", %{"text" => String.duplicate("a", 1_048_576)}] do
+        refused("work_item_confirmations_result_check", fn ->
+          update!("work_item_confirmations", confirmation.id, "result = $2::jsonb", [value])
+        end)
       end
 
       assert %{num_rows: 1} =
-               update!("work_item_confirmations", confirmation.id, "changes = $2::jsonb", [
-                 %{"approach" => "Keep the price on the line."}
+               update!("work_item_confirmations", confirmation.id, "result = $2::jsonb", [
+                 %{"verdict" => "understood"}
                ])
     end
 

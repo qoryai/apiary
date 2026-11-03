@@ -49,6 +49,7 @@ defmodule ApiaryWeb.RunComponents do
 
   alias Apiary.Runs
   alias Apiary.Dispatches.Dispatch
+  alias Apiary.Harnesses.WorkflowGap
   alias Apiary.Runs.Run
   alias Phoenix.LiveView.JS
 
@@ -178,9 +179,18 @@ defmodule ApiaryWeb.RunComponents do
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer". A reason stored
   under its earlier name reads as the new one. A run whose starter sent its outcome with
-  no state, stored as cancelled and `stopped`, reads "the starter gave no outcome". Any
-  other code is the one the run's starter gave, shown as given with spaces for
-  underscores: `no_longer_needed` reads "no longer needed".
+  no state, stored as cancelled and `stopped`, reads "the starter gave no outcome".
+  `workflow_not_in_harness`, which qory gives when the harness it composed for the run
+  has no skill with the name of the run's workflow, reads two sentences: "The run's
+  harness has no skill named explore-a-ticket.", then where the harness came from, such
+  as "The harness is the Qory harness.", none for a hidden harness. They need the run's
+  run of the queue with its harness walk and work item loaded, as
+  `Apiary.Runs.Record.fetch_run/2` loads them; without them the first sentence says "the
+  name of the run's workflow". qory's four codes for a read-only run it closed read
+  "read-only run with no wall", "setup runs inside the agent's container", "image has
+  nested Docker" and "setup container not removed". Any other code is the one the run's
+  starter gave, shown as given with spaces for underscores: `no_longer_needed` reads "no
+  longer needed".
 
   A run refused at its start is given as `%{refused: code}`, the code of its
   `dev.qory.run.refused`, an earlier name read as the new one. A code of a check of the
@@ -296,6 +306,14 @@ defmodule ApiaryWeb.RunComponents do
   defp given_words(%{reason: "released", released_at: %DateTime{}, outcome_state: nil}),
     do: gettext("the starter released it")
 
+  # The run's harness had no skill for the run's workflow: the workflow and where the
+  # harness came from, read from the run of the queue the caller loaded
+  # (`Apiary.Harnesses.WorkflowGap.preload/1`), else the sentence with neither.
+  defp given_words(%{reason: "workflow_not_in_harness"} = run) do
+    facts = WorkflowGap.of_run(run) || %{workflow: nil, source: nil}
+    ApiaryWeb.HarnessComponents.workflow_gap_words(facts)
+  end
+
   defp given_words(%{reason: reason} = run) when is_binary(reason) do
     if reason =~ @reason_code, do: words_of(Map.get(@earlier_reasons, reason, reason), run)
   end
@@ -376,6 +394,16 @@ defmodule ApiaryWeb.RunComponents do
 
   defp words_of("credential_check_invalid", _run),
     do: gettext("couldn't check whether the run may go on: unreadable answer")
+
+  # qory closes a run of a read-only workflow with one of these four, before a session joins
+  # it (`Apiary.Runs.ReadNeeds`). The work item has the fix.
+  defp words_of("read_needs_wall", _run), do: gettext("read-only run with no wall")
+
+  defp words_of("read_needs_setup_outside", _run),
+    do: gettext("setup runs inside the agent's container")
+
+  defp words_of("read_needs_no_nested_docker", _run), do: gettext("image has nested Docker")
+  defp words_of("read_needs_setup_removed", _run), do: gettext("setup container not removed")
 
   defp words_of("run_closed", _run), do: nil
   defp words_of(code, _run), do: String.replace(code, "_", " ")
@@ -502,6 +530,24 @@ defmodule ApiaryWeb.RunComponents do
 
   def elapsed(%{inserted_at: %DateTime{} = at}), do: {0, at}
   def elapsed(_run), do: {nil, nil}
+
+  ## The time columns
+
+  @doc """
+  The legend over a list of rows whose right-hand values sit in two columns (`.q-tc1`,
+  `.q-tc2`), wide enough for the rail to stand beside them; `app.css` shows it from 1280 px.
+  """
+  attr :first, :string, required: true
+  attr :second, :string, required: true
+
+  def time_legend(assigns) do
+    ~H"""
+    <div class="q-tlegend" aria-hidden="true">
+      <span class="q-tc1">{@first}</span>
+      <span class="q-tc2">{@second}</span>
+    </div>
+    """
+  end
 
   ## Duration
 
@@ -789,13 +835,11 @@ defmodule ApiaryWeb.RunComponents do
   ## A run's title
 
   @doc """
-  A run's title: the one it gave in its `about` as a page shows it
-  (`shown_run_title/1`), else "Run" and its short id. Every page that names a run calls it
-  this; a row that shows the short id alone when there is no title asks
+  A run's name: "Run" and its number ("Run 14"), whether or not it gave a title. Every page
+  that names a run calls it this; the title it gave, when it gave one, is
   `shown_run_title/1`.
   """
-  def run_title(run),
-    do: shown_run_title(run) || gettext("Run %{id}", id: short_id(run.public_id))
+  def run_title(run), do: gettext("Run %{run}", run: run.number)
 
   @doc "The title a run gave in its `about`, as sent, or nil when it gave none."
   def given_title(%{about_title: title}) when is_binary(title) and title != "", do: title
@@ -811,17 +855,14 @@ defmodule ApiaryWeb.RunComponents do
   def shown_run_title(run), do: Apiary.ExternalText.present(given_title(run))
 
   @doc """
-  A run's name in a row, as markup: the title it gave (`shown_run_title/1`), isolated in a
-  `<bdi>` so a bidirectional character in it reorders nothing around it, else its short
-  id. A tooltip or a label takes `shown_run_title/1` as plain text.
+  A run's name in a row, as markup: "Run" and its number (`run_title/1`), whether or not it
+  gave a title. A tooltip takes the title it gave, `shown_run_title/1`, as plain text.
   """
   attr :run, :map, required: true
 
   def run_name(assigns) do
-    assigns = assign(assigns, :title, shown_run_title(assigns.run))
-
     ~H"""
-    <.external_text text={@title} />{if !@title, do: short_id(@run.public_id)}
+    {run_title(@run)}
     """
   end
 
@@ -1972,11 +2013,24 @@ defmodule ApiaryWeb.RunComponents do
   columns join by the table's width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
 
-  Every row's id is the run's (`run-<public_id>`); its title is a link to the run's page that
+  Every row's id is the run's number's (`run-<number>`); its title is a link to the run's page that
   covers the row. `selected` marks the row a preview beside the list shows
   (`aria-current`). `target={false}` leaves the target out, for a list of one target.
   `nodes`, the nodes the runs ran on by id (`Apiary.Nodes.names/2`), adds the Node column
   from 1300 px; without it there is none, as for a workspace that has no node.
+
+  With `facts` (`Apiary.Runs.list_facts/2` of the runs), the table is the runs list's: the
+  state with its word, the run's id, the workflow it ran (in the mono font, "Prebuild"
+  for an environment build, else "n/a") with the stage that placed it muted under it
+  where the stage adds to it, the work item ("#3 Say hello", a link where `work_items`
+  allows one, else the run's title, else "No work item") with what the run is about under
+  it, the target where `target` asks for it, how it started (`people`, the names by
+  account id, as `ApiaryWeb.People.accounts/1` gives them), the runtime, the Machine or
+  pool column, when it started, how long it ran and its denials. Where the table is
+  narrow the columns give way in this order: the runtime below 1100 px, the target below
+  1000 px, how it started below 900 px, which then shows muted under the work item. Below
+  640 px a row is a card: the id and the workflow, then the state; the work item; when it
+  started and how long it ran; its denials.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the accessible name of the scroll region"
@@ -1987,12 +2041,93 @@ defmodule ApiaryWeb.RunComponents do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :quiet_ids, :any, default: nil
-  attr :selected, :string, default: nil, doc: "the public_id of the row the preview shows"
+  attr :selected, :string, default: nil, doc: "the number of the run whose row the preview shows"
   attr :loading, :boolean, default: false
   attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
   attr :target, :boolean, default: true
   attr :nodes, :map, default: nil, doc: "the runs' nodes by id, for the Node column"
+  attr :facts, :map, default: nil, doc: "`Apiary.Runs.list_facts/2` of the runs"
+  attr :people, :map, default: %{}, doc: "names by account id, for how a run started"
+  attr :work_items, :boolean, default: false, doc: "whether a work item is a link to its page"
   attr :rest, :global
+
+  def runs_table(%{facts: %{}} = assigns) do
+    assigns =
+      assigns
+      |> assign(:shared, assigns.shared || MapSet.new())
+      |> assign(:quiet_ids, assigns.quiet_ids || MapSet.new())
+
+    ~H"""
+    <div
+      id={"#{@id}-region"}
+      class="q-rl-wrap"
+      tabindex="0"
+      role="region"
+      aria-label={@label}
+      aria-busy={to_string(@loading)}
+      {@rest}
+    >
+      <table id={@id} class="q-rl q-rl-list" role="table">
+        <thead role="rowgroup">
+          <tr role="row">
+            <th scope="col" role="columnheader" class="q-rl-st">{gettext("State")}</th>
+            <th scope="col" role="columnheader" class="q-rl-rn">{gettext("Run")}</th>
+            <th scope="col" role="columnheader" class="q-rl-wf">{gettext("Workflow")}</th>
+            <th scope="col" role="columnheader" class="q-rl-wi">{gettext("Work item")}</th>
+            <th :if={@target} scope="col" role="columnheader" class="q-rl-tg">
+              {gettext("Target")}
+            </th>
+            <th scope="col" role="columnheader" class="q-rl-sb">{gettext("Started by")}</th>
+            <th scope="col" role="columnheader" class="q-rl-rt">{gettext("Runtime")}</th>
+            <th :if={@nodes} scope="col" role="columnheader" class="q-rl-c5">
+              {gettext("Machine or pool")}
+            </th>
+            <th scope="col" role="columnheader">{gettext("Started")}</th>
+            <th scope="col" role="columnheader" class="q-num">{gettext("Duration")}</th>
+            <th scope="col" role="columnheader" class="q-num">{gettext("Denied")}</th>
+          </tr>
+        </thead>
+        <tbody :if={@loading} id={"#{@id}-loading"} role="rowgroup">
+          <tr :for={n <- 1..10} role="row" class="q-skel-row" aria-hidden="true">
+            <td role="cell"><span class="skeleton q-skel w-3"></span></td>
+            <td role="cell"><span class="skeleton q-skel w-20"></span></td>
+            <td role="cell" class="q-rl-wf"><span class="skeleton q-skel w-24"></span></td>
+            <td role="cell" class="q-rl-wi">
+              <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-56", else: "w-40")]}></span>
+            </td>
+            <td :if={@target} role="cell" class="q-rl-tg">
+              <span class="skeleton q-skel w-24"></span>
+            </td>
+            <td role="cell" class="q-rl-sb"><span class="skeleton q-skel w-24"></span></td>
+            <td role="cell" class="q-rl-rt"><span class="skeleton q-skel w-20"></span></td>
+            <td :if={@nodes} role="cell" class="q-rl-c5">
+              <span class="skeleton q-skel w-20"></span>
+            </td>
+            <td role="cell"><span class="skeleton q-skel w-20"></span></td>
+            <td role="cell"><span class="skeleton q-skel ml-auto w-14"></span></td>
+            <td role="cell"><span class="skeleton q-skel ml-auto w-5"></span></td>
+          </tr>
+        </tbody>
+        <tbody :if={!@loading} id={"#{@id}-rows"} role="rowgroup">
+          <.list_row
+            :for={run <- @runs}
+            :key={run.id}
+            scope={@scope}
+            run={run}
+            facts={Map.get(@facts, run.id, %{})}
+            people={@people}
+            work_items={@work_items}
+            target={@target}
+            shared={@shared}
+            nodes={@nodes}
+            quiet={MapSet.member?(@quiet_ids, run.id)}
+            selected={@selected == Integer.to_string(run.number)}
+          />
+        </tbody>
+      </table>
+    </div>
+    """
+  end
 
   def runs_table(assigns) do
     assigns =
@@ -2021,7 +2156,7 @@ defmodule ApiaryWeb.RunComponents do
             <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Runtime")}</th>
             <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Host")}</th>
             <th :if={@nodes} scope="col" role="columnheader" class="q-rl-c5">
-              {gettext("Node")}
+              {gettext("Machine or pool")}
             </th>
             <th scope="col" role="columnheader">{gettext("Started")}</th>
             <th scope="col" role="columnheader" class="q-rl-c2 q-num">{gettext("Duration")}</th>
@@ -2057,7 +2192,7 @@ defmodule ApiaryWeb.RunComponents do
             shared={@shared}
             nodes={@nodes}
             quiet={MapSet.member?(@quiet_ids, run.id)}
-            selected={@selected == run.public_id}
+            selected={@selected == Integer.to_string(run.number)}
           />
         </tbody>
       </table>
@@ -2103,6 +2238,220 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :scope, :map, required: true
   attr :run, :map, required: true
+  attr :facts, :map, required: true
+  attr :people, :map, required: true
+  attr :work_items, :boolean, required: true
+  attr :target, :boolean, required: true
+  attr :shared, :any, required: true
+  attr :nodes, :map, default: nil
+  attr :quiet, :boolean, default: false
+  attr :selected, :boolean, default: false
+
+  # A row of the runs list (`runs_table/1` with `facts`). The run's id is the link that
+  # covers the row; a work item's link sits above it.
+  defp list_row(assigns) do
+    facts = assigns.facts
+
+    assigns =
+      assign(assigns,
+        workflow: facts[:workflow],
+        stage: facts[:stage],
+        work_item: facts[:work_item],
+        started_by: started_by_words(facts[:started_by], assigns.people)
+      )
+
+    ~H"""
+    <tr
+      id={"run-#{@run.number}"}
+      class="q-rl-row"
+      role="row"
+      data-run={@run.number}
+      aria-current={@selected && "true"}
+    >
+      <td class="q-rl-st" role="cell">
+        <.run_mark
+          state={@run.state}
+          quiet_for={if @quiet, do: quiet_for(@run) || 0}
+          quiet_since={heard_at(@run)}
+          interval={beat(@run)}
+          word
+        />
+      </td>
+      <td class="q-rl-rn" role="cell">
+        <.link navigate={run_page(@scope, @run)} class="q-rowlink q-rl-title">
+          {run_title(@run)}
+        </.link>
+      </td>
+      <td class={["q-rl-wf", is_nil(@workflow) && "q-rl-wf-none"]} role="cell">
+        <%= case @workflow do %>
+          <% :prebuild -> %>
+            <span class="q-rl-wf-step">{gettext("Prebuild")}</span>
+          <% nil -> %>
+            <span class="q-rl-wf-step">{gettext("n/a")}</span>
+          <% name -> %>
+            <span class="q-rl-wf-name"><.external_text text={shown_sent(name)} /></span>
+        <% end %>
+        <span :if={@stage} class="q-rl-stage">{stage_words(@stage)}</span>
+      </td>
+      <td class="q-rl-wi" role="cell">
+        <.work_item_cell
+          scope={@scope}
+          run={@run}
+          work_item={@work_item}
+          link={@work_items}
+        />
+        <.row_about :if={!@work_item} run={@run} />
+        <span :if={@started_by} class="q-rl-sb-under">{@started_by}</span>
+      </td>
+      <td :if={@target} class="q-rl-tg" role="cell">
+        <%= cond do %>
+          <% shown_target(@run) -> %>
+            <.run_target run={@run} shared={@shared} />
+          <% @work_item && shown_target(@work_item) -> %>
+            <.target_name
+              system={@work_item.target_system}
+              path={@work_item.target_path}
+              shared={@shared}
+            />
+          <% true -> %>
+            <span class="q-rl-faint">{gettext("n/a")}</span>
+        <% end %>
+      </td>
+      <td class="q-rl-sb" role="cell">
+        <span :if={@started_by}>{@started_by}</span>
+        <span :if={!@started_by} class="q-rl-faint">{gettext("n/a")}</span>
+      </td>
+      <td class="q-rl-rt q-rl-faint" role="cell">
+        <%= cond do %>
+          <% @run.runtime -> %>
+            <span><.external_text text={shown_sent(@run.runtime)} />
+            <.external_text text={shown_sent(@run.runtime_version)} /></span>
+          <% true -> %>
+            <span>{gettext("n/a")}</span>
+        <% end %>
+      </td>
+      <td :if={@nodes} class="q-rl-c5 q-rl-faint" role="cell">
+        <.node_name :if={@run.node_id} scope={@scope} node={Map.get(@nodes, @run.node_id)} />
+        <span :if={!@run.node_id}>{gettext("n/a")}</span>
+      </td>
+      <td class="q-rl-when" role="cell">
+        <.relative_time at={@run.started_at || @run.inserted_at} />
+      </td>
+      <td class="q-rl-dur q-num" role="cell">
+        <.run_length :if={!Run.refused?(@run)} run={@run} quiet={@quiet} />
+      </td>
+      <td class="q-rl-den q-num" role="cell">
+        <span :if={@run.denied_count > 0} class="q-rl-denied">
+          <.icon name="hero-no-symbol-micro" class="size-3" />{Format.number(@run.denied_count)}
+          <span class="sr-only">{gettext("denied")}</span>
+        </span>
+      </td>
+    </tr>
+    """
+  end
+
+  # The work item of a row of the runs list: "#3 Say hello", a link to its page where the
+  # reader may follow one; its title alone, with no link, where it moved to another
+  # workspace, whose number it has now; for a run with none, the title the run gave
+  # (`shown_run_title/1`); else "No work item".
+  attr :scope, :map, required: true
+  attr :run, :map, required: true
+  attr :work_item, :map, default: nil
+  attr :link, :boolean, required: true
+
+  defp work_item_cell(%{work_item: %{here: false} = work_item} = assigns) do
+    assigns = assign(assigns, :title, shown_sent(work_item.title))
+
+    ~H"""
+    <span class="q-rl-wi-text" title={@title}><.external_text text={@title} /></span>
+    """
+  end
+
+  defp work_item_cell(%{work_item: %{} = work_item} = assigns) do
+    assigns =
+      assign(assigns,
+        text: gettext("#%{number} %{title}", number: work_item.number, title: hole()),
+        title: shown_sent(work_item.title),
+        full:
+          gettext("#%{number} %{title}",
+            number: work_item.number,
+            title: shown_sent(work_item.title) || ""
+          ),
+        path:
+          assigns.link &&
+            ~p"/#{assigns.scope.organisation}/#{assigns.scope.workspace}/work/#{work_item.number}"
+      )
+
+    ~H"""
+    <.link :if={@path} navigate={@path} class="q-rl-wi-link" title={@full}>
+      <.spliced text={@text}><.external_text text={@title} /></.spliced>
+    </.link>
+    <span :if={!@path} class="q-rl-wi-text" title={@full}>
+      <.spliced text={@text}><.external_text text={@title} /></.spliced>
+    </span>
+    """
+  end
+
+  defp work_item_cell(assigns) do
+    assigns = assign(assigns, :title, shown_run_title(assigns.run))
+
+    ~H"""
+    <span :if={@title} class="q-rl-wi-text" title={@title}><.external_text text={@title} /></span>
+    <span :if={!@title} class="q-rl-wi-none">{gettext("No work item")}</span>
+    """
+  end
+
+  # The stage under a run's workflow: its name, and its round inside a loop.
+  defp stage_words(%{name: name, round: round}) when is_integer(round),
+    do: gettext("%{stage} · round %{round}", stage: name, round: round)
+
+  defp stage_words(%{name: name}), do: name
+
+  @doc """
+  How a run started, as the runs list says it (`Apiary.Runs.list_facts/2`'s
+  `started_by`), each person by `people`, the names by account id
+  (`ApiaryWeb.People.accounts/1`), in their short form; "Former member" for an account no
+  longer there. nil where no record says.
+  """
+  @spec started_by_words(term, map) :: String.t() | nil
+  def started_by_words(:direct, _people), do: gettext("qory run on a machine")
+  def started_by_words(:image_requeue, _people), do: gettext("Queued again after a missing image")
+  def started_by_words(:process, _people), do: gettext("The workspace's process")
+
+  def started_by_words({:test_run, id}, people),
+    do: gettext("Test run by %{name}", name: person(people, id))
+
+  def started_by_words({:taken_in, id}, people),
+    do: gettext("Taken in by %{name}", name: person(people, id))
+
+  def started_by_words({:taken_in_again, id}, people),
+    do: gettext("Taken in again by %{name}", name: person(people, id))
+
+  def started_by_words({:explore_again, id}, people),
+    do: gettext("Explore again by %{name}", name: person(people, id))
+
+  def started_by_words({:answers, attempt, of, id}, people),
+    do:
+      gettext("Attempt %{attempt} of %{of}, after answers from %{name}",
+        attempt: attempt,
+        of: of,
+        name: person(people, id)
+      )
+
+  def started_by_words({:comment, attempt, of, id}, people),
+    do:
+      gettext("Attempt %{attempt} of %{of}, after a comment from %{name}",
+        attempt: attempt,
+        of: of,
+        name: person(people, id)
+      )
+
+  def started_by_words(_none, _people), do: nil
+
+  defp person(people, id), do: people |> ApiaryWeb.People.account(id) |> ApiaryWeb.People.short()
+
+  attr :scope, :map, required: true
+  attr :run, :map, required: true
   attr :target, :boolean, required: true
   attr :shared, :any, required: true
   attr :nodes, :map, default: nil
@@ -2112,10 +2461,10 @@ defmodule ApiaryWeb.RunComponents do
   defp run_row(assigns) do
     ~H"""
     <tr
-      id={"run-#{@run.public_id}"}
+      id={"run-#{@run.number}"}
       class="q-rl-row"
       role="row"
-      data-run={@run.public_id}
+      data-run={@run.number}
       aria-current={@selected && "true"}
     >
       <td class="q-rl-st" role="cell">
@@ -2130,7 +2479,7 @@ defmodule ApiaryWeb.RunComponents do
         <span class="q-rl-tt">
           <.link
             navigate={run_page(@scope, @run)}
-            class={["q-rowlink q-rl-title", !shown_run_title(@run) && "q-rl-id"]}
+            class="q-rowlink q-rl-title"
             title={shown_run_title(@run)}
           >
             <.run_name run={@run} />
@@ -2279,7 +2628,9 @@ defmodule ApiaryWeb.RunComponents do
             <.external_text text={@preview.run.runtime_version} />
           </span>
           <.ran_on run={@preview.run} class="font-mono text-[12px]" />
-          <span class="font-mono text-[12px]">{short_id(@preview.run.public_id)}</span>
+          <span :if={shown_run_title(@preview.run)}>
+            <.external_text text={shown_run_title(@preview.run)} />
+          </span>
         </p>
         <dl class="q-pv-kv">
           <dt>{gettext("Started")}</dt>
@@ -2314,14 +2665,14 @@ defmodule ApiaryWeb.RunComponents do
           <dd :if={key_label(@scope, @preview.run)} class="font-mono text-[12px]">
             {key_label(@scope, @preview.run)}
           </dd>
-          <dt :if={@preview.run.node_id}>{gettext("Node")}</dt>
+          <dt :if={@preview.run.node_id}>{gettext("Machine or pool")}</dt>
           <dd :if={@preview.run.node_id} id={"#{@id}-node"}>
             <.node_name
               scope={@scope}
               node={Ecto.assoc_loaded?(@preview.run.node) && @preview.run.node}
             />
           </dd>
-          <dt :if={@preview.run.node_instance_id}>{gettext("Node's instance id")}</dt>
+          <dt :if={@preview.run.node_instance_id}>{gettext("Machine id")}</dt>
           <dd :if={@preview.run.node_instance_id} id={"#{@id}-instance"} class="font-mono text-[12px]">
             <.external_text text={@preview.run.node_instance_id} />
           </dd>
@@ -2425,7 +2776,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <%= cond do %>
       <% @node && is_nil(@node.deleted_at) && Apiary.Access.can?(@scope, :"node.read", @node) -> %>
-        <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
+        <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/#{@node}"}>
           {ApiaryWeb.NodeComponents.shown_name(@node)}
         </.link>
       <% @node && is_nil(@node.deleted_at) -> %>
@@ -2446,7 +2797,7 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp run_page(scope, run),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.public_id}"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
   ## Tabs
 
@@ -2833,7 +3184,7 @@ defmodule ApiaryWeb.RunComponents do
           <div class="q-hits">
             <.link
               :for={hit <- @open.runs}
-              id={"#{@id}-run-#{hit.run.public_id}"}
+              id={"#{@id}-run-#{hit.run.number}"}
               navigate={@run_path && @run_path.(hit.run)}
               class="q-hit"
             >
@@ -2843,11 +3194,8 @@ defmodule ApiaryWeb.RunComponents do
                   :if={shown_run_title(hit.run)}
                   class="font-medium"
                 ><.external_text text={shown_run_title(hit.run)} /></b>
-                <span class={[
-                  "font-mono text-xs text-faint",
-                  shown_run_title(hit.run) && "ml-1"
-                ]}>
-                  {short_id(hit.run.public_id)}
+                <span class={["text-xs text-faint", shown_run_title(hit.run) && "ml-1"]}>
+                  {run_title(hit.run)}
                 </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">
@@ -3442,7 +3790,7 @@ defmodule ApiaryWeb.RunComponents do
     <span :if={@value == "connected" && !@invocation} class={["q-outcome", answer_tone(@status)]}>
       {gettext("Connected")}<span
         :if={@status}
-        class="q-status"
+        class="q-outcome-code"
         title={gettext("The host answered %{status}.", status: @status)}
       >{@status}</span>
     </span>

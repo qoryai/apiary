@@ -68,7 +68,7 @@ defmodule Apiary.Dispatches.ReleaseTest do
   # A run claimed, which registers it: what the claim answered, its dispatch not yet
   # handed over.
   defp claimed!(ctx) do
-    {:ok, claimed} = Dispatches.claim(ctx.key, Dispatches.now())
+    {:ok, claimed} = Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
     claimed
   end
 

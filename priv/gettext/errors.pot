@@ -110,6 +110,11 @@ msgstr ""
 msgid "Enter an email address, such as dana@example.com."
 msgstr ""
 
+#: lib/apiary/support_address.ex
+#, elixir-autogen, elixir-format
+msgid "Enter an https address, such as https://help.example.com, or an email address, such as support@example.com."
+msgstr ""
+
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Enter another host. Runs may not reach %{host}: it is in %{range}."
@@ -123,6 +128,11 @@ msgstr ""
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Enter the host that runs reach over the network. %{host} is a name for the local machine."
+msgstr ""
+
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
+msgid "Give one name per role: %{place} is a list."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
@@ -206,9 +216,19 @@ msgstr ""
 msgid "Use 1 to 32 lower-case letters, digits and hyphens, starting with a letter, such as high."
 msgstr ""
 
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
+msgid "Use agents, commands or skills under bind: %{key} is not a kind."
+msgstr ""
+
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Use light, fast or thinking: %{tier} is not a tier."
+msgstr ""
+
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
+msgid "Write bind by kind, then by role, such as bind: {agents: {developer: web-developer}}: %{key} is a flat key."
 msgstr ""
 
 #: lib/apiary/kinds/endpoint.ex
@@ -365,7 +385,7 @@ msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "is already the label of a key of this node"
+msgid "is already the label of a key of this machine"
 msgstr ""
 
 #: lib/apiary/nodes/node.ex
@@ -375,7 +395,7 @@ msgstr ""
 
 #: lib/apiary/nodes/node.ex
 #, elixir-autogen, elixir-format
-msgid "is already the name of a node in this workspace"
+msgid "is already the name of a machine, pool or gateway in this workspace"
 msgstr ""
 
 #: lib/apiary/secrets/secret.ex
@@ -415,7 +435,7 @@ msgstr ""
 
 #: lib/apiary/nodes.ex
 #, elixir-autogen, elixir-format
-msgid "is not a gateway this node may use"
+msgid "is not a gateway this machine may use"
 msgstr ""
 
 #: lib/apiary/accounts/user.ex
@@ -425,7 +445,7 @@ msgstr ""
 
 #: lib/apiary/accounts/user.ex
 #, elixir-autogen, elixir-format
-msgid "is not a language this instance has"
+msgid "is not a language Qory Apiary offers"
 msgstr ""
 
 #: lib/apiary/organisations/organisation.ex
@@ -436,7 +456,7 @@ msgstr ""
 
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
-msgid "is not on a forge this instance adds integrations from"
+msgid "is not on a forge Qory Apiary adds integrations from"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -507,7 +527,7 @@ msgstr ""
 
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
-msgid "must be a repository's path: this instance adds no integration from an address"
+msgid "must be a repository's path: Qory Apiary adds no integration from an address"
 msgstr ""
 
 #: lib/apiary/nodes/node.ex
@@ -696,12 +716,7 @@ msgstr ""
 
 #: lib/apiary/organisations.ex
 #, elixir-autogen, elixir-format
-msgid "was not invited: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
-msgstr ""
-
-#: lib/apiary/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "was not invited: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
+msgid "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
 msgstr ""
 
 #: lib/apiary/variables.ex

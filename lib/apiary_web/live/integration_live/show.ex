@@ -479,7 +479,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       </p>
       <p :if={!@accepted} id="connection-version-refused" class="text-[13px]/5 text-muted">
         {gettext(
-          "This instance no longer accepts integrations from this source, so its version can't be changed."
+          "Qory Apiary no longer adds integrations from this source, so its version can't be changed."
         )}
       </p>
       <div :if={@may_write and @accepted}>

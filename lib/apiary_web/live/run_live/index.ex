@@ -1,16 +1,21 @@
 defmodule ApiaryWeb.RunLive.Index do
   @moduledoc """
   The runs of the workspace, the record: one flat list, newest first unless the reader
-  sorts it otherwise, one line per run with its state, what it worked on, where and for how
-  long, and its denials. It is narrowed as every list is (docs/ui.md, Lists): the views as
-  tabs (every run, alive, ended badly, with denials, each counted under the other filters),
-  one query field whose filters show as tokens, one Filter menu (target, state,
-  runtime, host, node, when it started, denials), and Sort (newest, oldest, longest,
-  most denials). From 1280 px a rail beside the list holds the targets with their runs,
-  pinned first; choosing one is the target filter. The list has no time range until the
+  sorts it otherwise, one line per run with its state, the workflow it ran, its work item,
+  how it started, where and for how long, and its denials (`Apiary.Runs.list_facts/2`,
+  `ApiaryWeb.RunComponents.runs_table/1`). It is narrowed as every list is (docs/ui.md,
+  Lists): the views as tabs (every run, alive, ended badly, with denials, each counted
+  under the other filters), one query field whose filters show as tokens, one Filter menu
+  (target, state, runtime, host, machine or pool, work item, when it started, denials),
+  and Sort (newest, oldest, longest, most denials). From 1280 px a rail beside the list
+  holds the targets with their runs, pinned first, where a run under the other filters has
+  a target; choosing one is the target filter. The Target column too shows only where a
+  run of the page has a target. The query's `item:` (a work item's number) keeps the runs
+  of that work item. The list has no time range until the
   reader sets one. Pages of 25, 50 or 100, "1–50 of 3,137", and Jump to date. The query's
-  `node:` (a node's public id, or the name of one in use) keeps a node's runs, which a
-  node's page links to; where the workspace has nodes, a Node column joins from 1300 px.
+  `machine:` (a machine's or a pool's public id, or the name of one in use; `node:`, its
+  older word, still reads) keeps its runs, which its page links to; where the workspace
+  has machines or pools, a Machine or pool column joins from 1300 px.
 
   Every filter, the order, the page size and the page are query parameters, read through
   `Apiary.Runs.Filters`: a value it does not know is dropped and the URL rewritten. What the
@@ -31,8 +36,9 @@ defmodule ApiaryWeb.RunLive.Index do
   and a typed `repo:` name a target as the line does, its system only where its path is
   shared, and write its id.
 
-  From 1920 px a preview pane beside the list shows the run chosen (`?run=`, patched by a
-  click or ↑ and ↓ while the list has focus; the first row until then): its state, its
+  From 1920 px a preview pane beside the list shows the run chosen (`?run=`, the run's
+  number, patched by a click or ↑ and ↓ while the list has focus; the first row until
+  then; a `?run=` with the run's `rn_` id is patched to its number): its state, its
   facts, its denials and the last lines of its log. The page learns the width from the
   `RunList` hook; below 1920 px a row is a link to the run's page.
 
@@ -83,7 +89,9 @@ defmodule ApiaryWeb.RunLive.Index do
       <div id="runs-page" class={["q-lp", @preview_on && "q-lp-preview"]}>
         <.page_header title={gettext("Runs")}>
           <:description>
-            {gettext("Every run the machines of this workspace have posted, as their events tell it.")}
+            {gettext(
+              "Every run in this workspace, with its workflow, its work item and how it started."
+            )}
           </:description>
           <.narrowed_line
             :if={narrowed_to(@filters, @narrowing)}
@@ -143,7 +151,7 @@ defmodule ApiaryWeb.RunLive.Index do
               id="runs-query"
               class="q-find-query"
               label={gettext("Filter runs")}
-              placeholder={gettext("Filter runs, e.g. state:failed host:gpu-01 started:>2026-09-01")}
+              placeholder={gettext("Filter runs, e.g. state:failed item:3 started:>2026-10-01")}
               value={@filters.q}
               change="query"
               live={false}
@@ -199,7 +207,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 key={name}
                 label={label}
                 icon={icon}
-                qualifier={name}
+                qualifier={qualifier(String.to_existing_atom(name))}
                 value={shown(text_param(@filters, name))}
               >
                 <.filter_options
@@ -287,6 +295,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
           <div class="q-with-rail">
             <.target_rail
+              :if={rail_shown?(@rail, @filters)}
               id="runs-rail"
               label={gettext("Targets")}
               rail={@rail}
@@ -331,6 +340,10 @@ defmodule ApiaryWeb.RunLive.Index do
                   loading={@listing == nil}
                   shared={@shared}
                   nodes={@nodes}
+                  target={targets?(@listing, @facts)}
+                  facts={@facts}
+                  people={@people}
+                  work_items={@work_items}
                   phx-hook="RunList"
                 />
 
@@ -465,42 +478,42 @@ defmodule ApiaryWeb.RunLive.Index do
 
         <div :if={!@load_error && first_run?(@listing, @filters)} class="grid gap-4">
           <.empty_state :if={!@listens} icon="hero-play-circle" title={gettext("No runs yet")}>
-            {gettext(
-              "A run appears here when a machine connected to a node of this workspace starts one."
-            )}
+            {gettext("A run appears here when a machine or pool of this workspace starts one.")}
             <%= if @nodes_shown do %>
-              {gettext("Add a node, connect a machine to it, and start a run.")}
-              <p :if={!@may_add_node}>{gettext("An owner or admin adds nodes.")}</p>
+              {gettext("Add a machine, connect it, and start a run.")}
+              <p :if={!@may_add_node}>{gettext("An owner or admin adds machines.")}</p>
             <% end %>
             <:actions :if={@may_add_node or @may_read_nodes}>
               <.button
                 :if={@may_add_node}
                 id="runs-new-node"
                 variant="primary"
-                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes/new"}
+                navigate={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/machines/new"
+                }
               >
-                {gettext("New node")}
+                {gettext("New machine")}
               </.button>
               <.button
                 :if={!@may_add_node and @may_read_nodes}
                 id="runs-go-to-nodes"
-                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}
+                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/machines"}
               >
-                {gettext("Go to nodes")}
+                {gettext("Go to Machines")}
               </.button>
             </:actions>
           </.empty_state>
           <.empty_state :if={@listens} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext("No machine has posted a run to this workspace yet.")}
             <%= if @nodes_shown do %>
-              {gettext("A machine posts once it is connected to a node.")}
+              {gettext("A machine posts once it is connected.")}
             <% end %>
             <:actions :if={@may_read_nodes}>
               <.button
                 id="runs-go-to-nodes"
-                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}
+                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/machines"}
               >
-                {gettext("Go to nodes")}
+                {gettext("Go to Machines")}
               </.button>
             </:actions>
           </.empty_state>
@@ -558,7 +571,7 @@ defmodule ApiaryWeb.RunLive.Index do
             node_name: if(node, do: ApiaryWeb.NodeComponents.in_text(node), else: value),
             page:
               node && Access.can?(scope, :"node.read", node) &&
-                ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}",
+                ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node.public_id}",
             policy: nil,
             shared_alone: false,
             all: page_path(scope, Filters.put(filters, node: nil))
@@ -695,6 +708,8 @@ defmodule ApiaryWeb.RunLive.Index do
        limits: %{},
        shared: MapSet.new(),
        nodes: nil,
+       facts: %{},
+       people: %{},
        workspace_runs: nil,
        new_ids: MapSet.new(),
        quiet_ids: MapSet.new(),
@@ -733,7 +748,9 @@ defmodule ApiaryWeb.RunLive.Index do
       nodes_shown: nodes_shown,
       may_add_node: Access.can?(scope, :"node.create", scope.workspace),
       # The nodes' list, where the reader is shown it: an edition may hide the nodes.
-      may_read_nodes: Access.can?(scope, :"node.read", scope.workspace)
+      may_read_nodes: Access.can?(scope, :"node.read", scope.workspace),
+      # A run's work item is a link to its page where the reader may read work items.
+      work_items: Access.can?(scope, :"work_item.read", scope.workspace)
     )
   end
 
@@ -759,8 +776,8 @@ defmodule ApiaryWeb.RunLive.Index do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {chosen, rest} = Map.pop(params, "run")
-    chosen = chosen_id(chosen)
+    {asked, rest} = Map.pop(params, "run")
+    chosen = chosen_id(socket.assigns.current_scope, asked)
     filters = Filters.parse(rest, :runs)
     bad_run? = Map.has_key?(params, "run") and is_nil(chosen)
 
@@ -770,7 +787,8 @@ defmodule ApiaryWeb.RunLive.Index do
     filters = Narrowing.drop_unknown(filters, socket.assigns.narrowing)
 
     # The path's organisation and workspace are not filters.
-    if not bad_run? and Filters.to_params(filters) == Map.drop(rest, ["org", "workspace"]) do
+    if not bad_run? and asked == chosen and
+         Filters.to_params(filters) == Map.drop(rest, ["org", "workspace"]) do
       socket =
         socket
         |> keep_notices()
@@ -820,7 +838,7 @@ defmodule ApiaryWeb.RunLive.Index do
   # What the reader types in a section narrows that section's options on the server, over
   # every value there is; Show more asks for more of them.
   def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
-      when name in ~w(target runtime host node) and is_binary(q) do
+      when name in ~w(target runtime host node item) and is_binary(q) do
     narrow = Map.put(socket.assigns.narrow, name, String.slice(q, 0, 256))
     {:noreply, socket |> assign(:narrow, narrow) |> load_facets()}
   end
@@ -828,7 +846,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("narrow", _params, socket), do: {:noreply, socket}
 
   def handle_event("more_options", %{"name" => name}, socket)
-      when name in ~w(target runtime host node) do
+      when name in ~w(target runtime host node item) do
     limit = Map.get(socket.assigns.limits, name, Runs.facet_size()) + Runs.facet_size()
 
     {:noreply,
@@ -893,7 +911,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("select", %{"id" => id}, socket) when is_binary(id) do
     %{current_scope: scope, filters: filters, listing: listing} = socket.assigns
 
-    if listing && Enum.any?(listing.runs, &(&1.public_id == id)),
+    if listing && Enum.any?(listing.runs, &(Integer.to_string(&1.number) == id)),
       do: {:noreply, push_patch(socket, to: page_path(scope, filters, id), replace: true)},
       else: {:noreply, socket}
   end
@@ -903,7 +921,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("open", %{"id" => id}, socket) when is_binary(id) do
     %{current_scope: scope, listing: listing} = socket.assigns
 
-    if listing && Enum.any?(listing.runs, &(&1.public_id == id)),
+    if listing && Enum.any?(listing.runs, &(Integer.to_string(&1.number) == id)),
       do:
         {:noreply,
          push_navigate(socket, to: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}")},
@@ -935,6 +953,8 @@ defmodule ApiaryWeb.RunLive.Index do
          facets: loaded.facets,
          shared: loaded.shared,
          nodes: loaded.nodes,
+         facts: loaded.facts,
+         people: loaded.people,
          workspace_runs: loaded.workspace_runs,
          loaded_at: loaded.at,
          new_ids: MapSet.new(),
@@ -1107,6 +1127,7 @@ defmodule ApiaryWeb.RunLive.Index do
         ApiaryWeb.Lingo.with_locale(scope, fn ->
           now = DateTime.utc_now()
           listing = Runs.page_runs(scope, filters, now)
+          facts = Runs.list_facts(scope, listing.runs)
 
           %{
             filters: filters,
@@ -1117,6 +1138,8 @@ defmodule ApiaryWeb.RunLive.Index do
             facets: Runs.run_facets(scope, filters, [now: now] ++ facets_opts),
             shared: Runs.shared_paths(scope),
             nodes: nodes_of(scope, listing.runs),
+            facts: facts,
+            people: people_of(facts),
             workspace_runs: if(listing.total == 0, do: Runs.count_runs(scope))
           }
         end)
@@ -1125,6 +1148,37 @@ defmodule ApiaryWeb.RunLive.Index do
       socket
     end
   end
+
+  # The people the page's runs name in how they started, by account id: one read.
+  defp people_of(facts) do
+    facts
+    |> Map.values()
+    |> Enum.flat_map(fn
+      %{started_by: {kind, _attempt, _of, id}} when kind in [:answers, :comment] -> [id]
+      %{started_by: {_kind, id}} -> [id]
+      _other -> []
+    end)
+    |> Enum.uniq()
+    |> ApiaryWeb.People.accounts()
+  end
+
+  # The Target column is there where a run of the page has a target: the target of its
+  # start, or else its work item's.
+  defp targets?(nil, _facts), do: false
+
+  defp targets?(%{runs: runs}, facts) do
+    Enum.any?(runs, fn run ->
+      is_binary(run.target_path) or
+        match?(%{work_item: %{target_path: path}} when is_binary(path), facts[run.id])
+    end)
+  end
+
+  # The rail is there where a run under the other filters has a target: its runs are not
+  # all unassigned. A chosen target keeps it, so its All targets is there to clear it. Not
+  # while it loads.
+  defp rail_shown?(nil, _filters), do: false
+  defp rail_shown?(_rail, %{target: target}) when target not in [nil, []], do: true
+  defp rail_shown?(%{all: all, unassigned: unassigned}, _filters), do: all > unassigned
 
   # The nodes the page's runs ran on, for the Node column: none, and no column, for a
   # workspace that has no node and a page none of whose runs names one. A reader the nodes
@@ -1229,7 +1283,7 @@ defmodule ApiaryWeb.RunLive.Index do
       cond do
         not wide -> nil
         chosen -> chosen
-        listing && listing.runs != [] -> hd(listing.runs).public_id
+        listing && listing.runs != [] -> Integer.to_string(hd(listing.runs).number)
         true -> nil
       end
 
@@ -1251,7 +1305,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp reload_preview(socket) do
     %{current_scope: scope, preview_id: id, listing: listing} = socket.assigns
-    on_page = listing && Enum.find(listing.runs, &(&1.public_id == id))
+    on_page = listing && Enum.find(listing.runs, &(Integer.to_string(&1.number) == id))
 
     start_async(socket, :preview, fn ->
       # A row's run can be a moment behind the record: the preview reads it again.
@@ -1356,8 +1410,24 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp loaded_total(_loaded, _filters, _listing), do: nil
 
-  # A run's id as the URL may carry it, its `public_id`, `rn_…`; nil for anything else.
-  defp chosen_id(value), do: if(Run.public_id?(value), do: value)
+  # The run `?run=` chooses, as the URL carries it: its number, as written. A run's
+  # `public_id`, `rn_…`, is the number of that run of the workspace, so the address is
+  # patched to it; nil for anything else, and for an `rn_` id the workspace has no run of.
+  defp chosen_id(scope, value) do
+    cond do
+      Run.parse_number(value) != :error ->
+        value
+
+      Run.public_id?(value) ->
+        case Apiary.Runs.get_run_by_param(scope, value) do
+          %Run{number: number} -> Integer.to_string(number)
+          nil -> nil
+        end
+
+      true ->
+        nil
+    end
+  end
 
   # No run in the workspace at all, and nothing narrowing the view: the first-run states.
   defp first_run?(%{total: 0}, filters), do: not Filters.any?(filters)
@@ -1433,6 +1503,9 @@ defmodule ApiaryWeb.RunLive.Index do
     do: scope |> tokens(filters, narrowing) |> List.last()
 
   defp qualifier(:target), do: pgettext("qualifier", "target")
+  # The filter of a machine or a pool is typed `machine:`; `node:`, its older word, still
+  # reads (`Apiary.Runs.Filters`).
+  defp qualifier(:node), do: "machine"
   defp qualifier(key), do: Atom.to_string(key)
 
   # The Target section's options in the one notation of a target: its system before its
@@ -1454,10 +1527,12 @@ defmodule ApiaryWeb.RunLive.Index do
     [
       {"runtime", gettext("Runtime"), "hero-cpu-chip"},
       {"host", gettext("Host"), "hero-server-stack"},
-      {"node", gettext("Node"), "hero-server"}
+      {"node", gettext("Machine or pool"), "hero-server"},
+      {"item", gettext("Work item"), "hero-rectangle-stack"}
     ]
   end
 
+  defp text_param(filters, "item"), do: filters.item && Integer.to_string(filters.item)
   defp text_param(filters, "runtime"), do: filters.runtime
   defp text_param(filters, "host"), do: filters.host
   defp text_param(filters, "node"), do: filters.node

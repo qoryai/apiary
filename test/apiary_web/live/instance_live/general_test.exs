@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.InstanceLive.GeneralTest do
   @moduledoc """
   Instance settings › General (`ApiaryWeb.InstanceLive.General`): the product's name on
-  the instance, for the instance's admins, the Instance level's first section; its texts,
+  the instance and the support address, for the instance's admins, the Instance level's first section; its texts,
   its states and its errors; the rename on the Activity page; and a path that does not
   exist for anyone else. The suite's instance has had its first sign-up; a test that
   needs an instance admin hides its organisation inside its sandbox
@@ -17,6 +17,8 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
 
   @hint "Shown in the browser tab, the sidebar, the log-in pages and every email. Empty: Qory Apiary."
   @note "When a name other than Qory Apiary is set, the sidebar, the log-in pages and every email also say “Powered by Qory Apiary”."
+
+  @support_hint "Where “Contact support” leads on the pages and in the emails people in an organisation read: an https address or an email address. Empty: “Contact support” shows as plain text, without a link."
 
   # A workspace's set-up is finished: a link to it leads to its first page.
   setup do
@@ -76,7 +78,7 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       assert text(view, "h1#settings-section-title") == "General"
 
       assert text(view, "#settings-section-title + *") ==
-               "The name this instance shows on its pages and in its email."
+               "The name this instance shows on its pages and in its email, and where “Contact support” leads."
 
       # The breadcrumb: Instance settings, then the section, the page itself.
       assert has_element?(view, "#breadcrumb a[href='/instance/general']", "Instance settings")
@@ -193,10 +195,10 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       {:ok, %{entries: [emptied, renamed | _]}} =
         Apiary.Audit.list_entries(scope, %{action: "instance.rename"})
 
-      assert has_element?(view, "#filter-action-form li", "Instance renamed")
-      assert text(view, "#entry-#{renamed.id}-action") =~ "Renamed the instance"
+      assert has_element?(view, "#filter-action-form li", "Name in the header changed")
+      assert text(view, "#entry-#{renamed.id}-action") =~ "Changed the name in the header"
       assert text(view, "#entry-#{renamed.id}-change") == "Qory Apiary → Acme Agents"
-      assert text(view, "#entry-#{emptied.id}-action") =~ "Renamed the instance"
+      assert text(view, "#entry-#{emptied.id}-action") =~ "Changed the name in the header"
       assert text(view, "#entry-#{emptied.id}-change") == "Acme Agents → Qory Apiary"
       assert text(view, "#entry-#{renamed.id}-actor") =~ scope.user.email
     end
@@ -240,6 +242,74 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
 
       assert text(view, "#entry-#{emptied.id}-change") == "Acme Agents → Another Product"
       assert text(view, "#entry-#{typed.id}-change") == "Another Product → Qory Apiary"
+    end
+
+    test "the Support part has the support address's field, empty, with what empty gives",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/general")
+
+      assert text(view, "#instance-support h2") == "Support"
+      assert text(view, "label[for='support_support_address']") == "Support address"
+
+      assert has_element?(
+               view,
+               "#instance-support-form input#support_support_address[name='support[support_address]'][placeholder='https://help.example.com']"
+             )
+
+      refute view |> element("#support_support_address") |> render() =~ "value="
+
+      assert render(view) =~
+               Phoenix.HTML.html_escape(@support_hint) |> Phoenix.HTML.safe_to_string()
+
+      assert text(view, "#instance-support-save") =~ "Save"
+    end
+
+    test "saving the support address says so, keeps the page and shows it in the field",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/general")
+
+      view
+      |> form("#instance-support-form", support: %{support_address: " support@example.com "})
+      |> render_submit()
+
+      assert render(view) =~ "Support address saved."
+      assert Apiary.SupportAddress.get() == "support@example.com"
+      assert has_element?(view, "#support_support_address[value='support@example.com']")
+
+      {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log")
+      render_async(view)
+
+      {:ok, %{entries: [saved | _]}} =
+        Apiary.Audit.list_entries(scope, %{action: "instance.support_save"})
+
+      assert text(view, "#entry-#{saved.id}-action") =~ "Saved the support address"
+      assert text(view, "#entry-#{saved.id}-change") == "None → An email address"
+    end
+
+    test "an address that is neither https nor email says what to enter under the field, and saves nothing",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/general")
+
+      view
+      |> form("#instance-support-form", support: %{support_address: "help.example.com"})
+      |> render_submit()
+
+      assert text(view, "#instance-support-form") =~
+               "Enter an https address, such as https://help.example.com, or an email address, such as support@example.com."
+
+      assert Apiary.SupportAddress.get() == nil
+    end
+
+    test "with SUPPORT_ADDRESS set, shows its address read only, with the variable",
+         %{conn: conn} do
+      Application.put_env(:apiary, :support_address, "https://help.example.com")
+      on_exit(fn -> Application.put_env(:apiary, :support_address, nil) end)
+
+      {:ok, view, _html} = live(conn, ~p"/instance/general")
+
+      refute has_element?(view, "#instance-support-form")
+      assert text(view, "#instance-support-address-value") == "https://help.example.com"
+      assert text(view, "#instance-support-address-source") == "Set by SUPPORT_ADDRESS"
     end
 
     test "one who is no longer an instance admin, on the page, is answered not found",

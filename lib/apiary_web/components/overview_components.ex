@@ -44,7 +44,6 @@ defmodule ApiaryWeb.OverviewComponents do
       refusal_cause: 1,
       relative_time: 1,
       rule_panel: 1,
-      short_id: 1,
       shown_refusal_code: 1,
       shown_target_label: 3,
       state_label: 1,
@@ -427,14 +426,14 @@ defmodule ApiaryWeb.OverviewComponents do
        when kind in [:quiet, :lost, :behind] do
     ~H"""
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.number}"}
       class="q-ar-t"
       title={row_title(@item.run)}
     >
       <.external_text text={shown_title(@item.run)} />
       {if !shown_title(@item.run), do: row_title(@item.run)}
     </.link>
-    <span class="q-ar-id">{short_id(@item.run.public_id)}</span>
+    <span class="q-ar-id">{gettext("Run %{run}", run: @item.run.number)}</span>
     """
   end
 
@@ -927,7 +926,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.number}"}
       class="q-act"
       aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
@@ -954,7 +953,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.public_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.number}"}
       class="q-act"
       aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
@@ -1011,7 +1010,7 @@ defmodule ApiaryWeb.OverviewComponents do
     <.link
       id={"#{@item.id}-act"}
       navigate={
-        ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@item.key.node.public_id}/access-key/keys/#{@item.key.key_id}/revoke"
+        ~p"/#{@scope.organisation}/#{@scope.workspace}/machines/#{@item.key.node.public_id}/access-key/keys/#{@item.key.key_id}/revoke"
       }
       class="q-act"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
@@ -1170,11 +1169,12 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
-  else its short id: what a row calls it, as plain text for a tooltip or a label, shown as
+  else "Run" and its number: what a row calls it, as plain text for a tooltip or a label, shown as
   a text Forager sent is (`Apiary.ExternalText.line/1`). A title or a command line with
   nothing left to show, or only whitespace, is none (`Apiary.ExternalText.present/1`).
   """
-  def row_title(run), do: shown_title(run) || shown_command(run) || short_id(run.public_id)
+  def row_title(run),
+    do: shown_title(run) || shown_command(run) || gettext("Run %{run}", run: run.number)
 
   # The title a run gave, as a page shows it; nil where it gave none, or one with nothing
   # left to show, or only whitespace.
@@ -1939,18 +1939,16 @@ defmodule ApiaryWeb.OverviewComponents do
       <div class="q-onb-steps">
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">
-          {gettext(
-            "Nothing has posted to this workspace yet. A machine posts once it is connected to a node."
-          )}
+          {gettext("Nothing has posted to this workspace yet. A machine posts once it is connected.")}
         </p>
         <p :if={@current > 1} class="q-onb-lead">
           {gettext(
-            "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
+            "A machine or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
           )}
         </p>
         <.steps current={@current} class="my-5">
-          <:step title={gettext("Add a node")}>
-            {gettext("One per machine, or a node pool for short-lived instances that share one key.")}
+          <:step title={gettext("Add a machine")}>
+            {gettext("One per machine, or a pool of machines that share one key.")}
           </:step>
           <:step title={gettext("Connect it")}>
             {pgettext(
@@ -1970,21 +1968,21 @@ defmodule ApiaryWeb.OverviewComponents do
           <.button
             id={"#{@id}-new-node"}
             variant="primary"
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/new"}
             class="max-[479px]:w-full"
           >
-            <.icon name="hero-server" class="size-4" /> {gettext("New node")}
+            <.icon name="hero-server" class="size-4" /> {gettext("New machine")}
           </.button>
           <.button
             id={"#{@id}-new-pool"}
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new-pool"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/new-pool"}
             class="max-[479px]:w-full"
           >
-            <.icon name="hero-server-stack" class="size-4" /> {gettext("New node pool")}
+            <.icon name="hero-server-stack" class="size-4" /> {gettext("New pool")}
           </.button>
         </div>
         <p :if={@current == 1 and !@may_add} id={"#{@id}-members"} class="text-[13px]/5 text-muted">
-          {gettext("An owner or admin adds nodes and connects them.")}
+          {gettext("An owner or admin adds machines and connects them.")}
         </p>
         <p :if={@asks} id={"#{@id}-target"} class="text-[13px]/5">
           <.rich text={
@@ -2003,15 +2001,15 @@ defmodule ApiaryWeb.OverviewComponents do
         <.button
           :if={@current == 3 or (@current == 2 and !@asks)}
           id={"#{@id}-nodes"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines"}
           class="max-[479px]:w-full"
         >
-          {gettext("Go to nodes")}
+          {gettext("Go to Machines")}
         </.button>
         <p :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
           <.link
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@landed.public_id}"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@landed.number}"}
             class="q-link"
           >{gettext("Open it")}</.link>
         </p>
@@ -2042,7 +2040,7 @@ defmodule ApiaryWeb.OverviewComponents do
               </div>
               <%!-- Said only to one who may add a node and connect it. --%>
               <p :if={@may_add} id={"#{@id}-choose"} class="text-muted">
-                {gettext("You choose one for each node, once you have added it.")}
+                {gettext("You choose one for each machine or pool, once you have added it.")}
               </p>
             </div>
             <.listening>{gettext("Listening for the first post from a machine.")}</.listening>
@@ -2088,7 +2086,11 @@ defmodule ApiaryWeb.OverviewComponents do
             <span class="q-onb-lbl">
               {gettext("What you run on %{node}", node: @target.name)}
             </span>
-            <ApiaryWeb.NodeComponents.unreachable_server id={"#{@id}-unreachable"} url={@server} />
+            <ApiaryWeb.NodeComponents.unreachable_server
+              id={"#{@id}-unreachable"}
+              url={@server}
+              instance_admin={Apiary.Access.instance_admin?(@scope)}
+            />
             <%!-- The gateway the command goes through, if any: a node on Default gateway
                  while none is the default reads nothing here. --%>
             <ApiaryWeb.NodeComponents.through_gateway
@@ -2171,17 +2173,28 @@ defmodule ApiaryWeb.OverviewComponents do
     doc: "the model choice a new test run takes, as `{level, choice}`"
 
   attr :path, :string, default: nil
+  attr :item, :integer, default: nil, doc: "the number of the test run's work item"
+
+  attr :pool, :any,
+    default: nil,
+    doc: "the ready pool, else the first pool that serves the workspace's runs, or nil"
+
+  attr :machine, :string, default: nil, doc: "the name of the machine a lost run ran on"
 
   def test_failed(%{cause: cause, preparation: %{stopped: %{} = stopped}} = assigns)
       when cause in [:ended, :silent] do
     assigns =
-      assign(assigns, step: Preparation.stopped_step(assigns.preparation), text: stopped.text)
+      assign(assigns,
+        step: Preparation.stopped_step(assigns.preparation),
+        what: stopped.what,
+        fix: ApiaryWeb.Support.stored_line(stopped.fix)
+      )
 
     ~H"""
     <.rich text={rich_gettext("The test run stopped at %{step}.", step: {:part, :step})}>
       <:part name={:step}><.external_text text={@step} /></:part>
     </.rich>
-    {@text}
+    {@what} <.rich text={@fix} />
     <.link id="set-up-test-preparation" navigate={@path <> "#prepare-machine"} class="q-link">
       {gettext("Open the run's Prepare machine section")}
     </.link>
@@ -2200,16 +2213,17 @@ defmodule ApiaryWeb.OverviewComponents do
   # A test run with no run record: why, by its run of the queue's end cause, where the
   # set-up has a fix for that cause.
   def test_failed(%{cause: :no_run, dispatch_run: %{end_cause: cause}} = assigns) do
-    assigns = assign(assigns, :words, no_run_words(cause, assigns.choice))
+    assigns = assign(assigns, :words, no_run_words(cause, assigns.choice, assigns.item))
 
     ~H"""
     {gettext("The test run ended before a machine started it.")}
-    {@words}
+    <.rich text={@words} />
     """
   end
 
   def test_failed(assigns) do
-    ~H"{failed_line(@cause)}"
+    assigns = assign(assigns, :line, failed_line(assigns.cause, assigns))
+    ~H|<.rich text={@line} />|
   end
 
   # What fixes a test run that ended at its claim, and why it ended
@@ -2218,7 +2232,7 @@ defmodule ApiaryWeb.OverviewComponents do
   # (level 5) and not locked; model_gone only where that choice names a model, whose
   # effort is then the part no longer offered. The other causes of the claim have no fix
   # on the set-up's steps.
-  defp no_run_words(:inputs_invalid, _choice),
+  defp no_run_words(:inputs_invalid, _choice, _item),
     do:
       gettext(
         "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
@@ -2227,18 +2241,20 @@ defmodule ApiaryWeb.OverviewComponents do
   # Either way the claim ends a run secrets_not_allowed, a key of the gateway made without
   # stored secrets or a model key that may not be sealed for it, the instance's gateway
   # passes: its key allows them, and a key of either chain may be sealed for it.
-  defp no_run_words(:secrets_not_allowed, _choice),
+  defp no_run_words(:secrets_not_allowed, _choice, item),
     do:
-      gettext(
-        "The gateway for this run is not allowed to receive its secrets, which the run needs. Only the instance's gateway is allowed to receive them. An instance admin installs it with QORY_INSTALLED_GATEWAY, and the run's node pool has to go through it."
+      rich_gettext(
+        "Set the run's pool to go through the Qory Gateway in the pool's Settings, or %{contact_support} with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is.",
+        contact_support: ApiaryWeb.Support.rich(mid_sentence: true),
+        number: item
       )
 
-  defp no_run_words(cause, {5, %{locked: false, model_id: model}})
+  defp no_run_words(cause, {5, %{locked: false, model_id: model}}, _item)
        when cause in [:runtime_unserved, :key_gone, :provider_gone] or
               (cause == :model_gone and is_binary(model)),
        do: model_step_words(cause)
 
-  defp no_run_words(_cause, _choice),
+  defp no_run_words(_cause, _choice, _item),
     do: gettext("No run was recorded, so this step cannot show why.")
 
   defp model_step_words(:runtime_unserved),
@@ -2265,19 +2281,40 @@ defmodule ApiaryWeb.OverviewComponents do
         "The chosen model provider fails its checks. Choose or add another provider on the Model step, then press Run the test."
       )
 
-  defp failed_line(:no_machine),
+  # A pool or a machine with an organisation is one the workspace's owners and admins can
+  # check on the Machines page; the instance's pool, with none, only support can.
+  defp failed_line(:no_machine, %{pool: %{organisation_id: id} = pool}) when not is_nil(id),
     do:
       gettext(
-        "Check the pool in Instance settings › Nodes. No machine has taken the test run yet."
+        "Check on the Machines page that a machine of %{pool} is running. No machine has taken the test run yet.",
+        pool: ApiaryWeb.NodeComponents.shown_name(pool)
       )
 
-  defp failed_line(:model_key_missing),
+  defp failed_line(:no_machine, %{item: item}),
+    do:
+      rich_gettext(
+        "%{contact_support} with work item #%{number}. No machine has taken the test run yet.",
+        contact_support: ApiaryWeb.Support.rich(),
+        number: item
+      )
+
+  defp failed_line(:model_key_missing, _assigns),
     do: gettext("Add a model key on the Model step. The gateway had no model key for the run.")
 
-  defp failed_line(:silent),
+  defp failed_line(:silent, %{run: %{node: %{organisation_id: id}}, machine: machine})
+       when not is_nil(id) and is_binary(machine),
+       do:
+         gettext(
+           "Check on the Machines page that %{machine} is running. It stopped sending for 10 minutes.",
+           machine: machine
+         )
+
+  defp failed_line(:silent, %{run: run}),
     do:
-      gettext(
-        "Check that the gateway is running in Instance settings › Nodes. The machine stopped sending for 10 minutes."
+      rich_gettext(
+        "%{contact_support} with run %{run}. The machine stopped sending for 10 minutes.",
+        contact_support: ApiaryWeb.Support.rich(),
+        run: run.number
       )
 
   # How a test run's run ended, as the run page's header shows its state and reason
@@ -2354,10 +2391,10 @@ defmodule ApiaryWeb.OverviewComponents do
   defp target_path(_scope, nil), do: nil
 
   defp target_path(scope, target),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{target}/access-key"
 
   defp generate_path(scope, target),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key/generate"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{target}/access-key/generate"
 
   defp way_icon(:enrol), do: "hero-command-line"
   defp way_icon(:generate), do: "hero-key"

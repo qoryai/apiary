@@ -24,6 +24,9 @@ defmodule Apiary.Dispatches.Wire do
   # - `machine_log/1`, `POST /v1/dispatches/<dispatch_id>/machine-log`
   #   (`machine-log.schema.json`): `version` (1), `time`, `log`, text of at most 786,432
   #   characters, and, optionally, `truncated`, a boolean, false when absent.
+  # - `machine_end/1`, `POST /v1/dispatches/<dispatch_id>/machine-end`
+  #   (`machine-end.schema.json`): exactly `version` (1), `time` and `state`, one of
+  #   `deleting`, `gone` and `delete_failed`, read as an atom.
   #
   # A length in characters is the schema's: Unicode code points. The text a body carries,
   # `ref`, `reason` and `log`, is read as an adapter's text
@@ -63,12 +66,19 @@ defmodule Apiary.Dispatches.Wire do
   @release_keys ~w(reason time version)
   @machine_log_required ~w(log time version)
   @machine_log_optional ~w(truncated)
+  @machine_end_keys ~w(state time version)
+  @machine_end_states %{
+    "deleting" => :deleting,
+    "gone" => :gone,
+    "delete_failed" => :delete_failed
+  }
 
   @type claim :: %{time: DateTime.t(), pool_id: String.t() | nil, wait_seconds: 0..25}
   @type external :: %{type: String.t(), ref: String.t(), url: String.t()}
   @type dispatched :: %{time: DateTime.t(), external: external | nil}
   @type release :: %{time: DateTime.t(), reason: String.t()}
   @type machine_log :: %{time: DateTime.t(), log: String.t(), truncated: boolean}
+  @type machine_end :: %{time: DateTime.t(), state: :deleting | :gone | :delete_failed}
 
   # The raw body as a map of maps, or `:error`, as `Apiary.Adapters.Wire.decode/1` reads
   # it, and `:error`, undecoded, for a body over 1 MiB.
@@ -151,6 +161,23 @@ defmodule Apiary.Dispatches.Wire do
   end
 
   def machine_log(_body), do: :error
+
+  # The body of a machine end, decoded (`decode/1`): `{:ok, machine_end}` or `:error`.
+  @doc false
+  @spec machine_end(term) :: {:ok, machine_end} | :error
+  def machine_end(%{} = body) do
+    with true <- members?(body, @machine_end_keys, []),
+         true <- body["version"] === 1,
+         {:ok, time} <- time(body["time"]),
+         state when is_binary(state) <- body["state"],
+         {:ok, state} <- Map.fetch(@machine_end_states, state) do
+      {:ok, %{time: time, state: state}}
+    else
+      _ -> :error
+    end
+  end
+
+  def machine_end(_body), do: :error
 
   # Every member `required` holds is there, and nothing but those and `optional`'s:
   # counted first, so an object of many members is refused before its keys are compared.

@@ -40,7 +40,9 @@ defmodule Apiary.Dispatches.Handover do
   # over: `handed_over_at` the clock, the run of the queue `handed_over`. From then on the
   # dispatch keeps no lease: it never goes stale, and its slot stays held until its run
   # ends (`Apiary.Dispatches.RunEnd`). The run counts toward its pool's limit by its
-  # dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`).
+  # dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`). Once the first
+  # `dispatched` commits, the run the claim registered is broadcast as changed
+  # (`Apiary.Runs.broadcast_changed/1`).
   #
   # ## At the claim: `register/2`
   #
@@ -258,6 +260,7 @@ defmodule Apiary.Dispatches.Handover do
         end
       end)
       |> answered()
+      |> broadcast_dispatched()
     else
       {:error, :forbidden}
     end
@@ -593,10 +596,15 @@ defmodule Apiary.Dispatches.Handover do
   ## Dispatched
 
   # A dispatch handed over keeps no lease: its first `dispatched` is recorded, and a
-  # later one changes nothing, whatever the clock.
+  # later one changes nothing, whatever the clock. The value is `{:dispatched, id}`, the
+  # id of the dispatch's run of the queue, when the dispatch changed, else `:ok`.
   defp record_dispatched(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}} = locked, external) do
-    if is_nil(locked.dispatch.dispatched_at), do: set_dispatched(locked, external)
-    {:done, :ok, []}
+    if is_nil(locked.dispatch.dispatched_at) do
+      set_dispatched(locked, external)
+      {:done, {:dispatched, locked.run.id}, []}
+    else
+      {:done, :ok, []}
+    end
   end
 
   # The first `dispatched` of a claimed dispatch, within its lease, hands it over.
@@ -604,9 +612,28 @@ defmodule Apiary.Dispatches.Handover do
     with :ok <- lease_held(locked) do
       set_dispatched(locked, external)
       :ok = hand_over(locked.run, locked.dispatch, locked.now)
-      {:done, :ok, [locked.dispatch.workspace_id]}
+      {:done, {:dispatched, locked.run.id}, [locked.dispatch.workspace_id]}
     end
   end
+
+  # Once the first `dispatched` committed, the run its claim registered is broadcast as
+  # changed, so its page shows Machine started at once (`broadcast_run/1`). A run of the
+  # queue with no registered run has nothing to broadcast. The answer is `:ok` either way.
+  defp broadcast_dispatched({:dispatched, dispatch_run_id}) do
+    run = Repo.one(from r in Run, where: r.dispatch_run_id == ^dispatch_run_id)
+    if run, do: broadcast_run({:ok, %{run: run}})
+    :ok
+  rescue
+    exception ->
+      not_told(exception)
+      :ok
+  catch
+    kind, _reason ->
+      not_told(kind)
+      :ok
+  end
+
+  defp broadcast_dispatched(answer), do: answer
 
   defp set_dispatched(%{dispatch: dispatch, now: now}, external) do
     external =
@@ -731,7 +758,7 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
-    harness = harness(dispatch_run, target)
+    harness = dispatch_run |> harness(target) |> lowered_access(dispatch_run)
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          {:ok, settings} <- RunSettings.build(held) do
@@ -802,6 +829,17 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
+  # Hand-over: with the workflow model, a run the stage runner queued with the access
+  # level `read` (`Apiary.Stages.limits/1`) reads its target, whatever its walk resolved.
+  defp lowered_access(%{access: :write} = harness, dispatch_run) do
+    case Apiary.Stages.limits(dispatch_run) do
+      %{access: :read} -> %{harness | access: :read}
+      _none -> harness
+    end
+  end
+
+  defp lowered_access(harness, _dispatch_run), do: harness
+
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.
   defp formed(dispatch_run, workspace, target, work_item, settings, harness, inputs) do
@@ -833,10 +871,28 @@ defmodule Apiary.Dispatches.Handover do
          }
        }}
     else
-      {:variables, {:error, _rule}} -> {:end, :variables_invalid}
+      {:variables, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
       {:inputs, {:error, :answer_too_large}} -> :unavailable
       {:inputs, {:error, cause}} -> {:end, cause}
     end
+  end
+
+  # A run whose run variables break a rule ends `variables_invalid`, with one line in the
+  # instance's log: the run, its work item, the variable, the rule and the target path,
+  # which is a value of QORY_RUN_REPOSITORIES and of no secret. A text of why the run
+  # stopped points the instance admin to that line (`Apiary.Stages.StopCause`).
+  defp variables_ended(dispatch_run, work_item, target, rule) do
+    variable =
+      if rule == :system_invalid, do: "QORY_RUN_SYSTEM", else: "QORY_RUN_REPOSITORIES"
+
+    Logger.warning(
+      "a claim ended a run before it started, because a run variable breaks its rule " <>
+        "end_cause=variables_invalid run_id=#{dispatch_run.run_id} " <>
+        "work_item=#{work_item && work_item.public_id} variable=#{variable} rule=#{rule} " <>
+        "target_path=#{target && target.path}"
+    )
+
+    {:end, :variables_invalid}
   end
 
   # A prebuild's destinations in the registry, the documents' `image_destination`, then

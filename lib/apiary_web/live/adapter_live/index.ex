@@ -29,10 +29,11 @@ defmodule ApiaryWeb.AdapterLive.Index do
   # (`ApiaryWeb.IntegrationComponents.install_block/1`): what Install does, in its words
   # for its collections, then Install, which posts to the Install path and sends the
   # person on to the integration, and Cancel, back to the list. Once pressed, the block
-  # says where the person is taken. In place of the lead, a line says that an instance
-  # admin sets one up, where none is configured; that none serves the organisation's
-  # workspaces, where some are configured and none serves those domains; or that every
-  # one is installed.
+  # says where the person is taken. In place of the lead, a line says to contact support,
+  # where none is configured or none serves the organisation's workspaces, or that every
+  # one is installed; an instance admin reads that they set one up in Instance settings.
+  # Anyone but an instance admin sees only the adapters that can be installed and those
+  # with a connection (`ApiaryWeb.IntegrationComponents.offered/3`).
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -55,13 +56,14 @@ defmodule ApiaryWeb.AdapterLive.Index do
     if new? and not connects, do: raise(ApiaryWeb.NotFound)
 
     workspaces = Organisations.list_workspaces(scope)
+    live = Connections.live_by_adapter(scope)
+
+    offered = &IntegrationComponents.offered(scope, &1, Map.keys(live))
 
     adapters =
       if new?,
-        do: configured(Adapters.offered_domains(scope)),
-        else: Adapters.list_adapters(scope)
-
-    live = Connections.live_by_adapter(scope)
+        do: offered.(configured(Adapters.offered_domains(scope))),
+        else: offered.(Adapters.list_adapters(scope))
 
     rows =
       for adapter <- adapters do
@@ -88,7 +90,8 @@ defmodule ApiaryWeb.AdapterLive.Index do
        nouns: Enum.map(adapters, &Adapters.collection_noun/1),
        connects: connects,
        several: length(workspaces) > 1,
-       any_configured: new? and configured(Domain.choices()) != [],
+       any_configured: new? and offered.(configured(Domain.choices())) != [],
+       instance_admin: Access.instance_admin?(scope),
        sending: nil
      )}
   end
@@ -128,7 +131,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
 
       <.settings_page section={:integrations} title={add_title()}>
         <:subtitle :if={@rows != [] and !@all_installed}>
-          {gettext("Install one of this instance's integrations for %{organisation}.",
+          {gettext("Install an integration Qory Apiary offers for %{organisation}.",
             organisation: @current_scope.organisation.name
           )}
         </:subtitle>
@@ -138,9 +141,17 @@ defmodule ApiaryWeb.AdapterLive.Index do
           id="add-none-set-up"
           class="text-[13.5px]/5 text-muted"
         >
-          {gettext(
-            "No integration is set up on this instance yet. An instance admin sets one up in Instance settings › Adapters."
-          )}
+          <%= if @instance_admin do %>
+            {gettext(
+              "No integration is set up on this instance yet. An instance admin sets one up in Instance settings › Adapters."
+            )}
+          <% else %>
+            <.rich text={
+              rich_gettext("%{contact_support} to add an integration. Qory Apiary offers none yet.",
+                contact_support: ApiaryWeb.Support.rich()
+              )
+            } />
+          <% end %>
         </p>
 
         <p
@@ -148,9 +159,18 @@ defmodule ApiaryWeb.AdapterLive.Index do
           id="add-none-for-type"
           class="text-[13.5px]/5 text-muted"
         >
-          {gettext(
-            "No integration that serves this organisation's workspaces is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
-          )}
+          <%= if @instance_admin do %>
+            {gettext(
+              "No integration that serves this organisation's workspaces is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+            )}
+          <% else %>
+            <.rich text={
+              rich_gettext(
+                "%{contact_support} to add an integration. Qory Apiary offers none for the workspaces of this organisation yet.",
+                contact_support: ApiaryWeb.Support.rich()
+              )
+            } />
+          <% end %>
         </p>
 
         <p
@@ -171,6 +191,7 @@ defmodule ApiaryWeb.AdapterLive.Index do
             collections={SourceComponents.collections(Adapters.collection_noun(row.adapter))}
             action={IntegrationComponents.paths(@current_scope, row.adapter).install}
             ready={row.ready}
+            instance_admin={@instance_admin}
             sending={@sending == row.adapter.public_id}
             cancel={@paths.list}
           />
@@ -193,7 +214,8 @@ defmodule ApiaryWeb.AdapterLive.Index do
     >
       <.settings_page section={:integrations} title={gettext("Integrations")} measure="list">
         <:subtitle>
-          {gettext("This instance's integrations, and whether each is installed for %{organisation}.",
+          {gettext(
+            "The integrations Qory Apiary offers, and whether each is installed for %{organisation}.",
             organisation: @current_scope.organisation.name
           )}
         </:subtitle>
@@ -205,10 +227,20 @@ defmodule ApiaryWeb.AdapterLive.Index do
           title={gettext("No integration yet")}
         >
           <p id="integrations-none">
-            {gettext(
-              "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added.",
-              organisation: @current_scope.organisation.name
-            )}
+            <%= if @instance_admin do %>
+              {gettext(
+                "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added.",
+                organisation: @current_scope.organisation.name
+              )}
+            <% else %>
+              <.rich text={
+                rich_gettext(
+                  "%{contact_support} to add an integration. %{organisation} installs it here once Qory Apiary offers it.",
+                  contact_support: ApiaryWeb.Support.rich(),
+                  organisation: @current_scope.organisation.name
+                )
+              } />
+            <% end %>
           </p>
         </.empty_state>
 

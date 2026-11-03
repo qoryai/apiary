@@ -30,7 +30,10 @@ defmodule Apiary.Runs.RunCodeTest do
   defp claimed!(ctx) do
     work_item = work_item_fixture(ctx.scope)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-    {:ok, %{dispatch: %Dispatch{}} = handed} = Dispatches.claim(ctx.key, Dispatches.now(), @body)
+
+    {:ok, %{dispatch: %Dispatch{}} = handed} =
+      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
+
     %{queued: queued, dispatch: handed.dispatch, handed: handed, run: handed.registered}
   end
 
@@ -166,6 +169,23 @@ defmodule Apiary.Runs.RunCodeTest do
       # The `dispatched` that follows is recorded, the dispatch left as it was handed over.
       assert Dispatches.dispatched(ctx.key, claimed.dispatch.public_id, %{external: nil}) == :ok
       assert %Dispatch{dispatched_at: %DateTime{}} = Repo.get!(Dispatch, claimed.dispatch.id)
+    end
+
+    test "broadcasts the run as changed, with its run key's fields; a repeat does not", ctx do
+      %Run{id: id, workspace_id: workspace_id} = ctx.run
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Runs.topic(workspace_id, id))
+      pair = ed25519_key_pair()
+
+      assert {:ok, first} = redeem(ctx, pair, at(ctx, 60))
+      assert_received {:run_changed, %Run{id: ^id} = run}
+      assert run.run_code_public_key == pair.public_key
+      stored = Repo.get!(Run, id)
+
+      assert {run.run_key_issued_at, run.attach_by} ==
+               {stored.run_key_issued_at, stored.attach_by}
+
+      assert redeem(ctx, pair, at(ctx, 61)) == {:ok, first}
+      refute_received {:run_changed, %Run{}}
     end
 
     test "at minute 14 finds the dispatch handed over and the run waiting, and sets its attach window to 600 seconds from then",

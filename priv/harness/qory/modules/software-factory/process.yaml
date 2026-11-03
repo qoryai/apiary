@@ -1,0 +1,96 @@
+apiVersion: qory.dev/v1alpha1
+name: Software factory
+summary: Agents change code in your repositories. Each ticket needs a repository.
+description: |-
+  Each ticket comes from a work source, such as an issue tracker. Agents take the ticket through the stages, and at the end of each stage a member approves the result before the next stage starts. Changes go to your repositories through the destination you connect.
+
+  You connect: where work comes from, where changes go, and a model.
+type: qory.software
+stack: software
+process:
+  schema: qory.process/v1
+  machine: default
+  stages:
+    - id: st_r79kph11eg
+      name: Explore
+      inputs: []
+      sequence:
+        - loop:
+            rounds: 3
+            body:
+              - workflow: explore-a-ticket
+      outputs:
+        - type: proposal
+          required: true
+      gate: {kind: person, approvers: members}
+    - id: st_p9w5cvh311
+      name: Shape
+      inputs: []
+      sequence: []
+      outputs: []
+      gate: {kind: person, approvers: members}
+    - id: st_6ns22c4pav
+      name: Build
+      inputs: []
+      sequence: []
+      outputs: []
+      gate: {kind: person, approvers: members}
+    - id: st_m1mqbeywdg
+      name: Verify
+      inputs: []
+      sequence: []
+      outputs: []
+      gate: {kind: person, approvers: members}
+    - id: st_k9kpv17xmy
+      name: Release
+      inputs: []
+      sequence: []
+      outputs: []
+      gate: {kind: person, approvers: members}
+artifact_types:
+  - name: acceptance-criteria
+  - name: mockup
+  - name: screenshot
+  - name: demo-video
+  - name: explainer
+  - name: decision-record
+  - name: change
+  - name: branch
+    base_view: structured
+    size_limit: 65536
+    max_files: 1
+    # The content of contracts/harness/v1/branch.schema.json in the qory repository.
+    json_schema:
+      {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://qory.dev/contracts/harness/v1/branch.schema.json",
+        "title": "The branch format, version 1",
+        "description": "A work item's branch and the commit in each repository: the file of a version of a structured artifact type branch.",
+        "type": "object",
+        "required": ["ref", "repositories"],
+        "additionalProperties": false,
+        "properties": {
+          "ref": {"description": "The branch's name, the same in each repository: qory/ followed by the work item's id.", "type": "string", "pattern": "^qory/wi_[A-Za-z0-9_-]{1,64}$"},
+          "repositories": {
+            "description": "Each repository with the commit of the branch in it, at least one.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["system", "path", "commit"],
+              "additionalProperties": false,
+              "properties": {
+                "system": {"description": "The host the repository is on, such as github.com: a lower-case host name of at most 253 characters.", "type": "string", "pattern": "^[a-z0-9.-]{0,252}[a-z0-9-]$"},
+                "path": {
+                  "description": "The repository's path on the host, such as acme/web: at most 200 characters of segments joined by slashes, with no ., .. or .git segment.",
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+                  "not": {"pattern": "(^|/)(\\.\\.?|\\.[Gg][Ii][Tt])(/|$)"}
+                },
+                "commit": {"description": "A full commit id: 40 or 64 lower-case hexadecimal digits.", "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}
+              }
+            }
+          }
+        }
+      }

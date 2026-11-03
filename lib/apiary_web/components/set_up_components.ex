@@ -10,6 +10,11 @@ defmodule ApiaryWeb.SetUpComponents do
     from 1280 px. Below 1280 px the indicator is a bar on top; below 1024 px the context
     stacks under the form.
   - `heading/1` is a step's title, and `back/1` the Back button at the form's foot.
+  - `kind_cards/1` is the empty organisation overview's choice of what the first workspace
+    does, and New workspace's without the feature `factory`. `template_cards/1` is New
+    workspace's with it: a card for each template of the Qory harness, the organisation's
+    shared harness, the sources assigned to it and its connected repositories. `choose_kind/3` and `choose_template/4` are Create workspace on
+    a template's page, for the Qory template and for a template of a harness repository.
 
   Each step belongs to one of two progresses, its `:progress`. The instance's,
   `:instance`, is set up once, by the instance admin: Your account, one step for each
@@ -31,7 +36,9 @@ defmodule ApiaryWeb.SetUpComponents do
   # `steps/1` is this module's progress indicator, not the core's numbered list.
   import ApiaryWeb.CoreComponents, except: [steps: 1]
 
-  alias Apiary.{Access, Adapters, Features, Mail, Organisations, WorkspaceSetup}
+  alias Apiary.{Access, Adapters, Features, Mail, Organisations, Processes, WorkspaceSetup}
+  alias Apiary.Artifacts.TemplateTypes
+  alias Apiary.Processes.TypeTemplates
   alias Apiary.Stacks.Sources
   alias ApiaryWeb.HarnessComponents
   alias Apiary.Accounts.Scope
@@ -256,9 +263,10 @@ defmodule ApiaryWeb.SetUpComponents do
   (`Apiary.Lingo.Domain`), the workspace, nil before it exists, and what the page sets
   up: `:set_up`, the steps of a workspace, in the workspace
   (`/:org/:workspace/set-up/<step>`), or `:new`. Before the workspace exists, the steps'
-  paths lead to the organisation's overview, whose kind cards create it. `type` is
-  whether the flow names the type; no page of the core sets it, since a card's
-  **Choose** creates the workspace.
+  paths lead to the organisation's overview, `/:org`, whose kind cards link to the types'
+  pages (`ApiaryWeb.WorkspaceTypeLive`), where **Create workspace** creates it. `type` is
+  true where `flow/5` has `type: true` in its options; no page of the core passes it, and
+  `flow_path/2` does not read it.
   """
   @type flow :: %{
           organisation: %Organisation{},
@@ -271,7 +279,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow/5 is the flow of a workspace of `organisation`, of the type `domain`: `workspace`,
   or a new one where it is nil, set up on `page`, `:set_up` or `:new`. With `type: true`
-  in `opts`, the step's paths name the type.
+  in `opts`, the flow's `type` is true; no page of the core passes it.
   """
   @spec flow(%Organisation{}, module, %Workspace{} | nil, :set_up | :new, keyword) :: flow
   def flow(organisation, domain, workspace, page, opts \\ []),
@@ -286,7 +294,7 @@ defmodule ApiaryWeb.SetUpComponents do
   @doc """
   flow_path/2 is the path of the step `id` of `flow`: once the workspace exists, its page
   in the workspace, `/:org/:workspace/set-up/<id>`; before, the organisation's overview,
-  `/:org`, whose kind cards create it.
+  `/:org`, whose kind cards link to the types' pages (`ApiaryWeb.WorkspaceTypeLive`).
   """
   @spec flow_path(flow, atom) :: String.t()
   def flow_path(%{organisation: organisation, workspace: %Workspace{} = workspace}, id),
@@ -353,7 +361,7 @@ defmodule ApiaryWeb.SetUpComponents do
   workspace's Backlog, by name, the ones the step's done rule counts, Destinations the
   titles of the collections the step's done rule counts, or their number from 3 on, Model
   the chosen model as the step shows it, Harness the chosen harness as the step shows it,
-  and Machines the node pool that runs the workspace's runs. Each value is read for the
+  and Machines the pool that runs the workspace's runs. Each value is read for the
   scope's person with the reads of its step's page: Work sources and Destinations only
   where `adapter.read` allows the tick list, Model only where the person may read the
   choices of the workspace's chain as the Model step reads them. Test run shows
@@ -769,17 +777,23 @@ defmodule ApiaryWeb.SetUpComponents do
   attr :steps, :list, required: true
   attr :page, :string, default: nil
 
+  attr :up, :map,
+    default: nil,
+    doc: "on a page of a step, the step itself, `path` and `label`, where Back leads"
+
   @doc """
   back/1 is the Back button at the foot of a step's form: a ghost button to the step
   before the current one in its progress, a patch where its path is `page`. None on the
   first step of a progress, such as Name, which leads back to no step of the
-  instance's, nor where the step before has no page, such as Your account.
+  instance's, nor where the step before has no page, such as Your account. On a page of a
+  step, such as Connect of Work sources, Back leads to the step (`up`).
   """
   def back(assigns) do
     steps = progress_steps(assigns.steps)
     at = Enum.find_index(steps, &(&1.state == :current))
     before = if at && at > 0, do: Enum.at(steps, at - 1)
     before = if before && is_binary(before.path), do: before
+    before = assigns.up || before
 
     assigns = assign(assigns, before: before, patch: before && patch?(before.path, assigns.page))
 
@@ -831,29 +845,27 @@ defmodule ApiaryWeb.SetUpComponents do
   ## The kind cards
 
   @doc """
-  kind_cards/1 is the choice of what a new workspace does: one card per domain of
-  `Apiary.Lingo.Domain.choices/0` that has a card's words, Software alone, each with the
-  type's name (`c:Apiary.Lingo.Domain.type_name/0`), what you do there, what you
-  connect, and Choose, which sends the event `choose_kind` with the domain's name as
-  `type`. The cards are 20rem wide, or the column's width where the column is narrower,
-  in a grid that wraps a further card to the next line; Choose is at the foot of its
-  card. A card's title is one heading level below `heading`. The empty
-  organisation overview (`ApiaryWeb.OrganisationLive`) and New workspace
-  (`/:org/workspaces/new`) show it, and each takes the event with `choose_kind/3`. With
-  `limit`, that line shows in an information notice in place of the cards.
+  kind_cards/1 is the choice of what a new workspace does: one card per type with a card
+  (`card_domains/0`), each a link to the type's page, `/:org/workspaces/new/<type key>`
+  (`ApiaryWeb.WorkspaceTypeLive`), with the type's name and summary as its newest version
+  shows them (`Apiary.Processes.type_texts/1`) and an arrow. The link's name is the type's
+  name, and the summary describes it. The cards are 20rem wide, or the column's width
+  where the column is narrower, in a grid that wraps a further card to the next line. A
+  card's title is one heading level below `heading`. The empty organisation overview
+  (`ApiaryWeb.OrganisationLive`) shows it, and New workspace (`/:org/workspaces/new`)
+  without the feature `factory`; with it, New workspace shows `template_cards/1`. With `limit`, that line shows in an information notice in place of
+  the cards.
   """
   attr :id, :string, default: "set-up-cards"
   attr :title, :string, required: true
+  attr :organisation, Organisation, required: true, doc: "the organisation the cards are in"
   attr :heading, :string, default: "h1", values: ~w(h1 h2)
   attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
 
   def kind_cards(assigns) do
     assigns =
       assigns
-      |> assign(
-        :cards,
-        for(domain <- Domain.choices(), c = kind_card_words(domain), do: {domain, c})
-      )
+      |> assign(:cards, if(assigns.limit, do: [], else: cards()))
       |> assign(:card_heading, if(assigns.heading == "h1", do: "h2", else: "h3"))
 
     ~H"""
@@ -880,52 +892,355 @@ defmodule ApiaryWeb.SetUpComponents do
         role="list"
         class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
       >
-        <li
-          :for={{domain, card} <- @cards}
-          id={"set-up-card-#{domain.name()}"}
-          class="flex min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4"
-        >
-          <.dynamic_tag tag_name={@card_heading} class="font-semibold">
-            {domain.type_name()}
-          </.dynamic_tag>
-          <p class="text-[13.5px]/5">{card.what}</p>
-          <p class="text-[13.5px]/5 text-muted">{card.connect}</p>
-          <div class="mt-auto pt-1">
-            <.button
-              id={"set-up-card-#{domain.name()}-choose"}
-              variant="primary"
-              size="md"
-              phx-click="choose_kind"
-              phx-value-type={domain.name()}
-              phx-disable-with={gettext("Creating")}
-            >
-              {gettext("Choose")}
-            </.button>
-          </div>
-        </li>
+        <.template_card
+          :for={card <- @cards}
+          id={"set-up-card-#{card.domain.name()}"}
+          href={~p"/#{@organisation}/workspaces/new/#{card.type}"}
+          name={card.texts.name}
+          summary={card.texts.summary}
+          heading={@card_heading}
+        />
       </ul>
     </div>
     """
   end
 
-  # The words of a domain's card, nil for a domain without one, which shows no card. A
-  # person reads a card's line where they pick a type, in any locale, so the line is in the
-  # `workspace type` context and keeps the type's words.
-  defp kind_card_words(Domain.Software) do
-    %{
-      what: pgettext("workspace type", "Agents change code in your repositories."),
-      connect: gettext("You connect: where work comes from, where changes go, a model.")
-    }
+  @doc """
+  template_cards/1 is New workspace's choice of what a new workspace does: one card per
+  template, in groups under headings, each card a link to the template's page,
+  `/:org/workspaces/new/<key>` (`ApiaryWeb.WorkspaceTypeLive`). The groups, in order:
+
+    * "Qory harness": the Qory template, as `kind_cards/1` shows it, always;
+    * "Shared harness", "Assigned harnesses" and "Connected repositories": the templates
+      read from each place of `places`, as `reads` has them.
+
+  `places` are the places the person may list templates from. `reads` maps a place's
+  `prefix` to `:waiting` or `:reading`, `{:ok, templates}` or `{:error, reason}`. A place in
+  the assigned or connected group shows its `label` under each summary. A place shows, in
+  its group, "Reading harnesses…" while it is not read, a line for each module that is not
+  a template, a line for the modules past the first 20, and the words of a failed read.
+  A group with no card and no line is left out, so a connected repository with no template
+  shows nothing. A hidden shared harness is named "the shared harness" and its address is
+  not in the page. `limited` is the place whose read the person's limit stopped, shown as
+  a line above the groups. With `limit`, that line shows in an information notice in place
+  of the groups.
+  """
+  attr :id, :string, default: "set-up-cards"
+  attr :title, :string, required: true
+  attr :organisation, Organisation, required: true, doc: "the organisation the cards are in"
+  attr :limit, :string, default: nil, doc: "the line of an organisation that may have no more"
+  attr :places, :list, default: [], doc: "the places to read, but the Qory one"
+  attr :reads, :map, default: %{}, doc: "the state of each place's read, by its prefix"
+  attr :limited, :map, default: nil, doc: "`%{seconds: pos_integer, place: map}`"
+
+  def template_cards(assigns) do
+    assigns =
+      assigns
+      |> assign(:cards, if(assigns.limit, do: [], else: cards()))
+      |> assign(:groups, if(assigns.limit, do: [], else: groups(assigns)))
+
+    ~H"""
+    <div class="grid gap-4">
+      <h1 id={"#{@id}-title"} class="text-2xl/8 font-semibold tracking-[-0.025em]">
+        {@title}
+      </h1>
+      <.notice :if={@limit} kind={:info}>
+        <span id="set-up-limit">{@limit}</span>
+      </.notice>
+      <div :if={!@limit} id={@id} class="grid gap-6">
+        <.notice :if={@limited} kind={:info}>
+          <span id="set-up-templates-limited">
+            {ngettext(
+              "The list continues in %{count} second. Qory Apiary reads at most 10 harnesses a minute for one person.",
+              "The list continues in %{count} seconds. Qory Apiary reads at most 10 harnesses a minute for one person.",
+              @limited.seconds
+            )}
+          </span>
+        </.notice>
+        <section id="set-up-group-qory" aria-labelledby="set-up-group-qory-title" class="grid gap-3">
+          <h2 id="set-up-group-qory-title" class="text-lg/7 font-semibold tracking-[-0.015em]">
+            {gettext("Qory harness")}
+          </h2>
+          <ul
+            role="list"
+            class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
+          >
+            <.template_card
+              :for={card <- @cards}
+              id={"set-up-card-#{card.domain.name()}"}
+              href={~p"/#{@organisation}/workspaces/new/#{card.type}"}
+              name={card.texts.name}
+              summary={card.texts.summary}
+              heading="h3"
+            />
+          </ul>
+        </section>
+        <section
+          :for={group <- @groups}
+          id={"set-up-group-#{group.id}"}
+          aria-labelledby={"set-up-group-#{group.id}-title"}
+          class="grid gap-3"
+        >
+          <h2
+            id={"set-up-group-#{group.id}-title"}
+            class="text-lg/7 font-semibold tracking-[-0.015em]"
+          >
+            {group.title}
+          </h2>
+          <ul
+            :if={group.cards != []}
+            role="list"
+            class="grid grid-cols-[repeat(auto-fill,min(100%,20rem))] gap-3"
+          >
+            <.template_card
+              :for={card <- group.cards}
+              id={card.id}
+              href={~p"/#{@organisation}/workspaces/new/#{card.key}"}
+              name={card.name}
+              summary={card.summary}
+              label={card.label}
+              heading="h3"
+            />
+          </ul>
+          <p
+            :if={group.reading}
+            id={"set-up-group-#{group.id}-reading"}
+            class="text-[13px]/5 text-muted"
+          >
+            {gettext("Reading harnesses…")}
+          </p>
+          <p :for={line <- group.lines} id={line.id} class="text-[13px]/5 text-muted">
+            <.rich text={line.text} />
+          </p>
+        </section>
+      </div>
+    </div>
+    """
   end
 
-  defp kind_card_words(_domain), do: nil
+  # The groups after the Qory one that have a card or a line, in order.
+  defp groups(%{places: places, reads: reads, organisation: organisation}) do
+    for {group, title} <- [
+          shared: gettext("Shared harness"),
+          assigned: gettext("Assigned harnesses"),
+          connected: pgettext("plain", "Connected repositories")
+        ],
+        parts = group_parts(Enum.filter(places, &(&1.group == group)), reads, organisation),
+        parts.cards != [] or parts.lines != [] or parts.reading do
+      Map.merge(parts, %{id: Atom.to_string(group), title: title})
+    end
+  end
+
+  defp group_parts(places, reads, organisation) do
+    Enum.reduce(places, %{cards: [], lines: [], reading: false}, fn place, parts ->
+      case Map.get(reads, place.prefix, :waiting) do
+        pending when pending in [:waiting, :reading] ->
+          %{parts | reading: true}
+
+        {:ok, result} ->
+          %{
+            parts
+            | cards: parts.cards ++ place_cards(place, result.templates),
+              lines: parts.lines ++ place_lines(place, result)
+          }
+
+        {:error, reason} ->
+          line = %{
+            id: "set-up-line-#{slug(place.prefix)}",
+            text: read_line(reason, place, organisation)
+          }
+
+          %{parts | lines: parts.lines ++ [line]}
+      end
+    end)
+  end
+
+  defp place_cards(place, templates) do
+    for template <- templates do
+      key = Sources.template_key(place.source, template.module)
+
+      %{
+        id: template_card_id(key),
+        key: key,
+        name: template.name,
+        summary: template.summary,
+        label: if(place.group in [:assigned, :connected], do: place.source.label)
+      }
+    end
+  end
+
+  defp place_lines(place, %{not_readable: not_readable, more: more}) do
+    source = named(place)
+
+    lines =
+      not_readable
+      |> Enum.flat_map(&not_readable_lines(&1, source))
+      |> Enum.with_index()
+      |> Enum.map(fn {text, index} ->
+        %{id: "set-up-line-#{slug(place.prefix)}-#{index}", text: text}
+      end)
+
+    if more > 0 do
+      text =
+        ngettext(
+          "%{repository} lists %{count} more module. New workspace reads the first 20.",
+          "%{repository} lists %{count} more modules. New workspace reads the first 20.",
+          more,
+          repository: source.label
+        )
+
+      lines ++ [%{id: "set-up-line-#{slug(place.prefix)}-more", text: text}]
+    else
+      lines
+    end
+  end
+
+  # The lines of one module that is not a template: one, and one for each refusal of its
+  # types.
+  defp not_readable_lines(%{module: nil}, source) do
+    [
+      pgettext(
+        "plain",
+        "Change modules under exports in the qory.yaml or harness.yaml of %{repository} to a list of names. Qory Apiary cannot read the templates of that repository until then.",
+        repository: source.label
+      )
+    ]
+  end
+
+  defp not_readable_lines(%{module: module, reason: reason}, source) do
+    for words <- not_readable_words(reason) do
+      gettext("%{module} in %{repository} is not a template: %{reason}.",
+        module: module,
+        repository: source.label,
+        reason: words
+      )
+    end
+  end
+
+  defp not_readable_words(:stack_not_exported), do: [gettext("its stack is not exported")]
+
+  defp not_readable_words({:unknown_type, type}),
+    do: [gettext("Qory Apiary has no workspace type %{type}", type: type)]
+
+  defp not_readable_words({:invalid, _errors}), do: [gettext("its process is not valid")]
+  defp not_readable_words({:types, refusals}), do: Enum.map(refusals, &TemplateTypes.message/1)
+  defp not_readable_words(:unreadable), do: [gettext("Qory Apiary cannot read its process.yaml")]
+
+  @doc false
+  # read_line/3 is why the read of the place `place` (`t:Apiary.Stacks.Sources.listed/0`)
+  # failed, for a reason of `Apiary.Stacks.Sources` or `:exited`, in the words of
+  # `ApiaryWeb.HarnessComponents.read_words/3`. A failed read of a public repository's host
+  # has its words from `read_words/4`, which takes the organisation's name where a
+  # workspace's is asked, as New workspace has no workspace; for a hidden shared harness
+  # the words have no host and no port.
+  @spec read_line(term, map, %Organisation{}) :: String.t() | list
+  def read_line({:fetch, _code, _rule}, %{hidden: true}, _organisation) do
+    # The words of a failed fetch have the host and the port of the address.
+    rich_gettext(
+      "Qory Apiary could not read the shared harness. Try again. If it repeats, %{contact_support}.",
+      contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
+    )
+  end
+
+  def read_line(reason, place, %Organisation{name: name}),
+    do: HarnessComponents.read_words(reason, named(place), name, name)
+
+  @doc false
+  # named/1 is the source of `place` (`t:Apiary.Stacks.Sources.listed/0`) as a page names
+  # it: a hidden shared harness is "the shared harness", with no address.
+  @spec named(map) :: map
+  def named(%{hidden: true, source: source}),
+    do: %{source | label: gettext("the shared harness")}
+
+  def named(%{source: source}), do: source
+
+  @doc false
+  # template_card_id/1 is the element id of the card of the template with the page key
+  # `key`.
+  @spec template_card_id(String.t()) :: String.t()
+  def template_card_id(key), do: "set-up-card-" <> slug(key)
+
+  # An id's text for an element id: letters and digits stay, and every other byte, `-` and
+  # `_` included, is `_` and its two hex digits. Two texts never give one id, and the
+  # text has no `-`, so a suffix such as `-link` after it starts no other text's id.
+  defp slug(text), do: for(<<byte <- text>>, into: "", do: slug_byte(byte))
+
+  defp slug_byte(byte) when byte in ?a..?z or byte in ?A..?Z or byte in ?0..?9,
+    do: <<byte>>
+
+  defp slug_byte(byte), do: "_" <> Base.encode16(<<byte>>, case: :lower)
+
+  attr :id, :string, required: true
+  attr :href, :string, required: true
+  attr :name, :string, required: true
+  attr :summary, :string, default: nil
+  attr :label, :string, default: nil, doc: "the source the template is read from"
+  attr :heading, :string, required: true, values: ~w(h2 h3)
+
+  # template_card/1 is one card: a link named after the template, with its summary and,
+  # where there is one, the label of its source. Both `kind_cards/1` and `template_cards/1`
+  # show it.
+  defp template_card(assigns) do
+    ~H"""
+    <li id={@id} class="flex min-w-0">
+      <.link
+        id={"#{@id}-link"}
+        navigate={@href}
+        aria-label={@name}
+        aria-describedby={@summary && "#{@id}-summary"}
+        class="group flex w-full min-w-0 flex-col gap-2 rounded-box border border-line bg-base-100 p-4 transition-colors hover:border-line-strong"
+      >
+        <span class="flex items-start justify-between gap-3">
+          <.dynamic_tag tag_name={@heading} class="min-w-0 break-words font-semibold">
+            {@name}
+          </.dynamic_tag>
+          <.icon
+            name="hero-arrow-right-micro"
+            class="mt-0.5 size-4 flex-none text-muted group-hover:text-base-content"
+          />
+        </span>
+        <span :if={@summary} id={"#{@id}-summary"} class="text-[13.5px]/5">
+          {@summary}
+        </span>
+        <span :if={@label} id={"#{@id}-label"} class="break-words text-[12px]/4 text-muted">
+          {@label}
+        </span>
+      </.link>
+    </li>
+    """
+  end
+
+  # Each type with a card, in the order a person picks one: its domain, its key and its
+  # texts as its newest version shows them.
+  defp cards do
+    for domain <- card_domains() do
+      type = Domain.definition(domain).key
+      %{domain: domain, type: type, texts: Processes.type_texts(TypeTemplates.newest(type))}
+    end
+  end
 
   @doc """
-  choose_kind/3 takes Choose of a kind card (`kind_cards/1`) on `socket`'s page: it creates
-  a workspace of that type in the scope's organisation, named after the type
-  (`Apiary.Organisations.create_workspace_of_kind/3`, with `which`, `:first` on the empty
-  organisation overview), and opens its first set-up step, Name. A type with no card
-  changes nothing. Where someone else created the organisation's first workspace a moment
+  card_domains/0 is the domains of `Apiary.Lingo.Domain.choices/0` that have a kind card
+  and a type page, in their order: the software domain alone. A domain without one, such
+  as the tests' example domain, has neither, and no workspace is created of it here.
+  """
+  @spec card_domains() :: [module]
+  def card_domains, do: Enum.filter(Domain.choices(), &(&1 == Domain.Software))
+
+  @doc """
+  card_domain/1 is the domain of `card_domains/0` whose type has the key `type`, such as
+  `qory.software`; nil for any other key.
+  """
+  @spec card_domain(String.t()) :: module | nil
+  def card_domain(type) when is_binary(type),
+    do: Enum.find(card_domains(), &(Domain.definition(&1).key == type))
+
+  @doc """
+  choose_kind/3 takes Create workspace on a type's page (`ApiaryWeb.WorkspaceTypeLive`),
+  with `type` the domain's name: it creates a workspace of that type in the scope's
+  organisation, named after the type (`Apiary.Organisations.create_workspace_of_kind/3`,
+  with `which`, `:first` where the organisation has no workspace yet), and opens its first
+  set-up step, Name. A type with no card (`card_domains/0`) changes nothing. Where someone else created the organisation's first workspace a moment
   before, or the person may no longer create one, the organisation's overview opens
   again; where the organisation may have no more, the page shows the reason in an
   information notice (`limit_line/1`), not an error.
@@ -936,7 +1251,7 @@ defmodule ApiaryWeb.SetUpComponents do
     scope = socket.assigns.current_scope
     organisation = scope.organisation
 
-    case Enum.find(Domain.choices(), &(&1.name() == type and kind_card_words(&1) != nil)) do
+    case Enum.find(card_domains(), &(&1.name() == type)) do
       nil ->
         socket
 
@@ -958,6 +1273,112 @@ defmodule ApiaryWeb.SetUpComponents do
             Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
         end
     end
+  end
+
+  @doc """
+  choose_template/4 takes Create workspace on the page of a template of a harness source
+  (`ApiaryWeb.WorkspaceTypeLive`): `place` is the place the page read, and `start` the
+  source, commit and template that read gave. It creates a workspace of that template in the scope's organisation
+  (`Apiary.Organisations.create_workspace_from_template/3`, with `which`, `:first` where the
+  organisation has no workspace yet) and opens its first set-up step, Name. The answers
+  that are not a workspace:
+
+    * the edition's limit: the page shows the edition's line (`limit_line/1`) as information;
+    * a workspace made by someone else first, or a person who may no longer create one:
+      the organisation's overview opens;
+    * a shared harness whose row has no owner, for a person who may create: an error with
+      the fix, to save the shared harness again;
+    * a source or a connected repository that is no longer offered: New workspace opens, so
+      its list is read afresh;
+    * a process, an artifact type or a name the template has wrong: an error with the module
+      and what to change;
+    * any other refusal, an edition's included: "Nothing was changed. Try again."
+  """
+  @spec choose_template(Phoenix.LiveView.Socket.t(), map, map, :first | :any) ::
+          Phoenix.LiveView.Socket.t()
+  def choose_template(socket, place, start, which) do
+    scope = socket.assigns.current_scope
+    organisation = scope.organisation
+
+    case Organisations.create_workspace_from_template(scope, start, which) do
+      {:ok, workspace} ->
+        Phoenix.LiveView.push_navigate(socket,
+          to:
+            flow_path(
+              flow(organisation, Domain.for_workspace(workspace), workspace, :set_up),
+              :name
+            )
+        )
+
+      {:error, :limit} ->
+        Phoenix.LiveView.put_flash(socket, :info, limit_line(organisation))
+
+      {:error, :exists} ->
+        Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
+
+      {:error, :forbidden} ->
+        if Access.authorize(scope, :"workspace.create", organisation) == :ok,
+          do: forbidden_flash(socket, start),
+          else: Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
+
+      {:error, reason} when reason in [:not_found, :invalid] ->
+        socket
+        |> Phoenix.LiveView.put_flash(:error, gettext("Nothing was changed. Try again."))
+        |> Phoenix.LiveView.push_navigate(to: ~p"/#{organisation}/workspaces/new")
+
+      {:error, errors} when is_list(errors) ->
+        refused_flash(socket, place, start, gettext("its process is not valid"))
+
+      {:error, {:invalid, type, error}} ->
+        refused_flash(socket, place, start, TemplateTypes.message({:invalid, type, error}))
+
+      {:error, %Ecto.Changeset{errors: errors}} ->
+        case Keyword.get(errors, :name) do
+          nil ->
+            Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+
+          error ->
+            Phoenix.LiveView.put_flash(
+              socket,
+              :error,
+              gettext(
+                "Change the name in the process.yaml of %{module} in %{repository}. %{error}",
+                module: start.template.module,
+                repository: named(place).label,
+                error: translate_error(error)
+              )
+            )
+        end
+
+      {:error, _other} ->
+        Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+    end
+  end
+
+  # A refusal of the shared harness's row: no organisation owns it any more.
+  defp forbidden_flash(socket, %{source: %{kind: :shared}}) do
+    Phoenix.LiveView.put_flash(
+      socket,
+      :error,
+      gettext(
+        "Choose another template, or save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
+      )
+    )
+  end
+
+  defp forbidden_flash(socket, _start),
+    do: Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+
+  defp refused_flash(socket, place, start, reason) do
+    Phoenix.LiveView.put_flash(
+      socket,
+      :error,
+      gettext("%{module} in %{repository} is not a template: %{reason}.",
+        module: start.template.module,
+        repository: named(place).label,
+        reason: reason
+      )
+    )
   end
 
   @doc """

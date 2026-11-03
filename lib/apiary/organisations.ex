@@ -41,7 +41,11 @@ defmodule Apiary.Organisations do
 
   alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier}
+  alias Apiary.Artifacts.TemplateTypes
+  alias Apiary.Harnesses.QoryCopy
   alias Apiary.Lingo.Domain
+  alias Apiary.Stacks.Sources
+  alias Apiary.SupportAddress
 
   alias ApiaryWeb.ReservedSlugs
 
@@ -1280,8 +1284,10 @@ defmodule Apiary.Organisations do
     changes, the caller's among them: it names the workspace, and the membership and its
     person by id, with `details:` beside, a map or a function of the caller's changes
     that gives it;
-  - `:created`, a map of the organisation as the database has it once the edition's steps
-    are done, its workspace and its membership.
+  - `:template_types`, the artifact types of the Qory template in a workspace made from
+    it (Apiary.Artifacts.TemplateTypes.apply/3), each custom type with its entry;
+  - `:created`, a map of the organisation and its workspace as the database has them once
+    the edition's steps are done, and its membership.
 
   `pick_slug:`, given the name, stands in for the pick of a free slug, for tests; with
   `taken: :refuse`, for the slug inserted after the check, as one another creation took
@@ -1316,8 +1322,19 @@ defmodule Apiary.Organisations do
       |> Ecto.Multi.run(:organisation, fn _repo, _changes -> insert.(name, pick) end)
       |> Ecto.Multi.run(:workspace, fn _repo, %{organisation: organisation} ->
         if workspace?,
-          do: organisation |> main_workspace(domain) |> PublicId.Insert.insert(),
+          do:
+            organisation
+            |> main_workspace(domain)
+            |> put_qory_stack(qory_start(domain))
+            |> PublicId.Insert.insert(),
           else: {:ok, nil}
+      end)
+      |> Ecto.Multi.run(:process, fn _repo, %{workspace: workspace} ->
+        cond do
+          is_nil(workspace) -> {:ok, nil}
+          qory_start(domain) -> Apiary.Processes.copy_qory_template(workspace)
+          true -> Apiary.Processes.copy_default(workspace)
+        end
       end)
       |> Ecto.Multi.run(:membership, fn repo, %{organisation: organisation} ->
         if user,
@@ -1331,11 +1348,18 @@ defmodule Apiary.Organisations do
         & &1.organisation,
         &organisation_entry(&1, details)
       )
+      |> Ecto.Multi.run(:template_types, fn _repo, %{workspace: workspace} = changes ->
+        start = workspace && qory_start(domain)
+
+        if start,
+          do: TemplateTypes.apply(workspace, start.template, scope.(Map.merge(outer, changes))),
+          else: {:ok, nil}
+      end)
       |> Ecto.Multi.run(:created, fn repo, changes ->
         {:ok,
          %{
            organisation: repo.get!(Organisation, changes.organisation.id),
-           workspace: changes.workspace,
+           workspace: changes.workspace && repo.get!(Workspace, changes.workspace.id),
            membership: changes.membership
          }}
       end)
@@ -1654,7 +1678,9 @@ defmodule Apiary.Organisations do
   an owner's, asked of the organisation), named `attrs["name"]`, at the slug the name
   gives it (`change_new_workspace/2`), of the domain `attrs["domain"]`, one of
   `Apiary.Lingo.Domain.names/0`, which never changes after, and with nothing in it:
-  no key, no run, its policy in observe. A slug in `attrs` is ignored. The organisation's
+  no key, no run, its policy in observe, and the first version of its process, a copy of
+  its type's default, from no template, so its stack of the Qory harness is `core`. A slug
+  in `attrs` is ignored. The organisation's
   row is locked while its workspaces in use are counted against the edition's limit
   (`c:Apiary.Edition.limits/0`), the entry is written in the organisation's trail, and
   the edition is told (`c:Apiary.Edition.workspace_created/3`), all in one transaction.
@@ -1680,12 +1706,25 @@ defmodule Apiary.Organisations do
   organisation's lock. `which` is `:first` for the organisation's first workspace, as
   `create_first_workspace/2` creates it, or `:any`.
 
+  A domain whose type is the Qory template's (Apiary.Harnesses.QoryCopy.template/0)
+  makes the workspace from that template: version 1 of its process records the template
+  (Apiary.Processes.copy_qory_template/1), the workspace records the template's stack
+  and gets the template's artifact types (Apiary.Artifacts.TemplateTypes.apply/3), and
+  it gets a row of the Qory harness where the organisation shares another harness
+  (Apiary.Stacks.Sources.save_qory_start/2), in the same transaction. Any other domain
+  is made as `create_workspace/2` makes one.
+
   `create_workspace/2`'s answers, and `{:error, :exists}` with `:first` where the
   organisation has a workspace in use already.
   """
   @spec create_workspace_of_kind(Scope.t(), module, :first | :any) ::
           {:ok, %Workspace{}}
-          | {:error, Ecto.Changeset.t() | :exists | :limit | Access.reason()}
+          | {:error,
+             Ecto.Changeset.t()
+             | :exists
+             | :limit
+             | Access.reason()
+             | {:invalid, String.t(), term}}
   def create_workspace_of_kind(%Scope{organisation: %Organisation{}} = scope, domain, which)
       when which in [:first, :any] do
     insert_workspace(
@@ -1693,8 +1732,121 @@ defmodule Apiary.Organisations do
       fn organisation ->
         %{"name" => free_name(organisation, domain.type_name()), "domain" => domain.name()}
       end,
-      which
+      which,
+      qory_start(domain.name())
     )
+  end
+
+  @doc """
+  create_workspace_from_template/3 creates a workspace of the scope's organisation from
+  `start`, a map of `template`, a template of a harness source as
+  Apiary.Stacks.Sources.templates/2 read it, `source`, that source, and `commit`, the
+  commit of that read. `which` is as for `create_workspace_of_kind/3`.
+
+  The workspace is named after the template, as `create_workspace_of_kind/3` names one,
+  of the domain whose type is the template's `type` (`Apiary.Lingo.Domain.for_type/1`). In
+  one transaction, version 1 of its process is the template's process, with no default
+  version first (Apiary.Processes.copy_template/4), its harness is saved as a row at the
+  workspace (Apiary.Stacks.Sources.save_start/3), and it gets the template's artifact
+  types (Apiary.Artifacts.TemplateTypes.apply/3). This makes no
+  read and no check of the types: the template is taken as `start` has it, and
+  Apiary.Stacks.Sources.templates/2 checked its types.
+
+  `workspace.create`, and for a connected repository `harness.save`; an assigned or a
+  shared source needs the feature `factory` (Apiary.Stacks.Sources.check_start/2).
+
+  `create_workspace_of_kind/3`'s answers, and `{:error, :invalid}` for a source that
+  offers no template, a connected or an assigned source that differs from the
+  organisation's list of them, a template whose `type` is the key of no domain's type
+  (`Apiary.Lingo.Domain.known_type?/1`), or a row the save rules refuse; `{:error,
+  errors}` for a process Apiary.Processes.validate/1 refuses; `{:error, {:invalid, type,
+  error}}` for a custom type the database refuses; and `{:error, :not_found}` where the
+  feature is off, or the source is the shared harness and the organisation no longer
+  shares that repository. Nothing is made on any error.
+  """
+  @spec create_workspace_from_template(Scope.t(), map, :first | :any) ::
+          {:ok, %Workspace{}}
+          | {:error,
+             Ecto.Changeset.t()
+             | :exists
+             | :limit
+             | :invalid
+             | Access.reason()
+             | [map]
+             | {:invalid, String.t(), term}}
+  def create_workspace_from_template(
+        %Scope{organisation: %Organisation{} = organisation} = scope,
+        %{} = start,
+        which \\ :any
+      )
+      when which in [:first, :any] do
+    with :ok <- Access.authorize(scope, :"workspace.create", organisation),
+         :ok <- Sources.check_start(scope, start) do
+      domain = Domain.for_type(start.template.type)
+      name = String.trim(start.template.name)
+
+      insert_workspace(
+        scope,
+        fn organisation ->
+          %{"name" => free_name(organisation, name), "domain" => domain.name()}
+        end,
+        which,
+        start
+      )
+    end
+  end
+
+  # The Qory template, for a domain whose type is the copied template's, by the domain's
+  # name; nil for any other, which has no template.
+  defp qory_start(name) do
+    template = QoryCopy.template()
+
+    case Map.fetch(Domain.domains(), name) do
+      {:ok, domain} ->
+        if Domain.definition(domain).key == template.type,
+          do: %{qory: true, template: template}
+
+      :error ->
+        nil
+    end
+  end
+
+  defp put_qory_stack(changeset, %{qory: true, template: %{stack: stack}}),
+    do: Workspace.put_qory_stack(changeset, stack)
+
+  defp put_qory_stack(changeset, _start), do: changeset
+
+  # Version 1 of the process of `workspace`, new, its harness and its template's artifact
+  # types (`insert_workspace_row/4`): `{:ok, workspace}`, as the types left it, or
+  # `{:error, reason}`, which rolls the transaction back.
+  defp start_workspace(_scope, workspace, nil) do
+    with {:ok, _version} <- Apiary.Processes.copy_default(workspace), do: {:ok, workspace}
+  end
+
+  defp start_workspace(scope, workspace, %{qory: true} = start) do
+    with {:ok, _row} <- Sources.save_qory_start(scope, workspace),
+         do: qory_process(scope, workspace, start)
+  end
+
+  defp start_workspace(scope, workspace, %{template: template} = start) do
+    with {:ok, record} <- Sources.save_start(scope, workspace, start),
+         {:ok, workspace} <- TemplateTypes.apply(workspace, template, scope),
+         {:ok, _version} <-
+           Apiary.Processes.copy_template(
+             workspace,
+             template.process,
+             record,
+             scope.user && scope.user.id
+           ),
+         do: {:ok, workspace}
+  end
+
+  # The Qory template's artifact types in `workspace` and version 1 of its process. The
+  # tests of `QoryCopy` check that the template passes `TemplateTypes.check/1`.
+  defp qory_process(scope, workspace, %{template: template}) do
+    with {:ok, workspace} <- TemplateTypes.apply(workspace, template, scope),
+         {:ok, _version} <- Apiary.Processes.copy_qory_template(workspace),
+         do: {:ok, workspace}
   end
 
   # The first of `base`, `base 2`, `base 3`, … whose name and slug no workspace of the
@@ -1732,9 +1884,10 @@ defmodule Apiary.Organisations do
   create_first_workspace/2 creates the first workspace of the scope's organisation, one
   created with none (`sign_up_user/3` with `workspace: false`): named `attrs["name"]`,
   else "#{@default_workspace_name}", of the domain `attrs["domain"]`, one of
-  `Apiary.Lingo.Domain.names/0`. Nothing else of `attrs` is read. It is
-  `create_workspace/2` in every other way: the action `workspace.create`, the edition's
-  limit, the entry and the edition's step.
+  `Apiary.Lingo.Domain.names/0`. Nothing else of `attrs` is read. A domain whose type is
+  the Qory template's makes the workspace from that template, as
+  `create_workspace_of_kind/3` does. The action `workspace.create`, the edition's limit,
+  the entry and the edition's step are those of `create_workspace/2`.
 
   `{:ok, workspace}`; `{:error, :exists}` where the organisation has a workspace in use
   already, counted under the organisation's lock, so of two calls at once one creates it;
@@ -1744,11 +1897,16 @@ defmodule Apiary.Organisations do
   """
   @spec create_first_workspace(Scope.t(), map) ::
           {:ok, %Workspace{}}
-          | {:error, Ecto.Changeset.t() | :exists | :limit | Access.reason()}
+          | {:error,
+             Ecto.Changeset.t()
+             | :exists
+             | :limit
+             | Access.reason()
+             | {:invalid, String.t(), term}}
   def create_first_workspace(%Scope{organisation: %Organisation{}} = scope, attrs) do
     domain = Map.get(attrs, "domain") || Map.get(attrs, :domain)
     name = Map.get(attrs, "name") || Map.get(attrs, :name) || @default_workspace_name
-    insert_workspace(scope, %{"name" => name, "domain" => domain}, :first)
+    insert_workspace(scope, %{"name" => name, "domain" => domain}, :first, qory_start(domain))
   end
 
   @doc """
@@ -1780,9 +1938,10 @@ defmodule Apiary.Organisations do
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, workspaces_topic(organisation_id))
 
   # `which` is `:first` for the organisation's first workspace, refused once it has one.
-  # The topic of its workspaces is told once the transaction has committed.
-  defp insert_workspace(%Scope{organisation: organisation} = scope, attrs, which) do
-    case insert_workspace_row(scope, attrs, which) do
+  # `start` is the template it is made from, nil for none. The topic of its workspaces is
+  # told once the transaction has committed.
+  defp insert_workspace(%Scope{organisation: organisation} = scope, attrs, which, start \\ nil) do
+    case insert_workspace_row(scope, attrs, which, start) do
       {:ok, workspace} ->
         _sent =
           Phoenix.PubSub.broadcast(
@@ -1813,7 +1972,7 @@ defmodule Apiary.Organisations do
 
   # `attrs` is the new workspace's, or a function of the organisation that gives them,
   # called under the organisation's lock.
-  defp insert_workspace_row(%Scope{organisation: organisation} = scope, attrs, which) do
+  defp insert_workspace_row(%Scope{organisation: organisation} = scope, attrs, which, start) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"workspace.create", organisation),
            :ok <- lock_allowance(organisation),
@@ -1821,7 +1980,10 @@ defmodule Apiary.Organisations do
            :ok <- ensure_within_limit(organisation),
            attrs = if(is_function(attrs, 1), do: attrs.(organisation), else: attrs),
            {:ok, workspace} <-
-             organisation |> new_workspace_changeset(attrs) |> PublicId.Insert.insert(),
+             organisation
+             |> new_workspace_changeset(attrs)
+             |> put_qory_stack(start)
+             |> PublicId.Insert.insert(),
            {:ok, _entry} <-
              Audit.record(
                Repo,
@@ -1831,6 +1993,7 @@ defmodule Apiary.Organisations do
                %{after: %{name: workspace.name, slug: workspace.slug}},
                place: :organisation
              ),
+           {:ok, workspace} <- start_workspace(scope, workspace, start),
            :ok <- Edition.workspace_created(Repo, workspace, scope) do
         {:ok, workspace}
       end
@@ -3432,7 +3595,7 @@ defmodule Apiary.Organisations do
   # invitations; every attempt is counted against a ceiling of #{@attempts_per_invitation}
   # times as many, so an organisation cannot send to addresses that bounce without end.
   # The trail keeps an entry for 30 days at the least, far longer than the window.
-  defp refuse_over_daily_limit(changeset, %Organisation{id: allowance_id}) do
+  defp refuse_over_daily_limit(changeset, %Organisation{id: allowance_id, name: name}) do
     limit = Instance.invitations_per_day()
     attempts_limit = limit * @attempts_per_invitation
 
@@ -3478,8 +3641,10 @@ defmodule Apiary.Organisations do
           :email,
           dgettext_noop(
             "errors",
-            "was not invited: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
+            "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
           ),
+          organisation: name,
+          contact_support: SupportAddress.plain(mid_sentence: true),
           limit: limit,
           validation: :invitations_per_day
         )
@@ -3490,8 +3655,10 @@ defmodule Apiary.Organisations do
           :email,
           dgettext_noop(
             "errors",
-            "was not invited: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
+            "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
           ),
+          organisation: name,
+          contact_support: SupportAddress.plain(mid_sentence: true),
           limit: attempts_limit,
           validation: :invitation_attempts_per_day
         )

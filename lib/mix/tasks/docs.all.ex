@@ -57,6 +57,17 @@ defmodule Mix.Tasks.Docs.All do
   `--warnings-as-errors` makes a failure: a passage that needs a feature and is not marked
   is found by the build.
 
+  ## The guides for instance admins
+
+  Each tree is built twice. The public tree, `<output>/<tree>`, leaves out the guides only
+  instance admins read (`ApiaryWeb.DocsController.admin_guides/0`: the core's
+  `install.md` and `hosting-checklist.md`, and an edition's), so its pages, sidebar and
+  search never list them; a link to one from another guide becomes the link's words
+  there (`unlink/2`). The admins' tree, `<output>/admin/<tree>`, has every guide, and
+  `ApiaryWeb.DocsController.admin/2` serves it only to a signed-in instance admin. A guide
+  is matched by its file name, wherever its path is, so an edition's `mix.exs` lists the
+  core's guides by their paths in the core as before.
+
   ## Another application's modules
 
   ExDoc documents the project's application. `source_apps: [:app]` in the docs
@@ -85,6 +96,7 @@ defmodule Mix.Tasks.Docs.All do
     passages = Map.new(extras, &{&1, split!(File.read!(&1), &1)})
     extra_needs = extra_needs(owned)
     module_needs = module_needs(owned)
+    admin_guides = ApiaryWeb.DocsController.admin_guides()
 
     needs =
       Map.values(extra_needs) ++
@@ -95,15 +107,19 @@ defmodule Mix.Tasks.Docs.All do
     File.rm_rf!(output)
     File.rm_rf!(sources)
 
-    for tree <- trees(needs) do
-      name = ApiaryWeb.DocsController.tree_name(tree)
+    for tree <- trees(needs), audience <- [:public, :admin] do
+      name = tree_dir(audience, ApiaryWeb.DocsController.tree_name(tree))
       Mix.shell().info("Documentation for #{name}")
 
       copies =
-        for extra <- extras, covered?(Map.get(extra_needs, extra, []), tree), into: %{} do
+        for extra <- extras,
+            covered?(Map.get(extra_needs, extra, []), tree),
+            audience == :admin or not admin_guide?(extra, admin_guides),
+            into: %{} do
           copy = Path.join([sources, name, extra])
           File.mkdir_p!(Path.dirname(copy))
-          File.write!(copy, join(passages[extra], tree))
+          text = join(passages[extra], tree)
+          File.write!(copy, if(audience == :admin, do: text, else: unlink(text, admin_guides)))
           {extra, copy}
         end
 
@@ -121,6 +137,36 @@ defmodule Mix.Tasks.Docs.All do
     end
 
     :ok
+  end
+
+  # The public tree is at the root of the output; the admins' tree for the same features
+  # under `admin/` (`ApiaryWeb.DocsController.admin_dir/1`).
+  defp tree_dir(:public, name), do: name
+  defp tree_dir(:admin, name), do: Path.join("admin", name)
+
+  defp admin_guide?(extra, admin_guides), do: Path.basename(extra) in admin_guides
+
+  @doc """
+  The text of a guide for the public tree: each Markdown link to a guide for instance
+  admins (`admin_guides`, by file name), with or without an anchor, replaced by the link's
+  words, since the public tree has no such page.
+
+      iex> Mix.Tasks.Docs.All.unlink(
+      ...>   "See [Install and configure](install.md#mail) and [Nodes](nodes.md).",
+      ...>   ["install.md"]
+      ...> )
+      "See Install and configure and [Nodes](nodes.md)."
+  """
+  @spec unlink(String.t(), [String.t()]) :: String.t()
+  def unlink(text, admin_guides) do
+    Regex.replace(~r/\[([^\]]+)\]\(([^)\s#]+)(#[^)\s]*)?\)/, text, fn link,
+                                                                      words,
+                                                                      target,
+                                                                      _anchor ->
+      if not String.contains?(target, ":") and Path.basename(target) in admin_guides,
+        do: words,
+        else: link
+    end)
   end
 
   defp docs(config) do

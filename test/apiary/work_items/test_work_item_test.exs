@@ -367,7 +367,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       assert Enum.sort(Enum.map(page.rows, & &1.id)) ==
                Enum.sort([listed.public_id, test_item.public_id])
 
-      assert page.counts == %{open: 2, you: 2, declined: 0, closed: 1}
+      assert page.counts == %{open: 2, you: 2, closed: 1}
 
       row = Enum.find(page.rows, &(&1.id == test_item.public_id))
 
@@ -418,7 +418,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
 
       page = WorkItems.list_work_items(ctx.scope, %{"collection" => ["Test run"]})
       assert Enum.map(page.rows, & &1.id) == [titled.public_id]
-      assert page.counts == %{open: 1, you: 0, declined: 0, closed: 0}
+      assert page.counts == %{open: 1, you: 0, closed: 0}
 
       assert WorkItems.list_filter_values(ctx.scope, :collection) == [
                %{key: "Test run", count: 1}
@@ -546,13 +546,9 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       assert Repo.all(from e in Entry, where: e.action == "work_item.close") == []
     end
 
-    test "takes in another once the live one is undone, declined or closed", ctx do
+    test "takes in another once the live one is undone or closed", ctx do
       undone = test_item!(ctx.scope)
       {:ok, _undone} = WorkItems.undo(ctx.scope, undone)
-
-      declined = test_item!(ctx.scope)
-      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^declined.id)
-      {:ok, _declined} = WorkItems.decline(ctx.scope, declined)
 
       closed = test_item!(ctx.scope)
       {:ok, _closed} = WorkItems.close(ctx.scope, closed)
@@ -579,7 +575,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
     end
   end
 
-  describe "undo, decline and close of a test work item" do
+  describe "undo and close of a test work item" do
     setup %{scope: scope} do
       Phoenix.PubSub.subscribe(Apiary.PubSub, WorkItems.topic(scope.workspace.id))
       Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.Sources.Topic.topic(scope.workspace.id))
@@ -600,17 +596,6 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
 
       assert {:ok, %WorkItem{state: :undone}} = WorkItems.undo(ctx.scope, work_item)
       assert %DispatchRun{state: :ended, end_cause: :undone} = Repo.reload!(run)
-      told!(work_item)
-    end
-
-    test "a decline works once no run of it is live", ctx do
-      work_item = test_item!(ctx.scope)
-      told!(work_item)
-
-      assert WorkItems.decline(ctx.scope, work_item) == {:error, :running}
-
-      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
-      assert {:ok, %WorkItem{state: :declined}} = WorkItems.decline(ctx.scope, work_item)
       told!(work_item)
     end
 
@@ -682,7 +667,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
     test "takes the run of a test work item, which has no connection to check", ctx do
       [run] = runs(test_item!(ctx.scope))
 
-      assert {:ok, _taken} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, _taken} = Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
 
       assert dispatched?(run)
       refute run!(run).end_cause in [:closed, :undone]
@@ -692,7 +677,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
          ctx do
       last = test_item!(ctx.scope)
       [run] = runs(last)
-      assert {:ok, _taken} = Dispatches.claim(ctx.key, Dispatches.now())
+      assert {:ok, _taken} = Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
       assert %DispatchRun{state: :claimed} = run!(run)
 
       assert WorkItems.take_in_test(ctx.scope, "Once more") == {:error, :test_running}
@@ -738,7 +723,6 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       ended =
         for {fields, cause} <- [
               {[state: :closed, closed_at: now], :closed},
-              {[state: :declined, declined_at: now], :closed},
               {[state: :undone], :undone},
               {[workspace_id: other.id], :closed}
             ] do
@@ -751,7 +735,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
           {run, cause}
         end
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
 
       for {run, cause} <- ended do
         assert %DispatchRun{state: :ended, end_cause: ^cause} = run!(run)
@@ -768,7 +752,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
         set: [state: :ended, ended_at: Dispatches.now(), ended_reason: :adapter_reported]
       )
 
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
       assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
       refute dispatched?(run)
     end

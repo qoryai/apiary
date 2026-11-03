@@ -36,11 +36,14 @@ defmodule Apiary.Runs.Filters do
   `q` is the free text of the query: the runs whose id starts with it, or whose title or
   target holds it; the destinations whose host or path holds it. `apply_query/3` reads what
   the reader typed: `qualifier:value` words set the filters the URL carries (`repo:` or
-  `target:`, `state:`, `runtime:`, `host:`, `node:`, `started:` and
-  `denied:` on the runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
+  `target:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`, its older word),
+  `item:`, `started:` and `denied:` on the runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
   the other words are `q`. A value in double quotes may hold spaces. A word whose qualifier
   the page does not know is free text; a qualifier it knows with a value it cannot read is
   refused and named. `tokens/2` writes the filters back as those words.
+
+  `item` is a work item's number in the workspace (`item=3`, typed `item:3` or `item:#3`):
+  the runs of its runs of the queue.
 
   A value that is present and refused (not one the page offers, not a string, longer than
   the column it is compared with, or holding a control character, which Postgres would
@@ -77,6 +80,8 @@ defmodule Apiary.Runs.Filters do
   # The free text of a query: what `Apiary.Runs.like/1` matches.
   @max_q 256
   @max_page 100_000
+  # The highest work item number the column holds, a Postgres bigint.
+  @max_item 9_223_372_036_854_775_807
   # More ids than a link to a filtered list gives: every target on one path, or a few.
   @max_targets 20
 
@@ -90,7 +95,9 @@ defmodule Apiary.Runs.Filters do
       "state" => :state,
       "runtime" => :runtime,
       "host" => :host,
+      "machine" => :node,
       "node" => :node,
+      "item" => :item,
       "started" => :started,
       "denied" => :denied,
       "denials" => :denied
@@ -113,6 +120,7 @@ defmodule Apiary.Runs.Filters do
             runtime: nil,
             host: nil,
             node: nil,
+            item: nil,
             q: nil,
             since: "all",
             from: nil,
@@ -138,6 +146,7 @@ defmodule Apiary.Runs.Filters do
           runtime: nil | String.t(),
           host: nil | String.t(),
           node: nil | String.t(),
+          item: nil | pos_integer(),
           q: nil | String.t(),
           since: nil | String.t(),
           from: nil | Date.t(),
@@ -267,6 +276,7 @@ defmodule Apiary.Runs.Filters do
         {denials, d11} = read(params, "denials", &if(&1 == "1", do: true))
         {per, d12} = read(params, "per", &per/1)
         {node, d13} = read(params, "node", &text/1)
+        {item, d14} = read(params, "item", &item/1)
 
         %{
           filters
@@ -274,8 +284,9 @@ defmodule Apiary.Runs.Filters do
             runtime: runtime,
             denials: denials == true,
             node: node,
+            item: item,
             per: per || @default_per,
-            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13
+            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13 ++ d14
         }
 
       :connections ->
@@ -315,6 +326,7 @@ defmodule Apiary.Runs.Filters do
       {"runtime", f.runtime},
       {"host", f.host},
       {"node", f.node},
+      {"item", f.item && Integer.to_string(f.item)},
       {"q", q_param(f)},
       {"since", f.since not in [nil, @default_since[kind]] && f.since},
       {"from", f.from && Date.to_iso8601(f.from)},
@@ -336,7 +348,8 @@ defmodule Apiary.Runs.Filters do
   """
   def any?(%__MODULE__{kind: kind} = f) do
     f.states != [] or f.target != nil or f.runtime != nil or f.host != nil or f.node != nil or
-      f.q != nil or f.since != @default_since[kind] or f.denials or f.decision != nil or
+      f.item != nil or f.q != nil or f.since != @default_since[kind] or f.denials or
+      f.decision != nil or
       f.tools
   end
 
@@ -399,7 +412,7 @@ defmodule Apiary.Runs.Filters do
             _other -> current
           end
 
-        name when name in ~w(runtime host node) ->
+        name when name in ~w(runtime host node item) ->
           Map.merge(current, Map.take(form, [name]))
 
         name when name in ~w(denials tools) ->
@@ -542,6 +555,13 @@ defmodule Apiary.Runs.Filters do
       else: :error
   end
 
+  defp query_params(:item, value, _kind, _resolve) do
+    case item(String.trim_leading(value, "#")) do
+      nil -> :error
+      number -> {:ok, ["item"], %{"item" => Integer.to_string(number)}}
+    end
+  end
+
   defp query_params(:started, value, kind, _resolve) do
     case range(String.downcase(value), kind) do
       nil -> :error
@@ -651,7 +671,7 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The filters as the query writes them, one token each, in the order the page shows them:
   `%{key:, value:, without:}`, `key` the qualifier (`:target`, `:state`,
-  `:runtime`, `:host`, `:node`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
+  `:runtime`, `:host`, `:node`, `:item`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
   follows it (quoted when it holds a space), `without` the filters with it removed, nil
   for the connections' widest window, which cannot be. The free text is not a token, nor
   is a default but the connections' window, which is always said. `target_text:` writes a target (by default
@@ -669,6 +689,7 @@ defmodule Apiary.Runs.Filters do
       {:runtime, f.runtime, [runtime: nil]},
       {:host, f.host, [host: nil]},
       {:node, f.node, [node: nil]},
+      {:item, f.item && Integer.to_string(f.item), [item: nil]},
       {:decision, f.decision, [decision: nil]},
       {:started, range_text(f), range_without(f)},
       {:denied, f.denials && "yes", [denials: false]},
@@ -977,6 +998,17 @@ defmodule Apiary.Runs.Filters do
   end
 
   defp page(_value), do: nil
+
+  # A work item's number, as `Apiary.WorkItems.Number` gives them: 1 and up, within what
+  # the column holds.
+  defp item(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, ""} when number in 1..@max_item -> number
+      _ -> nil
+    end
+  end
+
+  defp item(_value), do: nil
 
   defp per(value) when is_binary(value) do
     case Integer.parse(value) do

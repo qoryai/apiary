@@ -356,6 +356,39 @@ defmodule Apiary.Runs.ListingTest do
       assert f.page == 1
     end
 
+    test "machine: keeps a machine's or a pool's runs, and node:, its older word, still does" do
+      {f, []} = query("machine:build-01")
+      assert f.node == "build-01"
+      assert Filters.to_params(f) == %{"node" => "build-01"}
+
+      {f, []} = query("node:spot-runners")
+      assert f.node == "spot-runners"
+      assert [%{key: :node, value: "spot-runners"}] = Filters.tokens(f)
+    end
+
+    test "item: is a work item's number, typed with or without #, and nothing else" do
+      {f, []} = query("item:3")
+      assert f.item == 3
+      assert Filters.to_params(f) == %{"item" => "3"}
+      assert [%{key: :item, value: "3"}] = Filters.tokens(f)
+      assert Filters.any?(f)
+
+      {f, []} = query("item:#12 state:failed")
+      assert f.item == 12
+      assert f.states == ["failed"]
+
+      for bad <- ["0", "-1", "x", "3.5", "9223372036854775808"] do
+        {f, dropped} = query("item:" <> bad)
+        assert f.item == nil
+        assert dropped != []
+      end
+
+      assert parse(%{"item" => "7"}).item == 7
+      filters = parse(%{"item" => "0"})
+      assert filters.item == nil
+      assert "item" in filters.dropped
+    end
+
     test "a qualifier replaces its filter and keeps the others; the free text is what is typed now" do
       {f, []} = query("state:running", %{"state" => "failed", "host" => "a", "q" => "old"})
       assert f.states == ["running"]

@@ -2,7 +2,8 @@ defmodule Apiary.Stacks.Sources do
   # The harness sources Workspace settings › Workflow offers a workspace
   # (`ApiaryWeb.WorkflowLive`), the stacks each has, the workflows each stack lists, and
   # the save of the workspace's document. Every read goes through the adapters' calls
-  # (`Apiary.Adapters.Calls`: `resolve`, `read` and `read-public`), as a run's walk reads
+  # (`Apiary.Adapters.Calls`: `resolve` and `read`), or reads a public repository from
+  # its host with no adapter (`Apiary.Harnesses.PublicGit`), as a run's walk reads
   # (`Apiary.Harnesses.Walk`), and writes nothing.
   #
   # ## The sources
@@ -27,25 +28,64 @@ defmodule Apiary.Stacks.Sources do
   # resolved at every adapter with a `call_url`, in the order of their names, as a run's
   # walk resolves it:
   # the first result under a live grant of a connected connection that the rule allows
-  # (`Apiary.Harnesses.allowed?/3`) is its link; with none, the first result with
-  # `public`, true, makes it public, read at that result's `public_ref` (`read-public`),
-  # with no grant and no link. Neither is `:not_covered`, and a run's walk could not read
-  # it either. A source with `stack` is that export of its root harness file, one with
+  # (`Apiary.Harnesses.allowed?/3`) is its link; with none, a repository its host serves
+  # to anyone is public, read from its host with no grant and no link. Neither is
+  # `:not_covered` where the host answered that it serves no such repository to anyone,
+  # else `{:fetch, code, rule}` for a read of the host that failed, as a run's walk
+  # fails; a run's walk could not read it either. A source with `stack` is that export of
+  # its root harness file, one with
   # `path` the `qory-stack.yaml` in that folder, and a root the stacks its harness file
   # exports, else its `qory-stack.yaml`.
+  #
+  # ## Reading a source's templates
+  #
+  # `templates/2` reads the templates of a source with no narrowing, from its root harness
+  # file, as `exports/2` reads the source. A template is the `process.yaml` of a module the
+  # file's `exports` list, read at the commit of the root file, in the module's folder
+  # (`Apiary.Harnesses.Reader.module_file/3`). A module with no such file is in neither of
+  # the result's lists. A module whose file has a `stack` the `exports` do not list, a
+  # `type` that is the key of no domain's type (`Apiary.Lingo.Domain.known_type?/1`), a
+  # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` that
+  # does not pass `Apiary.Artifacts.TemplateTypes.check/2`, and a module whose file is not
+  # read, is in `not_readable` with the reason (`t:not_readable/0`), and the other modules
+  # are read. The file's checks run in that order, the costly check of the types last. The
+  # schema of the file comes before them, so an entry of `artifact_types` it refuses is
+  # reported first.
+  # A failed read of one file fails the source only where the failure is about the
+  # source (`source_failed?/1`), such as an adapter out of reach or no time left. A name
+  # listed twice counts once.
+  #
+  # A source narrowed to a stack or a folder has no template. An assignment narrowed that
+  # way limits what the organisation may read (`Apiary.Harnesses.allowed?/3`), and the
+  # root file may list modules outside that limit. A read of such a source reads
+  # `harness.yaml` for its commit, and no `qory.yaml` and no module's file.
+  #
+  # ## The places New workspace lists
+  #
+  # `listed/1` is the places a person may list templates from, with no call: the Qory
+  # template for a person `workspace.create` allows, and, with the feature `factory`, the
+  # harness repository the organisation shares, the assigned sources without a `path` or
+  # `stack`, and the connected repositories for a person `harness.save` allows. A page key
+  # is the place's prefix, a dot and a module's name (`find_listed/2`). A place whose `git`
+  # and `ref` an earlier place has is left out.
   #
   # ## Limits
   #
   # A person's reads are counted in a fixed window of a minute, by the person's account
   # (`Apiary.Runs.RateLimit.reserve/3`): at most 10 reads of a source (`exports/2`,
-  # `read/2` and the reads of a save), else `{:error, {:limited, seconds}}`, the seconds
-  # until the window ends. `RateLimit` counts on each node, so on a cluster a person gets
+  # `read/2`, `templates/2` and the reads of a save), else `{:error, {:limited, seconds}}`,
+  # the seconds until the window ends. `RateLimit` counts on each node, so on a cluster a person gets
   # these limits on each node. Each resolve of an address may make the adapter call the
   # system it reaches under credentials every organisation shares, so a person's reads
   # stay a few. A read of a source makes one resolve per adapter and at most 3 reads to
   # find its stacks, then, for `read/2`, reads the first 20 stacks it has, in the order
-  # its harness file exports them; its calls take at most 30 seconds together, and one
-  # past that makes the source not read.
+  # its harness file exports them, or, for `templates/2` of a source with no narrowing,
+  # the file of each of the first 20 modules it lists; its calls, and its requests to a
+  # public repository's host, take at most 30 seconds together, and one past that makes
+  # the source not read. A file read from the cache makes no request, so `templates/2` also
+  # checks the time before each module, and a source past it fails as a late read fails.
+  # The check of a module's artifact types gets the time left, at most its total. A check
+  # that returns `:schemas_too_long` past that time fails the source as a late read fails.
   #
   # ## The save
   #
@@ -96,30 +136,63 @@ defmodule Apiary.Stacks.Sources do
   # workspace's choice as a page shows it, and `targets_chosen/1` the stacks chosen for
   # its targets.
   #
+  # ## A workspace's first harness
+  #
+  # A workspace made from a template gets its harness in the transaction that makes it
+  # (`Apiary.Organisations.create_workspace_from_template/3`), with no read: the commit is
+  # the one `templates/2` gave, recorded as given, and a run's walk reads the row as any
+  # other. `check_start/2`, before the transaction, takes a connected repository under
+  # `harness.save`, and an assigned or a shared source with the feature `factory` visible.
+  # It refuses a source that offers no template, and a connected or an assigned source
+  # that differs from the entry of `repositories/1` or `assigned/1` on its id, address,
+  # `ref` or narrowing.
+  #
+  # `save_start/3` writes a row at the workspace: the source's repository, the template's
+  # stack, and the commit as the row's `ref`, with no version. A row of an assigned source
+  # has the assignment's `ref`, the only one the assignment covers, and the commit is in
+  # the record alone. A row of the shared harness has the shared row's `ref` where an
+  # assignment covers the template's stack at that `ref`, with the commit in the record
+  # alone, and the commit otherwise. It keeps the shared row's owner, so a harness that
+  # runs hide stays hidden (`Apiary.Stacks.Resolution`), and the record then has no
+  # address. `save_qory_start/2` writes a `:qory` row only where the organisation
+  # shares another harness, which the workspace would otherwise take. Both hold the lock
+  # of the organisation's shares where they read its shared row.
+  #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   import Ecto.Query
 
-  alias Apiary.{Access, Harnesses, Repo, Stacks}
+  require Logger
+
+  alias Apiary.{Access, Edition, Features, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
-  alias Apiary.Harnesses.{Assignment, Reader, Walk}
+  alias Apiary.Artifacts.TemplateTypes
+  alias Apiary.Harnesses.{Assignment, PublicGit, Reader, Walk}
   alias Apiary.Lingo.Domain
   alias Apiary.Lingo.Domain.Definition
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{RateLimit, Target}
-  alias Apiary.Stacks.{Document, Stack}
+  alias Apiary.Stacks.{Document, Resolution, Stack}
 
   @head "HEAD"
   @stack_file "qory-stack.yaml"
   # A person's reads of a source in a window of a minute (the moduledoc).
   @reads_a_minute 10
   @minute 60_000
-  # The most stacks a read of a source reads, and the time all its calls may take.
+  # The most stacks a read of a source reads, and the time all its calls may take. A read
+  # of a source's templates takes about 40 s at worst: no module starts after 30 s, and
+  # the last one started can then parse its file for up to 10 s, the backstop of
+  # `Apiary.Harnesses.Reader`. The check of its types gets no time past the 30 s. Without
+  # the time checks, 20 modules cost 20 × (10 s + 30 s) = 800 s.
   @max_stacks 20
   @read_time 30_000
+  # The file of a module that makes it a template, and the most modules a read of a
+  # source's templates reads.
+  @template_file "process.yaml"
+  @max_template_modules 20
   # The time of one call, `Apiary.Adapters.Calls`' default.
   @call_time 10_000
 
@@ -130,7 +203,7 @@ defmodule Apiary.Stacks.Sources do
   """
   @type source :: %{
           id: String.t(),
-          kind: :linked | :assigned | :address,
+          kind: :linked | :assigned | :address | :shared,
           label: String.t(),
           git: String.t(),
           ref: String.t(),
@@ -140,8 +213,68 @@ defmodule Apiary.Stacks.Sources do
           stacks: [map] | nil
         }
 
+  @typedoc """
+  A template to make a workspace from: the source it was read from, `commit`, the commit
+  that read gave (`t:templates/0`), and the template.
+  """
+  @type start :: %{source: source, commit: String.t(), template: template}
+
   @typedoc "A stack of a source: its export name, nil for none, the base a document extends, and its workflows."
   @type stack :: %{name: String.t() | nil, base: map, workflows: [String.t()]}
+
+  @typedoc """
+  A template of a source: `module`, the name of the module whose folder has its
+  `process.yaml`, and the fields of the file (`t:Apiary.Harnesses.Reader.template/0`).
+  """
+  @type template :: %{
+          module: String.t(),
+          name: String.t(),
+          summary: String.t(),
+          description: String.t(),
+          type: String.t(),
+          stack: String.t(),
+          process: map,
+          artifact_types: [map] | nil
+        }
+
+  @typedoc """
+  A module of a source that gives no template, and why; `module` is nil for
+  `:modules_invalid`, which is about every module of the source:
+
+    * `:stack_not_exported`: the file's `stack` is not among the stacks of `exports`;
+    * `{:unknown_type, type}`: the file's `type` is the key of no domain's workspace type
+      (`Apiary.Lingo.Domain.known_type?/1`), so a workspace cannot be made from it;
+    * `{:invalid, errors}`: its `process` does not pass `Apiary.Processes.validate/1`;
+    * `{:types, refusals}`: its `artifact_types` do not pass the check of a template's
+      types, or the schema refuses an entry with a name (`{:schema, type}`);
+      `TemplateTypes.message/1` returns each refusal's text;
+    * `:unreadable`: the module's folder is at no path a read takes, a read of the file
+      failed, or the file does not pass `Apiary.Harnesses.Reader.template/1` for a reason
+      that is about no entry of `artifact_types` with a name;
+    * `:modules_invalid`: the `modules` of `exports` are not a list of text.
+  """
+  @type not_readable :: %{
+          module: String.t() | nil,
+          reason:
+            :stack_not_exported
+            | {:unknown_type, String.t()}
+            | {:invalid, [Apiary.Processes.error()]}
+            | {:types, [TemplateTypes.refusal()]}
+            | :unreadable
+            | :modules_invalid
+        }
+
+  @typedoc """
+  The templates of a source: `commit`, the commit the read resolved; `templates` and
+  `not_readable`, in the order of `exports`; and `more`, how many distinct modules a
+  source with no narrowing lists past the ones read, 0 for a narrowed source.
+  """
+  @type templates :: %{
+          commit: String.t(),
+          templates: [template],
+          not_readable: [not_readable],
+          more: non_neg_integer
+        }
 
   @typedoc """
   A call to an adapter that failed, as a page shows it: the adapter's shown name
@@ -180,9 +313,12 @@ defmodule Apiary.Stacks.Sources do
   @typedoc """
   Why a source's stacks were not read:
 
-    * `:not_covered`: no adapter links the source to the organisation and none reads it
-      in public, or an adapter refused a read `grant_unknown`, `resource_not_covered` or
-      `resource_not_public`, as for a run's walk;
+    * `:not_covered`: no adapter links the source to the organisation and its host
+      serves no such repository to anyone, or an adapter refused a read `grant_unknown`,
+      `resource_not_covered` or `resource_not_public`, as for a run's walk;
+    * `{:fetch, code, rule}`: a read of a public repository's host that failed, with a
+      run's walk's code, `:too_large`, `:source_unreachable`, `:host_not_allowed`,
+      `:rate_limited` or `:fetch_failed`, and its `fetch` rule (`Apiary.Harnesses.Walk.fetch_rule/2`);
     * `:no_stack`: a root with no stack in a harness file's `exports` and no
       `qory-stack.yaml`;
     * `{:no_stack_file, file}`: no `file`, the `qory-stack.yaml` of a stack a root
@@ -208,6 +344,9 @@ defmodule Apiary.Stacks.Sources do
   """
   @type reason ::
           :not_covered
+          | {:fetch,
+             :too_large | :source_unreachable | :host_not_allowed | :rate_limited | :fetch_failed,
+             map}
           | :no_stack
           | {:no_stack_file, String.t()}
           | {:no_export, String.t()}
@@ -313,7 +452,8 @@ defmodule Apiary.Stacks.Sources do
   # (`Apiary.Adapters.CallAddress.placed?/1`), by its shown name (`t:unplaced/0`). The
   # repositories of such an adapter are not in `repositories/1`. It makes no call.
   # `:instance_host` in `opts` replaces the host of `PUBLIC_URL`, for a test: with none,
-  # no adapter is called, as `placed?/1` has it.
+  # no adapter is called, as `placed?/1` has it. It writes one warning for each, with the
+  # adapter's public id and the cause, which the page does not show.
   @spec unplaced(Scope.t(), keyword) :: [unplaced]
   def unplaced(%Scope{organisation: %Organisation{} = organisation}, opts \\ []) do
     host = Keyword.get_lazy(opts, :instance_host, &CallAddress.instance_host/0)
@@ -323,9 +463,16 @@ defmodule Apiary.Stacks.Sources do
     |> Enum.map(fn {_collection, adapter} -> adapter end)
     |> Enum.uniq_by(& &1.id)
     |> Enum.reject(&(host not in [nil, ""] and CallAddress.placed?(&1)))
-    |> Enum.map(
-      &%{id: &1.public_id, adapter: Apiary.Adapters.title(&1), cause: unplaced_cause(&1, host)}
-    )
+    |> Enum.map(fn adapter ->
+      cause = unplaced_cause(adapter, host)
+
+      # The page shows only that support is needed; the cause is here.
+      Logger.warning(
+        "an adapter's call address is not called adapter=#{adapter.public_id} cause=#{cause}"
+      )
+
+      %{id: adapter.public_id, adapter: Apiary.Adapters.title(adapter), cause: cause}
+    end)
     |> Enum.sort_by(&String.downcase(&1.adapter))
   end
 
@@ -459,6 +606,125 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
+  @typedoc """
+  A place New workspace lists templates from: its `group` (`:qory`, `:shared`, `:assigned`
+  or `:connected`), the `prefix` of its page keys, its `source` (nil for the Qory
+  template, which is read from the copy), and whether runs hide the harness
+  (`hidden`). A page key is `prefix <> "." <> module`.
+  """
+  @type listed :: %{
+          group: :qory | :shared | :assigned | :connected,
+          prefix: String.t(),
+          source: source | nil,
+          hidden: boolean
+        }
+
+  @doc false
+  # listed/1 is the places the scope's person may list templates from (the moduledoc), in
+  # the order New workspace shows them, with no call: the Qory template for everyone
+  # `workspace.create` allows, and, with the feature `factory`:
+  #
+  #   * the harness the organisation shares, when it is a harness repository;
+  #   * each assigned source with no `path` or `stack` (`templates/2` reads no template of
+  #     one);
+  #   * each connected repository, for a person `harness.save` allows.
+  #
+  # A source whose `git` and `ref` an earlier place has is left out, so one read serves
+  # both. A shared row converts with `narrowing: %{}`: the row has no field for where it
+  # came from, and `locate` still asks `Apiary.Harnesses.allowed?/3`, so a repository only
+  # a narrowed assignment covers is `:not_covered`. The `label` of a hidden shared harness
+  # is "", for the page to name.
+  @spec listed(Scope.t()) :: [listed]
+  def listed(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    if Access.can?(scope, :"workspace.create", organisation) do
+      qory = %{group: :qory, prefix: "qory", source: nil, hidden: false}
+
+      if Features.visible?(scope, :factory) do
+        others =
+          shared_listed(organisation) ++
+            assigned_listed(scope) ++ connected_listed(scope, organisation)
+
+        [qory | Enum.uniq_by(others, &{&1.source.git, &1.source.ref})]
+      else
+        [qory]
+      end
+    else
+      []
+    end
+  end
+
+  @doc false
+  # find_listed/2 is the place of the page key `key` among `listed/1` and the module the
+  # key names: `{:ok, listed, module}`, or `:error` for a key of no place with a source.
+  # The key splits at its first dot, as a module's name may have dots.
+  @spec find_listed(Scope.t(), String.t()) :: {:ok, listed, String.t()} | :error
+  def find_listed(%Scope{} = scope, key) when is_binary(key) do
+    with [prefix, module] when module != "" <- String.split(key, ".", parts: 2),
+         %{source: %{}} = place <- Enum.find(listed(scope), &(&1.prefix == prefix)) do
+      {:ok, place, module}
+    else
+      _none -> :error
+    end
+  end
+
+  defp shared_listed(%Organisation{} = organisation) do
+    with %{choice: :repository, git: git} = chosen when is_binary(git) <- shared(organisation),
+         %Stack{owner_organisation_id: owner} <- Stacks.shared(organisation) do
+      hidden =
+        Resolution.hidden?(owner, %{
+          organisation_id: organisation.id,
+          operated: Edition.operated?(organisation)
+        })
+
+      [
+        %{
+          group: :shared,
+          prefix: "shared",
+          hidden: hidden,
+          source: %{
+            id: "shared",
+            kind: :shared,
+            label: if(hidden, do: "", else: repository(git)),
+            git: git,
+            ref: chosen.pin || @head,
+            narrowing: %{},
+            location: nil,
+            version: nil,
+            stacks: nil
+          }
+        }
+      ]
+    else
+      _none -> []
+    end
+  end
+
+  defp assigned_listed(scope) do
+    for source <- assigned(scope), not narrowed?(source.narrowing) do
+      %{
+        group: :assigned,
+        prefix: String.replace_prefix(source.id, "assigned:", "assigned-"),
+        source: source,
+        hidden: false
+      }
+    end
+  end
+
+  defp connected_listed(scope, organisation) do
+    if Access.can?(scope, :"harness.save", organisation) do
+      for source <- repositories(scope) do
+        %{
+          group: :connected,
+          prefix: String.replace_prefix(source.id, "linked:", ""),
+          source: source,
+          hidden: false
+        }
+      end
+    else
+      []
+    end
+  end
+
   ## Reading
 
   @doc false
@@ -473,17 +739,19 @@ defmodule Apiary.Stacks.Sources do
     deadline = now() + @read_time
     harness_source = Map.merge(source.narrowing, %{"git" => source.git, "ref" => source.ref})
 
-    with :ok <- spend(scope, :read, @reads_a_minute),
-         {:ok, location} <- locate(organisation, harness_source, deadline),
-         {:ok, harness, version} <- read_file(location, "harness.yaml", source.ref, deadline),
-         {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
-      case {harness, qory} do
-        {nil, nil} -> {:ok, []}
-        {content, nil} -> export_names("harness.yaml", content)
-        {nil, content} -> export_names("qory.yaml", content)
-        _both -> {:error, both_files()}
+    PublicGit.session(public_budget(deadline), fn ->
+      with :ok <- spend(scope, :read, @reads_a_minute),
+           {:ok, location} <- locate(organisation, harness_source, deadline),
+           {:ok, harness, version} <- read_file(location, "harness.yaml", source.ref, deadline),
+           {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
+        case {harness, qory} do
+          {nil, nil} -> {:ok, []}
+          {content, nil} -> export_names("harness.yaml", content)
+          {nil, content} -> export_names("qory.yaml", content)
+          _both -> {:error, both_files()}
+        end
       end
-    end
+    end)
   end
 
   defp export_names(file, content) do
@@ -509,9 +777,12 @@ defmodule Apiary.Stacks.Sources do
   # for a person past their reads of the minute. It calls the adapters, so a page runs it
   # outside its process.
   @spec read(Scope.t(), source) :: {:ok, [stack]} | {:error, reason}
-  def read(%Scope{organisation: %Organisation{} = organisation} = scope, %{} = source) do
+  def read(%Scope{} = scope, %{} = source) do
     deadline = now() + @read_time
+    PublicGit.session(public_budget(deadline), fn -> read_stacks(scope, source, deadline) end)
+  end
 
+  defp read_stacks(%Scope{organisation: %Organisation{} = organisation} = scope, source, deadline) do
     with :ok <- spend(scope, :read, @reads_a_minute),
          {:ok, location, version, stacks} <- stacks_of(organisation, source, deadline) do
       stacks
@@ -532,6 +803,207 @@ defmodule Apiary.Stacks.Sources do
       end
     end
   end
+
+  @doc false
+  # templates/2 is the templates `source` offers (the moduledoc), read at the source's
+  # `ref` as one of the person's reads, whatever the number of its modules: `{:ok,
+  # templates}` (`t:templates/0`), or `{:error, reason}` as `read/2` has it. A source with
+  # no root harness file or no `exports` has no template. A source narrowed to a stack or
+  # a folder has no template either: `templates/2` reads `harness.yaml` for `commit`, and
+  # no module's file. It calls the adapters, so a page runs it outside its process.
+  @spec templates(Scope.t(), source) :: {:ok, templates} | {:error, reason}
+  def templates(%Scope{} = scope, %{} = source), do: templates(scope, source, &now/0)
+
+  @doc false
+  # templates/2, with `clock` for the time the checks before each module read: the tests'
+  # seam for a read past its deadline, as no test waits 30 seconds.
+  @spec templates(Scope.t(), source, (-> integer)) :: {:ok, templates} | {:error, reason}
+  def templates(%Scope{} = scope, %{} = source, clock) when is_function(clock, 0) do
+    deadline = now() + @read_time
+
+    PublicGit.session(public_budget(deadline), fn ->
+      read_templates(scope, source, deadline, clock)
+    end)
+  end
+
+  defp read_templates(
+         %Scope{organisation: %Organisation{} = organisation} = scope,
+         source,
+         deadline,
+         clock
+       ) do
+    harness_source = Map.merge(source.narrowing, %{"git" => source.git, "ref" => source.ref})
+
+    with :ok <- spend(scope, :read, @reads_a_minute),
+         {:ok, location} <- locate(organisation, harness_source, deadline) do
+      if narrowed?(source.narrowing) do
+        narrowed_templates(location, source.ref, deadline)
+      else
+        with {:ok, version, exports} <- root_exports(location, source.ref, deadline),
+             do: module_templates(location, exports, version, deadline, clock)
+      end
+    end
+  end
+
+  defp narrowed?(narrowing), do: is_map_key(narrowing, "path") or is_map_key(narrowing, "stack")
+
+  # The templates of a narrowed source (the moduledoc): none, at the commit one read of
+  # the root gives.
+  defp narrowed_templates(location, at, deadline) do
+    with {:ok, _harness, version} <- read_file(location, "harness.yaml", at, deadline),
+         do: {:ok, no_templates(version)}
+  end
+
+  defp no_templates(version), do: %{commit: version, templates: [], not_readable: [], more: 0}
+
+  # The `exports` of the root harness file at `location`, read at `at`: `{:ok, version,
+  # exports}`, with `:none` for a source with neither file or with no `exports`, or
+  # `{:error, reason}`.
+  defp root_exports(location, at, deadline) do
+    with {:ok, harness, version} <- read_file(location, "harness.yaml", at, deadline),
+         {:ok, qory, _version} <- read_file(location, "qory.yaml", version, deadline) do
+      case {harness, qory} do
+        {nil, nil} -> {:ok, version, :none}
+        {content, nil} -> exports_at("harness.yaml", content, version)
+        {nil, content} -> exports_at("qory.yaml", content, version)
+        _both -> {:error, both_files()}
+      end
+    end
+  end
+
+  defp exports_at(file, content, version) do
+    case Reader.exports(content) do
+      {:ok, exports} -> {:ok, version, exports}
+      :none -> {:ok, version, :none}
+      {:error, reason} -> {:error, refused_file(file, reason)}
+    end
+  end
+
+  defp module_templates(_location, :none, version, _deadline, _clock),
+    do: {:ok, no_templates(version)}
+
+  defp module_templates(_location, %{modules: :invalid}, version, _deadline, _clock) do
+    {:ok, %{no_templates(version) | not_readable: [%{module: nil, reason: :modules_invalid}]}}
+  end
+
+  defp module_templates(location, %{modules: modules} = exports, version, deadline, clock) do
+    {read, past} = modules |> Enum.uniq() |> Enum.split(@max_template_modules)
+
+    read
+    |> Enum.reduce_while({[], []}, fn name, {templates, not_readable} ->
+      case module_in_time(location, exports, name, version, deadline, clock) do
+        :no_file ->
+          {:cont, {templates, not_readable}}
+
+        {:ok, template} ->
+          {:cont, {[template | templates], not_readable}}
+
+        {:not_readable, reason} ->
+          {:cont, {templates, [%{module: name, reason: reason} | not_readable]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:error, reason} ->
+        {:error, reason}
+
+      {templates, not_readable} ->
+        {:ok,
+         %{
+           commit: version,
+           templates: Enum.reverse(templates),
+           not_readable: Enum.reverse(not_readable),
+           more: length(past)
+         }}
+    end
+  end
+
+  # A read past `deadline` starts no module: a read from the cache or from a host with no
+  # `filter` makes no request, so nothing else reads the time.
+  defp module_in_time(location, exports, name, version, deadline, clock) do
+    if clock.() >= deadline,
+      do: {:error, late(location)},
+      else: module_template(location, exports, name, version, deadline, clock)
+  end
+
+  # Why a read with no time left failed, as `read_file/4` and `PublicGit` fail one.
+  defp late(%{adapter: :public, resource_ref: git}),
+    do: public_reason(:late, PublicGit.address(git), nil, nil)
+
+  defp late(%{adapter: adapter}), do: call_failure(adapter, :late, nil, %{})
+
+  # The template of the module `name`, a name `exports` lists: `{:ok, template}`,
+  # `:no_file`, `{:not_readable, reason}`, or `{:error, reason}` for a read that fails the
+  # source.
+  defp module_template(location, exports, name, version, deadline, clock) do
+    case Reader.module_file(exports, name, @template_file) do
+      {:ok, path} ->
+        case read_file(location, path, version, deadline) do
+          {:ok, nil, _version} ->
+            :no_file
+
+          {:ok, content, _version} ->
+            checked_template(content, name, location, exports, deadline, clock)
+
+          {:error, reason} ->
+            file_failure(reason)
+        end
+
+      {:error, _no_path} ->
+        {:not_readable, :unreadable}
+    end
+  end
+
+  defp file_failure(reason) do
+    if source_failed?(reason), do: {:error, reason}, else: {:not_readable, :unreadable}
+  end
+
+  # `content`, a module's file, as a template of `name`: its `stack` is checked first, then
+  # its `type`, then its `process`, and its types, whose check is the costly one, last,
+  # with the time left.
+  defp checked_template(content, name, location, %{stacks: stacks}, deadline, clock) do
+    with {:ok, template} <- Reader.template(content),
+         true <- template.stack in stacks,
+         :ok <- known_type(template.type),
+         :ok <- Apiary.Processes.validate(template.process),
+         {:types, :ok} <- {:types, check_types(template, deadline, clock)} do
+      {:ok, Map.put(template, :module, name)}
+    else
+      false -> {:not_readable, :stack_not_exported}
+      {:unknown_type, _type} = reason -> {:not_readable, reason}
+      {:types, {:error, refusals}} -> types_refused(refusals, location, deadline, clock)
+      {:error, errors} when is_list(errors) -> {:not_readable, {:invalid, errors}}
+      {:error, {:invalid_artifact_type, type}} -> {:not_readable, {:types, [{:schema, type}]}}
+      {:error, _file_reason} -> {:not_readable, :unreadable}
+    end
+  end
+
+  defp known_type(type),
+    do: if(Domain.known_type?(type), do: :ok, else: {:unknown_type, type})
+
+  defp check_types(template, deadline, clock),
+    do: TemplateTypes.check(template, TemplateTypes.total(deadline - clock.()))
+
+  # `:schemas_too_long` past `deadline` is a read out of time and no defect of the file, so
+  # it fails the source as a late read fails.
+  defp types_refused(refusals, location, deadline, clock) do
+    if :schemas_too_long in refusals and clock.() >= deadline,
+      do: {:error, late(location)},
+      else: {:not_readable, {:types, refusals}}
+  end
+
+  # Whether `reason`, why a read of one file failed, is about the source rather than the
+  # file: the source is out of reach, out of time, no longer covered or not at the version.
+  defp source_failed?({:call, %{cause: cause}}),
+    do: cause in [:late, :timeout, :unreachable, :no_address, :not_allowed, :unauthorized]
+
+  defp source_failed?({:fetch, code, _rule}),
+    do: code in [:source_unreachable, :host_not_allowed, :rate_limited]
+
+  defp source_failed?({:no_version, _ref}), do: true
+  defp source_failed?(reason), do: reason in [:not_covered, :no_commit]
 
   # The base a document extends for `stack` of `source`.
   defp base(source, stack) do
@@ -576,7 +1048,7 @@ defmodule Apiary.Stacks.Sources do
 
   # Where `harness_source` is read: its link, the first result of an adapter, in the order
   # of their names, under a live grant of a connected connection that the rule allows;
-  # else the first public result, with no grant.
+  # else its host, where it serves the repository to anyone, with no grant.
   defp locate(%Organisation{id: organisation_id}, %{"git" => git} = harness_source, deadline) do
     if CallWire.address?(git),
       do: locate_at(adapters(), organisation_id, git, harness_source, deadline),
@@ -591,34 +1063,79 @@ defmodule Apiary.Stacks.Sources do
     )
   end
 
-  # An adapter whose resolve fails is passed over. A link at a later adapter comes before
-  # a public result at an earlier one, as in a run's walk. With neither, the source is
-  # not read for the first adapter whose resolve failed (`call_failure/4`), since that
-  # adapter may have covered it.
+  # An adapter whose resolve fails is passed over. A link at any adapter comes before a
+  # read from the host, as in a run's walk. With neither, the source is not read for the
+  # first adapter whose resolve failed (`call_failure/4`), since that adapter may have
+  # covered it; else for why its host does not serve it (`public_reason/4`).
   defp locate_at(adapters, organisation_id, git, harness_source, deadline) do
     adapters
-    |> Enum.reduce_while(%{public: nil, failed: nil}, fn adapter, found ->
+    |> Enum.reduce_while(nil, fn adapter, failed ->
       opts = call_opts(deadline)
 
       with opts when is_list(opts) <- opts || {:error, :late},
            {:ok, [%{} = result]} <- Calls.resolve(adapter, [git], opts) do
         case linked(adapter, result, organisation_id, harness_source) do
           %{} = link -> {:halt, {:ok, link}}
-          nil -> {:cont, %{found | public: found.public || public(adapter, result)}}
+          nil -> {:cont, failed}
         end
       else
-        {:error, failure} ->
-          {:cont, %{found | failed: found.failed || {adapter, failure, opts}}}
-
-        _other ->
-          {:cont, found}
+        {:error, failure} -> {:cont, failed || {adapter, failure, opts}}
+        _other -> {:cont, failed}
       end
     end)
     |> case do
-      {:ok, link} -> {:ok, link}
-      %{public: %{} = public} -> {:ok, public}
-      %{failed: {adapter, failure, opts}} -> {:error, call_failure(adapter, failure, opts, %{})}
-      _none -> {:error, :not_covered}
+      {:ok, link} ->
+        {:ok, link}
+
+      failed ->
+        case {PublicGit.public(git), failed} do
+          {:ok, _failed} ->
+            {:ok, location(:public, nil, git)}
+
+          {{:error, _cause, _hop}, {adapter, failure, opts}} ->
+            {:error, call_failure(adapter, failure, opts, %{})}
+
+          {{:error, cause, hop}, nil} ->
+            {:error, public_reason(cause, hop, harness_source["ref"], nil)}
+        end
+    end
+  end
+
+  # Why a public repository was not read at `at`, `hop` the host and port the read failed
+  # at and `path` the file, as a `t:reason/0`: as a run's walk fails
+  # (`Apiary.Harnesses.Walk`).
+  defp public_reason(:version_not_found, _hop, at, _path),
+    do: if(at == @head, do: :no_commit, else: {:no_version, at})
+
+  defp public_reason(:not_text, _hop, _at, path), do: {:not_text, path}
+  defp public_reason(:not_found, _hop, _at, _path), do: :not_covered
+
+  defp public_reason(:late, hop, _at, _path),
+    do: {:fetch, :source_unreachable, Walk.fetch_rule(hop, div(@read_time, 1000))}
+
+  defp public_reason({:unreachable, seconds}, hop, _at, _path),
+    do: {:fetch, :source_unreachable, Walk.fetch_rule(hop, seconds)}
+
+  defp public_reason(:not_allowed, hop, _at, _path),
+    do: {:fetch, :host_not_allowed, Walk.fetch_rule(hop, nil)}
+
+  defp public_reason(:rate_limited, hop, _at, _path),
+    do: {:fetch, :rate_limited, Walk.fetch_rule(hop, nil)}
+
+  defp public_reason(:too_large, hop, _at, _path),
+    do: {:fetch, :too_large, Walk.fetch_rule(hop, nil)}
+
+  defp public_reason(_failed, hop, _at, _path),
+    do: {:fetch, :fetch_failed, Walk.fetch_rule(hop, nil)}
+
+  # The time of a request to a public repository's host: what is left before
+  # `deadline`, at most a call's.
+  defp public_budget(deadline) do
+    fn ->
+      case call_opts(deadline) do
+        [total: total] -> {:ok, total}
+        nil -> {:error, :late}
+      end
     end
   end
 
@@ -699,14 +1216,6 @@ defmodule Apiary.Stacks.Sources do
   end
 
   defp linked(_adapter, _result, _organisation_id, _source), do: nil
-
-  # A public result's location, with no grant, at its `public_ref`: a covered result's
-  # `resource_ref` may be a ref only its grant's organisation may use, so it is never read
-  # with no grant. Nil for a result that is not public.
-  defp public(adapter, %{public: true, public_ref: public_ref}),
-    do: location(adapter, nil, public_ref)
-
-  defp public(_adapter, _result), do: nil
 
   # The live grant of `adapter` with `grant_ref`, of a connected connection, whatever its
   # organisation; nil for none.
@@ -793,8 +1302,9 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  # The document at `path` at `location`, read at `at` before `deadline`, with no grant
-  # for a public source's location (`read-public`): `{:ok, content | nil, resolved_at}`;
+  # The document at `path` at `location`, read at `at` before `deadline`, from its host
+  # for a public source's location, whose resource is its address
+  # (`Apiary.Harnesses.PublicGit`): `{:ok, content | nil, resolved_at}`;
   # `{:error, {:unreadable, :path | :version, value}}` for a path or a version a read does
   # not take; or the call's failure (`call_failure/4`).
   defp read_file(location, path, at, deadline) do
@@ -812,8 +1322,14 @@ defmodule Apiary.Stacks.Sources do
       not CallWire.version_ref?(at) ->
         {:error, {:unreadable, :version, at}}
 
+      location.adapter == :public ->
+        case PublicGit.read(location.resource_ref, at, path) do
+          {:ok, content, version} -> {:ok, content, version}
+          {:error, cause, hop} -> {:error, public_reason(cause, hop, at, path)}
+        end
+
       opts = call_opts(deadline) ->
-        case Calls.read_at(location.adapter, request, opts) do
+        case Calls.read_document(location.adapter, request, opts) do
           {:ok, %{found: true, content: content, resolved_at: version}} ->
             {:ok, content, version}
 
@@ -975,6 +1491,53 @@ defmodule Apiary.Stacks.Sources do
             }
         end
     end
+  end
+
+  @doc false
+  # chosen_source/1 is where the workspace's harness is read from: the address of its
+  # choice (`chosen/1`) at its pin, or at `HEAD` with none, as a source `read/2` takes,
+  # with the stack the choice names, nil for every stack: `{:ok, source, stack}`, or
+  # `{:error, reason}` for an address `address/1` refuses.
+  @spec chosen_source(Workspace.t()) :: {:ok, source, String.t() | nil} | {:error, atom}
+  def chosen_source(%Workspace{} = workspace) do
+    chosen = chosen(workspace)
+
+    with {:ok, source} <- address(chosen.git || "") do
+      {:ok, %{source | ref: chosen.pin || source.ref}, chosen.stack}
+    end
+  end
+
+  @doc false
+  # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
+  # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
+  # where the choice names none. The Qory harness is not read: its names are the copy's
+  # (`Apiary.Processes.qory_workflows/1`). The
+  # Stages page, the Workflow page and Check again on a work item read the snapshot
+  # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
+  # `{:error, reason}`.
+  @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
+  def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
+    case chosen(workspace) do
+      %{choice: :qory} = qory ->
+        {:ok, Apiary.Processes.qory_workflows(qory)}
+
+      _repository ->
+        with {:ok, source, stack} <- chosen_source(workspace),
+             {:ok, stacks} <- read(scope, source) do
+          {:ok, workflows_of(stacks, stack)}
+        end
+    end
+  end
+
+  @doc false
+  # workflows_of/2 is the workflow names of `stacks`, as `read/2` returns them: of the
+  # stack named `stack`, or of every stack for nil.
+  @spec workflows_of([map], String.t() | nil) :: [String.t()]
+  def workflows_of(stacks, stack) do
+    stacks
+    |> Enum.filter(&(is_nil(stack) or &1.name == stack))
+    |> Enum.flat_map(& &1.workflows)
+    |> Enum.uniq()
   end
 
   @doc false
@@ -1516,9 +2079,189 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # The base of the Qory harness of `workspace`'s type, at the newest version the release
-  # ships (`Apiary.Lingo.Domain`).
-  defp qory_harness(workspace),
-    do: workspace |> Domain.for_workspace() |> Domain.definition() |> Map.fetch!(:harness)
+  # ships (`Apiary.Lingo.Domain`) and the workspace's stack (`Workspace.qory_stack/1`).
+  defp qory_harness(workspace) do
+    workspace
+    |> Domain.for_workspace()
+    |> Domain.definition()
+    |> Map.fetch!(:harness)
+    |> Map.put("stack", Workspace.qory_stack(workspace))
+  end
+
+  ## A workspace's first harness
+
+  @doc false
+  # template_key/2 is the page key of the template of the module `module` of `source`: the
+  # repository's public id, `assigned-<id>` or `shared`, a dot, and the module. A module's
+  # name may contain dots, so a key splits on its first dot.
+  @spec template_key(source, String.t()) :: String.t()
+  def template_key(%{kind: :shared}, module), do: "shared." <> module
+  def template_key(%{id: "assigned:" <> id}, module), do: "assigned-" <> id <> "." <> module
+  def template_key(%{id: "linked:" <> id}, module), do: id <> "." <> module
+
+  @doc false
+  # check_start/2 is whether the scope's person may make a workspace from `start` (the
+  # moduledoc), asked before the transaction: `:ok`; `{:error, :forbidden}` or `{:error,
+  # :not_found}` from the access check or with the feature off; `{:error, :invalid}` for a
+  # source that offers no template, a connected or an assigned source that is not the
+  # entry of its list, read from the database (`listed?/2`), or a template of a type that
+  # is the key of no domain's type, which a page read before can still send
+  # (`Apiary.Lingo.Domain.known_type?/1`); or `{:error, errors}` for a process
+  # `Apiary.Processes.validate/1` refuses.
+  @spec check_start(Scope.t(), start) ::
+          :ok | {:error, Access.reason() | :invalid | [Apiary.Processes.error()]}
+  def check_start(
+        %Scope{} = scope,
+        %{source: %{narrowing: narrowing} = source, commit: commit, template: template}
+      )
+      when is_binary(commit) do
+    with :ok <- source_allowed(scope, source),
+         true <- listed?(scope, source),
+         true <- not narrowed?(narrowing) and Domain.known_type?(template.type) do
+      Apiary.Processes.validate(template.process)
+    else
+      false -> {:error, :invalid}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def check_start(%Scope{}, _start), do: {:error, :invalid}
+
+  defp source_allowed(%Scope{organisation: organisation} = scope, %{kind: :linked}),
+    do: Access.authorize(scope, :"harness.save", organisation)
+
+  defp source_allowed(%Scope{} = scope, %{kind: kind}) when kind in [:assigned, :shared],
+    do: if(Features.visible?(scope, :factory), do: :ok, else: {:error, :not_found})
+
+  defp source_allowed(%Scope{}, _source), do: {:error, :invalid}
+
+  # Whether `source` is the entry of the list of its kind on what the row and the record
+  # use. The shared harness has no list: `row_source/4` checks it under the lock.
+  defp listed?(scope, %{kind: :linked} = source), do: entry?(repositories(scope), source)
+  defp listed?(scope, %{kind: :assigned} = source), do: entry?(assigned(scope), source)
+  defp listed?(_scope, %{kind: :shared}), do: true
+
+  defp entry?(entries, source) do
+    keys = [:id, :git, :ref, :narrowing]
+    Enum.any?(entries, &(Map.take(&1, keys) == Map.take(source, keys)))
+  end
+
+  @doc false
+  # save_start/3 saves the harness of `workspace`, new, made from `start` (the moduledoc),
+  # inside the caller's transaction: `{:ok, record}`, the record of the template
+  # `Apiary.Processes.copy_template/4` keeps; `{:error, :not_found}` for a shared harness
+  # of another repository or none, as the source was read; `{:error, :invalid}` for a row
+  # the save rules refuse; or `{:error, :forbidden}` when the edition gives no owner.
+  @spec save_start(Scope.t(), Workspace.t(), start) ::
+          {:ok, map} | {:error, :not_found | :invalid | :forbidden}
+  def save_start(
+        %Scope{} = scope,
+        %Workspace{} = workspace,
+        %{source: source, commit: commit, template: template}
+      ) do
+    stack = template.stack
+
+    with {:ok, ref, opts, git} <- row_source(scope, source, commit, stack),
+         base = %{"git" => source.git, "ref" => ref, "stack" => stack},
+         {:ok, _row} <-
+           saved(
+             Stacks.put_stack(
+               scope,
+               {:workspace, workspace},
+               document(base),
+               [choice: :repository] ++ opts
+             )
+           ) do
+      {:ok,
+       %{
+         "source" => "repository",
+         "git" => git,
+         "commit" => commit,
+         "module" => template.module,
+         "stack" => template.stack,
+         "type" => template.type,
+         "version" => nil
+       }}
+    end
+  end
+
+  # The `ref` of the row of `source`, its options, and the address its record has.
+  defp row_source(
+         %Scope{organisation: organisation},
+         %{kind: :shared, git: git},
+         commit,
+         stack
+       ) do
+    lock_shares(organisation)
+
+    case Stacks.shared(organisation) do
+      %Stack{harness: harness, owner_organisation_id: owner} = row ->
+        if extended(harness)["git"] == git do
+          ref = assigned_ref(organisation, row, git, stack) || commit
+          {:ok, ref, [owner: owner], if(not hides?(owner, organisation), do: git)}
+        else
+          {:error, :not_found}
+        end
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  defp row_source(%Scope{}, %{kind: :assigned, git: git, ref: ref}, _commit, _stack),
+    do: {:ok, ref, [], git}
+
+  defp row_source(%Scope{}, %{git: git}, commit, _stack), do: {:ok, commit, [], git}
+
+  # The `ref` of the shared row `row` where an assignment covers `stack` of `git` at it,
+  # as `Apiary.Harnesses.allowed?/3` compares it; else nil.
+  defp assigned_ref(%Organisation{id: id}, row, git, stack) do
+    ref = pin(row, nil, nil)
+    if Harnesses.assigned?(id, %{"git" => git, "ref" => ref, "stack" => stack}), do: ref
+  end
+
+  defp hides?(owner, %Organisation{id: id} = organisation) do
+    Resolution.hidden?(owner, %{
+      operated: Edition.operated?(organisation),
+      organisation_id: id
+    })
+  end
+
+  @doc false
+  # save_qory_start/2 saves the harness of `workspace`, new, made from the Qory template,
+  # inside the caller's transaction (the moduledoc): `{:ok, stack}`, `{:ok, nil}` where the
+  # workspace needs no row, or `{:error, :invalid}`. The row's owner is the organisation:
+  # no person chose it, and no run hides the Qory harness.
+  @spec save_qory_start(Scope.t(), Workspace.t()) :: {:ok, Stack.t() | nil} | {:error, :invalid}
+  def save_qory_start(%Scope{organisation: organisation} = scope, %Workspace{} = workspace) do
+    base = qory_harness(workspace)
+    lock_shares(organisation)
+
+    if shares_another?(Stacks.shared(organisation), base) do
+      scope
+      |> Stacks.put_stack({:workspace, workspace}, document(base),
+        choice: :qory,
+        version: {:latest, nil},
+        owner: organisation.id
+      )
+      |> saved()
+    else
+      {:ok, nil}
+    end
+  end
+
+  # Whether a workspace with no row would take another harness than the Qory harness at
+  # `base`: a shared Qory harness at another stack or version is one.
+  defp shares_another?(nil, _base), do: false
+
+  defp shares_another?(%Stack{choice: :qory, version_kind: :latest} = row, base),
+    do: extended(row.harness)["stack"] != base["stack"]
+
+  defp shares_another?(%Stack{}, _base), do: true
+
+  # A row the save rules refuse: the caller's `{:error, changeset}` is for a workspace's.
+  defp saved({:error, %Ecto.Changeset{}}), do: {:error, :invalid}
+  defp saved(result), do: result
 
   # Saves of one workspace take turns: the second waits for the first's transaction, then
   # sees its row and replaces it, so the workspace keeps one workflow.

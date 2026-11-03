@@ -9,7 +9,9 @@ defmodule ApiaryWeb.CollectionsLive do
   # many, or All, and Choose, which opens the chooser at
   # `/:org/:workspace/settings/choose` (`ApiaryWeb.ChooseCollectionsLive`, `:settings`),
   # whose Save and Back return here. An adapter connected with no grant yet shows
-  # Connected. Connect another source, or Connect another destination, lists the
+  # Connected. Connect a source, or Connect a destination, "Connect another …" once the
+  # page has a card or a Connected line, for a person whom `adapter.connect` allows, lists
+  # the
   # instance's configured adapters that serve the type
   # (`Apiary.Adapters.list_configured/1`) and that the organisation has not connected,
   # each Connecting… while its connection is pending, with Connect, the Install of
@@ -19,8 +21,8 @@ defmodule ApiaryWeb.CollectionsLive do
   # connected adapter.
   #
   # Every member reads them (`adapter.read`, which the cards need); a person whom
-  # `adapter.connect` does not allow sees the adapters with no Connect, and who may
-  # connect; a person whom `collection.assign` does not allow sees who may assign. The
+  # `adapter.connect` does not allow sees no Connect a source or destination, and
+  # who may connect; a person whom `collection.assign` does not allow sees who may assign. The
   # page listens to the organisation's collections and connections
   # (`Apiary.Adapters.Collections.subscribe/1`) and reads the cards again on each change.
   #
@@ -81,17 +83,24 @@ defmodule ApiaryWeb.CollectionsLive do
     role = if list == :sources, do: :items, else: :targets
     may_connect = Access.can?(scope, :"adapter.connect", scope.organisation)
 
-    adapters =
-      for adapter <- Adapters.list_configured(domain),
-          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
-          do: adapter
-
     connecting =
       for {adapter_id, %{state: :pending}} <- AdapterConnections.live_by_adapter(scope),
           into: MapSet.new(),
           do: adapter_id
 
     connected = WorkspaceSetup.connected_ids(scope.organisation, domain, role)
+
+    adapters =
+      IntegrationComponents.offered(
+        scope,
+        for(
+          adapter <- Adapters.list_configured(domain),
+          if(role == :items, do: Adapters.items?(adapter), else: adapter.targets == true),
+          do: adapter
+        ),
+        Enum.concat(connected, connecting)
+      )
+
     cards = WorkspaceSetup.cards(scope, domain, list, scope.workspace)
     carded = MapSet.new(cards, & &1.adapter.id)
 
@@ -112,12 +121,8 @@ defmodule ApiaryWeb.CollectionsLive do
       may: Access.can?(scope, :"collection.assign", scope.organisation),
       who_may: IntegrationComponents.who_assigns(scope, Enum.map(cards, & &1.adapter)),
       may_connect: may_connect,
-      who_connects:
-        ApiaryWeb.Access.who_may(
-          scope,
-          :"adapter.connect",
-          gettext("Only owners and admins change the integrations of the organisation.")
-        )
+      who_connects: IntegrationComponents.who_connects(scope, list),
+      instance_admin: Access.instance_admin?(scope)
     )
   end
 
@@ -156,6 +161,8 @@ defmodule ApiaryWeb.CollectionsLive do
     assigns =
       assign(assigns,
         id: section_id(assigns.list),
+        # Whether the page shows a card or a Connected line.
+        connected: assigns.cards != [] or assigns.waiting != [],
         back: "set-up:#{assigns.list}:workspace=#{assigns.current_scope.workspace.public_id}"
       )
 
@@ -203,14 +210,20 @@ defmodule ApiaryWeb.CollectionsLive do
           </ul>
 
           <details
-            :if={@unconnected != []}
+            :if={@may_connect and @unconnected != []}
             id={"#{@id}-connect"}
             class="grid gap-3"
             open={@cards == [] and @waiting == []}
           >
             <summary id={"#{@id}-connect-another"} class="btn btn-sm w-fit">
-              <span :if={@list == :sources}>{gettext("Connect another source")}</span>
-              <span :if={@list == :destinations}>{gettext("Connect another destination")}</span>
+              <span :if={@list == :sources and @connected}>{gettext("Connect another source")}</span>
+              <span :if={@list == :sources and not @connected}>{gettext("Connect a source")}</span>
+              <span :if={@list == :destinations and @connected}>
+                {gettext("Connect another destination")}
+              </span>
+              <span :if={@list == :destinations and not @connected}>
+                {gettext("Connect a destination")}
+              </span>
             </summary>
             <ul id={"#{@id}-adapters"} class="mt-3 grid gap-3">
               <li
@@ -236,11 +249,11 @@ defmodule ApiaryWeb.CollectionsLive do
                   <i aria-hidden="true"></i><span>{gettext("Not connected")}</span>
                 </span>
                 <IntegrationComponents.install_form
-                  :if={@may_connect}
                   id={"#{@id}-adapter-#{adapter.public_id}-connect"}
                   adapter={adapter}
                   action={IntegrationComponents.paths(@current_scope, adapter).install <> "?" <> URI.encode_query(back: @back)}
                   ready={adapter.id in @ready}
+                  instance_admin={@instance_admin}
                   sending={@sending == adapter.public_id}
                   label={gettext("Connect")}
                 />
@@ -261,9 +274,18 @@ defmodule ApiaryWeb.CollectionsLive do
             id={"#{@id}-no-adapter"}
             class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
           >
-            {gettext(
-              "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
-            )}
+            <%= if @instance_admin do %>
+              {gettext(
+                "No work source for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+              )}
+            <% else %>
+              <.rich text={
+                rich_gettext(
+                  "%{contact_support} to add a work source. Qory Apiary offers none for this type yet.",
+                  contact_support: ApiaryWeb.Support.rich()
+                )
+              } />
+            <% end %>
           </p>
 
           <p
@@ -271,9 +293,18 @@ defmodule ApiaryWeb.CollectionsLive do
             id={"#{@id}-no-adapter"}
             class="rounded-box bg-base-200 px-4 py-3 text-[13.5px]/5 text-muted"
           >
-            {gettext(
-              "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
-            )}
+            <%= if @instance_admin do %>
+              {gettext(
+                "No work destination for this type is set up on this instance. An instance admin sets one up in Instance settings › Adapters."
+              )}
+            <% else %>
+              <.rich text={
+                rich_gettext(
+                  "%{contact_support} to add a work destination. Qory Apiary offers none for this type yet.",
+                  contact_support: ApiaryWeb.Support.rich()
+                )
+              } />
+            <% end %>
           </p>
 
           <p

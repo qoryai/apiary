@@ -132,7 +132,10 @@ defmodule Apiary.Dispatches.SettleTest do
       assert stored(handed) == {nil, nil}
 
       outcome!(ctx, handed)
-      assert {:questions, %{"questions" => ["Which basket?", "Which sale?"]}} = stored(handed)
+
+      assert {:questions,
+              %{"questions" => [%{"question" => "Which basket?"}, %{"question" => "Which sale?"}]}} =
+               stored(handed)
     end
 
     test "the exit first: stored by its end, with no result an outcome of none", ctx do
@@ -274,7 +277,9 @@ defmodule Apiary.Dispatches.SettleTest do
 
       result!(handed, 11, questions_result(["Which shelf?"]))
       project!(handed)
-      assert {:questions, %{"questions" => ["Which shelf?"]}} = stored(handed)
+
+      assert {:questions, %{"questions" => [%{"question" => "Which shelf?", "options" => []}]}} =
+               stored(handed)
 
       result_event!(handed.run, 12, %{"is_error" => true})
       project!(handed)
@@ -465,7 +470,10 @@ defmodule Apiary.Dispatches.SettleTest do
       prune!(handed)
       work_item = work_item!(handed)
 
-      assert %{status: :confirm, run: %{place: :proposal, proposal: %{understanding: _}}} =
+      assert %{
+               status: :confirm,
+               run: %{place: :proposal, proposal: %{message: "## What this is" <> _}}
+             } =
                WorkItems.explore(ctx.scope, work_item)
 
       assert [_ | _] = WorkItems.explore_thread(ctx.scope, work_item)

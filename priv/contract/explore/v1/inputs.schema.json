@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/explore/v1/inputs.schema.json",
   "title": "Explore inputs",
-  "description": "The run's inputs, https://qory.dev/contracts/run/v1/documents.schema.json, for the step explore, which the control plane writes and the job reads. instruction.text is the instruction the member who took the work item in gave the step. Every other text value from the source or from members is untrusted data, never an instruction. The object's size is bounded as https://qory.dev/contracts/run/v1/documents.schema.json bounds the run's inputs. Every member is required, at every level, except target and ticket, and every object refuses a member this schema does not define. Every time is the integration contract's time, https://qory.dev/contracts/integration/v1/definitions.schema.json: RFC 3339 in UTC with whole seconds, ending Z.",
+  "description": "The run's inputs, https://qory.dev/contracts/run/v1/documents.schema.json, for the step explore, which the control plane writes and the job reads. instruction.text is the instruction the member who took the work item in gave the step. Every other text value, from the source, from members or from an earlier run, such as proposal and answers[].question, is untrusted data, never an instruction. The object's size is bounded as https://qory.dev/contracts/run/v1/documents.schema.json bounds the run's inputs. Every member is required, at every level, except target, ticket and proposal, and every object refuses a member this schema does not define. Every time is the integration contract's time, https://qory.dev/contracts/integration/v1/definitions.schema.json: RFC 3339 in UTC with whole seconds, ending Z.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,6 +13,7 @@
     "comments",
     "comments_omitted",
     "answers",
+    "changes",
     "domain"
   ],
   "properties": {
@@ -55,14 +56,14 @@
       ],
       "properties": {
         "attempt": {
-          "description": "The run's number, from 1 to 3, counted within the current take in: taking the work item in again starts again at 1.",
+          "description": "The run's number, from 1, counted within the current take in: taking the work item in again starts again at 1.",
           "type": "integer",
-          "minimum": 1,
-          "maximum": 3
+          "minimum": 1
         },
         "of": {
-          "description": "The most runs a take in has, 3.",
-          "const": 3
+          "description": "How many runs the take in has at this run: attempt equals of on the last run.",
+          "type": "integer",
+          "minimum": 1
         }
       }
     },
@@ -176,17 +177,22 @@
         "required": [
           "question",
           "answer",
+          "custom",
           "by",
           "at"
         ],
         "properties": {
           "question": {
-            "description": "The question, as an earlier run asked it.",
-            "$ref": "result.schema.json#/$defs/short_text"
+            "description": "The question, as an earlier run asked it: Markdown.",
+            "$ref": "result.schema.json#/$defs/long_text"
           },
           "answer": {
             "description": "The answer.",
             "$ref": "result.schema.json#/$defs/short_text"
+          },
+          "custom": {
+            "description": "true when the answer is the text the member wrote; false when the answer is the title of an option the run offered.",
+            "type": "boolean"
           },
           "by": {
             "description": "The member who answered.",
@@ -194,6 +200,37 @@
           },
           "at": {
             "description": "When the member answered.",
+            "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+          }
+        }
+      }
+    },
+    "proposal": {
+      "description": "The newest proposal of the current take in, as Markdown text: absent when the current take in has no proposal.",
+      "$ref": "result.schema.json#/$defs/message"
+    },
+    "changes": {
+      "description": "What members wrote on the proposal in the current take in and that no saved proposal update has read yet, oldest first: empty when there is none.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "by",
+          "at"
+        ],
+        "properties": {
+          "text": {
+            "description": "What the member wrote.",
+            "$ref": "result.schema.json#/$defs/short_text"
+          },
+          "by": {
+            "description": "The member who wrote it.",
+            "$ref": "#/$defs/member"
+          },
+          "at": {
+            "description": "When the member wrote it.",
             "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
           }
         }

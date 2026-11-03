@@ -3,7 +3,7 @@ defmodule Apiary.WorkItems do
   # sidebar counts, how the pages name a work item's ticket, the work items a page reads,
   # and what a person does to them.
   #
-  # ## What a person does: take in, take in again, undo, decline, close
+  # ## What a person does: take in, take in again, undo, close
   #
   # `take_in(scope, item_id, attrs)` takes the ticket `item_id` (`tk_…`) of the Backlog of
   # the scope's workspace in as a new work item, with its first run queued;
@@ -11,9 +11,8 @@ defmodule Apiary.WorkItems do
   # in the organisation, live again in the scope's workspace, with a new count of runs;
   # `take_in_test(scope, line)` makes a test work item from a line the person typed, with
   # no ticket, and queues its first run; `undo(scope, work_item)` undoes the latest take
-  # in while no claim holds its run; `decline(scope, work_item)` declines a live work item
-  # while none of its runs is live and its take in is not confirmed; `close(scope,
-  # work_item)` closes a live one. `attrs` holds the owner (`owner_id`) and the first
+  # in while no claim holds its run; `close(scope, work_item)` closes a live one. `attrs`
+  # holds the owner (`owner_id`) and the first
   # instruction (`first_instruction`) the page gives. Each runs in one transaction with
   # its event, its run, its feed entry and its entry in the trail, asks its action of
   # `Apiary.Access`, and tells the pages once it commits. `Apiary.WorkItems.Moves` says
@@ -22,10 +21,10 @@ defmodule Apiary.WorkItems do
   # ## What a member gives Explore: answer, confirm, explore again
   #
   # `answer(scope, work_item, attempt, answers)` answers the questions of the latest run
-  # of the work item's take in, by their position (`"1"` to `"20"`), and queues the take
-  # in's next run, which reads them (`take_in_answers/2`); `confirm(scope, work_item,
-  # attempt, params)` confirms the latest run's proposal, with the changes the edit page
-  # gives or as it stands (`params` nil), which makes the work item ready for Shape;
+  # of the work item's take in, by their position (`"1"` to `"20"`), or, given a text,
+  # comments on the latest run's proposal, and queues the take in's next run, which reads
+  # them (`take_in_answers/2`, `take_in_changes/3`); `confirm(scope, work_item, attempt)`
+  # confirms the latest run's proposal, which makes the work item ready for Shape;
   # `explore_again(scope, work_item, attempt)` queues the take in's next run after a run
   # that gave no result, was lost or was cancelled. `attempt` is the latest run's, as the
   # page read it. `Apiary.WorkItems.Moves` says how and what each refuses.
@@ -55,7 +54,8 @@ defmodule Apiary.WorkItems do
   # ## Reading: the list and the lookups
   #
   # `list_work_items(scope, params)` is a page of the Work items list, `list_bands/3` its
-  # Open view by stage and `list_filter_values/3` what its Filter menu offers
+  # Open view by stage, `list_stage_counts/3` how many live work items are at each stage
+  # of the workflow model and `list_filter_values/3` what its Filter menu offers
   # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
   # `get_for_ticket/2` find one work item for a page, and `ticket/3` is its ticket for the
   # work item page's Ticket tab. Each answers nothing to a person who may not read the
@@ -80,10 +80,14 @@ defmodule Apiary.WorkItems do
   # it is. It answers the workspaces whose queue changed, for the caller to tell once its
   # transaction commits (`Apiary.Dispatches.broadcast/1`).
   #
+  # The instance closes a work item with one of three reasons: `last_stage_done`, when its
+  # last stage finishes (`Apiary.Stages`), `ticket_closed`, when its ticket closes at the
+  # source (`Apiary.Sources.Ingest`), and `adapter_removed`, below.
+  #
   # `close_for_adapter(adapter, now)` closes, as the instance (`adapter_removed`), every
   # live work item of every organisation whose ticket came through a connection to
   # `adapter`, inside the caller's transaction: the removal of the adapter
-  # (`Apiary.Adapters.delete_adapter/2`). Closed, declined and undone work items are left
+  # (`Apiary.Adapters.delete_adapter/2`). Closed and undone work items are left
   # as they are.
   #
   # **The lock order.** The core takes its locks in one order, which
@@ -108,6 +112,7 @@ defmodule Apiary.WorkItems do
   @moduledoc false
 
   import Ecto.Query, warn: false
+  import Apiary.WorkItems.Finished, only: [finished: 2]
 
   alias Apiary.{Access, Dispatches, Repo}
   alias Apiary.Accounts.Scope
@@ -175,13 +180,6 @@ defmodule Apiary.WorkItems do
   defdelegate undo(scope, work_item), to: Moves
 
   @doc false
-  # decline/2 declines `work_item` while none of its runs is live (`Apiary.WorkItems.Moves`).
-  @spec decline(Scope.t(), WorkItem.t()) ::
-          {:ok, WorkItem.t()}
-          | {:error, :not_found | :forbidden | :not_live | :running | :confirmed}
-  defdelegate decline(scope, work_item), to: Moves
-
-  @doc false
   # close/2 closes `work_item`, as the scope's person (`close_locked/3`,
   # `Apiary.WorkItems.Moves`).
   @spec close(Scope.t(), WorkItem.t()) ::
@@ -190,25 +188,60 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # answer/4 answers the questions of the latest run, `attempt`, of `work_item`'s take in,
-  # and queues its next run (`Apiary.WorkItems.Moves`).
-  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map) ::
+  # or comments on its proposal, and queues its next run (`Apiary.WorkItems.Moves`).
+  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t()) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  defdelegate answer(scope, work_item, attempt, answers), to: Moves
+  def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers) do
+    # Hand-over: with the workflow model, answers to the last run a stage's entry may have
+    # escalate the stage, `round_limit`, as the runner does for questions at that run
+    # (`Apiary.Stages.answers_used_up/1`).
+    case Moves.answer(scope, work_item, attempt, answers) do
+      {:error, :used_up} = refused ->
+        if Apiary.Stages.on?(),
+          do: Apiary.Stages.answers_used_up(work_item, refused),
+          else: refused
+
+      result ->
+        result
+    end
+  end
 
   @doc false
-  # confirm/4 confirms the proposal of the latest run, `attempt`, of `work_item`'s take
-  # in, with the edit page's changes or as it stands (`Apiary.WorkItems.Moves`).
-  @spec confirm(Scope.t(), WorkItem.t(), pos_integer, map | nil) ::
+  # confirm/3 confirms the proposal of the latest run, `attempt`, of `work_item`'s take
+  # in (`Apiary.WorkItems.Moves`).
+  @spec confirm(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, params \\ nil),
-    do: Moves.confirm(scope, work_item, attempt, params)
+  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
+    # Hand-over: with the workflow model, the confirmation approves Explore's gate in the
+    # same transaction (`Apiary.Stages.confirmed/3`).
+    if Apiary.Stages.on?() do
+      Repo.transact(fn ->
+        with {:ok, confirmed} <- Moves.confirm(scope, work_item, attempt),
+             explore = Apiary.Stages.confirmed_stage_id(confirmed, attempt),
+             {:ok, _placed} <-
+               Apiary.Stages.confirmed(scope, confirmed, expect_stage: explore),
+             do: {:ok, Repo.get!(WorkItem, confirmed.id)}
+      end)
+    else
+      Moves.confirm(scope, work_item, attempt)
+    end
+  end
 
   @doc false
   # explore_again/3 queues the next run of `work_item`'s take in after its latest run,
   # `attempt`, gave no result, was lost or was cancelled (`Apiary.WorkItems.Moves`).
   @spec explore_again(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  defdelegate explore_again(scope, work_item, attempt), to: Moves
+  def explore_again(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
+    again = fn -> Moves.explore_again(scope, work_item, attempt) end
+
+    # Hand-over: with the workflow model, Explore again on an escalated stage resolves
+    # the escalation, with the same check as the stage's gate
+    # (`Apiary.Stages.explore_again/3`).
+    if Apiary.Stages.on?(),
+      do: Apiary.Stages.explore_again(scope, work_item, again),
+      else: again.()
+  end
 
   @doc false
   # comment/3 writes a comment of the scope's person on `work_item`
@@ -228,9 +261,11 @@ defmodule Apiary.WorkItems do
   # take_in_answers/2 is the answers given to the questions of the runs of take in
   # `take_in` of `work_item`, oldest first, by the run they answered, then the question's
   # place, for the input of the take in's next run: each `question`, as the run asked it,
-  # `answer`, `by`, the member who answered, named as the input names a person
+  # `answer`, `custom`, true for the member's text and false for an option's title, `by`,
+  # the member who answered, named as the input names a person
   # (`Apiary.Dispatches.Inputs.person_name/1`), and `at`, when, in UTC to the whole
-  # second, in the explore input's order (`inputs.schema.json` `answers`).
+  # second, in the explore input's order (`inputs.schema.json` `answers`). A comment on a
+  # proposal is no answer (`take_in_changes/3`).
   #
   # A stated limit: the answers count toward the input's bound
   # (`Apiary.Dispatches.Inputs.max_bytes/0`, 768 KiB), which leaves out only comments to
@@ -244,24 +279,80 @@ defmodule Apiary.WorkItems do
     answers =
       Repo.all(
         from a in Answer,
-          where: a.work_item_id == ^id and a.take_in == ^take_in,
+          where: a.work_item_id == ^id and a.take_in == ^take_in and not is_nil(a.question),
           order_by: [asc: a.attempt, asc: a.position]
       )
 
-    names =
-      answers
-      |> Enum.map(& &1.answered_by_id)
-      |> Enum.uniq()
-      |> Map.new(&{&1, Apiary.Dispatches.Inputs.person_name(&1)})
+    names = names(answers)
 
     for answer <- answers do
       Jason.OrderedObject.new([
         {"question", answer.question},
         {"answer", answer.answer},
+        {"custom", answer.custom},
         {"by", Jason.OrderedObject.new([{"name", Map.fetch!(names, answer.answered_by_id)}])},
         {"at", answer.answered_at |> DateTime.truncate(:second) |> DateTime.to_iso8601()}
       ])
     end
+  end
+
+  @doc false
+  # take_in_changes/3 is the comments on the proposals of take in `take_in` of
+  # `work_item` that no saved update of the proposal has read yet, made on a run before
+  # `attempt`, oldest first, for the input of the run `attempt`: each `text`, `by`, the
+  # member who wrote it, named as `take_in_answers/2` names a person, and `at`, when, in
+  # the explore input's order (`inputs.schema.json` `changes`).
+  @spec take_in_changes(WorkItem.t(), pos_integer, pos_integer) :: [Jason.OrderedObject.t()]
+  def take_in_changes(%WorkItem{id: id}, take_in, attempt)
+      when is_binary(id) and is_integer(take_in) and is_integer(attempt) do
+    comments =
+      Repo.all(
+        from a in Answer,
+          where: a.work_item_id == ^id and a.take_in == ^take_in and is_nil(a.question),
+          where: is_nil(a.done_at) and a.attempt < ^attempt,
+          order_by: [asc: a.attempt, asc: a.answered_at]
+      )
+
+    names = names(comments)
+
+    for comment <- comments do
+      Jason.OrderedObject.new([
+        {"text", comment.answer},
+        {"by", Jason.OrderedObject.new([{"name", Map.fetch!(names, comment.answered_by_id)}])},
+        {"at", comment.answered_at |> DateTime.truncate(:second) |> DateTime.to_iso8601()}
+      ])
+    end
+  end
+
+  defp names(rows) do
+    rows
+    |> Enum.map(& &1.answered_by_id)
+    |> Enum.uniq()
+    |> Map.new(&{&1, Apiary.Dispatches.Inputs.person_name(&1)})
+  end
+
+  @doc false
+  # mark_read/5 marks done, at `now`, the comments of take in `take_in` of the work item
+  # `work_item_id` that the run `attempt` read: those still open, made on a run before
+  # it. `version` is the version of the proposal the run's update saved. Called once that
+  # update is saved: with the workflow model on, after its `proposal` version is stored
+  # (`Apiary.Stages`); off, when the run's proposal is kept on its run of the queue
+  # (`Apiary.Dispatches.Settle`). How many it marked.
+  @spec mark_read(Ecto.UUID.t(), pos_integer, pos_integer, pos_integer, DateTime.t()) ::
+          non_neg_integer
+  def mark_read(work_item_id, take_in, attempt, version, %DateTime{} = now)
+      when is_binary(work_item_id) and is_integer(take_in) and is_integer(attempt) and
+             is_integer(version) and version >= 1 do
+    {count, _rows} =
+      Repo.update_all(
+        from(a in Answer,
+          where: a.work_item_id == ^work_item_id and a.take_in == ^take_in,
+          where: is_nil(a.question) and is_nil(a.done_at) and a.attempt < ^attempt
+        ),
+        set: [done_version: version, done_at: now]
+      )
+
+    count
   end
 
   ## Reading Explore
@@ -416,6 +507,13 @@ defmodule Apiary.WorkItems do
     do: WorkList.bands(scope, params, now)
 
   @doc false
+  # list_stage_counts/3 is how many live work items of the scope's workspace are at each
+  # stage of the workflow model (`Apiary.WorkItems.WorkList.stage_counts/3`).
+  @spec list_stage_counts(Scope.t(), map | keyword, DateTime.t()) :: [WorkList.stage_count()]
+  def list_stage_counts(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now()),
+    do: WorkList.stage_counts(scope, params, now)
+
+  @doc false
   # list_filter_values/3 is what the Work items list's Filter menu offers for `kind`
   # (`Apiary.WorkItems.WorkList.filter_values/3`).
   @spec list_filter_values(Scope.t(), :owner | :collection, String.t() | nil) ::
@@ -510,6 +608,23 @@ defmodule Apiary.WorkItems do
     else
       _none -> nil
     end
+  end
+
+  @doc false
+  # take_in_again?/1 is whether Take in again can bring the ended `work_item` back: its
+  # ticket's record (`ticket_query/0`) is open at its source, and the work item is not
+  # finished with its ticket not reopened (`Apiary.WorkItems.Finished`).
+  @spec take_in_again?(WorkItem.t()) :: boolean
+  def take_in_again?(%WorkItem{id: id}) do
+    Repo.exists?(
+      from w in WorkItem,
+        as: :work_item,
+        left_lateral_join: t in subquery(ticket_query()),
+        on: true,
+        join: i in Item,
+        on: i.id == t.item_id and i.organisation_id == w.organisation_id,
+        where: w.id == ^id and i.state == :open and not finished(w, i)
+    )
   end
 
   @doc false

@@ -338,13 +338,63 @@ defmodule Apiary.StacksTest do
         - source: {git: https://code.example.com/team/extra, ref: v1}
           exclude: {instructions: true}
       bind:
-        agents/coder: web-coder
+        agents: {coder: web-coder}
+        commands: {review: web-review}
+        skills: {lint: web-lint}
       extensions:
         required_check: Harness self-tests
       """
 
       assert {:ok, %Stack{harness: ^document}} =
                Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+    end
+
+    test "take bind by kind, then by role, with one name per role", ctx do
+      document = """
+      extends: {git: #{@stacks}, ref: v2}
+      bind:
+        agents: {developer: web-developer, reviewer: web-reviewer}
+        commands: {ship: web-ship}
+        skills: {}
+      """
+
+      assert {:ok, %Stack{harness: ^document}} =
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+    end
+
+    test "refuse a flat bind, an unknown kind and a list of names in bind, fix first", ctx do
+      base = "extends: {git: #{@stacks}, ref: v2}\n"
+
+      for {bind, message} <- [
+            {"{agents/developer: web-developer}",
+             "Write bind by kind, then by role, such as " <>
+               "bind: {agents: {developer: web-developer}}: agents/developer is a flat key."},
+            {"{skills: {review: brand-review}, commands/ship: web-ship}",
+             "Write bind by kind, then by role, such as " <>
+               "bind: {agents: {developer: web-developer}}: commands/ship is a flat key."},
+            {"{tools: {developer: web-developer}}",
+             "Use agents, commands or skills under bind: tools is not a kind."},
+            {"{agents: {reviewer: [web-reviewer, brand-review]}}",
+             "Give one name per role: bind.agents.reviewer is a list."},
+            {"{skills: {review: []}}", "Give one name per role: bind.skills.review is a list."}
+          ] do
+        assert refused(ctx, base <> "bind: #{bind}\n") == [message], bind
+      end
+    end
+
+    test "refuse any other bind the run contract refuses in the schema's words", ctx do
+      base = "extends: {git: #{@stacks}, ref: v2}\n"
+
+      for {bind, place} <- [
+            {"{agents: [web-developer]}", "#/bind/agents"},
+            {"{agents: {developer: team/web-developer}}", "#/bind/agents/developer"},
+            {"{agents: {.developer: web-developer}}", "#/bind/agents/.developer"},
+            {"{agents: {developer: {name: web-developer}}}", "#/bind/agents/developer"},
+            {"[agents]", "#/bind"}
+          ] do
+        assert [error] = refused(ctx, base <> "bind: #{bind}\n"), bind
+        assert error =~ "does not follow the harness format at #{place}: ", bind
+      end
     end
 
     test "refuse each key a harness document does not take", ctx do
@@ -369,7 +419,7 @@ defmodule Apiary.StacksTest do
                    "a harness document that extends a stack takes that stack's workflows"
                ]
 
-      for document <- ["name: web\n", "bind: {agents/coder: x}\n"] do
+      for document <- ["name: web\n", "bind: {agents: {coder: x}}\n"] do
         assert refused(ctx, document) == [
                  "add extends or at least one module: " <>
                    "a harness document extends a stack, or defines one with at least one module"
@@ -581,7 +631,7 @@ defmodule Apiary.StacksTest do
 
     test "refuse !!binary in any place, with no crash", ctx do
       for document <- [
-            "extends: {git: #{@stacks}, ref: v2}\nbind: {agents/x: !!binary //79}\n",
+            "extends: {git: #{@stacks}, ref: v2}\nbind: {agents: {x: !!binary //79}}\n",
             "extends: {git: #{@stacks}, ref: v2}\nname: !!binary //79\n",
             "extends: {git: #{@stacks}, ref: !!binary //79}\n",
             "extends: {git: #{@stacks}, ref: v2}\nextensions: {a: !!binary //79}\n"
@@ -644,8 +694,7 @@ defmodule Apiary.StacksTest do
             {base <> "modules: [{name: lint}]\n", "#/modules/0"},
             {base <> "modules: [{source: {path: ./m}}]\n", "#/modules/0"},
             {base <> "modules: [{source: {git: #{@stacks}, ref: v1}, link: m}]\n", "#/modules/0"},
-            {base <> "modules: []\n", "#/modules"},
-            {base <> "bind: {coder: x}\n", "#/bind"}
+            {base <> "modules: []\n", "#/modules"}
           ] do
         assert [error] = refused(ctx, document), document
         assert error =~ "does not follow the harness format at #{place}", document
@@ -825,6 +874,100 @@ defmodule Apiary.StacksTest do
       elsewhere = %{system: "system.example", path: "team/elsewhere"}
 
       assert Stacks.workflow_for(ctx.scope.workspace, elsewhere) == "explore"
+    end
+  end
+
+  describe "recorded_access/3" do
+    # The workspace's row for `workflow`, with `access`.
+    defp recorded!(ctx, workflow, access) do
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, workflow}, doc("core"),
+          access: access
+        )
+    end
+
+    defp target_of(ctx), do: %{system: ctx.target.system, path: ctx.target.path}
+
+    test "an explore run gets the access of its row, nil where the row records none", ctx do
+      for access <- [:read, :write, nil] do
+        recorded!(ctx, "explore", access)
+        assert Stacks.recorded_access(ctx.scope.workspace, nil, "explore") == access
+      end
+    end
+
+    test "an explore run gets read where its row is gone or has another workflow", ctx do
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, "explore") == :read
+
+      recorded!(ctx, "review", :write)
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, "explore") == :read
+    end
+
+    test "an explore run gets read for two rows at its places", ctx do
+      recorded!(ctx, "explore", :write)
+      put!(ctx, {:target, ctx.target, "explore"}, doc("x"))
+
+      assert Stacks.recorded_access(ctx.scope.workspace, target_of(ctx), "explore") == :read
+    end
+
+    test "a stage's run gets nil with no row, or with a row of another workflow", ctx do
+      stage_run = {:stage, "build"}
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, stage_run) == nil
+
+      recorded!(ctx, "explore", :read)
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, stage_run) == nil
+    end
+
+    test "a stage's run gets the access of the row with its workflow", ctx do
+      for access <- [:read, :write, nil] do
+        recorded!(ctx, "build", access)
+        assert Stacks.recorded_access(ctx.scope.workspace, nil, {:stage, "build"}) == access
+      end
+    end
+
+    test "a stage's run gets the row with its workflow among other rows at its places", ctx do
+      recorded!(ctx, "explore", :write)
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:target, ctx.target, "build"}, doc("x"), access: :read)
+
+      target = target_of(ctx)
+      assert Stacks.recorded_access(ctx.scope.workspace, target, {:stage, "build"}) == :read
+      assert Stacks.recorded_access(ctx.scope.workspace, nil, {:stage, "build"}) == nil
+    end
+
+    test "a stage's run gets the lower of its workspace's and its target's rows", ctx do
+      target = target_of(ctx)
+
+      for {workspace, at_target, lowest} <- [
+            {:write, :read, :read},
+            {:read, :write, :read},
+            {:write, nil, :write},
+            {nil, nil, nil}
+          ] do
+        recorded!(ctx, "build", workspace)
+
+        {:ok, _stack} =
+          Stacks.put_stack(ctx.scope, {:target, ctx.target, "build"}, doc("x"), access: at_target)
+
+        assert Stacks.recorded_access(ctx.scope.workspace, target, {:stage, "build"}) == lowest
+      end
+    end
+
+    test "a stage's run leaves out the rows at another target and of another workspace", ctx do
+      other = target!(ctx.scope, "team/other")
+
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:target, other, "build"}, doc("x"), access: :read)
+
+      %{scope: elsewhere} = sign_up_fixture()
+
+      {:ok, _stack} =
+        Stacks.put_stack(elsewhere, {:workspace, elsewhere.workspace, "build"}, doc("x"),
+          access: :read
+        )
+
+      target = target_of(ctx)
+      assert Stacks.recorded_access(ctx.scope.workspace, target, {:stage, "build"}) == nil
     end
   end
 

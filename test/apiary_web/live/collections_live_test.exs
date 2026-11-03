@@ -144,8 +144,11 @@ defmodule ApiaryWeb.CollectionsLiveTest do
 
     tabs = for [_, key] <- Regex.scan(~r/id="settings-tab-([a-z_]+)"/, html), do: key
 
+    # With `workflow_model`, Stages takes the place of Workflow.
+    last = if Apiary.Features.on?(:workflow_model), do: "stages", else: "workflow"
+
     assert Enum.drop_while(tabs, &(&1 != "model")) |> Enum.take(4) ==
-             ~w(model work_sources destinations workflow)
+             ~w(model work_sources destinations) ++ [last]
 
     {:ok, lv, _html} = live(ctx.conn, ctx.destinations)
     assert has_element?(lv, "#settings-section-title", "Destinations")
@@ -383,11 +386,17 @@ defmodule ApiaryWeb.CollectionsLiveTest do
 
     assert words(page, "#work-sources-who-may") == who_may
     assert has_element?(page, "#work-sources-grant-#{grant.public_id}-choose")
-    assert has_element?(page, "#work-sources-adapter-#{other.public_id}")
-    refute has_element?(page, "#work-sources-adapter-#{other.public_id}-connect")
+    # No connect control: neither Connect another source nor the adapters to connect.
+    refute has_element?(page, "#work-sources-connect")
+    refute has_element?(page, "#work-sources-adapter-#{other.public_id}")
 
     assert words(page, "#work-sources-connect-who-may") ==
-             "Only owners and admins change the integrations of the organisation."
+             "Only owners and admins of #{ctx.organisation.name} connect work sources."
+
+    {:ok, destinations, _html} = live(conn, ctx.destinations)
+
+    assert words(destinations, "#destinations-connect-who-may") ==
+             "Only owners and admins of #{ctx.organisation.name} connect destinations."
 
     # An install sent anyway starts nothing.
     render_click(page, "install", %{"integration" => other.public_id})
@@ -406,21 +415,20 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     assert Repo.aggregate(GrantRule, :count) == 0
   end
 
-  test "with no adapter for the type, says so; with one not connected, Connect another is open",
+  test "with no adapter for the type, says so; with one not connected, Connect a source is open",
        ctx do
     {:ok, lv, _html} = live(ctx.conn, ctx.sources)
 
     assert words(lv, "#work-sources-no-adapter") ==
-             "No work source for this type is set up on this instance. An instance admin " <>
-               "sets one up in Instance settings › Adapters."
+             "Contact support to add a work source. Qory Apiary offers none for this type yet."
 
     refute has_element?(lv, "#work-sources-connect")
 
     {:ok, lv, _html} = live(ctx.conn, ctx.destinations)
 
     assert words(lv, "#destinations-no-adapter") ==
-             "No work destination for this type is set up on this instance. An instance " <>
-               "admin sets one up in Instance settings › Adapters."
+             "Contact support to add a work destination. Qory Apiary offers none for this " <>
+               "type yet."
 
     %{adapter: adapter} = connectable_adapter_fixture()
     {:ok, lv, _html} = live(ctx.conn, ctx.sources)
@@ -428,6 +436,8 @@ defmodule ApiaryWeb.CollectionsLiveTest do
     refute has_element?(lv, "#work-sources-grants")
     row = "#work-sources-connect[open] #work-sources-adapter-#{adapter.public_id}"
     assert has_element?(lv, row <> "-not-connected", "Not connected")
+    # With nothing connected, as on the set-up's step: Connect a source.
+    assert words(lv, "#work-sources-connect-another") == "Connect a source"
 
     assert has_element?(
              lv,

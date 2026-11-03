@@ -33,7 +33,8 @@ defmodule Apiary.AccessRows do
   `Apiary.InstanceConfig.save/3` asks, nor for making, renaming and deleting an adapter of
   the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks,
   nor for creating and deleting an instance assignment of a harness source, an instance
-  admin's, as `Apiary.Harnesses` asks.
+  admin's, as `Apiary.Harnesses` asks, nor for saving a workspace type's default process,
+  an instance admin's, as `Apiary.Processes.TypeTemplates.save/4` asks.
   Creating an organisation is a sign-up's, which asks nothing, in the core; an edition may
   let a signed-in person create one. Creating, deleting and restoring a workspace are
   asked of the organisation: an owner creates one, an owner or an admin deletes any
@@ -89,6 +90,7 @@ defmodule Apiary.AccessRows do
       {:"instance.mail_on", yes: []},
       {:"instance.rename", yes: []},
       {:"instance.configure", yes: []},
+      {:"instance.support_save", yes: []},
       {:"audit.read", yes: @owners ++ [:admin, :feature_off, :hidden]},
       {:"audit.prune", yes: [:instance, :feature_off, :hidden]},
       {:"workspace.create", yes: @owners ++ [:feature_off, :hidden]},
@@ -143,7 +145,6 @@ defmodule Apiary.AccessRows do
       {:"work_item.read", yes: @owners ++ [:member, :admin]},
       {:"work_item.take_in", yes: @owners ++ [:member, :admin]},
       {:"work_item.undo", yes: @owners ++ [:member, :admin]},
-      {:"work_item.decline", yes: @owners ++ [:member, :admin]},
       {:"work_item.close", yes: @owners ++ [:member, :admin]},
       {:"work_item.answer", yes: @owners ++ [:member, :admin]},
       {:"work_item.confirm", yes: @owners ++ [:member, :admin]},
@@ -152,6 +153,11 @@ defmodule Apiary.AccessRows do
       # Asked of the workspace, as a page asks whether to show the button at all: the role
       # alone answers. A comment's author is asked of the comment (`test/apiary/access_test.exs`).
       {:"work_item.comment_delete", yes: @owners ++ [:admin]},
+      {:"process.edit", yes: @owners ++ [:admin]},
+      {:"gate.approve", yes: @owners ++ [:member, :admin]},
+      {:"artifact.write", yes: @owners ++ [:member, :admin]},
+      {:"artifact_type.edit", yes: @owners ++ [:admin]},
+      {:"workspace_type.edit", yes: []},
       {:"adapter.declare", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_set", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_seal", yes: [:adapter_key, :hidden], on: :adapter},
@@ -169,6 +175,7 @@ defmodule Apiary.AccessRows do
       {:"dispatch.release", yes: [:pool_key, :hidden]},
       {:"target.set_further_repositories", yes: @owners ++ [:admin]},
       {:"dispatch.machine_log", yes: [:pool_key, :hidden]},
+      {:"dispatch.machine_end", yes: [:pool_key, :hidden]},
       {:"target.rebuild_environment", yes: @owners ++ [:member, :admin]}
     ]
   end

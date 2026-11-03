@@ -2,9 +2,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   @moduledoc """
   Explore's parts of a work item's page (`ApiaryWeb.WorkItemComponents`): the statuses and
   marks Explore adds, the step card in each Explore state, a take in again's undo, the
-  declined at Explore notice, the tabs, Explore's tab in each state, the questions form,
-  the proposal and its sources, the edit page, and Explore's lines in the Thread. Every
-  DOM id, `phx-value-*` and path is Qory Apiary's: runs by their `rn_` id, questions by
+  tabs, Explore's tab in each state, the questions form with its options, the proposal
+  with its comments, its field and its one button, and Explore's lines in the Thread. Every
+  DOM id, `phx-value-*` and path is Qory Apiary's: runs by their number, questions by
   their public id, never the ticket's ref or a source's.
   """
   use ExUnit.Case, async: true
@@ -23,47 +23,27 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   ## Fixtures: neutral example data
 
-  defp proposal(overrides \\ %{}) do
-    Map.merge(
-      %{
-        complexity: %{
-          level: :standard,
-          reason:
-            "Two places compute the total, the basket and the order service. Both need the same function and its tests."
-        },
-        understanding:
-          "The basket discounts each line and rounds it.\n\nThe order service rounds once.",
-        scope_in: [
-          "Compute the basket's total as the order service does.",
-          "Move that rounding into one function."
-        ],
-        scope_out: ["Totals of orders already placed."],
-        approach: "Extract the order service's rounding into a function in the pricing module.",
-        alternatives: [
-          %{
-            text: "Round each line in the order service too.",
-            reason: "Invoices follow the order service's total."
-          }
-        ],
-        knowledge: [
-          %{
-            text: "The order service rounds half to even; the basket rounds half up.",
-            sources: [
-              "https://code.example.com/acme/shop/lib/pricing/order_total.ex",
-              "https://docs.example.org/decimal/rounding#half-even"
-            ]
-          }
-        ]
-      },
-      overrides
-    )
-  end
+  @message """
+  ## What this is
+
+  Checkout totals are a cent off when a discount applies.
+
+  ## How Qory would do it
+
+  - Extract the order service's rounding into one function.
+  - Use it in the basket.
+
+  Source: [the pricing notes](https://docs.example.org/pricing)
+  """
+
+  defp proposal(overrides \\ %{}), do: Map.merge(%{message: @message}, overrides)
 
   defp run(overrides) do
     Map.merge(
       %{
         id: "rn_01a97b20c4e81f3d",
-        path: "/8wonders/main/runs/rn_01a97b20c4e81f3d",
+        number: 12,
+        path: "/8wonders/main/runs/12",
         attempt: 1,
         of: 3,
         state: :completed,
@@ -72,6 +52,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         duration: "11 minutes",
         outcome: :proposal,
         proposal: proposal(),
+        version: 1,
         answers_by: []
       },
       overrides
@@ -87,7 +68,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     |> Enum.zip(answers)
     |> Enum.with_index(1)
     |> Enum.map(fn {{text, answer}, i} ->
-      %{public_id: "qq_0#{i}", text: text, answer: answer}
+      %{public_id: "qq_0#{i}", text: text, options: [], answer: answer, custom: answer && true}
     end)
   end
 
@@ -101,11 +82,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   defp run1_answered do
     run(%{
       id: "rn_01aa1f3e5c0d82a4",
-      path: "/8wonders/main/runs/rn_01aa1f3e5c0d82a4",
+      number: 13,
+      path: "/8wonders/main/runs/13",
       attempt: 1,
       outcome: :questions,
       proposal: nil,
-      understanding: "Today the basket holds one payment adjustment.",
       questions: questions(@answers),
       ended_at: ago(18 * 3600 + 29 * 60),
       answered_by: @dana,
@@ -116,16 +97,18 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   defp run2_answered do
     run(%{
       id: "rn_01aa40b29e71c6d3",
-      path: "/8wonders/main/runs/rn_01aa40b29e71c6d3",
+      number: 14,
+      path: "/8wonders/main/runs/14",
       attempt: 2,
       outcome: :questions,
       proposal: nil,
-      understanding: nil,
       questions: [
         %{
           public_id: "qq_04",
           text: "Should the receipt change to the new order?",
-          answer: "Change it: the discount first, then the gift card."
+          options: [],
+          answer: "Change it: the discount first, then the gift card.",
+          custom: true
         }
       ],
       ended_at: ago(50 * 60),
@@ -190,7 +173,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       used = run(%{attempt: 2, outcome: :questions})
 
       for {status, words, acts, reads} <- [
-            {:questions, "Waits for answers", "wait", "wait_other"},
+            {:questions, "Needs answers", "wait", "wait_other"},
             {:used_up, "Explore used its 3 runs", "wait", "wait_other"},
             {:no_result, "Explore ended without a result", "err", "err"},
             {:lost, "Explore's run was lost", "err", "err"},
@@ -224,7 +207,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             can_act: can_act
           )
 
-        assert text(html, ".q-wi-meta .q-wi-st") == "Waits for answers"
+        assert text(html, ".q-wi-meta .q-wi-st") == "Needs answers"
         assert attr(html, ".q-wi-meta .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-#{mark}"]
       end
     end
@@ -243,12 +226,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
-    test "declined at Explore: Explore crossed, nothing done" do
-      w = work_item(%{status: :declined, stage: :explore, ended_by: @dana})
+    test "closed at Explore: no current step, nothing done" do
+      w = work_item(%{status: :closed, stage: :explore, ended_by: @dana})
       html = render_component(&C.stage_track/1, work_item: w)
       assert count(html, "[aria-current]") == 0
-      assert count(html, "#work-item-stages-explore.q-wi-stage-stop") == 1
-      assert text(html, ".q-wi-end") == "Declined"
+      assert count(html, ".q-wi-stage-done") == 0
+      assert text(html, ".q-wi-end") == "Closed"
     end
   end
 
@@ -268,16 +251,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       card(w, Keyword.merge([can_undo: true], extra))
     end
 
-    test "after a decline or a close: it goes back to how it ended, and nothing is sent" do
+    test "after a close: it goes back to how it ended, and nothing is sent" do
       for {previous, by, line} <- [
-            {:declined, @dana,
-             "You took this in again just now. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the ticket, so its label stays as it was."},
-            {:declined, @priya,
-             "Priya took this in again just now. Until a run starts, you can undo this: the work item goes back to declined, and nothing is sent to the ticket, so its label stays as it was."},
             {:closed, @dana,
-             "You took this in again just now. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the ticket, so its label stays as it was."},
+             "You took this in again just now. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the ticket."},
             {:closed, @priya,
-             "Priya took this in again just now. Until a run starts, you can undo this: the work item goes back to closed, and nothing is sent to the ticket, so its label stays as it was."}
+             "Priya took this in again just now. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the ticket."}
           ] do
         html = again(by, previous: previous)
         assert text(html, "#work-item-step-undo-line") == line
@@ -290,9 +269,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "after an undo: undoing again takes the label off, as a first undo does" do
       for {by, line} <- [
             {@dana,
-             "You took this in just now. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays."},
+             "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."},
             {@priya,
-             "Priya took this in just now. Until a run starts, you can undo this: Qory takes its label off the ticket, and the comment stays."}
+             "Priya took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."}
           ] do
         html = again(by, previous: :undone)
         assert text(html, "#work-item-step-undo-line") == line
@@ -312,15 +291,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       assert text(html, "#work-item-ended-line") ==
-               "You undid this just now, before a run started."
+               "You undid the take in just now, before a run started."
 
       assert text(html, ".q-wi-grow > p:last-child") ==
-               "Qory took its label off the ticket, and its comment stays there. In the Backlog, Take in again brings this work item back."
+               "Qory removed its label from the ticket and left its comment. To bring the work item back, use Take in again."
     end
 
     test "without the right to undo: who took it in again and when, and no Undo" do
       for {previous, by, line} <- [
-            {:declined, @dana, "You took this in again just now."},
+            {:closed, @dana, "You took this in again just now."},
             {:closed, @priya, "Priya took this in again just now."}
           ] do
         html = again(by, previous: previous, can_undo: false)
@@ -330,10 +309,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "after the uninstall, a take in again reads the built uninstall line" do
-      html = again(@dana, previous: :declined, uninstalled: true)
+      html = again(@dana, previous: :closed, uninstalled: true)
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo this. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+               "You took this in just now. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
     end
   end
 
@@ -341,38 +320,38 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "queued with answers: whose answers it reads, which run, and no Undo" do
       for {people, line} <- [
             {[@dana],
-             "Qory reads the ticket, the code and your answers when the run starts, and proposes how to build it."},
+             "When the run starts, Qory explores the ticket and your answers, and writes a proposal for the work."},
             {[@priya],
-             "Qory reads the ticket, the code and Priya's answers when the run starts, and proposes how to build it."},
+             "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
             {[@dana, @priya],
-             "Qory reads the ticket, the code and the answers of this take in when the run starts, and proposes how to build it."},
+             "When the run starts, Qory explores the ticket and the answers of this take in, and writes a proposal for the work."},
             {[@priya, %{@priya | name: "Priya"}],
-             "Qory reads the ticket, the code and Priya's answers when the run starts, and proposes how to build it."},
+             "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
             {[],
-             "Qory reads the ticket and the code when the run starts, and proposes how to build it."}
+             "When the run starts, Qory explores the ticket and writes a proposal for the work."}
           ] do
         w = work_item(%{status: :queued, run: %{attempt: 2, of: 3, answers_by: people}})
         html = card(w, can_undo: true)
 
         assert text(html, ".q-wi-badge") == "Queued"
         assert text(html, ".q-wi-bee-line") == line
-        assert text(html, "#work-item-step-run") == "Run 2 of 3 is queued."
+        assert text(html, "#work-item-step-run") == "Attempt 2 of 3 is queued."
         assert count(html, "#work-item-step-undo") == 0
         assert count(html, "button") == 0
       end
     end
 
-    test "running n of 3: whose answers it reads, and its run by its rn_ id" do
+    test "running n of 3: whose answers it reads, and its run by its number" do
       for {people, line} <- [
-            {[@dana],
-             "Qory is exploring again, with your answers. It reads the ticket and the code, and proposes how to build it."},
+            {[@dana], "Qory reads the ticket and your answers, and writes a proposal."},
             {[@dana, @priya],
-             "Qory is exploring again, with the answers of this take in. It reads the ticket and the code, and proposes how to build it."}
+             "Qory reads the ticket and the answers of this take in, and writes a proposal."}
           ] do
         r =
           run(%{
             id: "rn_01aa47c9b05e3f18",
-            path: "/8wonders/main/runs/rn_01aa47c9b05e3f18",
+            number: 15,
+            path: "/8wonders/main/runs/15",
             attempt: 3,
             state: :running,
             started_at: ago(120),
@@ -381,10 +360,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         html = card(work_item(%{status: :running, run: r}))
         assert text(html, ".q-wi-bee-line") == line
-        assert text(html, "#work-item-step-run") == "Run rn_01aa47c9 started 2 minutes ago."
+        assert text(html, "#work-item-step-run") == "Attempt 3 started 2 minutes ago."
 
         assert attr(html, "#work-item-step-run a", "href") == [
-                 "/8wonders/main/runs/rn_01aa47c9b05e3f18"
+                 "/8wonders/main/runs/15"
                ]
       end
     end
@@ -402,29 +381,27 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       card(w, extra)
     end
 
-    test "a member who may act: the badge, the line, the link to Explore, and Decline" do
+    test "a member who may act: the badge, the line, and the link to Explore" do
       html = asked(3, explore_path: "/8wonders/main/work/94/explore")
 
       assert text(html, "h2") == "Explore"
-      assert text(html, ".q-wi-badge") == "Waits for answers"
+      assert text(html, ".q-wi-badge") == "Needs answers"
       assert count(html, ".q-wi-step-ask") == 1
       assert attr(html, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait"]
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory asked 3 questions before it can propose how to build it. Answer them, and Qory explores again with your answers. Or decline the work item."
+               "Answer Qory's 3 questions, and Explore runs again with your answers."
 
       assert text(html, "#work-item-step-explore") == "Answer the questions"
       assert attr(html, "#work-item-step-explore", "href") == ["/8wonders/main/work/94/explore"]
-      assert text(html, "#work-item-step-decline") == "Decline"
-      assert attr(html, "#work-item-step-decline", "phx-click") == ["ask_decline"]
-      assert attr(html, "#work-item-step-decline", "phx-value-number") == ["94"]
+      assert count(html, "button") == 0
     end
 
     test "one question; on Explore's tab, no link" do
       html = asked(1)
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory asked 1 question before it can propose how to build it. Answer it, and Qory explores again with your answer. Or decline the work item."
+               "Answer Qory's question, and Explore runs again with your answer."
 
       assert count(html, "#work-item-step-explore") == 0
 
@@ -434,53 +411,40 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "a reader who may not act: what Qory asked, that it waits for a member, no button" do
       for {n, line, waits} <- [
-            {3, "Qory asked 3 questions before it can propose how to build it.",
-             "Waits for a member to answer Qory's questions."},
-            {1, "Qory asked 1 question before it can propose how to build it.",
-             "Waits for a member to answer Qory's question."}
+            {3, "Qory returned 3 questions instead of a proposal.",
+             "Next, a member answers Qory's questions."},
+            {1, "Qory returned 1 question instead of a proposal.",
+             "Next, a member answers Qory's question."}
           ] do
         html = asked(n, can_act: false, explore_path: "/8wonders/main/work/94/explore")
         assert text(html, ".q-wi-bee-line") == line
         assert text(html, "#work-item-step-waits") == waits
-        assert text(html, ".q-wi-badge") == "Waits for answers"
+        assert text(html, ".q-wi-badge") == "Needs answers"
         assert attr(html, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait_other"]
         assert count(html, ".q-wi-step-ask") == 0
         assert count(html, "button") == 0
         assert count(html, "a") == 0
       end
     end
-
-    test "Decline asks in place, as at Confirm" do
-      html = asked(3, asking: :decline)
-      assert text(html, "#work-item-step-decline-question") == "Decline work item #94?"
-
-      assert text(html, "#work-item-step-decline-sub") ==
-               "The ticket stays open on GitHub and keeps Qory's label, and nothing new is posted there. In the Backlog, Take in again brings this work item back."
-
-      assert attr(html, "#work-item-step-decline-go", "phx-click") == ["decline"]
-      assert attr(html, "#work-item-step-decline-go", "phx-value-number") == ["94"]
-      refute html =~ "Qory asked"
-    end
   end
 
   describe "step_card/1, a run without a result" do
-    test "no result, lost, cancelled: the badge, what happened, Run Explore again and Decline" do
+    test "no result, lost, cancelled: the badge, what happened, Run Explore again" do
       for {status, overrides, badge, line} <- [
             {:no_result, %{state: :failed, outcome: :error}, "No result",
-             "Run rn_01aa52d0 ended with an error, so Explore has no result."},
-            {:no_result, %{outcome: :none}, "No result",
-             "Run rn_01aa52d0 ended without a result."},
+             "Attempt 1 ended with an error, so Explore has no result."},
+            {:no_result, %{outcome: :none}, "No result", "Attempt 1 ended without a result."},
             {:no_result, %{outcome: :refused}, "No result",
-             "Run rn_01aa52d0 returned a result that did not pass Qory's check, so Explore has no result."},
+             "Attempt 1 returned a result that did not pass Qory's check, so Explore has no result."},
             {:lost, %{state: :lost, outcome: nil}, "Lost",
-             "Run rn_01aa52d0 was lost before it ended, so Explore has no result."},
+             "Attempt 1 was lost before it ended, so Explore has no result."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
-             "Run rn_01aa52d0 was cancelled before it ended, so Explore has no result."}
+             "Attempt 1 was cancelled before it ended, so Explore has no result."}
           ] do
         r =
           run(
             Map.merge(
-              %{id: "rn_01aa52d07c4a91e6", path: "/8wonders/main/runs/rn_01aa52d07c4a91e6"},
+              %{id: "rn_01aa52d07c4a91e6", number: 16, path: "/8wonders/main/runs/16"},
               overrides
             )
           )
@@ -492,14 +456,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert text(html, "#work-item-step-line") == line
 
         assert attr(html, "#work-item-step-line a", "href") == [
-                 "/8wonders/main/runs/rn_01aa52d07c4a91e6"
+                 "/8wonders/main/runs/16"
                ]
 
         assert text(html, "#work-item-step-again") == "Run Explore again"
         assert attr(html, "#work-item-step-again", "phx-click") == ["explore_again"]
         assert attr(html, "#work-item-step-again", "phx-value-number") == ["97"]
-        assert text(html, "#work-item-step-decline") == "Decline"
-        assert text(html, "#work-item-step-next") == "It starts run 2 of 3 of this take in."
+        assert text(html, "#work-item-step-next") == "Run Explore again starts attempt 2 of 3."
 
         reader = card(work_item(%{number: 97, status: status, run: r}), can_act: false)
         assert text(reader, "#work-item-step-line") == line
@@ -516,7 +479,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           Map.merge(
             %{
               id: "rn_01aa47c9b05e3f18",
-              path: "/8wonders/main/runs/rn_01aa47c9b05e3f18",
+              number: 15,
+              path: "/8wonders/main/runs/15",
               attempt: 3,
               outcome: :questions,
               questions: [hd(questions())]
@@ -528,20 +492,18 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       card(work_item(%{number: 94, status: :used_up, run: r}), extra)
     end
 
-    test "3 of 3 runs used: why Qory cannot explore again, the two ways on, Decline and Close" do
+    test "3 of 3 attempts used: why Qory cannot explore again, the way on, and Close" do
       html = used(%{}, can_close: true)
 
-      assert text(html, ".q-wi-badge") == "3 of 3 runs used"
+      assert text(html, ".q-wi-badge") == "3 of 3 attempts used"
       assert count(html, ".q-wi-step-ask") == 1
 
       assert text(html, "#work-item-step-line") ==
-               "Qory still has 1 question after run 3 of 3, the most one take in has, so it cannot explore again in this take in."
+               "Qory still has 1 question after attempt 3 of 3, the last attempt of this take in."
 
       assert text(html, "#work-item-step-ways") ==
-               "Decline the work item if it is not wanted. To explore again, close it: Take in again from the Backlog then starts a fresh count, and answers from this take in are not carried over."
+               "To explore again, close the work item and use Take in again in the Backlog: the run count starts again, without this take in's answers."
 
-      assert text(html, "#work-item-step-decline") == "Decline"
-      assert attr(html, "#work-item-step-decline", "phx-click") == ["ask_decline"]
       assert text(html, "#work-item-step-close") == "Close work item…"
       assert attr(html, "#work-item-step-close", "phx-click") == ["ask_close"]
       assert attr(html, "#work-item-step-close", "phx-value-number") == ["94"]
@@ -553,9 +515,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = used(%{}, can_close: true, backlog_off: true)
 
       assert text(html, "#work-item-step-ways") ==
-               "Decline the work item if it is not wanted, or close it."
+               "Close the work item if it is not wanted."
 
-      assert count(html, "#work-item-step-decline") == 1
       assert count(html, "#work-item-step-close") == 1
       refute html =~ "Take in again"
     end
@@ -564,12 +525,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       two = used(%{questions: Enum.take(questions(), 2)})
 
       assert text(two, "#work-item-step-line") ==
-               "Qory still has 2 questions after run 3 of 3, the most one take in has, so it cannot explore again in this take in."
+               "Qory still has 2 questions after attempt 3 of 3, the last attempt of this take in."
 
       none = used(%{state: :failed, outcome: :error})
 
       assert text(none, "#work-item-step-line") ==
-               "Run rn_01aa47c9 was run 3 of 3, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in."
+               "Attempt 3 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
     end
 
     test "Close only with the right to close; a reader who may not act reads why, and nothing to do" do
@@ -581,46 +542,31 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(reader, "button") == 0
       assert attr(reader, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait_other"]
     end
-
-    test "Decline asks in place" do
-      html = used(%{}, asking: :decline)
-      assert text(html, "#work-item-step-decline-question") == "Decline work item #94?"
-      assert text(html, ".q-wi-badge") == "3 of 3 runs used"
-    end
   end
 
   describe "step_card/1, Confirm" do
-    test "the line, Read Qory's proposal, Confirm, Change and Decline" do
-      html =
-        card(work_item(%{}),
-          explore_path: "/8wonders/main/work/88/explore",
-          edit_path: "/8wonders/main/work/88/explore/edit"
-        )
+    test "the line and Read Qory's proposal; no Confirm and no Change" do
+      html = card(work_item(%{}), explore_path: "/8wonders/main/work/88/explore")
 
       assert text(html, ".q-wi-bee-line") ==
-               "Qory proposed how to build it. Confirm it, change it first, or decline the work item."
+               "Confirm Qory's proposal, or write what to change."
 
       assert text(html, "#work-item-step-explore") == "Read Qory's proposal"
       assert attr(html, "#work-item-step-explore", "href") == ["/8wonders/main/work/88/explore"]
-
-      assert texts(html, ".q-wi-acts > *") == ["Confirm", "Change", "Decline"]
-
-      assert attr(html, "#work-item-step-change", "href") == [
-               "/8wonders/main/work/88/explore/edit"
-             ]
-
-      assert count(html, ".btn-primary") == 1
+      assert count(html, "button") == 0
+      assert count(html, ".q-wi-acts") == 0
+      assert count(html, "#work-item-step-confirm, #work-item-step-change") == 0
+      refute html =~ "/explore/edit"
     end
 
-    test "on Explore's tab, no link; without the right to act, neither Change nor the link" do
-      html = card(work_item(%{}), edit_path: "/8wonders/main/work/88/explore/edit")
+    test "on Explore's tab, no link; without the right to act, no link" do
+      html = card(work_item(%{}))
       assert count(html, "#work-item-step-explore") == 0
 
       reader =
         card(work_item(%{owner: @priya}),
           can_act: false,
-          explore_path: "/8wonders/main/work/88/explore",
-          edit_path: "/8wonders/main/work/88/explore/edit"
+          explore_path: "/8wonders/main/work/88/explore"
         )
 
       assert count(reader, "a") == 0
@@ -629,22 +575,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   ## The notice, the tabs
-
-  describe "end_notice/1, declined at Explore" do
-    test "who declined it and when, at Explore" do
-      for {by, line} <- [
-            {@dana, "You declined this work item just now, at Explore."},
-            {@priya, "Priya declined this work item just now, at Explore."}
-          ] do
-        w = work_item(%{status: :declined, stage: :explore, ended_by: by, ended_at: ago(5)})
-
-        html =
-          render_component(&C.end_notice/1, work_item: w, integration: "GitHub", now: @now)
-
-        assert text(html, "#work-item-ended-line") == line
-      end
-    end
-  end
 
   test "work_item_tabs/1: Ticket, Explore and Thread, Explore current" do
     html =
@@ -667,44 +597,45 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   defp items(html, id), do: texts(html, "##{id} > span")
 
   describe "step_card/1, in an example workspace" do
-    # An example workspace reads the source texts, which name no code; the tests above read
-    # the software catalogue's, the default locale's.
+    # An example workspace reads the source texts, as a software workspace does on these
+    # lines.
     test "Explore reads the ticket and the answers, and proposes what to do" do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
         for {people, line} <- [
-              {[], "Qory reads the ticket when the run starts, and proposes what to do."},
+              {[],
+               "When the run starts, Qory explores the ticket and writes a proposal for the work."},
               {[@dana],
-               "Qory reads the ticket and your answers when the run starts, and proposes what to do."},
+               "When the run starts, Qory explores the ticket and your answers, and writes a proposal for the work."},
               {[@priya],
-               "Qory reads the ticket and Priya's answers when the run starts, and proposes what to do."},
+               "When the run starts, Qory explores the ticket and the answers of Priya, and writes a proposal for the work."},
               {[@dana, @priya],
-               "Qory reads the ticket and the answers of this take in when the run starts, and proposes what to do."}
+               "When the run starts, Qory explores the ticket and the answers of this take in, and writes a proposal for the work."}
             ] do
           w = work_item(%{status: :queued, run: %{attempt: 2, of: 3, answers_by: people}})
           assert text(card(w), ".q-wi-bee-line") == line
         end
 
         assert text(asked(3), ".q-wi-bee-line") ==
-                 "Qory asked 3 questions before it can propose what to do. Answer them, and Qory explores again with your answers. Or decline the work item."
+                 "Answer Qory's 3 questions, and Explore runs again with your answers."
 
         assert text(asked(1, can_act: false), ".q-wi-bee-line") ==
-                 "Qory asked 1 question before it can propose what to do."
+                 "Qory returned 1 question instead of a proposal."
 
         assert text(card(work_item(%{})), ".q-wi-bee-line") ==
-                 "Qory proposed what to do. Confirm it, change it first, or decline the work item."
+                 "Confirm Qory's proposal, or write what to change."
       end)
     end
   end
 
   describe "explore_tab/1, queued and running" do
-    test "queued, the first run: Run 1 of 3, Queued, and what Qory does" do
+    test "queued, the first run: Attempt 1 of 3, Queued, and what Qory does" do
       html = tab(work_item(%{number: 341, status: :queued, run: %{attempt: 1, of: 3}}))
 
-      assert items(html, "work-item-explore-run") == ["Run 1 of 3", "Queued"]
+      assert items(html, "work-item-explore-run") == ["Attempt 1 of 3", "Queued"]
       assert text(html, "#work-item-explore-wait-h") == "Explore is queued."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Qory starts run 1 of 3 when the workspace's node pool takes it. It reads the ticket and the code, and proposes how to build it, or asks what it needs to know."
+               "Qory starts attempt 1 of 3 when the workspace's pool takes it. It reads the ticket and proposes what to do, or asks what it needs to know."
 
       assert count(html, ".q-xp-frame") == 0
     end
@@ -712,29 +643,29 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a pending run reads Queued too, with its id" do
       r = run(%{state: :pending, attempt: 1, ended_at: nil})
       html = tab(work_item(%{status: :queued, run: r}))
-      assert items(html, "work-item-explore-run") == ["Run 1 of 3", "rn_01a97b20", "Queued"]
+      assert items(html, "work-item-explore-run") == ["Attempt 1 of 3", "Queued"]
     end
 
     test "queued again with the reader's answers: the answers run 2 reads, grouped" do
       w = work_item(%{number: 94, status: :queued, run: %{attempt: 2, of: 3}})
       html = tab(w, earlier_runs: [run1_answered()])
 
-      assert items(html, "work-item-explore-run") == ["Run 2 of 3", "Queued"]
+      assert items(html, "work-item-explore-run") == ["Attempt 2 of 3", "Queued"]
 
       assert text(html, "#work-item-explore-wait-h") ==
                "Explore is queued again, with your answers."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Run 2 of 3 starts when the workspace's node pool takes it. It reads the ticket, the code and these answers, from the start."
+               "Attempt 2 of 3 starts when the workspace's pool takes it. It reads the ticket and these answers, from the start."
 
-      assert text(html, "#work-item-explore-read-h") == "The answers run 2 reads"
+      assert text(html, "#work-item-explore-read-h") == "Answers for attempt 2"
 
       assert text(html, "#work-item-explore-read .q-xp-cap") ==
-               "Explore asked these in 1 earlier run of this take in, shown as plain text."
+               "These questions come from 1 earlier run of this take in."
 
-      group = "#work-item-explore-read-rn_01aa1f3e5c0d82a4"
-      assert text(html, "#{group}-h") == "Run 1 of 3 rn_01aa1f3e"
-      assert attr(html, "#{group}-h a", "href") == ["/8wonders/main/runs/rn_01aa1f3e5c0d82a4"]
+      group = "#work-item-explore-read-13"
+      assert text(html, "#{group}-h") == "Attempt 1 of 3"
+      assert attr(html, "#{group}-h a", "href") == ["/8wonders/main/runs/13"]
       assert text(html, "#{group}-qa-who") == "You answered 1 hour ago"
       assert texts(html, "#{group} .q-xp-ans") == @answers
     end
@@ -743,7 +674,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       r =
         run(%{
           id: "rn_01aa47c9b05e3f18",
-          path: "/8wonders/main/runs/rn_01aa47c9b05e3f18",
+          number: 15,
+          path: "/8wonders/main/runs/15",
           attempt: 3,
           state: :running,
           started_at: ago(120),
@@ -756,27 +688,27 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       assert items(html, "work-item-explore-run") ==
-               ["Run 3 of 3", "rn_01aa47c9", "Running", "started 2 minutes ago"]
+               ["Attempt 3 of 3", "Running", "started 2 minutes ago"]
 
       assert attr(html, "#work-item-explore-run span.q-xp-run-on", "class") == ["q-xp-run-on"]
 
       assert text(html, "#work-item-explore-wait-h") ==
-               "Qory is exploring again, with the answers of this take in."
+               "Explore is running again, with the answers of this take in."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Run 3 of 3 reads the ticket, the code and these answers, from the start. It proposes how to build it, or asks what it still needs to know."
+               "Attempt 3 of 3 reads the ticket and these answers from the start, then returns a proposal or more questions."
 
-      assert text(html, "#work-item-explore-read-h") == "The answers run 3 reads"
+      assert text(html, "#work-item-explore-read-h") == "Answers for attempt 3"
 
       assert text(html, "#work-item-explore-read .q-xp-cap") ==
-               "Explore asked these in 2 earlier runs of this take in, shown as plain text."
+               "These questions come from 2 earlier runs of this take in."
 
       assert texts(html, ".q-xp-grp .q-xp-who") ==
                ["You answered 1 hour ago", "Priya answered 20 minutes ago"]
 
       assert texts(html, "#work-item-explore-earlier summary") == [
-               "Run 1 of 3 rn_01aa1f3e Asked 3 questions Yesterday, 15:31",
-               "Run 2 of 3 rn_01aa40b2 Asked 1 question 50 minutes ago"
+               "Attempt 1 of 3 Wrote 3 questions Yesterday, 15:31",
+               "Attempt 2 of 3 Wrote 1 question 50 minutes ago"
              ]
     end
 
@@ -784,322 +716,560 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       r = run(%{state: :running, started_at: ago(6 * 60), ended_at: nil})
       html = tab(work_item(%{status: :running, run: r}))
 
-      assert text(html, "#work-item-explore-wait-h") == "Qory is exploring."
+      assert text(html, "#work-item-explore-wait-h") == "Explore is running."
 
       assert text(html, "#work-item-explore-wait p:last-child") ==
-               "Run 1 of 3 reads the ticket and the code. It proposes how to build it, or asks what it needs to know."
+               "Attempt 1 of 3 reads the ticket, then returns a proposal or questions."
 
       assert count(html, "#work-item-explore-read") == 0
     end
   end
 
   describe "explore_tab/1, Qory's proposal" do
-    test "the run line, the frame that names the run, and every section in order" do
-      html = tab(work_item(%{}))
+    test "the run line, the frame with its version, the Markdown, then the field and Confirm" do
+      html = tab(work_item(%{}), can_act: true)
 
       assert items(html, "work-item-explore-run") ==
-               ["Run 1 of 3", "rn_01a97b20", "Completed", "ended 3 days ago, after 11 minutes"]
+               ["Attempt 1 of 3", "Completed", "ended 3 days ago, after 11 minutes"]
 
       p = "#work-item-explore-proposal"
       assert text(html, "#{p}-h") == "Qory's proposal"
       assert count(html, "#{p} .q-xp-frame-h .badge") == 0
+      assert text(html, "#{p} .q-xp-cap") == "Version 1. Attempt 1 wrote this."
+      assert attr(html, "#{p} .q-xp-cap a", "href") == ["/8wonders/main/runs/12"]
 
-      assert text(html, "#{p} .q-xp-cap") ==
-               "Explore wrote this in run rn_01a97b20. Qory shows it as plain text, as the run wrote it."
+      # The Markdown, its headings two levels down.
+      assert texts(html, "#{p}-text h4") == ["What this is", "How Qory would do it"]
 
-      assert attr(html, "#{p} .q-xp-cap a", "href") == ["/8wonders/main/runs/rn_01a97b20c4e81f3d"]
-
-      assert texts(html, "#{p} .q-xp-sec > h3") == [
-               "Complexity",
-               "Understanding",
-               "In scope",
-               "Out of scope",
-               "Approach",
-               "Not chosen",
-               "What Qory learned, and where"
+      assert texts(html, "#{p}-text li") == [
+               "Extract the order service's rounding into one function.",
+               "Use it in the basket."
              ]
 
-      assert text(html, "#{p}-complexity .badge") == "Standard"
+      assert attr(html, "#{p}-text a", "href") == ["https://docs.example.org/pricing"]
+      assert attr(html, "#{p}-text a", "target") == ["_blank"]
+      assert attr(html, "#{p}-text a", "rel") == ["nofollow noopener noreferrer"]
+      refute html =~ "plain text"
+      refute html =~ "Show Qory's words"
 
-      assert texts(html, "#{p}-scope-in li") == [
-               "Compute the basket's total as the order service does.",
-               "Move that rounding into one function."
+      # In this order: the proposal, then the field and the one button.
+      assert attr(html, "#work-item-explore > *", "id") == [
+               "work-item-explore-run",
+               "work-item-explore-proposal",
+               "work-item-explore-reply"
              ]
 
-      assert texts(html, "#{p}-alternatives li") == [
-               "Round each line in the order service too.Why not: Invoices follow the order service's total."
-             ]
-
-      assert text(html, "#{p}-alternatives .q-xp-why bdi") ==
-               "Invoices follow the order service's total."
-
-      assert attr(html, "#{p}-knowledge .q-xp-src", "aria-label") == ["Sources"]
+      r = "#work-item-explore-reply"
+      assert attr(html, r, "phx-change") == ["change_draft"]
+      assert attr(html, r, "phx-submit") == ["send_change"]
+      assert attr(html, "#{r} input[type=hidden]", "name") == ["number"]
+      assert attr(html, "#{r} input[type=hidden]", "value") == ["88"]
+      assert attr(html, "#{r} textarea", "name") == ["change"]
+      assert attr(html, "#{r} textarea", "placeholder") == ["What should change?"]
+      assert attr(html, "#{r} textarea", "aria-label") == ["What should change?"]
+      assert text(html, "#{r} textarea") == ""
+      assert count(html, "button") == 1
+      assert text(html, "#{r}-go") == "Confirm"
+      assert attr(html, "#{r}-go", "type") == ["submit"]
+      assert count(html, "#work-item-explore-comments") == 0
     end
 
-    test "the run's words are plain text: escaped, their line breaks kept" do
-      p = proposal(%{understanding: "Line one.\n<b>not bold</b>", approach: "**not markdown**"})
-      html = tab(work_item(%{run: run(%{proposal: p})}))
+    test "with text in the field, the one button is Send change" do
+      html = tab(work_item(%{}), can_act: true, change: "Also check the basket.")
 
-      [value] =
-        html |> query("#work-item-explore-proposal-understanding .q-xp-val") |> Enum.to_list()
-
-      assert LazyHTML.text(value) == "Line one.\n<b>not bold</b>"
-      assert html =~ "&lt;b&gt;not bold&lt;/b&gt;"
-      assert count(html, "#work-item-explore-proposal-understanding b") == 0
-      assert text(html, "#work-item-explore-proposal-approach .q-xp-val") == "**not markdown**"
+      assert text(html, "#work-item-explore-reply textarea") == "Also check the basket."
+      assert count(html, "button") == 1
+      assert text(html, "#work-item-explore-reply-go") == "Send change"
     end
 
-    test "an empty Out of scope, Not chosen and knowledge say None" do
-      p = proposal(%{scope_out: [], alternatives: [], knowledge: []})
-      html = tab(work_item(%{run: run(%{proposal: p})}))
+    test "a reader who may not act: the proposal, with no field and no button" do
+      html = tab(work_item(%{}), can_act: false)
 
-      for section <- ["scope-out", "alternatives", "knowledge"] do
-        assert text(html, "#work-item-explore-proposal-#{section} li") == "None", section
-        assert count(html, "#work-item-explore-proposal-#{section} .q-xp-none") == 1, section
+      assert text(html, "#work-item-explore-proposal-h") == "Qory's proposal"
+      assert count(html, "form") == 0
+      assert count(html, "textarea") == 0
+      assert count(html, "button") == 0
+    end
+
+    test "comments: an open one, and done ones muted with a tick, then the field" do
+      comments = [
+        %{text: "Also check the basket.", by: @dana, version: 1, done_version: 2},
+        %{text: "And the <b>sign-in</b>.", by: @priya, version: 2, done_version: 3},
+        %{text: "Show it on the order\nconfirmation.", by: @dana, version: 3, done_version: nil}
+      ]
+
+      w = work_item(%{run: run(%{attempt: 3, version: 3})})
+      html = tab(w, can_act: true, comments: comments)
+
+      assert attr(html, "#work-item-explore > *", "id") == [
+               "work-item-explore-run",
+               "work-item-explore-proposal",
+               "work-item-explore-comments",
+               "work-item-explore-reply"
+             ]
+
+      c = "#work-item-explore-comments"
+      assert text(html, "#{c}-h") == "Comments"
+
+      assert text(html, "#work-item-explore-proposal .q-xp-cap") ==
+               "Version 3. Attempt 3 wrote this."
+
+      assert texts(html, "#{c} .q-xp-cm-t") ==
+               [
+                 "Also check the basket.",
+                 "And the <b>sign-in</b>.",
+                 "Show it on the order confirmation."
+               ]
+
+      assert texts(html, "#{c} .q-xp-cm-m") == [
+               "You, on version 1 Done in version 2",
+               "Priya, on version 2 Done in version 3",
+               "You, on version 3"
+             ]
+
+      assert attr(html, "#{c} > ol > li", "class") ==
+               ["q-xp-cm q-xp-cm-done", "q-xp-cm q-xp-cm-done", "q-xp-cm"]
+
+      assert count(html, "#{c} .q-xp-cm-done .q-xp-cm-i") == 2
+      assert count(html, "#{c} b") == 0
+      assert count(html, "#{c} button, #{c} input, #{c} textarea, #{c} a") == 0
+
+      [open] = html |> query("#{c}-3 .q-xp-cm-t span") |> Enum.to_list()
+      assert LazyHTML.text(open) == "Show it on the order\nconfirmation."
+      assert text(html, "#work-item-explore-reply-go") == "Confirm"
+    end
+
+    test "while the run a comment started works: the version it is on, the comment open, no field and no button" do
+      running =
+        run(%{
+          id: "rn_01aa40b29e71c6d3",
+          number: 14,
+          path: "/8wonders/main/runs/14",
+          attempt: 2,
+          state: :running,
+          started_at: ago(60),
+          ended_at: nil,
+          outcome: nil,
+          proposal: nil,
+          version: nil
+        })
+
+      comments = [%{text: "Also check the basket.", by: @dana, version: 1, done_version: nil}]
+
+      for status <- [:queued, :running] do
+        html =
+          tab(work_item(%{status: status, run: running}),
+            can_act: true,
+            earlier_runs: [run(%{})],
+            comments: comments
+          )
+
+        assert count(html, "#work-item-explore-wait") == 0, "#{status}"
+
+        assert text(html, "#work-item-explore-proposal .q-xp-cap") ==
+                 "Version 1. Attempt 1 wrote this."
+
+        assert texts(html, "#work-item-explore-proposal-text h4") == [
+                 "What this is",
+                 "How Qory would do it"
+               ]
+
+        assert text(html, "#work-item-explore-comments .q-xp-cm-m") ==
+                 "You, on version 1 Qory is updating the proposal"
+
+        assert count(html, "form") == 0
+        assert count(html, "textarea") == 0
+        assert count(html, "button") == 0
+
+        # The fold of the run that wrote the proposal says so, with no text in it.
+        assert texts(html, "#work-item-explore-earlier summary") ==
+                 ["Attempt 1 of 3 Wrote a proposal 14 Oct, 11:36"]
+
+        assert count(html, "#work-item-explore-earlier .q-xp-inner") == 0
       end
     end
 
-    test "each complexity level is Qory Apiary's word" do
-      for {level, word} <- [simple: "Simple", standard: "Standard", complex: "Complex"] do
-        p = proposal(%{complexity: %{level: level, reason: "Why."}})
-        html = tab(work_item(%{run: run(%{proposal: p})}))
-        assert text(html, "#work-item-explore-proposal-complexity .badge") == word
-      end
+    test "a run after answers, not after a comment, waits as before; done comments mark nothing" do
+      running =
+        run(%{attempt: 3, state: :running, started_at: ago(60), ended_at: nil, proposal: nil})
+
+      done = [%{text: "Also check the basket.", by: @dana, version: 1, done_version: 2}]
+
+      after_questions =
+        tab(work_item(%{status: :running, run: running}),
+          earlier_runs: [run(%{}), run2_answered()],
+          comments: [%{hd(done) | done_version: nil}]
+        )
+
+      assert text(after_questions, "#work-item-explore-wait-h") =~ "Explore is running again"
+      assert count(after_questions, "#work-item-explore-proposal") == 0
+
+      all_done =
+        tab(work_item(%{status: :running, run: running}),
+          earlier_runs: [run(%{})],
+          comments: done
+        )
+
+      assert count(all_done, "#work-item-explore-wait") == 1
+      assert count(all_done, "#work-item-explore-proposal") == 0
     end
 
-    test "confirmed with the reader's changes: Confirmed, who and when, Changed by you, Qory's words folded" do
+    test "a refused comment: its words under the field, describing it, and the focus on it" do
+      for {error, words} <- [
+            {:blank, "Write what to change."},
+            {{:too_long, 2000}, "Shorten the comment to 2,000 characters or fewer."},
+            {:characters, "Remove the invisible or control characters from the comment."},
+            {:not_approver,
+             "Ask one of this stage's approvers to comment. Only they can comment on its proposal."}
+          ] do
+        html =
+          tab(work_item(%{}),
+            can_act: true,
+            change: "  ",
+            change_error: error,
+            change_submits: 2
+          )
+
+        r = "#work-item-explore-reply"
+        assert text(html, "#{r}-error") == words, inspect(error)
+        assert attr(html, "#{r} textarea", "aria-invalid") == ["true"]
+
+        assert attr(html, "#{r} textarea", "aria-describedby") == [
+                 "work-item-explore-reply-error"
+               ]
+
+        assert attr(html, "#{r}-focus-2", "phx-mounted") |> hd() =~
+                 "#work-item-explore-reply-text"
+
+        assert text(html, "#{r}-go") == "Send change"
+      end
+
+      html = tab(work_item(%{}), can_act: true, change_error: :other)
+      assert count(html, "#work-item-explore-reply-error") == 0
+      assert count(html, "[aria-invalid]") == 0
+    end
+
+    test "a result stored before the proposal was Markdown shows no text, and does not fail" do
+      html = tab(work_item(%{run: run(%{proposal: %{message: nil}})}), can_act: true)
+
+      assert text(html, "#work-item-explore-proposal-h") == "Qory's proposal"
+      assert count(html, "#work-item-explore-proposal-text") == 0
+      assert count(html, "#work-item-explore-proposal .q-xp-body") == 0
+      assert text(html, "#work-item-explore-reply-go") == "Confirm"
+    end
+
+    test "a hostile proposal: no script, no javascript: link, no image loaded" do
+      message = """
+      # Plan <script>alert(1)</script>
+
+      <img src="https://img.example.com/x.png" onerror="alert(2)">
+
+      [run this](javascript:alert(3)) and [mail](mailto:team@example.com)
+
+      ![a cat](https://img.example.com/cat.png)
+
+      <a href="https://evil.example.com">raw link</a>
+      """
+
+      html = tab(work_item(%{run: run(%{proposal: %{message: message}})}))
+      p = "#work-item-explore-proposal-text"
+
+      refute html =~ "<script"
+      refute html =~ "<img"
+      refute html =~ "onerror"
+      refute html =~ "javascript:"
+      refute html =~ "evil.example.com"
+      # The tag goes; its words stay, as plain text.
+      assert text(html, "#{p} h3") == "Plan alert(1)"
+      assert text(html, p) =~ "run this and mail"
+
+      assert attr(html, "#{p} a", "href") == [
+               "mailto:team@example.com",
+               "https://img.example.com/cat.png"
+             ]
+
+      assert text(html, ~s(#{p} a[href="https://img.example.com/cat.png"])) =~ "Image: a cat"
+    end
+
+    test "a text the renderer does not format shows as written, escaped" do
+      p = %{message: "x", rendered: {:as_written, "Line one\n<b>not bold</b>"}}
+      html = tab(work_item(%{run: run(%{proposal: p})}))
+
+      assert text(html, "#work-item-explore-proposal-text .q-xp-md-note") == "Shown as written."
+
+      [written] =
+        html |> query("#work-item-explore-proposal-text .q-ticket-written") |> Enum.to_list()
+
+      assert LazyHTML.text(written) == "Line one\n<b>not bold</b>"
+      assert count(html, "#work-item-explore-proposal-text b") == 0
+    end
+
+    test "markdown/1 gives the render, as written past the renderer's bounds, nil for none" do
+      assert {:html, _safe} = C.markdown("**bold**")
+      assert C.markdown(nil) == nil
+      big = String.duplicate("a", ApiaryWeb.ArtifactLive.Markdown.max_bytes() + 1)
+      assert C.markdown(big) == {:as_written, big}
+    end
+
+    test "confirmed: Confirmed, who and when; no field and no button" do
       w = work_item(%{status: :shape, confirmed_by: @dana, confirmed_at: ago(30)})
-
-      changes = %{
-        approach: %{
-          value: "Extract the rounding, half to even, into the pricing module.",
-          by: @dana
-        },
-        scope_out: %{value: ["Totals of orders already placed.", "The mobile apps."], by: @dana}
-      }
-
-      html = tab(w, changes: changes)
+      html = tab(w, can_act: true)
       p = "#work-item-explore-proposal"
 
       assert text(html, "#{p} .q-xp-frame-h .badge") == "Confirmed"
 
       assert text(html, "#{p} .q-xp-cap") ==
-               "You confirmed it just now, with your changes. Explore wrote the rest in run rn_01a97b20, shown as plain text."
+               "You confirmed this proposal just now. Attempt 1 wrote it."
 
-      assert text(html, "#{p}-approach-by") == "Changed by you"
+      assert count(html, "form") == 0
 
-      assert text(html, "#{p}-approach .q-xp-mine") ==
-               "Extract the rounding, half to even, into the pricing module."
+      other = tab(%{w | confirmed_by: @priya, confirmed_at: ago(3 * 3600)})
 
-      assert attr(html, "#{p}-approach-toggle", "aria-expanded") == ["false"]
-
-      assert attr(html, "#{p}-approach-toggle", "aria-controls") == [
-               "work-item-explore-proposal-approach-was"
-             ]
-
-      assert text(html, "#{p}-approach-toggle .q-xp-show") == "Show Qory's words"
-      assert text(html, "#{p}-approach-toggle .q-xp-hide") == "Hide Qory's words"
-      assert attr(html, "#{p}-approach-was", "hidden") == [""]
-
-      assert text(html, "#{p}-approach-was") ==
-               "Qory's words Extract the order service's rounding into a function in the pricing module."
-
-      assert texts(html, "#{p}-scope-out .q-xp-mine li") ==
-               ["Totals of orders already placed.", "The mobile apps."]
-
-      assert texts(html, "#{p}-scope-out .q-xp-was li") == ["Totals of orders already placed."]
-      assert count(html, "#{p}-understanding-toggle") == 0
+      assert text(other, "#{p} .q-xp-cap") ==
+               "Priya confirmed this proposal 3 hours ago. Attempt 1 wrote it."
     end
 
-    test "confirmed by another member, with and without changes" do
-      w = work_item(%{status: :shape, confirmed_by: @priya, confirmed_at: ago(3 * 3600)})
-
-      changed = tab(w, changes: %{approach: %{value: "Another approach.", by: @priya}})
-
-      assert text(changed, "#work-item-explore-proposal .q-xp-cap") ==
-               "Priya confirmed it 3 hours ago, with their changes. Explore wrote the rest in run rn_01a97b20, shown as plain text."
-
-      assert text(changed, "#work-item-explore-proposal-approach-by") == "Changed by Priya"
-
-      unchanged = tab(w)
-
-      assert text(unchanged, "#work-item-explore-proposal .q-xp-cap") ==
-               "Priya confirmed it 3 hours ago. Explore wrote it in run rn_01a97b20, shown as plain text."
-
-      mine = tab(%{w | confirmed_by: @dana})
-
-      assert text(mine, "#work-item-explore-proposal .q-xp-cap") ==
-               "You confirmed it 3 hours ago. Explore wrote it in run rn_01a97b20, shown as plain text."
-    end
-
-    test "declined at Confirm: the proposal, read" do
+    test "closed at Confirm: the proposal, read" do
       w =
-        work_item(%{status: :declined, stage: :confirm, ended_by: @priya, ended_at: ago(86_400)})
+        work_item(%{status: :closed, stage: :confirm, ended_by: @priya, ended_at: ago(86_400)})
 
-      html = tab(w)
+      html = tab(w, can_act: true)
       assert text(html, "#work-item-explore-proposal-h") == "Qory's proposal"
       assert count(html, ".q-xp-frame-h .badge") == 0
       assert count(html, "form") == 0
     end
   end
 
-  describe "explore_tab/1, the sources" do
-    defp sources(urls) do
-      p = proposal(%{knowledge: [%{text: "A fact.", sources: urls}]})
-      tab(work_item(%{run: run(%{proposal: p})}))
-    end
-
-    test "an https source is a link out: its host and path, each isolated, the address in its title" do
-      url = "https://code.example.com/acme/shop/lib/pricing/order_total.ex"
-      html = sources([url])
-
-      assert attr(html, ".q-xp-src a", "href") == [url]
-      assert attr(html, ".q-xp-src a", "title") == [url]
-      assert attr(html, ".q-xp-src a", "target") == ["_blank"]
-      assert attr(html, ".q-xp-src a", "rel") == ["noopener noreferrer nofollow"]
-      assert text(html, ".q-xp-src a bdi.q-xp-host") == "code.example.com"
-      assert text(html, ".q-xp-src a bdi.q-xp-path") == "/acme/shop/lib/pricing/order_total.ex"
-      assert text(html, ".q-xp-src a .sr-only") == "(opens in a new tab)"
-    end
-
-    test "a source that is not an https url core allows is its address as text, never a link" do
-      for {url, shown} <- [
-            {"http://code.example.com/a", "http://code.example.com/a"},
-            {"javascript:alert(1)", "javascript:alert(1)"},
-            {"https://user:pw@code.example.com/a", "https://user:pw@code.example.com/a"},
-            {"https://xn--exmple-cua.com/a", "https://xn--exmple-cua.com/a"},
-            {"https://exämple.com/a", "https://ex%C3%A4mple.com/a"},
-            {"data:text/html,<b>x</b>", "data:text/html,<b>x</b>"},
-            {"//code.example.com/a", "//code.example.com/a"}
-          ] do
-        html = sources([url])
-        assert count(html, ".q-xp-src a") == 0, url
-
-        assert html |> attr("[href]", "href") |> Enum.uniq() == [
-                 "/8wonders/main/runs/rn_01a97b20c4e81f3d"
-               ],
-               url
-
-        assert text(html, ".q-xp-src .q-xp-src-t bdi") == shown, url
-        refute html =~ ~s(href="#{url}"), url
-        refute html =~ "<b>x", url
-      end
-    end
-  end
-
   describe "explore_tab/1, the questions form" do
-    defp questions_item(extra \\ %{}) do
-      work_item(
-        Map.merge(
-          %{
-            number: 94,
-            status: :questions,
-            run:
-              run(%{
-                id: "rn_01aa1f3e5c0d82a4",
-                path: "/8wonders/main/runs/rn_01aa1f3e5c0d82a4",
-                outcome: :questions,
-                proposal: nil,
-                understanding: "Today the basket holds one payment adjustment.",
-                questions: questions()
-              })
-          },
-          extra
-        )
-      )
+    @lazy """
+    The category listing requests each product image twice:
+
+    - once in the page the server sends
+    - once in the lazy loader
+
+    ```
+    <img src="/img/42.jpg">
+    ```
+
+    Which load should stay?
+    """
+
+    defp option_questions(answers \\ [nil, nil]) do
+      [
+        %{
+          public_id: "qq_01",
+          text: @lazy,
+          options: [
+            %{
+              title: "Keep the lazy loader",
+              explanation: "The first page opens faster. Cost: images appear a moment later."
+            },
+            %{
+              title: "Keep the server's images",
+              explanation: "Every image shows at once. Cost: a slower first page on phones."
+            }
+          ]
+        },
+        %{public_id: "qq_02", text: "Which is the oldest phone the shop supports?", options: []}
+      ]
+      |> Enum.zip(answers)
+      |> Enum.map(fn {q, answer} -> Map.merge(q, %{answer: answer, custom: nil}) end)
     end
 
-    test "Qory's questions, each with its field, and Answer and explore again" do
+    defp questions_item(qs \\ option_questions()) do
+      work_item(%{
+        number: 94,
+        status: :questions,
+        run:
+          run(%{
+            id: "rn_01aa1f3e5c0d82a4",
+            number: 13,
+            path: "/8wonders/main/runs/13",
+            attempt: 2,
+            outcome: :questions,
+            proposal: nil,
+            questions: qs
+          })
+      })
+    end
+
+    test "each question as Markdown, its options as radio cards, one field each, one Send answers" do
       html = tab(questions_item(), can_act: true)
       q = "#work-item-explore-questions"
 
       assert text(html, "#{q}-h") == "Qory's questions"
-
-      assert text(html, "#{q} .q-xp-cap") ==
-               "Explore wrote this in run rn_01aa1f3e. Qory shows it as plain text, as the run wrote it."
-
-      assert texts(html, "#{q} .q-xp-sec > h3") ==
-               ["What Qory understood so far", "What Qory needs to know"]
-
+      assert text(html, "#{q} .q-xp-cap") == "Attempt 2 wrote this."
+      assert texts(html, "#{q} .q-xp-sec > h3") == ["Questions"]
+      assert attr(html, "#{q}-form", "phx-change") == ["answer_draft"]
       assert attr(html, "#{q}-form", "phx-submit") == ["answer"]
-      assert attr(html, "#{q}-form", "novalidate") == [""]
-      assert attr(html, "#{q}-form input[type=hidden]", "name") == ["number"]
       assert attr(html, "#{q}-form input[type=hidden]", "value") == ["94"]
 
-      assert texts(html, "#{q}-form label") ==
-               ["Answer to question 1", "Answer to question 2", "Answer to question 3"]
+      # Question 1: its Markdown, a list and a code block, then its two options.
+      q1 = "#work-item-explore-questions-q-qq_01"
 
+      assert texts(html, "#{q1} li") == [
+               "once in the page the server sends",
+               "once in the lazy loader"
+             ]
+
+      assert text(html, "#{q1} pre code") == ~s(<img src="/img/42.jpg">)
+      assert count(html, "#{q1} img") == 0
+
+      g = "#work-item-explore-questions-answer-qq_01-options"
+      assert attr(html, g, "role") == ["radiogroup"]
+      assert attr(html, g, "aria-labelledby") == ["work-item-explore-questions-q-qq_01"]
+      assert attr(html, "#{g} input", "type") == ["radio", "radio"]
+
+      assert attr(html, "#{g} input", "name") == [
+               "answers[qq_01][option]",
+               "answers[qq_01][option]"
+             ]
+
+      assert attr(html, "#{g} input", "value") == [
+               "Keep the lazy loader",
+               "Keep the server's images"
+             ]
+
+      assert attr(html, "#{g} input", "checked") == []
+
+      assert attr(html, "#{g} label", "for") == [
+               "work-item-explore-questions-answer-qq_01-1",
+               "work-item-explore-questions-answer-qq_01-2"
+             ]
+
+      assert texts(html, "#{g} .q-xp-opt-t") == [
+               "Keep the lazy loader",
+               "Keep the server's images"
+             ]
+
+      assert texts(html, "#{g} .q-xp-opt-e") == [
+               "The first page opens faster. Cost: images appear a moment later.",
+               "Every image shows at once. Cost: a slower first page on phones."
+             ]
+
+      # One field each; question 2 offers no options, so only its field.
       assert attr(html, "#{q}-form textarea", "name") ==
-               ["answers[qq_01]", "answers[qq_02]", "answers[qq_03]"]
+               ["answers[qq_01][custom]", "answers[qq_02][custom]"]
 
       assert attr(html, "#{q}-form textarea", "placeholder") ==
-               ["Your answer", "Your answer", "Your answer"]
+               ["Give your own option", "Give your own option"]
 
-      assert attr(html, "#work-item-explore-questions-answer-qq_02", "aria-describedby") ==
-               ["work-item-explore-questions-q-qq_02"]
-
-      assert text(html, "#work-item-explore-questions-q-qq_02") ==
-               "Can more than one discount code be used with a gift card?"
+      assert count(html, "#work-item-explore-questions-answer-qq_02-options") == 0
+      assert count(html, "[role=radiogroup]") == 1
 
       assert text(html, "#{q}-next") ==
-               "Qory runs Explore again from the start, with the ticket, its comments, the first instruction and the answers of this take in. It is run 2 of 3."
+               "Sending starts attempt 3 of 3, which reads the ticket, its comments, the first instruction and every answer of this take in."
 
-      assert text(html, "#{q}-go") == "Answer and explore again"
-      assert attr(html, "#{q}-go", "type") == ["submit"]
+      assert count(html, "button") == 1
+      assert text(html, "#{q}-go") == "Send answers"
       assert count(html, "[aria-invalid]") == 0
     end
 
-    test "one question, and no understanding given" do
-      w = questions_item()
-      w = %{w | run: %{w.run | questions: [hd(questions())], understanding: nil}}
-      html = tab(w, can_act: true)
-
-      assert text(html, "#work-item-explore-questions-h") == "Qory's question"
-      assert texts(html, ".q-xp-sec > h3") == ["What Qory needs to know"]
-    end
-
-    test "errors: under their field, describing it, and the focus on the first" do
+    test "a selected option is checked; a written option fills its field" do
       html =
         tab(questions_item(),
           can_act: true,
-          answers: %{"qq_01" => @answers |> hd(), "qq_03" => String.duplicate("a", 2001)},
-          errors: %{"qq_02" => :blank, "qq_03" => {:too_long, 2000}}
+          answers: %{
+            "qq_01" => %{"option" => "Keep the lazy loader", "custom" => ""},
+            "qq_02" => %{"custom" => "The two oldest phones the shop supports."}
+          }
         )
 
-      a2 = "#work-item-explore-questions-answer-qq_02"
-      assert attr(html, a2, "aria-invalid") == ["true"]
+      assert attr(html, "#work-item-explore-questions-answer-qq_01-1", "checked") == [""]
+      assert attr(html, "#work-item-explore-questions-answer-qq_01-2", "checked") == []
+      assert text(html, "#work-item-explore-questions-answer-qq_01") == ""
 
-      assert attr(html, a2, "aria-describedby") == [
-               "work-item-explore-questions-q-qq_02 work-item-explore-questions-answer-qq_02-error"
+      assert text(html, "#work-item-explore-questions-answer-qq_02") ==
+               "The two oldest phones the shop supports."
+    end
+
+    test "one question with no options: only its field" do
+      [_q1, q2] = option_questions()
+      html = tab(questions_item([q2]), can_act: true)
+
+      assert text(html, "#work-item-explore-questions-h") == "Qory's question"
+      assert count(html, "input[type=radio]") == 0
+      assert attr(html, "textarea", "placeholder") == ["Give your own option"]
+    end
+
+    test "errors: under their question, describing it, and the focus on the first" do
+      html =
+        tab(questions_item(),
+          can_act: true,
+          answers: %{"qq_02" => %{"custom" => String.duplicate("a", 2001)}},
+          errors: %{"qq_01" => :blank, "qq_02" => {:too_long, 2000}}
+        )
+
+      a1 = "#work-item-explore-questions-answer-qq_01"
+      assert attr(html, a1, "aria-invalid") == ["true"]
+
+      assert attr(html, a1, "aria-describedby") == [
+               "work-item-explore-questions-q-qq_01 work-item-explore-questions-answer-qq_01-error"
              ]
 
-      assert text(html, "#{a2}-error") ==
-               "Answer this question. If nobody knows, say so: Qory reads that too."
+      assert attr(html, "#{a1}-options", "aria-describedby") == [
+               "work-item-explore-questions-answer-qq_01-error"
+             ]
 
-      assert text(html, "#work-item-explore-questions-answer-qq_03-error") ==
+      assert text(html, "#{a1}-error") ==
+               "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
+
+      assert text(html, "#work-item-explore-questions-answer-qq_02-error") ==
                "Write at most 2,000 characters."
 
-      assert text(html, "#work-item-explore-questions-answer-qq_01") == hd(@answers)
-      assert attr(html, "#work-item-explore-questions-answer-qq_01", "aria-invalid") == []
-
-      assert attr(html, "#work-item-explore-questions-focus-0-qq_02", "phx-mounted") |> hd() =~
-               "#work-item-explore-questions-answer-qq_02"
+      assert attr(html, "#work-item-explore-questions-focus-0-qq_01", "phx-mounted") |> hd() =~
+               "#work-item-explore-questions-answer-qq_01"
     end
 
-    test "a reader who may not act reads the questions, without fields" do
+    test "a reader who may not act reads the questions and their options, with no input" do
       html = tab(questions_item(), can_act: false)
+
       assert count(html, "form") == 0
+      assert count(html, "input") == 0
       assert count(html, "textarea") == 0
-      assert length(texts(html, ".q-xp-qs .q-xp-val")) == 3
+
+      assert texts(html, ".q-xp-opt-t") == ["Keep the lazy loader", "Keep the server's images"]
+      assert count(html, "#work-item-explore-questions-q-qq_01 .q-xp-opts > li") == 2
     end
 
-    test "a question's words are plain text" do
-      w = questions_item()
+    test "a hostile question: no script, no javascript: link, no image; mermaid is code text" do
+      text = """
+      Which <script>alert(1)</script> one?
 
-      qs = [%{public_id: "qq_09", text: "Two lines\n<script>x</script>", answer: nil}]
-      html = tab(%{w | run: %{w.run | questions: qs}}, can_act: true)
-      refute html =~ "<script>"
-      assert html =~ "&lt;script&gt;"
+      [click](javascript:alert(2))
+
+      ![chart](https://img.example.com/chart.png)
+
+      ```mermaid
+      graph TD; A-->B
+      ```
+      """
+
+      qs = [
+        %{
+          public_id: "qq_09",
+          text: text,
+          options: [%{title: "<b>Bold</b>", explanation: "<script>x</script>"}],
+          answer: nil,
+          custom: nil
+        }
+      ]
+
+      for can_act <- [true, false] do
+        html = tab(questions_item(qs), can_act: can_act)
+
+        refute html =~ "<script"
+        # The tag goes; its words stay, as plain text.
+        assert text(html, "#work-item-explore-questions-q-qq_09 p") =~ "Which alert(1) one?"
+        refute html =~ "javascript:"
+        refute html =~ "<img"
+        refute html =~ "phx-hook"
+        assert text(html, "pre.q-mermaid-source code") == "graph TD; A-->B"
+        assert attr(html, "a[href='https://img.example.com/chart.png']", "target") == ["_blank"]
+        assert text(html, ".q-xp-opt-t") == "<b>Bold</b>"
+        assert text(html, ".q-xp-opt-e") == "<script>x</script>"
+        assert html =~ "&lt;b&gt;Bold&lt;/b&gt;"
+      end
     end
   end
 
@@ -1108,13 +1278,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       r =
         run(%{
           id: "rn_01aa47c9b05e3f18",
-          path: "/8wonders/main/runs/rn_01aa47c9b05e3f18",
+          number: 15,
+          path: "/8wonders/main/runs/15",
           attempt: 3,
           outcome: :questions,
           proposal: nil,
-          understanding: nil,
           questions: [
-            %{public_id: "qq_05", text: "Should a refund go to the gift card first?", answer: nil}
+            %{
+              public_id: "qq_05",
+              text: "Should a refund go to the gift card first?",
+              options: [],
+              answer: nil,
+              custom: nil
+            }
           ],
           ended_at: ago(8 * 60),
           duration: "9 minutes"
@@ -1127,24 +1303,24 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = tab(used_item(), can_act: true, earlier_runs: [run1_answered(), run2_answered()])
 
       assert items(html, "work-item-explore-run") ==
-               ["Run 3 of 3", "rn_01aa47c9", "Completed", "ended 8 minutes ago, after 9 minutes"]
+               ["Attempt 3 of 3", "Completed", "ended 8 minutes ago, after 9 minutes"]
 
       assert text(html, "#work-item-explore-limit") ==
-               "This take in has used its 3 runs, so Qory runs no more for these questions here. After a decline or a close, Take in again from the Backlog starts the count again."
+               "This take in used all 3 runs, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog."
 
       assert count(html, "textarea") == 0
       assert text(html, "#work-item-explore-questions-h") == "Qory's question"
       assert text(html, "#work-item-explore-earlier-h") == "Earlier runs of this take in"
 
-      body = "#work-item-explore-earlier-rn_01aa1f3e5c0d82a4-body"
+      body = "#work-item-explore-earlier-13-body"
       assert text(html, "#{body}-h") == "Qory's questions, and the answers"
 
       assert text(html, "#{body} .q-xp-cap") ==
-               "Explore asked these in run rn_01aa1f3e, shown as plain text."
+               "Attempt 1 wrote these questions."
 
       assert text(html, "#{body}-qa-who") == "You answered 1 hour ago"
 
-      assert text(html, "#work-item-explore-earlier-rn_01aa40b29e71c6d3-body-h") ==
+      assert text(html, "#work-item-explore-earlier-14-body-h") ==
                "Qory's question, and the answer"
     end
 
@@ -1152,71 +1328,133 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = tab(used_item(), can_act: true, backlog_off: true)
 
       assert text(html, "#work-item-explore-limit") ==
-               "This take in has used its 3 runs, so Qory runs no more for these questions here."
+               "This take in used all 3 runs, so Explore cannot run again for these questions."
 
       one = used_item(:used_up, %{run: %{used_item().run | attempt: 1, of: 1}})
 
       assert text(tab(one, can_act: true, backlog_off: true), "#work-item-explore-limit") ==
-               "This take in has used its 1 run, so Qory runs no more for these questions here."
+               "This take in used its 1 run, so Explore cannot run again for these questions."
     end
 
-    test "declined at Explore: the last questions read-only, no note" do
-      w = used_item(:declined, %{stage: :explore, ended_by: @dana, ended_at: ago(5)})
+    test "closed at Explore: the last questions read-only, no note" do
+      w = used_item(:closed, %{stage: :explore, ended_by: @dana, ended_at: ago(5)})
       html = tab(w, can_act: true)
       assert count(html, "#work-item-explore-limit") == 0
       assert count(html, "textarea") == 0
       assert text(html, "#work-item-explore-questions-h") == "Qory's question"
     end
 
-    test "an earlier run that proposed, or gave no result, says so in its fold" do
-      proposed = run(%{id: "rn_01a8d4f16b2e70c8", ended_at: ago(4 * 86_400)})
-      lost = run(%{id: "rn_01aa5a71e3d06b29", state: :lost, outcome: nil, ended_at: ago(21 * 60)})
+    test "an earlier run that proposed, or gave no result, says so in its fold; a proposal's text is not in it" do
+      proposed = run(%{id: "rn_01a8d4f16b2e70c8", number: 17, ended_at: ago(4 * 86_400)})
+
+      lost =
+        run(%{
+          id: "rn_01aa5a71e3d06b29",
+          number: 18,
+          state: :lost,
+          outcome: nil,
+          ended_at: ago(21 * 60)
+        })
+
       html = tab(used_item(), earlier_runs: [proposed, lost])
 
-      assert texts(html, "#work-item-explore-earlier summary .q-xp-it:nth-child(4)") ==
-               ["Proposed how to build it", "Lost"]
+      assert texts(html, "#work-item-explore-earlier summary .q-xp-it:nth-child(3)") ==
+               ["Wrote a proposal", "Lost"]
 
-      assert text(html, "#work-item-explore-earlier-rn_01a8d4f16b2e70c8-body-h") ==
-               "Qory's proposal"
+      assert count(html, "#work-item-explore-earlier-17 .q-xp-inner") == 0
+      assert count(html, "#work-item-explore-earlier-17-body-h") == 0
+      refute html =~ "What this is"
 
-      assert text(html, "#work-item-explore-earlier-rn_01aa5a71e3d06b29-body-h") ==
+      assert text(html, "#work-item-explore-earlier-18-body-h") ==
                "The run was lost."
     end
   end
 
   describe "explore_tab/1, a run without a result" do
+    # Contact support reads the support address.
+    setup do: Ecto.Adapters.SQL.Sandbox.checkout(Apiary.Repo)
+
+    # The Explore tab of a run qory closed with `code`, on the instance's pool or another.
+    defp read_needs_body(code, installed) do
+      r =
+        run(%{
+          proposal: nil,
+          ended_at: ago(3600),
+          duration: "4 minutes",
+          outcome: :none,
+          read_needs: %{code: code, installed: installed}
+        })
+
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+      assert text(html, "#work-item-explore-none-h") == "The run ended without a result."
+      Enum.at(texts(html, "#work-item-explore-none p"), 1)
+    end
+
+    test "a read-only run qory closed: the fix, then the cause" do
+      wall = "A read-only run needs a wall, and this machine has none."
+      inside = "A read-only run cannot run its setup inside the agent's container."
+
+      docker =
+        "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+
+      removed =
+        "Start the run again. The setup container was not removed, so a process in it could still write the files."
+
+      assert read_needs_body("read_needs_wall", false) ==
+               "Set a wall in the machine's forager.yaml, then start the run again. " <> wall
+
+      assert read_needs_body("read_needs_setup_outside", false) ==
+               "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. " <>
+                 inside
+
+      assert read_needs_body("read_needs_wall", true) == "Contact support. " <> wall
+      assert read_needs_body("read_needs_setup_outside", true) == "Contact support. " <> inside
+
+      for installed <- [false, true] do
+        assert read_needs_body("read_needs_no_nested_docker", installed) == docker
+        assert read_needs_body("read_needs_setup_removed", installed) == removed
+      end
+    end
+
+    test "a read-only run's target is a repository only in a software workspace" do
+      Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
+        assert read_needs_body("read_needs_no_nested_docker", false) ==
+                 "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+      end)
+    end
+
     test "what happened, and the run's page" do
       for {status, overrides, run_state, heading, body} <- [
             {:no_result, %{state: :failed, outcome: :error, end_cause: :run_ended}, "Failed",
              "The run ended with an error.",
-             "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."},
+             "The run's last result was an error. There is nothing to show or confirm."},
             {:no_result, %{outcome: :none}, "Completed", "The run ended without a result.",
-             "It sent no result, so there is nothing for Qory to show or for a member to confirm."},
+             "There is nothing to show or confirm."},
             {:no_result, %{outcome: :refused}, "Completed",
              "The run's result did not pass Qory's check.",
-             "Qory reads a result only in the format Explore uses, and at most 128 KiB. This one was not, so Qory does not show it."},
+             "Qory accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so Qory does not show it."},
             {:lost, %{state: :lost, outcome: nil}, "Lost", "The run was lost.",
-             "No exit or outcome was recorded before it was marked lost. There is nothing for Qory to show or for a member to confirm."},
+             "Qory Apiary has no result from the run. There is nothing to show or confirm."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
-             "The run was cancelled.",
-             "It was cancelled before it ended. There is nothing for Qory to show or for a member to confirm."}
+             "The run was cancelled.", "There is nothing to show or confirm."}
           ] do
         r =
           run(Map.merge(%{proposal: nil, ended_at: ago(3600), duration: "4 minutes"}, overrides))
 
         html = tab(work_item(%{number: 97, status: status, run: r}))
 
-        assert Enum.at(items(html, "work-item-explore-run"), 2) == run_state
+        assert Enum.at(items(html, "work-item-explore-run"), 1) == run_state
         assert text(html, "#work-item-explore-none-h") == heading
 
         assert texts(html, "#work-item-explore-none p") == [
                  heading,
                  body,
-                 "The run's page, rn_01a97b20, shows what it did."
+                 "The page of attempt 1 shows what it did."
                ]
 
         assert attr(html, "#work-item-explore-none a", "href") == [
-                 "/8wonders/main/runs/rn_01a97b20c4e81f3d"
+                 "/8wonders/main/runs/12"
                ]
       end
     end
@@ -1226,14 +1464,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {:variables_invalid,
              "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."},
             {:ticket_gone,
-             "Take the ticket in again from the Backlog, if it is still there. The work item's ticket is no longer in Qory Apiary."},
+             "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."},
             {:inputs_invalid,
              "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."},
             # A software workspace's word for the target.
             {:target_access_gone,
-             "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. Qory Apiary could not give the run access to its repository, because the integration no longer reaches it or the repository's path has a character that Qory Apiary does not put in an access rule."},
+             "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. The run had no access to its repository: the integration no longer reaches it, or the repository's path has a character that access rules do not allow."},
             {:build_failed,
-             "Check why the build failed on the repository's page, then start the run again. The run did not start because Qory Apiary could not build its environment image."}
+             "Check why the build failed on the repository's page, then run Explore again. The run did not start because Qory Apiary could not build its environment image."}
           ] do
         r =
           run(%{
@@ -1248,10 +1486,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             duration: nil
           })
 
-        words = ["The run ended before it started.", body]
+        words = ["The run did not start.", body]
 
         html = tab(work_item(%{number: 97, status: :no_result, run: r}))
-        assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+        assert text(html, "#work-item-explore-none-h") == "The run did not start."
         assert texts(html, "#work-item-explore-none p") == words
         assert count(html, "#work-item-explore-none a") == 0
 
@@ -1265,7 +1503,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         take_in = %{
           taken_in_by: @dana,
           taken_in_at: ~U[2026-10-16 15:20:00Z],
-          ended: :declined,
+          ended: :closed,
           ended_by: @dana,
           ended_at: ago(4 * 60),
           runs: [r]
@@ -1280,7 +1518,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         for html <- [html, earlier, taken] do
           refute html =~ "ended with an error"
-          refute html =~ "Its last result was an error"
+          refute html =~ "The run&#39;s last result was an error"
         end
       end
     end
@@ -1288,21 +1526,21 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a run that stopped at a call to an adapter says which, what for and what to do, beside its end words" do
       for {failure, line} <- [
             {%{cause: :timeout, call: "run-credential", code: nil},
-             "Ask an instance admin to check that code-host is running. The run stopped before it started: the call to code-host for the run's credentials had no answer in time."},
+             "Contact support. The run did not start: the call to code-host for the run's credentials timed out."},
             {%{cause: :unreachable, call: "resolve", code: nil},
-             "Ask an instance admin to check that code-host is running and that its host name resolves. The run stopped before it started: the call to code-host for the harness sources did not reach it. The connection failed, the host name had no address, or the reverse proxy returned 502, 503 or 504."},
+             "Contact support. The run did not start: the call to code-host for the harness sources did not reach it."},
             {%{cause: :refused, call: "read", code: "grant_unknown"},
-             "Ask an instance admin to check code-host. The run stopped before it started: the call to code-host for the harness files returned the error grant_unknown."},
+             "Contact support. The run did not start: the call to code-host for the harness files returned the error grant_unknown."},
             {%{cause: :refused, call: "read", code: nil},
-             "Ask an instance admin to check code-host. The run stopped before it started: the call to code-host for the harness files returned the error unauthorized."},
+             "Contact support. The run did not start: the call to code-host for the harness files returned the error unauthorized."},
             {%{cause: :invalid_answer, call: "resolve", code: nil},
-             "Ask an instance admin to check code-host. The run stopped before it started: the answer of code-host to the call for the harness sources failed its signature check or its format check, or was over 1 MiB."},
+             "Contact support. The run did not start: the response of code-host failed its signature check or format check, or was over 1 MiB."},
             {%{cause: :no_address, call: "resolve", code: nil},
-             "Ask an instance admin to check the call address of code-host. The run stopped before it started: code-host declares no call address, so Qory Apiary could not call it for the harness sources."},
+             "Contact support. The run did not start: code-host has no call address."},
             {%{cause: :not_allowed, call: "resolve", code: nil},
-             "Ask an instance admin to check the call address of code-host and the instance's public address. The run stopped before it started: the call address is not an https address at the adapter's name under the instance's name, its host leads to an address that Qory Apiary does not call, or the instance's public address has no host name."},
+             "Contact support. The run did not start: Qory Apiary does not call the call address of code-host."},
             {%{cause: :too_large, call: "resolve", code: nil},
-             "Remove harness sources or files, then start the run again. The run stopped before it started: the call to code-host for the harness sources was over 256 KiB."}
+             "Remove harness sources or files, then run Explore again. The run did not start: the call to code-host for the harness sources was over 256 KiB."}
           ] do
         r =
           run(%{
@@ -1319,7 +1557,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           })
 
         html = tab(work_item(%{number: 97, status: :no_result, run: r}))
-        assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+        assert text(html, "#work-item-explore-none-h") == "The run did not start."
         assert text(html, "#work-item-explore-none-adapter") == line
         assert length(texts(html, "#work-item-explore-none p")) == 3
       end
@@ -1345,16 +1583,16 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                source: harness,
                rule: %{"rule" => "path", "values" => %{"path" => "../x"}}
              },
-             "Correct #{harness}, then run Explore again. It breaks the harness format: the path ../x leads out of its source."},
+             "Correct #{harness}, then run Explore again. The source breaks the harness format: the path ../x leads out of its source."},
             # A hidden harness: no source, and no path, ref or stack name in the rule.
             {%{code: "invalid", rule: %{"rule" => "path", "values" => %{}}},
-             "Correct #{setting}, then run Explore again. It breaks the harness format: a path leads out of its source."},
+             "Correct #{setting}, then run Explore again. The source breaks the harness format: a path leads out of its source."},
             {%{code: "invalid", rule: %{"rule" => "path_form", "values" => %{}}},
-             "Correct #{setting}, then run Explore again. It breaks the harness format: a path has a backslash or a percent sign: write it with / and no percent-encoding."},
+             "Correct #{setting}, then run Explore again. The source breaks the harness format: a path has a backslash or a percent sign: write it with / and no percent-encoding."},
             {%{code: "invalid", rule: %{"rule" => "ref", "values" => %{}}},
-             "Correct #{setting}, then run Explore again. It breaks the harness format: its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens."},
+             "Correct #{setting}, then run Explore again. The source breaks the harness format: its ref is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens."},
             {%{code: "invalid", rule: %{"rule" => "no_export", "values" => %{}}},
-             "Correct #{setting}, then run Explore again. It breaks the harness format: it exports no stack of that name."},
+             "Correct #{setting}, then run Explore again. The source breaks the harness format: it exports no stack of that name."},
             {%{
                code: "invalid",
                rule: %{
@@ -1362,19 +1600,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{}
                }
              },
-             "Correct #{setting}, then run Explore again. It breaks the harness format: has a value the harness format does not take."},
+             "Correct #{setting}, then run Explore again. The source breaks the harness format: has a value the harness format does not take."},
             {%{code: "invalid", rule: %{"rule" => "no_stack_file", "values" => %{}}},
-             "Correct #{setting}, then run Explore again. It breaks the harness format: it has no qory-stack.yaml at the stack's path."},
+             "Correct #{setting}, then run Explore again. The source breaks the harness format: it has no qory-stack.yaml at the stack's path."},
             {%{
                code: "invalid",
                source: "https://code.example.com/acme/app",
                rule: %{"rule" => "both_files", "values" => %{}}
              },
-             "Correct https://code.example.com/acme/app, then run Explore again. It breaks the harness format: it has both harness.yaml and qory.yaml: keep one."},
+             "Correct https://code.example.com/acme/app, then run Explore again. The source breaks the harness format: it has both harness.yaml and qory.yaml: keep one."},
             {%{code: "invalid", rule: %{"rule" => "size", "values" => %{"n" => 65_536}}},
-             "Correct #{setting}, then run Explore again. It breaks the harness format: it is larger than 65536 bytes as JSON."},
+             "Correct #{setting}, then run Explore again. The source breaks the harness format: it is larger than 65536 bytes as JSON."},
             {%{code: "walk_error"},
-             "Run Explore again, and if the run ends the same way, ask the instance admin to check the instance's log. The harness walk stopped on an error in Qory Apiary."},
+             "Run Explore again. If the run ends the same way, contact support. The harness walk stopped on an error in Qory Apiary."},
             {%{
                code: "invalid",
                rule: %{
@@ -1383,7 +1621,18 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"name" => "web"}
                }
              },
-             "Correct #{setting}, then run Explore again. It breaks the harness format: give the base web as a git source and an export: extends: {git: <https address>, ref: <ref>, stack: web}."},
+             "Correct #{setting}, then run Explore again. The source breaks the harness format: give the base web as a git source and an export: extends: {git: <https address>, ref: <ref>, stack: web}."},
+            # A save check's message that is a sentence: one "." at the end of the line.
+            {%{
+               code: "invalid",
+               source: harness,
+               rule: %{
+                 "message" =>
+                   "Write bind by kind, then by role, such as bind: {agents: {developer: web-developer}}: %{key} is a flat key.",
+                 "values" => %{"key" => "agents/developer"}
+               }
+             },
+             "Correct #{harness}, then run Explore again. The source breaks the harness format: Write bind by kind, then by role, such as bind: {agents: {developer: web-developer}}: agents/developer is a flat key."},
             {%{
                code: "invalid",
                source: harness,
@@ -1394,11 +1643,61 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "message_values" => %{}
                }
              },
-             "Correct #{harness}, then run Explore again. It breaks the harness format: qory.yaml is not valid YAML."},
+             "Correct #{harness}, then run Explore again. The source breaks the harness format: qory.yaml is not valid YAML."},
+            {%{code: "not_covered", source: harness, organisation: "Acme"},
+             "Owners and admins of Acme connect an integration that covers #{harness} in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of Acme reaches it."},
             {%{code: "not_covered", source: harness},
-             "Connect the account that holds #{harness} to this organisation, then run Explore again. No connection of this organisation reaches that harness source."},
+             "Owners and admins of this organisation connect an integration that covers #{harness} in Organisation settings › Integrations. #{harness} is not public, or does not exist, and no connection of this organisation reaches it."},
+            {%{
+               code: "too_large",
+               source: harness,
+               workspace: "Main",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Whoever maintains #{harness} makes it smaller, or owners and admins of Main choose another harness on the set-up step Harness. #{harness} is larger than Qory Apiary reads."},
+            {%{
+               code: "source_unreachable",
+               source: harness,
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 8443, "seconds" => 10}
+               }
+             },
+             "Contact support: Qory Apiary did not receive #{harness} from code.example.com on port 8443 within 10 s."},
+            {%{
+               code: "rate_limited",
+               source: harness,
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Try again later: code.example.com limits how often Qory Apiary reads from it, and that limit is reached."},
+            {%{
+               code: "host_not_allowed",
+               source: harness,
+               organisation: "Acme",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "If an integration serves code.example.com, owners and admins of Acme link the repository through its connection in Organisation settings › Integrations; otherwise, contact support. code.example.com resolves to a private, loopback or link-local address, and Qory Apiary reads public repositories from public addresses only."},
+            {%{
+               code: "fetch_failed",
+               source: harness,
+               organisation: "Acme",
+               rule: %{
+                 "rule" => "fetch",
+                 "values" => %{"host" => "code.example.com", "port" => 443}
+               }
+             },
+             "Owners and admins of Acme check the address on the set-up step Harness, or link the repository through a connection. code.example.com did not serve #{harness} as a git repository over HTTPS."},
             {%{code: "not_allowed"},
-             "Ask the owner of #{setting} to assign it to this organisation, then run Explore again. Another owner keeps that harness source and has not assigned it here."},
+             "Ask the owner of #{setting} to assign it to this organisation, then run Explore again. That harness source belongs to another owner, who has not assigned it here."},
             {%{code: "scp_form", source: "code.example.com:acme/harness"},
              "Write code.example.com:acme/harness as an https address, then run Explore again. Qory Apiary fetches harness sources over https only, and code.example.com:acme/harness has the form user@host:path."},
             {%{code: "credential_in_address", source: harness},
@@ -1406,7 +1705,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {%{code: "too_many"},
              "Take the harness sources from at most 5 accounts, then run Explore again. A run takes 5 harness credentials at most."},
             {%{code: "adapter_unavailable", adapter: "code-host"},
-             "Check the adapter code-host on the instance's Integrations page, then run Explore again. The adapter did not answer three times."}
+             "Run Explore again. If the run ends the same way, contact support. Three calls to the adapter code-host failed."}
           ] do
         r =
           run(%{
@@ -1423,10 +1722,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           })
 
         html = tab(work_item(%{number: 97, status: :no_result, run: r}))
-        assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+        assert text(html, "#work-item-explore-none-h") == "The run did not start."
 
         assert texts(html, "#work-item-explore-none p") == [
-                 "The run ended before it started.",
+                 "The run did not start.",
                  line
                ]
       end
@@ -1450,9 +1749,37 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = tab(work_item(%{number: 97, status: :no_result, run: r}))
 
       assert texts(html, "#work-item-explore-none p") == [
-               "The run ended before it started.",
-               "Ask an instance admin to check code-host. The run stopped before it started: the call to code-host for the harness sources returned the error bad."
+               "The run did not start.",
+               "Contact support. The run did not start: the call to code-host for the harness sources returned the error bad."
              ]
+    end
+
+    test "a run whose harness has no skill for its workflow: the workflow and where the harness comes from" do
+      for {source, line} <- [
+            {{:target, "acme/web-shop"},
+             "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of repository acme/web-shop."},
+            {:qory,
+             "The run's harness has no skill named explore-a-ticket. The harness is the Qory harness."},
+            {nil, "The run's harness has no skill named explore-a-ticket."}
+          ] do
+        r =
+          run(%{
+            state: :failed,
+            outcome: :error,
+            end_cause: :run_ended,
+            workflow_gap: %{workflow: "explore-a-ticket", source: source},
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        assert text(html, "#work-item-explore-none-h") == "The run did not start."
+
+        assert Enum.take(texts(html, "#work-item-explore-none p"), 2) ==
+                 ["The run did not start.", line]
+      end
     end
 
     test "a run whose last result was an error keeps its words, here and in the folds" do
@@ -1467,7 +1794,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       words = [
         "The run ended with an error.",
-        "Its last result was an error, so there is nothing for Qory to show or for a member to confirm."
+        "The run's last result was an error. There is nothing to show or confirm."
       ]
 
       html = tab(work_item(%{number: 97, status: :no_result, run: r}))
@@ -1478,11 +1805,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           earlier_runs: [r]
         )
 
-      assert texts(earlier, "#work-item-explore-earlier-rn_01a97b20c4e81f3d-body p")
+      assert texts(earlier, "#work-item-explore-earlier-12-body p")
              |> Enum.take(2) == words
 
       for html <- [html, earlier] do
-        refute html =~ "The run ended before it started."
+        refute html =~ "The run did not start."
       end
     end
 
@@ -1502,10 +1829,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       take_in = %{
         taken_in_by: @dana,
         taken_in_at: ~U[2026-10-16 15:20:00Z],
-        ended: :declined,
+        ended: :closed,
         ended_by: @dana,
         ended_at: ago(4 * 60),
-        runs: [run1_answered(), run2_answered(), run(%{id: "rn_01aa47c9b05e3f18", attempt: 3})]
+        runs: [
+          run1_answered(),
+          run2_answered(),
+          run(%{id: "rn_01aa47c9b05e3f18", number: 15, attempt: 3})
+        ]
       }
 
       w = work_item(%{number: 94, status: :queued, run: %{attempt: 1, of: 3}})
@@ -1514,18 +1845,17 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-explore-take-ins-h") == "Earlier take ins"
 
       assert texts(html, "#work-item-explore-take-ins-1 summary .q-xp-it") ==
-               ["Taken in 16 Oct by you", "Declined by you 4 minutes ago", "3 runs"]
+               ["Taken in 16 Oct by you", "Closed by you 4 minutes ago", "3 runs"]
 
       assert text(html, "#work-item-explore-take-ins-1 .q-xp-inner > p:first-child") ==
-               "Its runs counted apart from this take in."
+               "These runs do not count toward the run limit of this take in."
 
       assert texts(html, "#work-item-explore-take-ins-1 .q-xp-run > span:first-child") ==
-               ["Run 1 of 3", "Run 2 of 3", "Run 3 of 3"]
+               ["Attempt 1 of 3", "Attempt 2 of 3", "Attempt 3 of 3"]
     end
 
     test "every end, in both forms, and one run" do
       for {ended, by, words} <- [
-            {:declined, @priya, "Declined by Priya 4 minutes ago"},
             {:closed, @dana, "Closed by you 4 minutes ago"},
             {:closed, @priya, "Closed by Priya 4 minutes ago"},
             {:undone, @dana, "Undone by you 4 minutes ago"},
@@ -1551,143 +1881,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
   end
 
-  ## The edit page
-
-  defp edit(extra \\ []) do
-    render_component(
-      &C.proposal_edit/1,
-      Keyword.merge(
-        [number: 88, proposal: proposal(), explore_path: "/8wonders/main/work/88/explore"],
-        extra
-      )
-    )
-  end
-
-  describe "proposal_edit/1" do
-    test "its heading, its line, the fields from the run's words, and its foot" do
-      html = edit()
-
-      assert C.edit_title(88) == "Change Qory's proposal · #88"
-      assert text(html, "#work-item-edit-back") == "Explore"
-      assert attr(html, "#work-item-edit-back", "href") == ["/8wonders/main/work/88/explore"]
-      assert text(html, "h2") == "Change Qory's proposal"
-
-      assert text(html, ".q-xp-lead") ==
-               "Change what Qory got wrong, then confirm. Qory's words stay in the Explore tab beside yours."
-
-      assert attr(html, "form", "phx-submit") == ["confirm_changes"]
-      assert attr(html, "form", "phx-change") == ["change_proposal"]
-      assert attr(html, "form", "novalidate") == [""]
-      assert attr(html, "form input[type=hidden]", "value") == ["88"]
-
-      assert attr(html, "#work-item-edit-complexity", "role") == ["group"]
-      assert text(html, "#work-item-edit-complexity-l") == "Complexity"
-
-      assert texts(html, "label") ==
-               ["Level", "Why", "Understanding", "In scope", "Out of scope", "Approach"]
-
-      assert texts(html, "#work-item-edit-level option") == ["Simple", "Standard", "Complex"]
-      assert attr(html, "#work-item-edit-level option[selected]", "value") == ["standard"]
-
-      assert attr(html, "textarea", "name") ==
-               ["complexity[reason]", "understanding", "scope_in", "scope_out", "approach"]
-
-      assert text(html, "#work-item-edit-scope-in-hint") == "One line for each."
-
-      assert text(html, "#work-item-edit-scope-out-hint") ==
-               "One line for each. Leave it empty when nothing is left out."
-
-      assert attr(html, "#work-item-edit-scope-in", "aria-describedby") ==
-               ["work-item-edit-scope-in-hint"]
-
-      assert count(html, ".badge") == 0
-
-      assert text(html, ".q-xp-kept") ==
-               "The approaches Qory did not choose, and what it learned, stay as Qory wrote them."
-
-      assert text(html, ".q-xp-foot > p") == "Confirming makes work item #88 ready for Shape."
-      assert text(html, "#work-item-edit-go") == "Confirm with your changes"
-      assert attr(html, "#work-item-edit-go", "type") == ["submit"]
-      assert text(html, "#work-item-edit-cancel") == "Cancel"
-      assert attr(html, "#work-item-edit-cancel", "href") == ["/8wonders/main/work/88/explore"]
-    end
-
-    test "a scope entry is one line: its line breaks show as spaces" do
-      html = edit(proposal: proposal(%{scope_in: ["One entry\nover two lines.", "Another."]}))
-
-      [area] = html |> query("#work-item-edit-scope-in") |> Enum.to_list()
-      assert LazyHTML.text(area) == "One entry over two lines.\nAnother."
-    end
-
-    test "a field the member changed says Changed, in its description" do
-      html =
-        edit(
-          values: %{
-            approach: "Extract the rounding, half to even.",
-            scope_out: "Totals of orders already placed.\nThe mobile apps.",
-            scope_in:
-              "  Compute the basket's total as the order service does.\n\nMove that rounding into one function.  "
-          }
-        )
-
-      assert text(html, "#work-item-edit-approach-ch") == "Changed"
-
-      assert attr(html, "#work-item-edit-approach", "aria-describedby") == [
-               "work-item-edit-approach-ch"
-             ]
-
-      assert attr(html, "#work-item-edit-scope-out", "aria-describedby") ==
-               ["work-item-edit-scope-out-hint work-item-edit-scope-out-ch"]
-
-      assert count(html, "#work-item-edit-scope-in-ch") == 0
-      assert count(html, "#work-item-edit-understanding-ch") == 0
-      assert count(html, "#work-item-edit-complexity-ch") == 0
-
-      level = edit(values: %{level: "complex"})
-      assert text(level, "#work-item-edit-complexity-ch") == "Changed"
-
-      assert attr(level, "#work-item-edit-level", "aria-describedby") == [
-               "work-item-edit-complexity-ch"
-             ]
-
-      assert attr(level, "#work-item-edit-level option[selected]", "value") == ["complex"]
-    end
-
-    test "an error under its field, describing it, and the focus on the first field at fault" do
-      html = edit(values: %{approach: ""}, errors: %{approach: :blank})
-
-      assert text(html, "#work-item-edit-approach-err") == "Write the approach."
-      assert attr(html, "#work-item-edit-approach", "aria-invalid") == ["true"]
-
-      assert attr(html, "#work-item-edit-approach", "aria-describedby") ==
-               ["work-item-edit-approach-ch work-item-edit-approach-err"]
-
-      assert attr(html, "#work-item-edit-focus-0-approach", "phx-mounted") |> hd() =~
-               "#work-item-edit-approach"
-
-      first = edit(errors: %{approach: :blank, understanding: :blank})
-      assert count(first, "#work-item-edit-focus-0-understanding") == 1
-      assert count(first, "#work-item-edit-focus-0-approach") == 0
-    end
-
-    test "every error's words" do
-      for {field, error, words} <- [
-            {:understanding, :blank, "Write the understanding."},
-            {:scope_in, :blank, "Write at least one line in scope."},
-            {:reason, :blank, "Write why the work is at this level."},
-            {:scope_in, {:line_too_long, 2000}, "Write each line in at most 2,000 characters."},
-            {:understanding, {:too_long, 20_000},
-             "Write the understanding in at most 20,000 characters."},
-            {:approach, {:too_long, 2000}, "Write at most 2,000 characters."},
-            {:scope_out, {:too_many_lines, 50}, "Write at most 50 lines."},
-            {:scope_out, {:too_many_lines, 1}, "Write at most 1 line."}
-          ] do
-        html = edit(errors: %{field => error})
-        assert text(html, ".q-xp-err") == words
-      end
-    end
-  end
-
   ## The Thread
 
   defp event(extra) do
@@ -1700,32 +1893,73 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     )
   end
 
-  defp line(html), do: text(html, "li > div > p:first-child")
+  defp line(html), do: text(html, "li.q-wi-ev > div > p:first-child")
 
   describe "thread_event/1, Explore's lines" do
     test "a run starts: first, with the answers, again; its place beside it; Qory's bee" do
       r = run(%{attempt: 2})
 
       for {start, words} <- [
-            {nil, "Qory started Explore in run rn_01a97b20"},
-            {:answers, "Qory started Explore again, with the answers, in run rn_01a97b20"},
-            {:again, "Qory started Explore again in run rn_01a97b20"}
+            {nil, "Qory started Explore in attempt 2"},
+            {:answers, "Qory started Explore again, with the answers, in attempt 2"},
+            {:again, "Qory started Explore again in attempt 2"}
           ] do
         html = event(kind: :started, run: r, start: start)
-        assert line(html) == words <> " Run 2 of 3 14 Oct, 11:25"
-        assert text(html, ".q-wi-tag") == "Run 2 of 3"
-        assert attr(html, "p a", "href") == ["/8wonders/main/runs/rn_01a97b20c4e81f3d"]
+        assert line(html) == words <> " Attempt 2 of 3 14 Oct, 11:25"
+        assert text(html, ".q-wi-tag") == "Attempt 2 of 3"
+        assert attr(html, "p a", "href") == ["/8wonders/main/runs/12"]
         assert count(html, ".q-wi-ev-ic .q-bl-bee") == 1
       end
     end
 
     test "Qory asked: how many and after how long, the questions quoted under it" do
       html = event(kind: :asked, questions: questions(), duration: "9 minutes")
-      assert line(html) == "Qory asked 3 questions, after 9 minutes 14 Oct, 11:25"
+      assert line(html) == "Qory wrote 3 questions, after 9 minutes 14 Oct, 11:25"
       assert texts(html, "#ev-1-questions li") == Enum.map(questions(), & &1.text)
 
       one = event(kind: :asked, questions: [hd(questions())], duration: "8 minutes")
-      assert line(one) == "Qory asked 1 question, after 8 minutes 14 Oct, 11:25"
+      assert line(one) == "Qory wrote 1 question, after 8 minutes 14 Oct, 11:25"
+    end
+
+    test "Qory asked: each question's Markdown, its HTML dropped and no image loaded" do
+      qs = [
+        %{
+          public_id: "qq_01",
+          text:
+            "Which **load** stays? <script>alert(1)</script> ![x](https://img.example.com/x.png)",
+          options: [],
+          answer: nil
+        }
+      ]
+
+      html = event(kind: :asked, questions: qs, duration: "9 minutes")
+      assert text(html, "#ev-1-questions li strong") == "load"
+      refute html =~ "<script"
+      refute html =~ "<img"
+      assert attr(html, "#ev-1-questions a", "href") == ["https://img.example.com/x.png"]
+
+      answered =
+        event(kind: :answered, actor: @dana, questions: [%{hd(qs) | answer: "The lazy one"}])
+
+      assert text(answered, "#ev-1-answers .q-wi-qa-q strong") == "load"
+      refute answered =~ "<script"
+      assert text(answered, "#ev-1-answers .q-wi-qa-a") == "The lazy one"
+    end
+
+    test "a comment on Qory's proposal: who, and the comment quoted as plain text" do
+      comment = "Also check the basket.\n<b>not bold</b>"
+
+      html = event(kind: :answered, actor: @dana, questions: [], comment: comment)
+      assert line(html) == "You commented on Qory's proposal 14 Oct, 11:25"
+      [quoted] = html |> query("#ev-1-answers .q-wi-qa-a") |> Enum.to_list()
+      assert LazyHTML.text(quoted) == comment
+      assert count(html, "#ev-1-answers b") == 0
+      assert count(html, "#ev-1-answers .q-wi-qa-q") == 0
+
+      other = event(kind: :answered, actor: @priya, questions: [], comment: "Ship it.")
+      assert line(other) == "Priya commented on Qory's proposal 14 Oct, 11:25"
+      assert text(other, "#ev-1-answers b") == ""
+      assert text(other, "li > div > p:first-child b") == "Priya"
     end
 
     test "answered: who, each question and its answer quoted" do
@@ -1745,26 +1979,25 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "proposed: after how long, and whose turn; only how long without an owner" do
       assert line(event(kind: :proposed, owner: @dana, duration: "11 minutes")) ==
-               "Qory proposed how to build it, after 11 minutes. It waits for you to confirm 14 Oct, 11:25"
+               "Qory wrote a proposal, after 11 minutes. You confirm next 14 Oct, 11:25"
 
       assert line(event(kind: :proposed, owner: @lea, duration: "7 minutes")) ==
-               "Qory proposed how to build it, after 7 minutes. It waits for Lea to confirm 14 Oct, 11:25"
+               "Qory wrote a proposal, after 7 minutes. Lea confirms next 14 Oct, 11:25"
 
       assert line(event(kind: :proposed, owner: nil, duration: "7 minutes")) ==
-               "Qory proposed how to build it, after 7 minutes. 14 Oct, 11:25"
+               "Qory wrote a proposal, after 7 minutes. 14 Oct, 11:25"
     end
 
     test "a run without a result, lost or cancelled, with its mark" do
       r = run(%{})
 
       for {kind, outcome, words} <- [
-            {:no_result, :error, "Run rn_01a97b20 ended with an error, so Explore has no result"},
-            {:no_result, :none, "Run rn_01a97b20 ended without a result"},
-            {:no_result, :refused,
-             "Run rn_01a97b20 returned a result that did not pass Qory's check"},
-            {:lost, :error, "Run rn_01a97b20 was lost before it ended, so Explore has no result"},
+            {:no_result, :error, "Attempt 1 ended with an error, so Explore has no result"},
+            {:no_result, :none, "Attempt 1 ended without a result"},
+            {:no_result, :refused, "Attempt 1 returned a result that did not pass Qory's check"},
+            {:lost, :error, "Attempt 1 was lost before it ended, so Explore has no result"},
             {:cancelled, :error,
-             "Run rn_01a97b20 was cancelled before it ended, so Explore has no result"}
+             "Attempt 1 was cancelled before it ended, so Explore has no result"}
           ] do
         html = event(kind: kind, run: r, outcome: outcome)
         assert line(html) == words <> " 14 Oct, 11:25"
@@ -1774,8 +2007,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "asked to explore again, confirmed, changed and confirmed" do
       for {extra, words} <- [
-            {[kind: :explore_again, actor: @dana], "You asked Qory to explore again"},
-            {[kind: :explore_again, actor: @priya], "Priya asked Qory to explore again"},
+            {[kind: :explore_again, actor: @dana], "You ran Explore again"},
+            {[kind: :explore_again, actor: @priya], "Priya ran Explore again"},
             {[kind: :confirmed, actor: @dana], "You confirmed Qory's proposal. Ready for Shape"},
             {[kind: :confirmed, actor: @priya],
              "Priya confirmed Qory's proposal. Ready for Shape"},
@@ -1809,19 +2042,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert attr(html, ".q-wi-ev-ref .q-bl-tile", "aria-label") == ["GitHub"]
       end
     end
-
-    test "declined at Explore" do
-      assert line(event(kind: :declined, stage: :explore, actor: @dana)) ==
-               "You declined this work item at Explore 14 Oct, 11:25"
-
-      assert line(event(kind: :declined, stage: :explore, actor: @priya)) ==
-               "Priya declined this work item at Explore 14 Oct, 11:25"
-    end
   end
 
   ## Ids
 
-  test "no DOM id, phx-value or path holds the ticket's ref or a source's; runs are rn_" do
+  test "no DOM id, phx-value or path holds the ticket's ref or a source's; runs are numbers" do
     w94 =
       work_item(%{
         number: 94,
@@ -1833,10 +2058,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     html =
       Enum.join([
-        card(work_item(%{}),
-          explore_path: "/8wonders/main/work/88/explore",
-          edit_path: "/8wonders/main/work/88/explore/edit"
-        ),
+        card(work_item(%{}), explore_path: "/8wonders/main/work/88/explore"),
         card(work_item(%{status: :no_result, run: run(%{outcome: :error})})),
         card(
           work_item(%{
@@ -1857,14 +2079,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             %{
               taken_in_by: @dana,
               taken_in_at: ago(86_400),
-              ended: :declined,
+              ended: :closed,
               ended_by: @dana,
               ended_at: ago(60),
               runs: [run(%{})]
             }
           ]
         ),
-        edit(errors: %{approach: :blank}),
+        tab(work_item(%{}), can_act: true, change_error: :blank),
         event(kind: :started, run: run(%{})),
         event(
           kind: :taken_in,
@@ -1888,9 +2110,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     refute html =~ "123456"
 
     assert Enum.any?(values, &match?({"phx-value-number", "88"}, &1))
-    assert Enum.any?(values, &match?({"phx-value-number", "94"}, &1))
-    assert Enum.any?(values, &match?({"name", "answers[qq_01]"}, &1))
-    assert Enum.any?(values, &match?({"id", "work-item-explore-earlier-rn_01aa1f3e5c0d82a4"}, &1))
+    assert Enum.any?(values, &match?({"phx-value-number", "88"}, &1))
+    assert Enum.any?(values, &match?({"name", "answers[qq_01][custom]"}, &1))
+    assert Enum.any?(values, &match?({"id", "work-item-explore-earlier-13"}, &1))
 
     for {name, value} <- values do
       refute value =~ "acme/shop#", "#{name}=#{value}"
@@ -1904,7 +2126,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           )
 
       if name == "href" and value =~ "/runs/",
-        do: assert(value =~ ~r"/runs/rn_[0-9a-f]{16}\z", value)
+        do: assert(value =~ ~r"/runs/[1-9][0-9]*\z", value)
 
       if name == "href" and not String.starts_with?(value, "/"),
         do: assert(value =~ ~r{\Ahttps://}, value)
@@ -1920,7 +2142,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           Map.merge(
             %{
               id: "rn_01aa47c9b05e3f18",
-              path: "/8wonders/main/runs/rn_01aa47c9b05e3f18",
+              number: 15,
+              path: "/8wonders/main/runs/15",
               attempt: 3,
               proposal: nil,
               ended_at: ago(8 * 60)
@@ -1949,7 +2172,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(tab(asked, can_act: true), "#work-item-explore-limit") == 1
     end
 
-    test "no result at run 3 of 3 is the run-limit card: no Run Explore again, no run 4 of 3" do
+    test "no result at attempt 3 of 3 is the run-limit card: no Run Explore again, no attempt 4 of 3" do
       for {status, overrides} <- [
             {:no_result, %{state: :failed, outcome: :error}},
             {:lost, %{state: :lost, outcome: nil}},
@@ -1957,15 +2180,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           ] do
         html = card(last(status, overrides), can_close: true)
 
-        assert text(html, ".q-wi-badge") == "3 of 3 runs used"
+        assert text(html, ".q-wi-badge") == "3 of 3 attempts used"
         assert attr(html, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait"]
 
         assert text(html, "#work-item-step-line") ==
-                 "Run rn_01aa47c9 was run 3 of 3, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in."
+                 "Attempt 3 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
 
         assert count(html, "#work-item-step-again") == 0
         assert count(html, "#work-item-step-next") == 0
-        refute html =~ "run 4 of 3"
+        refute html =~ "attempt 4 of 3"
         assert text(html, "#work-item-step-close") == "Close work item…"
 
         tab = tab(last(status, overrides), can_act: true)
@@ -1974,19 +2197,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
-    test "questions at run 3 of 3 are read-only under the note: no form, no run 4 of 3" do
+    test "questions at attempt 3 of 3 are read-only under the note: no form, no attempt 4 of 3" do
       w = last(:questions, %{outcome: :questions, questions: [hd(questions())]})
 
       html = tab(w, can_act: true)
       assert count(html, "#work-item-explore-limit") == 1
       assert count(html, "form") == 0
       assert count(html, "#work-item-explore-questions-next") == 0
-      refute html =~ "run 4 of 3"
+      refute html =~ "attempt 4 of 3"
 
-      assert text(card(w), ".q-wi-badge") == "3 of 3 runs used"
+      assert text(card(w), ".q-wi-badge") == "3 of 3 attempts used"
     end
 
-    test "at run 3 of 3 the header, the row, the stages and the card read the run limit alike" do
+    test "at attempt 3 of 3 the header, the row, the stages and the card read the run limit alike" do
       for {status, overrides} <- [
             {:questions, %{outcome: :questions, questions: [hd(questions())]}},
             {:lost, %{state: :lost, outcome: nil}}
@@ -2029,7 +2252,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "below the limit, the next run is named" do
       html = card(last(:lost, %{attempt: 2, state: :lost, outcome: nil}))
-      assert text(html, "#work-item-step-next") == "It starts run 3 of 3 of this take in."
+      assert text(html, "#work-item-step-next") == "Run Explore again starts attempt 3 of 3."
       assert text(html, "#work-item-step-again") == "Run Explore again"
     end
   end
@@ -2039,53 +2262,29 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   describe "the fields and the run's words, robustly" do
     test "a value that starts with a line break keeps it in its field" do
       [answer] =
-        tab(questions_item(), can_act: true, answers: %{"qq_01" => "\nWeb only."})
-        |> query("#work-item-explore-questions-answer-qq_01")
+        tab(questions_item(),
+          can_act: true,
+          answers: %{"qq_02" => %{"custom" => "\nWeb only."}}
+        )
+        |> query("#work-item-explore-questions-answer-qq_02")
         |> Enum.to_list()
 
       assert LazyHTML.text(answer) == "\nWeb only."
 
-      html = edit(proposal: proposal(%{approach: "\nStarts after a line."}))
-      [approach] = html |> query("#work-item-edit-approach") |> Enum.to_list()
-      assert LazyHTML.text(approach) == "\nStarts after a line."
-      assert count(html, "#work-item-edit-approach-ch") == 0
+      [change] =
+        tab(work_item(%{}), can_act: true, change: "\nStarts after a line.")
+        |> query("#work-item-explore-reply-text")
+        |> Enum.to_list()
 
-      [plain] = edit() |> query("#work-item-edit-approach") |> Enum.to_list()
-
-      assert LazyHTML.text(plain) ==
-               "Extract the order service's rounding into a function in the pricing module."
+      assert LazyHTML.text(change) == "\nStarts after a line."
     end
 
-    test "a proposal without Not chosen or knowledge says None; a fact without sources lists none" do
-      p = proposal() |> Map.delete(:alternatives) |> Map.delete(:knowledge)
-      html = tab(work_item(%{run: run(%{proposal: p})}))
+    test "a question stored before questions had options, and a draft that is no map" do
+      qs = [%{public_id: "qq_01", text: "Which listing?", answer: nil}]
+      html = tab(questions_item(qs), can_act: true, answers: %{"qq_01" => "old"})
 
-      assert text(html, "#work-item-explore-proposal-alternatives li") == "None"
-      assert text(html, "#work-item-explore-proposal-knowledge li") == "None"
-
-      bare = proposal(%{knowledge: [%{text: "A fact."}]})
-      html = tab(work_item(%{run: run(%{proposal: bare})}))
-      assert text(html, "#work-item-explore-proposal-knowledge .q-xp-know > li") == "A fact."
-      assert count(html, ".q-xp-src") == 0
-    end
-
-    test "an unknown complexity level shows no level word" do
-      p = proposal(%{complexity: %{level: :huge, reason: "Why."}})
-      html = tab(work_item(%{run: run(%{proposal: p})}))
-      assert count(html, "#work-item-explore-proposal-complexity .badge") == 0
-      assert text(html, "#work-item-explore-proposal-complexity .q-xp-val") == "Why."
-
-      edit = edit(proposal: p)
-      assert attr(edit, "#work-item-edit-level option[selected]", "value") == []
-    end
-
-    test "an error a field has no words for marks nothing" do
-      for errors <- [%{scope_out: :blank}, %{approach: :unknown}] do
-        html = edit(errors: errors)
-        assert count(html, ".q-xp-err") == 0
-        assert count(html, "[aria-invalid]") == 0
-        assert count(html, "[phx-mounted]") == 0
-      end
+      assert count(html, "input[type=radio]") == 0
+      assert text(html, "#work-item-explore-questions-answer-qq_01") == ""
     end
 
     test "an answer error without words marks nothing" do
@@ -2104,8 +2303,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         html = tab(questions_item(), can_act: true, errors: errors, submits: submits)
         assert count(html, "#work-item-explore-questions-focus-#{submits}-qq_02") == 1
 
-        edited = edit(errors: %{approach: :blank}, submits: submits)
-        assert count(edited, "#work-item-edit-focus-#{submits}-approach") == 1
+        changed =
+          tab(work_item(%{}), can_act: true, change_error: :blank, change_submits: submits)
+
+        assert count(changed, "#work-item-explore-reply-focus-#{submits}") == 1
       end
     end
   end
@@ -2117,7 +2318,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       queued = work_item(%{number: 341, status: :queued, run: %{attempt: 1, of: 3}})
 
       assert text(tab(queued, item_noun: @bug), "#work-item-explore-wait p:last-child") ==
-               "Qory starts run 1 of 3 when the workspace's node pool takes it. It reads the bug and the code, and proposes how to build it, or asks what it needs to know."
+               "Qory starts attempt 1 of 3 when the workspace's pool takes it. It reads the bug and proposes what to do, or asks what it needs to know."
 
       asked =
         work_item(%{
@@ -2127,10 +2328,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         })
 
       assert tab(asked, can_act: true, item_noun: @bug) =~
-               "Qory runs Explore again from the start, with the bug, its comments, the first instruction and the answers of this take in. It is run 2 of 3."
+               "Sending starts attempt 2 of 3, which reads the bug, its comments, the first instruction and every answer of this take in."
 
       assert tab(asked, can_act: true) =~
-               "Qory runs Explore again from the start, with the ticket, its comments, the first instruction and the answers of this take in. It is run 2 of 3."
+               "Sending starts attempt 2 of 3, which reads the ticket, its comments, the first instruction and every answer of this take in."
 
       running = run(%{state: :running, outcome: nil, ended_at: nil, answers_by: []})
 
@@ -2138,7 +2339,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                card(work_item(%{status: :running, run: running}), item_noun: @bug),
                ".q-wi-bee-line"
              ) ==
-               "Qory is exploring. It reads the bug and the code, and proposes how to build it."
+               "Qory reads the bug and writes a proposal."
     end
   end
 
@@ -2209,7 +2410,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       }
     end
 
-    test "says its integration was removed, or nothing for a reason without words" do
+    test "says why it closed, or nothing for a reason without words" do
       w = work_item(%{status: :queued, run: %{attempt: 1, of: 3}})
 
       html = tab(w, earlier_take_ins: [closed_take_in(:adapter_removed)])
@@ -2220,6 +2421,16 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "Closed 4 minutes ago, when its integration was removed",
                  "1 run"
                ]
+
+      for {reason, words} <- [
+            last_stage_done: "Every stage done",
+            ticket_closed: "Closed when its ticket closed"
+          ] do
+        html = tab(w, earlier_take_ins: [closed_take_in(reason)])
+
+        assert texts(html, "#work-item-explore-take-ins-1 summary .q-xp-it") ==
+                 ["Taken in 13 Oct by Lea", words, "1 run"]
+      end
 
       for reason <- [nil, :unknown] do
         html = tab(w, earlier_take_ins: [closed_take_in(reason)])
@@ -2232,32 +2443,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   describe "the fields' length in the browser" do
     test "each takes twice what the server takes" do
-      asked =
-        work_item(%{
-          number: 94,
-          status: :questions,
-          run: run(%{outcome: :questions, proposal: nil, questions: questions()})
-        })
+      html = tab(questions_item(), can_act: true)
+      assert attr(html, "textarea", "maxlength") == ["4000", "4000"]
 
-      html = tab(asked, can_act: true)
-      assert attr(html, "textarea", "maxlength") == ["4000", "4000", "4000"]
-
-      edited = edit()
-
-      lengths =
-        edited
-        |> query("textarea")
-        |> Enum.map(
-          &{hd(LazyHTML.attribute(&1, "name")), hd(LazyHTML.attribute(&1, "maxlength"))}
-        )
-
-      assert lengths == [
-               {"complexity[reason]", "4000"},
-               {"understanding", "40000"},
-               {"scope_in", "200100"},
-               {"scope_out", "200100"},
-               {"approach", "4000"}
-             ]
+      html = tab(work_item(%{}), can_act: true)
+      assert attr(html, "textarea", "maxlength") == ["4000"]
     end
   end
 
@@ -2267,7 +2457,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     defp refused(detail) do
       run(%{
         id: "rn_01aa52d07c4a91e6",
-        path: "/8wonders/main/runs/rn_01aa52d07c4a91e6",
+        number: 16,
+        path: "/8wonders/main/runs/16",
         state: :failed,
         outcome: :error,
         end_cause: :run_refused,
@@ -2282,10 +2473,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = card(work_item(%{number: 97, status: :no_result, run: refused("model_key_missing")}))
 
       assert text(html, "#work-item-step-line") ==
-               @key_fix <> " The gateway had no model key for run rn_01aa52d0."
+               @key_fix <> " The gateway had no model key for attempt 1."
 
       assert attr(html, "#work-item-step-line a", "href") == [
-               "/8wonders/main/runs/rn_01aa52d07c4a91e6"
+               "/8wonders/main/runs/16"
              ]
 
       refute html =~ "ended with an error"
@@ -2294,12 +2485,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "Explore's tab says the run ended before it started, then the fix and why" do
       html = tab(work_item(%{number: 97, status: :no_result, run: refused("model_key_missing")}))
 
-      assert text(html, "#work-item-explore-none-h") == "The run ended before it started."
+      assert text(html, "#work-item-explore-none-h") == "The run did not start."
 
       assert texts(html, "#work-item-explore-none p") == [
-               "The run ended before it started.",
+               "The run did not start.",
                @key_fix <> " The gateway had no model key for the run.",
-               "The run's page, rn_01aa52d0, shows what it did."
+               "The page of attempt 1 shows what it did."
              ]
 
       refute html =~ "ended with an error"
@@ -2316,9 +2507,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       assert line(html) ==
-               @key_fix <> " The gateway had no model key for run rn_01a97b20 14 Oct, 11:25"
+               @key_fix <> " The gateway had no model key for attempt 1 14 Oct, 11:25"
 
-      assert attr(html, "p a", "href") == ["/8wonders/main/runs/rn_01a97b20c4e81f3d"]
+      assert attr(html, "p a", "href") == ["/8wonders/main/runs/12"]
       assert count(html, ".q-wi-ev-bad") == 1
     end
 
@@ -2327,7 +2518,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         item = work_item(%{number: 97, status: :no_result, run: r})
 
         assert text(card(item), "#work-item-step-line") ==
-                 "Run rn_01aa52d0 ended with an error, so Explore has no result."
+                 "Attempt 1 ended with an error, so Explore has no result."
 
         assert text(tab(item), "#work-item-explore-none-h") == "The run ended with an error."
 
@@ -2341,38 +2532,38 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           )
 
         assert line(thread) ==
-                 "Run rn_01aa52d0 ended with an error, so Explore has no result 14 Oct, 11:25"
+                 "Attempt 1 ended with an error, so Explore has no result 14 Oct, 11:25"
 
         refute thread =~ "model key"
       end
     end
 
-    test "at run 3 of 3, the step card puts the fix first and keeps that no run is left" do
+    test "at attempt 3 of 3, the step card puts the fix first and keeps that no run is left" do
       r = %{refused("model_key_missing") | attempt: 3}
       html = card(work_item(%{number: 97, status: :no_result, run: r}), can_close: true)
 
-      assert text(html, ".q-wi-badge") == "3 of 3 runs used"
+      assert text(html, ".q-wi-badge") == "3 of 3 attempts used"
 
       assert text(html, "#work-item-step-line") ==
                @key_fix <>
-                 " The gateway had no model key for run rn_01aa52d0. That run was run 3 of 3, the most one take in has, so Qory cannot explore again in this take in."
+                 " The gateway had no model key for attempt 3. That was attempt 3 of 3, the last attempt of this take in."
 
       assert attr(html, "#work-item-step-line a", "href") == [
-               "/8wonders/main/runs/rn_01aa52d07c4a91e6"
+               "/8wonders/main/runs/16"
              ]
 
       assert count(html, "#work-item-step-ways") == 1
       refute html =~ "ended without a result"
     end
 
-    test "at run 3 of 3, Explore's tab and the Thread keep the fix" do
+    test "at attempt 3 of 3, Explore's tab and the Thread keep the fix" do
       r = %{refused("model_key_missing") | attempt: 3}
       html = tab(work_item(%{number: 97, status: :no_result, run: r}), can_act: true)
 
       assert texts(html, "#work-item-explore-none p") == [
-               "The run ended before it started.",
+               "The run did not start.",
                @key_fix <> " The gateway had no model key for the run.",
-               "The run's page, rn_01aa52d0, shows what it did."
+               "The page of attempt 3 shows what it did."
              ]
 
       thread =
@@ -2385,15 +2576,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       assert line(thread) ==
-               @key_fix <> " The gateway had no model key for run rn_01aa52d0 14 Oct, 11:25"
+               @key_fix <> " The gateway had no model key for attempt 3 14 Oct, 11:25"
     end
 
-    test "at run 3 of 3, another refusal code keeps the words for the run limit" do
+    test "at attempt 3 of 3, another refusal code keeps the words for the run limit" do
       r = %{refused("image_user_root") | attempt: 3}
       html = card(work_item(%{number: 97, status: :no_result, run: r}))
 
       assert text(html, "#work-item-step-line") ==
-               "Run rn_01aa52d0 was run 3 of 3, the most one take in has, and it ended without a result, so Qory cannot explore again in this take in."
+               "Attempt 3 ended without a result. That was attempt 3 of 3, the last attempt of this take in."
 
       refute html =~ "model key"
     end

@@ -3,7 +3,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   #
   # **The list.** The page's head; the stages strip, Explore, Confirm and Shape, each with
   # its count and what in it needs a look, and a link to that stage alone; the views as
-  # tabs, each with its count (Open, Waiting on you, Declined, Closed); Search; one Filter
+  # tabs, each with its count (Open, Waiting on you, Closed); Search; one Filter
   # menu (Owner, the collections in their sources' words, Updated); Sort (Recently
   # updated, Newest), on every view but Waiting on you; the filters in force as tokens
   # under the bar with Clear and how many work items match; the line of a view that needs
@@ -33,6 +33,22 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # its counts, the filters' values and the sidebar's count again with its scope, and
   # never shows what a message says.
   #
+  # **The board.** Where the reader is shown the feature `workflow_model`
+  # (`ApiaryWeb.WorkItemLive.Workflow`), every view shows the board in place of the stages
+  # strip: a box for each stage of the workspace's current process version, then one for
+  # each stage that version removed while live work items remain in it, marked with its
+  # version (`ApiaryWeb.WorkItemLive.StageComponents.board_columns/1`), each with its name
+  # and how many live work items are in it under the search and the filters. Under the
+  # board, in place of the bands and Fold, the Open view is a page of rows grouped by the
+  # board's stages (`ApiaryWeb.WorkItemLive.Workflow.groups/2`), with no group for a stage
+  # with no row on the page, a row showing its stage's state alone. Every other view is a
+  # page of rows with the pager, a row showing the stage its work item is at and the
+  # stage's state, as the work item page's head does
+  # (`ApiaryWeb.WorkItemLive.Workflow.row_statuses/3`). An address with `stage` keeps that
+  # stage alone, under one group. Open and Closed each have a line under the bar. The
+  # board is read again on `{:work_items_changed, ids}`. Without the feature the page is
+  # as before it.
+  #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
@@ -40,6 +56,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   use ApiaryWeb.Features, :factory
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
+  import ApiaryWeb.WorkItemComponents, only: [stage_name: 1]
   import ApiaryWeb.WorkItemListComponents
 
   alias Apiary.{Access, Adapters, ExternalText, WorkItems}
@@ -47,8 +64,9 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   alias Apiary.WorkItems.Explore
   alias Apiary.Sources.Backlog
   alias ApiaryWeb.{People, SourceComponents, UserAuth}
+  alias ApiaryWeb.WorkItemLive.{StageComponents, Workflow}
 
-  @views [:open, :you, :declined, :closed]
+  @views [:open, :you, :closed]
   @stages [:explore, :confirm, :shape]
   @filters [:owner, :collection, :updated]
   @sorts [:updated, :created]
@@ -77,7 +95,12 @@ defmodule ApiaryWeb.WorkItemLive.Index do
         />
 
         <div :if={@list} id="work-items" class="q-wl flex flex-col gap-3">
+          <StageComponents.board_columns
+            :if={@board}
+            columns={@board}
+          />
           <.stages_strip
+            :if={!@board}
             counts={Map.take(@list.stages, stages())}
             exploring={@list.stages.exploring}
             answers={@list.stages.answers}
@@ -163,69 +186,109 @@ defmodule ApiaryWeb.WorkItemLive.Index do
             match={total(@list, @params)}
           />
 
-          <.view_note view={@params.view} item_noun={@item_noun} />
+          <.view_note view={@params.view} stages={!!@board} item_noun={@item_noun} />
 
-          <%= if @bands do %>
-            <.stage_band
-              :for={stage <- stages()}
-              :if={Map.fetch!(@list.stages, stage) > 0}
-              id={"work-items-#{stage}"}
-              stage={stage}
-              count={Map.fetch!(@list.stages, stage)}
-              shown={length(Map.fetch!(@bands, stage))}
-              exploring={@list.stages.exploring}
-              answers={@list.stages.answers}
-              no_result={@list.stages.no_result}
-              waiting={@waiting}
-              all_path={list_path(@current_scope, @params, view: :open, stage: stage)}
-              item_noun={@item_noun}
-            >
-              <.rows
-                rows={Map.fetch!(@bands, stage)}
-                people={@people}
-                scope={@current_scope}
-                can_act={@can_act}
-                now={@now}
+          <%= cond do %>
+            <% @bands -> %>
+              <.stage_band
+                :for={stage <- stages()}
+                :if={Map.fetch!(@list.stages, stage) > 0}
+                id={"work-items-#{stage}"}
+                stage={stage}
+                count={Map.fetch!(@list.stages, stage)}
+                shown={length(Map.fetch!(@bands, stage))}
+                exploring={@list.stages.exploring}
+                answers={@list.stages.answers}
+                no_result={@list.stages.no_result}
+                waiting={@waiting}
+                all_path={list_path(@current_scope, @params, view: :open, stage: stage)}
+                item_noun={@item_noun}
+              >
+                <.rows
+                  rows={Map.fetch!(@bands, stage)}
+                  people={@people}
+                  scope={@current_scope}
+                  can_act={@can_act}
+                  now={@now}
+                  statuses={@stage_statuses}
+                />
+              </.stage_band>
+            <% true -> %>
+              <div :if={@groups} id="work-items-groups">
+                <.stage_group
+                  :for={group <- @groups}
+                  id={"work-items-group-#{group.index}"}
+                  name={group.name || gettext("Removed stage")}
+                  count={group.count}
+                >
+                  <.rows
+                    rows={group.rows}
+                    people={@people}
+                    scope={@current_scope}
+                    can_act={@can_act}
+                    now={@now}
+                    statuses={@stage_statuses}
+                  />
+                </.stage_group>
+              </div>
+              <.stage_group
+                :if={@board != nil and stage_alone?(@params) and @list.rows != []}
+                id={"work-items-#{@params.stage}"}
+                name={stage_name(@params.stage)}
+                count={Map.fetch!(@list.stages, @params.stage)}
+              >
+                <.rows
+                  rows={@list.rows}
+                  people={@people}
+                  scope={@current_scope}
+                  can_act={@can_act}
+                  now={@now}
+                  statuses={@stage_statuses}
+                />
+              </.stage_group>
+              <.stage_band
+                :if={is_nil(@board) and stage_alone?(@params) and @list.rows != []}
+                id={"work-items-#{@params.stage}"}
+                stage={@params.stage}
+                count={Map.fetch!(@list.stages, @params.stage)}
+                shown={length(@list.rows)}
+                exploring={@list.stages.exploring}
+                answers={@list.stages.answers}
+                no_result={@list.stages.no_result}
+                waiting={@waiting}
+                item_noun={@item_noun}
+              >
+                <.rows
+                  rows={@list.rows}
+                  people={@people}
+                  scope={@current_scope}
+                  can_act={@can_act}
+                  now={@now}
+                  statuses={@stage_statuses}
+                />
+              </.stage_band>
+              <ul
+                :if={is_nil(@groups) and !stage_alone?(@params) and @list.rows != []}
+                id="work-items-rows"
+                class="q-rows"
+              >
+                <.rows
+                  rows={@list.rows}
+                  people={@people}
+                  scope={@current_scope}
+                  can_act={@can_act}
+                  now={@now}
+                  statuses={@stage_statuses}
+                />
+              </ul>
+              <.work_items_pager
+                :if={@list.prev || @list.next}
+                first={@list.first}
+                last={@list.first + length(@list.rows) - 1}
+                total={total(@list, @params)}
+                previous={@list.prev && list_path(@current_scope, @params, before: @list.prev)}
+                next={@list.next && list_path(@current_scope, @params, after: @list.next)}
               />
-            </.stage_band>
-          <% else %>
-            <.stage_band
-              :if={stage_alone?(@params) and @list.rows != []}
-              id={"work-items-#{@params.stage}"}
-              stage={@params.stage}
-              count={Map.fetch!(@list.stages, @params.stage)}
-              shown={length(@list.rows)}
-              exploring={@list.stages.exploring}
-              answers={@list.stages.answers}
-              no_result={@list.stages.no_result}
-              waiting={@waiting}
-              item_noun={@item_noun}
-            >
-              <.rows
-                rows={@list.rows}
-                people={@people}
-                scope={@current_scope}
-                can_act={@can_act}
-                now={@now}
-              />
-            </.stage_band>
-            <ul :if={!stage_alone?(@params) and @list.rows != []} id="work-items-rows" class="q-rows">
-              <.rows
-                rows={@list.rows}
-                people={@people}
-                scope={@current_scope}
-                can_act={@can_act}
-                now={@now}
-              />
-            </ul>
-            <.work_items_pager
-              :if={@list.prev || @list.next}
-              first={@list.first}
-              last={@list.first + length(@list.rows) - 1}
-              total={total(@list, @params)}
-              previous={@list.prev && list_path(@current_scope, @params, before: @list.prev)}
-              next={@list.next && list_path(@current_scope, @params, after: @list.next)}
-            />
           <% end %>
         </div>
       <% end %>
@@ -238,6 +301,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   attr :scope, :any, required: true
   attr :can_act, :boolean, required: true
   attr :now, :any, required: true
+  attr :statuses, :map, default: %{}, doc: "`ApiaryWeb.WorkItemLive.Workflow.row_statuses/3`"
 
   defp rows(assigns) do
     ~H"""
@@ -249,6 +313,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       navigate={work_item_path(@scope, row)}
       can_act={@can_act}
       now={@now}
+      stage_status={@statuses[row.id]}
     />
     """
   end
@@ -270,6 +335,9 @@ defmodule ApiaryWeb.WorkItemLive.Index do
        params: nil,
        list: nil,
        bands: nil,
+       board: nil,
+       groups: nil,
+       stage_statuses: %{},
        people: %{},
        waiting: nil,
        now: DateTime.utc_now(),
@@ -348,6 +416,9 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     end
   end
 
+  # Any other message on the topic: nothing to read again.
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   ## Reads
 
   # The list the params name, with its counts, read with the page's scope: the Open view
@@ -357,8 +428,12 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     params = socket.assigns.params
     now = DateTime.utc_now()
 
+    flow = Workflow.on?(scope)
+    board = if flow, do: Workflow.board(scope, query(params), now)
+
+    # Under the board, the Open view is a page of rows, as every other view is.
     {list, bands} =
-      if params.view == :open and is_nil(params.stage) do
+      if params.view == :open and is_nil(params.stage) and is_nil(board) do
         bands = WorkItems.list_bands(scope, query(params), now)
         {Map.merge(bands, %{rows: [], first: 1, next: nil, prev: nil}), bands.bands}
       else
@@ -368,7 +443,18 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
     people = people(rows, one_owner(params), socket.assigns.options.owner)
 
+    # Under the board the Open view groups its rows by stage.
+    groups =
+      if board && params.view == :open && is_nil(params.stage), do: Workflow.groups(board, rows)
+
+    # Under the workflow model a row shows the stage its work item is at, as its page's
+    # head does, or only the stage's state under its group.
+    stage_statuses = if flow, do: Workflow.row_statuses(scope, rows, !!groups), else: %{}
+
     assign(socket,
+      board: board,
+      groups: groups,
+      stage_statuses: stage_statuses,
       list: list,
       bands: bands,
       people: people,
@@ -503,6 +589,8 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp status(%{state: state}), do: state
 
   defp reason("adapter_removed"), do: :adapter_removed
+  defp reason("last_stage_done"), do: :last_stage_done
+  defp reason("ticket_closed"), do: :ticket_closed
   defp reason(_reason), do: nil
 
   # What waits at Confirm, on the strip and Confirm's band: for the reader where any waits

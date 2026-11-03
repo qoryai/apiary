@@ -1,16 +1,16 @@
 defmodule Apiary.Runs.Step do
   @moduledoc """
-  One step of a run's host work or of a session's join, such as a fetch, a compose or the
-  start of a wall, folded from its `dev.qory.run.step_started` and its
-  `dev.qory.run.step_exited` by `step`, its number in the run from 1. A projection:
-  rebuilt from `events`.
+  One step of a run's host work or of a session's join, such as a fetch, a compose, the
+  start of a wall or the push after the last session, folded from its
+  `dev.qory.run.step_started` and its `dev.qory.run.step_exited` by `step`, its number in
+  the run from 1. A projection: rebuilt from `events`.
 
   `name`, `kind`, `started_sequence` and `started_at` are the start's, nil until the start
-  is folded; `kind` is `fetch`, `compose`, `image`, `setup`, `join` or `wall`, nil for any
-  other value. `exit_code`, `duration_ms`, `exited_sequence` and `exited_at` are the
-  exit's, nil until the exit is folded. `state` is `running` until then, and the exit's
-  `succeeded`, `failed` or `cancelled` after. A step whose run's `dev.qory.run.exited` is
-  folded without the step's exit is `cancelled` and keeps no exit
+  is folded; `kind` is `fetch`, `compose`, `image`, `build`, `setup`, `join`, `wall` or
+  `push`, nil for any other value. `exit_code`, `duration_ms`, `exited_sequence` and
+  `exited_at` are the exit's, nil until the exit is folded. `state` is `running` until
+  then, and the exit's `succeeded`, `failed` or `cancelled` after. A step whose run's
+  `dev.qory.run.exited` is folded without the step's exit is `cancelled` and keeps no exit
   (`Apiary.Runs.Projector`). The step's log lines are the run's log chunks with its number
   as `step` (`Apiary.Runs.Record.step_log/4`).
   """
@@ -20,7 +20,7 @@ defmodule Apiary.Runs.Step do
   @type t :: %__MODULE__{}
 
   @states ~w(running succeeded failed cancelled)
-  @kinds ~w(fetch compose image setup join wall)
+  @kinds ~w(fetch compose image build setup join wall push)
 
   @doc "The states a step can be in."
   def states, do: @states

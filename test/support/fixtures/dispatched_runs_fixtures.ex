@@ -28,6 +28,28 @@ defmodule Apiary.DispatchedRunsFixtures do
   end
 
   @doc """
+  Writes every pending harness walk the test's connection reads resolved, as
+  `walk_resolved!/2` writes one. With the workflow model, every run of a stage waits for
+  its walk (`Apiary.Harnesses.WalkJob`), which reads the harness through an adapter. A
+  test of the queue, the claim or a run's end sets up no adapter, and its run takes no
+  harness.
+  """
+  def walks_resolved! do
+    {_count, _rows} =
+      Repo.update_all(from(h in RunHarness, where: h.state == :pending),
+        set: [state: :resolved, origin: :none]
+      )
+
+    :ok
+  end
+
+  @doc "`Apiary.Dispatches.claim/3` once the pending walks resolved (`walks_resolved!/0`)."
+  def walked_claim(%AccessKey{} = key, %DateTime{} = now, body \\ "") do
+    :ok = walks_resolved!()
+    Dispatches.claim(key, now, body)
+  end
+
+  @doc """
   A run of a fresh work item of the scope's workspace, queued, claimed under the pool's
   `key` and handed over, with the run its claim registered: through the gateway the pool's
   choice resolves to, or, when it resolves to none, a fresh gateway the pool is pointed at
@@ -87,13 +109,13 @@ defmodule Apiary.DispatchedRunsFixtures do
   # A claim under `key` that took a run. A pool whose choice resolves to no gateway is
   # pointed at a fresh gateway of the scope's workspace first (`gateway_for!/2`).
   defp claim_through_gateway!(scope, key) do
-    case Dispatches.claim(key, Dispatches.now()) do
+    case walked_claim(key, Dispatches.now()) do
       {:ok, %{dispatch: %Dispatch{}} = claimed} ->
         claimed
 
       {:error, :no_gateway} ->
         _gateway = gateway_for!(scope, Repo.get!(Apiary.Nodes.Node, key.node_id))
-        {:ok, %{dispatch: %Dispatch{}} = claimed} = Dispatches.claim(key, Dispatches.now())
+        {:ok, %{dispatch: %Dispatch{}} = claimed} = walked_claim(key, Dispatches.now())
         claimed
     end
   end
@@ -175,7 +197,7 @@ defmodule Apiary.DispatchedRunsFixtures do
   """
   def dispatched!(%AccessKey{} = key) do
     {:ok, %{dispatch: dispatch, registered: registered, run_code: code}} =
-      Dispatches.claim(key, Dispatches.now())
+      walked_claim(key, Dispatches.now())
 
     :ok = Dispatches.dispatched(key, dispatch.public_id, %{external: nil})
 

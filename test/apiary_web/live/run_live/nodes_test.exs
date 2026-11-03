@@ -18,7 +18,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
     view
   end
 
-  defp row(run), do: "#run-#{run.public_id}"
+  defp row(run), do: "#run-#{run.number}"
 
   # The words of a fragment, a space between any two elements.
   defp plain(html) do
@@ -55,13 +55,21 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       assert has_element?(view, row(mine))
       refute has_element?(view, row(theirs))
       refute has_element?(view, row(none))
+      assert has_element?(view, "#runs-token-node", "machine:")
       assert has_element?(view, "#runs-token-node", node.public_id)
 
-      view |> form("#runs-query", %{"q" => "node:build-02"}) |> render_submit()
+      view |> form("#runs-query", %{"q" => "machine:build-02"}) |> render_submit()
       assert_patch(view, workspace_path(scope, "/runs?node=build-02"))
       render_async(view)
       assert has_element?(view, row(theirs))
       refute has_element?(view, row(mine))
+
+      # node:, the older word, still keeps them.
+      view |> form("#runs-query", %{"q" => "node:build-01"}) |> render_submit()
+      assert_patch(view, workspace_path(scope, "/runs?node=build-01"))
+      render_async(view)
+      assert has_element?(view, row(mine))
+      refute has_element?(view, row(theirs))
     end
 
     test "narrowed to a node, the line names it and leads to its page; nothing carries", %{
@@ -70,7 +78,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
     } do
       node = node_fixture(scope, name: "build-01")
       node_run_fixture(node, "i_1")
-      node_page = workspace_path(scope, "/nodes/#{node.public_id}")
+      node_page = workspace_path(scope, "/machines/#{node.public_id}")
 
       for value <- [node.public_id, "build-01"] do
         view = open(conn, workspace_path(scope, "/runs?node=#{value}"))
@@ -130,7 +138,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       run = node_run_fixture(node, "i_1")
       view = open(conn, workspace_path(scope, "/runs"))
 
-      assert has_element?(view, "#runs th.q-rl-c5", "Node")
+      assert has_element?(view, "#runs th.q-rl-c5", "Machine or pool")
       assert has_element?(view, "#{row(run)} td.q-rl-c5 a", "build-01")
       assert has_element?(view, "#{row(bare)} td.q-rl-c5", "n/a")
     end
@@ -145,7 +153,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
       assert has_element?(view, "#runs-preview-node a", "build-01")
       assert has_element?(view, "#runs-preview-instance", "i_1")
-      assert render(view) =~ "Node&#39;s instance id"
+      assert render(view) =~ "Machine id"
     end
   end
 
@@ -159,19 +167,19 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       run = node_run_fixture(node, "i_1")
       bare = run_fixture(scope)
 
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.public_id}"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.number}"))
 
       assert has_element?(
                view,
-               ~s{#run-node a[href="#{workspace_path(scope, "/nodes/#{node.public_id}")}"]},
+               ~s{#run-node a[href="#{workspace_path(scope, "/machines/#{node.public_id}")}"]},
                "build-01"
              )
 
       assert has_element?(view, "#run-instance", "build-01.example.com")
       assert has_element?(view, "#run-instance", "i_1")
-      assert render(view) =~ "Node&#39;s instance id"
+      assert render(view) =~ "Machine id"
 
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{bare.public_id}"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{bare.number}"))
       refute has_element?(view, "#run-node")
       refute has_element?(view, "#run-instance")
     end
@@ -181,7 +189,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       run = node_run_fixture(node, "i_1")
       {:ok, _} = Nodes.delete_node(scope, node)
 
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.public_id}"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.number}"))
 
       assert has_element?(view, "#run-node", "build-01 (deleted)")
       refute has_element?(view, "#run-node a")
@@ -211,7 +219,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       view = open(conn, workspace_path(scope, "/runs"))
       assert has_element?(view, "#{row(run)} td.q-rl-c5", "build-01")
       refute has_element?(view, "#{row(run)} td.q-rl-c5 a")
-      refute render(view) =~ "/nodes"
+      refute render(view) =~ workspace_path(scope, "/machines")
 
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)
@@ -227,17 +235,17 @@ defmodule ApiaryWeb.RunLive.NodesTest do
                  "Showing the runs of build-01 only."
 
         refute has_element?(view, "a#runs-narrowed-name")
-        refute render(view) =~ "/nodes"
+        refute render(view) =~ workspace_path(scope, "/machines")
       end
     end
 
     test "the run page names the node with no link", %{conn: conn, scope: scope, run: run} do
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.public_id}"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.number}"))
 
       assert has_element?(view, "#run-node", "build-01")
       refute has_element?(view, "#run-node a")
       assert has_element?(view, "#run-instance", "build-01.example.com")
-      refute render(view) =~ "/nodes"
+      refute render(view) =~ workspace_path(scope, "/machines")
     end
 
     test "shown again, each links to the node's page", %{
@@ -247,7 +255,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       run: run
     } do
       :ok = Apiary.EditionStubs.HidesNamed.put([])
-      node_page = workspace_path(scope, "/nodes/#{node.public_id}")
+      node_page = workspace_path(scope, "/machines/#{node.public_id}")
 
       view = open(conn, workspace_path(scope, "/runs"))
       assert has_element?(view, ~s(#{row(run)} td.q-rl-c5 a[href="#{node_page}"]), "build-01")
@@ -255,7 +263,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       view = open(conn, workspace_path(scope, "/runs?node=#{node.public_id}"))
       assert has_element?(view, ~s(a#runs-narrowed-name[href="#{node_page}"]), "build-01")
 
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.public_id}"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.number}"))
       assert has_element?(view, ~s(#run-node a[href="#{node_page}"]), "build-01")
     end
   end
@@ -290,7 +298,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
         html = render(view)
         refute html =~ "never-ran"
         refute html =~ "edge-gateway"
-        refute html =~ "/nodes"
+        refute html =~ workspace_path(scope, "/machines")
       end
     end
 
@@ -342,7 +350,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
         assert has_element?(
                  view,
-                 ~s(a#runs-narrowed-name[href="#{workspace_path(scope, "/nodes/#{node.public_id}")}"]),
+                 ~s(a#runs-narrowed-name[href="#{workspace_path(scope, "/machines/#{node.public_id}")}"]),
                  node.name
                )
       end
@@ -369,7 +377,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
       run = node_run_fixture(node, "i_1")
       view = open(conn, workspace_path(scope, "/runs"))
-      assert has_element?(view, "#runs th.q-rl-c5", "Node")
+      assert has_element?(view, "#runs th.q-rl-c5", "Machine or pool")
       assert has_element?(view, "#{row(run)} td.q-rl-c5", "build-01")
       assert has_element?(view, "#{row(bare)} td.q-rl-c5", "n/a")
     end
@@ -390,7 +398,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       send(view.pid, {:membership_changed, :hidden})
 
       refute has_element?(view, "#runs-go-to-nodes")
-      refute render(view) =~ "/nodes"
+      refute render(view) =~ workspace_path(scope, "/machines")
     end
 
     test "the empty list's New node goes", %{conn: conn, scope: scope} do
@@ -402,7 +410,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
       refute has_element?(view, "#runs-new-node")
       refute has_element?(view, "#runs-go-to-nodes")
-      refute render(view) =~ "/nodes"
+      refute render(view) =~ workspace_path(scope, "/machines")
     end
 
     test "the line's node is read again: one no run names is no longer named", %{
@@ -439,7 +447,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
     } do
       :ok = Apiary.EditionStubs.HidesNamed.put([])
 
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.public_id}"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.number}"))
       assert has_element?(view, "#run-facts dd", "ci-runner")
       assert has_element?(view, "#run-facts dd", key.key_id)
 
@@ -455,7 +463,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
     } do
       :ok = Apiary.EditionStubs.HidesNamed.put([:nodes])
 
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.public_id}"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/runs/#{run.number}"))
       assert has_element?(view, "#run-node", "build-01")
       html = view |> element("#run-details") |> render()
       refute html =~ "ci-runner"

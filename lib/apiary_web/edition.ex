@@ -50,6 +50,8 @@ defmodule ApiaryWeb.Edition do
     changed, for the policy pages' "View in …" and Network access's "Change in …".
   - **Paths**: `c:reserved_slugs/0`, the names the edition's paths take beyond the
     core's (`ApiaryWeb.ReservedSlugs`).
+  - **Documentation**: `c:admin_guides/0`, the edition's guides that only instance admins
+    read at `/docs`, beyond the core's (`ApiaryWeb.DocsController.admin_guides/0`).
   - **Gateways and nodes**: `c:gateway_reach_sentence/2`, what the pages of an
     organisation's gateways say of the workspaces whose nodes can use them;
     `c:nodes_managed_by_sentence/1`, what the nodes' pages say of who manages the nodes
@@ -226,11 +228,11 @@ defmodule ApiaryWeb.Edition do
   - `:empty`, the body of the Gateways page's empty state, under No gateways yet.
 
   The core's sentences name the workspaces of `organisation` alone, as the core's
-  gateways serve no other organisation's: "Nodes in any workspace of Acme can use the
-  gateways added here. A workspace can also add gateways that only its nodes use.",
-  "Nodes in any workspace of Acme can use it." and "The default gateway for workspaces in
-  Acme that don't set one.", and for `:empty`, "Add one so the nodes in Acme's workspaces
-  can send runs through it.". An edition whose organisation-level gateways also serve the
+  gateways serve no other organisation's: "Machines and pools in any workspace of Acme
+  can use the gateways added here. A workspace can also add gateways that only its
+  machines and pools use.", "Machines and pools in any workspace of Acme can use it." and
+  "The default gateway for workspaces in Acme that don't set one.", and for `:empty`,
+  "Add one so the machines and pools in Acme's workspaces can send runs through it.". An edition whose organisation-level gateways also serve the
   workspaces of other organisations (`c:Apiary.Edition.served_organisations/1`) says so
   in its answer.
   """
@@ -335,6 +337,18 @@ defmodule ApiaryWeb.Edition do
             }
 
   @doc """
+  The edition's guides that only instance admins read at `/docs`, by file name, such as
+  `"admin.md"`: beyond the core's, `install.md` and `hosting-checklist.md`, which every
+  edition keeps. The list extends the core's and never replaces it
+  (`ApiaryWeb.DocsController.admin_guides/0`), so an edition cannot drop one of the core's
+  by mistake. `mix docs.all` builds them only into the tree for instance admins, served at
+  `/docs/admin`, and leaves them out of the public tree, its sidebar and its search; a
+  link to one from a public guide becomes the link's words there. The core's list is
+  empty.
+  """
+  @callback admin_guides() :: [String.t()]
+
+  @doc """
   The product's name, as the edition names it, "Qory Apiary" in the core's: where no
   instance admin set one in Instance settings › General, the name on the button of the
   Qory Apiary menu and in the menu's names (`ApiaryWeb.Layouts.brand_menu/1`,
@@ -378,6 +392,7 @@ defmodule ApiaryWeb.Edition do
     activity_actor: 2,
     above_policy_link: 1,
     reserved_slugs: 0,
+    admin_guides: 0,
     product_name: 0,
     gettext_backend: 0,
     gateway_reach_sentence: 2,

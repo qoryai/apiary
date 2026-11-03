@@ -140,6 +140,13 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"instance.configure", :admin, "/instance/configuration", "save",
        %{"part" => "invitations", "config" => %{"invitations_per_day" => "50"}},
        answer: :not_found_at_mount},
+      # So is the support address.
+      {:"instance.support_save", :owner, "/instance/general", "save_support",
+       %{"support" => %{"support_address" => "support@example.com"}},
+       answer: :not_found_at_mount},
+      {:"instance.support_save", :admin, "/instance/general", "save_support",
+       %{"support" => %{"support_address" => "support@example.com"}},
+       answer: :not_found_at_mount},
 
       # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",
@@ -282,63 +289,64 @@ defmodule ApiaryWeb.RefusalsRows do
 
       # The nodes. Without the page or the confirmation open, from a member: refused, as
       # the page offers them no button.
-      {:"node.create", :member, "/:org/:workspace/nodes", "create",
+      {:"node.create", :member, "/:org/:workspace/machines", "create",
        %{"node" => %{"name" => "build-09"}}},
-      {:"node.create", :demoted_admin, "/:org/:workspace/nodes/new", "create",
+      {:"node.create", :demoted_admin, "/:org/:workspace/machines/new", "create",
        %{"node" => %{"name" => "build-09"}}},
-      {:"node.create", :removed_member, "/:org/:workspace/nodes", "create",
+      {:"node.create", :removed_member, "/:org/:workspace/machines", "create",
        %{"node" => %{"name" => "build-09"}}},
-      {:"node.edit", :member, "/:org/:workspace/nodes/:node/settings", "save",
+      {:"node.edit", :member, "/:org/:workspace/machines/:node/settings", "save",
        %{"node" => %{"name" => "renamed"}}},
-      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:node/settings", "save",
+      {:"node.edit", :demoted_admin, "/:org/:workspace/machines/:node/settings", "save",
        %{"node" => %{"name" => "renamed"}}},
-      {:"node.edit", :removed_member, "/:org/:workspace/nodes/:node", "save",
+      {:"node.edit", :removed_member, "/:org/:workspace/machines/:node", "save",
        %{"node" => %{"name" => "renamed"}}},
       # A pool's limit, which only a change of it asks.
-      {:"node.set_limit", :member, "/:org/:workspace/nodes/:pool/settings", "save",
+      {:"node.set_limit", :member, "/:org/:workspace/machines/:pool/settings", "save",
        %{"node" => %{"instance_limit" => "3"}}},
-      {:"node.set_limit", :demoted_admin, "/:org/:workspace/nodes/:pool/settings", "save",
+      {:"node.set_limit", :demoted_admin, "/:org/:workspace/machines/:pool/settings", "save",
        %{"node" => %{"instance_limit" => "3"}}},
-      {:"node.set_limit", :demoted_admin, "/:org/:workspace/nodes/new-pool", "create",
+      {:"node.set_limit", :demoted_admin, "/:org/:workspace/machines/new-pool", "create",
        %{"node" => %{"name" => "spot-09", "instance_limit" => "3"}}},
-      {:"node.set_limit", :other_owner, "/:other_org/:other_ws/nodes/:pool/settings", "save",
+      {:"node.set_limit", :other_owner, "/:other_org/:other_ws/machines/:pool/settings", "save",
        %{"node" => %{"instance_limit" => "3"}}, answer: :not_found_at_mount},
-      {:"node.delete", :member, "/:org/:workspace/nodes/:node/settings", "delete", %{}},
-      {:"node.delete", :demoted_admin, "/:org/:workspace/nodes/:node/settings/delete", "delete",
-       %{}},
+      {:"node.delete", :member, "/:org/:workspace/machines/:node/settings", "delete", %{}},
+      {:"node.delete", :demoted_admin, "/:org/:workspace/machines/:node/settings/delete",
+       "delete", %{}},
       # A node's page is its path: another organisation's node is a 404 as the page opens.
-      {:"node.edit", :other_owner, "/:other_org/:other_ws/nodes/:node/settings", "save",
+      {:"node.edit", :other_owner, "/:other_org/:other_ws/machines/:node/settings", "save",
        %{"node" => %{"name" => "renamed"}}, answer: :not_found_at_mount},
-      {:"node.delete", :other_owner, "/:other_org/:other_ws/nodes/:node/settings/delete",
+      {:"node.delete", :other_owner, "/:other_org/:other_ws/machines/:node/settings/delete",
        "delete", %{}, answer: :not_found_at_mount},
       # A gateway: made on New gateway, its default mark moved by Make default on its
       # Overview, and deleted from its Settings; a node's choice of gateway, saved with it.
-      {:"node.create", :demoted_admin, "/:org/:workspace/nodes/new-gateway", "create",
+      {:"node.create", :demoted_admin, "/:org/:workspace/machines/new-gateway", "create",
        %{"node" => %{"name" => "edge-09", "url" => "https://edge-09.example.com"}}},
-      {:"node.edit", :member, "/:org/:workspace/nodes/:gateway", "make_default", %{}},
-      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:second_gateway", "make_default",
+      {:"node.edit", :member, "/:org/:workspace/machines/:gateway", "make_default", %{}},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/machines/:second_gateway", "make_default",
        %{}},
-      {:"node.edit", :removed_member, "/:org/:workspace/nodes/:second_gateway", "make_default",
+      {:"node.edit", :removed_member, "/:org/:workspace/machines/:second_gateway", "make_default",
        %{}},
-      {:"node.edit", :other_owner, "/:other_org/:other_ws/nodes/:second_gateway", "make_default",
-       %{}, answer: :not_found_at_mount},
-      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:gateway/settings", "save",
+      {:"node.edit", :other_owner, "/:other_org/:other_ws/machines/:second_gateway",
+       "make_default", %{}, answer: :not_found_at_mount},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/machines/:gateway/settings", "save",
        %{"node" => %{"url" => "https://renamed.example.com"}}},
-      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:node/settings", "save",
+      {:"node.edit", :demoted_admin, "/:org/:workspace/machines/:node/settings", "save",
        %{"node" => %{"gateway" => "default"}}},
-      {:"node.delete", :member, "/:org/:workspace/nodes/:second_gateway/settings", "delete", %{}},
-      {:"node.delete", :demoted_admin, "/:org/:workspace/nodes/:second_gateway/settings/delete",
-       "delete", %{}},
-      {:"node.delete", :other_owner,
-       "/:other_org/:other_ws/nodes/:second_gateway/settings/delete", "delete", %{},
-       answer: :not_found_at_mount},
-      {:"node.clear_instance", :member, "/:org/:workspace/nodes/:node", "clear_instance", %{}},
-      {:"node.clear_instance", :demoted_admin,
-       "/:org/:workspace/nodes/:node/instances/:instance/clear", "clear_instance", %{}},
-      {:"node.clear_instance", :removed_member, "/:org/:workspace/nodes/:node", "clear_instance",
+      {:"node.delete", :member, "/:org/:workspace/machines/:second_gateway/settings", "delete",
        %{}},
+      {:"node.delete", :demoted_admin,
+       "/:org/:workspace/machines/:second_gateway/settings/delete", "delete", %{}},
+      {:"node.delete", :other_owner,
+       "/:other_org/:other_ws/machines/:second_gateway/settings/delete", "delete", %{},
+       answer: :not_found_at_mount},
+      {:"node.clear_instance", :member, "/:org/:workspace/machines/:node", "clear_instance", %{}},
+      {:"node.clear_instance", :demoted_admin,
+       "/:org/:workspace/machines/:node/instances/:instance/clear", "clear_instance", %{}},
+      {:"node.clear_instance", :removed_member, "/:org/:workspace/machines/:node",
+       "clear_instance", %{}},
       {:"node.clear_instance", :other_owner,
-       "/:other_org/:other_ws/nodes/:node/instances/:instance/clear", "clear_instance", %{},
+       "/:other_org/:other_ws/machines/:node/instances/:instance/clear", "clear_instance", %{},
        answer: :not_found_at_mount},
 
       # A node's access keys and enrolment codes, its Access key tab. Without the page or
@@ -349,45 +357,46 @@ defmodule ApiaryWeb.RefusalsRows do
       # which this case reads as alerts shown. The context's refusal of a demoted admin's
       # key is the Access key tab's test "an admin made a member since Generate a key
       # opened is refused by the context".
-      {:"access_key.add", :member, "/:org/:workspace/nodes/:node/access-key", "generate_key",
+      {:"access_key.add", :member, "/:org/:workspace/machines/:node/access-key", "generate_key",
        %{
          "key" => %{"label" => "sneaky", "public_key" => :public_key}
        }},
-      {:"access_key.add", :removed_member, "/:org/:workspace/nodes/:node/access-key",
+      {:"access_key.add", :removed_member, "/:org/:workspace/machines/:node/access-key",
        "generate_key",
        %{
          "key" => %{"label" => "sneaky", "public_key" => :public_key}
        }},
-      {:"access_key.add", :demoted_admin, "/:org/:workspace/nodes/:node/access-key",
+      {:"access_key.add", :demoted_admin, "/:org/:workspace/machines/:node/access-key",
        "generate_key",
        %{
          "key" => %{"label" => "sneaky", "public_key" => :public_key}
        }},
       # Get the command, on the tab: one click, no form.
-      {:"access_key.create_code", :member, "/:org/:workspace/nodes/:node/access-key",
+      {:"access_key.create_code", :member, "/:org/:workspace/machines/:node/access-key",
        "create_code", %{}},
-      {:"access_key.create_code", :demoted_admin, "/:org/:workspace/nodes/:node/access-key",
+      {:"access_key.create_code", :demoted_admin, "/:org/:workspace/machines/:node/access-key",
        "create_code", %{}},
       # Get the command, in the overview's first-run box, which a member is offered no
       # button of: the page refuses them.
       {:"access_key.create_code", :member, "/:org/:workspace", "get_command", %{}},
-      {:"access_key.revoke", :member, "/:org/:workspace/nodes/:node/access-key", "revoke", %{}},
+      {:"access_key.revoke", :member, "/:org/:workspace/machines/:node/access-key", "revoke",
+       %{}},
       {:"access_key.revoke", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/keys/:node_key/revoke", "revoke", %{}},
-      {:"access_key.cancel_code", :member, "/:org/:workspace/nodes/:node/access-key",
+       "/:org/:workspace/machines/:node/access-key/keys/:node_key/revoke", "revoke", %{}},
+      {:"access_key.cancel_code", :member, "/:org/:workspace/machines/:node/access-key",
        "revoke_code", %{}},
       {:"access_key.cancel_code", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{}},
+       "/:org/:workspace/machines/:node/access-key/codes/:code/revoke", "revoke_code", %{}},
       # A node's page is its path: another organisation's node is a 404 as the page opens.
-      {:"access_key.add", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key/generate",
-       "generate_key",
+      {:"access_key.add", :other_owner,
+       "/:other_org/:other_ws/machines/:node/access-key/generate", "generate_key",
        %{
          "key" => %{"label" => "sneaky", "public_key" => :public_key}
        }, answer: :not_found_at_mount},
-      {:"access_key.create_code", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key",
+      {:"access_key.create_code", :other_owner, "/:other_org/:other_ws/machines/:node/access-key",
        "create_code", %{}, answer: :not_found_at_mount},
       {:"access_key.cancel_code", :other_owner,
-       "/:other_org/:other_ws/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{},
+       "/:other_org/:other_ws/machines/:node/access-key/codes/:code/revoke", "revoke_code", %{},
        answer: :not_found_at_mount},
 
       # Stored secrets and variables, the workspace's settings' Secrets and variables, whose
@@ -452,7 +461,10 @@ defmodule ApiaryWeb.RefusalsRows do
   # or an adapter's changes (`test/apiary/adapters_test.exs`), or the harness documents
   # and the instance's assignments of harness sources (`test/apiary/stacks_test.exs`,
   # `test/apiary/harnesses_test.exs`), or yet the changes of the work items and of what an
-  # adapter reports, whose pages are not built.
+  # adapter reports, whose pages are not built. A workspace type's default process is
+  # saved on a page that opens for instance admins alone
+  # (`test/apiary/processes/type_templates_test.exs`,
+  # `test/apiary_web/live/instance_live/workspace_types_test.exs`).
   # Turning the instance's mail on is following the test link a save sent, a controller's
   # redirect, not a page's event: the link's tests refuse it to anyone but the instance
   # admin it was sent to (`test/apiary/mail_settings_test.exs`,
@@ -498,7 +510,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"dispatch.claim",
         :"dispatch.dispatched",
         :"dispatch.release",
-        :"dispatch.machine_log"
+        :"dispatch.machine_log",
+        :"dispatch.machine_end"
       ],
       token: [:"invitation.accept"],
       link: [:"instance.mail_on"],
@@ -524,13 +537,17 @@ defmodule ApiaryWeb.RefusalsRows do
         :"harness.unassigned",
         :"work_item.take_in",
         :"work_item.undo",
-        :"work_item.decline",
         :"work_item.close",
         :"work_item.answer",
         :"work_item.confirm",
         :"work_item.explore_again",
         :"work_item.comment",
-        :"work_item.comment_delete"
+        :"work_item.comment_delete",
+        :"process.edit",
+        :"gate.approve",
+        :"artifact.write",
+        :"artifact_type.edit",
+        :"workspace_type.edit"
       ]
     }
   end

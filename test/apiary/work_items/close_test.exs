@@ -51,7 +51,9 @@ defmodule Apiary.WorkItems.CloseTest do
   end
 
   defp claimed!(key) do
-    {:ok, %{dispatch: dispatch}} = Dispatches.claim(key, Dispatches.now())
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
     dispatch
   end
 
@@ -137,15 +139,14 @@ defmodule Apiary.WorkItems.CloseTest do
       end
     end
 
-    test "leaves closed, declined and undone work items as they are", ctx do
+    test "leaves closed and undone work items as they are", ctx do
       at = ~U[2026-10-16 12:00:00.000000Z]
       user_id = ctx.first.user.id
 
       ended =
         for {ref, changes} <- [
               {"acme/shop#1", [state: :closed, closed_at: at, closed_by_id: user_id]},
-              {"acme/shop#2", [state: :declined, declined_at: at, declined_by_id: user_id]},
-              {"acme/shop#3", [state: :undone]}
+              {"acme/shop#2", [state: :undone]}
             ] do
           work_item = taken!(ctx.first, ctx.first_connection, external_ref: ref)
           Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: changes)
@@ -164,6 +165,8 @@ defmodule Apiary.WorkItems.CloseTest do
       other = work_item_fixture(ctx.first)
       refute other.adapter_id == ctx.adapter.id
       run = queue!(other)
+      # With the workflow model, the queue places the work item in its first stage.
+      other = Repo.get!(WorkItem, other.id)
 
       remove!(ctx)
 
@@ -246,7 +249,7 @@ defmodule Apiary.WorkItems.CloseTest do
 
       assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
       assert Repo.all(from d in Dispatch, where: d.dispatch_run_id == ^run.id) == []
-      assert Dispatches.claim(ctx.key, Dispatches.now()) == {:ok, :none}
+      assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
     end
 
     test "a waiting run with a stale dispatch ends closed, and the dispatch run_ended", ctx do

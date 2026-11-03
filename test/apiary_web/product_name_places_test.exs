@@ -36,12 +36,12 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
     9 => "Welcome to Qory Apiary",
     10 => "Welcome to Qory Apiary",
     11 => "Log in to Qory Apiary",
-    12 => "Ask an admin of this Qory Apiary for a password link.",
+    12 => "Contact support for a password link.",
     13 => "New to Qory Apiary?",
-    14 => "This account cannot log in at the moment. Ask the admins of this Qory Apiary.",
-    15 => "This account cannot log in at the moment. Ask the admins of this Qory Apiary.",
+    14 => "Contact support. This account cannot log in at the moment.",
+    15 => "Contact support. This account cannot log in at the moment.",
     16 =>
-      "Password links work once and for a short time. Ask an admin of this Qory Apiary for a new one.",
+      "Contact support for a new password link. Password links work once and for a short time.",
     17 => "Set up Qory Apiary",
     18 => "This Qory Apiary is already set up.",
     19 => "This Qory Apiary is not set up yet: use the set-up link from its install.",
@@ -76,12 +76,12 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
     9 => "Welcome to Acme Agents",
     10 => "Welcome to Acme Agents",
     11 => "Log in to Acme Agents",
-    12 => "Ask an admin of Acme Agents for a password link.",
+    12 => "Contact support for a password link.",
     13 => "New to Acme Agents?",
-    14 => "This account cannot log in at the moment. Ask the admins of Acme Agents.",
-    15 => "This account cannot log in at the moment. Ask the admins of Acme Agents.",
+    14 => "Contact support. This account cannot log in at the moment.",
+    15 => "Contact support. This account cannot log in at the moment.",
     16 =>
-      "Password links work once and for a short time. Ask an admin of Acme Agents for a new one.",
+      "Contact support for a new password link. Password links work once and for a short time.",
     17 => "Set up Acme Agents",
     18 => "Acme Agents is already set up.",
     19 => "Acme Agents is not set up yet: use the set-up link from its install.",
@@ -446,8 +446,7 @@ defmodule ApiaryWeb.ProductNamePlacesTest do
     put_name("Qory Apiary")
     places = places(conn)
     assert places[3] == "Qory Apiary"
-    # A name set: the sentences name it.
-    assert places[12] == "Ask an admin of Qory Apiary for a password link."
+    assert places[11] == "Log in to Qory Apiary"
     assert places.powered.sidebar == ""
     assert places.powered.log_in == ""
 
