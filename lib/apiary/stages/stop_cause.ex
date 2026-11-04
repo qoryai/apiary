@@ -64,11 +64,15 @@ defmodule Apiary.Stages.StopCause do
 
   # failed_after_proposal/1 is why a run of Explore stopped whose registered run failed
   # after it pushed version `version` of its proposal: one line, in the default locale's
-  # words, as the escalation stores it.
+  # words (`ApiaryWeb.Lingo.default_locale/0`) whatever the calling process's locale, as
+  # the escalation stores it.
   @doc false
   @spec failed_after_proposal(pos_integer) :: String.t()
-  def failed_after_proposal(version) when is_integer(version),
-    do: gettext("The run failed after it wrote proposal version %{version}.", version: version)
+  def failed_after_proposal(version) when is_integer(version) do
+    Gettext.with_locale(ApiaryWeb.Gettext, ApiaryWeb.Lingo.default_locale(), fn ->
+      gettext("The run failed after it wrote proposal version %{version}.", version: version)
+    end)
+  end
 
   # set_up_step/1 is the step of the workspace's set-up whose page has the fix for why
   # `run` stopped, `/:org/:workspace/set-up/<step>`, which the fix line names as "the
