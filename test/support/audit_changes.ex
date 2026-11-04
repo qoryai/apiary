@@ -8,7 +8,7 @@ defmodule Apiary.AuditChanges do
 
   import Apiary.AccessKeysFixtures
   import Apiary.AccountsFixtures, only: [unique_user_email: 0, valid_user_attributes: 1]
-  import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4]
+  import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4, refute_personal: 2]
 
   import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1]
 
@@ -68,6 +68,9 @@ defmodule Apiary.AuditChanges do
     :"work_item.confirm",
     :"work_item.explore_again"
   ]
+
+  # The member's answer to the questions of a run, which no entry may keep.
+  @answer "The one at checkout."
 
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
@@ -873,8 +876,32 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: subject_of(work_item), before: before}
   end
 
-  # A member undoes or closes a work item of the workspace, answers the questions
-  # of its run, confirms its run's proposal or asks for another run, about it.
+  # A member answers the questions of a work item's run. The answers are a version of the
+  # questions, a member action of `Apiary.Artifacts.push/5`, so exactly one `artifact.write`
+  # entry by the member, about the work item and with no answer text, comes beside it.
+  def make(:"work_item.answer", %{scope: scope} = ctx) do
+    work_item = prepare(:"work_item.answer", ctx)
+    before = entries()
+    {:ok, _work_item} = attempt(:"work_item.answer", scope, work_item)
+    {kind, id} = subject_of(work_item)
+    user_id = scope.user.id
+
+    [
+      %{
+        actor_kind: :person,
+        actor_id: ^user_id,
+        subject_kind: ^kind,
+        subject_id: ^id,
+        details: %{"type" => "questions"}
+      } = questions
+    ] = Enum.filter(entries() -- before, &(&1.action == "artifact.write"))
+
+    refute_personal(questions, @answer)
+    %{scope: scope, subject: {kind, id}, secret: @answer, before: before ++ [questions]}
+  end
+
+  # A member undoes or closes a work item of the workspace, confirms its run's proposal
+  # or asks for another run, about it.
   def make(action, %{scope: scope} = ctx) when action in @work_item_moves do
     work_item = prepare(action, ctx)
     before = entries()
@@ -1737,7 +1764,7 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"work_item.close", scope, work_item), do: Apiary.WorkItems.close(scope, work_item)
 
   defp attempt(:"work_item.answer", scope, work_item),
-    do: Apiary.WorkItems.answer(scope, work_item, 1, %{"1" => "The one at checkout."})
+    do: Apiary.WorkItems.answer(scope, work_item, 1, %{"1" => @answer})
 
   defp attempt(:"work_item.confirm", scope, work_item),
     do: Apiary.WorkItems.confirm(scope, work_item, 1)
