@@ -44,7 +44,9 @@ defmodule Apiary.Runs.SecretsRequest do
   #     credential names of that run configuration, in its order (the schema already
   #     refuses an empty list or a name twice); then `:secrets_not_allowed` for a key not
   #     allowed stored secrets, of a request that names the run's model key or its work
-  #     entry;
+  #     entry; then `{:error, :not_found}` where `Apiary.Access` refuses the key
+  #     `secret.seal` on the run, for a request that names the model key: a gateway that
+  #     may no longer serve the run's workspace;
   #  8. `{:error, :credential_unavailable}`, a key Qory may not seal for the gateway (the
   #     checks of the provider apply to a request that names the model key): the
   #     provider's row, its secret or the value fails its integrity check or is gone; the
@@ -69,7 +71,9 @@ defmodule Apiary.Runs.SecretsRequest do
   #     (`Apiary.Contract.Ed25519.check_public_key/1`);
   #  9. for a request that names the work entry, after every check above and the model
   #     key's read, its credential is not issued (`Apiary.Runs.WorkCredential.issue/4`):
-  #     `{:error, :unavailable}` for a call to the adapter that timed out or reached no
+  #     `{:error, :not_found}` where `Apiary.Access` refuses the key `run_credential.issue`
+  #     on the run, the `factory` feature off among the causes, with no call and no
+  #     Activity entry; `{:error, :unavailable}` for a call to the adapter that timed out or reached no
   #     one, `{:error, :gone}` for a run that is no longer live after the call,
   #     `{:error, :credential_unavailable}` for every other cause. No database
   #     transaction is open during the call;
@@ -79,7 +83,8 @@ defmodule Apiary.Runs.SecretsRequest do
   #     the run's first credential (`Apiary.Runs.WorkCredential.keep/1`):
   #     `{:error, :credential_unavailable}`.
   #
-  # Each attempt at the work entry's credential, from step 9 on, writes one
+  # Each attempt at the work entry's credential that `Apiary.Access` lets, from step 9 on,
+  # writes one
   # `run_credential.issue` Activity entry: its refusal, or, last before the answer and in
   # one transaction with its apply items and the seal's audit entry, `issued`.
   #
@@ -98,7 +103,7 @@ defmodule Apiary.Runs.SecretsRequest do
 
   require Logger
 
-  alias Apiary.{Audit, Features, Repo, Secrets}
+  alias Apiary.{Access, Audit, Features, Repo, Secrets}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Contract.Ed25519
@@ -163,6 +168,7 @@ defmodule Apiary.Runs.SecretsRequest do
          {:ok, credentials} <- credentials,
          {:ok, %{model: model, work: work} = credentials} <- named(request, credentials),
          :ok <- stored_allowed(model || work, access_key),
+         :ok <- may_seal(run, model, access_key),
          :ok <- sealable(run, model, access_key),
          :ok <- work_sealable(run, work, access_key),
          {:ok, public_key} <- recipient_key(run, access_key),
@@ -237,6 +243,18 @@ defmodule Apiary.Runs.SecretsRequest do
   defp stored_allowed(nil, _access_key), do: :ok
   defp stored_allowed(_model, %AccessKey{allow_secrets: true}), do: :ok
   defp stored_allowed(_model, %AccessKey{}), do: {:error, :secrets_not_allowed}
+
+  # Only a request that names the run's model key seals it: one for `registry` alone asks
+  # nothing here, as the `factory` feature of `secret.seal` may be off under `registry`.
+  # The model key is nil without that feature (`Apiary.Runs.ProviderCredential.applies?/0`).
+  defp may_seal(_run, nil, _access_key), do: :ok
+
+  defp may_seal(%Run{} = run, %{}, access_key) do
+    case Access.check(Scope.for_access_key(access_key), :"secret.seal", run) do
+      :ok -> :ok
+      {:error, _reason} -> {:error, :not_found}
+    end
+  end
 
   ## The run, as a reload reads it
 

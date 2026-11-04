@@ -6,6 +6,7 @@ defmodule Apiary.GatewayServingTest do
   # (`Apiary.AccessKeys.place_in_use?/2`). Not async: the instance has one gateway in use.
   use Apiary.DataCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -16,7 +17,7 @@ defmodule Apiary.GatewayServingTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.Handover
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.{Run, Sender}
+  alias Apiary.Runs.{Run, Sender, WorkCredential}
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -277,6 +278,70 @@ defmodule Apiary.GatewayServingTest do
       assert Access.may_serve?(gateway, run_fixture(ctx.scope))
       refute Access.may_serve?(gateway, run_fixture(ctx.other))
       refute Access.may_serve?(node_fixture(ctx.scope), run_fixture(ctx.scope))
+    end
+  end
+
+  describe "the credentials of a run" do
+    @describetag needs: :factory
+
+    @actions [:"secret.seal", :"run_credential.issue"]
+
+    test "are a gateway's that may serve the run, at any level", ctx do
+      for gateway_scope <- [
+            key_scope(ctx.scope, gateway_fixture(ctx.scope)),
+            key_scope(ctx.scope, organisation_gateway_fixture(ctx.scope)),
+            Scope.for_access_key(installed_key_fixture(instance_gateway_fixture()).access_key)
+          ],
+          action <- @actions do
+        assert Access.check(gateway_scope, action, run_fixture(ctx.scope)) == :ok
+      end
+    end
+
+    test "are not found to a gateway that may not serve the run", ctx do
+      for gateway_scope <- [
+            key_scope(ctx.other, gateway_fixture(ctx.other)),
+            key_scope(ctx.other, organisation_gateway_fixture(ctx.other))
+          ],
+          action <- @actions do
+        assert Access.check(gateway_scope, action, run_fixture(ctx.scope)) == {:error, :not_found}
+      end
+    end
+
+    test "are no pool's key, and no person's", ctx do
+      run = run_fixture(ctx.scope)
+      pool_scope = key_scope(ctx.scope, pool_fixture(ctx.scope))
+
+      for action <- @actions do
+        assert Access.check(pool_scope, action, run) == {:error, :forbidden}
+        assert Access.check(ctx.scope, action, run) == {:error, :forbidden}
+      end
+    end
+
+    test "issue/4 makes no call and writes no entry for a gateway that may not serve the run",
+         ctx do
+      run = run_fixture(ctx.scope)
+      %{access_key: key} = access_key_fixture(ctx.other, node: gateway_fixture(ctx.other))
+      key = Repo.preload(Repo.get!(AccessKey, key.id), [:workspace, :node])
+
+      row = %Apiary.Runs.RunCredential{purpose: :work, connection_id: nil, adapter_id: nil}
+
+      {answer, log} =
+        ExUnit.CaptureLog.with_log(fn ->
+          WorkCredential.issue(run, row, key, System.os_time(:second))
+        end)
+
+      assert answer == {:error, :not_found}
+      assert log =~ run.node_run_id
+      refute Repo.exists?(from e in Apiary.Audit.Entry, where: e.action == "run_credential.issue")
+    end
+
+    test "record_issued/3 is not recorded for a gateway that may not serve the run", ctx do
+      run = run_fixture(ctx.scope)
+      %{access_key: key} = access_key_fixture(ctx.other, node: gateway_fixture(ctx.other))
+      key = Repo.preload(Repo.get!(AccessKey, key.id), [:workspace, :node])
+
+      assert WorkCredential.record_issued(key, run, %{issued: %{}, row: nil, place: nil}) ==
+               {:error, :not_recorded}
     end
   end
 end

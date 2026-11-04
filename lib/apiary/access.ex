@@ -432,16 +432,18 @@ defmodule Apiary.Access do
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     ),
     # A gateway's secrets request: a run's model key, sealed to the gateway's access key
-    # (`Apiary.Runs.SecretsRequest`). No other rule applies here: the secrets request
-    # checks the run and the key it verified under.
+    # (`Apiary.Runs.SecretsRequest`), which asks this of the run for a request that names
+    # the key. The key is held to what its gateway may serve (`key_subject/4`). The run key,
+    # the sender and `allow_secrets` are the secrets request's to check: data of the run and
+    # of the key it verified under.
     Action.new(:"secret.seal", "seal a run's model key to the gateway's access key",
       feature: :factory,
       roles: [:access_key]
     ),
     # A gateway's secrets request for a run's work entry: a credential the entry's adapter
-    # issues for the run, sealed to the gateway's access key (`Apiary.Runs.WorkCredential`).
-    # Each attempt is recorded, issued or refused. No other rule applies here, as for
-    # `secret.seal`.
+    # issues for the run, sealed to the gateway's access key (`Apiary.Runs.WorkCredential`),
+    # which asks this of the run before the call and again as it records the credential.
+    # Each attempt is recorded, issued or refused. The key is held as for `secret.seal`.
     Action.new(
       :"run_credential.issue",
       "issue a run's work credential from its adapter and seal it to the gateway's access key",
