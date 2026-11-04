@@ -468,30 +468,21 @@ defmodule Apiary.Artifacts.Format do
 
   ## A proposal's sources
 
-  # `sources.json`: at most `@sources_bytes`, then one JSON document within the bounds of
-  # a standard type's document, valid against the proposal sources format.
+  # `sources.json`: at most `@sources_bytes`, then the structured check, against the
+  # proposal sources format, within the bounds of a standard type's document.
   defp sources(path) do
     with {:ok, %File.Stat{size: size}} <- stat(path),
-         true <- size <= @sources_bytes || {:error, {:schema, refused(:limits)}},
-         {:ok, bytes} <- read(path),
-         {:ok, document} <- decode(bytes),
-         :ok <- sources_valid(document) do
-      {:ok, @json}
-    end
-  end
-
-  defp sources_valid(document) do
-    limits = Map.fetch!(@unbounded_lists, "proposal-sources") ++ @standard_limits
-
-    if Bounds.within?(document, limits) do
-      schema = Schema.file!(@sources_schema, &Schema.code_point_lengths/1)
-
-      case JSV.validate(document, schema, cast: false) do
-        {:ok, _document} -> :ok
-        {:error, %JSV.ValidationError{} = error} -> {:error, {:schema, SchemaError.first(error)}}
-      end
-    else
-      {:error, {:schema, refused(:limits)}}
+         true <- size <= @sources_bytes || {:error, {:schema, refused(:limits)}} do
+      check(
+        %Type{
+          standard: true,
+          name: "proposal-sources",
+          base_view: :structured,
+          schema_path: @sources_schema
+        },
+        @sources,
+        path
+      )
     end
   end
 
