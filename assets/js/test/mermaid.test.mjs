@@ -199,6 +199,12 @@ test("the vendored Mermaid keeps htmlLabels off against a front matter config", 
   assert.equal(config.theme, "base")
 })
 
+test("the site themeCSS makes the edge label box opaque in flowcharts and state diagrams", () => {
+  const {themeCSS} = settings({})
+  assert.match(themeCSS, /\.edgeLabel rect[,\s]/)
+  assert.match(themeCSS, /\.edgeLabel \.label rect\s*\{\s*opacity: 1;\s*\}/)
+})
+
 test("does not draw a flowchart node's image, written in any way YAML reads", () => {
   assert.equal(loads('flowchart LR\n  A@{ img: "/acme/logo.png", label: "Logo" }'), true)
   assert.equal(loads('flowchart LR\n  A@{\n  "IMG": "https://example.com/a.png"\n  }'), true)

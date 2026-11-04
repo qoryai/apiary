@@ -133,9 +133,10 @@ export const dompurifyConfig = {
 }
 
 // The CSS the hook adds to each drawing: an edge label's box opaque, so the edge's line
-// does not show through its text. Mermaid's flowchart theme draws that box half
-// transparent.
-export const labelCSS = ".edgeLabel rect { opacity: 1; }"
+// does not show through its text. Mermaid's flowchart and state themes draw that box
+// half transparent; the state theme's rule is .edgeLabel .label rect, so the hook's
+// rule has that selector too.
+export const labelCSS = ".edgeLabel rect, .edgeLabel .label rect { opacity: 1; }"
 
 // What the hook passes to mermaid.initialize, with the theme's colours `themeVariables`.
 export const settings = themeVariables => ({
