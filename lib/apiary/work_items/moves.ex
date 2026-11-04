@@ -819,6 +819,12 @@ defmodule Apiary.WorkItems.Moves do
   # The places where no run is running, so a member may write review comments.
   @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
 
+  # A member's name in the questions and the review comments: at most 160 characters,
+  # with none of the white space and the characters `$defs/line` refuses
+  # (`priv/schemas/artifacts/questions.schema.json`), each run of them made one space.
+  @member_name 160
+  @not_in_line ~r/[\s\x{0}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]+/u
+
   # answer/4 gives the answers to the open questions, or, with a text where the latest
   # run's proposal waits, a review comment sent at once (the moduledoc).
   @doc false
@@ -1031,8 +1037,25 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
-  # The member as the explore input names a member (`Apiary.Dispatches.Inputs`).
-  defp person_name(%Scope{user: %{id: id}}), do: Apiary.Dispatches.Inputs.person_name(id)
+  # The member as the explore input names a member (`Apiary.Dispatches.Inputs`), as the
+  # questions and the review comments formats take a member's name: one line of 1 to 160
+  # characters (`member.name`). Each run of white space, and of the characters a line
+  # refuses, is one space; the ends are trimmed; the name is cut to 160 characters (code
+  # points). An empty name is the input's words for a former member. So a member's write
+  # never fails the format check for the name.
+  defp person_name(%Scope{user: %{id: id}}) do
+    name =
+      id
+      |> Apiary.Dispatches.Inputs.person_name()
+      |> String.replace(@not_in_line, " ")
+      |> String.trim()
+      |> String.codepoints()
+      |> Enum.take(@member_name)
+      |> Enum.join()
+      |> String.trim()
+
+    if name == "", do: Apiary.Dispatches.Inputs.former_member(), else: name
+  end
 
   defp comment_text(text) do
     case Proposal.check_comment(text) do

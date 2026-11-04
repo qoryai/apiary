@@ -384,6 +384,44 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
     end
   end
 
+  describe "a member's name" do
+    # The local part of the member's email address, which the name is, set to 201
+    # characters over three lines with tabs and a line separator: as the format takes a
+    # member's name, one line of at most 160 characters.
+    defp long_name!(scope) do
+      local = "  Ann\r\n\tExample\u2028" <> String.duplicate("é", 200)
+
+      {1, _rows} =
+        Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^scope.user.id),
+          set: [email: local <> "@example.com"]
+        )
+
+      "Ann Example " <> String.duplicate("é", 148)
+    end
+
+    test "is one line of 160 characters in a review comment and a reply", %{scope: scope} do
+      work_item = proposed!(scope)
+      name = long_name!(scope)
+      assert String.length(name) == 160
+
+      assert {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      assert [%{"by" => %{"name" => ^name}}] = review_comments(work_item)
+
+      assert {:ok, _} = WorkItems.reply(scope, work_item, 1, "c1", "And name the rule.")
+      assert [%{"replies" => [%{"by" => %{"name" => ^name}}]}] = review_comments(work_item)
+    end
+
+    test "is one line of 160 characters in an answer", %{scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result(["Which basket?"]))
+      name = long_name!(scope)
+
+      assert {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The small one."})
+
+      assert {_version, %{"questions" => [%{"answer" => %{"by" => %{"name" => ^name}}}]}} =
+               Apiary.Explore.Questions.newest(reload(work_item))
+    end
+  end
+
   describe "a newest version that cannot be read" do
     # The stored copy of the version's one file moved away until the test ends, as a store
     # that cannot read it. Each document here has the member's name or a unique number, so
