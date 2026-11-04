@@ -967,7 +967,10 @@ defmodule Apiary.Artifacts.FormatTest do
             empty <> "<?pi x?>",
             closed <> "text",
             empty <> "<![CDATA[x]]>",
-            empty <> empty
+            empty <> empty,
+            closed <> "\u00A0",
+            closed <> "\f",
+            empty <> "\n\u3000"
           ] do
         assert {:error, {:svg_content, "everything after the end of the svg element"}} =
                  check(context, "proposal", "a.svg", bytes),
@@ -975,6 +978,7 @@ defmodule Apiary.Artifacts.FormatTest do
       end
 
       assert {:error, :format} = check(context, "mockup", "a.svg", closed <> "<!-- x -->")
+      assert {:error, :format} = check(context, "mockup", "a.svg", closed <> "\u00A0")
     end
 
     test "refuses an element that declares a prefix or xmlns twice, as :svg_format",

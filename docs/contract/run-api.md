@@ -306,7 +306,7 @@ Checks, in order, after the checks of every request:
      values get the CSS checks below. Every other attribute is refused, such as
      `target`, `ping`, `src`, `cursor`, `xml:base` and every `on…` attribute.
    - Structure:
-     - nothing but white space after the end of the root `svg` element;
+     - nothing but spaces, tabs, CRs and LFs after the end of the root `svg` element;
      - `title`, `desc` and `style` contain text only;
      - a CDATA section appears only inside `style`;
      - no comment's text starts with `>` or `->`, as in `<!-->` or `<!--->`;

@@ -57,8 +57,8 @@ defmodule Apiary.Artifacts.Format do
   #         ping attribute"); `href` and `xlink:href` only on `use`, `a`, `textPath`,
   #         `linearGradient`, `radialGradient` and `pattern`, and only `#` and a name
   #         ("the href attribute");
-  #       - nothing but white space after the root's end ("everything after the end of the
-  #         svg element");
+  #       - nothing but spaces, tabs, CRs and LFs after the root's end ("everything
+  #         after the end of the svg element");
   #       - `title`, `desc` and `style` contain text only ("the g element inside the desc
   #         element"); a CDATA section only inside `style` ("the CDATA section in the
   #         desc element"); no comment whose text starts with `>` or `->` ("the comment
@@ -197,7 +197,7 @@ defmodule Apiary.Artifacts.Format do
   # `desc` as HTML, so a child element there would be an HTML element.
   @svg_text_only ~w(title desc style)
 
-  # The part refused for anything but white space after the root's end.
+  # The part refused for anything but spaces, tabs, CRs and LFs after the root's end.
   @svg_after "everything after the end of the svg element"
 
   # The namespace of HTML, named in the part refused.
@@ -674,7 +674,7 @@ defmodule Apiary.Artifacts.Format do
   defp strict({:endElement, _uri, _name, _qualified}, {[_closed | open], style}),
     do: {:safe, {open, style}}
 
-  # After the root's end, only white space.
+  # After the root's end, only XML white space: space, tab, CR and LF.
   defp strict(event, :after) do
     case event do
       {:ignorableWhitespace, _text} -> {:safe, :after}
@@ -786,8 +786,10 @@ defmodule Apiary.Artifacts.Format do
   defp shorten(name),
     do: if(String.length(name) > 64, do: String.slice(name, 0, 64) <> "…", else: name)
 
-  defp blank?(rest) when is_binary(rest), do: String.trim(rest) == ""
-  defp blank?(rest) when is_list(rest), do: rest |> List.to_string() |> String.trim() == ""
+  # XML allows only space, tab, CR and LF after the root; a browser fails to show a file
+  # with other white space there, such as U+00A0 or a form feed.
+  defp blank?(rest) when is_binary(rest), do: Regex.match?(~r/\A[ \t\r\n]*\z/, rest)
+  defp blank?(rest) when is_list(rest), do: rest |> List.to_string() |> blank?()
   defp blank?(_rest), do: false
 
   ## A proposal's sources
