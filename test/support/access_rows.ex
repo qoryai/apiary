@@ -13,6 +13,8 @@ defmodule Apiary.AccessRows do
                     workspace: its queue
       adapter_key   an adapter of the instance, with an access key enrolled on it,
                     asked of that adapter
+      diagnostics_key
+                    a diagnostics key of the instance, asked of a run of the place
       instance      the instance itself, in a job no person enqueued
       instance_admin
                     an instance admin: an owner of the instance's organisation
@@ -54,7 +56,9 @@ defmodule Apiary.AccessRows do
   import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
 
+  alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Nodes.Node
 
   @owners [:owner]
   # An instance action of no feature, and one of a feature, which is asked of the instance:
@@ -73,6 +77,7 @@ defmodule Apiary.AccessRows do
       :access_key,
       :pool_key,
       :adapter_key,
+      :diagnostics_key,
       :instance,
       :feature_off,
       :hidden,
@@ -167,6 +172,7 @@ defmodule Apiary.AccessRows do
       {:"time_limit.edit", yes: @owners ++ [:admin]},
       {:"run.post_events", yes: [:access_key, :pool_key, :hidden]},
       {:"run_configuration.fetch", yes: [:access_key, :pool_key, :hidden]},
+      {:"run.read_diagnostics", yes: [:diagnostics_key, :hidden], on: :run},
       {:"secret.seal", yes: [:access_key, :hidden]},
       {:"run_credential.issue", yes: [:access_key, :hidden]},
       {:"adapter.read", yes: @owners ++ [:member, :admin]},
@@ -256,11 +262,19 @@ defmodule Apiary.AccessRows do
         access_key: Scope.for_access_key(key),
         pool_key: Scope.for_access_key(pool_key),
         adapter_key: Scope.for_access_key(adapter_key),
+        diagnostics_key: Scope.for_access_key(diagnostics_key()),
         instance: Scope.for_instance(home.organisation, home.workspace),
         instance_admin: instance_admin,
         instance_org_admin: member_fixture(instance_admin, :admin).scope
       }
     }
+  end
+
+  # A diagnostics key as the signed request carries it: `Apiary.Access` reads its node's
+  # kind and its place, and no row.
+  defp diagnostics_key do
+    id = Ecto.UUID.generate()
+    %AccessKey{node_id: id, node: %Node{id: id, kind: :diagnostics}}
   end
 
   @doc """
@@ -277,9 +291,10 @@ defmodule Apiary.AccessRows do
   not found outside the instance's organisation, and forbidden to anyone there but an
   instance admin, and to the instance's scope on the mail settings; a feature that is off or hidden is not found, and so is a hidden part, anything of another organisation, an
   organisation that does not exist yet, which is no place, an adapter, which is the
-  instance's, to anyone but its key, to an adapter's key, anything but that adapter, and,
-  to a node pool's key, anything but its workspace: it is asked of no node here, and the
-  organisation is beyond its workspace.
+  instance's, to anyone but its key, to an adapter's key, anything but that adapter, to a
+  diagnostics key, anything but the diagnostics of a run, and, to a node pool's key,
+  anything but its workspace: it is asked of no node here, and the organisation is beyond
+  its workspace. A run of its workspace is in its place, and the role refuses it.
   """
   @spec refusal(atom, atom, term) :: :not_found | :forbidden | nil
   def refusal(action, actor, subject) do
@@ -308,6 +323,12 @@ defmodule Apiary.AccessRows do
 
       actor == :adapter_key and not match?(%Apiary.Nodes.Node{kind: :adapter}, subject) ->
         :not_found
+
+      actor == :diagnostics_key ->
+        :not_found
+
+      actor == :pool_key and match?(%Apiary.Runs.Run{}, subject) ->
+        :forbidden
 
       actor == :pool_key and not match?(%Apiary.Organisations.Workspace{}, subject) ->
         :not_found

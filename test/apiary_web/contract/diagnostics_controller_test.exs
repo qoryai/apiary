@@ -223,6 +223,17 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       end
     end
 
+    test "answers a run of a workspace marked for deletion", %{key: key, seed: seed} do
+      %{scope: other} = sign_up_fixture()
+      workspace = workspace_fixture(other.organisation)
+      run = run_fixture(workspace_scope(other.user, workspace), %{public_id: Run.new_public_id()})
+      {:ok, _marked} = Apiary.Deletion.delete_workspace(other, workspace.id, workspace.slug)
+
+      conn = diagnose(key.key_id, seed, run.public_id)
+      assert conn.status == 200, conn.resp_body
+      assert Jason.decode!(conn.resp_body)["run"]["id"] == run.public_id
+    end
+
     test "a number of no run, above the most, with a leading zero or a mark is not found",
          %{key: key, seed: seed, run: run} do
       %{rows: [[highest]]} = Repo.query!("SELECT max(number) FROM runs")

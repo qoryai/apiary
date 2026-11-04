@@ -431,6 +431,13 @@ defmodule Apiary.Access do
       roles: [:access_key, :pool_key],
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     ),
+    # A diagnostics key's one action, asked of a run of any organisation
+    # (`ApiaryWeb.Contract.DiagnosticsController`, `key_subject/4`).
+    Action.new(:"run.read_diagnostics", "read the diagnostics of a run with a diagnostics key",
+      feature: :observability,
+      roles: [:diagnostics_key],
+      audited: {:not, @read}
+    ),
     # A gateway's secrets request: a run's model key, sealed to the gateway's access key
     # (`Apiary.Runs.SecretsRequest`), which asks this of the run for a request that names
     # the key. The key is held to what its gateway may serve (`key_subject/4`). The run key,
@@ -795,6 +802,7 @@ defmodule Apiary.Access do
     owner: "a person at owner, in every workspace",
     access_key: "a node or a gateway, with a key of the workspace",
     pool_key: "a node pool, with a key of the workspace",
+    diagnostics_key: "a diagnostics key of the instance, on any run of it",
     adapter_key: "an adapter of the instance, with a key enrolled on it, on that adapter",
     instance: "the instance itself, in a job no person enqueued"
   ]
@@ -1086,8 +1094,8 @@ defmodule Apiary.Access do
   @type action :: atom
 
   @typedoc """
-  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key`, `:pool_key`
-  and `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
+  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key`, `:pool_key`,
+  `:adapter_key`, `:diagnostics_key` and `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
   """
   @type role :: atom
 
@@ -1779,6 +1787,11 @@ defmodule Apiary.Access do
     end
   end
 
+  # A diagnostics key reads the diagnostics of a run, wherever it is (`subject_place/3`),
+  # and takes nothing else, on nothing else.
+  defp key_subject(:diagnostics_key, _scope, :"run.read_diagnostics", %Run{}), do: :ok
+  defp key_subject(:diagnostics_key, _scope, _action, _subject), do: {:error, :not_found}
+
   defp key_subject(_role, _scope, _action, _subject), do: :ok
 
   # Whether `gateway`, not deleted, may serve the workspace at this place: one of the
@@ -1898,13 +1911,28 @@ defmodule Apiary.Access do
        when action in @gateway_actions,
        do: place(scope)
 
+  # A run asked of a diagnostics key is asked of at the instance, where the key is, whatever
+  # organisation and workspace the run is in. `key_subject/4` holds the key to that action.
+  defp subject_place(
+         %Scope{
+           access_key: %AccessKey{
+             organisation_id: nil,
+             workspace_id: nil,
+             node: %Node{kind: :diagnostics, organisation_id: nil, workspace_id: nil}
+           }
+         },
+         :"run.read_diagnostics",
+         %Run{}
+       ),
+       do: {nil, nil}
+
   defp subject_place(_scope, _action, subject), do: place(subject)
 
-  # The key of an adapter, or of the instance's pool or gateway, has no organisation and no
-  # workspace: it is where its node is, and where nothing else of an organisation is: the
-  # instance, which no other scope is at. It reaches nothing else there: `key_subject/4`
-  # holds an adapter's key to its adapter, and a pool's key to its pool and the dispatches
-  # its pool claimed.
+  # The key of an adapter, of the instance's pool or gateway, or a diagnostics key has no
+  # organisation and no workspace: it is where its node is, and where nothing else of an
+  # organisation is: the instance, which no other scope is at. It reaches nothing else
+  # there: `key_subject/4` holds an adapter's key to its adapter, a pool's key to its pool
+  # and the dispatches its pool claimed, and a diagnostics key to the diagnostics of a run.
   defp same_place?(
          %Scope{
            access_key: %AccessKey{
@@ -1915,7 +1943,7 @@ defmodule Apiary.Access do
          },
          {nil, nil}
        )
-       when kind in [:adapter, :pool, :gateway],
+       when kind in [:adapter, :pool, :gateway, :diagnostics],
        do: true
 
   defp same_place?(scope, place), do: in_place?(place(scope), place)
@@ -1932,7 +1960,8 @@ defmodule Apiary.Access do
 
   @doc """
   role/1 is the role the scope acts in, as it carries it: `:access_key` for the key of a
-  node or a gateway, `:pool_key` for a node pool's, `:instance` for the instance, the
+  node or a gateway, `:pool_key` for a node pool's, `:adapter_key` for an adapter's,
+  `:diagnostics_key` for a diagnostics key, `:instance` for the instance, the
   level of the person's membership there, else the role the edition gives them
   (`c:Apiary.Edition.role/1`); nil for anyone else. A key whose node the scope does not
   carry loaded, or whose node is of a kind it does not know, gets no role.
@@ -1946,10 +1975,12 @@ defmodule Apiary.Access do
   # A key's role follows its node's kind, as the key carries it
   # (`Apiary.Accounts.Scope.for_access_key/1` loads it): `adapter_key` for an adapter's,
   # asked before any other kind; `pool_key` for a node pool's, which holds what a node's
-  # key holds and the dispatch actions besides; `access_key` for a node's or a gateway's;
-  # none for a key whose node is not loaded or of a kind not known here, which may nothing.
+  # key holds and the dispatch actions besides; `diagnostics_key` for one of the instance's
+  # diagnostics node; `access_key` for a node's or a gateway's; none for a key whose node
+  # is not loaded or of a kind not known here, which may nothing.
   defp key_role(%AccessKey{node: %Node{kind: :adapter}}), do: :adapter_key
   defp key_role(%AccessKey{node: %Node{kind: :pool}}), do: :pool_key
+  defp key_role(%AccessKey{node: %Node{kind: :diagnostics}}), do: :diagnostics_key
 
   defp key_role(%AccessKey{node: %Node{kind: kind}}) when kind in [:node, :gateway],
     do: :access_key
