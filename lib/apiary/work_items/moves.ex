@@ -16,7 +16,8 @@ defmodule Apiary.WorkItems.Moves do
   # send of the review comments, a confirmation and a run of Explore again
   # `work_item.answer`, `work_item.review_comment` (the three of the review comments),
   # `work_item.confirm` and `work_item.explore_again` of the work item, likewise, asked
-  # of the work item once it is locked; a comment `work_item.comment` of
+  # of the work item before its lock and again once it is locked; a comment
+  # `work_item.comment` of
   # the work item, and a comment's deletion `work_item.comment_delete` of the comment, which
   # its author may take too while they may still comment (`Apiary.Access`). Each
   # writes its entry in the trail with the change (`Apiary.Audit.record/6`), about the work
@@ -1488,13 +1489,17 @@ defmodule Apiary.WorkItems.Moves do
   defp valid(%Ecto.Changeset{valid?: true} = changeset), do: {:ok, changeset}
   defp valid(%Ecto.Changeset{} = changeset), do: {:error, changeset}
 
-  # `work_item`, of the scope's workspace, held `FOR UPDATE`, then asked `action` of: one
-  # that moved meanwhile is not found, as is one whose id is no UUID. Asked of the locked
-  # row, so an action of a stage's approvers (`Apiary.Access`) reads the stage the work
-  # item is in under its lock.
+  # `work_item`, of the scope's workspace, asked `action` of, then held `FOR UPDATE`, read
+  # again and asked again: one that moved meanwhile is not found, as is one whose id is
+  # no UUID. The first answer, before the lock, keeps a person whom Access refuses from
+  # holding the row; the second, of the locked row, reads the stage the work item is in
+  # under its lock, for an action of a stage's approvers (`Apiary.Access`). The cost is a
+  # second read of the scope.
   defp hold(scope, action, %WorkItem{id: id}) do
     with {:ok, id} <- Ecto.UUID.cast(id),
          {:ok, workspace} <- workspace(scope),
+         %WorkItem{} = found <- in_workspace(workspace, id, false),
+         :ok <- Access.authorize(scope, action, found),
          %WorkItem{} = held <- in_workspace(workspace, id, true),
          :ok <- Access.authorize(scope, action, held) do
       {:ok, held}
