@@ -11,7 +11,9 @@ defmodule Apiary.Artifacts.Store do
   # check reads the staged copy's `path` (`Apiary.Artifacts.Format`). Then `commit/1`
   # keeps the content under its store key, a content address made from the digest alone,
   # so the same content twice is one stored copy; or `discard/1` drops the staged copy.
-  # `open/1` is a stored copy by its key: a path, or a stream of its bytes.
+  # `commit/1` runs while the push holds the work item's lock, so an adapter keeps
+  # `commit/1` local and fast. `open/1` is a stored copy by its key: a path, or a stream
+  # of its bytes.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false

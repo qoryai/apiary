@@ -95,18 +95,31 @@ defmodule Apiary.Runs.Liveness do
   returns them. Broadcasts `{:run_changed, run}` for each.
   """
   @spec check(DateTime.t()) :: [struct()]
-  def check(%DateTime{} = now \\ DateTime.utc_now()) do
+  def check(%DateTime{} = now \\ DateTime.utc_now()), do: now |> check(%{}) |> elem(0)
+
+  # The check, with each batch read after the id in `cursors`, the one the tick before
+  # stopped at, or from the first: `:lose` for the ends of the runs handed over
+  # (`Apiary.Dispatches.RunEnd.lose/3`), `:settle` for the runs left to settle
+  # (`Apiary.Dispatches.Settle.sweep/3`) and `:stage` for the ends the stage runner has
+  # not read (`Apiary.Stages.sweep/3`). The runs lost, and the `cursors` of the next tick.
+  defp check(now, cursors) do
     sweep(now)
     lost = mark(running_silent(now), now) ++ mark(pending_silent(now), now)
     Enum.each(lost, &Runs.broadcast_changed/1)
     # Then the runs a workspace's queue handed over that ended, lost by the rules above or
     # by their exit: their dispatches end and free their slots once
     # (`Apiary.Dispatches.RunEnd`).
-    Apiary.Dispatches.broadcast(RunEnd.lose(now))
+    {changed, lose_after} = RunEnd.lose(now, cursors[:lose])
+    Apiary.Dispatches.broadcast(changed)
     # Then the runs of the queue ended by their exit whose outcome is not yet stored, such
     # as one whose settle failed: what each gave is stored (`Apiary.Dispatches.Settle`).
-    Apiary.Dispatches.broadcast(Settle.sweep(now))
-    lost
+    {told, settle_after} = Settle.sweep(now, cursors[:settle])
+    Apiary.Dispatches.broadcast(told)
+    # Then the ends the stage runner has not read, such as one it left while the
+    # questions could not be read (`Apiary.Stages`).
+    {staged, stage_after} = Apiary.Stages.sweep(now, cursors[:stage])
+    Apiary.Dispatches.broadcast(staged)
+    {lost, %{lose: lose_after, settle: settle_after, stage: stage_after}}
   end
 
   @doc """
@@ -315,7 +328,7 @@ defmodule Apiary.Runs.Liveness do
     interval = Keyword.get(opts, :interval) || Keyword.get(config(), :interval, @default_interval)
     send(self(), :boot)
     schedule(interval)
-    {:ok, %{interval: interval}}
+    {:ok, %{interval: interval, cursors: %{}}}
   end
 
   # Once at the start: what a node that stopped left unprojected.
@@ -330,16 +343,23 @@ defmodule Apiary.Runs.Liveness do
     {:noreply, state}
   end
 
+  # The tick keeps where each batch stopped, so its next tick reads the runs after.
   def handle_info(:tick, %{interval: interval} = state) do
-    try do
-      check()
-    rescue
-      # The database is away: say so once per tick and try again at the next.
-      error -> Logger.error("liveness check failed error=#{inspect(error.__struct__)}")
-    end
+    cursors = Map.get(state, :cursors, %{})
+
+    cursors =
+      try do
+        {_lost, cursors} = check(DateTime.utc_now(), cursors)
+        cursors
+      rescue
+        # The database is away: say so once per tick and try again at the next.
+        error ->
+          Logger.error("liveness check failed error=#{inspect(error.__struct__)}")
+          cursors
+      end
 
     schedule(interval)
-    {:noreply, state}
+    {:noreply, Map.put(state, :cursors, cursors)}
   end
 
   def handle_info(_message, state), do: {:noreply, state}

@@ -56,9 +56,15 @@ defmodule Apiary.Artifacts do
   # artifact of `type` and `opts[:name]`, `main` unless given, made in the stage
   # `opts[:stage_id]`, with the writer's `opts[:note]`. `opts[:expect_stage]`, where given,
   # is the stage the caller read, nil for no stage. `actor` is `{:run, run}`, a run of
-  # the queue (`Apiary.Dispatches.DispatchRun`) of that work item, or `{:person, scope}`,
-  # a person who may `artifact.write` the work item (`Apiary.Access`), whose push writes
-  # its entry in the audit trail.
+  # the queue (`Apiary.Dispatches.DispatchRun`) of that work item; `{:person, scope}`,
+  # a person who may `artifact.write` the work item (`Apiary.Access`); or
+  # `{:member_action, scope}`, a member's answer, review comment or reply, which only
+  # `Apiary.WorkItems.Moves` passes, for a person who may `work_item.answer` the work
+  # item. A person's push and a member action's push write their entry in the audit
+  # trail. The questions and the review comments (`member_types/0`) take a person's
+  # version only as a member action: Moves writes them from the newest version, with the
+  # checks of each member action. A person's push of either type is
+  # `{:unknown_type, name}`, and a member action's push of any other type `:forbidden`.
   #
   # `files` is a list of `%{filename: name, content_type: text, path: path}` or
   # `%{filename: name, content_type: text, binary: bytes}`; `content_type` is read by
@@ -66,11 +72,15 @@ defmodule Apiary.Artifacts do
   # each refusal `{:error, {code, detail}}`:
   #
   #   1. the actor: a person whom `Apiary.Access` refuses `artifact.write` on the work
-  #      item, `{:error, :not_found}` or `{:error, :forbidden}`; a run of another work
-  #      item, `{:error, :not_found}`;
+  #      item, or a member action whose person it refuses `work_item.answer`,
+  #      `{:error, :not_found}` or `{:error, :forbidden}`; a run of another work item,
+  #      `{:error, :not_found}`;
   #   2. the type: a name of no type, or of a standard type the workspace hides,
-  #      `{:unknown_type, name}`; a name of the wrong form, `{:invalid, :type}`;
-  #   3. the options: `{:invalid, :name | :stage_id | :note}`;
+  #      `{:unknown_type, name}`; a name of the wrong form, `{:invalid, :type}`; a type
+  #      the actor does not write, as the actor rule says;
+  #   3. the options: `{:invalid, :name | :stage_id | :note}`; the questions and the
+  #      review comments take only the name `main`, the one Qory Apiary reads, else
+  #      `{:invalid, :name}`;
   #   4. the files: none, `{:invalid, :no_files}`; more than the type's most,
   #      `{:too_many_files, max_files}`; an entry of the wrong shape, a filename
   #      `Apiary.Artifacts.Filename` refuses, or a filename twice,
@@ -82,13 +92,14 @@ defmodule Apiary.Artifacts do
   #      `{:invalid, {:unreadable, index}}`;
   #   6. each staged file passes its base view's format check, else
   #      `{:invalid, {:format | :extension | :unreadable, index}}`, for a file of a
-  #      proposal also `{:invalid, {:document_size | :image_type | :svg_format, index}}` or
-  #      `{:invalid, {{:svg_content, part}, index}}`, `part` the part of an SVG refused
-  #      (`Apiary.Artifacts.Format`), or, for a structured file or a proposal's
-  #      `sources.json` that its JSON Schema refuses,
-  #      `{:invalid, {:schema, index, %{path: path, error: error}}}`: the JSON pointer of the first failing value, at most 256
-  #      bytes, and the validator's message for it, at most 300 characters, both with
-  #      their control characters replaced (`Apiary.Artifacts.SchemaError`);
+  #      proposal also `{:invalid, {:document_size | :image_type | :svg_format |
+  #      :svg_root, index}}` or `{:invalid, {{:svg_content, part}, index}}`, `part` the
+  #      part of an SVG refused (`Apiary.Artifacts.Format`), or, for a structured file or
+  #      a proposal's `sources.json` that its JSON Schema refuses,
+  #      `{:invalid, {:schema, index, %{path: path, error: error}}}`: the JSON pointer of
+  #      the first failing value, at most 256 bytes, and the validator's message for it,
+  #      at most 300 characters, both with their control characters replaced
+  #      (`Apiary.Artifacts.SchemaError`);
   #   7. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
   #      else `{:invalid, :no_video}`; a version of `proposal` has exactly one Markdown
   #      file, else `{:invalid, :one_markdown}`.
@@ -97,14 +108,27 @@ defmodule Apiary.Artifacts do
   # questions or the review comments keeps what members wrote in the artifact's newest
   # version (`Apiary.Explore.Questions.check_run/3`,
   # `Apiary.Explore.ReviewComments.check_run/4`), else
-  # `{:invalid, {:kept, 0, reason}}`, with the rule it breaks.
+  # `{:invalid, {:kept, 0, reason}}`, with the rule it breaks; a newest version whose file
+  # cannot be read is `{:error, :store_unavailable}`. Numbers compare by value there.
   #
-  # Then every file is kept in the store, and only then are the rows written, in one
-  # transaction: for a standard type a workspace can hide, the workspace's row locked
-  # `FOR SHARE` and its list read again, a hidden type `{:unknown_type, name}`; the work
-  # item locked `FOR UPDATE`, read again in the workspace it was in, else
-  # `{:error, :not_found}`; the artifact found or made; the next number, one more than the
-  # highest; the version and its files. The workspace's lock comes first, as in the core's
+  # Then a version of the questions or the review comments, from any writer, is stored
+  # with each number that is an integer in value written as an integer: a file with
+  # `4.0`, which the schemas take as an integer, is replaced by `Jason.encode!/1` of the
+  # document with `4` (`integers/2`), staged within the type's size limit, else
+  # `{:too_large, size_limit}`, checked and kept in its place; a file with none stays as
+  # it came. So every reader of these two types finds `4`, never `4.0`. This runs after
+  # the check of what members wrote, which pins each number of a run's version to a run
+  # number or a version, so the file grows by at most a few bytes; and after the format
+  # check of the bytes as they came, each member name once included.
+  #
+  # The rows are written in one transaction, with the staged files: for a standard type a
+  # workspace can hide, the workspace's row locked `FOR SHARE` and its list read again, a
+  # hidden type `{:unknown_type, name}`; the work item locked `FOR UPDATE`, read again in
+  # the workspace it was in, else `{:error, :not_found}`; for a run, its run of the queue
+  # read again, one that ended `{:error, :run_ended}`; the artifact found or made; the
+  # check of what members wrote and the integers, as above; the next number, one more
+  # than the highest; the version and its audit entry; then every file is kept in the
+  # store, and its row written. The workspace's lock comes first, as in the core's
   # lock order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
   # verdicts are the most frequent pushes, and the stage runner pushes them inside
   # transactions that already hold the work item. The work item's lock makes the
@@ -112,9 +136,12 @@ defmodule Apiary.Artifacts do
   # artifact are 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in
   # another stage is `{:error, :stage_changed}`, and no row, audit entry or message is
   # written; without it, the stage is not compared. A refusal, or a failure of the
-  # transaction, writes no row; a file kept in the store before it stays there (a content
-  # address that a later version may share). A store with no root, or one that cannot
-  # write, is `{:error, :store_unavailable}`.
+  # transaction before the files are kept, an exception included, writes no row and drops
+  # every staged copy, those `integers/2` made included, so a refused push, and a file
+  # `integers/2` replaced, keep no file in the store. A failure of the database after the
+  # files were kept, a commit that fails after it kept the first files, or an outer
+  # transaction that rolls back, leaves them in the store with no version (`commit_all/1`).
+  # A store with no root, or one that cannot write, is `{:error, :store_unavailable}`.
   #
   # Once the push's transaction commits, `{:artifact_pushed, work_item_id, version_id}`,
   # the work item's public id (`wi_…`) and the version's (`av_…`), goes to the work item's
@@ -171,8 +198,11 @@ defmodule Apiary.Artifacts do
   @max_note 4000
   @refused_in_note ~r/(?![\x{9}\x{A}\x{200C}\x{200D}])[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u
 
-  @typedoc "Who pushes a version: a run of the queue, or a person."
-  @type actor :: {:run, DispatchRun.t()} | {:person, Scope.t()}
+  # The types only the member actions write for a person (`Apiary.WorkItems.Moves`).
+  @member_types ~w(questions review-comments)
+
+  @typedoc "Who pushes a version: a run of the queue, a person, or a member action."
+  @type actor :: {:run, DispatchRun.t()} | {:person, Scope.t()} | {:member_action, Scope.t()}
 
   @typedoc "A file of a push."
   @type file ::
@@ -199,6 +229,19 @@ defmodule Apiary.Artifacts do
 
     Enum.filter(Type.standard(), &shown?(&1.name, shown)) ++ custom_types(workspace_id)
   end
+
+  # member_types/0 is the names of the types a person writes only through a member
+  # action (`Apiary.WorkItems.Moves`), never by a push of their files.
+  @doc false
+  @spec member_types() :: [String.t()]
+  def member_types, do: @member_types
+
+  # person_types/1 is the types of `types/1` a person adds a version of by hand: all but
+  # `member_types/0`.
+  @doc false
+  @spec person_types(Workspace.t()) :: [Type.t()]
+  def person_types(%Workspace{} = workspace),
+    do: Enum.reject(types(workspace), &(&1.name in @member_types))
 
   @doc false
   @spec all_types(Workspace.t()) :: [Type.t()]
@@ -501,19 +544,24 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec push(actor, WorkItem.t(), term, [file], keyword) ::
           {:ok, Version.t()}
-          | {:error, refusal | :not_found | :forbidden | :store_unavailable | :stage_changed}
+          | {:error,
+             refusal
+             | :not_found
+             | :forbidden
+             | :store_unavailable
+             | :stage_changed
+             | :run_ended}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item),
          {:ok, type} <- push_type(work_item, type_name),
+         :ok <- actor_type(writer, type),
          {:ok, fields} <- fields(opts),
+         :ok <- member_name(type, fields),
          {:ok, files} <- files(type, files),
          {:ok, staged} <- stage_all(type, files),
          :ok <- complete(type, staged) do
-      case commit_all(staged) do
-        {:ok, stored} -> writer |> write(work_item, type, fields, stored) |> broadcast()
-        {:error, _reason} = error -> error
-      end
+      writer |> write(work_item, type, fields, staged) |> broadcast()
     end
   end
 
@@ -601,17 +649,45 @@ defmodule Apiary.Artifacts do
   defp writer({:person, %Scope{user: %{id: user_id}} = scope}, work_item)
        when is_binary(user_id) do
     with :ok <- authorize(scope, @write, work_item),
-         do: {:ok, %{writer: :person, user_id: user_id, run_id: nil, scope: scope}}
+         do:
+           {:ok, %{actor: :person, writer: :person, user_id: user_id, run_id: nil, scope: scope}}
+  end
+
+  # A member action: Moves checked the member's action, under the work item's lock, before
+  # it pushes; `artifact.write` is not needed.
+  defp writer({:member_action, %Scope{user: %{id: user_id}} = scope}, work_item)
+       when is_binary(user_id) do
+    with :ok <- authorize(scope, :"work_item.answer", work_item),
+         do:
+           {:ok,
+            %{
+              actor: :member_action,
+              writer: :person,
+              user_id: user_id,
+              run_id: nil,
+              scope: scope
+            }}
   end
 
   defp writer({:run, %DispatchRun{id: run_id} = run}, %WorkItem{} = work_item)
        when is_binary(run_id) do
     if run.work_item_id == work_item.id and run.organisation_id == work_item.organisation_id,
-      do: {:ok, %{writer: :run, user_id: nil, run_id: run_id, scope: nil}},
+      do: {:ok, %{actor: :run, writer: :run, user_id: nil, run_id: run_id, scope: nil}},
       else: {:error, :not_found}
   end
 
   defp writer(_actor, _work_item), do: {:error, :not_found}
+
+  # The types each actor writes: a person never the member types, a member action only
+  # those, a run any.
+  defp actor_type(%{actor: :person}, %Type{name: name}) when name in @member_types,
+    do: {:error, {:unknown_type, name}}
+
+  defp actor_type(%{actor: :member_action}, %Type{name: name}) when name in @member_types,
+    do: :ok
+
+  defp actor_type(%{actor: :member_action}, %Type{}), do: {:error, :forbidden}
+  defp actor_type(_writer, %Type{}), do: :ok
 
   # The one call site of `Apiary.Access.authorize/3` for this module's actions.
   defp authorize(scope, action, subject), do: Access.authorize(scope, action, subject)
@@ -639,6 +715,13 @@ defmodule Apiary.Artifacts do
       true -> {:ok, %{name: name, stage_id: stage_id, note: note, expect_stage: expect_stage}}
     end
   end
+
+  # The questions and the review comments are one document per work item, named `main`:
+  # a version under another name would go unchecked and unread.
+  defp member_name(%Type{name: type}, %{name: name}) when type in @member_types,
+    do: if(name == "main", do: :ok, else: {:error, {:invalid, :name}})
+
+  defp member_name(%Type{}, _fields), do: :ok
 
   defp stage_id?(nil), do: true
   defp stage_id?(id) when is_binary(id), do: Regex.match?(@stage_id, id)
@@ -796,6 +879,11 @@ defmodule Apiary.Artifacts do
     end
   end
 
+  # Keeps each staged file in the store, in order. When one cannot be kept, every staged
+  # copy left is dropped and the push is `{:error, :store_unavailable}`; the files kept
+  # before it stay in the store with no version. They are not deleted: the store has no
+  # delete path, and a content address may be a file of another version. A stored file
+  # that no version links to is harmless, and a later push of the same content uses it.
   defp commit_all(staged) do
     store = Store.impl()
 
@@ -817,89 +905,174 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  defp write(writer, work_item, type, fields, stored) do
+  # The rows, with the staged files kept in the store after every check passed, last
+  # before the file rows. On a refusal, or an exception, which is raised again, every
+  # staged copy is dropped, those `integers/2` made included (`keep/6`), so a refused
+  # push keeps no file in the store.
+  defp write(writer, work_item, type, fields, staged) do
     Repo.transact(fn ->
       now = DateTime.utc_now()
 
       with :ok <- shown_kept(work_item, type),
            %WorkItem{} = held <- held_work_item(work_item),
+           :ok <- run_live(writer),
            :ok <- stage_kept(held, fields.expect_stage),
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
-           :ok <- members_kept(writer, artifact, stored),
-           {:ok, version} <- version(artifact, writer, fields, now),
-           :ok <- insert_files(version, stored),
-           :ok <- audit_push(writer, held, artifact, version) do
-        {:ok, {Repo.preload(%{version | artifact: artifact}, files: files_query()), held}}
+           :ok <- members_kept(writer, artifact, staged),
+           {:ok, kept} <- integers(type, staged) do
+        keep(writer, held, artifact, fields, kept, now)
       else
         nil -> {:error, :not_found}
         {:error, _reason} = error -> error
       end
     end)
+    |> case do
+      {:ok, _written} = written ->
+        written
+
+      {:error, _reason} = error ->
+        discard(staged)
+        error
+    end
+  rescue
+    exception ->
+      discard(staged)
+      reraise exception, __STACKTRACE__
+  end
+
+  # The version, its audit entry, then the files kept in the store and their rows. A
+  # refusal or an exception drops the staged copies `kept`, which `integers/2` may have
+  # made; the exception is raised again.
+  defp keep(writer, held, artifact, fields, kept, now) do
+    with {:ok, version} <- version(artifact, writer, fields, now),
+         :ok <- audit_push(writer, held, artifact, version),
+         {:ok, stored} <- commit_all(kept),
+         :ok <- insert_files(version, stored) do
+      {:ok, {Repo.preload(%{version | artifact: artifact}, files: files_query()), held}}
+    else
+      {:error, _reason} = error ->
+        discard(kept)
+        error
+    end
+  rescue
+    exception ->
+      discard(kept)
+      reraise exception, __STACKTRACE__
+  end
+
+  # Drops staged copies; one kept in the store already has no staged copy left.
+  defp discard(staged) do
+    store = Store.impl()
+    Enum.each(staged, &store.discard(&1.staged))
   end
 
   # A run's version of the questions or the review comments, checked against the
   # artifact's newest version under the work item's lock: what members wrote stays
   # (`Apiary.Explore.Questions.check_run/3`, `Apiary.Explore.ReviewComments.check_run/4`),
   # else `{:invalid, {:kept, 0, reason}}`. The format check passed, so the file is one
-  # JSON document of the type's format.
+  # JSON document of the type's format. A newest version whose file cannot be read is
+  # `{:error, :store_unavailable}`, never taken for no version, which would let the run
+  # drop what members wrote; so are the newest questions a review comments check reads.
   defp members_kept(%{writer: :run, run_id: run_id}, %Artifact{type: type} = artifact, [file])
-       when type in ["questions", "review-comments"] do
+       when type in @member_types do
     module = if type == "questions", do: Questions, else: ReviewComments
-
-    newest =
-      case Repo.one(
-             from v in Version,
-               where: v.artifact_id == ^artifact.id,
-               order_by: [desc: v.number],
-               limit: 1,
-               preload: [files: ^files_query()]
-           ) do
-        nil -> nil
-        version -> module.read(version)
-      end
 
     number =
       Repo.one(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run_id, select: r.number)
 
-    with {:ok, text} <- stored_text(file),
-         %{} = document <- module.decode(text) do
-      case check_run(module, artifact, newest, document, number || 0) do
-        :ok -> :ok
-        {:error, reason} -> {:error, {:invalid, {:kept, 0, reason}}}
+    with {:ok, newest} <- newest_document(module, artifact),
+         {:ok, question_ids} <- question_ids(module, artifact) do
+      with {:ok, text} <- File.read(file.staged.path),
+           %{} = document <- module.decode(text) do
+        case check_run(module, newest, document, number || 0, question_ids) do
+          :ok -> :ok
+          {:error, reason} -> {:error, {:invalid, {:kept, 0, reason}}}
+        end
+      else
+        _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
       end
-    else
-      _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
     end
   end
 
   defp members_kept(_writer, _artifact, _stored), do: :ok
 
-  defp check_run(Questions, _artifact, newest, document, number),
-    do: Questions.check_run(newest, document, number)
+  # The document of the artifact's newest version: `{:ok, nil}` for no version.
+  defp newest_document(module, artifact) do
+    case Repo.one(
+           from v in Version,
+             where: v.artifact_id == ^artifact.id,
+             order_by: [desc: v.number],
+             limit: 1,
+             preload: [files: ^files_query()]
+         ) do
+      nil -> {:ok, nil}
+      version -> module.loaded(version)
+    end
+  end
 
   # The question of a reply with the outcome `asked` is the id of a question of the newest
   # questions stored now, under the work item's lock.
-  defp check_run(ReviewComments, artifact, newest, document, number) do
-    questions =
-      case Questions.newest(%WorkItem{
-             id: artifact.work_item_id,
-             workspace_id: artifact.workspace_id
-           }) do
-        {_version, questions} -> Questions.ids(questions)
-        nil -> []
-      end
+  defp question_ids(Questions, _artifact), do: {:ok, []}
 
-    ReviewComments.check_run(newest, document, number, questions)
-  end
-
-  defp stored_text(%{store_key: key}) do
-    case Store.impl().open(key) do
-      {:ok, path} when is_binary(path) -> File.read(path)
-      {:ok, stream} -> {:ok, stream |> Enum.to_list() |> IO.iodata_to_binary()}
-      {:error, _reason} -> :error
+  defp question_ids(ReviewComments, artifact) do
+    case Questions.current(%WorkItem{
+           id: artifact.work_item_id,
+           workspace_id: artifact.workspace_id
+         }) do
+      {:ok, {_version, questions}} -> {:ok, Questions.ids(questions)}
+      {:ok, nil} -> {:ok, []}
+      {:error, :store_unavailable} = error -> error
     end
   end
+
+  # The questions or the review comments, staged, with each number that is an integer in
+  # value written as an integer (the moduledoc): the one staged file as it is when it has
+  # none, else the document re-encoded, staged within the type's size limit and checked
+  # in its place, and the first staged copy dropped. A float past 2^53 stays as it is: no
+  # run number or version is that large, and its digits would grow the file.
+  defp integers(%Type{name: name} = type, [%{filename: filename} = file] = staged)
+       when name in @member_types do
+    with {:ok, text} <- File.read(file.staged.path),
+         {:ok, document} <- Jason.decode(text),
+         normal = integer_values(document),
+         false <- normal === document do
+      bytes = Jason.encode!(normal)
+
+      case stage_one(Store.impl(), type, 0, filename, {:binary, bytes}, type.size_limit) do
+        {:ok, normalised} ->
+          discard(staged)
+          {:ok, [normalised]}
+
+        {:error, _refusal} = error ->
+          error
+      end
+    else
+      true -> {:ok, staged}
+      _unreadable -> {:error, :store_unavailable}
+    end
+  end
+
+  defp integers(_type, staged), do: {:ok, staged}
+
+  @max_exact 9_007_199_254_740_992
+
+  defp integer_values(value) when is_float(value) and abs(value) <= @max_exact do
+    integer = trunc(value)
+    if integer == value, do: integer, else: value
+  end
+
+  defp integer_values(%{} = object),
+    do: Map.new(object, fn {key, value} -> {key, integer_values(value)} end)
+
+  defp integer_values(list) when is_list(list), do: Enum.map(list, &integer_values/1)
+  defp integer_values(value), do: value
+
+  defp check_run(Questions, newest, document, number, _question_ids),
+    do: Questions.check_run(newest, document, number)
+
+  defp check_run(ReviewComments, newest, document, number, question_ids),
+    do: ReviewComments.check_run(newest, document, number, question_ids)
 
   # A standard type a workspace can hide: the row of the workspace the push read, locked
   # `FOR SHARE` until the push commits, and its list read again. A standard type has no
@@ -934,6 +1107,22 @@ defmodule Apiary.Artifacts do
         lock: "FOR UPDATE"
     )
   end
+
+  # A run's push: its run of the queue read again under the work item's lock, so a run
+  # that ended since the caller's check pushes nothing, `{:error, :run_ended}`. The end
+  # of a run holds its work item before it ends the run of the queue and stores what the
+  # run gave (`Apiary.Dispatches.RunEnd.hold/1`, `Apiary.Dispatches.Settle`), so the end
+  # and the push take turns at the work item: the end reads every version the push
+  # stored, or the push reads the run ended.
+  defp run_live(%{writer: :run, run_id: run_id}) do
+    case Repo.one(from d in DispatchRun, where: d.id == ^run_id, select: d.state) do
+      :ended -> {:error, :run_ended}
+      nil -> {:error, :not_found}
+      _live -> :ok
+    end
+  end
+
+  defp run_live(_writer), do: :ok
 
   # The held work item's stage against `opts[:expect_stage]`, as `Keyword.fetch/2` read it:
   # nil is a value, a work item with no stage, and `:error` is an option not given.

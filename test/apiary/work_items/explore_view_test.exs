@@ -476,8 +476,9 @@ defmodule Apiary.WorkItems.ExploreViewTest do
     @svg ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>)
 
     test "is its Markdown file's text, its id and its images, never sources.json", ctx do
-      %{dispatch_run: dispatch_run} =
-        explore_run_fixture(ctx.work_item, result: understood_result())
+      # The run's end kept version 1; a run that ended pushes nothing, so a person adds
+      # version 2.
+      explore_run_fixture(ctx.work_item, result: understood_result())
 
       files = [
         %{filename: "a-cart.png", content_type: "image/png", binary: @png},
@@ -487,9 +488,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       ]
 
       {:ok, version} =
-        Apiary.Artifacts.push({:run, dispatch_run}, ctx.work_item, "proposal", files,
-          stage_id: dispatch_run.stage_id
-        )
+        Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "proposal", files)
 
       assert version.number == 2
       version_id = version.public_id

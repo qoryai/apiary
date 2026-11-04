@@ -389,18 +389,84 @@ defmodule Apiary.Artifacts.FormatTest do
       assert error =~ "earlier review comment"
     end
 
+    test "a key twice in one object is refused at the object's place", context do
+      bytes =
+        ~s({"review_comments": [{"id": "c1", "on": {"artifact": "proposal", "version": 1}, ) <>
+          ~s("text": "Offer a replacement first.", "by": {"name": "Ann", "name": "Bob"}, ) <>
+          ~s("at": "2026-11-04T10:00:00Z", "state": "open"}]})
+
+      assert {:error,
+              {:schema,
+               %{
+                 path: "#/review_comments/0/by",
+                 error: "the object has the key name twice"
+               }}} =
+               check(context, "review-comments", "review-comments.json", bytes)
+    end
+  end
+
+  describe "a key twice in one object" do
+    test "is refused in a questions document, at the object, before the schema",
+         context do
+      # Jason alone keeps the last state; another parser may keep the first.
+      bytes =
+        ~s({"questions": [{"id": "q1", "question": "Which basket?", "options": [], ) <>
+          ~s("state": "answered", "state": "open", ) <>
+          ~s("asked": {"run": 1, "at": "2026-11-04T10:00:00Z"}}]})
+
+      assert {:error,
+              {:schema, %{path: "#/questions/0", error: "the object has the key state twice"}}} =
+               check(context, "questions", "questions.json", bytes)
+
+      # At the root, and the first repeated key in the document's order.
+      assert {:error, {:schema, %{path: "#", error: "the object has the key questions twice"}}} =
+               check(
+                 context,
+                 "questions",
+                 "questions.json",
+                 ~s({"questions": [], "questions": []})
+               )
+
+      assert {:error,
+              {:schema, %{path: "#/questions/0", error: "the object has the key id twice"}}} =
+               check(
+                 context,
+                 "questions",
+                 "questions.json",
+                 ~s({"questions": [{"id": "a", "id": "b"}], "questions": []})
+               )
+    end
+
+    test "is refused in a verdict, a standard type the run API writes too", context do
+      assert {:error, {:schema, %{path: "#", error: "the object has the key verdict twice"}}} =
+               check(
+                 context,
+                 "verdict",
+                 "verdict.json",
+                 ~s({"verdict": "escalate", "verdict": "passed"})
+               )
+
+      assert {:ok, "application/json"} =
+               check(context, "verdict", "verdict.json", ~s({"verdict": "passed"}))
+    end
+
+    test "has a place whose pointer escapes / and ~ in a key", context do
+      assert {:error, {:schema, %{path: "#/a~1b~0c"}}} =
+               check(context, "verdict", "verdict.json", ~s({"a/b~c": {"x": 1, "x": 2}}))
+    end
+
     test "a run's reply has an outcome, a member's none; asked with a question", context do
       run = %{"run" => 12}
       member = %{"name" => "Ann Example"}
 
-      for replies <- [
-            [reply(%{"by" => run, "outcome" => "changed"})],
-            [reply(%{"by" => member})],
-            [reply(%{"by" => run, "outcome" => "asked", "question" => "q3"})]
+      for {state, replies} <- [
+            {"closed", [reply(%{"by" => run, "outcome" => "changed"})]},
+            {"open", [reply(%{"by" => member})]},
+            {"closed", [reply(%{"by" => run, "outcome" => "asked", "question" => "q3"})]}
           ] do
         assert {:ok, _} =
                  review_comments(context, [
-                   review_comment(%{"state" => "closed", "replies" => replies})
+                   review_comment(%{"state" => state, "replies" => replies})
                  ])
       end
 
@@ -414,6 +480,56 @@ defmodule Apiary.Artifacts.FormatTest do
         assert {:error, {:schema, %{path: "#/review_comments/0/replies/0" <> _}}} =
                  review_comments(context, [review_comment(%{"replies" => replies})]),
                inspect(replies)
+      end
+    end
+  end
+
+  describe "the rules of the formats at qory b03f2e8c" do
+    test "a closed review comment has a reply by a run", context do
+      comment = fn attrs -> review_comment(Map.put(attrs, "state", "closed")) end
+      member = reply(%{"by" => %{"name" => "Ann Example"}})
+      run = reply(%{"by" => %{"run" => 12}, "outcome" => "changed"})
+
+      assert {:ok, _} = review_comments(context, [comment.(%{"replies" => [run, member]})])
+
+      for attrs <- [%{}, %{"replies" => []}, %{"replies" => [member]}] do
+        assert {:error, {:schema, %{path: "#/review_comments/0" <> _}}} =
+                 review_comments(context, [comment.(attrs)]),
+               inspect(attrs)
+      end
+    end
+
+    test "a time has a month from 01 to 12 and a day from 01 to 31", context do
+      assert {:ok, _} =
+               questions(context, [
+                 question(%{"asked" => %{"run" => 12, "at" => "2026-12-31T23:59:59Z"}})
+               ])
+
+      for at <- [
+            "2026-13-01T10:00:00Z",
+            "2026-00-10T10:00:00Z",
+            "2026-11-32T10:00:00Z",
+            "2026-11-00T10:00:00Z"
+          ] do
+        assert {:error, {:schema, %{path: "#/questions/0/asked/at"}}} =
+                 questions(context, [question(%{"asked" => %{"run" => 12, "at" => at}})]),
+               at
+
+        assert {:error, {:schema, %{path: "#/review_comments/0/at"}}} =
+                 review_comments(context, [review_comment(%{"at" => at})]),
+               at
+      end
+    end
+
+    test "an option's title is one line", context do
+      option = &%{"title" => &1, "explanation" => "Why."}
+
+      assert {:ok, _} = questions(context, [question(%{"options" => [option.("The small one")]})])
+
+      for title <- ["The small\none", "The small\u2028one"] do
+        assert {:error, {:schema, %{path: "#/questions/0/options/0/title"}}} =
+                 questions(context, [question(%{"options" => [option.(title)]})]),
+               inspect(title)
       end
     end
   end
@@ -501,6 +617,17 @@ defmodule Apiary.Artifacts.FormatTest do
       big = sources(List.duplicate(source, 600))
       assert byte_size(big) > 1_048_576
       assert {:error, :document_size} = check(context, "proposal", "sources.json", big)
+    end
+
+    test "refuses a key that comes twice in sources.json at its object's place", context do
+      assert {:error, {:schema, %{path: "#", error: "the object has the key sources twice"}}} =
+               check(context, "proposal", "sources.json", ~s({"sources": [], "sources": []}))
+
+      twice = ~s({"sources": [{"kind": "page", "ref": "x", "why": "y", "why": "z"}]})
+
+      assert {:error,
+              {:schema, %{path: "#/sources/0", error: "the object has the key why twice"}}} =
+               check(context, "proposal", "sources.json", twice)
     end
 
     test "takes a source's system only as host labels that neither start nor end with a hyphen",
@@ -860,10 +987,17 @@ defmodule Apiary.Artifacts.FormatTest do
                bytes
       end
 
-      # Not well-formed, so not an SVG.
       for bytes <- [
             svg("<rect/>") <> "<?foo x><script>alert(1)</script>?>",
-            svg("<rect/>") <> ~s|<!--><script>alert(1)</script>-->|,
+            svg("<rect/>") <> ~s|<!--><script>alert(1)</script>-->|
+          ] do
+        assert {:error, {:svg_content, "everything after the end of the svg element"}} =
+                 check(context, "proposal", "a.svg", bytes),
+               bytes
+      end
+
+      # Not well-formed, so not an SVG.
+      for bytes <- [
             ~s|<?xml version="1.0>"?>| <> svg("<rect/>"),
             svg(~s|<rect onl&#111;ad="x"/>|)
           ] do
@@ -889,6 +1023,44 @@ defmodule Apiary.Artifacts.FormatTest do
                  "a.svg",
                  svg("<desc><![CDATA[<?xml-stylesheet x?>]]></desc>")
                )
+
+      # A file that does not parse is read for its first instruction outside a comment, a
+      # CDATA section and a tag, whose target is an XML name.
+      for bytes <- [
+            ~s(<!-- <?xml-stylesheet href="a.css"?> -->) <> svg("<rect>"),
+            svg("<style><![CDATA[ <?xml-stylesheet ]]></style><rect>"),
+            svg(~s(<rect id="<?xml-stylesheet"/>)),
+            svg(~s(<rect <?xml-stylesheet ?>/>)),
+            "<?\u202Efoo?>" <> svg("<rect>")
+          ] do
+        assert {:error, :svg_format} = check(context, "proposal", "a.svg", bytes), bytes
+      end
+
+      declared = ~s(<?xml version="1.0"?><?xml-stylesheet href="a.css"?>) <> svg("<rect/>")
+
+      assert {:error, {:svg_content, "the processing instruction a"}} =
+               check(context, "proposal", "a.svg", "<?a>b<c x?>" <> svg("<rect/>"))
+
+      # The target is an XML name, letters outside ASCII included.
+      for {target, part} <- [
+            {"café", "the processing instruction café"},
+            {"a:b", "the processing instruction a:b"},
+            {"xml-stylesheet", "the processing instruction xml-stylesheet"},
+            {"x\u0301·y", "the processing instruction x\u0301·y"}
+          ] do
+        assert {:error, {:svg_content, ^part}} =
+                 check(context, "proposal", "a.svg", "<?#{target} x?>" <> svg("<rect>")),
+               target
+      end
+
+      for target <- ["\u202Efoo", "1a", "-a"] do
+        assert {:error, :svg_format} =
+                 check(context, "proposal", "a.svg", "<?#{target} x?>" <> svg("<rect>")),
+               target
+      end
+
+      assert {:error, {:svg_content, "the processing instruction xml-stylesheet"}} =
+               check(context, "proposal", "a.svg", declared)
     end
 
     test "the strict check is a proposal's: a mockup takes the same SVG", context do
@@ -899,12 +1071,10 @@ defmodule Apiary.Artifacts.FormatTest do
     test "refuses an SVG that is not well-formed UTF-8 with an svg root, as :svg_format",
          context do
       for bytes <- [
-            "<svg/>",
-            "<svg><rect/></svg>",
             ~s(<html xmlns="#{@svg_namespace}"/>),
             svg("<rect>"),
-            svg("<rect/>") <> "<rect/>",
             svg("<text>") <> <<0xFF>> <> "</text></svg>",
+            ~s(<svg xmlns="#{@svg_namespace}"/>]]>),
             "",
             "not markup"
           ] do
@@ -912,7 +1082,87 @@ defmodule Apiary.Artifacts.FormatTest do
       end
 
       # Another image type keeps :format.
+      assert {:error, :format} = check(context, "mockup", "a.svg", "not markup")
+    end
+
+    test "refuses a root svg outside the SVG namespace as :svg_root", context do
+      for bytes <- ["<svg/>", "<svg><rect/></svg>", ~s(<svg xmlns="urn:x"><rect/></svg>)] do
+        assert {:error, :svg_root} = check(context, "proposal", "a.svg", bytes), bytes
+      end
+
+      assert {:error, :svg_format} =
+               check(context, "proposal", "a.svg", ~s(<x:svg xmlns:x="urn:x"/>))
+
+      assert {:error, {:svg_content, "the s:svg element"}} =
+               check(context, "proposal", "a.svg", ~s(<s:svg xmlns:s="#{@svg_namespace}"/>))
+
       assert {:error, :format} = check(context, "mockup", "a.svg", "<svg/>")
+    end
+
+    test "refuses anything but white space after the end of the svg element", context do
+      closed = svg("<rect/>")
+      empty = ~s(<svg xmlns="#{@svg_namespace}"/>)
+
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", closed <> "\n \n")
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", empty <> "\n")
+
+      for bytes <- [
+            closed <> "\n<!-- x -->",
+            empty <> "\n<!-- x -->\n",
+            empty <> "<?pi x?>",
+            closed <> "text",
+            empty <> "<![CDATA[x]]>",
+            empty <> empty,
+            closed <> "\u00A0",
+            closed <> "\f",
+            empty <> "\n\u3000"
+          ] do
+        assert {:error, {:svg_content, "everything after the end of the svg element"}} =
+                 check(context, "proposal", "a.svg", bytes),
+               bytes
+      end
+
+      assert {:error, :format} = check(context, "mockup", "a.svg", closed <> "<!-- x -->")
+      assert {:error, :format} = check(context, "mockup", "a.svg", closed <> "\u00A0")
+    end
+
+    test "refuses an element that declares a prefix or xmlns twice, as :svg_format",
+         context do
+      xhtml = "http://www.w3.org/1999/xhtml"
+
+      for body <- [
+            ~s(<rect id="r"/><a xmlns="#{xhtml}" xmlns="#{@svg_namespace}" href="#r"><text>x</text></a>),
+            ~s(<style xmlns="#{xhtml}" xmlns="#{@svg_namespace}">rect { fill: red; }</style>),
+            ~s(<g xmlns:x="urn:example:a" xmlns:x="urn:example:b"/>)
+          ] do
+        assert {:error, :svg_format} = check(context, "proposal", "a.svg", svg(body)), body
+        assert {:error, :format} = check(context, "mockup", "a.svg", svg(body)), body
+      end
+
+      # The same prefix on two elements is two declarations, one on each.
+      assert {:ok, "image/svg+xml"} =
+               check(
+                 context,
+                 "proposal",
+                 "a.svg",
+                 svg(~s(<g xmlns:x="urn:example:a"><g xmlns:x="urn:example:b"/></g>))
+               )
+    end
+
+    test "checks a namespace declaration's address as an attribute's value", context do
+      for {body, part} <- [
+            {~s|<rect xmlns:a="url(https://example.com/)"/>|,
+             "the url() in the xmlns:a attribute"},
+            {~s|<g xmlns:b="a\\b"/>|, "a backslash in the xmlns:b attribute"},
+            {~s|<g xmlns:c="image-set('https://example.com/a.png' 1x)"/>|,
+             "the image-set() in the xmlns:c attribute"}
+          ] do
+        assert {:error, {:svg_content, ^part}} = check(context, "proposal", "a.svg", svg(body)),
+               body
+      end
+
+      assert {:ok, "image/svg+xml"} =
+               check(context, "proposal", "a.svg", svg(~s(<g xmlns:x="urn:example:x"/>)))
     end
 
     test "refuses a document type declaration as the DOCTYPE, before the parse", context do

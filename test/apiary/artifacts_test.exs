@@ -16,6 +16,61 @@ defmodule Apiary.ArtifactsTest do
   @moduletag :tmp_dir
   @moduletag needs: :workflow_model
 
+  defmodule CommitRaises do
+    # The volume store, with a `commit/1` that raises, as a store whose write fails with
+    # an exception.
+    @moduledoc false
+    @behaviour Apiary.Artifacts.Store
+
+    alias Apiary.Artifacts.Store.Volume
+
+    @impl true
+    defdelegate stage(source, limit), to: Volume
+    @impl true
+    def commit(_staged), do: raise("the store failed")
+    @impl true
+    defdelegate discard(staged), to: Volume
+    @impl true
+    defdelegate open(store_key), to: Volume
+  end
+
+  defmodule CopyRemoved do
+    # The volume store, with a `commit/1` that finds its staged copy removed, as a copy
+    # removed from the root before its push commits.
+    @moduledoc false
+    @behaviour Apiary.Artifacts.Store
+
+    alias Apiary.Artifacts.Store.Volume
+
+    @impl true
+    defdelegate stage(source, limit), to: Volume
+    @impl true
+    def commit(staged) do
+      File.rm!(staged.path)
+      Volume.commit(staged)
+    end
+
+    @impl true
+    defdelegate discard(staged), to: Volume
+    @impl true
+    defdelegate open(store_key), to: Volume
+  end
+
+  # Sets `CommitRaises` as the store for this test.
+  defp commit_raises, do: store!(CommitRaises)
+
+  # Sets `adapter` as the store for this test.
+  defp store!(adapter) do
+    previous = Application.get_env(:apiary, Store)
+    Application.put_env(:apiary, Store, adapter: adapter)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:apiary, Store, previous),
+        else: Application.delete_env(:apiary, Store)
+    end)
+  end
+
   setup %{tmp_dir: tmp_dir} do
     root = Path.join(tmp_dir, "store")
     previous = Application.get_env(:apiary, :artifacts_dir)
@@ -24,7 +79,8 @@ defmodule Apiary.ArtifactsTest do
 
     scope = without_template_types(scope_fixture())
     work_item = work_item_fixture(scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    # A live run: a run that ended pushes nothing.
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
     %{root: root, scope: scope, work_item: work_item, run: run}
   end
 
@@ -68,6 +124,12 @@ defmodule Apiary.ArtifactsTest do
   defp staging_files(root), do: Path.wildcard(Path.join(root, ".staging-*"), match_dot: true)
 
   defp count(schema), do: Repo.aggregate(schema, :count)
+
+  # The stored copy of the version's one file removed, as a store that lost it.
+  defp unreadable!(%Version{files: [file]}) do
+    {:ok, path} = Artifacts.open_file(file)
+    File.rm!(path)
+  end
 
   describe "types/1 and type/2" do
     test "list the eleven standard types first, then the workspace's custom types by name", %{
@@ -248,18 +310,20 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "a type hidden between the push's read and its lock is refused, with no row", ctx do
-      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
+      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
 
       assert {:error, {:unknown_type, "explainer"}} =
                Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
 
       assert count(Artifact) == 0
       assert count(Version) == 0
+      assert stored_paths(ctx.root) == []
+      assert staging_files(ctx.root) == []
     end
 
     test "a person's push of a type hidden before the lock writes no version or audit entry",
          ctx do
-      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
+      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
 
       assert {:error, {:unknown_type, "explainer"}} =
                Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [doc()])
@@ -270,7 +334,7 @@ defmodule Apiary.ArtifactsTest do
 
     test "a push goes on when the list changes before the lock and still has the type", ctx do
       show!(ctx.scope.workspace, ["explainer"])
-      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["explainer", "mockup"]) end)
+      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["explainer", "mockup"]) end)
 
       assert {:ok, %Version{}} =
                Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
@@ -907,10 +971,186 @@ defmodule Apiary.ArtifactsTest do
       assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
     end
 
+    test "refuses a run that ended, read again under the work item's lock",
+         %{run: run} = context do
+      # The run ends after the caller read it live, before the push locks the work item.
+      ArtifactStoreHook.on_stage(fn ->
+        {1, _rows} =
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [state: :ended, end_cause: :run_ended]
+          )
+      end)
+
+      assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+               {:error, :run_ended}
+
+      assert count(Artifact) == 0
+      assert count(Version) == 0
+
+      # A run ended before the push is refused the same way.
+      assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+               {:error, :run_ended}
+    end
+
     test "refuses a run of another work item", %{scope: scope, run: run} do
       other = work_item_fixture(scope, %{external_ref: "acme/shop#13"})
       assert {:error, :not_found} = Artifacts.push({:run, run}, other, "explainer", [doc()])
       assert count(Artifact) == 0
+    end
+
+    test "is store_unavailable when the newest questions or review comments cannot be read",
+         %{scope: scope, run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, &1, [json("#{&1}.json", &2)])
+
+      {:ok, questions} =
+        push.("questions", %{"questions" => [asked(run, "q1", "Which basket?")]})
+
+      comments = %{
+        "review_comments" => [
+          %{
+            "id" => "c1",
+            "on" => %{"artifact" => "proposal", "version" => 1},
+            "text" => "Offer a refund.",
+            "by" => %{"name" => "ann"},
+            "at" => "2026-11-04T10:00:00Z",
+            "state" => "open"
+          }
+        ]
+      }
+
+      {:ok, review_comments} =
+        Artifacts.push({:member_action, scope}, context.work_item, "review-comments", [
+          json("review-comments.json", comments)
+        ])
+
+      unreadable!(questions)
+
+      # Read as no version, the newest questions would let the run drop every answer.
+      assert push.("questions", %{"questions" => []}) == {:error, :store_unavailable}
+
+      # The review comments check reads the newest questions too.
+      assert push.("review-comments", comments) == {:error, :store_unavailable}
+
+      unreadable!(review_comments)
+      assert push.("review-comments", %{"review_comments" => []}) == {:error, :store_unavailable}
+
+      assert count(Version) == 2
+    end
+
+    test "a refused or normalised version of the questions keeps no file without a version",
+         %{run: run, root: root} = context do
+      push =
+        &Artifacts.push({:run, run}, context.work_item, "questions", [
+          file("questions.json", &1, "application/json")
+        ])
+
+      question = asked(run, "q1", "Which basket?")
+      number = question["asked"]["run"]
+
+      # Refused by the check of what members wrote, under the work item's lock: a new
+      # question asked by another run.
+      other = put_in(question, ["asked", "run"], number + 1)
+
+      assert push.(Jason.encode!(%{"questions" => [other]})) ==
+               {:error, {:invalid, {:kept, 0, :asked_run}}}
+
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
+
+      # The run's number written with .0: the file as it came is replaced, and only the one
+      # with the integer is kept.
+      bytes =
+        %{"questions" => [question]}
+        |> Jason.encode!()
+        |> String.replace(~s("run":#{number}), ~s("run":#{number}.0))
+
+      assert bytes =~ ".0"
+      assert {:ok, %Version{files: [stored]}} = push.(bytes)
+      {:ok, path} = Artifacts.open_file(stored)
+      refute File.read!(path) =~ ".0"
+      assert stored_paths(root) == [path]
+      assert staging_files(root) == []
+    end
+
+    test "a push whose store raises at the commit raises, and keeps no file",
+         %{run: run, root: root} = context do
+      commit_raises()
+
+      assert_raise RuntimeError, "the store failed", fn ->
+        Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
+      end
+
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
+
+      # The run's number written with .0: the copy with the integer, which replaced the
+      # file as it came, is dropped too.
+      question = asked(run, "q1", "Which basket?")
+      number = question["asked"]["run"]
+
+      bytes =
+        %{"questions" => [question]}
+        |> Jason.encode!()
+        |> String.replace(~s("run":#{number}), ~s("run":#{number}.0))
+
+      assert_raise RuntimeError, "the store failed", fn ->
+        Artifacts.push({:run, run}, context.work_item, "questions", [
+          file("questions.json", bytes, "application/json")
+        ])
+      end
+
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
+      assert count(Version) == 0
+    end
+
+    test "a push whose staged copy was removed before its commit writes no version",
+         %{run: run, root: root} = context do
+      store!(CopyRemoved)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+                 {:error, :store_unavailable}
+      end)
+
+      assert count(Version) == 0
+      assert count(ArtifactFile) == 0
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
+    end
+
+    test "takes the questions and the review comments under the name main alone",
+         %{scope: scope, run: run} = context do
+      questions = json("questions.json", %{"questions" => [asked(run, "q1", "Which basket?")]})
+      comments = json("review-comments.json", %{"review_comments" => []})
+
+      for actor <- [{:run, run}, {:member_action, scope}],
+          {type, file} <- [{"questions", questions}, {"review-comments", comments}] do
+        assert Artifacts.push(actor, context.work_item, type, [file], name: "other") ==
+                 {:error, {:invalid, :name}}
+      end
+
+      assert count(Artifact) == 0
+
+      assert {:ok, _version} =
+               Artifacts.push({:run, run}, context.work_item, "questions", [questions])
+    end
+
+    test "Explore reads the proposal named main alone", %{run: run} = context do
+      push = fn name, text ->
+        Artifacts.push({:run, run}, context.work_item, "proposal", [doc("proposal.md", text)],
+          name: name
+        )
+      end
+
+      {:ok, %Version{number: 1}} = push.("main", "## Main")
+      {:ok, %Version{number: 1}} = push.("draft", "## Draft one")
+      {:ok, %Version{number: 2}} = push.("draft", "## Draft two")
+      id = context.work_item.id
+
+      assert Apiary.WorkItems.Explore.proposal_version(id, run.take_in, run.attempt) == 1
+      assert Apiary.WorkItems.Explore.proposal_text(id, 1) == "## Main"
+      assert Apiary.WorkItems.Explore.proposal_text(id, 2) == nil
     end
 
     test "stores every type the workspace shows, for a run", context do
@@ -1252,7 +1492,7 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "refuses a file of the wrong format, an unsafe SVG, a large Markdown file and bad sources",
-         %{run: run} = context do
+         %{run: run, root: root} = context do
       push = &Artifacts.push({:run, run}, context.work_item, "proposal", &1)
 
       assert {:error, {:invalid, {:extension, 1}}} = push.([proposal(), file("notes.txt", "a")])
@@ -1270,13 +1510,16 @@ defmodule Apiary.ArtifactsTest do
                push.([proposal(), json("sources.json", %{"items" => []})])
 
       assert count(Version) == 0
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
     end
 
-    test "refuses more than 10 files and more than 5 MiB together", %{run: run} = context do
+    test "refuses more than 10 files and more than 5 MiB together",
+         %{run: run, root: root} = context do
       push = &Artifacts.push({:run, run}, context.work_item, "proposal", &1)
       images = for n <- 1..9, do: file("#{n}.png", @png)
 
-      assert {:ok, _version} = push.([proposal() | images])
+      assert {:ok, %Version{files: files}} = push.([proposal() | images])
 
       assert {:error, {:too_many_files, 10}} =
                push.([proposal(), file("10.png", @png) | images])
@@ -1285,6 +1528,11 @@ defmodule Apiary.ArtifactsTest do
 
       assert {:error, {:too_large, 5_242_880}} =
                push.([proposal(), file("a.png", large), file("b.png", large)])
+
+      # The store keeps the first push's contents alone: its nine images are one content.
+      assert length(stored_paths(root)) == files |> Enum.uniq_by(& &1.store_key) |> length()
+      assert length(stored_paths(root)) == 2
+      assert staging_files(root) == []
     end
 
     test "the Exists check passes a proposal with images and sources.json",
@@ -1374,6 +1622,90 @@ defmodule Apiary.ArtifactsTest do
 
       assert Artifacts.list(context.work_item) == []
     end
+
+    test "refuses the questions and the review comments, which only member actions write",
+         %{scope: scope} = context do
+      member = member_fixture(scope)
+      at = "2026-11-04T10:00:00Z"
+
+      forged_answer = %{
+        "questions" => [
+          %{
+            "id" => "q1",
+            "question" => "Which basket?",
+            "options" => [%{"title" => "Yes", "explanation" => "Keep it."}],
+            "state" => "answered",
+            "asked" => %{"run" => 1, "at" => at},
+            "answer" => %{"option" => "Yes", "by" => %{"name" => "alice"}, "at" => at}
+          }
+        ]
+      }
+
+      forged_reply = %{
+        "review_comments" => [
+          %{
+            "id" => "c1",
+            "on" => %{"artifact" => "proposal", "version" => 1},
+            "text" => "Refund at once.",
+            "by" => %{"name" => "alice"},
+            "at" => at,
+            "state" => "closed",
+            "replies" => [
+              %{"text" => "Done.", "by" => %{"run" => 7}, "at" => at, "outcome" => "changed"}
+            ]
+          }
+        ]
+      }
+
+      for {type, document} <- [{"questions", forged_answer}, {"review-comments", forged_reply}],
+          actor_scope <- [scope, member.scope] do
+        file = json("#{type}.json", document)
+
+        assert Artifacts.push({:person, actor_scope}, context.work_item, type, [file]) ==
+                 {:error, {:unknown_type, type}}
+
+        assert Apiary.Stages.add_version(actor_scope, context.work_item, type, [file]) ==
+                 {:error, {:unknown_type, type}}
+      end
+
+      assert Artifacts.list(context.work_item) == []
+      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
+    end
+  end
+
+  describe "push/5 by a member action" do
+    test "writes the questions and the review comments as the person, with an audit entry",
+         %{scope: scope, run: run} = context do
+      member = member_fixture(scope)
+
+      for {type, document} <- [
+            {"questions", %{"questions" => [asked(run, "q1", "Which basket?")]}},
+            {"review-comments", %{"review_comments" => []}}
+          ] do
+        assert {:ok, %Version{writer: :person, user_id: user_id, run_id: nil}} =
+                 Artifacts.push({:member_action, member.scope}, context.work_item, type, [
+                   json("#{type}.json", document)
+                 ])
+
+        assert user_id == member.user.id
+      end
+
+      assert Repo.aggregate(from(e in Entry, where: e.action == "artifact.write"), :count) == 2
+    end
+
+    test "is forbidden for any other type", %{scope: scope} = context do
+      assert Artifacts.push({:member_action, scope}, context.work_item, "explainer", [doc()]) ==
+               {:error, :forbidden}
+
+      assert Artifacts.list(context.work_item) == []
+    end
+
+    test "is not found for a person of another organisation", context do
+      assert {:error, :not_found} =
+               Artifacts.push({:member_action, scope_fixture()}, context.work_item, "questions", [
+                 json("questions.json", %{"questions" => []})
+               ])
+    end
   end
 
   describe "push/5 with expect_stage" do
@@ -1406,9 +1738,10 @@ defmodule Apiary.ArtifactsTest do
       assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
       refute_received {:artifact_pushed, _work_item_id, _version_id}
 
-      # The transaction refuses after the store keeps the bytes, as every refusal there
-      # does, and nothing deletes them.
-      assert [_kept] = stored_paths(root)
+      # The transaction refuses before the store keeps the bytes, and drops the staged
+      # copy.
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
     end
 
     test "stores the version in the same stage", %{scope: scope, work_item: work_item} do

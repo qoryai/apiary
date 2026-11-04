@@ -472,7 +472,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
         Questions.answer(document, [{"q2", nil, "Earlier."}], "Someone", DateTime.utc_now())
 
       {:ok, _version} =
-        Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "questions", [
+        Apiary.Artifacts.push({:member_action, ctx.scope}, ctx.work_item, "questions", [
           Questions.file(document)
         ])
 

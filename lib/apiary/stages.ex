@@ -42,8 +42,18 @@ defmodule Apiary.Stages do
   # of the work item with a question that waits for an answer make the stage wait for
   # answers, whatever else the run did (`Apiary.Explore.Questions`); otherwise a run that
   # stopped escalates, `run_stopped`, with the cause, and any other counts as a run with no
-  # verdict. Any other workflow reports with artifacts: its newest `verdict` and its
-  # `questions`.
+  # verdict. Newest questions whose file cannot be read raise
+  # `Apiary.Stages.QuestionsUnreadable`. A refusal or a lost run
+  # (`Apiary.Dispatches.RunEnd`) rolls back and stores nothing, as the run of the queue is
+  # still handed over: the lost-run check ends it again at a later tick
+  # (`Apiary.Dispatches.RunEnd.lose/3`). An exit is stored with no outcome
+  # (`Apiary.Dispatches.Settle`); the settle sweep settles it later, and then the stage
+  # acts, unless the file becomes unreadable after Settle read it; then the exit rolls
+  # back and the lost-run check ends it again. A settle that raises rolls back, and the
+  # settle sweep settles the run again. A claim, a failed harness walk and a held run
+  # whose build failed store the end and leave the stage as it is
+  # (`run_ended_or_later/2`), and the stage sweep acts on the end later (`sweep/3`). Any
+  # other workflow reports with artifacts: its newest `verdict` and its `questions`.
   #
   # ## What a person does
   #
@@ -71,6 +81,11 @@ defmodule Apiary.Stages do
   import Ecto.Query, warn: false
 
   require Logger
+
+  # The ends of a run the stage runner ignores (`run_result/3`).
+  @ignored_ends [:closed, :undone, :released, :superseded]
+  # The ends one stage sweep reads at most (`sweep/3`).
+  @stage_batch 100
 
   alias Apiary.{Access, Audit, Dispatches, Features, Processes, Repo}
   alias Apiary.Accounts.Scope
@@ -235,10 +250,128 @@ defmodule Apiary.Stages do
     end
   end
 
+  # run_ended_or_later/2 is `run_ended/2` for an end that is stored whatever the stage
+  # does: a claim's, a harness walk's that failed, and a held run's whose build failed.
+  # Where the newest questions of the run's work item cannot be read, it writes nothing,
+  # logs one warning with the run's id and gives none: the stage sweep acts on the end
+  # later (`sweep/3`). Nothing is written before that read, so the caller's transaction
+  # goes on.
+  @doc false
+  @spec run_ended_or_later(Ecto.UUID.t(), StopCause.context()) ::
+          [Apiary.Dispatches.Settle.told()]
+  def run_ended_or_later(id, context \\ %{}) when is_binary(id) do
+    run_ended(id, context)
+  rescue
+    Apiary.Stages.QuestionsUnreadable ->
+      Logger.warning("stage end left for later, newest questions unreadable dispatch_run=#{id}")
+      []
+  end
+
+  # sweep/3 acts on the ends the stage runner has not read: each run of Explore that is
+  # the newest of its work item's take in, ended, with its work item exploring and the
+  # stage running, but a run ended `run_ended` with no outcome stored, which Settle stores
+  # first (`Apiary.Dispatches.Settle`), and a run whose end the runner ignores. Such an
+  # end is one that `run_ended_or_later/2` left, or whose act failed after the end was
+  # stored. Every act of the runner on a run's end moves the stage or queues a newer run,
+  # so an end acted on is not read again. At most `limit`, `@stage_batch` by default, by
+  # id after `after_id`, or from the first for nil, each in a transaction that locks the
+  # work item, then reads the run with no lock, with the context a claim gives
+  # (`claim_context/1`); one that raises is logged in one line by its id and the
+  # exception's module. `{told, next}`: the work items to tell, and the `after_id` of the
+  # next sweep, the last id read when it read `limit`, nil when it read fewer. With the
+  # workflow model off, none.
+  @doc false
+  @spec sweep(DateTime.t(), Ecto.UUID.t() | nil, pos_integer) ::
+          {[Apiary.Dispatches.Settle.told()], Ecto.UUID.t() | nil}
+  def sweep(%DateTime{} = _now, after_id, limit \\ @stage_batch) do
+    if on?() do
+      newest =
+        from r in DispatchRun,
+          where:
+            r.work_item_id == parent_as(:run).work_item_id and
+              r.take_in == parent_as(:run).take_in,
+          select: max(r.attempt)
+
+      ids =
+        from(r in DispatchRun,
+          as: :run,
+          join: w in WorkItem,
+          on: w.id == r.work_item_id,
+          where: r.state == :ended and r.step == "explore",
+          where: r.end_cause not in ^@ignored_ends,
+          where: not (r.end_cause == :run_ended and is_nil(r.result_outcome)),
+          # Read through the partial index `work_items_exploring_running_index`.
+          where: w.state == :exploring and w.stage_state == :running,
+          where: w.take_in == r.take_in and (is_nil(r.stage_id) or r.stage_id == w.stage_id),
+          where: r.attempt == subquery(newest),
+          order_by: r.id,
+          limit: ^limit,
+          select: r.id
+        )
+        |> stage_after(after_id)
+        |> Repo.all()
+
+      next = if length(ids) == limit, do: List.last(ids)
+      {Enum.flat_map(ids, &sweep_one/1), next}
+    else
+      {[], nil}
+    end
+  end
+
+  defp stage_after(query, nil), do: query
+  defp stage_after(query, id), do: from(r in query, where: r.id > ^id)
+
+  defp sweep_one(id) do
+    {:ok, told} =
+      Repo.transact(fn ->
+        :ok = hold_work_item(id)
+        {:ok, run_ended(id, claim_context(id))}
+      end)
+
+    Apiary.Runs.StuckLog.clear({:stage, id})
+    told
+  rescue
+    exception ->
+      module = exception.__struct__
+
+      Apiary.Runs.StuckLog.log(:error, {:stage, id}, module, fn ->
+        "stage end failed dispatch_run=#{id} error=#{inspect(module)}"
+      end)
+
+      []
+  end
+
+  # The context a claim gives its ends (`claim_ended/2`), made again for the run of the
+  # queue `id`: the gateway and the keys of the pool of the run's newest dispatch, as
+  # `Apiary.Dispatches.Handover.gateway/1` reads them now, in the shape the claim passes.
+  # A run with no dispatch, or whose pool no longer resolves to a gateway, has none.
+  @doc false
+  @spec claim_context(Ecto.UUID.t()) :: StopCause.context()
+  def claim_context(id) when is_binary(id) do
+    pool =
+      Repo.one(
+        from d in Dispatches.Dispatch,
+          join: n in Apiary.Nodes.Node,
+          on: n.id == d.pool_id,
+          where: d.dispatch_run_id == ^id,
+          order_by: [desc: d.claimed_at],
+          limit: 1,
+          select: n
+      )
+
+    with %Apiary.Nodes.Node{} <- pool,
+         {:ok, gateway, keys} <- Dispatches.Handover.gateway(pool) do
+      %{gateway: gateway, keys: keys}
+    else
+      _none -> %{}
+    end
+  end
+
   # claim_ended/1 acts on the end of each run of the queue in `dispatch_run_ids`, which a
   # claim ended before they started, once the claim committed: each in a transaction that
-  # locks its work item, then the run (`run_ended/1`). A failure is logged, and the run's
-  # work item stays as it was. The work items to tell (`Apiary.Dispatches.broadcast/1`).
+  # locks its work item, then reads the run with no lock (`run_ended_or_later/2`). A
+  # failure is logged, and the run's work item stays as it was until the stage sweep acts
+  # on the run's end (`sweep/3`). The work items to tell (`Apiary.Dispatches.broadcast/1`).
   @doc false
   @spec claim_ended([Ecto.UUID.t()], StopCause.context()) :: [Apiary.Dispatches.Settle.told()]
   def claim_ended(dispatch_run_ids, context \\ %{}) when is_list(dispatch_run_ids),
@@ -248,7 +381,7 @@ defmodule Apiary.Stages do
     {:ok, told} =
       Repo.transact(fn ->
         :ok = hold_work_item(id)
-        {:ok, run_ended(id, context)}
+        {:ok, run_ended_or_later(id, context)}
       end)
 
     told
@@ -399,6 +532,19 @@ defmodule Apiary.Stages do
     ) || explore_stage_id(work_item)
   end
 
+  # run_stage_id/2 is the stage a version that the run of the queue `run` pushes for
+  # `work_item` is made in: the run's stage, or, for a run of Explore with no stage, one
+  # queued before the workflow model was on, the stage that runs `explore_workflow/0`
+  # (`explore_stage_id/1`), as `confirmed_stage_id/2` reads it. So the Exists check of
+  # that stage finds the proposal the run pushed. nil for another run with no stage.
+  @doc false
+  @spec run_stage_id(DispatchRun.t(), WorkItem.t()) :: String.t() | nil
+  def run_stage_id(%DispatchRun{stage_id: stage_id}, %WorkItem{}) when is_binary(stage_id),
+    do: stage_id
+
+  def run_stage_id(%DispatchRun{} = run, %WorkItem{} = work_item),
+    do: if(explore_run?(run), do: explore_stage_id(work_item))
+
   # explore_stage_id/1 is the id of the stage of the work item's process version that runs
   # `explore_workflow/0`; nil for none.
   @doc false
@@ -484,7 +630,8 @@ defmodule Apiary.Stages do
   end
 
   # add_version/5 stores a version a person adds on the work item, as the scope's person
-  # (`Apiary.Artifacts.push/5`, `{:person, scope}`), with the `stage_id` of the stage the
+  # (`Apiary.Artifacts.push/5`, `{:person, scope}`, which refuses the questions and the
+  # review comments as `{:unknown_type, name}`), with the `stage_id` of the stage the
   # work item is in, whatever `opts` gives, then acts on that stage (`version_added/1`):
   # `{:ok, version}`, or the push's refusal, with no action on the stage. The stage is read
   # before the push takes the work item's lock, so the push checks it again under the lock
@@ -1256,7 +1403,7 @@ defmodule Apiary.Stages do
     do: :unsettled
 
   defp run_result(_work_item, %DispatchRun{end_cause: cause}, _context)
-       when cause in [:closed, :undone, :released, :superseded],
+       when cause in @ignored_ends,
        do: :ignored
 
   defp run_result(work_item, %DispatchRun{} = run, context) do
@@ -1277,21 +1424,35 @@ defmodule Apiary.Stages do
 
   def explore_run?(%DispatchRun{}), do: false
 
-  # Explore: open questions first, then a run that stopped, else a run with no verdict.
+  # Explore: open questions first, then a run that stopped, else a run with no verdict. A
+  # run whose registered run failed after it pushed a proposal stopped, and its cause
+  # names the proposal's version (`StopCause.failed_after_proposal/1`), where the run
+  # pushed none it reads as any stopped run.
   defp explore_result(work_item, run, context) do
     open = open_questions(work_item)
 
     cond do
-      open != [] -> {:questions, question_texts(open)}
-      stopped?(run) -> {:stopped, stop_cause(run, work_item, context)}
-      true -> {:verdict, nil, nil}
+      open != [] ->
+        {:questions, question_texts(open)}
+
+      stopped?(run) ->
+        case failed_proposal(run) do
+          nil -> {:stopped, stop_cause(run, work_item, context)}
+          version -> {:stopped, StopCause.failed_after_proposal(version)}
+        end
+
+      true ->
+        {:verdict, nil, nil}
     end
   end
 
+  # The open questions of the work item's newest questions; a newest version whose file
+  # cannot be read raises, so the end is not read as one with no open question.
   defp open_questions(work_item) do
-    case Apiary.Explore.Questions.newest(work_item) do
-      {_version, document} -> Apiary.Explore.Questions.open(document)
-      nil -> []
+    case Apiary.Explore.Questions.current(work_item) do
+      {:ok, {_version, document}} -> Apiary.Explore.Questions.open(document)
+      {:ok, nil} -> []
+      {:error, :store_unavailable} -> raise Apiary.Stages.QuestionsUnreadable
     end
   end
 
@@ -1306,13 +1467,30 @@ defmodule Apiary.Stages do
 
   defp stopped?(%DispatchRun{}), do: true
 
+  # The number of the newest version of the proposal named `main` that `run`, which ended
+  # by its exit, pushed before its registered run failed; nil for none.
+  defp failed_proposal(%DispatchRun{id: id, end_cause: :run_ended}) do
+    Repo.one(
+      from v in Apiary.Artifacts.Version,
+        join: a in Apiary.Artifacts.Artifact,
+        on: a.id == v.artifact_id,
+        join: r in Run,
+        on: r.dispatch_run_id == v.run_id,
+        where: v.run_id == ^id and a.type == "proposal" and a.name == "main",
+        where: r.exit_state == "failed",
+        select: max(v.number)
+    )
+  end
+
+  defp failed_proposal(%DispatchRun{}), do: nil
+
   # A workflow that reports with artifacts: the questions it pushed that wait for an
-  # answer, else its newest verdict; a run whose registered run failed or was lost
-  # stopped.
+  # answer, else its newest verdict, each of the artifact named `main`; a run whose
+  # registered run failed or was lost stopped.
   defp reported_result(work_item, run) do
     mine =
       for artifact <- Artifacts.list(work_item),
-          artifact.type in ["questions", "verdict"],
+          artifact.type in ["questions", "verdict"] and artifact.name == "main",
           version <- artifact.versions,
           version.run_id == run.id,
           do: {artifact.type, version}

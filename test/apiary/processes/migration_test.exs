@@ -6,6 +6,11 @@ defmodule Apiary.Processes.MigrationTest do
   # is not async.
   use Apiary.DataCase, async: false
 
+  # The backfill reads `work_item_answers`, which a later migration drops: the table is
+  # back for each test (`Apiary.AnswersTable`), and Ecto's warning that an older
+  # migration ran after a newer one is kept from the output.
+  @moduletag :capture_log
+
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures, only: [work_item_fixture: 1, explore_run_fixture: 2]
 
@@ -28,6 +33,11 @@ defmodule Apiary.Processes.MigrationTest do
       |> Code.require_file()
     end
 
+    :ok
+  end
+
+  setup do
+    Apiary.AnswersTable.back!()
     :ok
   end
 

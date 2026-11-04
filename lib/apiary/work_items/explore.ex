@@ -366,8 +366,8 @@ defmodule Apiary.WorkItems.Explore do
     do: Repo.one(from c in Confirmation, where: c.work_item_id == ^id and c.take_in == ^take_in)
 
   # proposal_version/3 is the version of the proposal the run `attempt` of take in
-  # `take_in` of the work item `id` stands at: the number of the newest `proposal` version
-  # a run of the take in up to it pushed; nil for none.
+  # `take_in` of the work item `id` stands at: the number of the newest version of the
+  # `proposal` named `main` a run of the take in up to it pushed; nil for none.
   @doc false
   @spec proposal_version(Ecto.UUID.t(), pos_integer, pos_integer) :: pos_integer | nil
   def proposal_version(id, take_in, attempt) do
@@ -377,7 +377,7 @@ defmodule Apiary.WorkItems.Explore do
         on: a.id == v.artifact_id,
         join: d in DispatchRun,
         on: d.id == v.run_id,
-        where: a.work_item_id == ^id and a.type == "proposal",
+        where: a.work_item_id == ^id and a.type == "proposal" and a.name == "main",
         where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt <= ^attempt,
         order_by: [desc: v.number],
         limit: 1,
@@ -385,8 +385,8 @@ defmodule Apiary.WorkItems.Explore do
     )
   end
 
-  # proposal_text/2 is the Markdown of version `number` of the work item `id`'s proposal,
-  # the text of `proposal/2`; nil where that is nil.
+  # proposal_text/2 is the Markdown of version `number` of the work item `id`'s proposal
+  # named `main`, the text of `proposal/2`; nil where that is nil.
   @doc false
   @spec proposal_text(Ecto.UUID.t(), pos_integer | nil) :: String.t() | nil
   def proposal_text(id, number) do
@@ -396,11 +396,11 @@ defmodule Apiary.WorkItems.Explore do
     end
   end
 
-  # proposal/2 is version `number` of the work item `id`'s proposal, as a page shows it:
-  # `text`, the Markdown of its `text/markdown` file; `version_id`, the version's public
-  # id (`av_…`); and `images`, the filenames of its image files, in filename order. The
-  # version's `sources.json` is in none of them. Nil for no such version, a version with
-  # no Markdown file, or one that cannot be read as UTF-8 text.
+  # proposal/2 is version `number` of the work item `id`'s proposal named `main`, as a page
+  # shows it: `text`, the Markdown of its `text/markdown` file; `version_id`, the
+  # version's public id (`av_…`); and `images`, the filenames of its image files, in
+  # filename order. The version's `sources.json` is in none of them. Nil for no such
+  # version, a version with no Markdown file, or one that cannot be read as UTF-8 text.
   @doc false
   @spec proposal(Ecto.UUID.t(), pos_integer | nil) ::
           %{text: String.t(), version_id: String.t(), images: [String.t()]} | nil
@@ -412,9 +412,9 @@ defmodule Apiary.WorkItems.Explore do
         from v in Version,
           join: a in Artifact,
           on: a.id == v.artifact_id,
-          where: a.work_item_id == ^id and a.type == "proposal" and v.number == ^number,
-          order_by: [asc: a.name],
-          limit: 1,
+          where:
+            a.work_item_id == ^id and a.type == "proposal" and a.name == "main" and
+              v.number == ^number,
           preload: [files: ^from(f in ArtifactFile, order_by: f.filename)]
       )
 

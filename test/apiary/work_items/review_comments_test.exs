@@ -215,6 +215,34 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert WorkItems.answer(member.scope, work_item, 1, @comment) == {:error, :not_approver}
       assert review_comments(work_item) == nil
       assert {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      [comment] = review_comments(work_item)
+
+      # A push of the files is no way around the member actions: the member who is not an
+      # approver cannot close the review comment with a reply in a run's name.
+      forged = %{
+        "review_comments" => [
+          comment
+          |> Map.put("state", "closed")
+          |> Map.put("replies", [
+            %{
+              "text" => "Done.",
+              "by" => %{"run" => 7},
+              "at" => comment["at"],
+              "outcome" => "changed"
+            }
+          ])
+        ]
+      }
+
+      for push <- [
+            &Apiary.Artifacts.push({:person, member.scope}, reload(work_item), &1, &2),
+            &Apiary.Stages.add_version(member.scope, reload(work_item), &1, &2)
+          ] do
+        assert push.("review-comments", [ReviewComments.file(forged)]) ==
+                 {:error, {:unknown_type, "review-comments"}}
+      end
+
+      assert [^comment] = review_comments(work_item)
     end
   end
 
@@ -360,6 +388,115 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
     end
   end
 
+  describe "a member's name" do
+    # The local part of the member's email address, which the name is, set to 201
+    # characters over three lines with tabs and a line separator: as the format takes a
+    # member's name, one line of at most 160 characters.
+    defp long_name!(scope) do
+      local = "  Ann\r\n\tExample\u2028" <> String.duplicate("é", 200)
+
+      {1, _rows} =
+        Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^scope.user.id),
+          set: [email: local <> "@example.com"]
+        )
+
+      "Ann Example " <> String.duplicate("é", 148)
+    end
+
+    test "is one line of 160 characters in a review comment and a reply", %{scope: scope} do
+      work_item = proposed!(scope)
+      name = long_name!(scope)
+      assert String.length(name) == 160
+
+      assert {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      assert [%{"by" => %{"name" => ^name}}] = review_comments(work_item)
+
+      assert {:ok, _} = WorkItems.reply(scope, work_item, 1, "c1", "And name the rule.")
+      assert [%{"replies" => [%{"by" => %{"name" => ^name}}]}] = review_comments(work_item)
+    end
+
+    test "is one line of 160 characters in an answer", %{scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result(["Which basket?"]))
+      name = long_name!(scope)
+
+      assert {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The small one."})
+
+      assert {_version, %{"questions" => [%{"answer" => %{"by" => %{"name" => ^name}}}]}} =
+               Apiary.Explore.Questions.newest(reload(work_item))
+    end
+
+    test "is unnamed member when nothing of it is left for one line", %{scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result(["Which basket?"]))
+
+      {1, _rows} =
+        Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^scope.user.id),
+          set: [email: " \t\u2028\u200B @example.com"]
+        )
+
+      assert {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The small one."})
+
+      assert {_version,
+              %{"questions" => [%{"answer" => %{"by" => %{"name" => "unnamed member"}}}]}} =
+               Apiary.Explore.Questions.newest(reload(work_item))
+
+      proposed = proposed!(scope)
+      assert {:ok, _} = WorkItems.review_comment(scope, proposed, 1, @comment)
+      assert [%{"by" => %{"name" => "unnamed member"}}] = review_comments(proposed)
+    end
+  end
+
+  describe "a newest version that cannot be read" do
+    # The stored copy of the version's one file moved away until the test ends, as a store
+    # that cannot read it. Each document here has the member's name or a unique number, so
+    # no other test stores the same content.
+    defp unreadable!(version) do
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+    end
+
+    test "is store_unavailable for a review comment, a reply and a send, which write nothing",
+         %{scope: scope} do
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {version, _document} = ReviewComments.newest(reload(work_item))
+      unreadable!(version)
+
+      assert WorkItems.review_comment(scope, work_item, 1, "Refund at once.") ==
+               {:error, :store_unavailable}
+
+      assert WorkItems.reply(scope, work_item, 1, "c1", "Not yet.") ==
+               {:error, :store_unavailable}
+
+      assert WorkItems.send_review_comments(scope, work_item, 1) == {:error, :store_unavailable}
+
+      assert WorkItems.answer(scope, work_item, 1, "Refund at once.") ==
+               {:error, :store_unavailable}
+
+      assert [%{number: 1}] = Apiary.Artifacts.versions(version.artifact)
+      assert [_comment] = answered_events(work_item)
+      assert runs(work_item) == [{1, 3, :ended}]
+    end
+
+    test "is store_unavailable for an answer, which writes nothing", %{scope: scope} do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(questions_result(["Which basket #{System.unique_integer([:positive])}?"]))
+
+      {version, _document} = Apiary.Explore.Questions.newest(reload(work_item))
+      unreadable!(version)
+
+      assert WorkItems.answer(scope, work_item, 1, %{"1" => "The small one."}) ==
+               {:error, :store_unavailable}
+
+      assert [%{number: 1}] = Apiary.Artifacts.versions(version.artifact)
+      assert answered_events(work_item) == []
+      assert runs(work_item) == [{1, 3, :ended}]
+    end
+  end
+
   describe "the run's version" do
     # Pushes `document` as the review comments of `work_item`, as its newest run.
     defp push_review_comments(work_item, document) do
@@ -379,7 +516,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
 
     test "that changes a member's words is refused, and stores nothing", %{scope: scope} do
       work_item = proposed!(scope)
-      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      # Sent at once, so the newest run is the next one, live.
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
       [comment] = review_comments(work_item)
 
       assert push_review_comments(work_item, %{
@@ -387,6 +525,59 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
              }) == {:error, {:invalid, {:kept, 0, :comment_changed}}}
 
       assert [^comment] = review_comments(work_item)
+    end
+
+    test "with 1.0 for version 1 and 13.0 for run 13 is taken, stored as 1 and 13", %{
+      scope: scope
+    } do
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
+      [comment] = review_comments(work_item)
+      version = comment["on"]["version"]
+      assert is_integer(version)
+
+      end_run!(work_item, fn run, registered ->
+        push_result!(run, registered, understood_result(%{"message" => "## Again\n\nIt."}))
+        at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        reply = %{
+          "text" => "Changed the order.",
+          "by" => %{"run" => registered.number * 1.0},
+          "at" => at,
+          "outcome" => "changed"
+        }
+
+        floats =
+          comment
+          |> put_in(["on", "version"], version * 1.0)
+          |> Map.put("replies", [reply])
+          |> Map.put("state", "closed")
+
+        file = ReviewComments.file(%{"review_comments" => [floats]})
+        assert file.binary =~ "#{version}.0"
+
+        assert {:ok, stored} = push_review_comments(work_item, %{"review_comments" => [floats]})
+        [stored_file] = stored.files
+        {:ok, path} = Apiary.Artifacts.open_file(stored_file)
+
+        assert %{"review_comments" => [%{"on" => %{"version" => ^version}} = kept]} =
+                 path |> File.read!() |> Jason.decode!()
+
+        assert [%{"by" => %{"run" => number}}] = kept["replies"]
+        assert number === registered.number
+      end)
+
+      # The member's reply finds the review comment the run closed.
+      assert {:ok, _} = WorkItems.reply(scope, work_item, 2, "c1", "Not yet: name the rule.")
+
+      assert [
+               %{
+                 "state" => "open",
+                 "on" => %{"version" => ^version},
+                 "replies" => [_run, _member]
+               }
+             ] =
+               review_comments(work_item)
     end
 
     test "an asked reply's question is the id of a question stored before the push", %{
@@ -411,6 +602,78 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
 
       assert WorkItems.explore(scope, reload(work_item)).status == :questions
       assert registered(work_item).number > 0
+    end
+
+    test "numbers in a run's questions: 1e300 is refused, and the stored file stays within the limit",
+         %{scope: scope} do
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
+      at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+      # `n` open questions asked by run 1000, written `1e3`, each with `context` of
+      # `pad` characters, as the raw bytes of a questions file.
+      raw = fn n, pad ->
+        questions =
+          for i <- 1..n do
+            %{
+              "id" => "q#{i}",
+              "question" => "Which basket #{i}?",
+              "context" => String.duplicate("a", pad),
+              "options" => [],
+              "state" => "open",
+              "asked" => %{"run" => 1000, "at" => at}
+            }
+          end
+
+        %{"questions" => questions}
+        |> Jason.encode!()
+        |> String.replace(~s("run":1000), ~s("run":1e3))
+      end
+
+      push = fn run, bytes ->
+        Apiary.Artifacts.push(
+          {:run, run},
+          reload(work_item),
+          "questions",
+          [%{filename: "questions.json", content_type: "application/json", binary: bytes}],
+          stage_id: run.stage_id
+        )
+      end
+
+      end_run!(work_item, fn run, registered ->
+        # A number past every run number, which the format takes as an integer: refused
+        # by the check, never written out in 301 digits.
+        huge = String.replace(raw.(1, 10), ~s("run":1e3), ~s("run":1e300))
+
+        assert push.(run, huge) == {:error, {:invalid, {:kept, 0, :asked_run}}}
+        assert Apiary.Explore.Questions.newest(reload(work_item)) == nil
+
+        {1, _rows} =
+          Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
+            set: [number: 1000]
+          )
+
+        # 100 questions whose file is 50 bytes within the limit as it came, and 50 over
+        # once each 1e3 is 1000.
+        limit = 1_048_576
+        target = limit - 50
+        pad = div(target - byte_size(raw.(100, 0)), 100)
+        bytes = raw.(100, pad)
+        extra = String.duplicate("a", target - byte_size(bytes))
+        bytes = String.replace(bytes, ~s("context":"), ~s("context":"#{extra}), global: false)
+        assert byte_size(bytes) == target
+
+        assert push.(run, bytes) == {:error, {:too_large, limit}}
+        assert Apiary.Explore.Questions.newest(reload(work_item)) == nil
+
+        # A small one is stored with 1000.
+        assert {:ok, version} = push.(run, raw.(1, 10))
+        [file] = version.files
+        {:ok, path} = Apiary.Artifacts.open_file(file)
+        stored = File.read!(path)
+        assert stored =~ ~s("run":1000)
+        assert byte_size(stored) == file.size
+      end)
     end
 
     test "a version of the questions that changes a member's answer is refused", %{

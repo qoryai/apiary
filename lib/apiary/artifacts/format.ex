@@ -23,7 +23,11 @@ defmodule Apiary.Artifacts.Format do
   #     type's file under `priv/schemas/artifacts/`, a custom type's in its row
   #     (`Apiary.Artifacts.CustomSchema`); `application/json`. A document of the standard
   #     type `questions` also has each question's `id` once, which its schema cannot
-  #     check: a second question with an `id` is refused at that `id`.
+  #     check: a second question with an `id` is refused at that `id`. A document of a
+  #     standard type has each key once in each object, which a JSON parser does not
+  #     check (Jason keeps the last of two, another parser may keep the first): a key
+  #     that comes twice is refused at its object's place, before the schema reads the
+  #     document.
   #
   # A version of the standard type `proposal` is one Markdown document with images
   # beside it, and the sources the run used. Each file is checked by its filename:
@@ -38,11 +42,15 @@ defmodule Apiary.Artifacts.Format do
   #     (any case): the image check, where the type the bytes show is the one the
   #     extension names, else `:image_type`. An SVG is at most 512 KiB, else
   #     `:document_size`; UTF-8 text an XML parser reads to its end, with a root element
-  #     `svg` in the SVG namespace, else `:svg_format`; and passes the strict check, else
-  #     `{:svg_content, part}`, `part` the first part refused, in plain words with names as
-  #     the file writes them, such as "the script element". Before the parse, a document
+  #     `svg` written with no prefix or in the SVG namespace, else `:svg_format`; a root
+  #     `svg` with no prefix outside the SVG namespace is `:svg_root`, and a root with a
+  #     prefix in the SVG namespace, such as `s:svg`, is refused by the strict check. An
+  #     SVG passes the strict check, else `{:svg_content, part}`, `part` the first part
+  #     refused, in plain words with names as the file writes them, such as "the script
+  #     element". Before the parse, a document
   #     type declaration is "the DOCTYPE", and an element with more than 256 attributes
-  #     "the attributes past the 256th on the rect element". The strict check is
+  #     "the attributes past the 256th on the rect element". An element that declares a
+  #     prefix, or `xmlns`, twice is not well-formed: `:svg_format`. The strict check is
   #     an allowlist, so that the SVG runs no script and loads nothing from outside the
   #     file, shown in an `<img>`, opened as an SVG, or opened as a page after a rename to
   #     `.html`, where an HTML parser reads no namespace:
@@ -53,6 +61,8 @@ defmodule Apiary.Artifacts.Format do
   #         ping attribute"); `href` and `xlink:href` only on `use`, `a`, `textPath`,
   #         `linearGradient`, `radialGradient` and `pattern`, and only `#` and a name
   #         ("the href attribute");
+  #       - nothing but spaces, tabs, CRs and LFs after the root's end ("everything
+  #         after the end of the svg element");
   #       - `title`, `desc` and `style` contain text only ("the g element inside the desc
   #         element"); a CDATA section only inside `style` ("the CDATA section in the
   #         desc element"); no comment whose text starts with `>` or `->` ("the comment
@@ -60,7 +70,8 @@ defmodule Apiary.Artifacts.Format do
   #         ("the processing instruction xml-stylesheet"); the XML declaration is not one;
   #       - in any text and attribute, no `@import` and a CSS `url(` only to a place in
   #         the file ("the url() in the fill attribute");
-  #       - in a `style` element and in any attribute, read as CSS, no backslash, since a
+  #       - in a `style` element and in any attribute, namespace declarations such as
+  #         `xmlns:a` included, read as CSS, no backslash, since a
   #         CSS escape could spell `url(` ("a backslash in the fill attribute"), and no
   #         `image-set(`, also `-webkit-image-set(`, `image(` or `src(`, any case, also
   #         with spaces before the `(` ("the image-set() in the style element"); the
@@ -78,8 +89,9 @@ defmodule Apiary.Artifacts.Format do
   # `:extension` for a document whose filename does not end in `.md` (for a proposal, in
   # none of the extensions it takes), `{:schema, detail}` for a structured document the
   # schema refuses, `detail` its first failing place (`Apiary.Artifacts.SchemaError`),
-  # `:document_size`, `:image_type`, `:svg_format` and `{:svg_content, part}` for a file
-  # of a proposal, and `:unreadable` for a file that cannot be read.
+  # `:document_size`, `:image_type`, `:svg_format`, `:svg_root` and
+  # `{:svg_content, part}` for a file of a proposal, and `:unreadable` for a file that
+  # cannot be read.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -98,7 +110,7 @@ defmodule Apiary.Artifacts.Format do
   # 256 KiB parse in 1,149,244 reductions within 2,097,152 words, and 1 MiB in 5,237,092
   # reductions within 8,388,608 words but not within 4,194,304. So 512 KiB is the largest
   # SVG taken, at about half the budget's heap; an SVG whose parse passes the budget is
-  # refused as `:format`.
+  # refused as `:format`, for a proposal `:svg_format`.
   @svg_budget [reductions: 20_000_000, heap_words: 8_388_608, ms: 30_000]
 
   # The most attributes an element of an SVG may have. xmerl's parse of one element takes
@@ -189,6 +201,9 @@ defmodule Apiary.Artifacts.Format do
   # `desc` as HTML, so a child element there would be an HTML element.
   @svg_text_only ~w(title desc style)
 
+  # The part refused for anything but spaces, tabs, CRs and LFs after the root's end.
+  @svg_after "everything after the end of the svg element"
+
   # The namespace of HTML, named in the part refused.
   @xhtml_namespace ~c"http://www.w3.org/1999/xhtml"
 
@@ -213,6 +228,7 @@ defmodule Apiary.Artifacts.Format do
           | :document_size
           | :image_type
           | :svg_format
+          | :svg_root
           | {:svg_content, String.t()}
           | {:schema, SchemaError.t()}
           | :unreadable
@@ -270,7 +286,7 @@ defmodule Apiary.Artifacts.Format do
 
   def check(%Type{base_view: :structured} = type, _filename, path) do
     with {:ok, bytes} <- read(path),
-         {:ok, document} <- decode(bytes),
+         {:ok, document} <- decode(type, bytes),
          :ok <- structured(type, document) do
       {:ok, @json}
     end
@@ -416,6 +432,9 @@ defmodule Apiary.Artifacts.Format do
       {:ok, :unparsed} ->
         stylesheet(mode, bytes)
 
+      {:ok, :svg_root} ->
+        {:error, refusal(mode, :svg_root)}
+
       _other ->
         {:error, refusal(mode, :svg_format)}
     end
@@ -426,14 +445,18 @@ defmodule Apiary.Artifacts.Format do
   defp refusal(:plain, _reason), do: :format
 
   # xmerl's parser stops at a `<?xml-stylesheet ?>` instruction before the root, as a
-  # malformed XML declaration, so in `:strict` mode the bytes of a file whose parse fails
-  # are searched for one, so the refusal says why. A parse that reads the file to its end
-  # sends every processing instruction to the strict check, so a mention in a comment or
-  # a CDATA section is never taken for one.
+  # malformed XML declaration, so in `:strict` mode a file whose parse fails is read for
+  # its first processing instruction, other than the XML declaration, outside a comment
+  # and a CDATA section (`scan/2`), so the refusal says why. A mention in a comment or a
+  # CDATA section is not an instruction, and a parse that reads the file to its end sends
+  # every instruction to the strict check.
   defp stylesheet(:strict, bytes) do
-    case Regex.run(~r/<\?(xml-stylesheet)/i, bytes, capture: :all_but_first) do
-      [target] -> {:error, {:svg_content, "the processing instruction #{target}"}}
-      nil -> {:error, :svg_format}
+    case scan(bytes, :instruction) do
+      {:instruction, target} ->
+        {:error, {:svg_content, "the processing instruction #{shorten(target)}"}}
+
+      _none ->
+        {:error, :svg_format}
     end
   end
 
@@ -452,7 +475,7 @@ defmodule Apiary.Artifacts.Format do
   # A `<` inside a tag, also in a quoted value, is where an XML parser stops, so the count
   # starts again there. The parser reads no attribute past where this count does.
   defp markup(bytes, mode) do
-    case scan(bytes) do
+    case scan(bytes, :limits) do
       :ok -> :ok
       :doctype -> {:error, refusal(mode, {:svg_content, "the DOCTYPE"})}
       {:attributes, ""} -> {:error, refusal(mode, :svg_format)}
@@ -463,42 +486,64 @@ defmodule Apiary.Artifacts.Format do
   defp attributes_part(name),
     do: "the attributes past the #{@svg_attributes}th on the #{shorten(name)} element"
 
-  defp scan(bytes) do
+  # `find` is `:limits` for the checks of `markup/2`, or `:instruction` for the target of
+  # the first processing instruction, other than the XML declaration,
+  # `{:instruction, target}`. The parser stops at a `<` inside a tag, so an instruction
+  # is looked for only before one.
+  defp scan(bytes, find) do
     case :binary.match(bytes, "<") do
       :nomatch -> :ok
-      {at, 1} -> open(binary_part(bytes, at + 1, byte_size(bytes) - at - 1))
+      {at, 1} -> open(binary_part(bytes, at + 1, byte_size(bytes) - at - 1), find)
     end
   end
 
   # `bytes` follow a `<`.
-  defp open(<<"!--", rest::binary>>), do: skip(rest, "-->")
-  defp open(<<"![CDATA[", rest::binary>>), do: skip(rest, "]]>")
-  defp open(<<"?", rest::binary>>), do: skip(rest, "?>")
+  defp open(<<"!--", rest::binary>>, find), do: skip(rest, "-->", find)
+  defp open(<<"![CDATA[", rest::binary>>, find), do: skip(rest, "]]>", find)
 
-  defp open(<<"!", rest::binary>> = bytes) do
-    if Regex.match?(~r/\A(?:doctype|entity)/i, rest),
-      do: :doctype,
-      else: tag(bytes, bytes, 0)
+  # The target of an instruction is an XML name; without one, no instruction is found.
+  defp open(<<"?", rest::binary>>, :instruction) do
+    case Regex.run(~r/\A[\p{L}_:][\p{L}\p{N}\p{M}_:.\-\x{B7}]*/u, rest) do
+      [target] ->
+        if String.downcase(target) == "xml",
+          do: skip(rest, "?>", :instruction),
+          else: {:instruction, target}
+
+      nil ->
+        :ok
+    end
   end
 
-  defp open(bytes), do: tag(bytes, bytes, 0)
+  defp open(<<"?", rest::binary>>, find), do: skip(rest, "?>", find)
 
-  defp skip(bytes, close) do
+  defp open(<<"!", rest::binary>> = bytes, :limits) do
+    if Regex.match?(~r/\A(?:doctype|entity)/i, rest),
+      do: :doctype,
+      else: tag(bytes, bytes, 0, :limits)
+  end
+
+  defp open(bytes, find), do: tag(bytes, bytes, 0, find)
+
+  defp skip(bytes, close, find) do
     case :binary.match(bytes, close) do
-      :nomatch -> :ok
-      {at, length} -> scan(binary_part(bytes, at + length, byte_size(bytes) - at - length))
+      :nomatch ->
+        :ok
+
+      {at, length} ->
+        scan(binary_part(bytes, at + length, byte_size(bytes) - at - length), find)
     end
   end
 
   # A tag from after its `<`: `start` is where its name begins.
-  defp tag(_bytes, start, count) when count > @svg_attributes,
+  defp tag(_bytes, start, count, :limits) when count > @svg_attributes,
     do: {:attributes, tag_name(start)}
 
-  defp tag(<<">", rest::binary>>, _start, _count), do: scan(rest)
-  defp tag(<<"<", rest::binary>>, _start, _count), do: open(rest)
-  defp tag(<<"=", rest::binary>>, start, count), do: tag(rest, start, count + 1)
+  defp tag(<<">", rest::binary>>, _start, _count, find), do: scan(rest, find)
+  defp tag(<<"<", _rest::binary>>, _start, _count, :instruction), do: :ok
+  defp tag(<<"<", rest::binary>>, _start, _count, find), do: open(rest, find)
+  defp tag(<<"=", rest::binary>>, start, count, find), do: tag(rest, start, count + 1, find)
 
-  defp tag(<<quote, rest::binary>>, start, count) when quote in [?", ?'] do
+  defp tag(<<quote, rest::binary>>, start, count, find) when quote in [?", ?'] do
     case :binary.match(rest, [<<quote>>, "<"]) do
       :nomatch ->
         :ok
@@ -506,14 +551,16 @@ defmodule Apiary.Artifacts.Format do
       {at, 1} ->
         after_at = binary_part(rest, at + 1, byte_size(rest) - at - 1)
 
-        if :binary.at(rest, at) == quote,
-          do: tag(after_at, start, count),
-          else: open(after_at)
+        cond do
+          :binary.at(rest, at) == quote -> tag(after_at, start, count, find)
+          find == :instruction -> :ok
+          true -> open(after_at, find)
+        end
     end
   end
 
-  defp tag(<<_byte, rest::binary>>, start, count), do: tag(rest, start, count)
-  defp tag(<<>>, _start, _count), do: :ok
+  defp tag(<<_byte, rest::binary>>, start, count, find), do: tag(rest, start, count, find)
+  defp tag(<<>>, _start, _count, _find), do: :ok
 
   defp tag_name(bytes) do
     [name | _rest] = :binary.split(bytes, [" ", "\t", "\n", "\r", "/", ">", "=", "\"", "'"])
@@ -522,33 +569,45 @@ defmodule Apiary.Artifacts.Format do
 
   # The root element's namespace and name, read by the SAX parser, which reads the whole
   # document: `:svg` for an SVG root in a well-formed document, `:unparsed` for a
-  # document the parser stops in, `:other` otherwise. In `:strict` mode,
-  # `{:unsafe, part}` for a well-formed document with an SVG root that fails the strict
-  # check, `part` the first part it refuses.
+  # document the parser stops in, `:svg_root` for a root `svg`, written with no prefix,
+  # outside the SVG namespace, `:other` otherwise. In `:strict` mode, `{:unsafe, part}`
+  # for a well-formed document with an SVG root that fails the strict check, `part` the
+  # first part it refuses. The parser stops reading at the end tag of the root and returns
+  # the rest; after a root with no end tag, it reads comments and processing instructions,
+  # which the strict check refuses. Either is "everything after the end of the svg
+  # element".
   defp svg_root(bytes, mode) do
-    event = fn event, _location, {root, status, state} ->
+    event = fn event, _location, {root, status, state, declared} ->
       root = root(event, root)
+      declared = declared(event, declared)
 
       if mode == :strict and status == :safe do
         {status, state} = strict(event, state)
-        {root, status, state}
+        {root, status, state, declared}
       else
-        {root, status, state}
+        {root, status, state, declared}
       end
     end
 
     case :xmerl_sax_parser.stream(bytes,
            event_fun: event,
-           event_state: {:none, :safe, {[], nil}},
+           event_state: {:none, :safe, {[], nil}, []},
            external_entities: :none,
            fail_undeclared_ref: true
          ) do
-      {:ok, {:svg, status, _state}, rest} ->
+      {:ok, {_root, _status, _state, :twice}, _rest} ->
+        :other
+
+      {:ok, {:svg, status, _state, _declared}, rest} ->
         cond do
-          not blank?(rest) -> :other
-          status == :safe -> :svg
-          true -> status
+          status != :safe -> status
+          blank?(rest) -> :svg
+          mode == :strict -> {:unsafe, @svg_after}
+          true -> :other
         end
+
+      {:ok, {:svg_root, _status, _state, _declared}, _rest} ->
+        :svg_root
 
       {:ok, _root, _rest} ->
         :other
@@ -558,10 +617,29 @@ defmodule Apiary.Artifacts.Format do
     end
   end
 
-  defp root({:startElement, uri, name, _qualified, _attributes}, :none),
-    do: if(uri == @svg_namespace and name == ~c"svg", do: :svg, else: :other)
+  defp root({:startElement, uri, ~c"svg", qualified, _attributes}, :none) do
+    cond do
+      uri == @svg_namespace -> :svg
+      qualified == {[], ~c"svg"} -> :svg_root
+      true -> :other
+    end
+  end
+
+  defp root({:startElement, _uri, _name, _qualified, _attributes}, :none), do: :other
 
   defp root(_event, root), do: root
+
+  # The prefixes declared on the next element, `[]` for `xmlns`, or `:twice` once an
+  # element declares one twice. XML has no attribute twice on one element, but xmerl's
+  # parser takes the last of two declarations and a browser the first, so the element
+  # could be in the HTML namespace in the browser and in the SVG namespace here.
+  defp declared(_event, :twice), do: :twice
+
+  defp declared({:startPrefixMapping, prefix, _uri}, declared),
+    do: if(prefix in declared, do: :twice, else: [prefix | declared])
+
+  defp declared({:startElement, _uri, _name, _qualified, _attributes}, _declared), do: []
+  defp declared(_event, declared), do: declared
 
   # One event of the strict check: `:safe`, or `{:unsafe, part}` with the part refused in
   # plain words, names as the file writes them; and the state: the open elements,
@@ -595,8 +673,26 @@ defmodule Apiary.Artifacts.Format do
   defp strict({:endElement, _uri, _name, _qualified}, {["style" | open], {written, text}}),
     do: {in_text(IO.chardata_to_string(text), true, "the #{written} element"), {open, nil}}
 
+  defp strict({:endElement, _uri, _name, _qualified}, {[_root], _style}), do: {:safe, :after}
+
   defp strict({:endElement, _uri, _name, _qualified}, {[_closed | open], style}),
     do: {:safe, {open, style}}
+
+  # After the root's end, only XML white space: space, tab, CR and LF.
+  defp strict(event, :after) do
+    case event do
+      {:ignorableWhitespace, _text} -> {:safe, :after}
+      {:endPrefixMapping, _prefix} -> {:safe, :after}
+      :endDocument -> {:safe, :after}
+      _other -> {{:unsafe, @svg_after}, :after}
+    end
+  end
+
+  # A namespace declaration's address is checked as an attribute's value.
+  defp strict({:startPrefixMapping, prefix, uri}, state) do
+    name = if prefix == [], do: "xmlns", else: written({~c"xmlns", prefix})
+    {in_text(List.to_string(uri), true, "the #{name} attribute"), state}
+  end
 
   defp strict({:characters, text}, {open, nil}) do
     place = with [inner | _outer] <- open, do: inner
@@ -694,8 +790,10 @@ defmodule Apiary.Artifacts.Format do
   defp shorten(name),
     do: if(String.length(name) > 64, do: String.slice(name, 0, 64) <> "…", else: name)
 
-  defp blank?(rest) when is_binary(rest), do: String.trim(rest) == ""
-  defp blank?(rest) when is_list(rest), do: rest |> List.to_string() |> String.trim() == ""
+  # XML allows only space, tab, CR and LF after the root; a browser fails to show a file
+  # with other white space there, such as U+00A0 or a form feed.
+  defp blank?(rest) when is_binary(rest), do: Regex.match?(~r/\A[ \t\r\n]*\z/, rest)
+  defp blank?(rest) when is_list(rest), do: rest |> List.to_string() |> blank?()
   defp blank?(_rest), do: false
 
   ## A proposal's sources
@@ -720,7 +818,21 @@ defmodule Apiary.Artifacts.Format do
 
   ## Structured
 
-  defp decode(bytes) do
+  # A standard type's document is read with its objects in order, so a key that comes
+  # twice in one object is refused at that object's place (`unique/2`).
+  defp decode(%Type{standard: true}, bytes) do
+    with true <- String.valid?(bytes),
+         {:ok, document} <- Jason.decode(bytes, objects: :ordered_objects) do
+      case unique(document, []) do
+        {:ok, document} -> {:ok, document}
+        {:repeated, key, path} -> {:error, {:schema, repeated(key, path)}}
+      end
+    else
+      _refused -> {:error, :format}
+    end
+  end
+
+  defp decode(%Type{}, bytes) do
     with true <- String.valid?(bytes),
          {:ok, document} <- Jason.decode(bytes) do
       {:ok, document}
@@ -728,6 +840,46 @@ defmodule Apiary.Artifacts.Format do
       _refused -> {:error, :format}
     end
   end
+
+  # The document with each object a map: `{:ok, document}`, or `{:repeated, key, path}`
+  # for the first key, in the document's order, that comes earlier in its object; `path`
+  # the object's place, its segments last first.
+  defp unique(%Jason.OrderedObject{values: members}, path) do
+    Enum.reduce_while(members, {:ok, %{}}, fn {key, value}, {:ok, object} ->
+      if Map.has_key?(object, key) do
+        {:halt, {:repeated, key, path}}
+      else
+        case unique(value, [key | path]) do
+          {:ok, value} -> {:cont, {:ok, Map.put(object, key, value)}}
+          repeated -> {:halt, repeated}
+        end
+      end
+    end)
+  end
+
+  defp unique(list, path) when is_list(list) do
+    list
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {value, index}, {:ok, acc} ->
+      case unique(value, [index | path]) do
+        {:ok, value} -> {:cont, {:ok, [value | acc]}}
+        repeated -> {:halt, repeated}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      repeated -> repeated
+    end
+  end
+
+  defp unique(value, _path), do: {:ok, value}
+
+  defp repeated(key, path),
+    do:
+      SchemaError.detail(
+        JSV.ErrorFormatter.format_data_path(path),
+        "the object has the key #{key} twice"
+      )
 
   # The document of a standard type is checked in the caller's process: its bounds, the
   # schema file's and `@standard_limits`, are checked before JSV reads it.

@@ -57,6 +57,10 @@ The checks run in this order:
    is `404` `not_found`, the same answer whatever the cause.
 4. For a POST: a run that is no longer pending or running, whose sending has ended, or
    whose run of the workspace's queue has ended, is `409` `run_ended`. A run reads its work item after it ends; it writes nothing.
+   A push or a verdict checks the run of the queue again when it stores the version,
+   under the lock of the work item that the end of a run also takes: a run whose run of
+   the queue ended between the two checks is `409` `run_ended`, and no version is
+   stored.
 5. The checks listed with each request below.
 
 An error is a JSON object with `error`, the code. Some errors also have `type`,
@@ -208,7 +212,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
 - `type`: the artifact type, 1 to 64 bytes of lowercase letters and digits, in groups
   joined by single hyphens, such as `demo-video`.
 - `name`: optional, the same form, `main` by default. Several artifacts of one type
-  have different names, such as screenshots of two screens.
+  have different names, such as screenshots of two screens. `questions` and
+  `review-comments` take only `main`: another name is `400` `invalid_request`, with
+  `name` in `names`.
 - `note`: optional, at most 4000 code points, with no control character but a tab or a
   line break, no format character but U+200C and U+200D, and no line or paragraph
   separator.
@@ -218,7 +224,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
   comes from the file's bytes, and the index returns it. `content_base64` is the content
   in standard base64 with padding.
 
-The version is stored for the run's work item, by the run, in the run's stage. Returns
+The version is stored for the run's work item, by the run, in the run's stage; for a
+run of Explore with no stage, one queued before the instance had `workflow_model`, in
+the stage of the work item's process that runs Explore. Returns
 `201`:
 
 ```json
@@ -239,7 +247,10 @@ Checks, in order, after the checks of every request:
    in `names`, such as `files[0]`, or `files` for a video type's version without a video
    file and a `proposal` version without exactly one Markdown file. A version of the type
    `verdict` is checked against the type's JSON Schema, so its `verdict` is `passed`,
-   `changes-requested` or `escalate`.
+   `changes-requested` or `escalate`. A JSON file of a standard type, such as `questions`,
+   `review-comments` or `verdict`, has each key once in each object: a key that comes
+   twice is refused at the object's place, such as "at #/questions/0, the object has the
+   key state twice", before the schema check.
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
@@ -302,10 +313,11 @@ Checks, in order, after the checks of every request:
        `radialGradient` and `pattern`, and only to a place in the file: `#`, then an
        ASCII letter or `_`, then ASCII letters, digits, `_`, `-` or `.`, such as `#card`.
 
-     Namespace declarations, `xmlns` and `xmlns:…`, may appear on any element. Every
-     other attribute is refused, such as `target`, `ping`, `src`, `cursor`, `xml:base`
-     and every `on…` attribute.
+     Namespace declarations, `xmlns` and `xmlns:…`, may appear on any element; their
+     values get the CSS checks below. Every other attribute is refused, such as
+     `target`, `ping`, `src`, `cursor`, `xml:base` and every `on…` attribute.
    - Structure:
+     - nothing but spaces, tabs, CRs and LFs after the end of the root `svg` element;
      - `title`, `desc` and `style` contain text only;
      - a CDATA section appears only inside `style`;
      - no comment's text starts with `>` or `->`, as in `<!-->` or `<!--->`;
@@ -320,22 +332,40 @@ Checks, in order, after the checks of every request:
 
    An SVG is also at most 512 KiB (524288 bytes), else "Shrink checkout.svg to at most
    524288 bytes."; and UTF-8 text an XML parser reads to its end, with a root element
-   `svg` in the SVG namespace, else "Make checkout.svg a well-formed SVG file in UTF-8
-   with an svg root element." Before the parse, a document type declaration
+   `svg` written with no prefix or in the SVG namespace, else "Make checkout.svg a
+   well-formed SVG file in UTF-8 with an svg root element." A root `svg` with no prefix
+   outside the SVG namespace gets "Set xmlns="http://www.w3.org/2000/svg" on the svg root
+   element of checkout.svg." A root with a prefix in the SVG namespace, such as `s:svg`,
+   is refused by the strict check: "Remove the s:svg element from checkout.svg. …"
+   Before the parse, a document type declaration
    (`<!DOCTYPE` or `<!ENTITY`, any case, outside a comment, a CDATA section and a
    processing instruction) is refused as "the DOCTYPE", and an element with more than 256
-   attributes as "the attributes past the 256th on the rect element".
+   attributes as "the attributes past the 256th on the rect element". An element that
+   declares a prefix, or `xmlns`, twice is not well-formed XML and gets the "Make
+   checkout.svg a well-formed SVG file …" message.
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
-   and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no
-   `answer` and changes none, keeps each `history`, moves the answer of a question it
-   reopens unchanged to the end of its `history`, and adds each question `open` with
-   `asked.run` set to its `run.number`. In `review-comments`, the run keeps every review
-   comment and every earlier reply unchanged, adds no review comment, and adds at most one
-   reply to an open review comment, by `{"run": <run.number>}`, which it closes; a reply
-   with the outcome `asked` has in `question` the id of a question of the newest version
-   of `questions` stored when the run pushes `review-comments`, so the run pushes its
-   questions first.
+   and the rule it breaks in `message`. In `questions`, the run keeps every `id` and the
+   `asked` and `follows` of each question, keeps the questions of the newest version
+   first, in the same order, and adds new questions after them, adds no `answer` and
+   changes none, keeps each `history`, keeps `question`, `context` and `options` of each
+   question that stays `answered`, moves the answer of a question it reopens unchanged
+   to the end of its `history` with `reopened.run` set to its `run.number`, and adds
+   each question `open` with `asked.run` set to its `run.number` and with `follows`, if
+   any, set to ids of questions before it in the version; an absent `follows` and an
+   empty one are the same. In `review-comments`, the run keeps every review comment and
+   every earlier reply unchanged, adds no review comment, and adds at most one reply to
+   an open review comment, by `{"run": <run.number>}`, which it closes; a reply with the
+   outcome `asked` has in `question` the id of a question of the newest version of
+   `questions` stored when the run pushes `review-comments`, so the run pushes its
+   questions first. Numbers compare by value, as the schemas' integers do: `4.0` is `4`.
+   A version of `questions` or `review-comments` is stored with each number that is an
+   integer in value written as an integer, so a later read of it has `4` where the push
+   had `4.0`. Its size is measured as stored, after that change (`1e3` is stored as
+   `1000`): a file that is then over the type's size limit is `422` `too_large`. A
+   newest version of `questions` or `review-comments` whose file cannot be read, or
+   whose newest `questions` a `review-comments` version is checked against cannot be
+   read, is `503` `unavailable`, and no version is stored.
 
 ## POST verdict
 
@@ -366,15 +396,15 @@ is `400` `invalid_request`.
 | `401` | `unauthorized` | | The request does not verify; unsigned |
 | `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file |
 | `404` | (the error page) | | The instance does not have `workflow_model` |
-| `409` | `run_ended` | `message` | A push or a verdict after the run ended |
+| `409` | `run_ended` | `message` | A push or a verdict after the run ended, checked before the push and again when the version is stored |
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |
 | `413` | `payload_too_large` | | A body over its size |
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
-| `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes |
+| `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, or a run's version of `questions` or `review-comments` changes what members wrote |
-| `503` | `unavailable` | | The request could not be completed; try again |
+| `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
 
@@ -409,23 +439,26 @@ The messages:
     - "Replace cart.png with an image of the type its name ends in."
     - "Shrink checkout.svg to at most 524288 bytes."
     - "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."
+    - "Set xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg."
     - "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the
       elements and attributes the run API document lists, with no script, HTML or
       reference outside the file." The part after "Remove" names the first part
-      refused, with element and attribute names as the file writes them: "the DOCTYPE",
-      "the attributes past the 256th on the rect element", "the iframe element", "the
-      s:rect element", "the HTML element h:div", "the ping attribute", "the href
-      attribute", "the g element inside the desc element", "the CDATA section in the
-      desc element", "the comment that starts with >", "the processing instruction foo",
-      "a backslash in the fill attribute", "the url() in the style element", "the
-      @import in the text of the desc element" or "the image-set() in the style
-      attribute". A name past 64 characters is cut to 64 and "…".
+      refused, with element and attribute names as the file writes them: "everything
+      after the end of the svg element", "the DOCTYPE", "the attributes past the 256th
+      on the rect element", "the iframe element", "the s:rect element", "the HTML
+      element h:div", "the ping attribute", "the href attribute", "the g element inside
+      the desc element", "the CDATA section in the desc element", "the comment that
+      starts with >", "the processing instruction foo", "a backslash in the fill
+      attribute", "the url() in the style element", "the url() in the xmlns:a
+      attribute", "the @import in the text of the desc element" or "the image-set() in
+      the style attribute". A name past 64 characters is cut to 64 and "…".
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
-    - "Fix sources.json to match the JSON Schema of proposal sources: at #, additional
+    - "Fix sources.json to match the format of proposal sources: at #, additional
       properties are not allowed but found property 'items'." The part after the colon
-      is the structured form: the JSON pointer of the first failing value and the text
-      of the schema check.
+      is the JSON pointer of the first failing value and the text of the failed check: a
+      schema check, or a check outside the schema such as a key that comes twice in an
+      object ("the object has the key <key> twice", check 6).
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review

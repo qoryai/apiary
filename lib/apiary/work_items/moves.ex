@@ -143,8 +143,11 @@ defmodule Apiary.WorkItems.Moves do
   # `:stale`. Where Explore stands is read under the work item's lock
   # (`Apiary.WorkItems.Explore.current/2`): a run not ended, or one that reads as running,
   # is `:running`; at the run limit, `:used_up`; anywhere else than the step's place,
-  # `:not_waiting`. Each writes its event and its entry in the trail, and marks the work
-  # item changed (`updated_at`); none sends a feed entry, as the label stays.
+  # `:not_waiting`. A newest version of the questions or the review comments whose file
+  # cannot be read, or a store that cannot keep the member's version, is
+  # `:store_unavailable`, and nothing is written. Each writes its event and its entry in
+  # the trail, and marks the work item changed (`updated_at`); none sends a feed entry, as
+  # the label stays.
   #
   #   * An answer (`answer/4`) works where the latest run's questions wait: one or more
   #     of the open questions of the work item's newest questions answered
@@ -812,6 +815,7 @@ defmodule Apiary.WorkItems.Moves do
           | :used_up
           | :not_waiting
           | :not_approver
+          | :store_unavailable
           | {:invalid, map | :form}
           | Ecto.Changeset.t()
 
@@ -820,6 +824,15 @@ defmodule Apiary.WorkItems.Moves do
 
   # The places where no run is running, so a member may write review comments.
   @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
+
+  # A member's name in the questions and the review comments: at most 160 characters,
+  # with none of the white space and the characters `$defs/line` refuses
+  # (`priv/schemas/artifacts/questions.schema.json`), each run of them made one space.
+  @member_name 160
+  # A member's name in the questions and the review comments when nothing of it is left
+  # for one line (`person_name/1`).
+  @unnamed_member "unnamed member"
+  @not_in_line ~r/[\s\x{0}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]+/u
 
   # answer/4 gives the answers to the open questions, or, with a text where the latest
   # run's proposal waits, a review comment sent at once (the moduledoc).
@@ -874,7 +887,7 @@ defmodule Apiary.WorkItems.Moves do
     step(scope, work_item, fn held, current, _now ->
       with :ok <- waiting(current, [:confirm], attempt),
            :ok <- Apiary.Stages.approver(scope, held),
-           [_ | _] = ids <- open_review_comments(held) do
+           {:ok, [_ | _] = ids} <- open_review_comments(held) do
         data =
           held
           |> answered(attempt, length(ids))
@@ -882,7 +895,7 @@ defmodule Apiary.WorkItems.Moves do
 
         {:ok, data, true}
       else
-        [] -> {:error, :not_waiting}
+        {:ok, []} -> {:error, :not_waiting}
         refused -> refused
       end
     end)
@@ -958,8 +971,8 @@ defmodule Apiary.WorkItems.Moves do
            Explore.proposal_version(held.id, held.take_in, current.step.attempt) ||
              {:error, :not_waiting},
          on = %{"artifact" => "proposal", "version" => version},
-         {id, document} =
-           ReviewComments.comment(review_comments(held), on, text, person_name(scope), now),
+         {:ok, earlier} <- review_comments(held),
+         {id, document} = ReviewComments.comment(earlier, on, text, person_name(scope), now),
          {:ok, _version} <-
            push(held, scope, ReviewComments.type_name(), ReviewComments.file(document)) do
       {:ok, id}
@@ -988,18 +1001,22 @@ defmodule Apiary.WorkItems.Moves do
   defp noted_by_id({:error, {:note_required, id}}),
     do: {:error, {:invalid, %{id => :note_required}}}
 
+  # The newest questions: none is `:not_waiting`, and a version that cannot be read
+  # `:store_unavailable`.
   defp questions(held) do
-    case Questions.newest(held) do
-      {_version, document} -> {:ok, document}
-      nil -> {:error, :not_waiting}
+    case Questions.current(held) do
+      {:ok, {_version, document}} -> {:ok, document}
+      {:ok, nil} -> {:error, :not_waiting}
+      {:error, :store_unavailable} = error -> error
     end
   end
 
   # A new version of the review comments with the member's reply: `{:ok, position}`, the
   # reply's position among the review comment's replies.
   defp keep_reply(held, scope, id, text, now) do
-    with {:ok, document} <-
-           found(ReviewComments.reply(review_comments(held), id, text, person_name(scope), now)),
+    with {:ok, earlier} <- review_comments(held),
+         {:ok, document} <-
+           found(ReviewComments.reply(earlier, id, text, person_name(scope), now)),
          {:ok, _version} <-
            push(held, scope, ReviewComments.type_name(), ReviewComments.file(document)) do
       entry = Enum.find(ReviewComments.entries(document), &(&1["id"] == id))
@@ -1010,34 +1027,60 @@ defmodule Apiary.WorkItems.Moves do
   defp found(:error), do: {:error, :not_found}
   defp found(ok), do: ok
 
+  # The newest review comments, `{:ok, nil}` for none; a version that cannot be read is
+  # `:store_unavailable`, so a member's write never starts from no review comments and
+  # drops the others.
   defp review_comments(held) do
-    case ReviewComments.newest(held) do
-      {_version, document} -> document
-      nil -> nil
+    case ReviewComments.current(held) do
+      {:ok, {_version, document}} -> {:ok, document}
+      {:ok, nil} -> {:ok, nil}
+      {:error, :store_unavailable} = error -> error
     end
   end
 
   # The ids of the open review comments of the newest version, in order.
-  defp open_review_comments(held),
-    do:
-      for(
-        %{"state" => "open", "id" => id} <- ReviewComments.entries(review_comments(held)),
-        do: id
-      )
+  defp open_review_comments(held) do
+    with {:ok, document} <- review_comments(held),
+         do:
+           {:ok,
+            for(%{"state" => "open", "id" => id} <- ReviewComments.entries(document), do: id)}
+  end
 
   # A new version of the work item's artifact of `type`, written by the member in the
-  # work item's stage, inside the move's transaction.
+  # work item's stage, inside the move's transaction: a member action
+  # (`Apiary.Artifacts.push/5`), the one way a person writes the questions or the review
+  # comments.
   defp push(held, scope, type, file) do
-    case Apiary.Artifacts.push({:person, scope}, held, type, [file], stage_id: held.stage_id) do
+    case Apiary.Artifacts.push({:member_action, scope}, held, type, [file],
+           stage_id: held.stage_id
+         ) do
       {:ok, version} -> {:ok, version}
       {:error, :not_found} -> {:error, :not_found}
       {:error, :forbidden} -> {:error, :forbidden}
+      {:error, :store_unavailable} -> {:error, :store_unavailable}
       {:error, _refused} -> {:error, :not_waiting}
     end
   end
 
-  # The member as the explore input names a member (`Apiary.Dispatches.Inputs`).
-  defp person_name(%Scope{user: %{id: id}}), do: Apiary.Dispatches.Inputs.person_name(id)
+  # The member as the explore input names a member (`Apiary.Dispatches.Inputs`), as the
+  # questions and the review comments formats take a member's name: one line of 1 to 160
+  # characters (`member.name`). Each run of white space, and of the characters a line
+  # refuses, is one space; the ends are trimmed; the name is cut to 160 characters (code
+  # points). A name that is then empty is `unnamed member`. So a member's write never
+  # fails the format check for the name.
+  defp person_name(%Scope{user: %{id: id}}) do
+    name =
+      id
+      |> Apiary.Dispatches.Inputs.person_name()
+      |> String.replace(@not_in_line, " ")
+      |> String.trim()
+      |> String.codepoints()
+      |> Enum.take(@member_name)
+      |> Enum.join()
+      |> String.trim()
+
+    if name == "", do: @unnamed_member, else: name
+  end
 
   defp comment_text(text) do
     case Proposal.check_comment(text) do

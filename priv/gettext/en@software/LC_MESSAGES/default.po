@@ -19263,6 +19263,7 @@ msgstr ""
 msgid "The run ended without a result."
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run failed after it wrote proposal version %{version}."

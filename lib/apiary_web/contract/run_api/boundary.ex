@@ -54,6 +54,13 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   @spec stage_id(DispatchRun.t()) :: String.t() | nil
   def stage_id(%DispatchRun{stage_id: stage_id}), do: stage_id
 
+  # push_stage_id/2 is the stage a version the run pushes is made in
+  # (`Apiary.Stages.run_stage_id/2`): the run's stage, or Explore's for a run of Explore
+  # with none.
+  @spec push_stage_id(DispatchRun.t(), WorkItem.t()) :: String.t() | nil
+  def push_stage_id(%DispatchRun{} = run, %WorkItem{} = work_item),
+    do: Apiary.Stages.run_stage_id(run, work_item)
+
   @spec round(DispatchRun.t()) :: pos_integer | nil
   def round(%DispatchRun{round: round}), do: round
 

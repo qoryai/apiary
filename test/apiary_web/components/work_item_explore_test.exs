@@ -29,7 +29,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   Checkout totals are a cent off when a discount applies.
 
-  ## How Qory would do it
+  ## How to do it
 
   - Extract the order service's rounding into one function.
   - Use it in the basket.

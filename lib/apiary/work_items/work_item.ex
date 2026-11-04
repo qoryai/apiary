@@ -62,7 +62,7 @@ defmodule Apiary.WorkItems.WorkItem do
   # definitions.schema.json: $defs.url as a ticket's is held, and $defs.target's system.
   @url ~r{\Ahttps://[^/?#@\s]+([/?#]\S*)?\z}
   @system ~r/\A[a-z0-9.-]{1,253}\z/
-  # explore v1 result.schema.json `$defs/text`, to which a run's input holds the first
+  # explore v1 inputs.schema.json `$defs/text`, to which a run's input holds the first
   # instruction: the control characters it refuses (tab, line feed and carriage return
   # are allowed), then the other characters it refuses, which do not show.
   @control ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}]/u

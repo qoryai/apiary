@@ -1026,7 +1026,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "then run the round again."
          }},
         {:not_found, 404, %{"error" => "not_found"}},
-        {:store_unavailable, 503, %{"error" => "unavailable"}}
+        {:store_unavailable, 503, %{"error" => "unavailable"}},
+        # A run that ended after the check before the push, found ended under the work
+        # item's lock.
+        {:run_ended, 409,
+         %{
+           "error" => "run_ended",
+           "message" => "The run has ended, so it can no longer push artifacts or give a verdict."
+         }}
       ]
 
       for {push_error, status, answer} <- cases do
@@ -1082,8 +1089,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the " <>
            "elements and attributes the run API document lists, with no script, HTML or " <>
            "reference outside the file."},
-        {[md, {"checkout.svg", "image/svg+xml", "<svg/>"}], ["files[1]"],
+        {[md, {"checkout.svg", "image/svg+xml", "<svg><rect></svg>"}], ["files[1]"],
          "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."},
+        {[md, {"checkout.svg", "image/svg+xml", "<svg/>"}], ["files[1]"],
+         ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg.)},
+        {[md, {"checkout.svg", "image/svg+xml", ~s(<svg xmlns="urn:example:x"/>)}], ["files[1]"],
+         ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg.)},
         {[md, {"checkout.svg", "image/svg+xml", big_svg}], ["files[1]"],
          "Shrink checkout.svg to at most 524288 bytes."},
         {[md, {"checkout.svg", "image/svg+xml", "<!DOCTYPE svg>" <> @svg}], ["files[1]"],
@@ -1095,8 +1106,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {[md, {"sources.json", "application/json", String.duplicate(" ", 1_048_577)}],
          ["files[1]"], "Shrink sources.json to at most 1048576 bytes."},
         {[md, {"sources.json", "application/json", ~s({"items": []})}], ["files[1]"],
-         "Fix sources.json to match the JSON Schema of proposal sources: " <>
-           "at #, additional properties are not allowed but found property 'items'."}
+         "Fix sources.json to match the format of proposal sources: " <>
+           "at #, additional properties are not allowed but found property 'items'."},
+        {[md, {"sources.json", "application/json", ~s({"sources": [], "sources": []})}],
+         ["files[1]"],
+         "Fix sources.json to match the format of proposal sources: " <>
+           "at #, the object has the key sources twice."}
       ]
 
       for {files, names, message} <- cases do
@@ -1154,6 +1169,24 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {"questions", :reopen_not_kept,
          "Move the answer of a question you reopen, unchanged, to the end of its history " <>
            "in questions.json."},
+        {"questions", :asked_changed,
+         "Leave asked of each question in questions.json as the newest version of " <>
+           "questions has it."},
+        {"questions", :reopened_run,
+         "Set reopened.run in the history of each question you reopen in questions.json " <>
+           "to this run's number."},
+        {"questions", :answered_changed,
+         "Leave question, context and options of each answered question in " <>
+           "questions.json as the newest version of questions has them."},
+        {"questions", :follows_changed,
+         "Leave follows of each question in questions.json as the newest version of " <>
+           "questions has it."},
+        {"questions", :order_changed,
+         "Keep the questions of the newest version of questions first in questions.json, " <>
+           "in the same order, and add new questions after them."},
+        {"questions", :follows_unknown,
+         "Set follows of each question you add in questions.json to ids of questions " <>
+           "before it in questions.json."},
         {"questions", :new_not_open,
          "Set the state of each question you add in questions.json to open."},
         {"questions", :asked_run,
@@ -1240,6 +1273,38 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert json_response(write(ctx, "/verdict", %{"verdict" => "passed"}), 409)["error"] ==
                "run_ended"
+    end
+
+    test "a run of Explore with no stage pushes into Explore's stage, so Exists passes",
+         ctx do
+      # Queued before the workflow model was on: the run and its work item have no stage.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [stage_id: nil, workflow: nil, step: "explore"]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [stage_id: nil, stage_state: nil, stage_round: nil, stage_entry: nil]
+        )
+
+      refute Apiary.Artifacts.exists?(ctx.work_item, @explore, "proposal")
+
+      body = push_body("proposal", [{"proposal.md", "text/markdown", "# Proposal\n"}])
+      assert write(ctx, "/artifacts", body).status == 201
+
+      assert [%{stage_id: @explore, opts: opts}] = RunApiStubs.pushed()
+      assert opts[:stage_id] == @explore
+      assert Apiary.Artifacts.exists?(ctx.work_item, @explore, "proposal")
+
+      # A run of another workflow with no stage has none; a run with a stage keeps it.
+      dispatch_run = Repo.get!(DispatchRun, ctx.dispatch_run.id)
+
+      assert Apiary.Stages.run_stage_id(%{dispatch_run | workflow: "build"}, ctx.work_item) ==
+               nil
+
+      assert Apiary.Stages.run_stage_id(%{dispatch_run | stage_id: "st_other"}, ctx.work_item) ==
+               "st_other"
     end
   end
 

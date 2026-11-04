@@ -30,6 +30,10 @@ defmodule Apiary.Explore.ReviewComments do
   # A run is named by its number in the run API (`Apiary.Runs.Run`, `number`), which a
   # member sees as "Run N": a reply's `by.run`.
   #
+  # Numbers compare by value, as the schema's integers do: `4.0` is `4`. Qory Apiary stores
+  # each number of a version that is an integer in value as an integer
+  # (`Apiary.Artifacts.push/5`), so a reader finds `4`, never `4.0`.
+  #
   # The schema's checks, and each `id` once, come first, at the format check of the push
   # (`Apiary.Artifacts.Format`).
   #
@@ -98,6 +102,32 @@ defmodule Apiary.Explore.ReviewComments do
       {version, document}
     else
       _none -> nil
+    end
+  end
+
+  # current/1 is the newest version of the work item's review comments with its document, for a
+  # write that builds on it: `{:ok, {version, document}}`; `{:ok, nil}` for no version;
+  # and `{:error, :store_unavailable}` for a newest version whose file cannot be read as
+  # a document of the format, so a write never takes it for no version and drops what
+  # members wrote.
+  @doc false
+  @spec current(WorkItem.t()) ::
+          {:ok, {Artifacts.Version.t(), document} | nil} | {:error, :store_unavailable}
+  def current(%WorkItem{} = work_item) do
+    case Artifacts.newest(work_item, @type_name, @name) do
+      nil -> {:ok, nil}
+      version -> with {:ok, document} <- loaded(version), do: {:ok, {version, document}}
+    end
+  end
+
+  # loaded/1 is the document of `version`, a version of the review comments, for a write:
+  # `{:ok, document}`, or `{:error, :store_unavailable}` when `read/1` cannot read it.
+  @doc false
+  @spec loaded(map) :: {:ok, document} | {:error, :store_unavailable}
+  def loaded(version) do
+    case read(version) do
+      %{} = document -> {:ok, document}
+      nil -> {:error, :store_unavailable}
     end
   end
 

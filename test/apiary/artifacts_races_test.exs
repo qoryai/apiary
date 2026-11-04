@@ -54,7 +54,7 @@ defmodule Apiary.ArtifactsRacesTest do
 
     %{scope: scope, organisation: organisation} = sign_up()
     work_item = work_item_fixture(scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
 
     # The work item's ticket comes through an adapter of the instance, which outlives the
     # organisation: it goes after the organisation, before `setup_races` deletes the

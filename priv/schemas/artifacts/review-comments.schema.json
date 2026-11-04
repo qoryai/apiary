@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/harness/v1/review-comments.schema.json",
   "title": "The review comments format, version 1",
-  "description": "A work item's review comments on its artifact versions, such as a proposal, and the replies to them: the file of a version of the artifact type review-comments, one document per work item. The control plane writes the members' review comments and replies. A version that a run pushes only adds the run's reply to each open review comment and closes that review comment: it changes no member's text, drops no id and adds no review comment. Each review comment's id is unique in the document, which a JSON Schema cannot check. No object has a member this schema does not define.",
+  "description": "A work item's review comments on its artifact versions, such as a proposal, and the replies to them: the file of a version of the artifact type review-comments, one document per work item. The control plane writes the members' review comments and replies. A version that a run pushes only adds the run's reply to each open review comment and closes that review comment: it changes no member's text, drops no id and adds no review comment. Each review comment's id is unique in the document, which a JSON Schema cannot check. The file is at most 1 MiB (1,048,576 bytes), the type's size limit, which a JSON Schema cannot check either. No object has a member this schema does not define.",
   "type": "object",
   "required": ["review_comments"],
   "additionalProperties": false,
@@ -15,7 +15,7 @@
   },
   "$defs": {
     "review_comment": {
-      "description": "A member's review comment on one version of an artifact.",
+      "description": "A member's review comment on one version of an artifact. A closed review comment has at least one reply by a run.",
       "type": "object",
       "required": ["id", "on", "text", "by", "at", "state"],
       "additionalProperties": false,
@@ -40,7 +40,13 @@
           "type": "array",
           "items": {"$ref": "#/$defs/reply"}
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {"required": ["state"], "properties": {"state": {"const": "closed"}}},
+          "then": {"required": ["replies"], "properties": {"replies": {"contains": {"required": ["by"], "properties": {"by": {"required": ["run"]}}}}}}
+        }
+      ]
     },
     "reply": {
       "description": "A reply to a review comment, by a member or by a run. outcome is present exactly when a run wrote the reply, and question exactly when outcome is asked.",
@@ -52,7 +58,7 @@
         "by": {"description": "Who wrote the reply: a member, or a run.", "oneOf": [{"$ref": "#/$defs/member"}, {"$ref": "#/$defs/run"}]},
         "at": {"description": "When the reply was written.", "$ref": "#/$defs/time"},
         "outcome": {"description": "What the run did about the review comment: changed when the run changed the artifact for the review comment; answered when the review comment is a question and the reply contains the answer; declined when the review comment is a request for a change that the run did not make, and the reply contains the reason; asked when the run could not settle the review comment and added a question for a person to the questions artifact.", "enum": ["changed", "answered", "declined", "asked"]},
-        "question": {"description": "The id of the question that the run added to the questions artifact, when outcome is asked: 1 to 32 lower-case letters, digits and hyphens.", "type": "string", "pattern": "^[a-z0-9-]{1,32}$"}
+        "question": {"description": "The id of the question that the run added to the questions artifact, when outcome is asked: 1 to 32 lower-case letters, digits and hyphens. The id is one of the ids in the questions document, which a JSON Schema cannot check.", "type": "string", "pattern": "^[a-z0-9-]{1,32}$"}
       },
       "allOf": [
         {
@@ -86,10 +92,10 @@
       }
     },
     "time": {
-      "description": "RFC 3339 in UTC with whole seconds, ending Z: hours 00 to 23, minutes and seconds 00 to 59, so never a leap second.",
+      "description": "RFC 3339 in UTC with whole seconds, ending Z: months 01 to 12, days 01 to 31, hours 00 to 23, minutes and seconds 00 to 59, so never a leap second. The pattern does not check the day against the month, such as February 30: format date-time does, in a validator that asserts formats.",
       "type": "string",
       "format": "date-time",
-      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
     },
     "text": {
       "description": "Text that may span lines. Tab, line feed and carriage return are its only control characters: it has none of U+0000 to U+0008, U+000B, U+000C, U+000E to U+001F, U+007F and U+0080 to U+009F. It has none of the bidirectional controls, the marks U+061C, U+200E and U+200F, the embeddings and overrides U+202A to U+202E and the isolates U+2066 to U+2069; the separators U+2028 and U+2029; and the format characters U+00AD, U+180E, U+200B, U+2060 to U+2064, U+FEFF and U+FFF9 to U+FFFB.",

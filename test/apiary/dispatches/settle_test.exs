@@ -95,6 +95,17 @@ defmodule Apiary.Dispatches.SettleTest do
   defp subscribe!(ctx),
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, WorkItems.topic(ctx.scope.workspace.id))
 
+  # The stored copy of the newest questions file of the run's work item moved away until
+  # the test ends, as a store that cannot read it: the stored copy's path.
+  defp unreadable!(handed) do
+    {version, _document} = Apiary.Explore.Questions.newest(work_item!(handed))
+    [file] = version.files
+    {:ok, path} = Apiary.Artifacts.open_file(file)
+    File.rename!(path, path <> ".away")
+    on_exit(fn -> File.rename(path <> ".away", path) end)
+    path
+  end
+
   # The run's events gone and marked so, as retention leaves them.
   defp prune!(handed) do
     Repo.delete_all(from e in Event, where: e.run_id == ^handed.run.id)
@@ -153,6 +164,25 @@ defmodule Apiary.Dispatches.SettleTest do
       assert stored(failed) == {:questions, nil}
     end
 
+    test "a proposal under a name other than main: none, as Explore reads main alone", ctx do
+      handed = handed_over!(ctx)
+      dispatch_run = queue_run!(handed)
+
+      {:ok, _version} =
+        Apiary.Artifacts.push(
+          {:run, dispatch_run},
+          work_item!(handed),
+          "proposal",
+          [%{filename: "draft.md", content_type: "text/markdown", binary: "A draft."}],
+          name: "draft",
+          stage_id: dispatch_run.stage_id
+        )
+
+      exited!(handed, 9)
+      project!(handed)
+      assert stored(handed) == {:none, nil}
+    end
+
     test "a proposal from a run that failed: none", ctx do
       handed = handed_over!(ctx)
       proposal!(handed)
@@ -199,6 +229,25 @@ defmodule Apiary.Dispatches.SettleTest do
       outcome!(ctx, handed)
       assert stored(handed) == {:none, nil}
     end
+
+    test "an answer after the run ended changes no outcome stored", ctx do
+      handed = handed_over!(ctx)
+      questions!(handed)
+      exited!(handed, 9)
+      project!(handed)
+      assert stored(handed) == {:questions, nil}
+
+      assert {:ok, _answered} =
+               WorkItems.answer(ctx.scope, work_item!(handed), 1, %{
+                 "1" => "The small one.",
+                 "2" => "The spring sale."
+               })
+
+      # A later settle of the same run, as a projection's, reads the questions answered,
+      # and keeps what the run gave.
+      assert Settle.settle(handed.dispatch_run.id) == []
+      assert stored(handed) == {:questions, nil}
+    end
   end
 
   describe "the sweep" do
@@ -225,6 +274,90 @@ defmodule Apiary.Dispatches.SettleTest do
       assert Settle.sweep(DateTime.add(Dispatches.now(), 700, :second)) == []
     end
 
+    test "a run whose newest questions cannot be read is left unset, and settled once they can",
+         ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      # A question no other test asks, so no other test stores the same file.
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+
+      {version, _document} = Apiary.Explore.Questions.newest(work_item!(handed))
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The end reads no open question it can trust: no proposal or none is kept for good.
+      exited!(handed, 9)
+      log = ExUnit.CaptureLog.capture_log(fn -> project!(handed) end)
+      assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
+      assert stored(handed) == {nil, nil}
+
+      assert log =~
+               "run outcome not stored, newest questions unreadable " <>
+                 "dispatch_run=#{handed.dispatch_run.id} " <>
+                 "work_item=#{work_item!(handed).public_id} questions_version=#{version.public_id}"
+
+      # The sweep reads it again within the hour, in the same process: no second line.
+      log = ExUnit.CaptureLog.capture_log(fn -> assert Settle.sweep(Dispatches.now()) == [] end)
+      refute log =~ "dispatch_run=#{handed.dispatch_run.id}"
+      assert stored(handed) == {nil, nil}
+
+      File.rename!(path <> ".away", path)
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert stored(handed) == {:questions, nil}
+      assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
+    test "reads after where the sweep before stopped, so runs left unset fill no batch",
+         ctx do
+      # Two runs ended with questions, their outcome unset; the first by id cannot have its
+      # questions read.
+      [first, second] =
+        [handed_over!(ctx), handed_over!(ctx)]
+        |> Enum.map(fn handed ->
+          questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+          exited!(handed, 9)
+          project!(handed)
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^handed.dispatch_run.id),
+            set: [result_outcome: nil]
+          )
+
+          handed
+        end)
+        |> Enum.sort_by(& &1.dispatch_run.id)
+
+      unreadable!(first)
+      now = Dispatches.now()
+
+      # One run a sweep: the first is read and stays unset.
+      {result, log} = ExUnit.CaptureLog.with_log(fn -> Settle.sweep(now, nil, 1) end)
+      assert {[], next} = result
+      assert next == first.dispatch_run.id
+      assert log =~ "dispatch_run=#{first.dispatch_run.id}"
+      assert stored(first) == {nil, nil}
+      assert stored(second) == {nil, nil}
+
+      # The next sweep reads after it, and settles the second.
+      assert {[_], next} = Settle.sweep(now, next, 1)
+      assert next == second.dispatch_run.id
+      assert stored(second) == {:questions, nil}
+
+      # Fewer than the limit read: the sweep after starts from the first id again.
+      assert {[], nil} = Settle.sweep(now, next, 1)
+
+      # The process's tick keeps the id the sweep stopped at.
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^second.dispatch_run.id),
+        set: [result_outcome: nil]
+      )
+
+      state = %{interval: :timer.hours(1), cursors: %{settle: first.dispatch_run.id}}
+      assert {:noreply, %{cursors: %{settle: nil}}} = Liveness.handle_info(:tick, state)
+      assert stored(second) == {:questions, nil}
+      assert stored(first) == {nil, nil}
+    end
+
     test "a run whose events were pruned is settled from its artifacts", ctx do
       handed = handed_over!(ctx)
       questions!(handed)
@@ -247,6 +380,121 @@ defmodule Apiary.Dispatches.SettleTest do
       Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
 
       assert %DispatchRun{end_cause: :lost, result_outcome: :questions} = queue_run!(handed)
+    end
+
+    # The stage runner reads the questions at the end (`Apiary.Stages`): it raises, the
+    # end's transaction rolls back, and the next check ends the run again.
+    @tag needs: [:factory, :workflow_model]
+    test "with its newest questions unreadable: not ended, then ended at a check after",
+         ctx do
+      handed = handed_over!(ctx)
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+      path = unreadable!(handed)
+      lost_at = DateTime.add(handed.run.backstop_at, 1, :second)
+      id = handed.dispatch_run.id
+
+      # Two reads of the questions, one line each: Settle's, then the stage runner's.
+      log = ExUnit.CaptureLog.capture_log(fn -> Liveness.check(lost_at) end)
+      assert log =~ "run outcome not stored, newest questions unreadable dispatch_run=#{id} "
+      assert log =~ "run end failed dispatch_run=#{id} error=Apiary.Stages.QuestionsUnreadable"
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      # The next tick, within the hour, reads the run again and writes neither line.
+      log = ExUnit.CaptureLog.capture_log(fn -> Liveness.check(lost_at) end)
+      refute log =~ "dispatch_run=#{id}"
+      assert %DispatchRun{state: :handed_over} = queue_run!(handed)
+
+      File.rename!(path <> ".away", path)
+      Liveness.check(lost_at)
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: :questions} =
+               queue_run!(handed)
+
+      assert %WorkItem{stage_state: :waiting_answers} = work_item!(handed)
+      # Ended and settled, the run is no longer kept for its lines.
+      assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
+    # A lost run the stage runner does not read, as its stage is not running: Settle's
+    # read alone logs, and the run ends with no outcome.
+    @tag needs: [:factory, :workflow_model]
+    test "with its newest questions unreadable and its stage not running: ended, one line",
+         ctx do
+      handed = handed_over!(ctx)
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+      unreadable!(handed)
+      id = handed.dispatch_run.id
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^handed.dispatch_run.work_item_id),
+        set: [stage_state: :waiting_answers]
+      )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+        end)
+
+      assert log =~ "run outcome not stored, newest questions unreadable dispatch_run=#{id} "
+      refute log =~ "run end failed dispatch_run=#{id}"
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: nil} =
+               queue_run!(handed)
+    end
+
+    # Runs whose end raises at every tick, more than one batch of them, keep no run after
+    # them from its end: each call reads after where the call before stopped, and logs one
+    # line per run it read.
+    @tag needs: [:factory, :workflow_model]
+    test "runs whose questions stay unreadable keep no later run from its end", ctx do
+      runs =
+        for _n <- 1..4 do
+          handed = handed_over!(ctx)
+          questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+          handed
+        end
+        |> Enum.sort_by(& &1.dispatch_run.id)
+
+      # The first three by id are stuck; the last can be ended.
+      [one, two, three, last] = runs
+      Enum.each([one, two, three], &unreadable!/1)
+      # Past every run's deadline for its exit, so each is lost.
+      lost_at =
+        runs |> Enum.map(& &1.run.backstop_at) |> Enum.max(DateTime) |> DateTime.add(1, :second)
+
+      lines = fn log, handed ->
+        log
+        |> String.split("run end failed dispatch_run=#{handed.dispatch_run.id}")
+        |> length()
+        |> Kernel.-(1)
+      end
+
+      # A batch of two: the first two, both stuck.
+      {{[], next}, log} = ExUnit.CaptureLog.with_log(fn -> RunEnd.lose(lost_at, nil, 2) end)
+      assert next == two.dispatch_run.id
+      assert {lines.(log, one), lines.(log, two), lines.(log, three)} == {1, 1, 0}
+      assert queue_run!(last).state == :handed_over
+
+      # After them: the third, stuck, and the last, which ends.
+      {{[_ | _], next_after}, log} =
+        ExUnit.CaptureLog.with_log(fn -> RunEnd.lose(lost_at, next, 2) end)
+
+      assert next_after == last.dispatch_run.id
+      assert {lines.(log, three), lines.(log, last)} == {1, 0}
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: :questions} =
+               queue_run!(last)
+
+      # Fewer than two after the last: the next call starts from the first id again.
+      assert {[], nil} = RunEnd.lose(lost_at, next_after, 2)
+      assert Enum.all?([one, two, three], &(queue_run!(&1).state == :handed_over))
+
+      # The process's tick keeps the id the call stopped at.
+      state = %{interval: :timer.hours(1), cursors: %{lose: two.dispatch_run.id}}
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:noreply, %{cursors: %{lose: nil}}} = Liveness.handle_info(:tick, state)
+      end)
     end
 
     test "with a proposal and no open question: nothing stored", ctx do

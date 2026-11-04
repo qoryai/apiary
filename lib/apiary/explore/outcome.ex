@@ -6,10 +6,16 @@ defmodule Apiary.Explore.Outcome do
   #     for an answer (`Apiary.Explore.Questions`), whatever else the run did: open
   #     questions come before a proposal and before a run that stopped;
   #   * `:proposal` when a run of its take in, this one or an earlier one, pushed a
-  #     version of the work item's `proposal`, and the run did not stop: its registered
+  #     version of the work item's `proposal` named `main`, the one Explore reads
+  #     (`Apiary.WorkItems.Explore.proposal_text/2`), and the run did not stop: its registered
   #     run did not exit failed, lost or cancelled, as the stage runner reads a run that
   #     stopped (`Apiary.Stages`);
   #   * `:none` otherwise.
+  #
+  # nil when the newest questions cannot be read (`Apiary.Explore.Questions.current/1`):
+  # what the run gave is not known yet, so `Apiary.Dispatches.Settle` stores nothing and
+  # its sweep reads the run again, rather than keep `proposal` or `none` while questions
+  # wait.
   #
   # A run of a workflow other than Explore's (`Apiary.Stages.explore_run?/1`) gives
   # `:none`: its stage reads its artifacts itself. With the workflow model off no run can
@@ -34,21 +40,26 @@ defmodule Apiary.Explore.Outcome do
 
   # at_end/1 is what the run of the queue `run`, which ended, gave (the moduledoc).
   @doc false
-  @spec at_end(DispatchRun.t()) :: t
+  @spec at_end(DispatchRun.t()) :: t | nil
   def at_end(%DispatchRun{work_item_id: work_item_id} = run) when is_binary(work_item_id) do
     with true <- Apiary.Stages.explore_run?(run),
-         %WorkItem{} = work_item <- Repo.get(WorkItem, work_item_id) do
+         %WorkItem{} = work_item <- Repo.get(WorkItem, work_item_id),
+         {:ok, questions} <- Questions.current(work_item) do
       cond do
-        Questions.open?(work_item) -> :questions
+        open?(questions) -> :questions
         not stopped?(run) and proposal?(run) -> :proposal
         true -> :none
       end
     else
+      {:error, :store_unavailable} -> nil
       _other -> :none
     end
   end
 
   def at_end(%DispatchRun{}), do: :none
+
+  defp open?({_version, document}), do: Questions.open(document) != []
+  defp open?(nil), do: false
 
   defp stopped?(%DispatchRun{id: id}),
     do:
@@ -57,7 +68,8 @@ defmodule Apiary.Explore.Outcome do
           where: r.dispatch_run_id == ^id and r.exit_state in ["failed", "lost", "cancelled"]
       )
 
-  # Whether a run of the take in of `run`, up to it, pushed a version of the proposal.
+  # Whether a run of the take in of `run`, up to it, pushed a version of the proposal
+  # named `main`.
   defp proposal?(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt}) do
     Repo.exists?(
       from v in Version,
@@ -65,7 +77,7 @@ defmodule Apiary.Explore.Outcome do
         on: a.id == v.artifact_id,
         join: d in DispatchRun,
         on: d.id == v.run_id,
-        where: a.work_item_id == ^id and a.type == "proposal",
+        where: a.work_item_id == ^id and a.type == "proposal" and a.name == "main",
         where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt <= ^attempt
     )
   end

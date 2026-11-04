@@ -1162,7 +1162,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     - In: #{in_scope}
     - Out: other pages of the web shop
 
-    ## How Qory would do it
+    ## How to do it
 
     Find the cause in the web shop's code, change it and add a test for it.
 
@@ -1202,7 +1202,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         ]
       },
       %{
-        "question" => "Where should Qory test the change first?",
+        "question" => "Where should the change be tested first?",
         "options" => [
           %{
             "title" => "Phones",

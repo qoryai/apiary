@@ -595,10 +595,13 @@ defmodule Apiary.Dispatches do
       end
 
     # Hand-over: with the workflow model, the stage runner acts on each run's end
-    # (`Apiary.Stages.run_ended/2`). It writes the work items, which the caller holds
-    # `FOR UPDATE`.
+    # (`Apiary.Stages.run_ended_or_later/2`). It writes the work items, which the caller
+    # holds `FOR UPDATE`. Where the stage cannot read a work item's questions, the run
+    # still ends here and the stage sweep acts on its end later (`Apiary.Stages.sweep/3`).
     staged =
-      if Apiary.Stages.on?(), do: Enum.flat_map(run_ids, &Apiary.Stages.run_ended/1), else: []
+      if Apiary.Stages.on?(),
+        do: Enum.flat_map(run_ids, &Apiary.Stages.run_ended_or_later/1),
+        else: []
 
     told ++ Enum.reject(Enum.uniq(staged), &(&1 in told))
   end

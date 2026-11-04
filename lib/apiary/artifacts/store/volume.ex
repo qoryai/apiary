@@ -15,7 +15,9 @@ defmodule Apiary.Artifacts.Store.Volume do
   # copy is synced before `stage/2` returns. `commit/1` renames it to the key's path,
   # in the same file system, so a reader finds either no file or the whole content; where
   # that path has a file already, the content is the same and the staged copy is deleted.
-  # A temporary file left by a stage that stopped half way stays in the root.
+  # A temporary file left in the root, by a stage that stopped half way or by a push whose
+  # process was killed between its stage and its commit, is removed by a later
+  # `commit/1` once it is an hour old (`sweep/1`).
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -23,6 +25,7 @@ defmodule Apiary.Artifacts.Store.Volume do
   @behaviour Apiary.Artifacts.Store
 
   @chunk 65_536
+  @stale_seconds 3600
   @key ~r/\A[0-9a-f]{64}\z/
 
   # root/0 is the store's root, an absolute path, or nil where none is set.
@@ -77,7 +80,15 @@ defmodule Apiary.Artifacts.Store.Volume do
   defp fits(_source, _limit), do: {:error, :unreadable}
 
   @impl true
-  def commit(%{path: temporary, sha256: sha256}) do
+  def commit(staged) do
+    # The root is listed once per committed file: at most 10 times for a push of a
+    # standard type, 20 for a custom type (`Apiary.Artifacts.Type.max_files_limit/0`).
+    result = keep(staged)
+    if root = root(), do: sweep(root)
+    result
+  end
+
+  defp keep(%{path: temporary, sha256: sha256}) do
     with {:ok, path} <- path(sha256),
          :ok <- File.mkdir_p(Path.dirname(path)) do
       case File.lstat(path) do
@@ -107,6 +118,33 @@ defmodule Apiary.Artifacts.Store.Volume do
         {:ok, %File.Stat{type: :regular}} -> {:ok, path}
         _none -> {:error, :not_found}
       end
+    end
+  end
+
+  # Removes the temporary files in the root last written more than an hour ago. A push
+  # commits within minutes of its stage, as each query of its transaction, the wait for
+  # the work item's lock included, stops at the Repo's timeout. A copy removed all the
+  # same fails its commit, and the push writes no version (`{:error, :store_unavailable}`).
+  # A file that cannot be read or removed stays.
+  defp sweep(root) when is_binary(root) do
+    cutoff = System.os_time(:second) - @stale_seconds
+
+    with {:ok, names} <- File.ls(root) do
+      for name <- names,
+          String.starts_with?(name, ".staging-"),
+          String.ends_with?(name, ".tmp"),
+          path = Path.join(root, name),
+          stale?(path, cutoff),
+          do: File.rm(path)
+    end
+
+    :ok
+  end
+
+  defp stale?(path, cutoff) do
+    case File.lstat(path, time: :posix) do
+      {:ok, %File.Stat{type: :regular, mtime: mtime}} -> mtime < cutoff
+      _other -> false
     end
   end
 

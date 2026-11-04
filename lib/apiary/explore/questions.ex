@@ -14,17 +14,38 @@ defmodule Apiary.Explore.Questions do
   # (`check_run/3`), else it is refused with one of these reasons:
   #
   #   * `:id_dropped`: an `id` of the newest version is missing;
+  #   * `:asked_changed`: the run changed the `asked` of a question the newest version
+  #     has;
+  #   * `:follows_changed`: the run changed the `follows` of a question the newest
+  #     version has: a question follows from the questions it followed from when it was
+  #     asked;
+  #   * `:order_changed`: the questions of the newest version are not the first of the
+  #     version, in the newest version's order: a run adds each new question after them,
+  #     so a question's `follows` keeps pointing at questions before it;
   #   * `:answer_changed`: the run added, changed or removed an `answer`;
   #   * `:history_changed`: the run changed a question's `history`, or gave a new
   #     question one;
   #   * `:reopen_not_kept`: the run reopened an answered question without moving its
   #     answer, unchanged, into the end of its `history`;
+  #   * `:reopened_run`: the run reopened an answered question with a `reopened.run`
+  #     other than the run's number;
+  #   * `:answered_changed`: the run changed the `question`, `context` or `options` of a
+  #     question that stays answered, so an answer keeps the question the member
+  #     answered;
   #   * `:new_not_open`: a question the newest version does not have is not `open`;
   #   * `:asked_run`: a question the newest version does not have has an `asked.run` other
-  #     than the run's number.
+  #     than the run's number;
+  #   * `:follows_unknown`: a question the newest version does not have follows from an
+  #     id that is not the id of a question before it in the version.
+  #
+  # An absent `follows` and an empty one are the same: the question follows from none.
   #
   # A run is named by its number in the run API (`Apiary.Runs.Run`, `number`), which a
   # member sees as "Run N": `asked.run` and `reopened.run`.
+  #
+  # Numbers compare by value, as the schema's integers do: `4.0` is `4`. Qory Apiary stores
+  # each number of a version that is an integer in value as an integer
+  # (`Apiary.Artifacts.push/5`), so a reader finds `4`, never `4.0`.
   #
   # The schema's checks, and each `id` once, come first, at the format check of the push
   # (`Apiary.Artifacts.Format`).
@@ -39,12 +60,20 @@ defmodule Apiary.Explore.Questions do
   @name "main"
   @reasons [
     :id_dropped,
+    :asked_changed,
+    :follows_changed,
+    :order_changed,
     :answer_changed,
     :history_changed,
     :reopen_not_kept,
+    :reopened_run,
+    :answered_changed,
     :new_not_open,
-    :asked_run
+    :asked_run,
+    :follows_unknown
   ]
+  # What a run leaves as it is on a question that stays answered.
+  @answered_kept ~w(question context options)
 
   @typedoc "A questions document, decoded: a map with string keys."
   @type document :: %{optional(String.t()) => term}
@@ -52,11 +81,17 @@ defmodule Apiary.Explore.Questions do
   @typedoc "Why a run's version of the questions is refused."
   @type reason ::
           :id_dropped
+          | :asked_changed
+          | :follows_changed
+          | :order_changed
           | :answer_changed
           | :history_changed
           | :reopen_not_kept
+          | :reopened_run
+          | :answered_changed
           | :new_not_open
           | :asked_run
+          | :follows_unknown
 
   # type_name/0 and name/0 are the type and the name of the artifact of a work item's
   # questions.
@@ -85,6 +120,32 @@ defmodule Apiary.Explore.Questions do
       {version, document}
     else
       _none -> nil
+    end
+  end
+
+  # current/1 is the newest version of the work item's questions with its document, for a
+  # write that builds on it: `{:ok, {version, document}}`; `{:ok, nil}` for no version;
+  # and `{:error, :store_unavailable}` for a newest version whose file cannot be read as
+  # a document of the format, so a write never takes it for no version and drops what
+  # members wrote.
+  @doc false
+  @spec current(WorkItem.t()) ::
+          {:ok, {Artifacts.Version.t(), document} | nil} | {:error, :store_unavailable}
+  def current(%WorkItem{} = work_item) do
+    case Artifacts.newest(work_item, @type_name, @name) do
+      nil -> {:ok, nil}
+      version -> with {:ok, document} <- loaded(version), do: {:ok, {version, document}}
+    end
+  end
+
+  # loaded/1 is the document of `version`, a version of the questions, for a write:
+  # `{:ok, document}`, or `{:error, :store_unavailable}` when `read/1` cannot read it.
+  @doc false
+  @spec loaded(map) :: {:ok, document} | {:error, :store_unavailable}
+  def loaded(version) do
+    case read(version) do
+      %{} = document -> {:ok, document}
+      nil -> {:error, :store_unavailable}
     end
   end
 
@@ -167,9 +228,21 @@ defmodule Apiary.Explore.Questions do
     given = Map.new(questions, &{&1["id"], &1})
     known = MapSet.new(earlier, & &1["id"])
 
-    with :ok <- each(earlier, &kept(&1, Map.get(given, &1["id"]))),
+    # Each question with the ids of the questions before it in the version.
+    before =
+      questions
+      |> Enum.map_reduce(MapSet.new(), fn question, seen ->
+        {{question, seen}, MapSet.put(seen, question["id"])}
+      end)
+      |> elem(0)
+
+    with :ok <- each(earlier, &kept(&1, Map.get(given, &1["id"]), run_number)),
+         :ok <- order(earlier, questions),
          :ok <-
-           each(Enum.reject(questions, &MapSet.member?(known, &1["id"])), &new(&1, run_number)),
+           each(
+             Enum.reject(before, fn {question, _seen} -> MapSet.member?(known, question["id"]) end),
+             fn {question, seen} -> new(question, seen, run_number) end
+           ),
          do: :ok
   end
 
@@ -182,10 +255,35 @@ defmodule Apiary.Explore.Questions do
     end)
   end
 
-  defp kept(_earlier, nil), do: {:error, :id_dropped}
+  # The questions of the newest version first, in its order. Every id of the newest
+  # version is in the version (`kept/3`) and each id is there once (the format check), so
+  # the first ids of the version are the newest version's ids or the order changed.
+  defp order(earlier, questions) do
+    ids = Enum.map(earlier, & &1["id"])
 
-  # A reopen: the earlier answer, unchanged, at the end of the history the question had.
-  defp kept(%{"state" => "answered", "answer" => answer} = earlier, %{"state" => "open"} = given) do
+    if questions |> Enum.take(length(ids)) |> Enum.map(& &1["id"]) == ids,
+      do: :ok,
+      else: {:error, :order_changed}
+  end
+
+  defp kept(_earlier, nil, _run_number), do: {:error, :id_dropped}
+
+  # Who asked a question, when, and what it follows from, stay in every case.
+  defp kept(earlier, given, run_number) do
+    cond do
+      Map.get(given, "asked") != Map.get(earlier, "asked") -> {:error, :asked_changed}
+      follows(given) != follows(earlier) -> {:error, :follows_changed}
+      true -> answer_kept(earlier, given, run_number)
+    end
+  end
+
+  # A reopen: the earlier answer, unchanged, at the end of the history the question had,
+  # reopened by this run.
+  defp answer_kept(
+         %{"state" => "answered", "answer" => answer} = earlier,
+         %{"state" => "open"} = given,
+         run_number
+       ) do
     history = history(earlier)
     now = history(given)
 
@@ -194,29 +292,43 @@ defmodule Apiary.Explore.Questions do
       length(now) != length(history) + 1 -> {:error, :reopen_not_kept}
       Enum.take(now, length(history)) != history -> {:error, :history_changed}
       Map.delete(List.last(now), "reopened") != answer -> {:error, :reopen_not_kept}
+      get_in(List.last(now), ["reopened", "run"]) != run_number -> {:error, :reopened_run}
       true -> :ok
     end
   end
 
-  defp kept(earlier, given) do
+  defp answer_kept(earlier, given, _run_number) do
     cond do
-      Map.get(given, "answer") != Map.get(earlier, "answer") -> {:error, :answer_changed}
-      history(given) != history(earlier) -> {:error, :history_changed}
-      true -> :ok
+      Map.get(given, "answer") != Map.get(earlier, "answer") ->
+        {:error, :answer_changed}
+
+      history(given) != history(earlier) ->
+        {:error, :history_changed}
+
+      answered?(earlier) and answered?(given) and
+          Map.take(given, @answered_kept) != Map.take(earlier, @answered_kept) ->
+        {:error, :answered_changed}
+
+      true ->
+        :ok
     end
   end
 
-  defp new(%{"state" => "open"} = given, run_number) do
+  defp answered?(question), do: question["state"] == "answered"
+
+  defp new(%{"state" => "open"} = given, before, run_number) do
     cond do
       history(given) != [] -> {:error, :history_changed}
       get_in(given, ["asked", "run"]) != run_number -> {:error, :asked_run}
+      not Enum.all?(follows(given), &MapSet.member?(before, &1)) -> {:error, :follows_unknown}
       true -> :ok
     end
   end
 
-  defp new(_given, _run_number), do: {:error, :new_not_open}
+  defp new(_given, _before, _run_number), do: {:error, :new_not_open}
 
   defp history(entry), do: Map.get(entry, "history") || []
+  defp follows(entry), do: Map.get(entry, "follows") || []
 
   ## Answers
 

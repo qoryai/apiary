@@ -17,7 +17,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `not_found`, and so is, for a file, a version id or a filename the run's
   #      work item does not have: another run's version, another work item's and an
   #      unknown one get the same answer;
-  #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, then a body
+  #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, read here
+  #      and again under the work item's lock (`Apiary.Artifacts.push/5`), then a body
   #      over its size `413` `payload_too_large`, then a body outside the contract `400`
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
@@ -25,9 +26,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      type to switch it on; more files than the type takes `422` `too_many_files`; files
   #      over the type's size limit together `422` `too_large`; then a content that is not
   #      strict base64 `400` `invalid_request`; then what `Apiary.Artifacts.push/5` returns,
-  #      the files that do not match the type's format among it, `422` `invalid_artifact`,
-  #      and a run's version of `questions` or `review-comments` that changes what members
-  #      wrote, `422` `invalid_artifact` with the rule it breaks.
+  #      the files that do not match the type's format among it, `422` `invalid_artifact`;
+  #      a run's version of `questions` or `review-comments` that changes what members
+  #      wrote, `422` `invalid_artifact` with the rule it breaks; and a version of
+  #      `questions` or `review-comments` whose file is over the size limit as stored,
+  #      with each number that is an integer in value written as an integer (`1e3` as
+  #      `1000`), `422` `too_large`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -118,7 +122,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
          {:ok, version} <-
            Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
              name: push.name,
-             stage_id: Boundary.stage_id(run.dispatch_run),
+             stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
              note: push.note
            )
            |> pushed(%{
@@ -143,7 +147,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
          {:ok, version} <-
            Boundary.push({:run, run.dispatch_run}, run.work_item, "verdict", [file],
              name: "main",
-             stage_id: Boundary.stage_id(run.dispatch_run),
+             stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
              note: nil
            )
            |> pushed(%{
@@ -359,7 +363,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :unreadable, :document_size, :image_type, :svg_format] and
+       when check in [
+              :format,
+              :extension,
+              :unreadable,
+              :document_size,
+              :image_type,
+              :svg_format,
+              :svg_root
+            ] and
               is_integer(index),
        do:
          {:error,
@@ -412,11 +424,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # A run of another work item; the person's refusals never come to a run.
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
+  # A run that ended after `live/1` read it, found ended under the work item's lock.
+  defp refused(:run_ended, _push), do: {:error, :run_ended}
+
   defp refused(_refusal, _push), do: {:error, :unavailable}
 
-  # A proposal's sources.json is checked against the proposal sources format; a structured
-  # type's file, against its type's.
-  defp schema_of("proposal", "sources.json"), do: "the JSON Schema of proposal sources"
+  # The format a refused file is fixed to: for a proposal's sources.json, the proposal
+  # sources format; for a structured type's file, its type's. The format also refuses a key
+  # that comes twice in an object, which no JSON Schema keyword checks.
+  defp schema_of("proposal", "sources.json"), do: "the format of proposal sources"
   defp schema_of(type, _filename), do: "the format of #{type}"
 
   # The message of a run's version that changes what members wrote, by the rule it breaks
@@ -426,6 +442,18 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       :id_dropped ->
         "Keep every question of the newest version of questions in #{filename}: " <>
           "the id of a question is missing."
+
+      :asked_changed ->
+        "Leave asked of each question in #{filename} as the newest version of " <>
+          "questions has it."
+
+      :follows_changed ->
+        "Leave follows of each question in #{filename} as the newest version of " <>
+          "questions has it."
+
+      :order_changed ->
+        "Keep the questions of the newest version of questions first in #{filename}, " <>
+          "in the same order, and add new questions after them."
 
       :answer_changed ->
         "Leave each answer in #{filename} as the newest version of questions has it: " <>
@@ -439,11 +467,23 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Move the answer of a question you reopen, unchanged, to the end of its history " <>
           "in #{filename}."
 
+      :reopened_run ->
+        "Set reopened.run in the history of each question you reopen in #{filename} " <>
+          "to this run's number."
+
+      :answered_changed ->
+        "Leave question, context and options of each answered question in " <>
+          "#{filename} as the newest version of questions has them."
+
       :new_not_open ->
         "Set the state of each question you add in #{filename} to open."
 
       :asked_run ->
         "Set asked.run of each question you add in #{filename} to this run's number."
+
+      :follows_unknown ->
+        "Set follows of each question you add in #{filename} to ids of questions " <>
+          "before it in #{filename}."
     end
   end
 
@@ -501,10 +541,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp mismatch(:image_type, filename, _push),
     do: "Replace #{filename} with an image of the type its name ends in."
 
-  # A proposal's SVG that does not parse, is not UTF-8, or has another root than svg in
-  # the SVG namespace (`Apiary.Artifacts.Format`).
+  # A proposal's SVG that does not parse, is not UTF-8, or has another root than svg
+  # (`Apiary.Artifacts.Format`).
   defp mismatch(:svg_format, filename, _push),
     do: "Make #{filename} a well-formed SVG file in UTF-8 with an svg root element."
+
+  # A proposal's SVG whose root svg is outside the SVG namespace: with no xmlns, such as an
+  # SVG copied from an HTML page, or with another address.
+  defp mismatch(:svg_root, filename, _push),
+    do: ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of #{filename}.)
 
   # A proposal's sources.json that is not one JSON document.
   defp mismatch(:format, "sources.json" = filename, %{name: "proposal"}),

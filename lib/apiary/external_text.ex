@@ -43,9 +43,9 @@ defmodule Apiary.ExternalText do
   # With the `factory` feature, the texts include a
   # collection's title and a ticket's and a comment's body.
 
-  # Wider than the set an explore result's text refuses (Apiary.WorkItems.WorkItem,
-  # Apiary.Dispatches.Inputs): a page drops more than a text that is stored or given to a
-  # run may hold, and those stay as sent.
+  # Wider than the set the explore v1 inputs.schema.json `$defs/text` refuses
+  # (Apiary.WorkItems.WorkItem, Apiary.Dispatches.Inputs): a page drops more than a text
+  # that is stored or given to a run may hold, and those stay as sent.
   @invisible ~r/(?![\x{200C}\x{200D}])[\p{Cf}\x{2028}\x{2029}\x{34F}\x{17B4}\x{17B5}\x{180B}-\x{180D}\x{180F}]/u
   @control ~r/[\x{0}-\x{1F}\x{7F}-\x{9F}]/u
   @control_but_lines ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}]/u

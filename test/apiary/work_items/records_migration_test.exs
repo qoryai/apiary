@@ -33,6 +33,12 @@ defmodule Apiary.WorkItems.RecordsMigrationTest do
 
   @options [log: false, migration_lock: false]
 
+  # A table this migration makes, dropped by a later one, back for the test.
+  setup do
+    Apiary.AnswersTable.back!()
+    :ok
+  end
+
   defp down({version, migration, _name}),
     do: Ecto.Migrator.down(Repo, version, migration, @options)
 
