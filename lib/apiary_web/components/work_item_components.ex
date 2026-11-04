@@ -3060,7 +3060,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   The form page of a review comment on the newest proposal (`:comment`), or of a reply to
   one (`:reply`, with the review comment as `comment`): its field, its error under it
-  (`error`, as `comment_error/1` words it), the button, and Cancel back to Explore's tab
+  (`error`, as `comment_error/2` words it), the button, and Cancel back to Explore's tab
   (`cancel`). It sends `"review_comment"` or `"reply"`, with `number` and `text`, and for
   a reply `comment`, the review comment's id.
   """
@@ -3085,7 +3085,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         title: title,
         label: label,
         event: event,
-        message: comment_error(assigns.error),
+        message: comment_error(assigns.error, assigns.kind),
         answer_units: @answer_units
       )
 
@@ -3126,25 +3126,31 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc false
-  # comment_error/1 is the words of what is wrong with a review comment or a reply; nil
-  # for an error without words.
-  @spec comment_error(term) :: String.t() | nil
-  def comment_error(:blank), do: gettext("Write your review comment.")
-  def comment_error(:reply_blank), do: gettext("Write your reply.")
+  # comment_error/2 is the words of what is wrong with a review comment (`:comment`) or a
+  # reply (`:reply`); nil for an error without words.
+  @spec comment_error(term, :comment | :reply) :: String.t() | nil
+  def comment_error(:blank, _kind), do: gettext("Write your review comment.")
+  def comment_error(:reply_blank, _kind), do: gettext("Write your reply.")
 
-  def comment_error({:too_long, _limit}),
-    do: gettext("Shorten the comment to 2,000 characters or fewer.")
+  def comment_error({:too_long, _limit}, :comment),
+    do: gettext("Shorten the review comment to 2,000 characters or fewer.")
 
-  def comment_error(:characters),
-    do: gettext("Remove the invisible or control characters from the comment.")
+  def comment_error({:too_long, _limit}, :reply),
+    do: gettext("Shorten the reply to 2,000 characters or fewer.")
 
-  def comment_error(:not_approver),
+  def comment_error(:characters, :comment),
+    do: gettext("Remove the invisible or control characters from the review comment.")
+
+  def comment_error(:characters, :reply),
+    do: gettext("Remove the invisible or control characters from the reply.")
+
+  def comment_error(:not_approver, _kind),
     do:
       gettext(
-        "Ask one of this stage's approvers to comment. Only they can comment on its proposal."
+        "Ask one of this stage's approvers to write review comments. Only they can comment on its proposal."
       )
 
-  def comment_error(_error), do: nil
+  def comment_error(_error, _kind), do: nil
 
   attr :id, :string, required: true
   attr :runs, :list, required: true, doc: "the take in's runs, oldest first"

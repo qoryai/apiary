@@ -1677,16 +1677,34 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{f} textarea") == "Also the credit notes."
 
       assert text(html, "#work-item-review-page-error") ==
-               "Shorten the comment to 2,000 characters or fewer."
+               "Shorten the reply to 2,000 characters or fewer."
 
       assert attr(html, "#{f} textarea", "aria-invalid") == ["true"]
       assert text(html, "#{f} button[type=submit]") == "Reply"
     end
 
-    test "comment_error/1: each refusal in words" do
-      assert C.comment_error(:blank) == "Write your review comment."
-      assert C.comment_error(:reply_blank) == "Write your reply."
-      assert C.comment_error(:other) == nil
+    test "comment_error/2: each refusal in words, on Add review comment and on Reply" do
+      for kind <- [:comment, :reply] do
+        assert C.comment_error(:blank, kind) == "Write your review comment."
+        assert C.comment_error(:reply_blank, kind) == "Write your reply."
+
+        assert C.comment_error(:not_approver, kind) ==
+                 "Ask one of this stage's approvers to write review comments. Only they can comment on its proposal."
+
+        assert C.comment_error(:other, kind) == nil
+      end
+
+      assert C.comment_error({:too_long, 2000}, :comment) ==
+               "Shorten the review comment to 2,000 characters or fewer."
+
+      assert C.comment_error(:characters, :comment) ==
+               "Remove the invisible or control characters from the review comment."
+
+      assert C.comment_error({:too_long, 2000}, :reply) ==
+               "Shorten the reply to 2,000 characters or fewer."
+
+      assert C.comment_error(:characters, :reply) ==
+               "Remove the invisible or control characters from the reply."
     end
   end
 

@@ -1072,13 +1072,41 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-review-page-error",
-               "Ask one of this stage's approvers to comment. Only they can comment on its proposal."
+               "Ask one of this stage's approvers to write review comments. Only they can comment on its proposal."
              )
 
       assert has_element?(view, "#work-item-review-page-text", "Offer a refund first.")
       assert has_element?(view, "#work-item-review-page-text[aria-describedby]")
 
       assert Apiary.Explore.ReviewComments.newest(work_item) == nil
+    end
+
+    test "a reply from a member Explore's gate does not list: the line under the field", %{
+      conn: conn,
+      scope: scope
+    } do
+      listed = explore_gate_listing(scope)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
+
+      {:ok, view, _html} =
+        live(conn, page(scope, work_item.number) <> "/explore?reply=c1")
+
+      view
+      |> element("#work-item-review-page-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "comment" => "c1",
+        "text" => "Only for card payments."
+      })
+
+      assert has_element?(
+               view,
+               "#work-item-review-page-error",
+               "Ask one of this stage's approvers to write review comments. Only they can comment on its proposal."
+             )
+
+      assert has_element?(view, "#work-item-review-page-text", "Only for card payments.")
     end
 
     test "Run with comments from a member Explore's gate does not list: the line under the gate",

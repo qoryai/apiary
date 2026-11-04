@@ -5196,7 +5196,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Ask one of this stage's approvers to comment. Only they can comment on its proposal."
+msgid "Ask one of this stage's approvers to write review comments. Only they can comment on its proposal."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15426,7 +15426,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Remove the invisible or control characters from the comment."
+msgid "Remove the invisible or control characters from the reply."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the invisible or control characters from the review comment."
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
@@ -17126,11 +17131,6 @@ msgstr ""
 msgid "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Shorten the comment to 2,000 characters or fewer."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
@@ -17144,6 +17144,16 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Shorten the note to 4,000 characters, and remove any control characters."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shorten the reply to 2,000 characters or fewer."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shorten the review comment to 2,000 characters or fewer."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

@@ -760,7 +760,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(
                view,
                "#work-item-review-page-error",
-               "Shorten the comment to 2,000 characters or fewer."
+               "Shorten the review comment to 2,000 characters or fewer."
              )
 
       assert has_element?(view, "#work-item-review-page-text", long)
@@ -770,11 +770,43 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(
                view,
                "#work-item-review-page-error",
-               "Remove the invisible or control characters from the comment."
+               "Remove the invisible or control characters from the review comment."
              )
 
       assert Apiary.Explore.ReviewComments.newest(work_item) == nil
       assert state(work_item) == :exploring
+    end
+
+    test "a long or hidden-character reply is refused under the field in the words of a reply",
+         %{conn: conn, scope: scope} do
+      {work_item, _run} = proposed(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore?reply=c1"))
+      form = element(view, "#work-item-review-page-form")
+      fields = %{"number" => "#{work_item.number}", "comment" => "c1"}
+
+      long = String.duplicate("a", 2_001)
+      render_submit(form, Map.put(fields, "text", long))
+
+      assert has_element?(
+               view,
+               "#work-item-review-page-error",
+               "Shorten the reply to 2,000 characters or fewer."
+             )
+
+      assert has_element?(view, "#work-item-review-page-text", long)
+
+      render_submit(form, Map.put(fields, "text", "Keep \u202Ethe old PDFs."))
+
+      assert has_element?(
+               view,
+               "#work-item-review-page-error",
+               "Remove the invisible or control characters from the reply."
+             )
+
+      {_version, document} = Apiary.Explore.ReviewComments.newest(work_item)
+      assert [%{"id" => "c1"} = comment] = document["review_comments"]
+      assert comment["replies"] in [nil, []]
     end
 
     test "the edit page is gone", %{conn: conn, scope: scope} do
