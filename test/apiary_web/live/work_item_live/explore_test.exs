@@ -158,6 +158,20 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
 
       assert runs(work_item) == 3
 
+      # The run input has no review comments (`Apiary.Dispatches.Inputs`): the queued run
+      # reads the open ones of the newest review comments, and c1 is open there.
+      assert [%{attempt: 3, state: :waiting}] =
+               Repo.all(
+                 from d in DispatchRun,
+                   where: d.work_item_id == ^work_item.id and d.attempt == 3,
+                   select: %{attempt: d.attempt, state: d.state}
+               )
+
+      {_version, document} = Apiary.Explore.ReviewComments.newest(work_item)
+
+      assert [%{"id" => "c1", "text" => "Name the currency field.", "state" => "open"}] =
+               Apiary.Explore.ReviewComments.entries(document)
+
       assert has_element?(
                view,
                "#work-item-review-c1-reading",
