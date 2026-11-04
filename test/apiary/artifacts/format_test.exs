@@ -503,6 +503,12 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:error, :document_size} = check(context, "proposal", "sources.json", big)
     end
 
+    test "takes a source's system only as host labels that neither start nor end with a hyphen",
+         context do
+      source = fn system ->
+        sources([%{"kind" => "record", "ref" => "42", "why" => "w", "system" => system}])
+      end
+
       for system <- ["crm.example.com", "a", "crm-eu.example.com", "x1.y-2.z"] do
         assert {:ok, "application/json"} =
                  check(context, "proposal", "sources.json", source.(system)),
