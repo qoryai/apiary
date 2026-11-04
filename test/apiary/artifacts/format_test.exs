@@ -459,14 +459,14 @@ defmodule Apiary.Artifacts.FormatTest do
       run = %{"run" => 12}
       member = %{"name" => "Ann Example"}
 
-      for replies <- [
-            [reply(%{"by" => run, "outcome" => "changed"})],
-            [reply(%{"by" => member})],
-            [reply(%{"by" => run, "outcome" => "asked", "question" => "q3"})]
+      for {state, replies} <- [
+            {"closed", [reply(%{"by" => run, "outcome" => "changed"})]},
+            {"open", [reply(%{"by" => member})]},
+            {"closed", [reply(%{"by" => run, "outcome" => "asked", "question" => "q3"})]}
           ] do
         assert {:ok, _} =
                  review_comments(context, [
-                   review_comment(%{"state" => "closed", "replies" => replies})
+                   review_comment(%{"state" => state, "replies" => replies})
                  ])
       end
 
@@ -480,6 +480,56 @@ defmodule Apiary.Artifacts.FormatTest do
         assert {:error, {:schema, %{path: "#/review_comments/0/replies/0" <> _}}} =
                  review_comments(context, [review_comment(%{"replies" => replies})]),
                inspect(replies)
+      end
+    end
+  end
+
+  describe "the rules of the formats at qory b03f2e8c" do
+    test "a closed review comment has a reply by a run", context do
+      comment = fn attrs -> review_comment(Map.put(attrs, "state", "closed")) end
+      member = reply(%{"by" => %{"name" => "Ann Example"}})
+      run = reply(%{"by" => %{"run" => 12}, "outcome" => "changed"})
+
+      assert {:ok, _} = review_comments(context, [comment.(%{"replies" => [run, member]})])
+
+      for attrs <- [%{}, %{"replies" => []}, %{"replies" => [member]}] do
+        assert {:error, {:schema, %{path: "#/review_comments/0" <> _}}} =
+                 review_comments(context, [comment.(attrs)]),
+               inspect(attrs)
+      end
+    end
+
+    test "a time has a month from 01 to 12 and a day from 01 to 31", context do
+      assert {:ok, _} =
+               questions(context, [
+                 question(%{"asked" => %{"run" => 12, "at" => "2026-12-31T23:59:59Z"}})
+               ])
+
+      for at <- [
+            "2026-13-01T10:00:00Z",
+            "2026-00-10T10:00:00Z",
+            "2026-11-32T10:00:00Z",
+            "2026-11-00T10:00:00Z"
+          ] do
+        assert {:error, {:schema, %{path: "#/questions/0/asked/at"}}} =
+                 questions(context, [question(%{"asked" => %{"run" => 12, "at" => at}})]),
+               at
+
+        assert {:error, {:schema, %{path: "#/review_comments/0/at"}}} =
+                 review_comments(context, [review_comment(%{"at" => at})]),
+               at
+      end
+    end
+
+    test "an option's title is one line", context do
+      option = &%{"title" => &1, "explanation" => "Why."}
+
+      assert {:ok, _} = questions(context, [question(%{"options" => [option.("The small one")]})])
+
+      for title <- ["The small\none", "The small\u2028one"] do
+        assert {:error, {:schema, %{path: "#/questions/0/options/0/title"}}} =
+                 questions(context, [question(%{"options" => [option.(title)]})]),
+               inspect(title)
       end
     end
   end
