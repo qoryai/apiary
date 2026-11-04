@@ -613,14 +613,12 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                Explore.proposal(ctx.work_item.id, 2)
 
       assert images == ["a-cart.png", "checkout.svg"]
-      assert Explore.proposal_text(ctx.work_item.id, 2) == "# Gift cards\n"
 
-      assert %{text: text, images: []} = Explore.proposal(ctx.work_item.id, 1)
-      assert Explore.proposal_text(ctx.work_item.id, 1) == text
+      assert %{text: "## What this is\n" <> _, images: []} =
+               Explore.proposal(ctx.work_item.id, 1)
 
       assert Explore.proposal(ctx.work_item.id, 3) == nil
       assert Explore.proposal(ctx.work_item.id, nil) == nil
-      assert Explore.proposal_text(ctx.work_item.id, nil) == nil
     end
   end
 

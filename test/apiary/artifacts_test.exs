@@ -1149,8 +1149,8 @@ defmodule Apiary.ArtifactsTest do
       id = context.work_item.id
 
       assert Apiary.WorkItems.Explore.proposal_version(id, run.take_in, run.attempt) == 1
-      assert Apiary.WorkItems.Explore.proposal_text(id, 1) == "## Main"
-      assert Apiary.WorkItems.Explore.proposal_text(id, 2) == nil
+      assert %{text: "## Main"} = Apiary.WorkItems.Explore.proposal(id, 1)
+      assert Apiary.WorkItems.Explore.proposal(id, 2) == nil
     end
 
     test "stores every type the workspace shows, for a run", context do

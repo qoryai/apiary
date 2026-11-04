@@ -403,17 +403,6 @@ defmodule Apiary.WorkItems.Explore do
     )
   end
 
-  # proposal_text/2 is the Markdown of version `number` of the work item `id`'s proposal
-  # named `main`, the text of `proposal/2`; nil where that is nil.
-  @doc false
-  @spec proposal_text(Ecto.UUID.t(), pos_integer | nil) :: String.t() | nil
-  def proposal_text(id, number) do
-    case proposal(id, number) do
-      %{text: text} -> text
-      nil -> nil
-    end
-  end
-
   # proposal/2 is version `number` of the work item `id`'s proposal named `main`, as a page
   # shows it: `text`, the Markdown of its `text/markdown` file; `version_id`, the
   # version's public id (`av_…`); and `images`, the filenames of its image files, in

@@ -8,7 +8,7 @@ defmodule Apiary.Explore.Outcome do
   #     that stopped. A question left open in an earlier take in does not count;
   #   * `:proposal` when a run of its take in, this one or an earlier one, pushed a
   #     version of the work item's `proposal` named `main`, the one Explore reads
-  #     (`Apiary.WorkItems.Explore.proposal_text/2`), and the run did not stop: its registered
+  #     (`Apiary.WorkItems.Explore.proposal/2`), and the run did not stop: its registered
   #     run did not exit failed, lost or cancelled, as the stage runner reads a run that
   #     stopped (`Apiary.Stages`);
   #   * `:none` otherwise.
