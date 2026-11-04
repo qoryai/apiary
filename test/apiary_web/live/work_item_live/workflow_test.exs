@@ -647,7 +647,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert line(view, "#work-item-record-fold > summary") =~ "proposal v1"
       assert has_element?(view, "#work-item-artifact-list", "proposal v1")
       # Beside the frames of the tab, not under Questions.
-      assert has_element?(view, "#work-item-record h2#work-item-artifacts-h", "Artifacts")
+      assert has_element?(view, "#work-item-record h3#work-item-artifacts-h", "Artifacts")
 
       # Inside the work item, runs count by attempt; only Artifacts names the run by its
       # number on the server.
