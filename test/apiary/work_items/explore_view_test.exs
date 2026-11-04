@@ -345,7 +345,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert %{run: %{workflow_gap: nil}} = WorkItems.explore(ctx.scope, ctx.work_item)
     end
 
-    test "a question reopened twice: each run that wrote or reopened it counts it and lists it, with the answer given at that run",
+    test "a question reopened twice: the run map of each run that wrote or reopened it counts it and lists it, with the answer given at that run",
          ctx do
       item = reopened_twice!(ctx.scope, ctx.work_item)
       %{earlier_runs: earlier, run: latest} = WorkItems.explore(ctx.scope, item)
@@ -518,7 +518,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert asked == [[{"1", "Which price?", nil}]]
     end
 
-    test "a question reopened twice: each run that reopened it lists it, with the answer given at that run",
+    test "a question reopened twice: the Thread line of each run that reopened it lists it, with the answer given at that run",
          ctx do
       item = reopened_twice!(ctx.scope, ctx.work_item)
 
