@@ -377,7 +377,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
   end
 
   describe "a question reopened twice" do
-    test "a question reopened twice: the line of each run that wrote or reopened it in the fold of the runs shows Wrote 1 question",
+    test "the line of each run that wrote or reopened it in the fold of the runs shows Wrote 1 question",
          %{conn: conn, scope: scope} do
       [currency, _credit_note] = @questions
       work_item = work_item_fixture(scope)
