@@ -11655,6 +11655,20 @@
   .q-ticket-formatted :where(th, td)[align="right"] {
     text-align: right;
   }
+  /* A Mermaid diagram (`assets/js/hooks/mermaid.js`): at its width, at least 40rem where
+     the column is narrower, so its labels stay readable and it scrolls sideways. An image
+     of a proposal version fits the column. */
+  .q-mermaid {
+    overflow-x: auto;
+  }
+  .q-mermaid-diagram {
+    max-width: max(100%, 40rem);
+    height: auto;
+  }
+  .q-ticket-formatted img:not(.q-mermaid-diagram) {
+    max-width: 100%;
+    height: auto;
+  }
 }
 
 /* ==== Backlog: a workspace's tickets, and one ticket (`BacklogComponents`) ==================
