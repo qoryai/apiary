@@ -269,6 +269,27 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
   defp page(scope, number), do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}"
+
+  # The workspace's process saved with one member as the only approver of Explore's gate:
+  # that member's scope.
+  defp explore_gate_listing(scope) do
+    default = Processes.default_document("software")
+    listed = member_fixture(scope, :member)
+
+    stages =
+      for stage <- default["stages"] do
+        if stage["id"] == @explore,
+          do: %{
+            stage
+            | "gate" => %{"kind" => "person", "approvers" => %{"members" => [listed.user.id]}}
+          },
+          else: stage
+      end
+
+    save!(scope, %{default | "stages" => stages})
+    Apiary.Organisations.load_scope(Apiary.Accounts.Scope.for_user(listed.user))
+  end
+
   defp list(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/work"
 
   # The texts of the elements `selector` names, each with its spaces made one.
@@ -1058,6 +1079,42 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-review-page-text[aria-describedby]")
 
       assert Apiary.Explore.ReviewComments.newest(work_item) == nil
+    end
+
+    test "Run with comments from a member Explore's gate does not list: the line under the gate",
+         %{conn: conn, scope: scope} do
+      listed = explore_gate_listing(scope)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
+
+      runs =
+        Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      refute has_element?(view, "#work-item-explore-gate-error")
+
+      view
+      |> element("#work-item-explore-gate")
+      |> render_submit(%{"number" => "#{work_item.number}"})
+
+      assert has_element?(
+               view,
+               "#work-item-explore-gate-error[role=alert]",
+               "Ask an approver of Explore to act on it."
+             )
+
+      assert Repo.aggregate(
+               from(d in DispatchRun, where: d.work_item_id == ^work_item.id),
+               :count
+             ) ==
+               runs
+
+      # The next move clears the line.
+      view
+      |> element("#work-item-explore-gate-go")
+      |> render_click()
+
+      refute has_element?(view, "#work-item-explore-gate-error")
     end
 
     test "at Explore with a proposal waiting and no artifact: Confirm and no needs line", %{

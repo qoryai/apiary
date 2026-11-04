@@ -294,6 +294,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             errors={@errors}
             form_error={@form_error}
             submits={@submits}
+            move_error={@move_error}
             item_noun={@source.item_noun}
             now={@now}
           >
@@ -397,7 +398,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            stage_asking: nil,
            stage_error: nil,
            stage_check: nil,
-           stage_notice: nil
+           stage_notice: nil,
+           move_error: nil
          )}
     end
   end
@@ -482,7 +484,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         escalated?(socket.assigns[:flow], status(socket.assigns[:item]))
 
     if number == Integer.to_string(socket.assigns.number) and not held?,
-      do: act(event, params, socket),
+      do: act(event, params, assign(socket, :move_error, nil)),
       else: {:noreply, socket}
   end
 
@@ -559,7 +561,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # Run with comments: the next run, with every open review comment.
   defp act("run_with_comments", _params, socket) do
     with_attempt(socket, fn attempt ->
-      done(socket, WorkItems.send_review_comments(scope(socket), socket.assigns.row, attempt))
+      case WorkItems.send_review_comments(scope(socket), socket.assigns.row, attempt) do
+        {:error, :not_approver} -> {:noreply, not_approver(socket)}
+        result -> done(socket, result)
+      end
     end)
   end
 
@@ -843,6 +848,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do: {:noreply, socket |> assign(:asking, nil) |> refresh()}
 
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
+
+  # Run with comments from a reader who is not an approver of the stage: the page read
+  # again, with the stage runner's line for that refusal (`refused/2`) under the gate.
+  defp not_approver(socket) do
+    socket = refresh(socket)
+
+    case socket.assigns.flow do
+      %{stage: %{name: name}} = flow when is_binary(name) and not socket.redirected ->
+        assign(socket, :move_error, refused(:not_approver, flow))
+
+      _none ->
+        socket
+    end
+  end
 
   # A review comment or a reply written: back to Explore's tab. For a text that fails the
   # check, or a reader who is not an approver of the stage, the draft stays in the field,

@@ -1792,7 +1792,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       (`review_comments/1`); from 1440 px the rail has them;
     * at the gate, for a reader who may confirm (`can_act`): Confirm (`"confirm"`), and
       while a review comment is open, Run with comments (`"run_with_comments"`), which
-      starts the next run with every open review comment;
+      starts the next run with every open review comment; under them, why the page's
+      last move on the tab was not made (`move_error`), where it is given;
     * the questions (`questions`): the closed ones first, each folded to one line, then
       the open ones; with the form for a reader who may answer them (`can_act`, while
       Explore needs answers): for each open question its options, Give your own option,
@@ -1835,7 +1836,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :earlier_runs, :list, default: [], doc: "the take in's earlier runs, oldest first"
   attr :earlier_take_ins, :list, default: [], doc: "the earlier take ins, oldest first"
   attr :proposal, :map, default: nil, doc: "the newest proposal of the take in, or nil"
-  attr :questions, :list, default: [], doc: "every question of the newest questions"
+
+  attr :questions, :list,
+    default: [],
+    doc: "the questions of the newest questions that a run of the current take in wrote"
+
   attr :questions_version, :integer, default: nil, doc: "the newest questions' version"
   attr :review_comments, :list, default: [], doc: "the review comments on its proposals"
   attr :can_act, :boolean, default: false, doc: "whether the reader may answer or confirm"
@@ -1864,6 +1869,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :submits, :integer,
     default: 0,
     doc: "how many times the form was sent; the focus goes to the first error after each"
+
+  attr :move_error, :string,
+    default: nil,
+    doc: "why the page's last move on the tab was not made, with its fix first; nil for none"
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
@@ -1936,6 +1945,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         id={"#{@id}-gate"}
         number={@work_item.number}
         open={if @review_path, do: @open_comments, else: 0}
+        error={@move_error}
       />
       <.questions_frame
         :if={@questions != []}
@@ -2457,10 +2467,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, required: true
   attr :number, :integer, required: true
   attr :open, :integer, required: true, doc: "how many review comments are open"
+  attr :error, :string, default: nil, doc: "why the last move at the gate was not made"
 
   # The gate under the proposal: Confirm (`"confirm"`); while review comments are open,
   # Run with comments first (`"run_with_comments"`), which starts the next run with them,
-  # and how many review comments Confirm leaves unread. Confirm opens no dialog.
+  # and how many review comments Confirm leaves unread. Confirm opens no dialog. Under
+  # them, why the last move was not made (`error`), as the questions form shows its error.
   defp gate(assigns) do
     ~H"""
     <form id={@id} class="q-xp-reply" phx-submit="run_with_comments" novalidate>
@@ -2508,6 +2520,9 @@ defmodule ApiaryWeb.WorkItemComponents do
           </.button>
         </div>
       <% end %>
+      <p :if={@error} id={"#{@id}-error"} class="q-xp-err" role="alert">
+        <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@error}
+      </p>
     </form>
     """
   end
