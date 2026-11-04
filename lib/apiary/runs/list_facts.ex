@@ -54,7 +54,7 @@ defmodule Apiary.Runs.ListFacts do
     * `{:taken_in, person}` and `{:taken_in_again, person}`, the first run of the work
       item's first take in or of a later one, by who took it in;
     * `{:answers, attempt, of, person}`, a run queued by answers to the questions of the
-      run before it, by who answered;
+      run before it, or by a send of the review comments, by who answered or sent them;
     * `{:comment, attempt, of, person}`, a run queued by a comment on the proposal of the
       run before it, by who commented;
     * `{:explore_again, person}`, a run queued by Explore again, by who asked;
