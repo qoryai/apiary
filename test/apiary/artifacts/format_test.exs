@@ -620,7 +620,7 @@ defmodule Apiary.Artifacts.FormatTest do
              "the image() in the style element"},
             {"<style>rect {}<g/></style>", "the g element inside the style element"},
             {"<?foo bar?><rect/>", "the processing instruction foo"},
-            {"<#{long}/>", "the #{String.duplicate("a", 64)}… element"}
+            {~s(<rect on#{long}="x"/>), "the on#{String.duplicate("a", 62)}… attribute"}
           ] do
         assert {:error, {:svg_content, ^part}} =
                  check(context, "proposal", "a.svg", svg(body)),
