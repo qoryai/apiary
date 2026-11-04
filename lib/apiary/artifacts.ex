@@ -91,13 +91,18 @@ defmodule Apiary.Artifacts do
   #      source read at most 64 KiB past the limit; a path that cannot be read,
   #      `{:invalid, {:unreadable, index}}`;
   #   6. each staged file passes its base view's format check, else
-  #      `{:invalid, {:format | :extension | :unreadable, index}}`, or, for a structured
-  #      file its JSON Schema refuses, `{:invalid, {:schema, index, %{path: path,
-  #      error: error}}}`: the JSON pointer of the first failing value, at most 256
+  #      `{:invalid, {:format | :extension | :unreadable, index}}`, for a file of a
+  #      proposal also
+  #      `{:invalid, {:document_size | :image_type | :svg_format | :svg_root, index}}` or
+  #      `{:invalid, {{:svg_content, part}, index}}`, `part` the part of an SVG refused
+  #      (`Apiary.Artifacts.Format`), or, for a structured file or a proposal's
+  #      `sources.json` that its JSON Schema refuses,
+  #      `{:invalid, {:schema, index, %{path: path, error: error}}}`: the JSON pointer of the first failing value, at most 256
   #      bytes, and the validator's message for it, at most 300 characters, both with
   #      their control characters replaced (`Apiary.Artifacts.SchemaError`);
   #   7. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
-  #      else `{:invalid, :no_video}`.
+  #      else `{:invalid, :no_video}`; a version of `proposal` has exactly one Markdown
+  #      file, else `{:invalid, :one_markdown}`.
   #
   # In the transaction, under the work item's lock, a version a run pushes of the
   # questions or the review comments keeps what members wrote in the artifact's newest
@@ -161,8 +166,8 @@ defmodule Apiary.Artifacts do
   #
   # `exists?(work_item, stage_id, type)` is the Exists check of a stage's output: whether
   # the work item has a version of `type`, of any name, made in `stage_id`, whose files
-  # are what the type's base view takes, by the content types the format check kept at
-  # the push (`Apiary.Artifacts.Format.stored?/2`); no file is read again. False for a
+  # are what the type takes, by the content types the format check kept at the push
+  # (`Apiary.Artifacts.Format.stored?/2`); no file is read again. False for a
   # type the workspace does not have and for a hidden standard type.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
@@ -814,19 +819,27 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  # A version of a video type has a video, not captions alone; else every staged copy is
-  # dropped.
+  # A version of a video type has a video, not captions alone, and a version of
+  # `proposal` exactly one Markdown file; else every staged copy is dropped.
   defp complete(%Type{base_view: :video}, staged) do
-    if Format.video?(Enum.map(staged, & &1.content_type)) do
-      :ok
-    else
-      store = Store.impl()
-      Enum.each(staged, &store.discard(&1.staged))
-      {:error, {:invalid, :no_video}}
-    end
+    if Format.video?(Enum.map(staged, & &1.content_type)),
+      do: :ok,
+      else: incomplete(staged, :no_video)
+  end
+
+  defp complete(%Type{standard: true, name: "proposal"} = type, staged) do
+    if Format.stored?(type, Enum.map(staged, & &1.content_type)),
+      do: :ok,
+      else: incomplete(staged, :one_markdown)
   end
 
   defp complete(_type, _staged), do: :ok
+
+  defp incomplete(staged, reason) do
+    store = Store.impl()
+    Enum.each(staged, &store.discard(&1.staged))
+    {:error, {:invalid, reason}}
+  end
 
   defp stage_one(store, type, index, filename, source, left) do
     case store.stage(source, left) do
@@ -1285,10 +1298,10 @@ defmodule Apiary.Artifacts do
     workspace = %Workspace{id: work_item.workspace_id, organisation_id: work_item.organisation_id}
 
     case type(workspace, type_name) do
-      %Type{base_view: base_view} ->
+      %Type{} = type ->
         work_item
         |> made_in(stage_id, type_name)
-        |> Enum.any?(&Format.stored?(base_view, &1))
+        |> Enum.any?(&Format.stored?(type, &1))
 
       nil ->
         false

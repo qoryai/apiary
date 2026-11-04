@@ -1044,6 +1044,112 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
     end
 
+    test "a proposal is one Markdown file with images and sources.json, and each refusal says why",
+         ctx do
+      md = {"proposal.md", "text/markdown", "# Gift cards\n\n![Checkout](checkout.svg)\n"}
+      sources = {"sources.json", "application/json", ~s({"sources": []})}
+      svg = {"checkout.svg", "image/svg+xml", @svg}
+      png = {"cart.png", "image/png", @png}
+
+      conn = write(ctx, "/artifacts", push_body("proposal", [md, svg, png, sources]))
+      assert %{"artifact" => %{"type" => "proposal"}} = json_response(conn, 201)
+
+      unsafe = ~s(<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com/"/></svg>)
+      escaped = ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect fill="\\0"/></svg>)
+      iframe = ~s(<svg xmlns="http://www.w3.org/2000/svg"><iframe/></svg>)
+
+      big_svg =
+        ~s(<svg xmlns="http://www.w3.org/2000/svg"><desc>#{String.duplicate("a", 524_288)}</desc></svg>)
+
+      cases = [
+        {[md, {"notes.txt", "text/plain", "Gift cards."}], ["files[1]"],
+         "Fix notes.txt to match the format of proposal: a proposal is one Markdown file " <>
+           "(.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."},
+        {[md, {"cart.png", "image/gif", "GIF89a" <> <<1>>}], ["files[1]"],
+         "Replace cart.png with an image of the type its name ends in."},
+        {[md, {"checkout.svg", "image/svg+xml", @png}], ["files[1]"],
+         "Replace checkout.svg with an image of the type its name ends in."},
+        {[{"proposal.md", "text/markdown", <<0xFF>>}], ["files[0]"],
+         "Fix proposal.md to match the format of proposal: " <>
+           "a document is a Markdown file of UTF-8 text."},
+        {[md, {"other.md", "text/markdown", "# Other"}], ["files"],
+         "Push one Markdown file (.md) in each version of proposal."},
+        {[png], ["files"], "Push one Markdown file (.md) in each version of proposal."},
+        {[{"proposal.md", "text/markdown", String.duplicate("a", 262_145)}], ["files[0]"],
+         "Shrink proposal.md to at most 262144 bytes."},
+        {[md, {"checkout.svg", "image/svg+xml", unsafe}], ["files[1]"],
+         "Remove the href attribute from checkout.svg. An SVG in a proposal uses only the " <>
+           "elements and attributes the run API document lists, with no script, HTML or " <>
+           "reference outside the file."},
+        {[md, {"checkout.svg", "image/svg+xml", escaped}], ["files[1]"],
+         "Remove a backslash in the fill attribute from checkout.svg. An SVG in a proposal " <>
+           "uses only the elements and attributes the run API document lists, with no " <>
+           "script, HTML or reference outside the file."},
+        {[md, {"checkout.svg", "image/svg+xml", iframe}], ["files[1]"],
+         "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the " <>
+           "elements and attributes the run API document lists, with no script, HTML or " <>
+           "reference outside the file."},
+        {[md, {"checkout.svg", "image/svg+xml", "<svg><rect></svg>"}], ["files[1]"],
+         "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."},
+        {[md, {"checkout.svg", "image/svg+xml", "<svg/>"}], ["files[1]"],
+         ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg.)},
+        {[md, {"checkout.svg", "image/svg+xml", ~s(<svg xmlns="urn:example:x"/>)}], ["files[1]"],
+         ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg.)},
+        {[md, {"checkout.svg", "image/svg+xml", big_svg}], ["files[1]"],
+         "Shrink checkout.svg to at most 524288 bytes."},
+        {[md, {"checkout.svg", "image/svg+xml", "<!DOCTYPE svg>" <> @svg}], ["files[1]"],
+         "Remove the DOCTYPE from checkout.svg. An SVG in a proposal uses only the elements " <>
+           "and attributes the run API document lists, with no script, HTML or reference " <>
+           "outside the file."},
+        {[md, {"sources.json", "application/json", "{"}], ["files[1]"],
+         "Make sources.json valid JSON. The file does not parse as JSON."},
+        {[md, {"sources.json", "application/json", String.duplicate(" ", 1_048_577)}],
+         ["files[1]"], "Shrink sources.json to at most 1048576 bytes."},
+        {[md, {"sources.json", "application/json", ~s({"items": []})}], ["files[1]"],
+         "Fix sources.json to match the JSON Schema of proposal sources: " <>
+           "at #, additional properties are not allowed but found property 'items'."}
+      ]
+
+      for {files, names, message} <- cases do
+        conn = write(ctx, "/artifacts", push_body("proposal", files))
+
+        assert json_response(conn, 422) == %{
+                 "error" => "invalid_artifact",
+                 "names" => names,
+                 "message" => message
+               },
+               message
+      end
+
+      assert [_one] = RunApiStubs.pushed()
+    end
+
+    test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
+      md = {"proposal.md", "text/markdown", "# Gift cards"}
+      images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}
+      conn = write(ctx, "/artifacts", push_body("proposal", [md | images]))
+
+      assert json_response(conn, 422) == %{
+               "error" => "too_many_files",
+               "type" => "proposal",
+               "limit" => 10,
+               "message" => "Push at most 10 files in one version of proposal."
+             }
+
+      large = @png <> :binary.copy("a", 5_242_880)
+      conn = write(ctx, "/artifacts", push_body("proposal", [md, {"a.png", "image/png", large}]))
+
+      assert json_response(conn, 422) == %{
+               "error" => "too_large",
+               "type" => "proposal",
+               "limit" => 5_242_880,
+               "message" =>
+                 "Shrink the files of one version of proposal to at most 5242880 bytes together."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a run's version of questions or review comments that changes what members wrote is 422",
          ctx do
       cases = [

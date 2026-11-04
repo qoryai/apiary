@@ -5,8 +5,10 @@ defmodule Apiary.Artifacts.Type do
   # of a workspace's `artifact_types`. Both are this struct; `standard` is true for the
   # first, and a standard type has no row, so no id, public id, organisation or
   # workspace. `view` is the dedicated view of a standard structured type (`:questions`,
-  # `:verdict` or `:change`), nil for every other type. A `proposal` is a document, its one
-  # file Markdown, up to 256 KiB. A `questions` document holds every question of a work
+  # `:verdict` or `:change`), nil for every other type. A `proposal` is a document: one
+  # Markdown file of up to 256 KiB, PNG, JPEG, GIF, WebP or SVG images beside it, and at
+  # most one `sources.json`, up to 10 files and 5 MiB together
+  # (`Apiary.Artifacts.Format`). A `questions` document holds every question of a work
   # item and its answers, each question with a context of up to 20,000 characters, so it
   # takes up to 1 MiB. A `review-comments` document holds every review comment of a work
   # item, on a version of an artifact such as the proposal, with its replies, up to
@@ -67,7 +69,7 @@ defmodule Apiary.Artifacts.Type do
     {"screenshot", :image, 10 * @mib, 10, nil},
     {"demo-video", :video, 200 * @mib, 5, nil},
     {"change", :structured, 64 * 1024, 1, :change},
-    {"proposal", :document, 256 * 1024, 1, nil},
+    {"proposal", :document, 5 * @mib, 10, nil},
     {"questions", :structured, @mib, 1, :questions},
     {"review-comments", :structured, @mib, 1, nil},
     {"verdict", :structured, 64 * 1024, 1, :verdict}

@@ -154,7 +154,8 @@ defmodule Apiary.ArtifactsTest do
       for name <- ~w(acceptance-criteria explainer decision-record proposal),
           do: assert(types[name].base_view == :document)
 
-      assert types["proposal"].max_files == 1
+      assert types["proposal"].max_files == 10
+      assert types["proposal"].size_limit == 5 * 1_048_576
 
       assert types["mockup"].base_view == :image
       assert types["screenshot"].base_view == :image
@@ -1449,6 +1450,97 @@ defmodule Apiary.ArtifactsTest do
 
       assert {:error, {:invalid, {:schema, 0, %{path: "#", error: "the document has more" <> _}}}} =
                push.(%{"bids" => Enum.to_list(1..10_001)})
+    end
+  end
+
+  describe "push/5 of a proposal" do
+    defp sources_json, do: json("sources.json", %{"sources" => []})
+
+    test "stores one Markdown file with images and sources.json", %{run: run} = context do
+      assert {:ok, version} =
+               Artifacts.push({:run, run}, context.work_item, "proposal", [
+                 proposal(),
+                 file("checkout.svg", @svg),
+                 file("cart.png", @png),
+                 sources_json()
+               ])
+
+      assert Enum.map(version.files, &{&1.filename, &1.content_type}) == [
+               {"cart.png", "image/png"},
+               {"checkout.svg", "image/svg+xml"},
+               {"proposal.md", "text/markdown; charset=utf-8"},
+               {"sources.json", "application/json"}
+             ]
+    end
+
+    test "refuses two Markdown files, none, or sources.json twice, and keeps nothing",
+         %{run: run, root: root} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, "proposal", &1)
+
+      assert {:error, {:invalid, :one_markdown}} =
+               push.([proposal(), doc("other.md"), file("cart.png", @png)])
+
+      assert {:error, {:invalid, :one_markdown}} = push.([file("cart.png", @png)])
+      assert {:error, {:invalid, :one_markdown}} = push.([sources_json()])
+
+      assert {:error, {:invalid, {:duplicate_filename, 2}}} =
+               push.([proposal(), sources_json(), sources_json()])
+
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
+      assert count(Version) == 0
+    end
+
+    test "refuses a file of the wrong format, an unsafe SVG, a large Markdown file and bad sources",
+         %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, "proposal", &1)
+
+      assert {:error, {:invalid, {:extension, 1}}} = push.([proposal(), file("notes.txt", "a")])
+      assert {:error, {:invalid, {:image_type, 1}}} = push.([proposal(), file("notes.png", "a")])
+
+      unsafe = String.replace(@svg, "<rect ", ~s|<rect onclick="alert(1)" |)
+
+      assert {:error, {:invalid, {{:svg_content, "the onclick attribute"}, 1}}} =
+               push.([proposal(), file("checkout.svg", unsafe)])
+
+      assert {:error, {:invalid, {:document_size, 0}}} =
+               push.([doc("proposal.md", String.duplicate("a", 262_145))])
+
+      assert {:error, {:invalid, {:schema, 1, %{path: "#", error: _error}}}} =
+               push.([proposal(), json("sources.json", %{"items" => []})])
+
+      assert count(Version) == 0
+    end
+
+    test "refuses more than 10 files and more than 5 MiB together", %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, "proposal", &1)
+      images = for n <- 1..9, do: file("#{n}.png", @png)
+
+      assert {:ok, _version} = push.([proposal() | images])
+
+      assert {:error, {:too_many_files, 10}} =
+               push.([proposal(), file("10.png", @png) | images])
+
+      large = @png <> :binary.copy("a", 2_700_000)
+
+      assert {:error, {:too_large, 5_242_880}} =
+               push.([proposal(), file("a.png", large), file("b.png", large)])
+    end
+
+    test "the Exists check passes a proposal with images and sources.json",
+         %{run: run} = context do
+      refute Artifacts.exists?(context.work_item, "st_explore", "proposal")
+
+      {:ok, _version} =
+        Artifacts.push(
+          {:run, run},
+          context.work_item,
+          "proposal",
+          [proposal(), file("checkout.svg", @svg), file("cart.png", @png), sources_json()],
+          stage_id: "st_explore"
+        )
+
+      assert Artifacts.exists?(context.work_item, "st_explore", "proposal")
     end
   end
 

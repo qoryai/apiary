@@ -33,6 +33,21 @@ defmodule Apiary.WorkItems.Proposal do
   # another question, gives no text, gives both an option and a text, or an option title
   # the question does not have.
   #
+  # `check_answers_by_id(questions, answers)` checks the answers a form gives by
+  # question id: `questions` is the questions of the newest questions document, as it
+  # stores them, and `answers` a list of `%{"id" => id, "option" => title | nil,
+  # "note" => text | nil}`, at least one, each id once; `"option"` and `"note"` may be
+  # left out. An answer has an option, a note, or both: an option with a note adds detail
+  # to the option, and no option ("Give your own option") makes the note the answer, so
+  # the note is required. An empty option or note, once trimmed, counts as none.
+  # `{:ok, [{id, option, note}]}`, in the order given, the option as the question's title
+  # and the note cleaned, nil for none (`Apiary.Explore.Questions.answer/4`); or
+  # `{:error, errors}` by id: `:unknown_id` (no question has the id), `:not_open` (the
+  # question is answered or closed), `:unknown_option` (no option of the question has the
+  # title), `:note_required` (no option and no note), `{:too_long, 2000}` and
+  # `:characters` (the note); or `{:error, :invalid}` for no list, an empty one, an entry
+  # of another shape, or an id twice.
+  #
   # `check_comment(text)` checks a member's review comment on a proposal, or a reply to
   # one: `{:ok, text}`, at most 2,000 code points; or `{:error, error}` (`:blank`,
   # `{:too_long, 2000}`, `:characters`), or `{:error, :invalid}` for no text.
@@ -54,6 +69,15 @@ defmodule Apiary.WorkItems.Proposal do
 
   @typedoc "What is wrong with a text a member gives."
   @type error :: :blank | :characters | {:too_long, pos_integer}
+
+  @typedoc "What is wrong with an answer a form gives by question id."
+  @type by_id_error ::
+          :unknown_id
+          | :not_open
+          | :unknown_option
+          | :note_required
+          | :characters
+          | {:too_long, pos_integer}
 
   # max_answer/0 is the most code points an answer, or a comment, has.
   @doc false
@@ -188,6 +212,69 @@ defmodule Apiary.WorkItems.Proposal do
       {:error, _error} = refused -> refused
     end
   end
+
+  # check_answers_by_id/2 checks the answers a form gives by question id (the moduledoc).
+  @doc false
+  @spec check_answers_by_id([map], term) ::
+          {:ok, [{String.t(), String.t() | nil, String.t() | nil}]}
+          | {:error, %{String.t() => by_id_error} | :invalid}
+  def check_answers_by_id(questions, [_ | _] = answers) when is_list(questions) do
+    by_id = Map.new(questions, &{&1["id"], &1})
+
+    with true <- Enum.all?(answers, &by_id_shape?/1),
+         ids = Enum.map(answers, & &1["id"]),
+         true <- length(Enum.uniq(ids)) == length(ids) do
+      checked = Enum.map(answers, &by_id(&1, Map.get(by_id, &1["id"])))
+      errors = for {id, {:error, error}} <- checked, into: %{}, do: {id, error}
+
+      if errors == %{},
+        do: {:ok, for({_id, {:ok, answer}} <- checked, do: answer)},
+        else: {:error, errors}
+    else
+      false -> {:error, :invalid}
+    end
+  end
+
+  def check_answers_by_id(_questions, _answers), do: {:error, :invalid}
+
+  defp by_id_shape?(%{"id" => id} = given) when is_binary(id) do
+    Enum.all?(Map.keys(given), &(&1 in ["id", "option", "note"])) and
+      (is_nil(given["option"]) or is_binary(given["option"])) and
+      (is_nil(given["note"]) or is_binary(given["note"]))
+  end
+
+  defp by_id_shape?(_given), do: false
+
+  defp by_id(%{"id" => id}, nil), do: {id, {:error, :unknown_id}}
+
+  defp by_id(%{"id" => id}, %{"state" => state}) when state != "open",
+    do: {id, {:error, :not_open}}
+
+  defp by_id(%{"id" => id} = given, question) do
+    titles = for %{"title" => title} <- List.wrap(question["options"]), do: title
+
+    with {:ok, option} <- by_id_option(present(given["option"]), titles),
+         {:ok, note} <- by_id_note(present(given["note"]), option) do
+      {id, {:ok, {id, option, note}}}
+    else
+      {:error, error} -> {id, {:error, error}}
+    end
+  end
+
+  defp by_id_option(nil, _titles), do: {:ok, nil}
+
+  defp by_id_option(given, titles) do
+    given = if String.valid?(given), do: normal(given), else: given
+
+    case Enum.find(titles, &(normal(&1) == given)) do
+      nil -> {:error, :unknown_option}
+      title -> {:ok, title}
+    end
+  end
+
+  defp by_id_note(nil, nil), do: {:error, :note_required}
+  defp by_id_note(nil, _option), do: {:ok, nil}
+  defp by_id_note(note, _option), do: text(note, @max_short)
 
   ## A comment
 
