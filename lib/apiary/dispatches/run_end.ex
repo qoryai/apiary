@@ -126,8 +126,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # (`Apiary.Stages.run_ended/2`), so the work item is locked `FOR UPDATE`.
   # An end by an exit writes the run of the queue a second time when it stores what the
   # run gave on a row that holds no outcome yet (`settled/4`, `Apiary.Dispatches.Settle`,
-  # which writes only while the row holds none), and Postgres then checks that write's foreign key with a
-  # `FOR KEY SHARE` lock on the work item. Taken there alone, after the run of the
+  # which writes only while the row holds none), and Postgres then checks that write's
+  # foreign key with a `FOR KEY SHARE` lock on the work item. Taken there alone, after the run of the
   # queue, that lock waits on a release that holds the work item and waits on the run of
   # the queue: a deadlock (40P01). Then the run of the queue is locked `FOR UPDATE`, then
   # the registered run, then the dispatches are written. With the workflow model off,
