@@ -1798,8 +1798,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       the open ones; with the form for a reader who may answer them (`can_act`, while
       Explore needs answers): for each open question its options, Give your own option,
       and one field; Run with answers (`"answer"`), which with every answer blank sends
-      the open review comments; under the form, the page's line (`move_error`) where it
-      is given. While a run runs, the open questions show as text;
+      the open review comments for an approver of the stage; under the form, the page's
+      line (`move_error`) where it is given. While a run runs, the open questions show as
+      text;
     * one fold of the take in's runs, oldest first, with what each wrote, and the
       `artifacts` slot; then the earlier take ins (`earlier_take_ins`), each folded with
       its runs, which counted apart.
@@ -2917,7 +2918,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :tip, :string,
     default: nil,
     doc:
-      "the class of the avatars' tooltips: `tooltip-right` in the right column, which scrolls and so cuts a tooltip above an avatar at its left edge; `tooltip-right` is not cut"
+      "the class of the avatars' tooltips: `tooltip-right` in the right column: that column scrolls, so it cuts the default tooltip, which opens above an avatar at its left edge; a `tooltip-right` tooltip opens to the right and stays inside the column."
 
   attr :class, :any, default: nil
 

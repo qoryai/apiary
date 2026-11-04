@@ -38,13 +38,14 @@ defmodule Apiary.WorkItems.ExploreView do
   #     stored before runs pushed their proposal as an artifact has `message` alone;
   #   * `questions`: the questions of the work item's newest questions that a run of the
   #     current take in wrote (`asked.run`) or reopened last (the `reopened.run` of the
-  #     last entry of `history`), in their order, each `%{id:, number:, text:,
-  #     context:, options:, state:, asked_run:, answer:, history:, follows:}`: `number`
-  #     its place in the document, from 1, `state` `:open`, `:answered` or `:withdrawn`,
-  #     `answer` nil or `%{option:, note:, by_id:, by:, at:}` (`by_id` by the move that
-  #     wrote it, nil where none matches, `by` the name in the document), `history` its
-  #     earlier answers in the same form, and `follows` the numbers of the questions it
-  #     follows; and `questions_version`, the number of that version, nil for none;
+  #     last entry of its `history` that has one), in their order, each `%{id:, number:,
+  #     text:, context:, options:, state:, asked_run:, answer:, history:, follows:}`:
+  #     `number` its place in the document, from 1, `state` `:open`, `:answered` or
+  #     `:withdrawn`, `answer` nil or `%{option:, note:, by_id:, by:, at:}` (`by_id` by
+  #     the move that wrote it, nil where none matches, `by` the name in the document),
+  #     `history` its earlier answers in the same form, and `follows` the numbers of the
+  #     questions it follows; and `questions_version`, the number of that version, nil
+  #     for none;
   #   * `review_comments`: the review comments on the current take in's proposals, oldest
   #     first, each `%{id:, text:, by_id:, at:, version:, state:, reopened:, replies:}`:
   #     `state` `:open` or `:closed`, `reopened` true for an open one a run replied to,

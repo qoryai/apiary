@@ -34,9 +34,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # member, it shows under the form that no answer was given. An action that fails shows
   # no words: the page reads the work item again and draws where it stands now. Only a
   # form whose fields are wrong shows why, under its fields, as does the form page of a
-  # reader who is not an approver of the stage; Run with comments at the gate, or Run
-  # with answers with every answer blank, from such a reader, shows the stage runner's
-  # line under that form.
+  # reader who is not an approver of the stage. Run with comments at the gate, from such
+  # a reader, shows the stage runner's line under the gate. Run with answers with every
+  # answer blank shows that line under its form only where the page counted the reader
+  # as an approver and the send's check does not, as when the reader's role changed after
+  # the page read it.
   # The questions form's draft is kept as the reader writes (`"answer_draft"`): each
   # question's option and note, as the form has them. An event with another number than
   # the page's does nothing.
@@ -860,9 +862,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
 
-  # Run with comments at the gate, or Run with answers with every answer blank, from a
-  # reader who is not an approver of the stage: the page read again, with the stage
-  # runner's line for that error (`refused/2`) under the form.
+  # Run with comments at the gate from a reader who is not an approver of the stage, or
+  # Run with answers with every answer blank where the page counted the reader as an
+  # approver and the send's check does not (`approver?/1`): the page read again, with the
+  # stage runner's line for that error (`refused/2`) under the form.
   defp not_approver(socket) do
     socket = refresh(socket)
 
