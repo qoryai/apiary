@@ -2558,7 +2558,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc false
   # proposal_frame/1 is Qory's proposal, in a frame that names the run and the proposal's
   # version; confirmed, who confirmed it. A result stored before the proposal was Markdown
-  # has no text: the frame shows none. The text shows the version's `images`, and a
+  # has no text: the frame shows none. The text shows the version's `images` (PNG, JPEG,
+  # GIF, WebP and SVG files only), and a
   # reference to a file of none of them as "Image not in this version"; with `images`
   # nil, the version's files are not known, and an image is its words. It draws its
   # Mermaid diagrams in the browser (`assets/js/hooks/mermaid.js`); its block has an id of
@@ -2569,6 +2570,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     assigns =
       assign(assigns,
+        images: image_files(assigns.images),
         proposal: proposal,
         text?: proposal[:rendered] != nil or is_binary(proposal[:message]),
         caption: proposal_caption(assigns.run, assigns.confirmed, assigns.now)
@@ -2601,6 +2603,18 @@ defmodule ApiaryWeb.WorkItemComponents do
       </div>
     </section>
     """
+  end
+
+  # The images of a proposal version, by the extension of each filename: PNG, JPEG, GIF,
+  # WebP and SVG only, so another file of the version, such as sources.json, is never
+  # shown as an image, whatever the caller passes.
+  defp image_files(nil), do: nil
+
+  defp image_files(images) do
+    Enum.filter(images, fn {filename, _path} ->
+      is_binary(filename) and
+        String.downcase(Path.extname(filename)) in ~w(.png .jpg .jpeg .gif .webp .svg)
+    end)
   end
 
   # Who confirmed the proposal and when; nil before.

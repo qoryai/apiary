@@ -846,6 +846,34 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       refute text(html, "#{p}-text") =~ "not in this version"
     end
 
+    test "the proposal frame shows no file of the version but an image as an image" do
+      # The caller passes every file of the version, sources.json and a Markdown file
+      # among them: only the PNG and SVG files are images.
+      message =
+        "![a](sources.json) ![b](proposal.md) ![c](notes.txt) ![d](header.SVG) ![e](form.png)"
+
+      files =
+        for name <- ~w(sources.json proposal.md notes.txt header.SVG form.png),
+            do: {name, "/acme/main/work/7/artifacts/av_1/files/#{name}"}
+
+      html =
+        render_component(&C.proposal_frame/1,
+          id: "work-item-explore-proposal",
+          run: run(%{version: 2, proposal: proposal(%{message: message})}),
+          now: @now,
+          images: files
+        )
+
+      p = "#work-item-explore-proposal-text"
+
+      assert attr(html, "#{p} img", "src") == [
+               "/acme/main/work/7/artifacts/av_1/files/header.SVG",
+               "/acme/main/work/7/artifacts/av_1/files/form.png"
+             ]
+
+      for alt <- ~w(a b c), do: assert(text(html, p) =~ "Image not in this version: #{alt}")
+    end
+
     test "with text in the field, the one button is Send change" do
       html = tab(work_item(%{}), can_act: true, change: "Also check the basket.")
 
