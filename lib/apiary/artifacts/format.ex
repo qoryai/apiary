@@ -30,26 +30,33 @@ defmodule Apiary.Artifacts.Format do
   #
   #   * a filename that ends in `.md` (any case): the document check, and at most
   #     262,144 bytes (256 KiB), else `:document_size`;
-  #   * `sources.json`: at most 1 MiB, one JSON document valid against the proposal
-  #     sources format, copied from qory (`priv/schemas/artifacts/
-  #     proposal-sources.schema.json`); `application/json`. Qory Apiary reads none of its
-  #     members;
+  #   * `sources.json`: at most 1 MiB, else `:document_size`; one JSON document, else
+  #     `:format`, valid against the proposal sources format, copied from qory
+  #     (`priv/schemas/artifacts/proposal-sources.schema.json`); `application/json`. Qory
+  #     Apiary reads none of its members;
   #   * a filename that ends in `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg`
   #     (any case): the image check, where the type the bytes show is the one the
-  #     extension names, else `:format`; and an SVG also passes the strict check:
-  #     no element `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, in
-  #     any namespace and any case, and no element in the HTML namespace
-  #     (`http://www.w3.org/1999/xhtml`); no attribute whose name starts with `on`, and
-  #     no `xml:base`, which changes what a link to `#…` points to; an
-  #     `href`, in any namespace, only to a place in the file (`#…`); a CSS `url(` only to
-  #     a place in the file, in an attribute or in text; no `@import`, no backslash in a
-  #     `style` element or in any attribute (a CSS escape could spell `url(`), no
-  #     `image-set(` or `image(` there either (any case, also with spaces before the
-  #     `(`), and no processing instruction, such as `<?xml-stylesheet ?>` (the XML
-  #     declaration is not one). Else `:svg_content`. Attribute values and text are checked
-  #     as the parser reads them, with their character references replaced; a `style`
-  #     element has no child element, and its text is checked as one, joined across
-  #     comments and CDATA sections, as a browser reads it;
+  #     extension names, else `:format`; and an SVG also passes the strict check, else
+  #     `{:svg_content, part}`, `part` the first part refused, in plain words with names
+  #     as the file writes them, such as "the script element":
+  #       - no element `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, in
+  #         any namespace and any case ("the animate element"), and no element in the
+  #         HTML namespace, `http://www.w3.org/1999/xhtml` ("the HTML element div");
+  #       - no attribute whose name starts with `on` ("the onload attribute"), no
+  #         `xml:base`, which changes what a link to `#…` points to, and an `href`, in
+  #         any namespace, only to a place in the file, `#…` ("the href attribute");
+  #       - in any text and attribute, no `@import` and a CSS `url(` only to a place in
+  #         the file ("the url() in the fill attribute");
+  #       - in a `style` element and in any attribute, read as CSS, no backslash, since a
+  #         CSS escape could spell `url(` ("a backslash in the fill attribute"), and no
+  #         `image-set(`, also `-webkit-image-set(`, or `image(`, any case, also with
+  #         spaces before the `(` ("the image-set() in the style element");
+  #       - no element inside a `style` element, whose text is checked as one, joined
+  #         across comments and CDATA sections, as a browser reads it;
+  #       - no processing instruction, such as `<?xml-stylesheet ?>` ("the processing
+  #         instruction xml-stylesheet"); the XML declaration is not one.
+  #     Attribute values and text are checked as the parser reads them, with their
+  #     character references replaced. A name past 64 characters is cut to 64 and `…`;
   #   * any other filename: `:extension`.
   #
   # A version of `proposal` has exactly one Markdown file and at most one `sources.json`
@@ -57,11 +64,11 @@ defmodule Apiary.Artifacts.Format do
   # and their count, 10 (`Apiary.Artifacts.Type`).
   #
   # A refusal is `{:error, reason}`: `:format` for bytes the base view does not take,
-  # `:extension` for a document whose filename does not end in `.md` (for a proposal,
-  # in none of the extensions it takes),
-  # `{:schema, detail}` for a structured document the schema refuses, `detail` its first
-  # failing place (`Apiary.Artifacts.SchemaError`), `:document_size` and `:svg_content`
-  # for a file of a proposal, and `:unreadable` for a file that cannot be read.
+  # `:extension` for a document whose filename does not end in `.md` (for a proposal, in
+  # none of the extensions it takes), `{:schema, detail}` for a structured document the
+  # schema refuses, `detail` its first failing place (`Apiary.Artifacts.SchemaError`),
+  # `:document_size` and `{:svg_content, part}` for a file of a proposal, and
+  # `:unreadable` for a file that cannot be read.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -151,7 +158,7 @@ defmodule Apiary.Artifacts.Format do
           :format
           | :extension
           | :document_size
-          | :svg_content
+          | {:svg_content, String.t()}
           | {:schema, SchemaError.t()}
           | :unreadable
 
@@ -225,6 +232,14 @@ defmodule Apiary.Artifacts.Format do
       end
     end
   end
+
+  # proposal_bytes/1 is the most bytes of a proposal's file named `filename`, past which
+  # `check/3` refuses it as `:document_size`: its `sources.json`'s, else its Markdown
+  # file's.
+  @doc false
+  @spec proposal_bytes(String.t()) :: pos_integer
+  def proposal_bytes(@sources), do: @sources_bytes
+  def proposal_bytes(_markdown), do: @proposal_markdown
 
   # Markdown: UTF-8 text with no NUL.
   defp markdown(path) do
@@ -328,8 +343,8 @@ defmodule Apiary.Artifacts.Format do
       {:ok, "image/svg+xml"}
     else
       {:error, :unreadable} -> {:error, :unreadable}
-      {:ok, :unsafe} -> {:error, :svg_content}
-      {:error, :svg_content} -> {:error, :svg_content}
+      {:ok, {:unsafe, part}} -> {:error, {:svg_content, part}}
+      {:error, {:svg_content, _part}} = refused -> refused
       _refused -> {:error, :format}
     end
   end
@@ -338,9 +353,10 @@ defmodule Apiary.Artifacts.Format do
   # declaration, is looked for before the parse in `:strict` mode, so the refusal says
   # why.
   defp no_stylesheet(:strict, bytes) do
-    if String.contains?(String.downcase(bytes), "<?xml-stylesheet"),
-      do: {:error, :svg_content},
-      else: :ok
+    case Regex.run(~r/<\?(xml-stylesheet)/i, bytes, capture: :all_but_first) do
+      [target] -> {:error, {:svg_content, "the processing instruction #{target}"}}
+      nil -> :ok
+    end
   end
 
   defp no_stylesheet(:plain, _bytes), do: :ok
@@ -363,31 +379,31 @@ defmodule Apiary.Artifacts.Format do
 
   # The root element's namespace and name, read by the SAX parser, which reads the whole
   # document: `:svg` for an SVG root in a well-formed document, anything else otherwise.
-  # In `:strict` mode, `:unsafe` for a well-formed document with an SVG root that fails
-  # the strict check.
+  # In `:strict` mode, `{:unsafe, part}` for a well-formed document with an SVG root that
+  # fails the strict check, `part` the first part it refuses.
   defp svg_root(bytes, mode) do
-    event = fn event, _location, {root, safe?, state} ->
+    event = fn event, _location, {root, status, state} ->
       root = root(event, root)
 
-      if mode == :strict and safe? do
-        {safe?, state} = strict(event, state)
-        {root, safe?, state}
+      if mode == :strict and status == :safe do
+        {status, state} = strict(event, state)
+        {root, status, state}
       else
-        {root, safe?, state}
+        {root, status, state}
       end
     end
 
     case :xmerl_sax_parser.stream(bytes,
            event_fun: event,
-           event_state: {:none, true, {[], nil}},
+           event_state: {:none, :safe, {[], nil}},
            external_entities: :none,
            fail_undeclared_ref: true
          ) do
-      {:ok, {:svg, safe?, _state}, rest} ->
+      {:ok, {:svg, status, _state}, rest} ->
         cond do
           not blank?(rest) -> :other
-          safe? -> :svg
-          true -> :unsafe
+          status == :safe -> :svg
+          true -> status
         end
 
       _other ->
@@ -400,67 +416,111 @@ defmodule Apiary.Artifacts.Format do
 
   defp root(_event, root), do: root
 
-  # One event of the strict check: whether the document is still safe, and the state:
-  # the local names of the open elements, innermost first, and the text of the open
-  # `style` element, nil outside one. A browser reads a `style` element's CSS as all its
-  # text joined, across comments, CDATA sections and child elements, so that text is
-  # checked as one at the element's end, and a `style` element has no child element.
-  defp strict({:startElement, uri, name, _qualified, attributes}, {open, style}) do
+  # One event of the strict check: `:safe`, or `{:unsafe, part}` with the part refused in
+  # plain words, names as the file writes them; and the state: the open elements,
+  # innermost first, each its local name in lower case and its name as written, and the
+  # open `style` element, nil outside one, its name as written and its text so far. A
+  # browser reads a `style` element's CSS as all its text joined, across comments, CDATA
+  # sections and child elements, so that text is checked as one at the element's end,
+  # and a `style` element has no child element.
+  defp strict({:startElement, uri, name, qualified, attributes}, {open, style}) do
     local = name |> List.to_string() |> String.downcase()
+    written = written(qualified)
 
-    safe? =
-      style == nil and local not in @svg_refused_elements and uri != @xhtml_namespace and
-        Enum.all?(attributes, fn {uri, prefix, attribute, value} ->
-          name = String.downcase(List.to_string(attribute))
-          not base?(uri, prefix, name) and safe_attribute?(name, List.to_string(value))
-        end)
+    status =
+      cond do
+        style != nil -> {:unsafe, "the #{written} element inside the #{elem(style, 0)} element"}
+        local in @svg_refused_elements -> {:unsafe, "the #{written} element"}
+        uri == @xhtml_namespace -> {:unsafe, "the HTML element #{written}"}
+        true -> Enum.find_value(attributes, :safe, &unsafe_attribute/1)
+      end
 
-    {safe?, {[local | open], if(local == "style", do: [], else: style)}}
+    {status, {[{local, written} | open], if(local == "style", do: {written, []}, else: style)}}
   end
 
-  defp strict({:endElement, _uri, _name, _qualified}, {["style" | open], style}),
-    do: {safe_text?(IO.chardata_to_string(style), true), {open, nil}}
+  defp strict({:endElement, _uri, _name, _qualified}, {[{"style", _written} | open], style}) do
+    {written, text} = style
+    {in_text(IO.chardata_to_string(text), true, "the #{written} element"), {open, nil}}
+  end
 
   defp strict({:endElement, _uri, _name, _qualified}, {[_closed | open], style}),
-    do: {true, {open, style}}
+    do: {:safe, {open, style}}
 
-  defp strict({:characters, text}, {open, nil}),
-    do: {safe_text?(List.to_string(text), false), {open, nil}}
+  defp strict({:characters, text}, {open, nil}) do
+    written = with [{_local, written} | _outer] <- open, do: written
+    {in_text(List.to_string(text), false, "the text of the #{written} element"), {open, nil}}
+  end
 
-  defp strict({:characters, text}, {open, style}), do: {true, {open, [style | text]}}
+  defp strict({:characters, text}, {open, {written, style}}),
+    do: {:safe, {open, {written, [style | text]}}}
 
   # An SVG needs no processing instruction; the XML declaration is not one. An HTML
   # parser ends one at its first `>`, so its data could hold markup.
-  defp strict({:processingInstruction, _target, _data}, state), do: {false, state}
+  defp strict({:processingInstruction, target, _data}, state),
+    do: {{:unsafe, "the processing instruction #{shorten(List.to_string(target))}"}, state}
 
-  defp strict(_event, state), do: {true, state}
+  defp strict(_event, state), do: {:safe, state}
 
-  # `xml:base` sets the address a link such as `href="#x"` is read against, so that
-  # `#x` can point outside the file or to `javascript:`.
-  defp base?(uri, prefix, name),
-    do: name == "base" and (uri == @xml_namespace or prefix == ~c"xml")
+  # An attribute the strict check refuses: `{:unsafe, part}`, else nil. Every attribute's
+  # value is checked as CSS: a browser reads presentation attributes, such as `fill`,
+  # `mask` or `cursor`, as CSS, where an escape such as `\75 rl(` is `url(`. `xml:base`
+  # sets the address a link such as `href="#x"` is read against, so that `#x` can point
+  # outside the file or to `javascript:`.
+  defp unsafe_attribute({uri, prefix, local, value}) do
+    name = local |> List.to_string() |> String.downcase()
+    written = written({prefix, local})
+    value = List.to_string(value)
 
-  defp safe_attribute?("on" <> _rest, _value), do: false
+    refused? =
+      String.starts_with?(name, "on") or
+        (name == "base" and (uri == @xml_namespace or prefix == ~c"xml")) or
+        (name == "href" and not String.starts_with?(value, "#"))
 
-  # Every attribute's value is checked as CSS: a browser reads presentation attributes,
-  # such as `fill`, `mask` or `cursor`, as CSS, where an escape such as `\75 rl(` is `url(`.
-  defp safe_attribute?("href", value),
-    do: String.starts_with?(value, "#") and safe_text?(value, true)
+    if refused? do
+      {:unsafe, "the #{written} attribute"}
+    else
+      case in_text(value, true, "the #{written} attribute") do
+        :safe -> nil
+        unsafe -> unsafe
+      end
+    end
+  end
 
-  defp safe_attribute?(_name, value), do: safe_text?(value, true)
-
-  # Text with no `@import` and every CSS `url(` to a place in the file; in CSS (`css?`),
-  # a `style` element's text or an attribute's value, no backslash either, since a CSS
-  # escape could spell `url(`, and no `image-set(` (also `-webkit-image-set(`) or
+  # `:safe` for text with no `@import` and every CSS `url(` to a place in the file; in CSS
+  # (`css?`), a `style` element's text or an attribute's value, no backslash either, since
+  # a CSS escape could spell `url(`, and no `image-set(` (also `-webkit-image-set(`) or
   # `image(`, which take an outside address as a plain string. Other text is not CSS, so
-  # a label such as "Add image (PNG)" passes.
-  defp safe_text?(text, css?) do
+  # a label such as "Add image (PNG)" passes. Else `{:unsafe, part}`, the part found in
+  # `place`.
+  defp in_text(text, css?, place) do
     lower = String.downcase(text)
 
-    not String.contains?(lower, "@import") and
-      not Regex.match?(~r/url\(\s*+['"]?+\s*+(?!#)/, lower) and
-      not (css? and (String.contains?(text, "\\") or Regex.match?(~r/image(-set)?\s*\(/, lower)))
+    found =
+      cond do
+        css? and String.contains?(text, "\\") -> "a backslash"
+        String.contains?(lower, "@import") -> "the @import"
+        Regex.match?(~r/url\(\s*+['"]?+\s*+(?!#)/, lower) -> "the url()"
+        css? -> image_function(lower)
+        true -> nil
+      end
+
+    if found, do: {:unsafe, "#{found} in #{place}"}, else: :safe
   end
+
+  defp image_function(lower) do
+    case Regex.run(~r/(?:-webkit-)?image(?:-set)?(?=\s*\()/, lower) do
+      [name] -> "the #{name}()"
+      nil -> nil
+    end
+  end
+
+  # A name as the file writes it, with its prefix; past 64 characters, its first 64 and
+  # an ellipsis, so a message stays short.
+  defp written({[], local}), do: shorten(List.to_string(local))
+  defp written({prefix, local}), do: shorten("#{prefix}:#{local}")
+
+  defp shorten(name),
+    do: if(String.length(name) > 64, do: String.slice(name, 0, 64) <> "…", else: name)
 
   defp blank?(rest) when is_binary(rest), do: String.trim(rest) == ""
   defp blank?(rest) when is_list(rest), do: rest |> List.to_string() |> String.trim() == ""
@@ -472,7 +532,7 @@ defmodule Apiary.Artifacts.Format do
   # proposal sources format, within the bounds of a standard type's document.
   defp sources(path) do
     with {:ok, %File.Stat{size: size}} <- stat(path),
-         true <- size <= @sources_bytes || {:error, {:schema, refused(:limits)}} do
+         true <- size <= @sources_bytes || {:error, :document_size} do
       check(
         %Type{
           standard: true,

@@ -1260,7 +1260,7 @@ defmodule Apiary.ArtifactsTest do
 
       unsafe = String.replace(@svg, "<rect ", ~s|<rect onclick="alert(1)" |)
 
-      assert {:error, {:invalid, {:svg_content, 1}}} =
+      assert {:error, {:invalid, {{:svg_content, "the onclick attribute"}, 1}}} =
                push.([proposal(), file("checkout.svg", unsafe)])
 
       assert {:error, {:invalid, {:document_size, 0}}} =

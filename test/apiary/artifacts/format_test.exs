@@ -500,7 +500,7 @@ defmodule Apiary.Artifacts.FormatTest do
       source = %{"kind" => "file", "ref" => String.duplicate("a", 2000), "why" => "w"}
       big = sources(List.duplicate(source, 600))
       assert byte_size(big) > 1_048_576
-      assert {:error, {:schema, _detail}} = check(context, "proposal", "sources.json", big)
+      assert {:error, :document_size} = check(context, "proposal", "sources.json", big)
     end
 
     test "refuses an SVG with script, an outside reference or a handler, each", context do
@@ -549,11 +549,14 @@ defmodule Apiary.Artifacts.FormatTest do
             ~s|<use xml:base="https://example.com/a.svg" href="#x"/>|,
             ~s|<g xml:base="https://example.com/"><use href="#x"/></g>|
           ] do
-        assert {:error, :svg_content} = check(context, "proposal", "a.svg", svg(body)), body
+        assert {:error, {:svg_content, _part}} = check(context, "proposal", "a.svg", svg(body)),
+               body
       end
 
       stylesheet = ~s(<?xml-stylesheet href="https://example.com/a.css"?>\n) <> svg("<rect/>")
-      assert {:error, :svg_content} = check(context, "proposal", "a.svg", stylesheet)
+
+      assert {:error, {:svg_content, "the processing instruction xml-stylesheet"}} =
+               check(context, "proposal", "a.svg", stylesheet)
     end
 
     test "refuses an image whose extension is not the type its bytes show", context do
@@ -585,7 +588,43 @@ defmodule Apiary.Artifacts.FormatTest do
             "<?foo x><script>alert(1)</script>?>" <> svg("<rect/>"),
             svg("<?foo x><img src=x onerror=alert(1)>?><rect/>")
           ] do
-        assert {:error, :svg_content} = check(context, "proposal", "a.svg", bytes), bytes
+        assert {:error, {:svg_content, "the processing instruction foo"}} =
+                 check(context, "proposal", "a.svg", bytes),
+               bytes
+      end
+    end
+
+    test "names the first part of an SVG it refuses, as the file writes it", context do
+      long = String.duplicate("a", 70)
+
+      for {body, part} <- [
+            {"<SCRIPT>alert(1)</SCRIPT>", "the SCRIPT element"},
+            {~s(<rect><animate attributeName="x" to="1"/></rect>), "the animate element"},
+            {~s|<x:set xmlns:x="urn:x"/>|, "the x:set element"},
+            {~s(<h:div xmlns:h="http://www.w3.org/1999/xhtml"/>), "the HTML element h:div"},
+            {~s|<rect onload="alert(1)"/>|, "the onload attribute"},
+            {~s|<a xml:base="https://example.com/" href="#x"><text>a</text></a>|,
+             "the xml:base attribute"},
+            {~s(<use href="other.svg#r"/>), "the href attribute"},
+            {~s(<a xlink:href="https://example.com/"><text>a</text></a>),
+             "the xlink:href attribute"},
+            {~s|<rect fill="\\75 rl(#g)"/>|, "a backslash in the fill attribute"},
+            {~s|<rect fill="url(https://example.com/a.svg#g)"/>|,
+             "the url() in the fill attribute"},
+            {"<style>rect { fill: url(https://example.com/) }</style>",
+             "the url() in the style element"},
+            {"<desc>@import</desc>", "the @import in the text of the desc element"},
+            {~s|<rect style="mask: -webkit-image-set('https://example.com/m.png' 1x)"/>|,
+             "the -webkit-image-set() in the style attribute"},
+            {~s|<style>rect { fill: IMAGE ("https://example.com/a.png") }</style>|,
+             "the image() in the style element"},
+            {"<style>rect {}<g/></style>", "the g element inside the style element"},
+            {"<?foo bar?><rect/>", "the processing instruction foo"},
+            {"<#{long}/>", "the #{String.duplicate("a", 64)}… element"}
+          ] do
+        assert {:error, {:svg_content, ^part}} =
+                 check(context, "proposal", "a.svg", svg(body)),
+               body
       end
     end
 

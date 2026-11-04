@@ -244,18 +244,34 @@ Checks, in order, after the checks of every request:
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
    - exactly one Markdown file, whose filename ends in `.md`, of at most 262144 bytes;
-   - at most one `sources.json`, of at most 1 MiB, valid against qory's proposal sources
-     format (`contracts/harness/v1/proposal-sources.schema.json`, copied to
+   - at most one `sources.json`, of at most 1 MiB (1048576 bytes), one JSON document
+     valid against qory's proposal sources format
+     (`contracts/harness/v1/proposal-sources.schema.json`, copied to
      `priv/schemas/artifacts/proposal-sources.schema.json`). Qory Apiary checks the file
      against the schema and reads none of its members;
    - the rest PNG, JPEG, GIF, WebP or SVG images, each with the extension of its
-     format: `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg`. An SVG of a proposal has no element
-     `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, and no element
-     in the HTML namespace; no attribute whose name starts with `on`, and no `xml:base`;
-     no `href` or CSS `url(` to anything but a place in the file (`#…`); no `@import`;
-     no backslash in a `style` element or in any attribute, and no `image-set(` or
-     `image(` there either; and no processing instruction, such as
-     `<?xml-stylesheet ?>` (the XML declaration is not one).
+     format: `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg`. A file with another
+     extension gets the proposal's format message.
+
+   An SVG of a proposal has none of these parts, read with character references
+   replaced; the message names the first one found:
+
+   - an element `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, in any
+     namespace and any case, or any element in the HTML namespace
+     (`http://www.w3.org/1999/xhtml`);
+   - an attribute whose name starts with `on`, any case; an `xml:base`; an `href` in any
+     namespace, such as `xlink:href`, whose value does not start with `#`;
+   - in any text or attribute, `@import`, or a CSS `url(` whose address does not start
+     with `#`;
+   - in a `style` element or any attribute, a backslash, `image-set(`
+     (also `-webkit-image-set(`) or `image(`, any case, also with spaces before the `(`;
+   - an element inside a `style` element. The text of a `style` element is checked as
+     one, joined across comments and CDATA sections;
+   - a processing instruction, such as `<?xml-stylesheet ?>`. The XML declaration
+     `<?xml version="1.0"?>` is not one.
+
+   An SVG is also UTF-8, at most 512 KiB, with no document type declaration, and its
+   root is `svg` in the SVG namespace; else the file gets the proposal's format message.
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no
@@ -337,8 +353,17 @@ The messages:
       (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."
     - "Push one Markdown file (.md) in each version of proposal."
     - "Shrink proposal.md to at most 262144 bytes."
-    - "Fix checkout.svg to match the format of proposal: an SVG has no script, no
-      foreignObject, no image element and no reference outside the file."
+    - "Remove the script element from checkout.svg. An SVG in a proposal has no
+      script, animation, HTML, processing instruction, backslash or reference outside
+      the file." The part after "Remove" names the first part refused, with element
+      and attribute names as the file writes them: "the animate element", "the onload
+      attribute", "the xml:base attribute", "the href attribute", "the HTML element
+      div", "a backslash in the fill attribute", "the url() in the style element", "the
+      @import in the text of the desc element", "the image-set() in the style
+      attribute", "the g element inside the style element" or "the processing
+      instruction foo". A name past 64 characters is cut to 64 and "…".
+    - "Shrink sources.json to at most 1048576 bytes."
+    - "Make sources.json valid JSON. The file does not parse as JSON."
     - A `sources.json` the schema refuses gets the structured type's message, such as
       "Fix sources.json to match the format of proposal: at #, additional properties
       are not allowed but found property 'items'."

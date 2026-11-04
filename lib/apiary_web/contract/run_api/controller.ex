@@ -45,6 +45,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   require Logger
 
+  alias Apiary.Artifacts.Format
   alias Apiary.PublicId
   alias ApiaryWeb.Contract.Configuration
   alias ApiaryWeb.Contract.RunApi.{Body, Boundary, Run, Wire}
@@ -358,12 +359,23 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :unreadable, :document_size, :svg_content] and
+       when check in [:format, :extension, :unreadable, :document_size] and
               is_integer(index),
        do:
          {:error,
           {:invalid_artifact, "files[#{index}]",
            mismatch(check, Enum.at(push.filenames, index) || "files[#{index}]", push)}}
+
+  # A proposal's SVG that fails the strict check, with the part refused
+  # (`Apiary.Artifacts.Format`).
+  defp refused({:invalid, {{:svg_content, part}, index}}, push) when is_integer(index) do
+    filename = Enum.at(push.filenames, index) || "files[#{index}]"
+
+    {:error,
+     {:invalid_artifact, "files[#{index}]",
+      "Remove #{part} from #{filename}. An SVG in a proposal has no script, animation, " <>
+        "HTML, processing instruction, backslash or reference outside the file."}}
+  end
 
   # A failed schema check, with the JSON pointer of the first failing value and JSV's message
   # for it, as `Apiary.Artifacts.SchemaError` returns them: text, written as it is.
@@ -473,17 +485,17 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp mismatch(:unreadable, filename, _push),
     do: "Push #{filename} again: Qory Apiary could not read it after it was received."
 
-  # A proposal's Markdown file over 256 KiB (`Apiary.Artifacts.Format`).
+  # A proposal's Markdown file over 256 KiB or its sources.json over 1 MiB
+  # (`Apiary.Artifacts.Format`).
   defp mismatch(:document_size, filename, _push),
-    do: "Shrink #{filename} to at most 262144 bytes."
+    do: "Shrink #{filename} to at most #{Format.proposal_bytes(filename)} bytes."
+
+  # A proposal's sources.json that is not one JSON document.
+  defp mismatch(:format, "sources.json" = filename, %{name: "proposal"}),
+    do: "Make #{filename} valid JSON. The file does not parse as JSON."
 
   defp mismatch(check, filename, push),
     do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, filename, push)}."
-
-  defp takes(:svg_content, _filename, _push),
-    do:
-      "an SVG has no script, no foreignObject, no image element and no reference outside " <>
-        "the file"
 
   # A proposal's file that is neither Markdown, its sources nor an image, by its
   # extension or its bytes, gets the proposal's line; its Markdown file that is not UTF-8

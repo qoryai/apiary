@@ -1048,6 +1048,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert %{"artifact" => %{"type" => "proposal"}} = json_response(conn, 201)
 
       unsafe = ~s(<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com/"/></svg>)
+      escaped = ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect fill="\\0"/></svg>)
 
       cases = [
         {[md, {"notes.txt", "text/plain", "Gift cards."}], ["files[1]"],
@@ -1065,8 +1066,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {[{"proposal.md", "text/markdown", String.duplicate("a", 262_145)}], ["files[0]"],
          "Shrink proposal.md to at most 262144 bytes."},
         {[md, {"checkout.svg", "image/svg+xml", unsafe}], ["files[1]"],
-         "Fix checkout.svg to match the format of proposal: an SVG has no script, " <>
-           "no foreignObject, no image element and no reference outside the file."},
+         "Remove the href attribute from checkout.svg. An SVG in a proposal has no script, " <>
+           "animation, HTML, processing instruction, backslash or reference outside the file."},
+        {[md, {"checkout.svg", "image/svg+xml", escaped}], ["files[1]"],
+         "Remove a backslash in the fill attribute from checkout.svg. An SVG in a proposal " <>
+           "has no script, animation, HTML, processing instruction, backslash or reference " <>
+           "outside the file."},
+        {[md, {"sources.json", "application/json", "{"}], ["files[1]"],
+         "Make sources.json valid JSON. The file does not parse as JSON."},
+        {[md, {"sources.json", "application/json", String.duplicate(" ", 1_048_577)}],
+         ["files[1]"], "Shrink sources.json to at most 1048576 bytes."},
         {[md, {"sources.json", "application/json", ~s({"items": []})}], ["files[1]"],
          "Fix sources.json to match the format of proposal: " <>
            "at #, additional properties are not allowed but found property 'items'."}
