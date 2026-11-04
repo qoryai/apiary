@@ -490,7 +490,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # code unredeemed, with no exit, refusal, outcome or release. The registered run fails,
   # `machine_stopped` (`start_failure`), with the dispatch as its `dispatch_id`, and the
   # run of the queue and the dispatch end `lost`, as the lost-run check ends them at the
-  # code's expiry (`lose/1`), with what that end does for a prebuild's build. In a
+  # code's expiry (`lose/3`), with what that end does for a prebuild's build. In a
   # separate transaction, the run of the queue locked first, then the registered run.
   # Nothing changes for a dispatch not handed over, of a run of the queue not handed over
   # any more, or of a run that redeemed its code. The ids of the workspaces whose slots
