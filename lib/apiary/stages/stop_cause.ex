@@ -6,6 +6,8 @@ defmodule Apiary.Stages.StopCause do
   # claim's gateway and that gateway's keys (`context`).
   @moduledoc false
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   import Ecto.Query
 
   alias Apiary.Adapters.Collection
@@ -59,6 +61,14 @@ defmodule Apiary.Stages.StopCause do
     {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
     cause <> "\n" <> fix
   end
+
+  # failed_after_proposal/1 is why a run of Explore stopped whose registered run failed
+  # after it pushed version `version` of its proposal: one line, in the default locale's
+  # words, as the escalation stores it.
+  @doc false
+  @spec failed_after_proposal(pos_integer) :: String.t()
+  def failed_after_proposal(version) when is_integer(version),
+    do: gettext("The run failed after it wrote proposal version %{version}.", version: version)
 
   # set_up_step/1 is the step of the workspace's set-up whose page has the fix for why
   # `run` stopped, `/:org/:workspace/set-up/<step>`, which the fix line names as "the

@@ -19155,6 +19155,11 @@ msgstr ""
 msgid "The run ended without a result."
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "The run failed after it wrote proposal version %{version}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run has not reloaded yet."

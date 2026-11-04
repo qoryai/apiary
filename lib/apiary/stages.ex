@@ -1291,14 +1291,25 @@ defmodule Apiary.Stages do
 
   def explore_run?(%DispatchRun{}), do: false
 
-  # Explore: open questions first, then a run that stopped, else a run with no verdict.
+  # Explore: open questions first, then a run that stopped, else a run with no verdict. A
+  # run whose registered run failed after it pushed a proposal stopped, and its cause
+  # names the proposal's version (`StopCause.failed_after_proposal/1`), where the run
+  # pushed none it reads as any stopped run.
   defp explore_result(work_item, run, context) do
     open = open_questions(work_item)
 
     cond do
-      open != [] -> {:questions, question_texts(open)}
-      stopped?(run) -> {:stopped, stop_cause(run, work_item, context)}
-      true -> {:verdict, nil, nil}
+      open != [] ->
+        {:questions, question_texts(open)}
+
+      stopped?(run) ->
+        case failed_proposal(run) do
+          nil -> {:stopped, stop_cause(run, work_item, context)}
+          version -> {:stopped, StopCause.failed_after_proposal(version)}
+        end
+
+      true ->
+        {:verdict, nil, nil}
     end
   end
 
@@ -1319,6 +1330,23 @@ defmodule Apiary.Stages do
   end
 
   defp stopped?(%DispatchRun{}), do: true
+
+  # The number of the newest version of the proposal named `main` that `run`, which ended
+  # by its exit, pushed before its registered run failed; nil for none.
+  defp failed_proposal(%DispatchRun{id: id, end_cause: :run_ended}) do
+    Repo.one(
+      from v in Apiary.Artifacts.Version,
+        join: a in Apiary.Artifacts.Artifact,
+        on: a.id == v.artifact_id,
+        join: r in Run,
+        on: r.dispatch_run_id == v.run_id,
+        where: v.run_id == ^id and a.type == "proposal" and a.name == "main",
+        where: r.exit_state == "failed",
+        select: max(v.number)
+    )
+  end
+
+  defp failed_proposal(%DispatchRun{}), do: nil
 
   # A workflow that reports with artifacts: the questions it pushed that wait for an
   # answer, else its newest verdict, each of the artifact named `main`; a run whose

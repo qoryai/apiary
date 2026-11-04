@@ -481,7 +481,33 @@ defmodule Apiary.StagesTest do
       work_item = end_run!(work_item, nil, %{exit_state: "failed", outcome_state: "failed"})
 
       assert work_item.stage_state == :escalated
-      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      # With no proposal written, it reads as a run with no result.
+      assert %Escalation{cause: :run_stopped, gaps: "The run ended without a result."} =
+               escalation(work_item)
+    end
+
+    test "a run that failed after it wrote a proposal escalates run_stopped with its version",
+         %{scope: scope} do
+      work_item = take_in!(scope)
+
+      work_item =
+        end_run!(work_item, understood_result(), %{exit_state: "failed", outcome_state: "failed"})
+
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{
+               cause: :run_stopped,
+               gaps: "The run failed after it wrote proposal version 1."
+             } = escalation(work_item)
+
+      # The proposal is the stage's output, so the member may accept it as it is.
+      assert [%{type: "proposal", check: :passed}] = Stages.status(work_item).outputs
+
+      assert {:ok, %WorkItem{stage_state: :at_gate}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil,
+                 expect_stage: reload(work_item).stage_id
+               )
     end
 
     test "open questions come before a run that stopped", %{scope: scope} do
