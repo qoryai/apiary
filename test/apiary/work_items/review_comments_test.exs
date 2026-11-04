@@ -585,8 +585,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
     end
 
     # A new version of the review comments, pushed as the member of `scope`, with the
-    # third reply of c1 at `at`, and the moves of its second and third replies in the
-    # second `at`, the third after the second.
+    # third reply of c1 at `at`, and the moves of its second and third replies within the
+    # second of `at`, the third after the second.
     defp same_second!(scope, work_item, at) do
       work_item = reload(work_item)
       {_version, document} = ReviewComments.newest(work_item)

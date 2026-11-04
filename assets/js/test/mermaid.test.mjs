@@ -40,6 +40,18 @@ const FRONT_MATTER = [
   "  A[\"<b>x</b><img src='/some/path'>\"] --> B",
 ].join("\n")
 
+// A front matter config that sets the classic look, another seed and a script font.
+const LOOK_FRONT_MATTER = [
+  "---",
+  "config:",
+  "  look: classic",
+  "  handDrawnSeed: 7",
+  "  fontFamily: cursive",
+  "---",
+  "flowchart LR",
+  "  A[Invoice] --> B[Refund]",
+].join("\n")
+
 test("drops each init directive line, keeping the diagram", () => {
   const text = [
     '%%{init: {"theme": "dark", "securityLevel": "loose"}}%%',
@@ -83,6 +95,7 @@ test("the width is the SVG's max-width, rounded up", () => {
 
 test("drops a front matter block at the start", () => {
   assert.equal(source(FRONT_MATTER), "flowchart LR\n  A[\"<b>x</b><img src='/some/path'>\"] --> B")
+  assert.equal(source(LOOK_FRONT_MATTER), "flowchart LR\n  A[Invoice] --> B[Refund]")
 })
 
 test("drops front matter after blank lines, after a dropped directive, and twice", () => {
@@ -206,18 +219,6 @@ test("the site themeCSS makes the edge label box opaque in flowcharts and state 
   assert.match(themeCSS, /\.edgeLabel \.label rect\s*\{\s*opacity: 1;\s*\}/)
 })
 
-// A front matter config that sets the classic look, another seed and a script font.
-const LOOK_FRONT_MATTER = [
-  "---",
-  "config:",
-  "  look: classic",
-  "  handDrawnSeed: 7",
-  "  fontFamily: cursive",
-  "---",
-  "flowchart LR",
-  "  A[Invoice] --> B[Refund]",
-].join("\n")
-
 test("the site config has the hand-drawn look, a fixed seed and the font, all secure", () => {
   const config = settings({})
 
@@ -226,10 +227,6 @@ test("the site config has the hand-drawn look, a fixed seed and the font, all se
   assert.equal(config.fontFamily, "ui-sans-serif, system-ui, sans-serif")
   for (const key of ["look", "handDrawnSeed", "fontFamily"])
     assert.ok(secure.includes(key), key)
-})
-
-test("drops a front matter look and seed before the draw", () => {
-  assert.equal(source(LOOK_FRONT_MATTER), "flowchart LR\n  A[Invoice] --> B[Refund]")
 })
 
 test("the vendored Mermaid keeps look, seed and font against a front matter config", async () => {

@@ -405,7 +405,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
                |> Apiary.Explore.ReviewComments.entries()
     end
 
-    test "the open questions the page shows are those Questions.open_in_take_in/2 returns",
+    test "the open questions WorkItems.explore/2 returns are those Questions.open_in_take_in/2 returns",
          %{scope: scope} do
       work_item = reopened_in_take_in_2(scope)
       {_version, document} = Apiary.Explore.Questions.newest(work_item)
