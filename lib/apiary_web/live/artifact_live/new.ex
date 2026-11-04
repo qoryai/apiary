@@ -531,6 +531,13 @@ defmodule ApiaryWeb.ArtifactLive.New do
         filename: filename
       )
 
+  defp file_line(:extension, filename, %Type{standard: true, name: "proposal"}),
+    do:
+      gettext(
+        "Remove %{filename}: a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json.",
+        filename: filename
+      )
+
   defp file_line(:extension, filename, _type),
     do:
       gettext("Rename %{filename} to end in .md: a document is a Markdown file.",

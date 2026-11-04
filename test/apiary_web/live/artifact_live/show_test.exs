@@ -589,7 +589,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "shows the line to rename a proposal's file that is neither Markdown nor an image",
+    test "shows the line to remove a proposal's file that is neither Markdown nor an image",
          ctx do
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
 
@@ -607,7 +607,10 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
         |> render_submit()
 
-      assert html =~ "Rename notes.txt to end in .md: a document is a Markdown file."
+      assert html =~
+               "Remove notes.txt: a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."
+
+      refute html =~ "a document is a Markdown file"
       assert Artifacts.list(ctx.work_item) == []
     end
 

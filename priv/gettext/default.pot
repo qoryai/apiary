@@ -15273,6 +15273,11 @@ msgstr ""
 msgid "Remove %{filename} and add it again: the browser sent no size of 0 or more for it."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{filename}: a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
