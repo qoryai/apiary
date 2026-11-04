@@ -421,6 +421,33 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert taken_in.first_instruction == first_instruction
     end
 
+    test "a run that wrote a proposal while an earlier run's question stays open: a proposal, not 0 questions",
+         ctx do
+      now = DateTime.utc_now()
+      item = ctx.work_item
+
+      explore_run_fixture(item,
+        result: questions_result(["Which basket?", "Which sale?"]),
+        run: timed(now, 9, 8)
+      )
+
+      {:ok, _} = WorkItems.answer(ctx.scope, item, 1, %{"1" => "At checkout."})
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^item.id and r.attempt == 2)
+
+      %{run: second} =
+        explore_run_fixture(item, attempt: 2, result: understood_result(), run: timed(now, 6, 5))
+
+      # The second question, which the first run asked, is still open.
+      assert %{status: :questions} = WorkItems.explore(ctx.scope, item)
+
+      entries =
+        for %{run: %{id: id}} = entry <- WorkItems.explore_thread(ctx.scope, item, now),
+            id == second.public_id,
+            do: Map.take(entry, [:kind, :owner_id])
+
+      assert entries == [%{kind: :started}, %{kind: :proposed, owner_id: nil}]
+    end
+
     test "a run asked to run again, one without a result, and the stage a close recorded",
          ctx do
       now = DateTime.utc_now()

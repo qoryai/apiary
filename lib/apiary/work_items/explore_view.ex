@@ -108,11 +108,14 @@ defmodule Apiary.WorkItems.ExploreView do
   #     `:undone` (`actor_id`);
   #   * the runs: `:started` (`run`, `start`: nil for a take in's first run, `:answers` for
   #     a run after answers, `:again` for any other), at its start, for a run handed over;
-  #     then at its end `:asked` (`run`, `questions`, `duration_ms`), `:proposed` (`run`,
-  #     `duration_ms`, `owner_id`), `:no_result` (`run`, `outcome`, the end cause and
-  #     its code, `end_cause` and `end_detail`, as a run map has them, and `wrote`, the
-  #     version of the proposal a failed run pushed before it failed, nil for none),
-  #     `:lost` or `:cancelled` (`run`).
+  #     then at its end `:asked` (`run`, `questions`, the questions it wrote or reopened
+  #     last, `duration_ms`), `:proposed` (`run`, `duration_ms`, `owner_id`), `:no_result`
+  #     (`run`, `outcome`, the end cause and its code, `end_cause` and `end_detail`, as a
+  #     run map has them, and `wrote`, the version of the proposal a failed run pushed
+  #     before it failed, nil for none), `:lost` or `:cancelled` (`run`). A run that
+  #     waits on an earlier run's open questions and wrote or reopened none ends as
+  #     `:proposed` with no `owner_id` where it wrote a proposal, else as `:no_result`
+  #     with `outcome` `:none`.
   #
   # `run` is `%{id, workspace_id, attempt, of}`. A run that has not ended, or reads as
   # running, has no entry at its end.
@@ -614,6 +617,43 @@ defmodule Apiary.WorkItems.ExploreView do
     {proposal, read}
   end
 
+  # The questions of the newest questions the run `step` wrote or reopened last
+  # (`by_run?/2`), in their order, each with its answer given at the run, for the
+  # Thread's `:asked`.
+  defp wrote_questions(%{run: %{number: number}} = step, ctx) when is_integer(number) do
+    answers = Map.new(answers_of(ctx, step), &{&1.id, &1})
+
+    ((ctx.questions || %{})["questions"] || [])
+    |> Enum.filter(&by_run?(&1, number))
+    |> Enum.with_index(1)
+    |> Enum.map(fn {question, position} ->
+      question_view(question, position, Map.get(answers, question["id"]))
+    end)
+  end
+
+  defp wrote_questions(_step, _ctx), do: []
+
+  # The Thread's entry at the end of a run that waits on questions it did not write, as
+  # one that waits on an earlier run's open question: `:proposed` where it wrote a
+  # proposal, else `:no_result`, a run without a result.
+  defp without_questions(step, run, at, duration, ctx) do
+    case wrote(step, ctx) do
+      version when is_integer(version) ->
+        %{kind: :proposed, at: at, run: run, duration_ms: duration, owner_id: nil}
+
+      _none ->
+        %{
+          kind: :no_result,
+          at: at,
+          run: run,
+          outcome: :none,
+          end_cause: step.dispatch_run.end_cause,
+          end_detail: step.dispatch_run.end_detail,
+          wrote: nil
+        }
+    end
+  end
+
   # The answers given at the run `step`, in the order they were given.
   defp answers_of(ctx, step) do
     for %{kind: :answer, take_in: take_in, attempt: attempt} = given <- ctx.given,
@@ -952,9 +992,13 @@ defmodule Apiary.WorkItems.ExploreView do
 
         case step.place do
           :questions ->
-            questions = questions(step, ctx, answers_of(ctx, step))
+            case wrote_questions(step, ctx) do
+              [] ->
+                [without_questions(step, run, at, duration, ctx)]
 
-            [%{kind: :asked, at: at, run: run, questions: questions, duration_ms: duration}]
+              questions ->
+                [%{kind: :asked, at: at, run: run, questions: questions, duration_ms: duration}]
+            end
 
           :proposal ->
             [%{kind: :proposed, at: at, run: run, duration_ms: duration, owner_id: owner_id}]
