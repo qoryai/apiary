@@ -35,8 +35,10 @@ defmodule Apiary.Dispatches.Settle do
   # A projection whose settle fails clears what the row holds (`clear/1`), so the sweep
   # stores it again. A run whose newest questions cannot be read at its end is left with
   # no outcome (`Outcome.at_end/1` is nil), with a warning in the log that has the run's
-  # id, so the sweep reads it again; a run ended `lost` is then not settled, since the
-  # sweep reads `run_ended` runs alone.
+  # id, so the sweep reads it again. With the workflow model on, the stage runner raises
+  # for such a run's end (`Apiary.Stages`), so the end's transaction rolls back and the
+  # lost-run check ends the run again (`Apiary.Dispatches.RunEnd.lose/1`); with it off, a
+  # run ended `lost` is then not settled, since the sweep reads `run_ended` runs alone.
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the work item's

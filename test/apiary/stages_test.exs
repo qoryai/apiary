@@ -542,6 +542,49 @@ defmodule Apiary.StagesTest do
                escalation(work_item)
     end
 
+    test "an end whose newest questions cannot be read raises and changes nothing, lost or not",
+         %{scope: scope} do
+      # A question no other test asks, so no other test stores the same file.
+      text = "Which basket #{System.unique_integer([:positive])}?"
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+
+      # Questions pushed, then the run's end stored with what it gave, `questions`, as a
+      # settle that read them writes it; then the file cannot be read.
+      work_item = end_run!(work_item, questions_result([text]))
+      assert work_item.stage_state == :waiting_answers
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :running]
+        )
+
+      {version, _document} = Apiary.Explore.Questions.newest(work_item)
+      [file] = version.files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      for cause <- [:run_ended, :lost] do
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [end_cause: cause, result_outcome: :questions]
+        )
+
+        assert_raise Apiary.Stages.QuestionsUnreadable, fn ->
+          Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+        end
+
+        assert %WorkItem{stage_state: :running} = reload(work_item)
+        refute escalation(work_item)
+      end
+
+      # Readable again, the end is read as it is: the questions wait for answers.
+      File.rename!(path <> ".away", path)
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %WorkItem{stage_state: :waiting_answers} = reload(work_item)
+      refute escalation(work_item)
+    end
+
     test "a run queued before its work item was placed counts for the stage it is in", %{
       scope: scope
     } do

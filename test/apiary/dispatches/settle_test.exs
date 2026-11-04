@@ -376,6 +376,31 @@ defmodule Apiary.Dispatches.SettleTest do
       assert %DispatchRun{end_cause: :lost, result_outcome: :questions} = queue_run!(handed)
     end
 
+    # The stage runner reads the questions at the end (`Apiary.Stages`): it raises, the
+    # end's transaction rolls back, and the next check ends the run again.
+    @tag needs: [:factory, :workflow_model]
+    test "with its newest questions unreadable: not ended, then ended at a check after",
+         ctx do
+      handed = handed_over!(ctx)
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+      path = unreadable!(handed)
+      lost_at = DateTime.add(handed.run.backstop_at, 1, :second)
+      id = handed.dispatch_run.id
+
+      log = ExUnit.CaptureLog.capture_log(fn -> Liveness.check(lost_at) end)
+      assert log =~ "run end failed dispatch_run=#{id} error=Apiary.Stages.QuestionsUnreadable"
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      File.rename!(path <> ".away", path)
+      Liveness.check(lost_at)
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: :questions} =
+               queue_run!(handed)
+
+      assert %WorkItem{stage_state: :waiting_answers} = work_item!(handed)
+    end
+
     test "with a proposal and no open question: nothing stored", ctx do
       handed = handed_over!(ctx)
       proposal!(handed)

@@ -42,8 +42,11 @@ defmodule Apiary.Stages do
   # of the work item with a question that waits for an answer make the stage wait for
   # answers, whatever else the run did (`Apiary.Explore.Questions`); otherwise a run that
   # stopped escalates, `run_stopped`, with the cause, and any other counts as a run with no
-  # verdict. Any other workflow reports with artifacts: its newest `verdict` and its
-  # `questions`.
+  # verdict. Newest questions whose file cannot be read raise
+  # `Apiary.Stages.QuestionsUnreadable`, so the end's transaction rolls back and stores
+  # nothing; the lost-run check ends the run again at its next tick
+  # (`Apiary.Dispatches.RunEnd.lose/1`), as the run of the queue is still handed over. Any
+  # other workflow reports with artifacts: its newest `verdict` and its `questions`.
   #
   # ## What a person does
   #
@@ -1313,10 +1316,13 @@ defmodule Apiary.Stages do
     end
   end
 
+  # The open questions of the work item's newest questions; a newest version whose file
+  # cannot be read raises, so the end is not read as one with no open question.
   defp open_questions(work_item) do
-    case Apiary.Explore.Questions.newest(work_item) do
-      {_version, document} -> Apiary.Explore.Questions.open(document)
-      nil -> []
+    case Apiary.Explore.Questions.current(work_item) do
+      {:ok, {_version, document}} -> Apiary.Explore.Questions.open(document)
+      {:ok, nil} -> []
+      {:error, :store_unavailable} -> raise Apiary.Stages.QuestionsUnreadable
     end
   end
 
