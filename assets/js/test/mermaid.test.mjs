@@ -235,6 +235,18 @@ test("does not draw a sequence diagram's properties line, whose icon is an image
   assert.equal(loads("sequenceDiagram\n  Alice->>Bob: properties of the invoice"), false)
 })
 
+test("does not draw a sequence diagram's details line, which reads a page element", async () => {
+  assert.equal(loads("sequenceDiagram\n  details A: x"), true)
+  assert.equal(loads("sequenceDiagram\n  participant A; details A: acme-props"), true)
+  const mermaid = library(true)
+  assert.deepEqual(await drawing(mermaid, "sequenceDiagram\n  details A: x"), {line: "notDrawn"})
+  assert.deepEqual(mermaid.rendered, [])
+
+  const text = "sequenceDiagram\n  Alice->>Bob: details of the invoice\n  Bob-->>Alice: Thanks"
+  assert.equal(loads(text), false)
+  assert.ok((await drawing(library(true), text)).svg)
+})
+
 test("does not draw an eventmodeling diagram with markup in it", () => {
   assert.equal(loads("eventmodeling\ntf 01 cmd A {<b>x</b> }"), true)
   assert.equal(loads("%% Invoices\n\n  eventmodeling\ntf 01 cmd A {<b>x</b> }"), true)

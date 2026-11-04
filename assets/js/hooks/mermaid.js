@@ -259,7 +259,9 @@ export const type = text => firstLine(text).split(/[\s;]/)[0]
 // (cssAddresses above); a flowchart node's image (A@{ img: "…" }), which Mermaid loads as
 // an Image and draws as <image href>, so a node data block with the word img in it, or
 // with a backslash, which its YAML could use to write "img"; and a sequence diagram's
-// properties line, whose "icon" Mermaid draws as <image xlink:href>. Also an
+// properties line, whose "icon" Mermaid draws as <image xlink:href>; and a sequence
+// diagram's details line, for which Mermaid reads the HTML of the page element with
+// that id and applies it as JSON properties and links. Also an
 // eventmodeling diagram with a "<" in it: Mermaid sanitizes its fields, then wraps them
 // and writes &nbsp; into the result, which it puts into the page as HTML, so markup can
 // pass the sanitizer and change after it. eventmodeling is not in types (above), so the
@@ -270,7 +272,7 @@ export const loads = text => {
   const read = unescaped(text).toLowerCase()
   if (cssAddresses.some(css => written.includes(css) || read.includes(css))) return true
   if (dataBlocks(text).some(block => imgWord(block) || block.includes("\\"))) return true
-  return /(^|;)\s*properties(\s|$)/im.test(text)
+  return /(^|;)\s*(properties|details)(\s|$)/im.test(text)
 }
 
 // Whether the hook draws `text`, a block's source (source above): a type in types and
