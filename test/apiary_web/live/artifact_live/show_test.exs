@@ -689,12 +689,10 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       end
     end
 
-    @tag skip: "storage returns :svg_root for an svg root with no namespace after 454793f6"
     test "says to set the SVG namespace on a proposal's svg root element with none", ctx do
       assert_svg_root(ctx, "<svg/>")
     end
 
-    @tag skip: "storage returns :svg_root for an svg root of another namespace after 454793f6"
     test "says to set the SVG namespace on a proposal's svg root element of another", ctx do
       assert_svg_root(ctx, ~s(<svg xmlns="urn:x"/>))
     end
