@@ -580,6 +580,38 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert runs(work_item) == 1
     end
 
+    test "a run's reply that asked, as stored: Asked as question 1, linked to that question", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: understood_result())
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Name the refund rule.")
+
+      %{dispatch_run: dispatch_run, run: run} =
+        explore_run_fixture(work_item, result: questions_result(["Which refund?"]))
+
+      while_live(dispatch_run, fn -> reply_as_run!(dispatch_run, run, "asked", "q1") end)
+
+      {_version, document} = Apiary.Explore.ReviewComments.newest(work_item)
+
+      assert [%{"replies" => [%{"outcome" => "asked", "question" => "q1"}]}] =
+               document["review_comments"]
+
+      explore = page(scope, work_item.number, "/explore")
+      {:ok, view, _html} = live(conn, explore)
+      target = "work-item-explore-questions-question-1"
+      assert has_element?(view, "##{target}", "Which refund?")
+
+      inline = "#work-item-explore-proposal-review-c1-reply-1 a"
+      assert has_element?(view, inline, "Asked as question 1")
+      assert has_element?(view, ~s(#{inline}[href="##{target}"]))
+
+      rail = "#work-item-review-c1-reply-1 a"
+      assert has_element?(view, rail, "Asked as question 1")
+      assert has_element?(view, ~s(#{rail}[href="#{explore}##{target}"]))
+    end
+
     test "a review comment page the reader may not use goes back to Explore's tab", %{
       conn: conn,
       scope: scope

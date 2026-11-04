@@ -2112,6 +2112,72 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert before_tabs =~ ~s(id="work-item-flow")
     end
 
+    test "a move, a resolved escalation and a failed check at Explore show above the tabs; an answer does not",
+         %{conn: conn, scope: scope} do
+      work_item = taken_in_fixture(scope)
+      work_item = end_run!(work_item, questions_result(["Which refund?"]))
+      {:ok, work_item} = WorkItems.answer(scope, work_item, 1, %{"1" => "The full one."})
+      at = fn seconds -> DateTime.add(DateTime.utc_now(), seconds, :second) end
+
+      rows = %{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: work_item.process_version_id,
+        stage_id: @explore
+      }
+
+      Repo.insert!(
+        struct(
+          GateDecision,
+          Map.merge(rows, %{
+            kind: :move,
+            user_id: scope.user.id,
+            note: "Back to Explore: name the refund rule.",
+            inserted_at: at.(1)
+          })
+        )
+      )
+
+      Repo.insert!(
+        struct(
+          Escalation,
+          Map.merge(rows, %{
+            round: 1,
+            cause: :round_limit,
+            resolution: :another_round,
+            note: "One more round for the refund rule.",
+            resolved_by_id: scope.user.id,
+            resolved_at: at.(2),
+            inserted_at: at.(2)
+          })
+        )
+      )
+
+      Repo.insert!(
+        struct(
+          Apiary.Stages.Check,
+          Map.merge(rows, %{round: 1, gaps: "No proposal was stored.", inserted_at: at.(3)})
+        )
+      )
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      assert texts(view, "#work-item-notes li > p:first-child") == [
+               "Moved · Explore",
+               "Escalation resolved · Explore",
+               "Failed check · Explore"
+             ]
+
+      assert has_element?(view, "#work-item-notes", "Back to Explore: name the refund rule.")
+      assert has_element?(view, "#work-item-notes", "One more round for the refund rule.")
+      assert has_element?(view, "#work-item-notes", "No proposal was stored.")
+      refute has_element?(view, "#work-item-notes", "The full one.")
+
+      [before_tabs, _after] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
+      assert before_tabs =~ ~s(id="work-item-flow")
+    end
+
     test "at Explore without a note of a gate, an escalation or a check, no block", %{
       conn: conn,
       scope: scope
