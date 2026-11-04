@@ -1320,6 +1320,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{q}-question-1 .q-xp-inner strong") == "currency"
       assert text(html, "#{q}-question-1-answer") == "The order's currency"
       assert text(html, "#{q}-question-1-answer-who") == "You answered 1 hour ago"
+      # The piece wraps inside itself in a column narrower than it.
+      assert texts(html, "#{q}-question-1-answer-who > .q-xp-it.q-xp-who") ==
+               ["You answered 1 hour ago"]
 
       # Open: in the form, one Run with answers for all.
       assert texts(html, "#{q} .q-xp-sec > h3") == ["Open questions"]
@@ -1377,10 +1380,33 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       # No white space of the template between the pieces, which would widen the gap left
       # of the "·" that opens the second piece; a <wbr> lets a narrow column break there.
       # The CSS rule for the "·" covers a piece right after the <wbr>.
-      assert html =~ ~r{>Earlier answer</span><wbr></wbr><span class="q-xp-it">}
+      assert html =~ ~r{>Earlier answer</span><wbr></wbr><span class="q-xp-it q-xp-who">}
 
-      assert texts(html, "#{q2}-earlier-who > .q-xp-it + wbr + .q-xp-it") ==
+      assert texts(html, "#{q2}-earlier-who > .q-xp-it + wbr + .q-xp-it.q-xp-who") ==
                ["Priya answered 2 hours ago"]
+
+      css =
+        File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+        |> String.replace(~r{/\*.*?\*/}s, "")
+
+      assert [_, selectors, separator] =
+               Regex.run(
+                 ~r/\n  ([^{}]*\.q-xp-it \+ wbr \+ \.q-xp-it::before[^{}]*)\{([^}]*)\}/,
+                 css
+               )
+
+      assert ".q-xp-it + wbr + .q-xp-it::before" in Enum.map(
+               String.split(selectors, ","),
+               &String.trim/1
+             )
+
+      assert separator =~ ~s(\n    content: "·" / "";\n)
+      assert separator =~ "\n    margin: 0 8px;\n"
+
+      # The who and when is one box, so a narrow line breaks first before its "·"; text in
+      # the box wraps in a column narrower than the box.
+      assert css =~
+               ~r/\n  \.q-xp-it\.q-xp-who \{\s*display: inline-block;\s*max-width: 100%;\s*white-space: normal;\s*overflow-wrap: anywhere;\s*\}/
 
       assert texts(html, "#{q2}-earlier > span") == ["No", "Only invoices."]
       # No white space of the template in the quote, whose white space is kept.

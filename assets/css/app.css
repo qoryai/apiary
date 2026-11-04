@@ -14074,6 +14074,14 @@
     margin: 0 8px;
     color: var(--q-faint);
   }
+  /* An answer's who and when is one box: a line too narrow for it breaks first before
+     its "·", and text in the box that is wider than the column wraps. */
+  .q-xp-it.q-xp-who {
+    display: inline-block;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   .q-xp-it b {
     color: var(--color-base-content);
     font-weight: 600;
