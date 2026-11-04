@@ -2696,8 +2696,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   # An answer: the option chosen, and the note under it, then who answered and when; an
   # earlier answer muted, under Earlier answer. The pieces of the Earlier answer line
-  # have no white space between them, so the margins of the "·" alone set its gaps;
-  # the <wbr> between them lets a narrow column break the line there.
+  # have no white space between them, so the margins of the "·" alone set its gaps.
+  # The <wbr> between them is the line's break point, and the CSS rule for the "·"
+  # covers the piece after the <wbr>.
   defp given_answer(assigns) do
     ~H"""
     <p :if={@earlier} id={"#{@id}-who"} class="q-xp-cm-m" phx-no-format><span class="q-xp-it">{gettext("Earlier answer")}</span><wbr /><span class="q-xp-it"><.rich text={answered_words(@answer, @now)} /></span></p>

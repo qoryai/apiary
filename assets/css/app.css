@@ -14066,8 +14066,9 @@
   }
   /* The separator opens the piece after it, so a line that wraps never ends in one.
      Its second `content` has no text for screen readers; a browser without that form
-     uses the first. */
-  .q-xp-it + .q-xp-it::before {
+     uses the first. The second selector covers a piece after a <wbr>. */
+  .q-xp-it + .q-xp-it::before,
+  .q-xp-it + wbr + .q-xp-it::before {
     content: "·";
     content: "·" / "";
     margin: 0 8px;
