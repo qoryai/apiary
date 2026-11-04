@@ -34,10 +34,12 @@ defmodule Apiary.WorkItems.DropAnswersMigrationTest do
     Map.new(rows, fn [name, nullable] -> {name, nullable} end)
   end
 
+  # The table's constraints by name, but its NOT NULL ones, which `columns/0` shows.
   defp checks do
     %{rows: rows} =
       Repo.query!(
-        "SELECT conname FROM pg_constraint WHERE conrelid = 'work_item_answers'::regclass"
+        "SELECT conname FROM pg_constraint " <>
+          "WHERE conrelid = 'work_item_answers'::regclass AND contype <> 'n'"
       )
 
     rows |> List.flatten() |> Enum.sort()
