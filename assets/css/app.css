@@ -14092,7 +14092,7 @@
   .q-xp-opts + textarea {
     margin-top: 10px;
   }
-  .q-xp-qbody {
+  .q-xp-body.q-xp-qbody {
     padding-top: 14px;
   }
   .q-xp-closed {
@@ -14124,9 +14124,9 @@
     font-size: 0.8125rem;
   }
   .q-xp-arts {
-    margin-top: 4px;
+    margin-top: 16px;
   }
-  .q-xp-gate-cap {
+  .q-xp-cap.q-xp-gate-cap {
     padding: 0;
     border: 0;
   }
@@ -14189,8 +14189,15 @@
     font-size: 0.8125rem;
     font-weight: 600;
   }
-  .q-xp-rc-inline {
-    padding-bottom: 0;
+  .q-xp-body.q-xp-rc-inline {
+    padding-top: 10px;
+    padding-bottom: 6px;
+  }
+  @media (max-width: 767.98px) {
+    .q-xp-body.q-xp-rc-inline {
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
   }
   @media (min-width: 1440px) {
     .q-xp-rc-inline {
