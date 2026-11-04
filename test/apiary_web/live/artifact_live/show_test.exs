@@ -663,7 +663,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       in_stage(ctx.work_item, "st_aaaaaaaaaa")
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
 
-      ArtifactStoreHook.on_commit(fn -> in_stage(ctx.work_item, "st_bbbbbbbbbb") end)
+      ArtifactStoreHook.on_stage(fn -> in_stage(ctx.work_item, "st_bbbbbbbbbb") end)
 
       html = add_notes(view)
 

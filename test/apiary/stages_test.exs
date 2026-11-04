@@ -1003,7 +1003,7 @@ defmodule Apiary.StagesTest do
           stage_id: @explore
         )
 
-      ArtifactStoreHook.on_commit(fn ->
+      ArtifactStoreHook.on_stage(fn ->
         {1, _rows} =
           Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
             set: [stage_id: @shape]

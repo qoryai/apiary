@@ -254,18 +254,20 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "a type hidden between the push's read and its lock is refused, with no row", ctx do
-      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
+      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
 
       assert {:error, {:unknown_type, "explainer"}} =
                Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
 
       assert count(Artifact) == 0
       assert count(Version) == 0
+      assert stored_paths(ctx.root) == []
+      assert staging_files(ctx.root) == []
     end
 
     test "a person's push of a type hidden before the lock writes no version or audit entry",
          ctx do
-      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
+      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
 
       assert {:error, {:unknown_type, "explainer"}} =
                Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [doc()])
@@ -276,7 +278,7 @@ defmodule Apiary.ArtifactsTest do
 
     test "a push goes on when the list changes before the lock and still has the type", ctx do
       show!(ctx.scope.workspace, ["explainer"])
-      ArtifactStoreHook.on_commit(fn -> show!(ctx.scope.workspace, ["explainer", "mockup"]) end)
+      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["explainer", "mockup"]) end)
 
       assert {:ok, %Version{}} =
                Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
@@ -916,7 +918,7 @@ defmodule Apiary.ArtifactsTest do
     test "refuses a run that ended, read again under the work item's lock",
          %{run: run} = context do
       # The run ends after the caller read it live, before the push locks the work item.
-      ArtifactStoreHook.on_commit(fn ->
+      ArtifactStoreHook.on_stage(fn ->
         {1, _rows} =
           Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
             set: [state: :ended, end_cause: :run_ended]
@@ -977,6 +979,41 @@ defmodule Apiary.ArtifactsTest do
       assert push.("review-comments", %{"review_comments" => []}) == {:error, :store_unavailable}
 
       assert count(Version) == 2
+    end
+
+    test "a refused or normalised version of the questions keeps no file without a version",
+         %{run: run, root: root} = context do
+      push =
+        &Artifacts.push({:run, run}, context.work_item, "questions", [
+          file("questions.json", &1, "application/json")
+        ])
+
+      question = asked(run, "q1", "Which basket?")
+      number = question["asked"]["run"]
+
+      # Refused by the check of what members wrote, under the work item's lock: a new
+      # question asked by another run.
+      other = put_in(question, ["asked", "run"], number + 1)
+
+      assert push.(Jason.encode!(%{"questions" => [other]})) ==
+               {:error, {:invalid, {:kept, 0, :asked_run}}}
+
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
+
+      # The run's number written with .0: the file as it came is replaced, and only the one
+      # with the integer is kept.
+      bytes =
+        %{"questions" => [question]}
+        |> Jason.encode!()
+        |> String.replace(~s("run":#{number}), ~s("run":#{number}.0))
+
+      assert bytes =~ ".0"
+      assert {:ok, %Version{files: [stored]}} = push.(bytes)
+      {:ok, path} = Artifacts.open_file(stored)
+      refute File.read!(path) =~ ".0"
+      assert stored_paths(root) == [path]
+      assert staging_files(root) == []
     end
 
     test "takes the questions and the review comments under the name main alone",
@@ -1499,9 +1536,10 @@ defmodule Apiary.ArtifactsTest do
       assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
       refute_received {:artifact_pushed, _work_item_id, _version_id}
 
-      # The transaction refuses after the store keeps the bytes, as every refusal there
-      # does, and nothing deletes them.
-      assert [_kept] = stored_paths(root)
+      # The transaction refuses before the store keeps the bytes, and drops the staged
+      # copy.
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
     end
 
     test "stores the version in the same stage", %{scope: scope, work_item: work_item} do
