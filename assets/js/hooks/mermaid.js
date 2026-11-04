@@ -21,13 +21,13 @@
 // it finds a block that it draws, so a page with no such block never loads it.
 //
 // The settings (settings below): securityLevel "strict", htmlLabels false, at most 20,000
-// characters and 200 edges, and the theme "base" with the app's colours, read from its
-// CSS variables. A document can change Mermaid's settings in two ways, a directive
-// (%%{init: …}%%) and a front matter config: block (--- … --- at its start). The hook
-// drops both before a block is drawn (source below). Mermaid also removes, at every
-// depth, each setting of its secure list from what a document sets; the hook's list
-// (secure below) has every setting that changes the HTML, the CSS or the links of a
-// drawing.
+// characters and 200 edges, the theme "base" with the app's colours, read from its CSS
+// variables, and the hand-drawn look with a fixed seed. A document can change Mermaid's
+// settings in two ways, a directive (%%{init: …}%%) and a front matter config: block
+// (--- … --- at its start). The hook drops both before a block is drawn (source below).
+// Mermaid also removes, at every depth, each setting of its secure list from what a
+// document sets; the hook's list (secure below) has every setting that changes the HTML,
+// the CSS or the links of a drawing, and the look and its seed.
 // The hook drops each click, link, links and callback statement of Mermaid 11.17.2
 // (linkStatements below) before a block is drawn.
 // Mermaid passes each text that it puts into the temporary element as HTML, such as a
@@ -72,7 +72,8 @@ const dark = () => (document.documentElement.dataset.theme ?? "").includes("dark
 const font = "ui-sans-serif, system-ui, sans-serif"
 
 // The settings a document may not set (Mermaid's "secure" list): Mermaid's six defaults,
-// then each setting that changes the HTML, the CSS or the links of a drawing.
+// then each setting that changes the HTML, the CSS or the links of a drawing, then the
+// look and its seed (settings below).
 export const secure = [
   "secure",
   "securityLevel",
@@ -93,6 +94,8 @@ export const secure = [
   "legacyMathML",
   "forceLegacyMathML",
   "ticketBaseUrl",
+  "look",
+  "handDrawnSeed",
 ]
 
 // What Mermaid's sanitizer (DOMPurify) removes from each text it sanitizes, such as a
@@ -138,6 +141,10 @@ export const dompurifyConfig = {
 export const labelCSS = ".edgeLabel rect { opacity: 1; }"
 
 // What the hook passes to mermaid.initialize, with the theme's colours `themeVariables`.
+// look "handDrawn" draws the shapes and lines of flowchart, state, class and ER diagrams
+// as sketched lines; Mermaid 11.17.2 draws a sequence diagram in its classic look with
+// any look. The text keeps the font below. handDrawnSeed fixes the sketch's random
+// strokes, so a diagram looks the same on every draw.
 export const settings = themeVariables => ({
   startOnLoad: false,
   securityLevel: "strict",
@@ -150,6 +157,8 @@ export const settings = themeVariables => ({
   themeVariables,
   themeCSS: labelCSS,
   fontFamily: font,
+  look: "handDrawn",
+  handDrawnSeed: 1,
 })
 
 const fence = line => /^\s*-{3}\s*$/.test(line)
