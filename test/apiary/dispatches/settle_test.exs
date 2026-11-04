@@ -95,6 +95,17 @@ defmodule Apiary.Dispatches.SettleTest do
   defp subscribe!(ctx),
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, WorkItems.topic(ctx.scope.workspace.id))
 
+  # The stored copy of the newest questions file of the run's work item moved away until
+  # the test ends, as a store that cannot read it: the stored copy's path.
+  defp unreadable!(handed) do
+    {version, _document} = Apiary.Explore.Questions.newest(work_item!(handed))
+    [file] = version.files
+    {:ok, path} = Apiary.Artifacts.open_file(file)
+    File.rename!(path, path <> ".away")
+    on_exit(fn -> File.rename(path <> ".away", path) end)
+    path
+  end
+
   # The run's events gone and marked so, as retention leaves them.
   defp prune!(handed) do
     Repo.delete_all(from e in Event, where: e.run_id == ^handed.run.id)
@@ -278,15 +289,67 @@ defmodule Apiary.Dispatches.SettleTest do
 
       # The end reads no open question it can trust: no proposal or none is kept for good.
       exited!(handed, 9)
-      project!(handed)
+      log = ExUnit.CaptureLog.capture_log(fn -> project!(handed) end)
       assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
       assert stored(handed) == {nil, nil}
+
+      assert log =~
+               "run outcome not stored, newest questions unreadable " <>
+                 "dispatch_run=#{handed.dispatch_run.id}"
+
       assert Settle.sweep(Dispatches.now()) == []
       assert stored(handed) == {nil, nil}
 
       File.rename!(path <> ".away", path)
       assert [_] = Settle.sweep(Dispatches.now())
       assert stored(handed) == {:questions, nil}
+    end
+
+    test "reads after where the sweep before stopped, so runs left unset fill no batch",
+         ctx do
+      # Two runs ended with questions, their outcome unset; the first by id cannot have its
+      # questions read.
+      [first, second] =
+        [handed_over!(ctx), handed_over!(ctx)]
+        |> Enum.map(fn handed ->
+          questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+          exited!(handed, 9)
+          project!(handed)
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^handed.dispatch_run.id),
+            set: [result_outcome: nil]
+          )
+
+          handed
+        end)
+        |> Enum.sort_by(& &1.dispatch_run.id)
+
+      unreadable!(first)
+      now = Dispatches.now()
+
+      # One run a sweep: the first is read and stays unset.
+      log = ExUnit.CaptureLog.capture_log(fn -> assert {[], next} = Settle.sweep(now, nil, 1) end)
+      assert log =~ "dispatch_run=#{first.dispatch_run.id}"
+      assert stored(first) == {nil, nil}
+      assert stored(second) == {nil, nil}
+
+      # The next sweep reads after it, and settles the second.
+      assert {[_], next} = Settle.sweep(now, first.dispatch_run.id, 1)
+      assert next == second.dispatch_run.id
+      assert stored(second) == {:questions, nil}
+
+      # Fewer than the limit read: the sweep after starts from the first id again.
+      assert {[], nil} = Settle.sweep(now, next, 1)
+
+      # The process's tick keeps the id the sweep stopped at.
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^second.dispatch_run.id),
+        set: [result_outcome: nil]
+      )
+
+      state = %{interval: :timer.hours(1), settle_after: first.dispatch_run.id}
+      assert {:noreply, %{settle_after: nil}} = Liveness.handle_info(:tick, state)
+      assert stored(second) == {:questions, nil}
+      assert stored(first) == {nil, nil}
     end
 
     test "a run whose events were pruned is settled from its artifacts", ctx do

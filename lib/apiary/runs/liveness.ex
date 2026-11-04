@@ -95,7 +95,12 @@ defmodule Apiary.Runs.Liveness do
   returns them. Broadcasts `{:run_changed, run}` for each.
   """
   @spec check(DateTime.t()) :: [struct()]
-  def check(%DateTime{} = now \\ DateTime.utc_now()) do
+  def check(%DateTime{} = now \\ DateTime.utc_now()), do: now |> check(nil) |> elem(0)
+
+  # The check, with the runs of the queue left to settle read after the id `settle_after`
+  # (`Apiary.Dispatches.Settle.sweep/2`): the runs lost, and the `settle_after` of the
+  # next tick.
+  defp check(now, settle_after) do
     sweep(now)
     lost = mark(running_silent(now), now) ++ mark(pending_silent(now), now)
     Enum.each(lost, &Runs.broadcast_changed/1)
@@ -105,8 +110,9 @@ defmodule Apiary.Runs.Liveness do
     Apiary.Dispatches.broadcast(RunEnd.lose(now))
     # Then the runs of the queue ended by their exit whose outcome is not yet stored, such
     # as one whose settle failed: what each gave is stored (`Apiary.Dispatches.Settle`).
-    Apiary.Dispatches.broadcast(Settle.sweep(now))
-    lost
+    {told, settle_after} = Settle.sweep(now, settle_after)
+    Apiary.Dispatches.broadcast(told)
+    {lost, settle_after}
   end
 
   @doc """
@@ -315,7 +321,7 @@ defmodule Apiary.Runs.Liveness do
     interval = Keyword.get(opts, :interval) || Keyword.get(config(), :interval, @default_interval)
     send(self(), :boot)
     schedule(interval)
-    {:ok, %{interval: interval}}
+    {:ok, %{interval: interval, settle_after: nil}}
   end
 
   # Once at the start: what a node that stopped left unprojected.
@@ -330,16 +336,21 @@ defmodule Apiary.Runs.Liveness do
     {:noreply, state}
   end
 
+  # The tick keeps where the settle sweep stopped, so its next tick reads the runs after.
   def handle_info(:tick, %{interval: interval} = state) do
-    try do
-      check()
-    rescue
-      # The database is away: say so once per tick and try again at the next.
-      error -> Logger.error("liveness check failed error=#{inspect(error.__struct__)}")
-    end
+    settle_after =
+      try do
+        {_lost, settle_after} = check(DateTime.utc_now(), Map.get(state, :settle_after))
+        settle_after
+      rescue
+        # The database is away: say so once per tick and try again at the next.
+        error ->
+          Logger.error("liveness check failed error=#{inspect(error.__struct__)}")
+          Map.get(state, :settle_after)
+      end
 
     schedule(interval)
-    {:noreply, state}
+    {:noreply, Map.put(state, :settle_after, settle_after)}
   end
 
   def handle_info(_message, state), do: {:noreply, state}

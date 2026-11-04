@@ -25,15 +25,18 @@ defmodule Apiary.Dispatches.Settle do
   #   item's lock that the end holds first), so what it gave is decided;
   # - a projection that folded an exit (`settle/1`, from `Apiary.Runs.Projector`), in a
   #   separate transaction once its passes committed;
-  # - the sweep (`sweep/1`, from `Apiary.Runs.Liveness`): a run ended `run_ended` with no
+  # - the sweep (`sweep/2`, from `Apiary.Runs.Liveness`): a run ended `run_ended` with no
   #   outcome stored, such as one that ended before outcomes were read from artifacts; at
-  #   most `@batch` a tick, read through the partial index `dispatch_runs_unsettled_index`,
-  #   the rest at the ticks after.
+  #   most `@batch` a tick, read through the partial index `dispatch_runs_unsettled_index`
+  #   in the order of their ids, each tick after the last id the tick before read, and
+  #   from the first id again once a tick reads fewer than `@batch`. So runs that stay
+  #   unsettled at every tick do not keep the runs after them from the sweep.
   #
   # A projection whose settle fails clears what the row holds (`clear/1`), so the sweep
   # stores it again. A run whose newest questions cannot be read at its end is left with
-  # no outcome (`Outcome.at_end/1` is nil), so the sweep reads it again; a run ended
-  # `lost` is then not settled, since the sweep reads `run_ended` runs alone.
+  # no outcome (`Outcome.at_end/1` is nil), with a warning in the log that has the run's
+  # id, so the sweep reads it again; a run ended `lost` is then not settled, since the
+  # sweep reads `run_ended` runs alone.
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the work item's
@@ -78,7 +81,7 @@ defmodule Apiary.Dispatches.Settle do
     in_transaction!()
 
     case Outcome.at_end(dispatch_run) do
-      nil -> []
+      nil -> unread(dispatch_run)
       outcome -> write(dispatch_run, outcome)
     end
   end
@@ -89,6 +92,7 @@ defmodule Apiary.Dispatches.Settle do
 
     case Outcome.at_end(dispatch_run) do
       :questions -> write(dispatch_run, :questions)
+      nil -> unread(dispatch_run)
       _other -> []
     end
   end
@@ -129,25 +133,40 @@ defmodule Apiary.Dispatches.Settle do
     told
   end
 
-  # sweep/1 settles the runs of the queue ended `run_ended` with no outcome yet: at most
-  # `@batch`, in a transaction for each (`settle/1`). One that raises is logged by its id
-  # and the exception's module, and the rest are still settled. The work items to tell
-  # once each committed. `now` is not read: it is kept for the callers that give it.
+  # sweep/1 is `sweep/2` from the first id, its work items alone.
   @doc false
   @spec sweep(DateTime.t()) :: [told]
-  def sweep(%DateTime{} = now) do
-    from(d in DispatchRun,
-      # The partial index's predicate, written as it is, so the planner reads through it.
-      where: fragment("? = 'run_ended'", d.end_cause),
-      where: is_nil(d.result_outcome),
-      where: fragment("? <> 'prebuild'", d.step),
-      order_by: d.id,
-      limit: @batch,
-      select: d.id
-    )
-    |> Repo.all()
-    |> Enum.flat_map(&settle_guarded(&1, now))
+  def sweep(%DateTime{} = now), do: now |> sweep(nil) |> elem(0)
+
+  # sweep/2 settles the runs of the queue ended `run_ended` with no outcome yet whose id
+  # comes after `after`, or from the first for nil: at most `limit`, `@batch` by default,
+  # in the order of their ids, in a transaction for each (`settle/1`). One that raises is
+  # logged by its id and the exception's module, and the rest are still settled.
+  # `{told, next}`: the work items to tell once each committed, and the `after` of the
+  # next sweep, the last id read when it read `limit`, nil when it read fewer. `now` is
+  # not read: it is kept for the callers that give it.
+  @doc false
+  @spec sweep(DateTime.t(), Ecto.UUID.t() | nil, pos_integer) :: {[told], Ecto.UUID.t() | nil}
+  def sweep(%DateTime{} = now, after_id, limit \\ @batch) do
+    ids =
+      from(d in DispatchRun,
+        # The partial index's predicate, written as it is, so the planner reads through it.
+        where: fragment("? = 'run_ended'", d.end_cause),
+        where: is_nil(d.result_outcome),
+        where: fragment("? <> 'prebuild'", d.step),
+        order_by: d.id,
+        limit: ^limit,
+        select: d.id
+      )
+      |> after_id(after_id)
+      |> Repo.all()
+
+    next = if length(ids) == limit, do: List.last(ids)
+    {Enum.flat_map(ids, &settle_guarded(&1, now)), next}
   end
+
+  defp after_id(query, nil), do: query
+  defp after_id(query, id), do: from(d in query, where: d.id > ^id)
 
   # clear/1 clears what the run of the queue `dispatch_run_id`, ended `run_ended` and not
   # a prebuild, holds, in one statement that locks its row alone: for a settle that
@@ -175,6 +194,13 @@ defmodule Apiary.Dispatches.Settle do
     error ->
       Logger.error("run settle failed dispatch_run=#{id} error=#{inspect(error.__struct__)}")
       []
+  end
+
+  # A run whose newest questions cannot be read: no outcome stored, and a warning with its
+  # id, so the instance admin finds the questions file the store cannot read.
+  defp unread(%DispatchRun{id: id}) do
+    Logger.warning("run outcome not stored, newest questions unreadable dispatch_run=#{id}")
+    []
   end
 
   # The column, and nothing else, on a row that holds none (`settle_locked/1`).
