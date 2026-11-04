@@ -11,8 +11,9 @@
 // data-failed. Nothing here assigns innerHTML: every element is built with createElement
 // and every text is set through textContent.
 //
-// Mermaid is vendored (assets/vendor/mermaid) and built as a separate bundle; it is loaded
-// on the first mount of this hook and by no other page.
+// Mermaid is vendored (assets/vendor/mermaid) and built as a separate bundle
+// (/assets/js/mermaid.js), not part of app.js. The hook adds its <script> the first time
+// it finds a Mermaid block to draw, so a page with no diagram never loads it.
 //
 // The settings (settings below): securityLevel "strict", htmlLabels false, at most 20,000
 // characters and 200 edges, and the theme "base" with the app's colours, read from its
