@@ -27,8 +27,9 @@ defmodule Apiary.WorkItems do
   # `Apiary.Explore.ReviewComments`); `review_comment/4` and `reply/5` write a review
   # comment or a reply while no run is running, and queue no run;
   # `send_review_comments(scope, work_item, attempt)` queues the next run where the
-  # questions or the proposal wait and a review comment is open; `confirm(scope, work_item, attempt)`
-  # confirms the latest run's proposal, which makes the work item ready for Shape;
+  # questions or the proposal wait and a review comment is open;
+  # `confirm(scope, work_item, attempt)` confirms the latest run's proposal, which makes
+  # the work item ready for Shape;
   # `explore_again(scope, work_item, attempt)` queues the take in's next run after a run
   # that gave no result, was lost or was cancelled. `attempt` is the latest run's, as the
   # page read it. `Apiary.WorkItems.Moves` says how and what each refuses.
