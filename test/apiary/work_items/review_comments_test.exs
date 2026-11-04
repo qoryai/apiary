@@ -340,6 +340,17 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
       assert WorkItems.explore(scope, reload(work_item)).status == :queued
 
+      # The queued run is the latest: a second send or an answer for it is running, and
+      # one for the run before it is stale.
+      assert WorkItems.send_review_comments(scope, work_item, 3) == {:error, :running}
+      assert WorkItems.send_review_comments(scope, work_item, 2) == {:error, :stale}
+
+      assert WorkItems.answer(scope, work_item, 3, %{"1" => "The full one."}) ==
+               {:error, :running}
+
+      assert WorkItems.answer(scope, work_item, 2, %{"1" => "The full one."}) == {:error, :stale}
+      assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
+
       data = %{"take_in" => 1, "attempt" => 2, "count" => 1, "review_comments" => ["c1"]}
       assert List.last(answered_events(work_item)) == data
       assert List.last(entries(work_item)) == data
@@ -356,10 +367,13 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       for member <- ~w(answers changes proposal facts solution review_comments),
           do: refute(Map.has_key?(inputs, member))
 
+      # The run gives a proposal and closes c1, but q1 is still open: the questions come
+      # first, so Explore stands at the questions.
       work_item = revised!(work_item)
       assert [%{"state" => "closed"}] = review_comments(work_item)
 
-      assert [%{version: 1, done_version: 2}] = WorkItems.explore(scope, work_item).comments
+      assert %{status: :questions, comments: [%{version: 1, done_version: 2}]} =
+               WorkItems.explore(scope, work_item)
     end
 
     test "while questions wait is refused with none open, for a non-approver, and stale", %{
@@ -597,6 +611,19 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert [%{number: 1}] = Apiary.Artifacts.versions(version.artifact)
       assert [_comment] = answered_events(work_item)
       assert runs(work_item) == [{1, 3, :ended}]
+    end
+
+    test "is store_unavailable for a send while questions wait, which writes nothing", %{
+      scope: scope
+    } do
+      work_item = asked_after_proposal!(scope)
+      {version, _document} = ReviewComments.newest(reload(work_item))
+      unreadable!(version)
+
+      assert WorkItems.send_review_comments(scope, work_item, 2) == {:error, :store_unavailable}
+
+      assert length(answered_events(work_item)) == 2
+      assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}]
     end
 
     test "is store_unavailable for an answer, which writes nothing", %{scope: scope} do
