@@ -344,7 +344,9 @@ defmodule Apiary.Stages do
   # queue `id`: the gateway and the keys of the pool of the run's newest dispatch, as
   # `Apiary.Dispatches.Handover.gateway/1` reads them now, in the shape the claim passes.
   # A run with no dispatch, or whose pool no longer resolves to a gateway, has none.
-  defp claim_context(id) do
+  @doc false
+  @spec claim_context(Ecto.UUID.t()) :: StopCause.context()
+  def claim_context(id) when is_binary(id) do
     pool =
       Repo.one(
         from d in Dispatches.Dispatch,

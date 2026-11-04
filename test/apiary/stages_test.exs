@@ -694,6 +694,14 @@ defmodule Apiary.StagesTest do
           work_item
         end
 
+      # The sweep reads again the context the claim passes, for each run, and none for a
+      # run with no dispatch.
+      for work_item <- [by_claim, by_sweep] do
+        assert Stages.claim_context(newest_run(work_item).id) == %{gateway: through, keys: keys}
+      end
+
+      assert Stages.claim_context(newest_run(take_in!(scope)).id) == %{}
+
       # The claim's act, with what the claim knew; the sweep's, with what it reads again.
       assert [_] = Stages.claim_ended([newest_run(by_claim).id], %{gateway: through, keys: keys})
       assert {[_], nil} = Stages.sweep(DateTime.utc_now(), nil)
