@@ -13635,7 +13635,7 @@
   .q-xp > * {
     min-width: 0;
   }
-  /* The run line's "·" ends the item before it, so a wrapped line never starts with it. */
+  /* The run line's "·" opens the item after it, so a line that wraps never ends in one. */
   .q-xp-run {
     display: flex;
     flex-wrap: wrap;
@@ -13648,7 +13648,7 @@
   .q-xp-run > * {
     white-space: nowrap;
   }
-  .q-xp-run > :not(:last-child)::after {
+  .q-xp-run > * + *::before {
     content: "·";
     margin: 0 8px;
     color: var(--q-faint);
