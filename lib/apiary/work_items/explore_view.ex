@@ -80,14 +80,15 @@ defmodule Apiary.WorkItems.ExploreView do
   # run that asked: where its questions wait, the open questions of the work item's
   # newest questions that a run of the current take in wrote or reopened last, which
   # `Apiary.WorkItems.Moves.answer/4` refers to by position, else the questions it wrote
-  # and those answered at it (`Apiary.Explore.Questions`, `Apiary.Explore.Given`); and
-  # `answered_by_id` and `answered_at` once a member answered at it. A confirmed run's
-  # proposal is the version in its confirmation. A run that ended before Explore's
-  # runs pushed artifacts shows the proposal in its result, and no questions. `wrote` is
-  # the version of the proposal the run pushed, nil for none, with `wrote_proposal`, that
-  # version in the form of the top-level `proposal`, without `version`, and `asked` how
-  # many questions of the newest questions it wrote: both read from the artifacts the
-  # run pushed, so a run that failed after it pushed them has them too.
+  # or reopened last and those answered at it (`Apiary.Explore.Questions`,
+  # `Apiary.Explore.Given`); and `answered_by_id` and `answered_at` once a member answered
+  # at it. A confirmed run's proposal is the version in its confirmation. A run that
+  # ended before Explore's runs pushed artifacts shows the proposal in its result, and no
+  # questions. `wrote` is the version of the proposal the run pushed, nil for none, with
+  # `wrote_proposal`, that version in the form of the top-level `proposal`, without
+  # `version`, and `asked` how many questions of the newest questions it wrote or
+  # reopened last: both read from the artifacts the run pushed, so a run that failed
+  # after it pushed them has them too.
   #
   # ## `thread/2`
   #
@@ -277,13 +278,21 @@ defmodule Apiary.WorkItems.ExploreView do
   # `Apiary.Explore.Questions.open_in_take_in/2` for any state. The questions document of
   # a work item spans its take ins.
   defp current_take_in?(question, ctx) do
-    reopened =
-      (question["history"] || [])
-      |> Enum.reverse()
-      |> Enum.find_value(&(is_map(&1) && get_in(&1, ["reopened", "run"])))
-
     MapSet.member?(ctx.current_runs, get_in(question, ["asked", "run"])) or
-      MapSet.member?(ctx.current_runs, reopened)
+      MapSet.member?(ctx.current_runs, reopened_run(question))
+  end
+
+  # Whether the run numbered `number` wrote the question (`asked.run`) or reopened it last
+  # (`reopened_run/1`), the rule of `current_take_in?/2` for one run.
+  defp by_run?(question, number),
+    do: get_in(question, ["asked", "run"]) == number or reopened_run(question) == number
+
+  # The `reopened.run` of the last entry of the question's `history` that has one; nil
+  # for none.
+  defp reopened_run(question) do
+    (question["history"] || [])
+    |> Enum.reverse()
+    |> Enum.find_value(&(is_map(&1) && get_in(&1, ["reopened", "run"])))
   end
 
   defp question_state("answered"), do: :answered
@@ -579,13 +588,10 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
-  # How many questions of the newest questions the run `step` wrote.
+  # How many questions of the newest questions the run `step` wrote or reopened last
+  # (`by_run?/2`).
   defp asked(%{run: %{number: number}}, ctx) when is_integer(number),
-    do:
-      Enum.count(
-        (ctx.questions || %{})["questions"] || [],
-        &(get_in(&1, ["asked", "run"]) == number)
-      )
+    do: Enum.count((ctx.questions || %{})["questions"] || [], &by_run?(&1, number))
 
   defp asked(_step, _ctx), do: 0
 
@@ -617,7 +623,8 @@ defmodule Apiary.WorkItems.ExploreView do
   # The questions of a run that asked: where its questions wait, the open questions of the
   # newest questions that a run of the current take in wrote or reopened last, in its
   # order, which `Apiary.WorkItems.Moves.answer/4` refers to by position; otherwise the
-  # questions it wrote (`asked.run`) and those answered at it, with their answers.
+  # questions it wrote or reopened last (`by_run?/2`) and those answered at it, with their
+  # answers.
   defp questions(step, ctx, rows) do
     answers = Map.new(rows, &{&1.id, &1})
 
@@ -628,8 +635,7 @@ defmodule Apiary.WorkItems.ExploreView do
         number = step.run && step.run.number
 
         for %{"id" => id} = question <- (ctx.questions || %{})["questions"] || [],
-            Map.has_key?(answers, id) or
-              (is_integer(number) and get_in(question, ["asked", "run"]) == number),
+            Map.has_key?(answers, id) or (is_integer(number) and by_run?(question, number)),
             do: question
       end
 

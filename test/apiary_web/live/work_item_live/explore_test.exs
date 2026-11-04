@@ -341,6 +341,30 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
              )
     end
 
+    test "a question take in 2's run reopened and nobody answered after: the run's line counts it, and take in 3's page shows it in take in 2's fold",
+         %{conn: conn, scope: scope} do
+      work_item = reopened_in_take_in_2(scope)
+
+      # On take in 2's page, the line of the run in the fold of the runs.
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+      assert has_element?(view, "#work-item-record", "Wrote 1 question")
+
+      {:ok, _closed} = WorkItems.close(scope, Repo.get!(WorkItems.WorkItem, work_item.id))
+      ticket = Repo.get!(Apiary.Sources.Item, work_item.item_id)
+      {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id)
+      assert again.take_in == 3
+
+      {:ok, view, _html} = live(conn, explore(scope, again.number))
+
+      fold = "#work-item-explore-take-ins-2"
+
+      assert has_element?(
+               view,
+               "#{fold} [id$='-body'] li",
+               "Which currency should the invoice PDF show?"
+             )
+    end
+
     test "Run with answers with every answer blank while take in 1's review comment is open: the error, and no run",
          %{conn: conn, scope: scope} do
       [_currency, credit_note] = @questions
