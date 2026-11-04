@@ -270,7 +270,13 @@ defmodule Apiary.WorkItems.ExploreView do
     for %{"on" => %{"artifact" => "proposal", "version" => version}} = comment <-
           ReviewComments.entries(ctx.review_comments),
         %{take_in: ^take_in} = given <- [Map.get(written, comment["id"])] do
-      shown = Enum.map(comment["replies"] || [], &reply_view(&1, comment["id"], replies, ctx))
+      shown =
+        (comment["replies"] || [])
+        |> Enum.with_index(1)
+        |> Enum.map(fn {reply, position} ->
+          reply_view(reply, {comment["id"], position}, replies, ctx)
+        end)
+
       open? = comment["state"] != "closed"
 
       %{
@@ -288,8 +294,10 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # A reply to a review comment: a run's, with its outcome and the version of the
   # proposal that run stood at; a member's, with who wrote it and the version of the
-  # proposal the take in's latest run stood at then.
-  defp reply_view(%{"by" => %{"run" => number}} = reply, _id, _replies, ctx) do
+  # proposal the take in's latest run stood at then, by the move that wrote that reply
+  # of that review comment (`at`, the review comment's id and the reply's position from
+  # 1), with its text and time.
+  defp reply_view(%{"by" => %{"run" => number}} = reply, _at, _replies, ctx) do
     %{
       run: number,
       by_id: nil,
@@ -301,8 +309,14 @@ defmodule Apiary.WorkItems.ExploreView do
     }
   end
 
-  defp reply_view(reply, id, replies, ctx) do
-    move = Enum.find(replies, &(&1.id == id and second(&1.at) == reply["at"]))
+  defp reply_view(reply, {id, position}, replies, ctx) do
+    move =
+      Enum.find(
+        replies,
+        &(&1.id == id and Map.get(ctx.reply_positions, &1.event_id) == position and
+            &1.text == reply["text"] and second(&1.at) == reply["at"])
+      )
+
     step = move && Enum.find(ctx.current, &(&1.attempt == move.attempt))
 
     %{
@@ -323,13 +337,20 @@ defmodule Apiary.WorkItems.ExploreView do
   defp outcome(_none), do: nil
 
   # What the pages read besides the runs: what members gave (`Apiary.Explore.Given`), the
-  # newest questions and review comments, the runs by their registered run's number, and
+  # position of the reply each move of a reply wrote, by the move's event, the newest
+  # questions and review comments, the runs by their registered run's number, and
   # `waiting`, the latest run of the current take in where its questions wait, else nil.
   defp context(work_item, steps, events, waiting) do
     questions = Questions.newest(work_item)
 
     %{
       given: Given.from_events(work_item, events),
+      reply_positions:
+        for(
+          %{kind: :answered, id: id, data: %{"reply" => position}} <- events,
+          into: %{},
+          do: {id, position}
+        ),
       questions: document(questions),
       questions_version: number(questions),
       review_comments: document(ReviewComments.newest(work_item)),

@@ -372,6 +372,30 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
     end
 
+    test "two members' replies in the same second are each by the member who wrote it", %{
+      scope: scope
+    } do
+      member = member_fixture(scope)
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
+      work_item = revised!(work_item)
+
+      # Both replies within one second, as the documents keep the time to the second.
+      %{microsecond: {micro, _precision}} = DateTime.utc_now()
+      if micro > 700_000, do: Process.sleep(div(1_000_000 - micro, 1_000) + 10)
+      assert {:ok, _} = WorkItems.reply(scope, work_item, 2, "c1", "Not yet: name the rule.")
+      assert {:ok, _} = WorkItems.reply(member.scope, work_item, 2, "c1", "And the refund.")
+
+      assert [%{"replies" => [_run, %{"at" => at}, %{"at" => at}]}] = review_comments(work_item)
+
+      assert [%{replies: [%{run: run}, first, second]}] =
+               WorkItems.explore(scope, reload(work_item)).review_comments
+
+      assert is_integer(run)
+      assert {first.text, first.by_id} == {"Not yet: name the rule.", scope.user.id}
+      assert {second.text, second.by_id} == {"And the refund.", member.scope.user.id}
+    end
+
     test "to a review comment the document does not have, or with no text, is refused", %{
       scope: scope
     } do
