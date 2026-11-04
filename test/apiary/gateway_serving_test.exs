@@ -184,8 +184,14 @@ defmodule Apiary.GatewayServingTest do
 
   # The rule itself, in `Apiary.Access`: the key's scope, as the server contract makes it.
   describe "a gateway's key, asked in `Apiary.Access` of a run" do
-    # The actions a gateway's key holds, of features every leg has.
-    @key_actions [:"run.post_events", :"run_configuration.fetch"]
+    # The actions a gateway's key holds whose feature is on in this leg: `security`, of
+    # `run_configuration.fetch`, is off under `observability` alone.
+    defp key_actions do
+      Enum.filter(
+        [:"run.post_events", :"run_configuration.fetch"],
+        &Apiary.Features.on?(Access.feature(&1))
+      )
+    end
 
     defp key_scope(scope, gateway) do
       %{access_key: key} = access_key_fixture(scope, node: gateway)
@@ -203,7 +209,7 @@ defmodule Apiary.GatewayServingTest do
       key_scope = key_scope(ctx.scope, gateway_fixture(ctx.scope))
       second = workspace_scope(ctx.scope.user, ctx.second)
 
-      for action <- @key_actions do
+      for action <- key_actions() do
         assert Access.check(key_scope, action, run_fixture(ctx.scope)) == :ok
         assert Access.check(key_scope, action, run_fixture(second)) == {:error, :not_found}
         assert Access.check(key_scope, action, run_fixture(ctx.other)) == {:error, :not_found}
@@ -214,7 +220,7 @@ defmodule Apiary.GatewayServingTest do
       key_scope = key_scope(ctx.scope, organisation_gateway_fixture(ctx.scope))
       second = workspace_scope(ctx.scope.user, ctx.second)
 
-      for action <- @key_actions do
+      for action <- key_actions() do
         assert Access.check(key_scope, action, run_fixture(ctx.scope)) == :ok
         assert Access.check(key_scope, action, run_fixture(second)) == :ok
         assert Access.check(key_scope, action, run_fixture(ctx.other)) == {:error, :not_found}
@@ -225,7 +231,7 @@ defmodule Apiary.GatewayServingTest do
       %{access_key: key} = installed_key_fixture(instance_gateway_fixture())
       key_scope = Scope.for_access_key(key)
 
-      for action <- @key_actions do
+      for action <- key_actions() do
         assert Access.check(key_scope, action, run_fixture(ctx.scope)) == :ok
         assert Access.check(key_scope, action, run_fixture(ctx.other)) == :ok
       end
