@@ -264,8 +264,7 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:ok, _} = questions(context, [question(%{"id" => String.duplicate("q-1", 10)})])
 
       for id <- ["Q1", "q_1", "", String.duplicate("q", 33)] do
-        assert {:error,
-                {:schema, %{path: "#/questions/0", error: "the object has the key id twice"}}} =
+        assert {:error, {:schema, %{path: "#/questions/0/id"}}} =
                  questions(context, [question(%{"id" => id})])
       end
 
