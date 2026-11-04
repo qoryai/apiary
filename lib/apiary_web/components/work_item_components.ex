@@ -2249,28 +2249,58 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   def markdown(_text, _images), do: nil
 
+  @sources_heading "<h4>Sources</h4>"
+  @void_tags ~w(br hr img input wbr)
+
   @doc false
   # split_sources/1 is a rendered proposal split at its Sources: the last `## Sources`
-  # heading, which the renderer draws as `<h4>Sources</h4>`. `{body, sources, count}`:
-  # the render before the heading, the HTML after it, and the number of items of its
-  # first-level lists; `{rendered, nil, 0}` for a proposal without the heading, and for
-  # one shown as written.
+  # heading at the top level of the text, which the renderer draws as
+  # `<h4>Sources</h4>`; a heading inside a quote or a list is part of the text.
+  # `{body, sources, count}`: the render before the heading, the HTML after it, and the
+  # number of items of its first-level lists; `{rendered, nil, 0}` for a proposal
+  # without the heading, and for one shown as written.
   @spec split_sources(term) :: {term, Phoenix.HTML.safe() | nil, non_neg_integer}
   def split_sources({:html, html}) do
     string = Phoenix.HTML.safe_to_string(html)
 
-    case :binary.matches(string, "<h4>Sources</h4>") do
-      [] ->
+    case top_sources(string) do
+      nil ->
         {{:html, html}, nil, 0}
 
-      matches ->
-        {at, length} = List.last(matches)
-        rest = binary_part(string, at + length, byte_size(string) - at - length)
+      at ->
+        from = at + byte_size(@sources_heading)
+        rest = binary_part(string, from, byte_size(string) - from)
         {{:html, {:safe, binary_part(string, 0, at)}}, {:safe, rest}, top_items(rest)}
     end
   end
 
   def split_sources(rendered), do: {rendered, nil, 0}
+
+  # The byte offset of the last `<h4>Sources</h4>` of rendered HTML that no other element
+  # contains; nil for none. Text is escaped by the renderer and every attribute value is
+  # in double quotes with its `"` escaped, so each `<` outside a quoted value starts a
+  # tag.
+  defp top_sources(html) do
+    ~r{<(/?)([a-zA-Z][a-zA-Z0-9]*)(?:[^>"]|"[^"]*")*>}
+    |> Regex.scan(html, return: :index)
+    |> Enum.reduce({0, nil}, fn [{at, _whole}, {_slash, slash}, {name_at, name_length}],
+                                {depth, last} ->
+      name = html |> binary_part(name_at, name_length) |> String.downcase()
+
+      cond do
+        name in @void_tags -> {depth, last}
+        slash == 1 -> {max(depth - 1, 0), last}
+        depth == 0 and heading_at?(html, at) -> {1, at}
+        true -> {depth + 1, last}
+      end
+    end)
+    |> elem(1)
+  end
+
+  defp heading_at?(html, at) do
+    size = byte_size(@sources_heading)
+    byte_size(html) - at >= size and binary_part(html, at, size) == @sources_heading
+  end
 
   # The items of the first-level lists of rendered HTML. Text and code are escaped by the
   # renderer, so every `<ul`, `<ol` and `<li` is a tag.

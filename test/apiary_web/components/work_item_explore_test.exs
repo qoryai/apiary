@@ -991,6 +991,27 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert {^code, nil, 0} = C.split_sources(code)
     end
 
+    test "split_sources/1 leaves a Sources heading in a quote or a list in the text" do
+      quoted = C.markdown("Intro\n\n> ## Sources\n> - a\n\nAfter the quote.\n\n## Next\n\ntext")
+      assert {^quoted, nil, 0} = C.split_sources(quoted)
+
+      listed = C.markdown("- ## Sources\n\n  - a\n\nAfter the list.\n")
+      assert {^listed, nil, 0} = C.split_sources(listed)
+
+      {{:html, body}, sources, 1} =
+        "Intro\n\n> ## Sources\n> - a\n\nAfter the quote.\n\n## Sources\n\n- b\n"
+        |> C.markdown()
+        |> C.split_sources()
+
+      body = Phoenix.HTML.safe_to_string(body)
+
+      assert body =~
+               ~r{<blockquote>\s*<h4>Sources</h4>\s*<ul>\s*<li>a</li>\s*</ul>\s*</blockquote>}
+
+      assert body =~ "After the quote."
+      assert Phoenix.HTML.safe_to_string(sources) =~ "<li>b</li>"
+    end
+
     test "the proposal's text is in the Mermaid hook, its id of the version" do
       mermaid = "Steps:\n\n```mermaid\nflowchart LR\n  Cart --> Invoice\n```\n"
       html = tab(invoice_item(), proposal: proposal_v(2, mermaid))
