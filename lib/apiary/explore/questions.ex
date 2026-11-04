@@ -19,6 +19,9 @@ defmodule Apiary.Explore.Questions do
   #   * `:follows_changed`: the run changed the `follows` of a question the newest
   #     version has: a question follows from the questions it followed from when it was
   #     asked;
+  #   * `:order_changed`: the questions of the newest version are not the first of the
+  #     version, in the newest version's order: a run adds each new question after them,
+  #     so a question's `follows` keeps pointing at questions before it;
   #   * `:answer_changed`: the run added, changed or removed an `answer`;
   #   * `:history_changed`: the run changed a question's `history`, or gave a new
   #     question one;
@@ -59,6 +62,7 @@ defmodule Apiary.Explore.Questions do
     :id_dropped,
     :asked_changed,
     :follows_changed,
+    :order_changed,
     :answer_changed,
     :history_changed,
     :reopen_not_kept,
@@ -79,6 +83,7 @@ defmodule Apiary.Explore.Questions do
           :id_dropped
           | :asked_changed
           | :follows_changed
+          | :order_changed
           | :answer_changed
           | :history_changed
           | :reopen_not_kept
@@ -232,6 +237,7 @@ defmodule Apiary.Explore.Questions do
       |> elem(0)
 
     with :ok <- each(earlier, &kept(&1, Map.get(given, &1["id"]), run_number)),
+         :ok <- order(earlier, questions),
          :ok <-
            each(
              Enum.reject(before, fn {question, _seen} -> MapSet.member?(known, question["id"]) end),
@@ -247,6 +253,17 @@ defmodule Apiary.Explore.Questions do
         refused -> {:halt, refused}
       end
     end)
+  end
+
+  # The questions of the newest version first, in its order. Every id of the newest
+  # version is in the version (`kept/3`) and each id is there once (the format check), so
+  # the first ids of the version are the newest version's ids or the order changed.
+  defp order(earlier, questions) do
+    ids = Enum.map(earlier, & &1["id"])
+
+    if questions |> Enum.take(length(ids)) |> Enum.map(& &1["id"]) == ids,
+      do: :ok,
+      else: {:error, :order_changed}
   end
 
   defp kept(_earlier, nil, _run_number), do: {:error, :id_dropped}

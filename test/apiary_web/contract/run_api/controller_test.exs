@@ -1071,6 +1071,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {"questions", :follows_changed,
          "Leave follows of each question in questions.json as the newest version of " <>
            "questions has it."},
+        {"questions", :order_changed,
+         "Keep the questions of the newest version of questions first in questions.json, " <>
+           "in the same order, and add new questions after them."},
         {"questions", :follows_unknown,
          "Set follows of each question you add in questions.json to ids of questions " <>
            "before it in questions.json."},

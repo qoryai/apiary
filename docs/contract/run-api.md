@@ -253,25 +253,26 @@ Checks, in order, after the checks of every request:
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id` and the
-   `asked` and `follows` of each question, adds no `answer` and changes none, keeps each
-   `history`, keeps `question`, `context` and `options` of each question that stays
-   `answered`, moves the answer of a question it reopens unchanged to the end of its
-   `history` with `reopened.run` set to its `run.number`, and adds each question `open`
-   with `asked.run` set to its `run.number` and with `follows`, if any, set to ids of
-   questions before it in the version; an absent `follows` and an empty one are the
-   same. In `review-comments`, the run keeps every review
-   comment and every earlier reply unchanged, adds no review comment, and adds at most one
-   reply to an open review comment, by `{"run": <run.number>}`, which it closes; a reply
-   with the outcome `asked` has in `question` the id of a question of the newest version
-   of `questions` stored when the run pushes `review-comments`, so the run pushes its
-   questions first. Numbers compare by value, as the schemas' integers do: `4.0` is
-   `4`. A version of `questions` or `review-comments` is stored with each number that
-   is an integer in value written as an integer, so a later read of it has `4` where
-   the push had `4.0`. Its size is measured as stored, after that change (`1e3` is
-   stored as `1000`): a file that is then over the type's size limit is `422`
-   `too_large`. A newest version of `questions` or `review-comments` whose file
-   cannot be read, or whose newest `questions` a `review-comments` version is checked
-   against cannot be read, is `503` `unavailable`, and no version is stored.
+   `asked` and `follows` of each question, keeps the questions of the newest version
+   first, in the same order, and adds new questions after them, adds no `answer` and
+   changes none, keeps each `history`, keeps `question`, `context` and `options` of each
+   question that stays `answered`, moves the answer of a question it reopens unchanged
+   to the end of its `history` with `reopened.run` set to its `run.number`, and adds
+   each question `open` with `asked.run` set to its `run.number` and with `follows`, if
+   any, set to ids of questions before it in the version; an absent `follows` and an
+   empty one are the same. In `review-comments`, the run keeps every review comment and
+   every earlier reply unchanged, adds no review comment, and adds at most one reply to
+   an open review comment, by `{"run": <run.number>}`, which it closes; a reply with the
+   outcome `asked` has in `question` the id of a question of the newest version of
+   `questions` stored when the run pushes `review-comments`, so the run pushes its
+   questions first. Numbers compare by value, as the schemas' integers do: `4.0` is `4`.
+   A version of `questions` or `review-comments` is stored with each number that is an
+   integer in value written as an integer, so a later read of it has `4` where the push
+   had `4.0`. Its size is measured as stored, after that change (`1e3` is stored as
+   `1000`): a file that is then over the type's size limit is `422` `too_large`. A
+   newest version of `questions` or `review-comments` whose file cannot be read, or
+   whose newest `questions` a `review-comments` version is checked against cannot be
+   read, is `503` `unavailable`, and no version is stored.
 
 ## POST verdict
 

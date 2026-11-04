@@ -417,6 +417,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Leave follows of each question in #{filename} as the newest version of " <>
           "questions has it."
 
+      :order_changed ->
+        "Keep the questions of the newest version of questions first in #{filename}, " <>
+          "in the same order, and add new questions after them."
+
       :answer_changed ->
         "Leave each answer in #{filename} as the newest version of questions has it: " <>
           "members write the answers."

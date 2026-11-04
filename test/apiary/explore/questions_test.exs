@@ -253,12 +253,38 @@ defmodule Apiary.Explore.QuestionsTest do
                inspect(follows)
       end
 
-      # An earlier question placed after it does not count.
+      # An earlier question placed after it changes the order.
       assert Questions.check_run(
                newest,
                doc([open("q1", 12), added.(["q2"]), answered("q2", 12)]),
                13
-             ) == {:error, :follows_unknown}
+             ) == {:error, :order_changed}
+    end
+
+    test "keeps the questions of the newest version first, in its order" do
+      q1 = open("q1", 12)
+      q2 = Map.put(open("q2", 12), "follows", ["q1"])
+      newest = doc([q1, q2])
+
+      # Reordered, so q2 would follow a question after it.
+      assert Questions.check_run(newest, doc([q2, q1]), 13) == {:error, :order_changed}
+
+      # A new question before or between them.
+      assert Questions.check_run(newest, doc([open("q3", 13), q1, q2]), 13) ==
+               {:error, :order_changed}
+
+      assert Questions.check_run(newest, doc([q1, open("q3", 13), q2]), 13) ==
+               {:error, :order_changed}
+
+      # A dropped question is id_dropped, whatever the order.
+      assert Questions.check_run(newest, doc([q2]), 13) == {:error, :id_dropped}
+
+      # New questions after them.
+      assert Questions.check_run(newest, doc([q1, q2, open("q3", 13), open("q4", 13)]), 13) ==
+               :ok
+
+      # The first version has no order to keep.
+      assert Questions.check_run(nil, doc([open("q2", 13), open("q1", 13)]), 13) == :ok
     end
 
     test "refuses a reopen that names another run" do
@@ -290,6 +316,7 @@ defmodule Apiary.Explore.QuestionsTest do
                  :id_dropped,
                  :asked_changed,
                  :follows_changed,
+                 :order_changed,
                  :answer_changed,
                  :history_changed,
                  :reopen_not_kept,
