@@ -184,11 +184,11 @@ defmodule Apiary.WorkItems.Moves do
   #   * The open review comments go to the next run with the answers (`answer/4`), which
   #     queues it, or by a send of the review comments (`send_review_comments/3`) where the
   #     latest run's questions or its proposal wait: for a member among the stage's
-  #     approvers, with at least one review comment open (else `:not_waiting`), it queues
-  #     the take in's next run as an answer does, at any count of runs. It writes nothing
-  #     to the questions, whose open questions stay open. Its event, `:answered`, has the
-  #     take in, the attempt, the count and the ids of the open review comments
-  #     (`"review_comments"`).
+  #     approvers, where the take in has a proposal and at least one review comment is
+  #     open (else `:not_waiting`), it queues the take in's next run as an answer does, at
+  #     any count of runs. It writes nothing to the questions, whose open questions stay
+  #     open. Its event, `:answered`, has the take in, the attempt, the count and the ids
+  #     of the open review comments (`"review_comments"`).
   #   * Today's form for a comment on the proposal (`answer/4` with a text, where the
   #     latest run's proposal waits) writes the review comment and sends the review
   #     comments, in one move: one event, as a review comment's, and the next run queued.
@@ -890,6 +890,7 @@ defmodule Apiary.WorkItems.Moves do
     step(scope, work_item, fn held, current, _now ->
       with :ok <- waiting(current, [:questions, :confirm], attempt),
            :ok <- Apiary.Stages.approver(scope, held),
+           :ok <- proposed(held, current),
            {:ok, [_ | _] = ids} <- open_review_comments(held) do
         data =
           held
@@ -902,6 +903,16 @@ defmodule Apiary.WorkItems.Moves do
         refused -> refused
       end
     end)
+  end
+
+  # Where the questions wait, the take in has a proposal, as a review comment needs one
+  # (`keep_comment/5`): with none, `:not_waiting`.
+  defp proposed(_held, %{status: :confirm}), do: :ok
+
+  defp proposed(held, current) do
+    if Explore.proposal_version(held.id, held.take_in, current.step.attempt),
+      do: :ok,
+      else: {:error, :not_waiting}
   end
 
   # One move of what a member gives Explore, in one transaction under the work item's

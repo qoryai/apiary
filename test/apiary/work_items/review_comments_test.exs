@@ -411,6 +411,34 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert input!(work_item)["run"] == %{"attempt" => 4}
     end
 
+    test "while questions wait in a take in again with no proposal is refused", %{
+      scope: scope
+    } do
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      work_item =
+        work_item |> reload() |> end_run!(understood_result(%{"message" => "## Take in 1"}))
+
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {:ok, closed} = WorkItems.close(scope, work_item)
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      work_item = closed |> reload() |> end_run!(questions_result(["Which refund?"]))
+
+      assert %{take_in: 2, status: :questions, comments: []} =
+               WorkItems.explore(scope, work_item)
+
+      # Take in 1's review comment is still open, on take in 1's proposal.
+      assert [%{"id" => "c1", "state" => "open"}] = review_comments(work_item)
+      assert WorkItems.review_comment(scope, work_item, 1, "Also this.") == {:error, :not_waiting}
+      assert WorkItems.send_review_comments(scope, work_item, 1) == {:error, :not_waiting}
+      assert runs(work_item) == [{1, 3, :ended}, {1, 3, :ended}]
+      assert length(answered_events(work_item)) == 1
+    end
+
     test "Send answers carries the open review comments to the next run", %{scope: scope} do
       work_item = proposed!(scope)
       {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
