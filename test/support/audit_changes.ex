@@ -72,6 +72,15 @@ defmodule Apiary.AuditChanges do
   # The member's answer to the questions of a run, which no entry may keep.
   @answer "The one at checkout."
 
+  # The other moves of a member that record `work_item.answer`, each made by `make/2` for
+  # the context's `member_answer`: a review comment, a reply to one, a text given at the
+  # gate (`answer/4` at `:confirm`), and the open review comments sent.
+  @member_answers [:review_comment, :reply, :text_at_confirm, :send_review_comments]
+
+  # A member's review comment and reply, which no entry may keep.
+  @review_comment "Offer a replacement first."
+  @reply "Not yet: name the refund rule."
+
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
   def actions do
@@ -153,6 +162,14 @@ defmodule Apiary.AuditChanges do
       :"workspace_type.edit"
     ] ++ @work_item_moves ++ @work_item_comments
   end
+
+  @doc """
+  member_answers/0 is the other moves of a member that record `work_item.answer`, beside
+  the answer to questions: `make(:"work_item.answer", ctx)` makes each, for the context's
+  `member_answer`.
+  """
+  @spec member_answers() :: [atom]
+  def member_answers, do: @member_answers
 
   @doc """
   make/2 makes `action` the way the product makes it, in the context `Apiary.AuditCase`
@@ -876,6 +893,46 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: subject_of(work_item), before: before}
   end
 
+  # A member sends the open review comments of a work item to its next run, which writes
+  # no version: the one entry is `work_item.answer`, with no review comment text.
+  def make(:"work_item.answer", %{scope: scope, member_answer: :send_review_comments} = ctx) do
+    work_item = prepare(:"work_item.confirm", ctx)
+    {:ok, _work_item} = Apiary.WorkItems.review_comment(scope, work_item, 1, @review_comment)
+    before = entries()
+    {:ok, _work_item} = Apiary.WorkItems.send_review_comments(scope, work_item, 1)
+    %{scope: scope, subject: subject_of(work_item), secret: @review_comment, before: before}
+  end
+
+  # A member writes a review comment on a work item's proposal, replies to one, or gives a
+  # text at the gate, which writes and sends a review comment in one move. Each is a
+  # version of the review comments, a member action of `Apiary.Artifacts.push/5`, so
+  # exactly one `artifact.write` entry by the member, about the work item and with no
+  # comment or reply text, comes beside it.
+  def make(:"work_item.answer", %{scope: scope, member_answer: answer} = ctx)
+      when answer in [:review_comment, :reply, :text_at_confirm] do
+    work_item = prepare(:"work_item.confirm", ctx)
+
+    if answer == :reply,
+      do: {:ok, _} = Apiary.WorkItems.review_comment(scope, work_item, 1, @review_comment)
+
+    before = entries()
+
+    {{:ok, _work_item}, text} =
+      case answer do
+        :review_comment ->
+          {Apiary.WorkItems.review_comment(scope, work_item, 1, @review_comment), @review_comment}
+
+        :reply ->
+          {Apiary.WorkItems.reply(scope, work_item, 1, "c1", @reply), @reply}
+
+        :text_at_confirm ->
+          {Apiary.WorkItems.answer(scope, work_item, 1, @review_comment), @review_comment}
+      end
+
+    version = version_entry(scope, work_item, before, "review-comments", text)
+    %{scope: scope, subject: subject_of(work_item), secret: text, before: before ++ [version]}
+  end
+
   # A member answers the questions of a work item's run. The answers are a version of the
   # questions, a member action of `Apiary.Artifacts.push/5`, so exactly one `artifact.write`
   # entry by the member, about the work item and with no answer text, comes beside it.
@@ -883,21 +940,14 @@ defmodule Apiary.AuditChanges do
     work_item = prepare(:"work_item.answer", ctx)
     before = entries()
     {:ok, _work_item} = attempt(:"work_item.answer", scope, work_item)
-    {kind, id} = subject_of(work_item)
-    user_id = scope.user.id
+    questions = version_entry(scope, work_item, before, "questions", @answer)
 
-    [
-      %{
-        actor_kind: :person,
-        actor_id: ^user_id,
-        subject_kind: ^kind,
-        subject_id: ^id,
-        details: %{"type" => "questions"}
-      } = questions
-    ] = Enum.filter(entries() -- before, &(&1.action == "artifact.write"))
-
-    refute_personal(questions, @answer)
-    %{scope: scope, subject: {kind, id}, secret: @answer, before: before ++ [questions]}
+    %{
+      scope: scope,
+      subject: subject_of(work_item),
+      secret: @answer,
+      before: before ++ [questions]
+    }
   end
 
   # A member undoes or closes a work item of the workspace, confirms its run's proposal
@@ -1957,6 +2007,26 @@ defmodule Apiary.AuditChanges do
     )
 
     workspace
+  end
+
+  # The one `artifact.write` entry made since `before`, by the scope's member, about the
+  # work item, of the artifact type `type`, with no `secret`.
+  defp version_entry(scope, work_item, before, type, secret) do
+    {kind, id} = subject_of(work_item)
+    user_id = scope.user.id
+
+    [
+      %{
+        actor_kind: :person,
+        actor_id: ^user_id,
+        subject_kind: ^kind,
+        subject_id: ^id,
+        details: %{"type" => ^type}
+      } = version
+    ] = Enum.filter(entries() -- before, &(&1.action == "artifact.write"))
+
+    refute_personal(version, secret)
+    version
   end
 
   defp subject_of(%Apiary.WorkItems.WorkItem{id: id}), do: {"work_item", id}
