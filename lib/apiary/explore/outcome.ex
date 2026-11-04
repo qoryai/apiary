@@ -2,9 +2,10 @@ defmodule Apiary.Explore.Outcome do
   # Outcome is what a run of Explore gave once it ended, read from the artifacts it
   # pushed during the run through the run API, never from an event of the run:
   #
-  #   * `:questions` when the newest questions of its work item have a question that waits
-  #     for an answer (`Apiary.Explore.Questions`), whatever else the run did: open
-  #     questions come before a proposal and before a run that stopped;
+  #   * `:questions` when the newest questions of its work item have a question of its
+  #     take in that waits for an answer (`Apiary.Explore.Questions.open_in_take_in/2`),
+  #     whatever else the run did: open questions come before a proposal and before a run
+  #     that stopped. A question left open in an earlier take in does not count;
   #   * `:proposal` when a run of its take in, this one or an earlier one, pushed a
   #     version of the work item's `proposal` named `main`, the one Explore reads
   #     (`Apiary.WorkItems.Explore.proposal_text/2`), and the run did not stop: its registered
@@ -46,7 +47,7 @@ defmodule Apiary.Explore.Outcome do
          %WorkItem{} = work_item <- Repo.get(WorkItem, work_item_id),
          {:ok, questions} <- Questions.current(work_item) do
       cond do
-        open?(questions) -> :questions
+        open?(questions, run) -> :questions
         not stopped?(run) and proposal?(run) -> :proposal
         true -> :none
       end
@@ -58,8 +59,10 @@ defmodule Apiary.Explore.Outcome do
 
   def at_end(%DispatchRun{}), do: :none
 
-  defp open?({_version, document}), do: Questions.open(document) != []
-  defp open?(nil), do: false
+  defp open?({_version, document}, %DispatchRun{work_item_id: id, take_in: take_in}),
+    do: Questions.open_in_take_in(document, Questions.take_in_runs(id, take_in)) != []
+
+  defp open?(nil, _run), do: false
 
   defp stopped?(%DispatchRun{id: id}),
     do:

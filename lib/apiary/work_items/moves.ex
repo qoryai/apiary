@@ -150,15 +150,17 @@ defmodule Apiary.WorkItems.Moves do
   # the label stays.
   #
   #   * An answer (`answer/4`) works where the latest run's questions wait: one or more
-  #     of the open questions of the work item's newest questions answered
-  #     (`Apiary.WorkItems.Proposal.check_answers/2`, else `{:invalid, errors}`, by
+  #     of the open questions of the work item's newest questions that are of the take in
+  #     answered (`Apiary.Explore.Questions.open_in_take_in/2`;
+  #     `Apiary.WorkItems.Proposal.check_answers/2`, else `{:invalid, errors}`, by
   #     position, or `{:invalid, :form}`). A form may give the answers by question id
   #     instead, a list (`Apiary.WorkItems.Proposal.check_answers_by_id/2`, else
   #     `{:invalid, errors}`, by id, or `{:invalid, :form}`), where an answer may have an
-  #     option and a note together. It writes a new version of the questions, by
-  #     the member, with those answers (`Apiary.Explore.Questions.answer/4`): an option's
-  #     title as the answer's `option`, the member's text as its `note` with `option`
-  #     null; the others
+  #     option and a note together; a question left open in an earlier take in is
+  #     refused there as one that is not open (`:not_open`). It writes a new version of
+  #     the questions, by the member, with those answers
+  #     (`Apiary.Explore.Questions.answer/4`): an option's title as the answer's
+  #     `option`, the member's text as its `note` with `option` null; the others
   #     stay open. It queues the take in's next run at any count of runs: at the run limit
   #     the next run's `attempt` and `of` are one more each
   #     (`Apiary.Dispatches.queue_next/3`). Its event, `:answered`, has the take in, the
@@ -940,7 +942,7 @@ defmodule Apiary.WorkItems.Moves do
   defp keep_given(held, scope, %{status: :questions}, answers, now) when is_list(answers) do
     with {:ok, document} <- questions(held),
          {:ok, given} <-
-           invalid(Proposal.check_answers_by_id(document["questions"], answers)),
+           invalid(Proposal.check_answers_by_id(answerable(held, document), answers)),
          {:ok, document} <-
            noted_by_id(Questions.answer(document, given, person_name(scope), now)),
          {:ok, _version} <- push(held, scope, Questions.type_name(), Questions.file(document)) do
@@ -950,7 +952,7 @@ defmodule Apiary.WorkItems.Moves do
 
   defp keep_given(held, scope, %{status: :questions}, answers, now) do
     with {:ok, document} <- questions(held),
-         open = Questions.open(document),
+         open = open_in_take_in(held, document),
          questions = Enum.map(open, &Proposal.question/1),
          {:ok, checked} <- invalid(Proposal.check_answers(questions, answers)),
          given = Enum.map(checked, &option_note(&1, open)),
@@ -981,6 +983,27 @@ defmodule Apiary.WorkItems.Moves do
            push(held, scope, ReviewComments.type_name(), ReviewComments.file(document)) do
       {:ok, id}
     end
+  end
+
+  # The open questions of the newest questions that are of the work item's take in, in
+  # order (`Apiary.Explore.Questions.open_in_take_in/2`): the questions a member may
+  # answer. One left open in an earlier take in is not among them.
+  defp open_in_take_in(held, document),
+    do: Questions.open_in_take_in(document, Questions.take_in_runs(held.id, held.take_in))
+
+  # The questions an answer by id is checked against: the questions of the document, with
+  # each open question of an earlier take in as one that is not open, so an answer to it
+  # is refused as an answer to a question that is not open (`:not_open`).
+  defp answerable(held, document) do
+    ids = held |> open_in_take_in(document) |> MapSet.new(& &1["id"])
+
+    Enum.map(document["questions"], fn
+      %{"state" => "open", "id" => id} = question ->
+        if MapSet.member?(ids, id), do: question, else: Map.put(question, "state", "earlier")
+
+      question ->
+        question
+    end)
   end
 
   # Today's form gives each answer as an option's title or the member's text
