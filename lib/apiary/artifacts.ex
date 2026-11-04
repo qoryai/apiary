@@ -101,7 +101,8 @@ defmodule Apiary.Artifacts do
   # questions or the review comments keeps what members wrote in the artifact's newest
   # version (`Apiary.Explore.Questions.check_run/3`,
   # `Apiary.Explore.ReviewComments.check_run/4`), else
-  # `{:invalid, {:kept, 0, reason}}`, with the rule it breaks.
+  # `{:invalid, {:kept, 0, reason}}`, with the rule it breaks; a newest version whose file
+  # cannot be read is `{:error, :store_unavailable}`.
   #
   # Then every file is kept in the store, and only then are the rows written, in one
   # transaction: for a standard type a workspace can hide, the workspace's row locked
@@ -883,56 +884,66 @@ defmodule Apiary.Artifacts do
   # artifact's newest version under the work item's lock: what members wrote stays
   # (`Apiary.Explore.Questions.check_run/3`, `Apiary.Explore.ReviewComments.check_run/4`),
   # else `{:invalid, {:kept, 0, reason}}`. The format check passed, so the file is one
-  # JSON document of the type's format.
+  # JSON document of the type's format. A newest version whose file cannot be read is
+  # `{:error, :store_unavailable}`, never taken for no version, which would let the run
+  # drop what members wrote; so are the newest questions a review comments check reads.
   defp members_kept(%{writer: :run, run_id: run_id}, %Artifact{type: type} = artifact, [file])
-       when type in ["questions", "review-comments"] do
+       when type in @member_types do
     module = if type == "questions", do: Questions, else: ReviewComments
-
-    newest =
-      case Repo.one(
-             from v in Version,
-               where: v.artifact_id == ^artifact.id,
-               order_by: [desc: v.number],
-               limit: 1,
-               preload: [files: ^files_query()]
-           ) do
-        nil -> nil
-        version -> module.read(version)
-      end
 
     number =
       Repo.one(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run_id, select: r.number)
 
-    with {:ok, text} <- stored_text(file),
-         %{} = document <- module.decode(text) do
-      case check_run(module, artifact, newest, document, number || 0) do
-        :ok -> :ok
-        {:error, reason} -> {:error, {:invalid, {:kept, 0, reason}}}
+    with {:ok, newest} <- newest_document(module, artifact),
+         {:ok, question_ids} <- question_ids(module, artifact) do
+      with {:ok, text} <- stored_text(file),
+           %{} = document <- module.decode(text) do
+        case check_run(module, newest, document, number || 0, question_ids) do
+          :ok -> :ok
+          {:error, reason} -> {:error, {:invalid, {:kept, 0, reason}}}
+        end
+      else
+        _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
       end
-    else
-      _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
     end
   end
 
   defp members_kept(_writer, _artifact, _stored), do: :ok
 
-  defp check_run(Questions, _artifact, newest, document, number),
-    do: Questions.check_run(newest, document, number)
+  # The document of the artifact's newest version: `{:ok, nil}` for no version.
+  defp newest_document(module, artifact) do
+    case Repo.one(
+           from v in Version,
+             where: v.artifact_id == ^artifact.id,
+             order_by: [desc: v.number],
+             limit: 1,
+             preload: [files: ^files_query()]
+         ) do
+      nil -> {:ok, nil}
+      version -> module.loaded(version)
+    end
+  end
 
   # The question of a reply with the outcome `asked` is the id of a question of the newest
   # questions stored now, under the work item's lock.
-  defp check_run(ReviewComments, artifact, newest, document, number) do
-    questions =
-      case Questions.newest(%WorkItem{
-             id: artifact.work_item_id,
-             workspace_id: artifact.workspace_id
-           }) do
-        {_version, questions} -> Questions.ids(questions)
-        nil -> []
-      end
+  defp question_ids(Questions, _artifact), do: {:ok, []}
 
-    ReviewComments.check_run(newest, document, number, questions)
+  defp question_ids(ReviewComments, artifact) do
+    case Questions.current(%WorkItem{
+           id: artifact.work_item_id,
+           workspace_id: artifact.workspace_id
+         }) do
+      {:ok, {_version, questions}} -> {:ok, Questions.ids(questions)}
+      {:ok, nil} -> {:ok, []}
+      {:error, :store_unavailable} = error -> error
+    end
   end
+
+  defp check_run(Questions, newest, document, number, _question_ids),
+    do: Questions.check_run(newest, document, number)
+
+  defp check_run(ReviewComments, newest, document, number, question_ids),
+    do: ReviewComments.check_run(newest, document, number, question_ids)
 
   defp stored_text(%{store_key: key}) do
     case Store.impl().open(key) do

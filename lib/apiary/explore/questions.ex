@@ -106,6 +106,32 @@ defmodule Apiary.Explore.Questions do
     end
   end
 
+  # current/1 is the newest version of the work item's questions with its document, for a
+  # write that builds on it: `{:ok, {version, document}}`; `{:ok, nil}` for no version;
+  # and `{:error, :store_unavailable}` for a newest version whose file cannot be read as
+  # a document of the format, so a write never takes it for no version and drops what
+  # members wrote.
+  @doc false
+  @spec current(WorkItem.t()) ::
+          {:ok, {Artifacts.Version.t(), document} | nil} | {:error, :store_unavailable}
+  def current(%WorkItem{} = work_item) do
+    case Artifacts.newest(work_item, @type_name, @name) do
+      nil -> {:ok, nil}
+      version -> with {:ok, document} <- loaded(version), do: {:ok, {version, document}}
+    end
+  end
+
+  # loaded/1 is the document of `version`, a version of the questions, for a write:
+  # `{:ok, document}`, or `{:error, :store_unavailable}` when `read/1` cannot read it.
+  @doc false
+  @spec loaded(map) :: {:ok, document} | {:error, :store_unavailable}
+  def loaded(version) do
+    case read(version) do
+      %{} = document -> {:ok, document}
+      nil -> {:error, :store_unavailable}
+    end
+  end
+
   # read/1 is the document of a version of the questions, nil when its file cannot be
   # read or is not one JSON object with a list of questions.
   @doc false

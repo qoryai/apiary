@@ -384,6 +384,58 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
     end
   end
 
+  describe "a newest version that cannot be read" do
+    # The stored copy of the version's one file moved away until the test ends, as a store
+    # that cannot read it. Each document here has the member's name or a unique number, so
+    # no other test stores the same content.
+    defp unreadable!(version) do
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+    end
+
+    test "is store_unavailable for a review comment, a reply and a send, which write nothing",
+         %{scope: scope} do
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {version, _document} = ReviewComments.newest(reload(work_item))
+      unreadable!(version)
+
+      assert WorkItems.review_comment(scope, work_item, 1, "Refund at once.") ==
+               {:error, :store_unavailable}
+
+      assert WorkItems.reply(scope, work_item, 1, "c1", "Not yet.") ==
+               {:error, :store_unavailable}
+
+      assert WorkItems.send_review_comments(scope, work_item, 1) == {:error, :store_unavailable}
+
+      assert WorkItems.answer(scope, work_item, 1, "Refund at once.") ==
+               {:error, :store_unavailable}
+
+      assert [%{number: 1}] = Apiary.Artifacts.versions(version.artifact)
+      assert [_comment] = answered_events(work_item)
+      assert runs(work_item) == [{1, 3, :ended}]
+    end
+
+    test "is store_unavailable for an answer, which writes nothing", %{scope: scope} do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(questions_result(["Which basket #{System.unique_integer([:positive])}?"]))
+
+      {version, _document} = Apiary.Explore.Questions.newest(reload(work_item))
+      unreadable!(version)
+
+      assert WorkItems.answer(scope, work_item, 1, %{"1" => "The small one."}) ==
+               {:error, :store_unavailable}
+
+      assert [%{number: 1}] = Apiary.Artifacts.versions(version.artifact)
+      assert answered_events(work_item) == []
+      assert runs(work_item) == [{1, 3, :ended}]
+    end
+  end
+
   describe "the run's version" do
     # Pushes `document` as the review comments of `work_item`, as its newest run.
     defp push_review_comments(work_item, document) do

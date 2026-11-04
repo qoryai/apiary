@@ -69,6 +69,12 @@ defmodule Apiary.ArtifactsTest do
 
   defp count(schema), do: Repo.aggregate(schema, :count)
 
+  # The stored copy of the version's one file removed, as a store that lost it.
+  defp unreadable!(%Version{files: [file]}) do
+    {:ok, path} = Artifacts.open_file(file)
+    File.rm!(path)
+  end
+
   describe "types/1 and type/2" do
     test "list the eleven standard types first, then the workspace's custom types by name", %{
       scope: scope
@@ -910,6 +916,45 @@ defmodule Apiary.ArtifactsTest do
       other = work_item_fixture(scope, %{external_ref: "acme/shop#13"})
       assert {:error, :not_found} = Artifacts.push({:run, run}, other, "explainer", [doc()])
       assert count(Artifact) == 0
+    end
+
+    test "is store_unavailable when the newest questions or review comments cannot be read",
+         %{scope: scope, run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, &1, [json("#{&1}.json", &2)])
+
+      {:ok, questions} =
+        push.("questions", %{"questions" => [asked(run, "q1", "Which basket?")]})
+
+      comments = %{
+        "review_comments" => [
+          %{
+            "id" => "c1",
+            "on" => %{"artifact" => "proposal", "version" => 1},
+            "text" => "Offer a refund.",
+            "by" => %{"name" => "ann"},
+            "at" => "2026-11-04T10:00:00Z",
+            "state" => "open"
+          }
+        ]
+      }
+
+      {:ok, review_comments} =
+        Artifacts.push({:member_action, scope}, context.work_item, "review-comments", [
+          json("review-comments.json", comments)
+        ])
+
+      unreadable!(questions)
+
+      # Read as no version, the newest questions would let the run drop every answer.
+      assert push.("questions", %{"questions" => []}) == {:error, :store_unavailable}
+
+      # The review comments check reads the newest questions too.
+      assert push.("review-comments", comments) == {:error, :store_unavailable}
+
+      unreadable!(review_comments)
+      assert push.("review-comments", %{"review_comments" => []}) == {:error, :store_unavailable}
+
+      assert count(Version) == 2
     end
 
     test "stores every type the workspace shows, for a run", context do
