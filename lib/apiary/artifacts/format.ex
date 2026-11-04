@@ -266,8 +266,8 @@ defmodule Apiary.Artifacts.Format do
 
   ## Structured
 
-  # A standard type's document is read with its objects in order, so a member name that
-  # comes twice in one object is refused at its second place (`unique/2`).
+  # A standard type's document is read with its objects in order, so a key that comes
+  # twice in one object is refused at that object's place (`unique/2`).
   defp decode(%Type{standard: true}, bytes) do
     with true <- String.valid?(bytes),
          {:ok, document} <- Jason.decode(bytes, objects: :ordered_objects) do
@@ -290,12 +290,12 @@ defmodule Apiary.Artifacts.Format do
   end
 
   # The document with each object a map: `{:ok, document}`, or `{:repeated, key, path}`
-  # for the first member, in the document's order, whose name comes earlier in its
-  # object; `path` the member's place, its segments last first.
+  # for the first key, in the document's order, that comes earlier in its object; `path`
+  # the object's place, its segments last first.
   defp unique(%Jason.OrderedObject{values: members}, path) do
     Enum.reduce_while(members, {:ok, %{}}, fn {key, value}, {:ok, object} ->
       if Map.has_key?(object, key) do
-        {:halt, {:repeated, key, [key | path]}}
+        {:halt, {:repeated, key, path}}
       else
         case unique(value, [key | path]) do
           {:ok, value} -> {:cont, {:ok, Map.put(object, key, value)}}
@@ -326,7 +326,7 @@ defmodule Apiary.Artifacts.Format do
     do:
       SchemaError.detail(
         JSV.ErrorFormatter.format_data_path(path),
-        "the object has the member #{key} twice"
+        "the object has the key #{key} twice"
       )
 
   # The document of a standard type is checked in the caller's process: its bounds, the

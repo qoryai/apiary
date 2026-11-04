@@ -264,7 +264,8 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:ok, _} = questions(context, [question(%{"id" => String.duplicate("q-1", 10)})])
 
       for id <- ["Q1", "q_1", "", String.duplicate("q", 33)] do
-        assert {:error, {:schema, %{path: "#/questions/0/id"}}} =
+        assert {:error,
+                {:schema, %{path: "#/questions/0", error: "the object has the key id twice"}}} =
                  questions(context, [question(%{"id" => id})])
       end
 
@@ -389,7 +390,7 @@ defmodule Apiary.Artifacts.FormatTest do
       assert error =~ "earlier review comment"
     end
 
-    test "a member name twice in one object is refused at its second place", context do
+    test "a key twice in one object is refused at the object's place", context do
       bytes =
         ~s({"review_comments": [{"id": "c1", "on": {"artifact": "proposal", "version": 1}, ) <>
           ~s("text": "Offer a replacement first.", "by": {"name": "Ann", "name": "Bob"}, ) <>
@@ -398,15 +399,15 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:error,
               {:schema,
                %{
-                 path: "#/review_comments/0/by/name",
-                 error: "the object has the member name twice"
+                 path: "#/review_comments/0/by",
+                 error: "the object has the key name twice"
                }}} =
                check(context, "review-comments", "review-comments.json", bytes)
     end
   end
 
-  describe "a member name twice in one object" do
-    test "is refused in a questions document, at the second member, before the schema",
+  describe "a key twice in one object" do
+    test "is refused in a questions document, at the object, before the schema",
          context do
       # Jason alone keeps the last state; another parser may keep the first.
       bytes =
@@ -415,12 +416,11 @@ defmodule Apiary.Artifacts.FormatTest do
           ~s("asked": {"run": 1, "at": "2026-11-04T10:00:00Z"}}]})
 
       assert {:error,
-              {:schema,
-               %{path: "#/questions/0/state", error: "the object has the member state twice"}}} =
+              {:schema, %{path: "#/questions/0", error: "the object has the key state twice"}}} =
                check(context, "questions", "questions.json", bytes)
 
-      # At the root, and the first repeated member in the document's order.
-      assert {:error, {:schema, %{path: "#/questions"}}} =
+      # At the root, and the first repeated key in the document's order.
+      assert {:error, {:schema, %{path: "#", error: "the object has the key questions twice"}}} =
                check(
                  context,
                  "questions",
@@ -428,7 +428,8 @@ defmodule Apiary.Artifacts.FormatTest do
                  ~s({"questions": [], "questions": []})
                )
 
-      assert {:error, {:schema, %{path: "#/questions/0/id"}}} =
+      assert {:error,
+              {:schema, %{path: "#/questions/0", error: "the object has the key id twice"}}} =
                check(
                  context,
                  "questions",
@@ -438,7 +439,7 @@ defmodule Apiary.Artifacts.FormatTest do
     end
 
     test "is refused in a verdict, a standard type the run API writes too", context do
-      assert {:error, {:schema, %{path: "#/verdict"}}} =
+      assert {:error, {:schema, %{path: "#", error: "the object has the key verdict twice"}}} =
                check(
                  context,
                  "verdict",
@@ -450,9 +451,9 @@ defmodule Apiary.Artifacts.FormatTest do
                check(context, "verdict", "verdict.json", ~s({"verdict": "passed"}))
     end
 
-    test "has a place whose pointer escapes / and ~ in the member name", context do
+    test "has a place whose pointer escapes / and ~ in a key", context do
       assert {:error, {:schema, %{path: "#/a~1b~0c"}}} =
-               check(context, "verdict", "verdict.json", ~s({"a/b~c": 1, "a/b~c": 2}))
+               check(context, "verdict", "verdict.json", ~s({"a/b~c": {"x": 1, "x": 2}}))
     end
 
     test "a run's reply has an outcome, a member's none; asked with a question", context do

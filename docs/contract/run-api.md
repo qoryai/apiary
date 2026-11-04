@@ -247,10 +247,9 @@ Checks, in order, after the checks of every request:
    in `names`, such as `files[0]`, or `files` for a video type's version without a video
    file. A version of the type `verdict` is checked against the type's JSON Schema, so
    its `verdict` is `passed`, `changes-requested` or `escalate`. A JSON file of a
-   standard type, such as `questions`, `review-comments` or `verdict`, has each member
-   name once in each object: a name that comes twice is refused at its second place,
-   such as "at #/questions/0/state, the object has the member state twice", before the
-   schema check.
+   standard type, such as `questions`, `review-comments` or `verdict`, has each key once
+   in each object: a key that comes twice is refused at the object's place, such as
+   "at #/questions/0, the object has the key state twice", before the schema check.
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id` and the
