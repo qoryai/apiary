@@ -914,6 +914,24 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:error, {:svg_content, "the processing instruction a"}} =
                check(context, "proposal", "a.svg", "<?a>b<c x?>" <> svg("<rect/>"))
 
+      # The target is an XML name, letters outside ASCII included.
+      for {target, part} <- [
+            {"café", "the processing instruction café"},
+            {"a:b", "the processing instruction a:b"},
+            {"xml-stylesheet", "the processing instruction xml-stylesheet"},
+            {"x\u0301·y", "the processing instruction x\u0301·y"}
+          ] do
+        assert {:error, {:svg_content, ^part}} =
+                 check(context, "proposal", "a.svg", "<?#{target} x?>" <> svg("<rect>")),
+               target
+      end
+
+      for target <- ["\u202Efoo", "1a", "-a"] do
+        assert {:error, :svg_format} =
+                 check(context, "proposal", "a.svg", "<?#{target} x?>" <> svg("<rect>")),
+               target
+      end
+
       assert {:error, {:svg_content, "the processing instruction xml-stylesheet"}} =
                check(context, "proposal", "a.svg", declared)
     end

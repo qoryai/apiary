@@ -499,7 +499,7 @@ defmodule Apiary.Artifacts.Format do
 
   # The target of an instruction is an XML name; without one, no instruction is found.
   defp open(<<"?", rest::binary>>, :instruction) do
-    case Regex.run(~r/\A[A-Za-z_:][A-Za-z0-9_:.-]*/, rest) do
+    case Regex.run(~r/\A[\p{L}_:][\p{L}\p{N}\p{M}_:.\-\x{B7}]*/u, rest) do
       [target] ->
         if String.downcase(target) == "xml",
           do: skip(rest, "?>", :instruction),
