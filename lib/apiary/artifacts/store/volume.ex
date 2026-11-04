@@ -81,6 +81,7 @@ defmodule Apiary.Artifacts.Store.Volume do
 
   @impl true
   def commit(staged) do
+    # The root is listed once per committed file, at most 10 times per push.
     result = keep(staged)
     if root = root(), do: sweep(root)
     result
