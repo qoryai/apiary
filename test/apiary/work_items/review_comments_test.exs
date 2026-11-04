@@ -137,8 +137,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert answered_events(work_item) == [data]
       assert entries(work_item) == [data]
 
-      assert [%{text: @comment, attempt: 1, version: 1, done_version: nil}] =
-               WorkItems.explore(scope, reload(work_item)).comments
+      assert [%{text: @comment, version: 1, state: :open, replies: []}] =
+               WorkItems.explore(scope, reload(work_item)).review_comments
 
       # The version a member writes is the member's.
       assert [%{writer: :person}] =
@@ -262,8 +262,10 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
                %{"state" => "closed"}
              ] = review_comments(work_item)
 
-      assert [%{version: 1, done_version: 2, done_at: %DateTime{}}, %{done_version: 2}] =
-               explore.comments
+      assert [
+               %{version: 1, state: :closed, replies: [%{version: 2, at: %DateTime{}}]},
+               %{state: :closed, replies: [%{version: 2}]}
+             ] = explore.review_comments
     end
 
     test "is refused with no review comment open, and where no proposal waits", %{
@@ -305,8 +307,10 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       work_item = revised!(work_item)
       assert [%{"state" => "closed"}, %{"state" => "closed"}] = review_comments(work_item)
 
-      assert [%{done_version: 2}, %{done_version: 2}] =
-               WorkItems.explore(scope, work_item).comments
+      assert [
+               %{state: :closed, replies: [%{version: 2}]},
+               %{state: :closed, replies: [%{version: 2}]}
+             ] = WorkItems.explore(scope, work_item).review_comments
     end
   end
 

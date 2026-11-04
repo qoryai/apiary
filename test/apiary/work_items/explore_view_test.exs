@@ -83,7 +83,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                earlier_take_ins: [],
                answers_by_ids: [],
                confirmed_by_id: nil,
-               comments: []
+               review_comments: []
              } = WorkItems.explore(ctx.scope, ctx.work_item)
 
       {:ok, answered} =
@@ -133,7 +133,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                run: %{place: :proposal, outcome: :proposal, proposal: %{message: ^message}},
                confirmed_by_id: ^user_id,
                confirmed_at: %DateTime{},
-               comments: []
+               review_comments: []
              } = WorkItems.explore(ctx.scope, confirmed)
     end
 
