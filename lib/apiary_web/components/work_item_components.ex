@@ -2333,6 +2333,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: nil,
     doc: "Add review comment's page; nil or false for no link"
 
+  attr :level, :string,
+    default: "h2",
+    values: ~w(h2 h3 h4),
+    doc: "the heading's level: one lower inside a fold than the frames of the tab"
+
   slot :comments, doc: "the review comments, at the top of the text below 1440 px"
 
   @doc false
@@ -2369,7 +2374,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
       <div class="q-xp-frame-h">
         <.icon name="hero-document-text" class="q-xp-frame-i size-4" />
-        <h2 id={"#{@id}-h"}>{gettext("Proposal")}</h2>
+        <.dynamic_tag tag_name={@level} id={"#{@id}-h"} class="q-xp-frame-t">
+          {gettext("Proposal")}
+        </.dynamic_tag>
         <.badge :if={@confirmed} color="info" class="q-xp-frame-b">{gettext("Confirmed")}</.badge>
         <.link
           :if={@review_path}
@@ -2549,7 +2556,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
       <div class="q-xp-frame-h">
         <.icon name="hero-question-mark-circle" class="q-xp-frame-i size-4" />
-        <h2 id={"#{@id}-h"}>{@heading}</h2>
+        <h2 id={"#{@id}-h"} class="q-xp-frame-t">{@heading}</h2>
       </div>
       <p :if={@form?} id={"#{@id}-cap"} class="q-xp-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
@@ -2874,6 +2881,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: nil,
     doc: "the Explore tab's address, which Asked as question links to; nil on that tab"
 
+  attr :level, :string,
+    default: "h3",
+    values: ~w(h2 h3),
+    doc: "the heading's level: `h2` in the right column, `h3` inside the proposal's frame"
+
   attr :class, :any, default: nil
 
   def review_comments(assigns) do
@@ -2882,7 +2894,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <section id={@id} class={["q-rc-list", @class]} aria-labelledby={"#{@id}-h"}>
-      <h3 id={"#{@id}-h"} class="q-rc-h">{gettext("Review comments")}</h3>
+      <.dynamic_tag tag_name={@level} id={"#{@id}-h"} class="q-rc-h">
+        {gettext("Review comments")}
+      </.dynamic_tag>
       <.review_card
         :for={{comment, place} <- @cards}
         id={"#{@id}-#{comment.id}"}
@@ -3168,6 +3182,7 @@ defmodule ApiaryWeb.WorkItemComponents do
                       id={"#{@id}-#{run_dom(run)}-proposal"}
                       run={%{proposal: run.wrote_proposal, version: run.wrote}}
                       now={@now}
+                      level="h3"
                     />
                     <.no_result :if={shows == :none} id={"#{@id}-#{run_dom(run)}-none"} run={run} />
                   </div>
@@ -3667,8 +3682,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :test, :boolean, default: false, doc: "whether it is a test work item"
   attr :now, :any, required: true
 
-  # Inside a run's fold: its questions and the answers, its questions nobody answered,
-  # its proposal, or what happened to it.
+  # Inside a run's fold of Earlier take ins: its questions and the answers, its questions
+  # nobody answered, its proposal, or what happened to it. Its frame's heading is an
+  # `h4`, under the `h3` of Earlier take ins.
   defp run_body(%{run: %{outcome: :questions}} = assigns) do
     n = length(assigns.run.questions)
 
@@ -3682,7 +3698,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
       <div class="q-xp-frame-h">
-        <h2 id={"#{@id}-h"}>{@heading}</h2>
+        <h4 id={"#{@id}-h"} class="q-xp-frame-t">{@heading}</h4>
       </div>
       <p class="q-xp-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
@@ -3709,7 +3725,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp run_body(%{run: %{outcome: :proposal}} = assigns) do
     ~H"""
-    <.proposal_frame id={@id} run={@run} now={@now} />
+    <.proposal_frame id={@id} run={@run} now={@now} level="h4" />
     """
   end
 

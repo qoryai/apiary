@@ -229,6 +229,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             reply_path={!running?(@item) && @can_review && (&reply_path(@current_scope, @number, &1))}
             reading={running?(@item) && @item.run[:attempt]}
             explore_path={tab_path(@current_scope, @number, :explore)}
+            level="h2"
           />
         </:rail>
         <:body>

@@ -280,7 +280,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       refute has_element?(view, "#{gate}-go.btn-primary")
       assert has_element?(view, "#{gate}-go", "Confirm")
       assert has_element?(view, "#{gate}-unread", "Confirm leaves 1 review comment unread.")
-      assert has_element?(view, "#work-item-review h3", "Review comments")
+      assert has_element?(view, "#work-item-review h2", "Review comments")
       assert has_element?(view, "#work-item-review-c1-reply", "Reply")
     end
 

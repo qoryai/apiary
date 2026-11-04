@@ -1515,6 +1515,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       r = "#work-item-explore-proposal-review"
 
       assert text(html, "#{r}-h") == "Review comments"
+      assert count(html, "h3#{r}-h") == 1
 
       assert attr(html, "#{r} > .q-rc", "id") == [
                "#{String.trim_leading(r, "#")}-rc2",
@@ -1576,8 +1577,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         render_component(&C.review_comments/1,
           id: "work-item-review",
           comments: invoice_comments(),
-          explore_path: "/acme/main/work/41/explore"
+          explore_path: "/acme/main/work/41/explore",
+          level: "h2"
         )
+
+      assert count(rail, "h2#work-item-review-h.q-rc-h") == 1
 
       assert attr(rail, "#work-item-review-rc2-reply-1 .q-rc-m a", "href") == [
                "/acme/main/work/41/explore#work-item-explore-questions-question-2"
@@ -1768,6 +1772,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert text(html, "#{r}-40 > summary") =~ "Attempt 1 Wrote a proposal"
       assert text(html, "#{r}-40-proposal-h") == "Proposal"
+      # One level below the tab's frames inside the fold, at the same size.
+      assert count(html, "h2#work-item-explore-proposal-h.q-xp-frame-t") == 1
+      assert count(html, "h3#work-item-record-40-proposal-h.q-xp-frame-t") == 1
       assert text(html, "#{r}-40-proposal .q-xp-cap") == "Version 1"
       assert text(html, "#{r}-41-none-h") == "The run was lost."
       assert count(html, "#{r}-42[class=q-xp-runrow]") == 1
@@ -2279,6 +2286,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert texts(html, "#work-item-explore-take-ins-1 .q-xp-run > span:first-child") ==
                ["Attempt 1", "Attempt 2", "Attempt 3"]
+
+      # The frames of its runs are under the h3 of Earlier take ins.
+      assert count(html, "#work-item-explore-take-ins h4.q-xp-frame-t") == 3
+      assert count(html, "#work-item-explore-take-ins :is(h2, h3.q-xp-frame-t)") == 0
     end
 
     test "every end, in both forms, and one run" do

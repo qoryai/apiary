@@ -13709,8 +13709,10 @@
     border-radius: var(--radius-box) var(--radius-box) 0 0;
     background-color: var(--color-base-200);
   }
-  .q-xp-frame-h > h2 {
+  /* A frame's heading: an h2, or lower inside a fold, at one size. */
+  .q-xp-frame-t {
     flex: 1 1 0%;
+    text-wrap: balance;
     font-size: 0.875rem;
     line-height: 1.25rem;
     font-weight: 600;
