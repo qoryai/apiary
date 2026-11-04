@@ -23,7 +23,10 @@ defmodule Apiary.Artifacts.Format do
   #     type's file under `priv/schemas/artifacts/`, a custom type's in its row
   #     (`Apiary.Artifacts.CustomSchema`); `application/json`. A document of the standard
   #     type `questions` also has each question's `id` once, which its schema cannot
-  #     check: a second question with an `id` is refused at that `id`.
+  #     check: a second question with an `id` is refused at that `id`. A document of a
+  #     standard type has each member name once in each object, which a JSON parser
+  #     does not check: Jason keeps the last of two, another parser may keep the first,
+  #     so the second is refused at its place, before the schema reads the document.
   #
   # A refusal is `{:error, reason}`: `:format` for bytes the base view does not take,
   # `:extension` for a document whose filename does not end in `.md`,
@@ -131,7 +134,7 @@ defmodule Apiary.Artifacts.Format do
 
   def check(%Type{base_view: :structured} = type, _filename, path) do
     with {:ok, bytes} <- read(path),
-         {:ok, document} <- decode(bytes),
+         {:ok, document} <- decode(type, bytes),
          :ok <- structured(type, document) do
       {:ok, @json}
     end
@@ -263,7 +266,21 @@ defmodule Apiary.Artifacts.Format do
 
   ## Structured
 
-  defp decode(bytes) do
+  # A standard type's document is read with its objects in order, so a member name that
+  # comes twice in one object is refused at its second place (`unique/2`).
+  defp decode(%Type{standard: true}, bytes) do
+    with true <- String.valid?(bytes),
+         {:ok, document} <- Jason.decode(bytes, objects: :ordered_objects) do
+      case unique(document, []) do
+        {:ok, document} -> {:ok, document}
+        {:repeated, key, path} -> {:error, {:schema, repeated(key, path)}}
+      end
+    else
+      _refused -> {:error, :format}
+    end
+  end
+
+  defp decode(%Type{}, bytes) do
     with true <- String.valid?(bytes),
          {:ok, document} <- Jason.decode(bytes) do
       {:ok, document}
@@ -271,6 +288,46 @@ defmodule Apiary.Artifacts.Format do
       _refused -> {:error, :format}
     end
   end
+
+  # The document with each object a map: `{:ok, document}`, or `{:repeated, key, path}`
+  # for the first member, in the document's order, whose name comes earlier in its
+  # object; `path` the member's place, its segments last first.
+  defp unique(%Jason.OrderedObject{values: members}, path) do
+    Enum.reduce_while(members, {:ok, %{}}, fn {key, value}, {:ok, object} ->
+      if Map.has_key?(object, key) do
+        {:halt, {:repeated, key, [key | path]}}
+      else
+        case unique(value, [key | path]) do
+          {:ok, value} -> {:cont, {:ok, Map.put(object, key, value)}}
+          repeated -> {:halt, repeated}
+        end
+      end
+    end)
+  end
+
+  defp unique(list, path) when is_list(list) do
+    list
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {value, index}, {:ok, acc} ->
+      case unique(value, [index | path]) do
+        {:ok, value} -> {:cont, {:ok, [value | acc]}}
+        repeated -> {:halt, repeated}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      repeated -> repeated
+    end
+  end
+
+  defp unique(value, _path), do: {:ok, value}
+
+  defp repeated(key, path),
+    do:
+      SchemaError.detail(
+        JSV.ErrorFormatter.format_data_path(path),
+        "the object has the member #{key} twice"
+      )
 
   # The document of a standard type is checked in the caller's process: its bounds, the
   # schema file's and `@standard_limits`, are checked before JSV reads it.

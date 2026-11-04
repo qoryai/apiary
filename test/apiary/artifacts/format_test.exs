@@ -389,6 +389,72 @@ defmodule Apiary.Artifacts.FormatTest do
       assert error =~ "earlier review comment"
     end
 
+    test "a member name twice in one object is refused at its second place", context do
+      bytes =
+        ~s({"review_comments": [{"id": "c1", "on": {"artifact": "proposal", "version": 1}, ) <>
+          ~s("text": "Offer a replacement first.", "by": {"name": "Ann", "name": "Bob"}, ) <>
+          ~s("at": "2026-11-04T10:00:00Z", "state": "open"}]})
+
+      assert {:error,
+              {:schema,
+               %{
+                 path: "#/review_comments/0/by/name",
+                 error: "the object has the member name twice"
+               }}} =
+               check(context, "review-comments", "review-comments.json", bytes)
+    end
+  end
+
+  describe "a member name twice in one object" do
+    test "is refused in a questions document, at the second member, before the schema",
+         context do
+      # Jason alone keeps the last state; another parser may keep the first.
+      bytes =
+        ~s({"questions": [{"id": "q1", "question": "Which basket?", "options": [], ) <>
+          ~s("state": "answered", "state": "open", ) <>
+          ~s("asked": {"run": 1, "at": "2026-11-04T10:00:00Z"}}]})
+
+      assert {:error,
+              {:schema,
+               %{path: "#/questions/0/state", error: "the object has the member state twice"}}} =
+               check(context, "questions", "questions.json", bytes)
+
+      # At the root, and the first repeated member in the document's order.
+      assert {:error, {:schema, %{path: "#/questions"}}} =
+               check(
+                 context,
+                 "questions",
+                 "questions.json",
+                 ~s({"questions": [], "questions": []})
+               )
+
+      assert {:error, {:schema, %{path: "#/questions/0/id"}}} =
+               check(
+                 context,
+                 "questions",
+                 "questions.json",
+                 ~s({"questions": [{"id": "a", "id": "b"}], "questions": []})
+               )
+    end
+
+    test "is refused in a verdict, a standard type the run API writes too", context do
+      assert {:error, {:schema, %{path: "#/verdict"}}} =
+               check(
+                 context,
+                 "verdict",
+                 "verdict.json",
+                 ~s({"verdict": "escalate", "verdict": "passed"})
+               )
+
+      assert {:ok, "application/json"} =
+               check(context, "verdict", "verdict.json", ~s({"verdict": "passed"}))
+    end
+
+    test "has a place whose pointer escapes / and ~ in the member name", context do
+      assert {:error, {:schema, %{path: "#/a~1b~0c"}}} =
+               check(context, "verdict", "verdict.json", ~s({"a/b~c": 1, "a/b~c": 2}))
+    end
+
     test "a run's reply has an outcome, a member's none; asked with a question", context do
       run = %{"run" => 12}
       member = %{"name" => "Ann Example"}
