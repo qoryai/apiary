@@ -957,6 +957,40 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 2
     end
 
+    test "takes the questions and the review comments under the name main alone",
+         %{scope: scope, run: run} = context do
+      questions = json("questions.json", %{"questions" => [asked(run, "q1", "Which basket?")]})
+      comments = json("review-comments.json", %{"review_comments" => []})
+
+      for actor <- [{:run, run}, {:member_action, scope}],
+          {type, file} <- [{"questions", questions}, {"review-comments", comments}] do
+        assert Artifacts.push(actor, context.work_item, type, [file], name: "other") ==
+                 {:error, {:invalid, :name}}
+      end
+
+      assert count(Artifact) == 0
+
+      assert {:ok, _version} =
+               Artifacts.push({:run, run}, context.work_item, "questions", [questions])
+    end
+
+    test "Explore reads the proposal named main alone", %{run: run} = context do
+      push = fn name, text ->
+        Artifacts.push({:run, run}, context.work_item, "proposal", [doc("proposal.md", text)],
+          name: name
+        )
+      end
+
+      {:ok, %Version{number: 1}} = push.("main", "## Main")
+      {:ok, %Version{number: 1}} = push.("draft", "## Draft one")
+      {:ok, %Version{number: 2}} = push.("draft", "## Draft two")
+      id = context.work_item.id
+
+      assert Apiary.WorkItems.Explore.proposal_version(id, run.take_in, run.attempt) == 1
+      assert Apiary.WorkItems.Explore.proposal_text(id, 1) == "## Main"
+      assert Apiary.WorkItems.Explore.proposal_text(id, 2) == nil
+    end
+
     test "stores every type the workspace shows, for a run", context do
       %{run: run, work_item: work_item} = context
 

@@ -208,7 +208,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
 - `type`: the artifact type, 1 to 64 bytes of lowercase letters and digits, in groups
   joined by single hyphens, such as `demo-video`.
 - `name`: optional, the same form, `main` by default. Several artifacts of one type
-  have different names, such as screenshots of two screens.
+  have different names, such as screenshots of two screens. `questions` and
+  `review-comments` take only `main`: another name is `400` `invalid_request`, with
+  `name` in `names`.
 - `note`: optional, at most 4000 code points, with no control character but a tab or a
   line break, no format character but U+200C and U+200D, and no line or paragraph
   separator.

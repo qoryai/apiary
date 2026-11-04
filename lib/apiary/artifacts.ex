@@ -78,7 +78,9 @@ defmodule Apiary.Artifacts do
   #   2. the type: a name of no type, or of a standard type the workspace hides,
   #      `{:unknown_type, name}`; a name of the wrong form, `{:invalid, :type}`; a type
   #      the actor does not write, as the actor rule says;
-  #   3. the options: `{:invalid, :name | :stage_id | :note}`;
+  #   3. the options: `{:invalid, :name | :stage_id | :note}`; the questions and the
+  #      review comments take only the name `main`, the one Qory Apiary reads, else
+  #      `{:invalid, :name}`;
   #   4. the files: none, `{:invalid, :no_files}`; more than the type's most,
   #      `{:too_many_files, max_files}`; an entry of the wrong shape, a filename
   #      `Apiary.Artifacts.Filename` refuses, or a filename twice,
@@ -529,6 +531,7 @@ defmodule Apiary.Artifacts do
          {:ok, type} <- push_type(work_item, type_name),
          :ok <- actor_type(writer, type),
          {:ok, fields} <- fields(opts),
+         :ok <- member_name(type, fields),
          {:ok, files} <- files(type, files),
          {:ok, staged} <- stage_all(type, files),
          :ok <- complete(type, staged) do
@@ -689,6 +692,13 @@ defmodule Apiary.Artifacts do
       true -> {:ok, %{name: name, stage_id: stage_id, note: note, expect_stage: expect_stage}}
     end
   end
+
+  # The questions and the review comments are one document per work item, named `main`:
+  # a version under another name would go unchecked and unread.
+  defp member_name(%Type{name: type}, %{name: name}) when type in @member_types,
+    do: if(name == "main", do: :ok, else: {:error, {:invalid, :name}})
+
+  defp member_name(%Type{}, _fields), do: :ok
 
   defp stage_id?(nil), do: true
   defp stage_id?(id) when is_binary(id), do: Regex.match?(@stage_id, id)

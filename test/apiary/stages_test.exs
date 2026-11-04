@@ -655,6 +655,35 @@ defmodule Apiary.StagesTest do
       assert %{gaps: ^gaps} = Stages.status(work_item)
       assert [%{kind: :check}, %{kind: :check}] = Stages.notes(work_item)
     end
+
+    test "a workflow's report reads the questions named main alone", %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "sequence" => [
+            %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}
+          ],
+          "outputs" => [%{"type" => "mockup", "required" => true}]
+        })
+      ])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          verdict("passed").(run, registered)
+          Apiary.WorkItemsFixtures.push_result!(run, registered, questions_result())
+
+          # Questions under another name, as a version stored before the name was checked.
+          {1, _rows} =
+            Repo.update_all(
+              from(a in Apiary.Artifacts.Artifact,
+                where: a.work_item_id == ^run.work_item_id and a.type == "questions"
+              ),
+              set: [name: "other"]
+            )
+        end)
+
+      assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
+    end
   end
 
   describe "Explore's gate" do

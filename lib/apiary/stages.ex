@@ -1308,12 +1308,12 @@ defmodule Apiary.Stages do
   defp stopped?(%DispatchRun{}), do: true
 
   # A workflow that reports with artifacts: the questions it pushed that wait for an
-  # answer, else its newest verdict; a run whose registered run failed or was lost
-  # stopped.
+  # answer, else its newest verdict, each of the artifact named `main`; a run whose
+  # registered run failed or was lost stopped.
   defp reported_result(work_item, run) do
     mine =
       for artifact <- Artifacts.list(work_item),
-          artifact.type in ["questions", "verdict"],
+          artifact.type in ["questions", "verdict"] and artifact.name == "main",
           version <- artifact.versions,
           version.run_id == run.id,
           do: {artifact.type, version}
