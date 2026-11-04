@@ -503,6 +503,27 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:error, :document_size} = check(context, "proposal", "sources.json", big)
     end
 
+      for system <- ["crm.example.com", "a", "crm-eu.example.com", "x1.y-2.z"] do
+        assert {:ok, "application/json"} =
+                 check(context, "proposal", "sources.json", source.(system)),
+               system
+      end
+
+      for system <- [
+            "-crm.example.com",
+            "crm-.example.com",
+            "crm.example.com-",
+            "crm.-example.com",
+            "-",
+            "crm..example.com",
+            String.duplicate("a", 64) <> ".com"
+          ] do
+        assert {:error, {:schema, %{path: "#/sources/0/system"}}} =
+                 check(context, "proposal", "sources.json", source.(system)),
+               system
+      end
+    end
+
     test "refuses an SVG with script, an outside reference or a handler, each", context do
       for body <- [
             "<script>alert(1)</script>",
@@ -840,7 +861,7 @@ defmodule Apiary.Artifacts.FormatTest do
             ~s|<?xml version="1.0>"?>| <> svg("<rect/>"),
             svg(~s|<rect onl&#111;ad="x"/>|)
           ] do
-        assert {:error, :format} = check(context, "proposal", "a.svg", bytes), bytes
+        assert {:error, :svg_format} = check(context, "proposal", "a.svg", bytes), bytes
       end
     end
 
@@ -869,11 +890,94 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:ok, "image/svg+xml"} = check(context, "mockup", "a.svg", unsafe)
     end
 
-    test "an SVG of a proposal still passes the image checks first", context do
-      assert {:error, :format} = check(context, "proposal", "a.svg", "<svg/>")
+    test "refuses an SVG that is not well-formed UTF-8 with an svg root, as :svg_format",
+         context do
+      for bytes <- [
+            "<svg/>",
+            "<svg><rect/></svg>",
+            ~s(<html xmlns="#{@svg_namespace}"/>),
+            svg("<rect>"),
+            svg("<rect/>") <> "<rect/>",
+            svg("<text>") <> <<0xFF>> <> "</text></svg>",
+            "",
+            "not markup"
+          ] do
+        assert {:error, :svg_format} = check(context, "proposal", "a.svg", bytes), bytes
+      end
+
+      # Another image type keeps :format.
+      assert {:error, :format} = check(context, "mockup", "a.svg", "<svg/>")
+    end
+
+    test "refuses a document type declaration as the DOCTYPE, before the parse", context do
+      for bytes <- [
+            ~s(<!DOCTYPE svg>) <> svg("<rect/>"),
+            ~s(<!doctype svg [<!ENTITY e "x">]>) <> svg("<text>&e;</text>"),
+            ~s(<?xml version="1.0"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ) <>
+              ~s("http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">) <> svg("<rect/>"),
+            svg(~s(<!ENTITY e "x">))
+          ] do
+        assert {:error, {:svg_content, "the DOCTYPE"}} =
+                 check(context, "proposal", "a.svg", bytes),
+               bytes
+      end
+
+      # A mention in a comment, a CDATA section or text is not a declaration.
+      for body <- [
+            "<!-- <!DOCTYPE svg> -->",
+            "<style><![CDATA[ /* <!ENTITY e> */ ]]></style>",
+            "<desc>&lt;!DOCTYPE svg&gt;</desc>"
+          ] do
+        assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", svg(body)), body
+      end
 
       assert {:error, :format} =
-               check(context, "proposal", "a.svg", ~s(<!DOCTYPE svg>) <> svg("<rect/>"))
+               check(context, "mockup", "a.svg", ~s(<!DOCTYPE svg>) <> svg("<rect/>"))
+    end
+
+    test "refuses an SVG larger than 524288 bytes as :document_size", context do
+      head = ~s(<svg xmlns="#{@svg_namespace}"><desc>)
+      tail = "</desc></svg>"
+      fill = fn size -> head <> String.duplicate("a", size - byte_size(head <> tail)) <> tail end
+
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", fill.(524_288))
+      assert {:error, :document_size} = check(context, "proposal", "a.svg", fill.(524_289))
+      assert {:error, :format} = check(context, "mockup", "a.svg", fill.(524_289))
+
+      assert Format.proposal_bytes("a.svg") == 524_288
+      assert Format.proposal_bytes("A.SVG") == 524_288
+      assert Format.proposal_bytes("proposal.md") == 262_144
+      assert Format.proposal_bytes("sources.json") == 1_048_576
+    end
+
+    test "names the element with more than 256 attributes, before the parse", context do
+      at = fn name, n -> "<#{name}" <> Enum.map_join(1..n, "", &~s( a#{&1}="1")) <> "/>" end
+
+      assert {:error, {:svg_content, "the attributes past the 256th on the g element"}} =
+               check(context, "proposal", "a.svg", svg(at.("g", 257)))
+
+      assert {:error, {:svg_content, "the attributes past the 256th on the s:rect element"}} =
+               check(context, "proposal", "a.svg", svg(at.("s:rect", 300)))
+
+      # A `>` in a quoted value does not end the tag.
+      many = "<g" <> Enum.map_join(1..300, "", &~s( a#{&1}='>')) <> "/>"
+
+      assert {:error, {:svg_content, "the attributes past the 256th on the g element"}} =
+               check(context, "proposal", "a.svg", svg(many))
+
+      # An `=` in text, a comment, a CDATA section or a quoted value is no attribute.
+      equals = String.duplicate("=", 300)
+
+      for body <- [
+            "<desc>#{equals}</desc>",
+            "<!-- #{equals} -->",
+            "<style><![CDATA[#{equals}]]></style>",
+            ~s(<rect id="#{equals}"/>)
+          ] do
+        assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", svg(body)), body
+      end
+
+      assert {:error, :format} = check(context, "mockup", "a.svg", svg(at.("g", 257)))
     end
   end
 

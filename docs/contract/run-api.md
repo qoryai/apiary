@@ -318,8 +318,13 @@ Checks, in order, after the checks of every request:
    - In any text and attribute value: no `@import`, and a CSS `url(` only to an address
      that starts with `#`.
 
-   An SVG is also UTF-8, at most 512 KiB, with no document type declaration, and its
-   root is `svg` in the SVG namespace; else the file gets the proposal's format message.
+   An SVG is also at most 512 KiB (524288 bytes), else "Shrink checkout.svg to at most
+   524288 bytes."; and UTF-8 text an XML parser reads to its end, with a root element
+   `svg` in the SVG namespace, else "Make checkout.svg a well-formed SVG file in UTF-8
+   with an svg root element." Before the parse, a document type declaration
+   (`<!DOCTYPE` or `<!ENTITY`, any case, outside a comment, a CDATA section and a
+   processing instruction) is refused as "the DOCTYPE", and an element with more than 256
+   attributes as "the attributes past the 256th on the rect element".
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no
@@ -402,21 +407,25 @@ The messages:
     - "Push one Markdown file (.md) in each version of proposal."
     - "Shrink proposal.md to at most 262144 bytes."
     - "Replace cart.png with an image of the type its name ends in."
+    - "Shrink checkout.svg to at most 524288 bytes."
+    - "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."
     - "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the
       elements and attributes the run API document lists, with no script, HTML or
       reference outside the file." The part after "Remove" names the first part
-      refused, with element and attribute names as the file writes them: "the iframe
-      element", "the s:rect element", "the HTML element h:div", "the ping attribute",
-      "the href attribute", "the g element inside the desc element", "the CDATA section
-      in the desc element", "the comment that starts with >", "the processing
-      instruction foo", "a backslash in the fill attribute", "the url() in the style
-      element", "the @import in the text of the desc element" or "the image-set() in
-      the style attribute". A name past 64 characters is cut to 64 and "…".
+      refused, with element and attribute names as the file writes them: "the DOCTYPE",
+      "the attributes past the 256th on the rect element", "the iframe element", "the
+      s:rect element", "the HTML element h:div", "the ping attribute", "the href
+      attribute", "the g element inside the desc element", "the CDATA section in the
+      desc element", "the comment that starts with >", "the processing instruction foo",
+      "a backslash in the fill attribute", "the url() in the style element", "the
+      @import in the text of the desc element" or "the image-set() in the style
+      attribute". A name past 64 characters is cut to 64 and "…".
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
-    - A `sources.json` the schema refuses gets the structured type's message, such as
-      "Fix sources.json to match the format of proposal: at #, additional properties
-      are not allowed but found property 'items'."
+    - "Fix sources.json to match the JSON Schema of proposal sources: at #, additional
+      properties are not allowed but found property 'items'." The part after the colon
+      is the structured form: the JSON pointer of the first failing value and the text
+      of the schema check.
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review

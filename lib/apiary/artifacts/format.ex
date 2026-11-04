@@ -36,9 +36,13 @@ defmodule Apiary.Artifacts.Format do
   #     Apiary reads none of its members;
   #   * a filename that ends in `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg`
   #     (any case): the image check, where the type the bytes show is the one the
-  #     extension names, else `:image_type`; and an SVG also passes the strict check,
-  #     else `{:svg_content, part}`, `part` the first part refused, in plain words with
-  #     names as the file writes them, such as "the script element". The strict check is
+  #     extension names, else `:image_type`. An SVG is at most 512 KiB, else
+  #     `:document_size`; UTF-8 text an XML parser reads to its end, with a root element
+  #     `svg` in the SVG namespace, else `:svg_format`; and passes the strict check, else
+  #     `{:svg_content, part}`, `part` the first part refused, in plain words with names as
+  #     the file writes them, such as "the script element". Before the parse, a document
+  #     type declaration is "the DOCTYPE", and an element with more than 256 attributes
+  #     "the attributes past the 256th on the rect element". The strict check is
   #     an allowlist, so that the SVG runs no script and loads nothing from outside the
   #     file, shown in an `<img>`, opened as an SVG, or opened as a page after a rename to
   #     `.html`, where an HTML parser reads no namespace:
@@ -74,8 +78,8 @@ defmodule Apiary.Artifacts.Format do
   # `:extension` for a document whose filename does not end in `.md` (for a proposal, in
   # none of the extensions it takes), `{:schema, detail}` for a structured document the
   # schema refuses, `detail` its first failing place (`Apiary.Artifacts.SchemaError`),
-  # `:document_size`, `:image_type` and `{:svg_content, part}` for a file of a proposal,
-  # and `:unreadable` for a file that cannot be read.
+  # `:document_size`, `:image_type`, `:svg_format` and `{:svg_content, part}` for a file
+  # of a proposal, and `:unreadable` for a file that cannot be read.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -208,6 +212,7 @@ defmodule Apiary.Artifacts.Format do
           | :extension
           | :document_size
           | :image_type
+          | :svg_format
           | {:svg_content, String.t()}
           | {:schema, SchemaError.t()}
           | :unreadable
@@ -285,12 +290,17 @@ defmodule Apiary.Artifacts.Format do
   end
 
   # proposal_bytes/1 is the most bytes of a proposal's file named `filename`, past which
-  # `check/3` refuses it as `:document_size`: its `sources.json`'s, else its Markdown
-  # file's.
+  # `check/3` refuses it as `:document_size`: its `sources.json`'s, an SVG's, else its
+  # Markdown file's.
   @doc false
   @spec proposal_bytes(String.t()) :: pos_integer
   def proposal_bytes(@sources), do: @sources_bytes
-  def proposal_bytes(_markdown), do: @proposal_markdown
+
+  def proposal_bytes(filename) do
+    if String.downcase(Path.extname(filename)) == ".svg",
+      do: @svg_bytes,
+      else: @proposal_markdown
+  end
 
   # Markdown: UTF-8 text with no NUL.
   defp markdown(path) do
@@ -384,27 +394,36 @@ defmodule Apiary.Artifacts.Format do
   # `mode` is `:strict` for a proposal's SVG, which also passes the strict check (the
   # moduledoc), else `:plain`.
   defp svg(path, mode) do
-    with {:ok, %File.Stat{size: size}} when size <= @svg_bytes <- stat(path),
+    with {:ok, %File.Stat{size: size}} <- stat(path),
+         true <- size <= @svg_bytes || {:error, refusal(mode, :document_size)},
          {:ok, bytes} <- read(path) do
       svg_bytes(bytes, mode)
-    else
-      {:error, :unreadable} -> {:error, :unreadable}
-      _refused -> {:error, :format}
     end
   end
 
   defp svg_bytes(bytes, mode) do
-    with true <- String.valid?(bytes),
-         false <- declares_type?(bytes),
-         true <- attributes_within?(bytes),
+    with true <- String.valid?(bytes) || {:error, refusal(mode, :svg_format)},
+         :ok <- markup(bytes, mode),
          {:ok, :svg} <- Budget.run(fn -> svg_root(:binary.copy(bytes), mode) end, @svg_budget) do
       {:ok, "image/svg+xml"}
     else
-      {:ok, {:unsafe, part}} -> {:error, {:svg_content, part}}
-      {:ok, :unparsed} -> stylesheet(mode, bytes)
-      _refused -> {:error, :format}
+      {:error, reason} when is_tuple(reason) or reason in [:format, :svg_format] ->
+        {:error, reason}
+
+      {:ok, {:unsafe, part}} ->
+        {:error, {:svg_content, part}}
+
+      {:ok, :unparsed} ->
+        stylesheet(mode, bytes)
+
+      _other ->
+        {:error, refusal(mode, :svg_format)}
     end
   end
+
+  # A refusal of `:strict` mode by its reason; `:plain` mode refuses every SVG as `:format`.
+  defp refusal(:strict, reason), do: reason
+  defp refusal(:plain, _reason), do: :format
 
   # xmerl's parser stops at a `<?xml-stylesheet ?>` instruction before the root, as a
   # malformed XML declaration, so in `:strict` mode the bytes of a file whose parse fails
@@ -414,27 +433,92 @@ defmodule Apiary.Artifacts.Format do
   defp stylesheet(:strict, bytes) do
     case Regex.run(~r/<\?(xml-stylesheet)/i, bytes, capture: :all_but_first) do
       [target] -> {:error, {:svg_content, "the processing instruction #{target}"}}
-      nil -> {:error, :format}
+      nil -> {:error, :svg_format}
     end
   end
 
   defp stylesheet(:plain, _bytes), do: {:error, :format}
 
-  # A document type declaration is where entities are declared, internal or external; an
-  # SVG has none, so a file with one is refused before it is parsed.
-  defp declares_type?(bytes) do
-    lower = String.downcase(bytes)
-    String.contains?(lower, "<!doctype") or String.contains?(lower, "<!entity")
+  # markup/2 reads the markup of `bytes` before the parse, as an XML parser reads it:
+  # comments, CDATA sections and processing instructions to their end, and each tag to its
+  # `>` outside a quoted value. `:ok`, else:
+  #
+  #   * a document type declaration, `<!DOCTYPE` or `<!ENTITY` in any case, outside a
+  #     comment, a CDATA section and a processing instruction: "the DOCTYPE". It is where
+  #     entities are declared, internal or external; an SVG has none;
+  #   * a tag with more than `@svg_attributes` attributes, counted by its `=` outside a
+  #     quoted value: "the attributes past the 256th on the rect element".
+  #
+  # A `<` inside a tag, also in a quoted value, is where an XML parser stops, so the count
+  # starts again there. The parser reads no attribute past where this count does.
+  defp markup(bytes, mode) do
+    case scan(bytes) do
+      :ok -> :ok
+      :doctype -> {:error, refusal(mode, {:svg_content, "the DOCTYPE"})}
+      {:attributes, ""} -> {:error, refusal(mode, :svg_format)}
+      {:attributes, name} -> {:error, refusal(mode, {:svg_content, attributes_part(name)})}
+    end
   end
 
-  # Whether no stretch of `bytes` between two `<` has more than `@svg_attributes` `=`.
-  defp attributes_within?(bytes), do: attributes_within?(bytes, 0)
+  defp attributes_part(name),
+    do: "the attributes past the #{@svg_attributes}th on the #{shorten(name)} element"
 
-  defp attributes_within?(_bytes, count) when count > @svg_attributes, do: false
-  defp attributes_within?(<<"<", rest::binary>>, _count), do: attributes_within?(rest, 0)
-  defp attributes_within?(<<"=", rest::binary>>, count), do: attributes_within?(rest, count + 1)
-  defp attributes_within?(<<_byte, rest::binary>>, count), do: attributes_within?(rest, count)
-  defp attributes_within?(<<>>, _count), do: true
+  defp scan(bytes) do
+    case :binary.match(bytes, "<") do
+      :nomatch -> :ok
+      {at, 1} -> open(binary_part(bytes, at + 1, byte_size(bytes) - at - 1))
+    end
+  end
+
+  # `bytes` follow a `<`.
+  defp open(<<"!--", rest::binary>>), do: skip(rest, "-->")
+  defp open(<<"![CDATA[", rest::binary>>), do: skip(rest, "]]>")
+  defp open(<<"?", rest::binary>>), do: skip(rest, "?>")
+
+  defp open(<<"!", rest::binary>> = bytes) do
+    if Regex.match?(~r/\A(?:doctype|entity)/i, rest),
+      do: :doctype,
+      else: tag(bytes, bytes, 0)
+  end
+
+  defp open(bytes), do: tag(bytes, bytes, 0)
+
+  defp skip(bytes, close) do
+    case :binary.match(bytes, close) do
+      :nomatch -> :ok
+      {at, length} -> scan(binary_part(bytes, at + length, byte_size(bytes) - at - length))
+    end
+  end
+
+  # A tag from after its `<`: `start` is where its name begins.
+  defp tag(_bytes, start, count) when count > @svg_attributes,
+    do: {:attributes, tag_name(start)}
+
+  defp tag(<<">", rest::binary>>, _start, _count), do: scan(rest)
+  defp tag(<<"<", rest::binary>>, _start, _count), do: open(rest)
+  defp tag(<<"=", rest::binary>>, start, count), do: tag(rest, start, count + 1)
+
+  defp tag(<<quote, rest::binary>>, start, count) when quote in [?", ?'] do
+    case :binary.match(rest, [<<quote>>, "<"]) do
+      :nomatch ->
+        :ok
+
+      {at, 1} ->
+        after_at = binary_part(rest, at + 1, byte_size(rest) - at - 1)
+
+        if :binary.at(rest, at) == quote,
+          do: tag(after_at, start, count),
+          else: open(after_at)
+    end
+  end
+
+  defp tag(<<_byte, rest::binary>>, start, count), do: tag(rest, start, count)
+  defp tag(<<>>, _start, _count), do: :ok
+
+  defp tag_name(bytes) do
+    [name | _rest] = :binary.split(bytes, [" ", "\t", "\n", "\r", "/", ">", "=", "\"", "'"])
+    name
+  end
 
   # The root element's namespace and name, read by the SAX parser, which reads the whole
   # document: `:svg` for an SVG root in a well-formed document, `:unparsed` for a

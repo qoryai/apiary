@@ -82,7 +82,7 @@ defmodule Apiary.Artifacts do
   #      `{:invalid, {:unreadable, index}}`;
   #   6. each staged file passes its base view's format check, else
   #      `{:invalid, {:format | :extension | :unreadable, index}}`, for a file of a
-  #      proposal also `{:invalid, {:document_size | :image_type, index}}` or
+  #      proposal also `{:invalid, {:document_size | :image_type | :svg_format, index}}` or
   #      `{:invalid, {{:svg_content, part}, index}}`, `part` the part of an SVG refused
   #      (`Apiary.Artifacts.Format`), or, for a structured file or a proposal's
   #      `sources.json` that its JSON Schema refuses,
