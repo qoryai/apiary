@@ -14124,6 +14124,21 @@
   .q-xp-wrap {
     white-space: normal;
   }
+  /* A closed question's summary: the question is at most the line less the chevron
+     (0.875rem and its 8px margin), so a long question wraps beside the chevron; a wider
+     flex item moves to the next line and leaves the chevron alone above it. The chevron
+     is centred on the question's first line, not on its whole box. With one flex line,
+     `align-content: center` puts that line where `stretch` centred its items. */
+  .q-xp-closed > details > summary {
+    align-content: center;
+  }
+  .q-xp-closed > details > summary > .q-xp-chev {
+    align-self: flex-start;
+    margin-top: calc((1lh - 0.875rem) / 2);
+  }
+  .q-xp-closed > details > summary > .q-xp-chev + .q-xp-wrap {
+    max-width: calc(100% - 0.875rem - 8px);
+  }
   .q-xp-said {
     color: var(--color-base-content);
   }

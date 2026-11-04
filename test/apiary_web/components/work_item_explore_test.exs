@@ -156,6 +156,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   defp texts(html, selector),
     do: html |> query(selector) |> Enum.map(&(&1 |> LazyHTML.text() |> squish()))
 
+  # app.css without its comments.
+  defp app_css do
+    File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+    |> String.replace(~r{/\*.*?\*/}s, "")
+  end
+
   defp card(w, extra \\ []) do
     render_component(
       &C.step_card/1,
@@ -1346,6 +1352,33 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       refute html =~ "Send answers"
       refute html =~ "Sending starts"
       refute html =~ "wrote this"
+    end
+
+    test "a closed question's summary: the chevron, then the question, which wraps beside it" do
+      html = questions_tab([])
+      closed = "#work-item-explore-questions-closed.q-xp-closed > details > summary"
+
+      assert texts(html, "#{closed} > .q-xp-chev:first-child + .q-xp-it.q-xp-wrap") == [
+               "1. Which currency should the PDF show?",
+               "4. Is the old template still used?"
+             ]
+
+      assert attr(html, "#{closed} > .q-xp-chev", "class") ==
+               List.duplicate("hero-chevron-right-micro q-xp-chev size-3.5", 2)
+
+      # The question is at most the line less the chevron, 0.875rem (size-3.5) and its
+      # 8px margin, so a long question wraps beside the chevron, not on the next line.
+      # The chevron is centred on the question's first line.
+      css = app_css()
+      assert css =~ ~r/\n  \.q-xp-chev \{\s*margin-right: 8px;/
+
+      assert css =~
+               ~r/\n  \.q-xp-closed > details > summary > \.q-xp-chev \+ \.q-xp-wrap \{\s*max-width: calc\(100% - 0\.875rem - 8px\);\s*\}/
+
+      assert css =~
+               ~r/\n  \.q-xp-closed > details > summary > \.q-xp-chev \{\s*align-self: flex-start;\s*margin-top: calc\(\(1lh - 0\.875rem\) \/ 2\);\s*\}/
+
+      assert css =~ ~r/\n  \.q-xp-closed > details > summary \{\s*align-content: center;\s*\}/
     end
 
     test "each open question: its options, then Give your own option, then one field" do
