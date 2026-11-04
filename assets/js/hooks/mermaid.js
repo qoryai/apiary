@@ -14,12 +14,17 @@
 // Mermaid is vendored (assets/vendor/mermaid) and built as a separate bundle; it is loaded
 // on the first mount of this hook and by no other page.
 //
-// The settings: securityLevel "strict", htmlLabels false, at most 20,000 characters and
-// 200 edges, and the theme "base" with the app's colours, read from its CSS variables.
-// Before a block is drawn, its directive lines (%%{init: …}%%) and click lines are
-// dropped (source below), so a document cannot change the settings or add links. The
-// <img> gets the diagram's width from the SVG's max-width (width below): Mermaid writes
-// width="100%", so without it the CSS width rule of .q-mermaid-diagram has no effect.
+// The settings (settings below): securityLevel "strict", htmlLabels false, at most 20,000
+// characters and 200 edges, and the theme "base" with the app's colours, read from its
+// CSS variables. A document can change Mermaid's settings in two ways, a directive
+// (%%{init: …}%%) and a front matter config: block (--- … --- at its start). The hook
+// drops both before a block is drawn, with its click, link, links and callback lines
+// (source below). Every setting that changes HTML, CSS or links is also in Mermaid's
+// secure list (secure below), which Mermaid removes, at every depth, from what a
+// document sets. So a document cannot change these settings or add links.
+// The <img> gets the diagram's width from the SVG's max-width (width below): Mermaid
+// writes width="100%", so without it the CSS width rule of .q-mermaid-diagram has no
+// effect.
 
 let library = null
 
@@ -49,14 +54,68 @@ const dark = () => {
   return theme === "dark" || (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)
 }
 
+const font = "ui-sans-serif, system-ui, sans-serif"
+
+// The settings a document may not set (Mermaid's "secure" list): Mermaid's six defaults,
+// then each setting that changes the HTML, the CSS or the links of a drawing.
+export const secure = [
+  "secure",
+  "securityLevel",
+  "startOnLoad",
+  "maxTextSize",
+  "suppressErrorRendering",
+  "maxEdges",
+  "htmlLabels",
+  "dompurifyConfig",
+  "themeCSS",
+  "theme",
+  "themeVariables",
+  "darkMode",
+  "fontFamily",
+  "altFontFamily",
+  "fontSize",
+  "arrowMarkerAbsolute",
+  "legacyMathML",
+  "forceLegacyMathML",
+]
+
+// What the hook passes to mermaid.initialize, with the theme's colours `themeVariables`.
+export const settings = themeVariables => ({
+  startOnLoad: false,
+  securityLevel: "strict",
+  secure,
+  htmlLabels: false,
+  maxTextSize: 20000,
+  maxEdges: 200,
+  theme: "base",
+  themeVariables,
+  fontFamily: font,
+})
+
+const fence = line => /^\s*-{3}\s*$/.test(line)
+
+// Leading front matter blocks (--- to ---, after blank lines), dropped; an opening ---
+// with no closing one drops the rest.
+const withoutFrontMatter = lines => {
+  let start = 0
+  while (start < lines.length && lines[start].trim() === "") start++
+  if (start === lines.length || !fence(lines[start])) return lines
+  const end = lines.findIndex((line, at) => at > start && fence(line))
+  return end === -1 ? [] : withoutFrontMatter(lines.slice(end + 1))
+}
+
 // The text of a block as Mermaid draws it: without each line that contains a directive
-// (%%{ … }%%, such as %%{init: …}%%) and without each line with a click statement, at its
-// start or after a ";".
+// (%%{ … }%%, such as %%{init: …}%%), without each line with a click, link, links or
+// callback statement, at its start or after a ";", and without a front matter block at
+// its start, looked for after the other lines are dropped.
 export const source = text =>
-  text
-    .split(/\r\n|\r|\n/)
-    .filter(line => !line.includes("%%{") && !/(^|;)\s*click(\s|$)/i.test(line))
-    .join("\n")
+  withoutFrontMatter(
+    text
+      .split(/\r\n|\r|\n/)
+      .filter(
+        line => !line.includes("%%{") && !/(^|;)\s*(click|links?|callback)(\s|$)/i.test(line),
+      ),
+  ).join("\n")
 
 // The width in pixels of a drawn SVG, from its max-width style, rounded up; null for none.
 export const width = svg => {
@@ -76,8 +135,6 @@ const hex = (context, value) => {
   const [r, g, b] = context.getImageData(0, 0, 1, 1).data
   return "#" + [r, g, b].map(n => n.toString(16).padStart(2, "0")).join("")
 }
-
-const font = "ui-sans-serif, system-ui, sans-serif"
 
 // The theme's colours, from the CSS variables that apply at the hook element.
 const colours = el => {
@@ -142,16 +199,7 @@ const draw = async el => {
     return
   }
 
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: "strict",
-    htmlLabels: false,
-    maxTextSize: 20000,
-    maxEdges: 200,
-    theme: "base",
-    themeVariables: colours(el),
-    fontFamily: font,
-  })
+  mermaid.initialize(settings(colours(el)))
 
   for (const pre of blocks) {
     if (!pre.isConnected) continue
