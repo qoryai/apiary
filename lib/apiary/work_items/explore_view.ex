@@ -142,7 +142,9 @@ defmodule Apiary.WorkItems.ExploreView do
     status = Explore.status(current, not is_nil(confirmation))
 
     ctx =
-      context(work_item, steps, events, (live? and status == :questions) && List.last(current))
+      work_item
+      |> context(steps, events, (live? and status == :questions) && List.last(current))
+      |> Map.put(:versions, versions(steps))
 
     taken = take_ins(events)
     runs = Enum.map(current, &run_view(&1, ctx, confirmation, work_item))
@@ -163,7 +165,7 @@ defmodule Apiary.WorkItems.ExploreView do
         |> Enum.uniq(),
       confirmed_by_id: confirmation && confirmation.confirmed_by_id,
       confirmed_at: confirmation && confirmation.confirmed_at,
-      proposal: newest_proposal(work_item, List.last(runs)),
+      proposal: newest_proposal(work_item, List.last(runs), wrote_versions(runs)),
       questions: questions_view(ctx),
       questions_version: ctx.questions_version,
       review_comments: review_comments(ctx, take_in)
@@ -171,25 +173,39 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   # The newest proposal of the current take in: the one its latest run stands at, or the
-  # one its confirmation keeps; nil for none.
-  defp newest_proposal(_work_item, nil), do: nil
+  # one its confirmation keeps; nil for none. `wrote` is the versions the runs read, by
+  # number, so a version a run wrote is not read again.
+  defp newest_proposal(_work_item, nil, _wrote), do: nil
 
-  defp newest_proposal(%WorkItem{id: id}, %{proposal: %{message: message}, version: version})
+  defp newest_proposal(
+         %WorkItem{id: id},
+         %{proposal: %{message: message}, version: version},
+         wrote
+       )
        when is_binary(message) do
-    case version && shown_proposal(id, version) do
+    case version && Map.get_lazy(wrote, version, fn -> shown_proposal(id, version) end) do
       %{} = proposal -> Map.put(proposal, :version, version)
       _kept -> %{version: version, message: message}
     end
   end
 
-  defp newest_proposal(%WorkItem{id: id, take_in: take_in}, %{attempt: attempt}) do
+  defp newest_proposal(%WorkItem{id: id, take_in: take_in}, %{attempt: attempt}, wrote) do
     with version when is_integer(version) <- Explore.proposal_version(id, take_in, attempt),
-         %{} = proposal <- shown_proposal(id, version) do
+         %{} = proposal <- Map.get_lazy(wrote, version, fn -> shown_proposal(id, version) end) do
       Map.put(proposal, :version, version)
     else
       _none -> nil
     end
   end
+
+  # The versions of the proposal that `runs` wrote, as each run read it, by number.
+  defp wrote_versions(runs),
+    do:
+      for(
+        %{wrote: version, wrote_proposal: %{} = proposal} <- runs,
+        into: %{},
+        do: {version, proposal}
+      )
 
   # Version `version` of the work item `id`'s proposal as the page shows it (`message`,
   # its Markdown; `version_id`; `images`, its image files' filenames), nil for none.
@@ -305,7 +321,7 @@ defmodule Apiary.WorkItems.ExploreView do
       at: time(reply["at"]),
       outcome: outcome(reply["outcome"]),
       question: reply["question"],
-      version: (step = Map.get(ctx.by_number, number)) && version(step)
+      version: (step = Map.get(ctx.by_number, number)) && version(step, ctx)
     }
   end
 
@@ -326,7 +342,7 @@ defmodule Apiary.WorkItems.ExploreView do
       at: (move && move.at) || time(reply["at"]),
       outcome: nil,
       question: nil,
-      version: step && version(step)
+      version: step && version(step, ctx)
     }
   end
 
@@ -416,7 +432,8 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp run_view(step, ctx, confirmation, work_item) do
     rows = answers_of(ctx, step)
-    wrote = wrote(step)
+    wrote = wrote(step, ctx)
+    wrote_proposal = wrote && wrote_proposal(step, wrote)
 
     ended_at = Explore.ended_at(step)
 
@@ -444,26 +461,32 @@ defmodule Apiary.WorkItems.ExploreView do
       answered_by_id: nil,
       answered_at: nil,
       wrote: wrote,
-      wrote_proposal: wrote && wrote_proposal(step, wrote),
+      wrote_proposal: wrote_proposal,
       asked: asked(step, ctx)
     }
 
     view =
       case {step.outcome, confirmed_result(step, confirmation)} do
         {_outcome, %{} = result} ->
-          version = result["proposal_version"] || version(step)
+          version = result["proposal_version"] || version(step, ctx)
 
           %{
             view
             | outcome: :proposal,
               place: :proposal,
-              proposal: proposal(step, version, result),
+              proposal: proposal(step, version, result, {wrote, wrote_proposal}),
               version: version
           }
 
         {:proposal, nil} ->
-          version = version(step)
-          %{view | proposal: proposal(step, version, step.dispatch_run.result), version: version}
+          version = version(step, ctx)
+          result = step.dispatch_run.result
+
+          %{
+            view
+            | proposal: proposal(step, version, result, {wrote, wrote_proposal}),
+              version: version
+          }
 
         {:questions, nil} ->
           %{view | questions: questions(step, ctx, rows)}
@@ -489,19 +512,29 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp confirmed_result(_step, _confirmation), do: nil
 
-  defp version(step),
-    do: Explore.proposal_version(step.dispatch_run.work_item_id, step.take_in, step.attempt)
+  # The version of the proposal the run `step` stands at; nil for none. Explore's view
+  # reads it for every run once (`versions/1`, `ctx.versions`); the Thread reads it where
+  # it needs it.
+  defp version(step, ctx),
+    do: version_at(step.dispatch_run.work_item_id, step.take_in, step.attempt, ctx)
+
+  defp version_at(id, take_in, attempt, ctx) do
+    Map.get_lazy(Map.get(ctx, :versions, %{}), {take_in, attempt}, fn ->
+      Explore.proposal_version(id, take_in, attempt)
+    end)
+  end
+
+  defp versions(steps), do: Map.new(steps, &{{&1.take_in, &1.attempt}, version(&1, %{})})
 
   # The version of the proposal the run `step` pushed: its version, where the run before
   # it stood at another; nil for none.
-  defp wrote(%{run: nil}), do: nil
+  defp wrote(%{run: nil}, _ctx), do: nil
 
-  defp wrote(%{attempt: attempt} = step) do
+  defp wrote(%{attempt: attempt} = step, ctx) do
     before =
-      attempt > 1 &&
-        Explore.proposal_version(step.dispatch_run.work_item_id, step.take_in, attempt - 1)
+      attempt > 1 && version_at(step.dispatch_run.work_item_id, step.take_in, attempt - 1, ctx)
 
-    case version(step) do
+    case version(step, ctx) do
       version when is_integer(version) and version != before -> version
       _same -> nil
     end
@@ -521,8 +554,12 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # The proposal of a run, at `version`: the Markdown of that version of the work item's
   # proposal, else the `message` a result kept before Explore's runs pushed their
-  # proposal as an artifact; nil for none.
-  defp proposal(step, version, result) do
+  # proposal as an artifact; nil for none. The version the run wrote, read already, is
+  # not read again.
+  defp proposal(_step, version, _result, {version, %{message: text}}) when is_binary(text),
+    do: %{message: text}
+
+  defp proposal(step, version, result, _wrote) do
     text = Explore.proposal_text(step.dispatch_run.work_item_id, version)
 
     case {text, result} do
@@ -880,7 +917,7 @@ defmodule Apiary.WorkItems.ExploreView do
                 outcome: step.outcome,
                 end_cause: step.dispatch_run.end_cause,
                 end_detail: step.dispatch_run.end_detail,
-                wrote: (Explore.run_state(step) == :failed && wrote(step)) || nil
+                wrote: (Explore.run_state(step) == :failed && wrote(step, ctx)) || nil
               }
             ]
 

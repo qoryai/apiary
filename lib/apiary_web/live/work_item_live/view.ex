@@ -19,10 +19,11 @@ defmodule ApiaryWeb.WorkItemLive.View do
   # How long a run took is in the run pages' words (`ApiaryWeb.RunComponents`).
   #
   # **Markdown.** A run's proposal and its questions are Markdown, rendered here once for
-  # what the page read (`ApiaryWeb.WorkItemComponents.markdown/1`), as `:rendered` beside
-  # the text: the newest proposal, the proposals of the latest run, of the run before it,
-  # of the earlier take ins, and those each run wrote, and every question. A proposal is
-  # rendered with the image files of its version, which its Markdown may show.
+  # what the page shows (`ApiaryWeb.WorkItemComponents.markdown/1`), as `:rendered` beside
+  # the text: the newest proposal, the proposals each earlier run of this take in wrote
+  # (the newest proposal's render where a run wrote that version), the proposals of the
+  # runs of the earlier take ins, and every question. A proposal is rendered with the
+  # image files of its version, which its Markdown may show.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -74,23 +75,19 @@ defmodule ApiaryWeb.WorkItemLive.View do
   @spec page(Scope.t(), Apiary.WorkItems.WorkItem.t(), map, [map], map) :: map
   def page(%Scope{} = scope, row, explore, thread, names) do
     ctx = context(scope, row, explore, thread)
-    last = length(explore.earlier_runs)
-
-    runs =
-      explore.earlier_runs
-      |> Enum.with_index(1)
-      |> Enum.map(fn {run, i} -> run |> run(ctx) |> rendered(i == last, ctx) end)
+    newest = shown(explore[:proposal], ctx)
+    runs = Enum.map(explore.earlier_runs, &(&1 |> run(ctx) |> earlier(newest, ctx)))
 
     latest =
       if explore.run,
-        do: explore.run |> latest_run(explore, ctx) |> rendered(true, ctx),
+        do: explore.run |> latest_run(explore, ctx) |> with_questions(),
         else: no_run()
 
     %{
       work_item: work_item(row, explore, names, latest, ctx),
       earlier_runs: runs,
       earlier_take_ins: Enum.map(explore.earlier_take_ins, &take_in(&1, ctx)),
-      proposal: shown(explore[:proposal], ctx),
+      proposal: newest,
       questions: Enum.map(explore[:questions] || [], &question(&1, ctx)),
       questions_version: explore[:questions_version],
       review_comments: Enum.map(explore[:review_comments] || [], &review_comment(&1, ctx)),
@@ -163,19 +160,34 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp reply(reply, ctx),
     do: reply |> Map.put(:by, given_by(reply.by_id, nil, ctx)) |> Map.delete(:by_id)
 
-  # The run's questions and the proposal it wrote, and its proposal where `proposal?`,
-  # as the page shows them (`shown/2`).
-  defp rendered(run, proposal?, ctx) do
-    run =
-      run
-      |> Map.update(:questions, [], &rendered_questions/1)
-      |> Map.update(:wrote_proposal, nil, &shown(&1, ctx))
+  # An earlier run of this take in: its questions, and the proposal it wrote, which its
+  # fold in the history shows (`shown/2`); where it wrote the newest proposal's version,
+  # the newest proposal as rendered.
+  defp earlier(run, newest, ctx) do
+    run = with_questions(run)
 
-    case run do
-      %{proposal: %{} = proposal} when proposal? -> %{run | proposal: shown(proposal, ctx)}
+    case {run, newest} do
+      {%{wrote_proposal: %{}, wrote: version}, %{version: version}} ->
+        %{run | wrote_proposal: newest}
+
+      {%{wrote_proposal: %{} = proposal}, _newest} ->
+        %{run | wrote_proposal: shown(proposal, ctx)}
+
+      _none ->
+        run
+    end
+  end
+
+  # A run of an earlier take in: its questions and its proposal, which its fold shows.
+  defp taken_run(run, ctx) do
+    case with_questions(run) do
+      %{proposal: %{} = proposal} = run -> %{run | proposal: shown(proposal, ctx)}
       run -> run
     end
   end
+
+  # A run with its questions rendered.
+  defp with_questions(run), do: Map.update(run, :questions, [], &rendered_questions/1)
 
   defp rendered_questions(questions) when is_list(questions),
     do: Enum.map(questions, &Map.put(&1, :rendered, WorkItemComponents.markdown(&1.text)))
@@ -375,7 +387,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       ended_by: ended_by(take_in.ended, take_in.ended_by_id, ctx),
       ended_at: take_in.ended_at,
       ended_reason: reason(take_in.ended_reason),
-      runs: Enum.map(take_in.runs, &(&1 |> run(ctx) |> rendered(true, ctx)))
+      runs: Enum.map(take_in.runs, &(&1 |> run(ctx) |> taken_run(ctx)))
     }
   end
 
