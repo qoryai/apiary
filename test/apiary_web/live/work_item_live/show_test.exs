@@ -357,7 +357,14 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
           "answers" => %{"q1" => %{"option" => option}}
         })
 
-        assert has_element?(view, "#work-item-explore-questions-error"), option
+        assert has_element?(
+                 view,
+                 "#work-item-explore-questions-error",
+                 "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
+               ),
+               option
+
+        assert answered(work_item) == [], option
       end
 
       render_hook(view, "answer", %{
