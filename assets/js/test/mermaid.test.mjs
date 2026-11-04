@@ -219,6 +219,13 @@ test("does not draw a sequence diagram's properties line, whose icon is an image
   assert.equal(loads("sequenceDiagram\n  Alice->>Bob: properties of the invoice"), false)
 })
 
+test("does not draw an eventmodeling diagram with markup in it", () => {
+  assert.equal(loads("eventmodeling\ntf 01 cmd A {<b>x</b> }"), true)
+  assert.equal(loads("%% Invoices\n\n  eventmodeling\ntf 01 cmd A {<b>x</b> }"), true)
+  assert.equal(loads("eventmodeling\ntf 01 cmd A { x }"), false)
+  assert.equal(loads("flowchart LR\n  A[\"a < b\"] --> B"), false)
+})
+
 test("does not draw CSS that loads an address, escaped or not", () => {
   for (const text of [
     "flowchart LR\n  A --> B\n  style A fill:url(https://example.com/a.svg#p)",

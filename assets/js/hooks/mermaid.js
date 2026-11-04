@@ -225,13 +225,25 @@ const dataBlocks = text => {
 // only the keys.
 const imgWord = block => /\bimg\b/i.test(block)
 
+// The first line of `text` that is not blank and not a %% comment, trimmed, which
+// starts with the diagram's type; "" for none. Mermaid finds the type the same way.
+const firstLine = text =>
+  text
+    .split(/\r\n|\r|\n/)
+    .map(line => line.trim())
+    .find(line => line !== "" && !line.startsWith("%%")) ?? ""
+
 // Whether drawing `text` would load an address, by the syntaxes of the vendored Mermaid
 // 11.17.2 that do: CSS with an address, in any style, classDef, linkStyle or C4 style
 // (cssAddresses above); a flowchart node's image (A@{ img: "…" }), which Mermaid loads as
 // an Image and draws as <image href>, so a node data block with the word img in it, or
 // with a backslash, which its YAML could use to write "img"; and a sequence diagram's
-// properties line, whose "icon" Mermaid draws as <image xlink:href>.
+// properties line, whose "icon" Mermaid draws as <image xlink:href>. Also an
+// eventmodeling diagram with a "<" in it: Mermaid sanitizes its fields, then wraps them
+// and writes &nbsp; into the result, which it puts into the page as HTML, so markup can
+// pass the sanitizer and change after it.
 export const loads = text => {
+  if (/^eventmodeling/i.test(firstLine(text)) && text.includes("<")) return true
   const written = text.toLowerCase()
   const read = unescaped(text).toLowerCase()
   if (cssAddresses.some(css => written.includes(css) || read.includes(css))) return true
