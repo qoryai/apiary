@@ -2624,7 +2624,8 @@ defmodule Apiary.Harnesses.WalkTest do
       setting(ctx.scope, @setting)
       run = queued(ctx)
       work_item = Repo.get!(Apiary.WorkItems.WorkItem, run.work_item_id)
-      path = Apiary.StagesFixtures.unreadable_questions!(ctx.scope, work_item)
+      asked_run = Apiary.StagesFixtures.asked_before!(run)
+      path = Apiary.StagesFixtures.unreadable_questions!(ctx.scope, work_item, asked_run)
 
       serve([ctx.run], covered: covering(ctx), files: @base_files)
       {result, log} = ExUnit.CaptureLog.with_log(fn -> job(run) end)

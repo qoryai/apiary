@@ -21,19 +21,20 @@ defmodule Apiary.StagesFixtures do
 
   @doc """
   Gives the work item a version of its questions with one open question no other test
-  asks, written as a member's action, then moves the stored copy of its file away until
-  the test ends, as a store that cannot read it. Returns the stored copy's path. The
-  question is of the work item's take in, so it counts once the file can be read again
-  (`Apiary.Explore.Questions.open_in_take_in/2`): asked by the registered run of the
-  newest run of the queue of the take in, registered here where it has none.
+  asks, asked by the registered run whose number is `asked_run`, written as a member's
+  action, then moves the stored copy of its file away until the test ends, as a store
+  that cannot read it. Returns the stored copy's path. A question counts once the file
+  can be read again where `asked_run` is a run of the work item's take in
+  (`Apiary.Explore.Questions.open_in_take_in/2`, `asked_before!/1`).
   """
-  def unreadable_questions!(%Scope{} = scope, %WorkItem{} = work_item) do
+  def unreadable_questions!(%Scope{} = scope, %WorkItem{} = work_item, asked_run)
+      when is_integer(asked_run) do
     question = %{
       "id" => "q1",
       "question" => "Which basket #{System.unique_integer([:positive])}?",
       "options" => [],
       "state" => "open",
-      "asked" => %{"run" => asking_run!(work_item), "at" => "2026-11-04T10:00:00Z"}
+      "asked" => %{"run" => asked_run, "at" => "2026-11-04T10:00:00Z"}
     }
 
     {:ok, version} =
@@ -48,27 +49,29 @@ defmodule Apiary.StagesFixtures do
     path
   end
 
-  # The number of the registered run of the newest run of the queue of the work item's
-  # take in, inserted, pending, where it has none.
-  defp asking_run!(%WorkItem{id: id, take_in: take_in}) do
-    run =
-      Repo.one!(
-        from d in DispatchRun,
-          where: d.work_item_id == ^id and d.take_in == ^take_in,
-          order_by: [desc: d.attempt],
-          limit: 1
+  @doc """
+  Makes `dispatch_run`, the first run of its take in and not ended, the second run of
+  that take in. A first run is inserted before it, which registered, ended by its exit
+  and was settled, as a run that asked does before a send while its questions wait.
+  Returns the number of the first run's registered run, the run that asked, for
+  `unreadable_questions!/3`.
+  """
+  def asked_before!(%DispatchRun{attempt: 1, state: state} = dispatch_run)
+      when state != :ended do
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+        set: [attempt: 2, of: max(dispatch_run.of, 2)]
       )
 
-    registered =
-      Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id) ||
-        Repo.insert!(%Run{
-          organisation_id: run.organisation_id,
-          workspace_id: run.workspace_id,
-          node_run_id: run.run_id,
-          dispatch_run_id: run.id
-        })
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
 
-    registered.number
+    %{run: %Run{number: number}} =
+      Apiary.WorkItemsFixtures.explore_run_fixture(work_item,
+        take_in: dispatch_run.take_in,
+        attempt: 1
+      )
+
+    number
   end
 
   @doc "A work item at Explore's gate: taken in, its run ended with a proposal."

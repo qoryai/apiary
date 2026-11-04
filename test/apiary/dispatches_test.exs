@@ -1119,7 +1119,8 @@ defmodule Apiary.DispatchesTest do
       queue_prebuild!(ctx.collection, ctx.deleted)
       held = held!(ctx)
       work_item = Repo.get!(WorkItem, held.work_item_id)
-      path = Apiary.StagesFixtures.unreadable_questions!(ctx.scope, work_item)
+      asked_run = Apiary.StagesFixtures.asked_before!(held)
+      path = Apiary.StagesFixtures.unreadable_questions!(ctx.scope, work_item, asked_run)
       {:ok, _deleted} = Nodes.delete_node(ctx.scope, ctx.deleted)
 
       {_changed, log} = ExUnit.CaptureLog.with_log(fn -> Dispatches.sweep(Dispatches.now()) end)

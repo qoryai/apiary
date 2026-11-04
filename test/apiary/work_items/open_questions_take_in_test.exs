@@ -4,7 +4,8 @@ defmodule Apiary.WorkItems.OpenQuestionsTakeInTest do
   # take in stays open in the work item's one questions document, and counts neither at a
   # run's end (`Apiary.Explore.Outcome`, `Apiary.Stages`), for a run ended by its exit or
   # lost, nor for the answers by position or by id (`Apiary.WorkItems.answer/4`). One
-  # that a run of the current take in reopened counts.
+  # that a run of the current take in reopened counts. The runs of a take in are its
+  # registered runs (`Apiary.Explore.Questions.take_in_runs/2`).
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -16,6 +17,7 @@ defmodule Apiary.WorkItems.OpenQuestionsTakeInTest do
   alias Apiary.Dispatches.{DispatchRun, RunEnd}
   alias Apiary.Explore.Questions
   alias Apiary.Runs.Run
+  alias Apiary.Stages.Escalation
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: [:factory, :workflow_model]
@@ -115,6 +117,45 @@ defmodule Apiary.WorkItems.OpenQuestionsTakeInTest do
                newest_run(work_item)
 
       assert work_item.stage_state == :waiting_answers
+    end
+
+    test "a run of take in 2 that ended by its exit after its registered run failed escalates run_stopped",
+         %{scope: scope} do
+      work_item =
+        again!(scope, ["Which basket?"])
+        |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %{"q1" => {"open", nil}} = states(work_item)
+
+      assert %DispatchRun{take_in: 2, end_cause: :run_ended, result_outcome: :none} =
+               newest_run(work_item)
+
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{cause: :run_stopped, gaps: "The run ended without a result."} =
+               Repo.one!(
+                 from e in Escalation,
+                   where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)
+               )
+    end
+  end
+
+  describe "take_in_runs/2" do
+    test "is the registered runs of the work item's take in alone", %{scope: scope} do
+      work_item = work_item_fixture(scope)
+      other = work_item_fixture(scope, external_ref: "acme/shop#14")
+
+      %{run: %Run{number: first}} = explore_run_fixture(work_item, take_in: 1)
+      %{run: %Run{number: second}} = explore_run_fixture(work_item, take_in: 1)
+      # Queued, so never registered: no number.
+      %{run: nil} = explore_run_fixture(work_item, take_in: 1, state: :waiting)
+      %{run: %Run{number: again}} = explore_run_fixture(work_item, take_in: 2)
+      %{run: %Run{number: elsewhere}} = explore_run_fixture(other, take_in: 1)
+
+      assert Questions.take_in_runs(work_item.id, 1) == MapSet.new([first, second])
+      assert Questions.take_in_runs(work_item.id, 2) == MapSet.new([again])
+      assert Questions.take_in_runs(other.id, 1) == MapSet.new([elsewhere])
+      assert Questions.take_in_runs(work_item.id, 3) == MapSet.new()
     end
   end
 
