@@ -460,9 +460,11 @@ defmodule Apiary.Artifacts.FormatTest do
     end
 
     test "refuses a file that is neither Markdown, the sources nor an image", context do
-      assert {:error, :format} = check(context, "proposal", "notes.txt", "Gift cards.")
-      assert {:error, :format} = check(context, "proposal", "other.json", sources([]))
-      assert {:error, :format} = check(context, "proposal", "Sources.json", sources([]))
+      assert {:error, :extension} = check(context, "proposal", "notes.txt", "Gift cards.")
+      assert {:error, :extension} = check(context, "proposal", "other.json", sources([]))
+      assert {:error, :extension} = check(context, "proposal", "Sources.json", sources([]))
+      assert {:error, :extension} = check(context, "proposal", "x.html", "GIF89a<script>")
+      assert {:error, :extension} = check(context, "proposal", "checkout", @png)
       assert {:error, :format} = check(context, "proposal", "proposal.md", <<0xFF, 0xFE>>)
       assert {:error, :format} = check(context, "proposal", "proposal.md", "a\0b")
     end

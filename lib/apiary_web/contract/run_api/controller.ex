@@ -480,22 +480,23 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp mismatch(check, filename, push),
     do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, filename, push)}."
 
-  defp takes(:extension, _filename, _push), do: "the filename of a document ends in .md"
-
   defp takes(:svg_content, _filename, _push),
     do:
       "an SVG has no script, no foreignObject, no image element and no reference outside " <>
         "the file"
 
-  # A proposal's file that is neither Markdown, its sources nor an image gets the
-  # proposal's line; its Markdown file that is not UTF-8 text, a document's.
-  defp takes(:format, filename, %{name: "proposal"}) do
-    if String.downcase(Path.extname(filename)) == ".md",
+  # A proposal's file that is neither Markdown, its sources nor an image, by its
+  # extension or its bytes, gets the proposal's line; its Markdown file that is not UTF-8
+  # text, a document's.
+  defp takes(check, filename, %{name: "proposal"}) when check in [:format, :extension] do
+    if check == :format and String.downcase(Path.extname(filename)) == ".md",
       do: "a document is a Markdown file of UTF-8 text",
       else:
         "a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images " <>
           "and an optional sources.json"
   end
+
+  defp takes(:extension, _filename, _push), do: "the filename of a document ends in .md"
 
   defp takes(:format, _filename, push) do
     case field(push.type, :base_view) do

@@ -1255,7 +1255,8 @@ defmodule Apiary.ArtifactsTest do
          %{run: run} = context do
       push = &Artifacts.push({:run, run}, context.work_item, "proposal", &1)
 
-      assert {:error, {:invalid, {:format, 1}}} = push.([proposal(), file("notes.txt", "a")])
+      assert {:error, {:invalid, {:extension, 1}}} = push.([proposal(), file("notes.txt", "a")])
+      assert {:error, {:invalid, {:format, 1}}} = push.([proposal(), file("notes.png", "a")])
 
       unsafe = String.replace(@svg, "<rect ", ~s|<rect onclick="alert(1)" |)
 

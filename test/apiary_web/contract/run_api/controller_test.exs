@@ -1053,6 +1053,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {[md, {"notes.txt", "text/plain", "Gift cards."}], ["files[1]"],
          "Fix notes.txt to match the format of proposal: a proposal is one Markdown file " <>
            "(.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."},
+        {[md, {"cart.png", "image/gif", "GIF89a" <> <<1>>}], ["files[1]"],
+         "Fix cart.png to match the format of proposal: a proposal is one Markdown file " <>
+           "(.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."},
         {[{"proposal.md", "text/markdown", <<0xFF>>}], ["files[0]"],
          "Fix proposal.md to match the format of proposal: " <>
            "a document is a Markdown file of UTF-8 text."},

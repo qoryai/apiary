@@ -34,9 +34,9 @@ defmodule Apiary.Artifacts.Format do
   #     sources format, copied from qory (`priv/schemas/artifacts/
   #     proposal-sources.schema.json`); `application/json`. Qory Apiary reads none of its
   #     members;
-  #   * any other filename: the image check, where the type the bytes show is the one
-  #     the extension names, `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg` (any
-  #     case), else `:format`; and an SVG also passes the strict check:
+  #   * a filename that ends in `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg`
+  #     (any case): the image check, where the type the bytes show is the one the
+  #     extension names, else `:format`; and an SVG also passes the strict check:
   #     no element `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, in
   #     any namespace and any case, and no element in the HTML namespace
   #     (`http://www.w3.org/1999/xhtml`); no attribute whose name starts with `on`, and
@@ -49,14 +49,16 @@ defmodule Apiary.Artifacts.Format do
   #     declaration is not one). Else `:svg_content`. Attribute values and text are checked
   #     as the parser reads them, with their character references replaced; a `style`
   #     element has no child element, and its text is checked as one, joined across
-  #     comments and CDATA sections, as a browser reads it.
+  #     comments and CDATA sections, as a browser reads it;
+  #   * any other filename: `:extension`.
   #
   # A version of `proposal` has exactly one Markdown file and at most one `sources.json`
   # (`stored?/2`, `Apiary.Artifacts.push/5`); its type bounds all files together, 5 MiB,
   # and their count, 10 (`Apiary.Artifacts.Type`).
   #
   # A refusal is `{:error, reason}`: `:format` for bytes the base view does not take,
-  # `:extension` for a document whose filename does not end in `.md`,
+  # `:extension` for a document whose filename does not end in `.md` (for a proposal,
+  # in none of the extensions it takes),
   # `{:schema, detail}` for a structured document the schema refuses, `detail` its first
   # failing place (`Apiary.Artifacts.SchemaError`), `:document_size` and `:svg_content`
   # for a file of a proposal, and `:unreadable` for a file that cannot be read.
@@ -172,8 +174,11 @@ defmodule Apiary.Artifacts.Format do
       filename == @sources ->
         sources(path)
 
+      Map.has_key?(@proposal_images, extension) ->
+        proposal_image(Map.fetch!(@proposal_images, extension), path)
+
       true ->
-        proposal_image(Map.get(@proposal_images, extension), path)
+        {:error, :extension}
     end
   end
 
@@ -215,7 +220,7 @@ defmodule Apiary.Artifacts.Format do
     with {:ok, head} <- head(path) do
       case image(head) do
         nil when expected == "image/svg+xml" -> svg(path, :strict)
-        ^expected when expected != nil -> {:ok, expected}
+        ^expected -> {:ok, expected}
         _other -> {:error, :format}
       end
     end

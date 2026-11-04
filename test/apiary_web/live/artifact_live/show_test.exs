@@ -467,6 +467,27 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
+    test "says to rename a proposal's file that is neither Markdown nor an image", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+
+      input =
+        file_input(view, "#artifact-form", :files, [
+          %{name: "proposal.md", content: "# Gift cards", type: "text/markdown"},
+          %{name: "notes.txt", content: "Gift cards.", type: "text/plain"}
+        ])
+
+      render_upload(input, "proposal.md")
+      render_upload(input, "notes.txt")
+
+      html =
+        view
+        |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+        |> render_submit()
+
+      assert html =~ "Rename notes.txt to end in .md: a document is a Markdown file."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
     test "counts the chosen type's most files as the reader adds them", ctx do
       {:ok, view, _html} =
         live(ctx.conn, ArtifactComponents.new_path(ctx.scope, ctx.work_item.number))
