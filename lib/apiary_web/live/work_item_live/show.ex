@@ -28,10 +28,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # with comments, and a review comment or a reply on its form page (`?review=new`,
   # `?reply=<id>`), each sent with the work item the page last read and the attempt of its
   # latest run, so an action from a page that read an earlier state fails
-  # (`Apiary.WorkItems.Moves`). An action that fails shows no words: the page reads the
-  # work item again and draws where it stands now. Only a form whose fields are wrong
-  # shows why, under its fields, as does the form page of a reader who is not an approver of
-  # the stage. The questions form's draft is kept as the reader writes
+  # (`Apiary.WorkItems.Moves`). Run with answers with every answer blank sends the open
+  # review comments (`Apiary.WorkItems.send_review_comments/3`), and with none open shows
+  # under the form that no answer was given. An action that fails shows no words: the
+  # page reads the work item again and draws where it stands now. Only a form whose fields
+  # are wrong shows why, under its fields, as does the form page of a reader who is not an
+  # approver of the stage; Run with comments from such a reader, at the gate or from the
+  # questions form, shows the stage runner's line under that form. The questions form's
+  # draft is kept as the reader writes
   # (`"answer_draft"`): each question's option and note, as the form has them. An event
   # with another number than the page's does nothing.
   #
@@ -518,7 +522,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do: {:noreply, assign(socket, :answers, drafted(params))}
 
   # Run with answers: the answers given, each question with an option, Give your own
-  # option, or a note; a question with neither stays open.
+  # option, or a note; a question with neither stays open. With every answer blank, the
+  # open review comments go to the next run, as from the gate; with none open, nothing is
+  # sent.
   defp act("answer", params, socket) do
     draft = drafted(params)
     open = Enum.filter(socket.assigns.questions, &(&1.state == :open))
@@ -528,7 +534,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         {:noreply, refused_answers(socket, draft, errors, nil)}
 
       {:ok, []} ->
-        {:noreply, refused_answers(socket, draft, %{}, :blank)}
+        if Enum.any?(socket.assigns.review_comments, &(&1.state == :open)),
+          do: comments_only(socket, draft),
+          else: {:noreply, refused_answers(socket, draft, %{}, :blank)}
 
       {:ok, answers} ->
         with_attempt(socket, fn attempt ->
@@ -849,18 +857,38 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
 
-  # Run with comments from a reader who is not an approver of the stage: the page read
-  # again, with the stage runner's line for that refusal (`refused/2`) under the gate.
+  # Run with comments, at the gate or from the questions form, from a reader who is not
+  # an approver of the stage: the page read again, with the stage runner's line for that
+  # refusal (`refused/2`) under the form.
   defp not_approver(socket) do
     socket = refresh(socket)
 
-    case socket.assigns.flow do
-      %{stage: %{name: name}} = flow when is_binary(name) and not socket.redirected ->
+    case {socket.redirected, socket.assigns.flow} do
+      {redirected, %{stage: %{name: name}} = flow}
+      when redirected in [nil, false] and is_binary(name) ->
         assign(socket, :move_error, refused(:not_approver, flow))
 
-      _none ->
+      _redirected_or_none ->
         socket
     end
+  end
+
+  # Run with answers with every answer blank: the next run, with every open review
+  # comment, and the questions left open. A refusal shows as for Run with comments.
+  defp comments_only(socket, draft) do
+    with_attempt(socket, fn attempt ->
+      case WorkItems.send_review_comments(scope(socket), socket.assigns.row, attempt) do
+        {:ok, _work_item} ->
+          {:noreply, socket |> assign(answers: %{}, errors: %{}, form_error: nil) |> load()}
+
+        {:error, :not_approver} ->
+          {:noreply,
+           socket |> assign(answers: draft, errors: %{}, form_error: nil) |> not_approver()}
+
+        {:error, _refused} ->
+          {:noreply, socket |> assign(answers: draft, errors: %{}, form_error: nil) |> refresh()}
+      end
+    end)
   end
 
   # A review comment or a reply written: back to Explore's tab. For a text that fails the

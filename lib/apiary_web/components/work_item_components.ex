@@ -1797,8 +1797,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     * the questions (`questions`): the closed ones first, each folded to one line, then
       the open ones; with the form for a reader who may answer them (`can_act`, while
       Explore needs answers): for each open question its options, Give your own option,
-      and one field; Run with answers (`"answer"`). While a run runs, the open questions
-      show as text;
+      and one field; Run with answers (`"answer"`), which with every answer blank sends
+      the open review comments; under the form, the page's line (`move_error`) where it
+      is given. While a run runs, the open questions show as text;
     * one fold of the take in's runs, oldest first, with what each wrote, and the
       `artifacts` slot; then the earlier take ins (`earlier_take_ins`), each folded with
       its runs, which counted apart.
@@ -1827,8 +1828,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   The questions form's draft is `answers` (by question id, each `%{"option" => choice,
   "note" => text}`, the choice an option's place from 1, or `"own"` for Give your own
   option), and `errors` its errors by question id, as `answer_error/1` words them; and
-  `form_error`, `:blank` where the form gave no answer, `:stale` where the questions
-  changed after the page showed them and no answer was sent. The focus goes to the first
+  `form_error`, `:blank` where the form gave no answer and no review comment is open,
+  `:stale` where the questions changed after the page showed them and no answer was
+  sent. The focus goes to the first
   question at fault, again after each send (`submits`, counted by the page).
   """
   attr :id, :string, default: "work-item-explore"
@@ -1864,7 +1866,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :form_error, :atom,
     default: nil,
     doc:
-      "`:blank` where the form gave no answer, `:stale` where the questions changed after the page showed them"
+      "`:blank` where the form gave no answer and no review comment is open, `:stale` where the questions changed after the page showed them"
 
   attr :submits, :integer,
     default: 0,
@@ -1957,6 +1959,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         answers={@answers}
         errors={@errors}
         form_error={@form_error}
+        move_error={@move_error}
         submits={@submits}
         now={@now}
       />
@@ -2480,7 +2483,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, required: true
   attr :number, :integer, required: true
   attr :open, :integer, required: true, doc: "how many review comments are open"
-  attr :error, :string, default: nil, doc: "why the last move at the gate was not made"
+  attr :error, :string, default: nil, doc: "why the last move on the tab was not made"
 
   # The gate under the proposal: Confirm (`"confirm"`); while review comments are open,
   # Run with comments first (`"run_with_comments"`), which starts the next run with them,
@@ -2548,11 +2551,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :answers, :map, default: %{}
   attr :errors, :map, default: %{}
   attr :form_error, :atom, default: nil
+  attr :move_error, :string, default: nil
   attr :submits, :integer, default: 0
   attr :now, :any, required: true
 
   # The questions: the closed ones first, each a fold of one line, then the open ones,
-  # with the form for a member who may answer them; while a run runs, as text.
+  # with the form for a member who may answer them; while a run runs, as text. Under the
+  # form, why the last move was not made: the page's line (`move_error`), else the form's.
   defp questions_frame(assigns) do
     {open, closed} = Enum.split_with(assigns.questions, &(&1.state == :open))
     form? = assigns.mode == :form and open != []
@@ -2569,7 +2574,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         form?: form?,
         numbers: numbers,
         first_error: first_error,
-        form_words: assigns.form_error in [:blank, :stale] && answer_error(assigns.form_error),
+        form_words:
+          assigns.move_error ||
+            (assigns.form_error in [:blank, :stale] && answer_error(assigns.form_error)),
         heading: ngettext("Question", "Questions", length(assigns.questions))
       )
 

@@ -197,6 +197,57 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       refute has_element?(view, "#work-item-review-c1-reply")
     end
 
+    test "Run with answers with every answer blank sends the open review comments, and the questions stay open",
+         %{conn: conn, scope: scope} do
+      work_item = asked_after_proposal(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 2, "Name the currency field.")
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q1" => %{"note" => " "}, "q2" => %{"note" => ""}}
+      })
+
+      assert [%{attempt: 3, state: :waiting}] =
+               Repo.all(
+                 from d in DispatchRun,
+                   where: d.work_item_id == ^work_item.id and d.attempt == 3,
+                   select: %{attempt: d.attempt, state: d.state}
+               )
+
+      {_version, document} = Apiary.Explore.Questions.newest(work_item)
+      assert Enum.map(document["questions"], & &1["state"]) == ["open", "open"]
+      refute Enum.any?(document["questions"], &Map.has_key?(&1, "answer"))
+      refute has_element?(view, "#work-item-explore-questions-error")
+      refute render(view) =~ "Choose an option or write an answer."
+
+      assert has_element?(
+               view,
+               "#work-item-review-c1-reading",
+               "Attempt 3 reads this review comment."
+             )
+    end
+
+    test "Run with answers with every answer blank and no open review comment: the error, and no run",
+         %{conn: conn, scope: scope} do
+      work_item = asked_after_proposal(scope)
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
+
+      assert has_element?(
+               view,
+               "#work-item-explore-questions-error",
+               "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
+             )
+
+      assert runs(work_item) == 2
+    end
+
     test "questions that changed after the page showed them: no answer sent, the form shows that and the draft stays",
          %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)

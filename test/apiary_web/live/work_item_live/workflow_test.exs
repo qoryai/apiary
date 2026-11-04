@@ -1109,6 +1109,38 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-review-page-text", "Only for card payments.")
     end
 
+    test "Run with answers with every answer blank from a member Explore's gate does not list: the line under the form",
+         %{conn: conn, scope: scope} do
+      listed = explore_gate_listing(scope)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
+      {:ok, _} = WorkItems.send_review_comments(listed, work_item, 1)
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result(["Which refund?"]))
+
+      runs =
+        Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
+
+      assert has_element?(
+               view,
+               "#work-item-explore-questions-error[role=alert]",
+               "Ask an approver of Explore to act on it."
+             )
+
+      refute render(view) =~ "Choose an option or write an answer."
+
+      assert Repo.aggregate(
+               from(d in DispatchRun, where: d.work_item_id == ^work_item.id),
+               :count
+             ) ==
+               runs
+    end
+
     test "Run with comments from a member Explore's gate does not list: the line under the gate",
          %{conn: conn, scope: scope} do
       listed = explore_gate_listing(scope)

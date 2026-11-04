@@ -361,7 +361,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       work_item = revised!(work_item)
       assert [%{"state" => "closed"}] = review_comments(work_item)
 
-      assert [%{version: 1, done_version: 2}] = WorkItems.explore(scope, work_item).comments
+      assert [%{version: 1, state: :closed, replies: [%{version: 2}]}] =
+               WorkItems.explore(scope, work_item).review_comments
     end
 
     test "while questions wait is refused with none open, for a non-approver, and stale", %{
