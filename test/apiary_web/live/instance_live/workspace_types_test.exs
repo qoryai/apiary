@@ -101,14 +101,14 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
         view
         |> render()
         |> LazyHTML.from_fragment()
-        |> LazyHTML.query("datalist#stage-entry-0-0-workflow-names option")
+        |> LazyHTML.query("datalist#stage-entry-0-workflow-names option")
         |> LazyHTML.attribute("value")
 
       assert options == TypeTemplates.workflows()
 
       assert has_element?(
                view,
-               ~s{#stage-entry-0-0-workflow[type="text"][value="explore-a-ticket"]}
+               ~s{#stage-entry-0-workflow[type="text"][value="explore-a-ticket"]}
              )
 
       view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
@@ -139,19 +139,19 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
       assert has_element?(
                view,
-               ~s{#stage-entry-0-0-workflow-mark[data-mark="listed"]},
+               ~s{#stage-entry-0-workflow-mark[data-mark="listed"]},
                "A stage can run it"
              )
 
       view
       |> form("#stage-form",
-        stage: %{sequence: %{"0" => %{body: %{"0" => %{workflow: "triage"}}}}}
+        stage: %{sequence: %{"0" => %{workflow: "triage"}}}
       )
       |> render_change()
 
       assert has_element?(
                view,
-               ~s{#stage-entry-0-0-workflow-mark[data-mark="missing"]},
+               ~s{#stage-entry-0-workflow-mark[data-mark="missing"]},
                "Not in the harness"
              )
 
@@ -179,16 +179,16 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       # A name the pattern refuses keeps triage, with the error at the field.
       view
       |> form("#stage-form",
-        stage: %{sequence: %{"0" => %{body: %{"0" => %{workflow: "Triage!"}}}}}
+        stage: %{sequence: %{"0" => %{workflow: "Triage!"}}}
       )
       |> render_change()
 
-      assert has_element?(view, "#stage-entry-0-0", "Write a workflow name")
-      assert has_element?(view, ~s{#stage-entry-0-0-workflow-mark[data-mark="missing"]})
+      assert has_element?(view, "#stage-entry-0", "Write a workflow name")
+      assert has_element?(view, ~s{#stage-entry-0-workflow-mark[data-mark="missing"]})
 
       view |> element("#type-save") |> render_click()
 
-      assert [%{"loop" => %{"body" => [%{"workflow" => "triage"}]}}] =
+      assert [%{"workflow" => "triage"}] =
                hd(TypeTemplates.newest(@type_key).document["stages"])["sequence"]
     end
 
