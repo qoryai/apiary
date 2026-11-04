@@ -376,6 +376,40 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
     end
   end
 
+  describe "a question reopened twice" do
+    test "the line of each run that wrote or reopened it in the fold of the runs counts it",
+         %{conn: conn, scope: scope} do
+      [currency, _credit_note] = @questions
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: questions_result([currency]))
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The order's."})
+
+      # Run 2, queued by the answer, reopens q1, which is answered at it; run 3, queued
+      # by that answer, reopens q1 again.
+      reopen_at_end!(work_item, "q1")
+      {:ok, _} = WorkItems.answer(scope, work_item, 2, %{"1" => "The shop's."})
+      reopen_at_end!(work_item, "q1")
+
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+
+      numbers =
+        Repo.all(
+          from r in Apiary.Runs.Run,
+            join: d in DispatchRun,
+            on: r.dispatch_run_id == d.id,
+            where: d.work_item_id == ^work_item.id,
+            order_by: d.attempt,
+            select: r.number
+        )
+
+      assert length(numbers) == 3
+
+      for number <- numbers do
+        assert has_element?(view, "#work-item-record-#{number}", "Wrote 1 question")
+      end
+    end
+  end
+
   describe "the questions after Take in again" do
     test "the frame and the form show the questions of the current take in; the earlier take in's fold shows its question",
          %{conn: conn, scope: scope} do
@@ -636,6 +670,43 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
            ]
 
     again
+  end
+
+  # Ends the newest run of `work_item` by its exit, after it pushed a new version of the
+  # questions with the answered question `id` reopened by it: its answer moved to the
+  # end of its history.
+  defp reopen_at_end!(work_item, id) do
+    Apiary.StagesFixtures.end_run!(
+      Repo.get!(WorkItems.WorkItem, work_item.id),
+      fn dispatch_run, run ->
+        {_version, document} = Apiary.Explore.Questions.newest(work_item)
+        at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        questions =
+          Enum.map(document["questions"], fn
+            %{"id" => ^id, "answer" => answer} = question ->
+              reopened = Map.put(answer, "reopened", %{"run" => run.number, "at" => at})
+
+              question
+              |> Map.delete("answer")
+              |> Map.put("state", "open")
+              |> Map.put("history", (question["history"] || []) ++ [reopened])
+
+            question ->
+              question
+          end)
+
+        {:ok, _version} =
+          Apiary.Artifacts.push(
+            {:run, dispatch_run},
+            Repo.get!(WorkItems.WorkItem, work_item.id),
+            "questions",
+            [Apiary.Explore.Questions.file(%{"questions" => questions})],
+            name: "main",
+            stage_id: dispatch_run.stage_id
+          )
+      end
+    )
   end
 
   # A new version of the questions, pushed as the run of the queue `dispatch_run`, with
