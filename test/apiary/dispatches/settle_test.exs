@@ -332,13 +332,15 @@ defmodule Apiary.Dispatches.SettleTest do
       now = Dispatches.now()
 
       # One run a sweep: the first is read and stays unset.
-      log = ExUnit.CaptureLog.capture_log(fn -> assert {[], next} = Settle.sweep(now, nil, 1) end)
+      {result, log} = ExUnit.CaptureLog.with_log(fn -> Settle.sweep(now, nil, 1) end)
+      assert {[], next} = result
+      assert next == first.dispatch_run.id
       assert log =~ "dispatch_run=#{first.dispatch_run.id}"
       assert stored(first) == {nil, nil}
       assert stored(second) == {nil, nil}
 
       # The next sweep reads after it, and settles the second.
-      assert {[_], next} = Settle.sweep(now, first.dispatch_run.id, 1)
+      assert {[_], next} = Settle.sweep(now, next, 1)
       assert next == second.dispatch_run.id
       assert stored(second) == {:questions, nil}
 
