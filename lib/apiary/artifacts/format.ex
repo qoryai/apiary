@@ -37,7 +37,8 @@ defmodule Apiary.Artifacts.Format do
   #   * any other filename: the image check, where an SVG also passes the strict check:
   #     no element `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, in
   #     any namespace and any case, and no element in the HTML namespace
-  #     (`http://www.w3.org/1999/xhtml`); no attribute whose name starts with `on`; an
+  #     (`http://www.w3.org/1999/xhtml`); no attribute whose name starts with `on`, and
+  #     no `xml:base`, which changes what a link to `#…` points to; an
   #     `href`, in any namespace, only to a place in the file (`#…`); a CSS `url(` only to
   #     a place in the file, in an attribute or in text; no `@import`, no backslash in a
   #     `style` element or in any attribute (a CSS escape could spell `url(`), no
@@ -114,6 +115,7 @@ defmodule Apiary.Artifacts.Format do
   # where a browser opens the SVG as a page.
   @svg_refused_elements ~w(script foreignobject image iframe animate set)
   @xhtml_namespace ~c"http://www.w3.org/1999/xhtml"
+  @xml_namespace ~c"http://www.w3.org/XML/1998/namespace"
 
   @markdown "text/markdown; charset=utf-8"
   @json "application/json"
@@ -381,8 +383,9 @@ defmodule Apiary.Artifacts.Format do
 
     safe? =
       style == nil and local not in @svg_refused_elements and uri != @xhtml_namespace and
-        Enum.all?(attributes, fn {_uri, _prefix, attribute, value} ->
-          safe_attribute?(String.downcase(List.to_string(attribute)), List.to_string(value))
+        Enum.all?(attributes, fn {uri, prefix, attribute, value} ->
+          name = String.downcase(List.to_string(attribute))
+          not base?(uri, prefix, name) and safe_attribute?(name, List.to_string(value))
         end)
 
     {safe?, {[local | open], if(local == "style", do: [], else: style)}}
@@ -403,6 +406,11 @@ defmodule Apiary.Artifacts.Format do
     do: {String.downcase(List.to_string(target)) != "xml-stylesheet", state}
 
   defp strict(_event, state), do: {true, state}
+
+  # `xml:base` sets the address a link such as `href="#x"` is read against, so that
+  # `#x` can point outside the file or to `javascript:`.
+  defp base?(uri, prefix, name),
+    do: name == "base" and (uri == @xml_namespace or prefix == ~c"xml")
 
   defp safe_attribute?("on" <> _rest, _value), do: false
 

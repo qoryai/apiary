@@ -542,7 +542,10 @@ defmodule Apiary.Artifacts.FormatTest do
             ~s|<rect style="mask-image: image-set('https://example.com/m.png' 1x)"/>|,
             ~s|<rect style="mask-image: -WEBKIT-IMAGE-SET('https://example.com/m.png' 1x)"/>|,
             ~s|<rect style="fill: IMAGE ('https://example.com/a.png')"/>|,
-            ~s|<style>rect { fill: image("https://example.com/a.png") }</style>|
+            ~s|<style>rect { fill: image("https://example.com/a.png") }</style>|,
+            ~s|<a xml:base="javascript:alert(1)//" href="#x"><text>x</text></a>|,
+            ~s|<use xml:base="https://example.com/a.svg" href="#x"/>|,
+            ~s|<g xml:base="https://example.com/"><use href="#x"/></g>|
           ] do
         assert {:error, :svg_content} = check(context, "proposal", "a.svg", svg(body)), body
       end
