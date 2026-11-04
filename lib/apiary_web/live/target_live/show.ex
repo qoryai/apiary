@@ -700,9 +700,12 @@ defmodule ApiaryWeb.TargetLive.Show do
             class="q-tgt-card-empty"
           >
             <%= if Apiary.Access.instance_admin?(@scope) do %>
-              {gettext(
-                "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
-              )}
+              <.rich text={
+                rich_gettext(
+                  "Set %{variable} on the server to build this target's environment image. Until then, runs start in the pool's default image.",
+                  variable: {:code, "QORY_REGISTRY", "q-mono"}
+                )
+              } />
             <% else %>
               {gettext("Runs of this target start in the pool's default image.")}
             <% end %>
