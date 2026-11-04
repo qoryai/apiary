@@ -1049,10 +1049,26 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # The page read again after the work item changed elsewhere, without the line of the
-  # last move that was not made (`move_error`) and the errors under the questions form
-  # (`form_error`, `errors`): they are about the page before. The form's draft stays.
-  defp changed(socket),
-    do: socket |> assign(move_error: nil, form_error: nil, errors: %{}) |> refresh()
+  # last move that was not made (`move_error`): that line is about the page before. The
+  # errors under the questions form (`form_error`, `errors`) are cleared only where the
+  # read changed the form's questions or run (`form_of/1`), so a refused send that read
+  # the page again keeps its error after a change that left them as they were. The
+  # form's draft stays.
+  defp changed(socket) do
+    before = form_of(socket)
+    socket = socket |> assign(:move_error, nil) |> refresh()
+
+    if socket.redirected in [nil, false] and form_of(socket) != before,
+      do: assign(socket, form_error: nil, errors: %{}),
+      else: socket
+  end
+
+  # What the questions form belongs to: the newest questions' version, and the take in
+  # and attempt of the latest run.
+  defp form_of(%{assigns: assigns}) do
+    {assigns[:questions_version], assigns[:row] && assigns.row.take_in,
+     get_in(assigns, [:item, :run, :attempt])}
+  end
 
   ## Reads
 

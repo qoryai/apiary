@@ -293,6 +293,66 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       assert Enum.map(document["questions"], & &1["state"]) == ["withdrawn", "open"]
       refute Enum.any?(document["questions"], &Map.has_key?(&1, "answer"))
     end
+
+    test "the line of questions that changed stays after a read that leaves the questions as they are",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: understood_result(%{"message" => @proposal}))
+
+      %{dispatch_run: asking} =
+        explore_run_fixture(work_item, result: questions_result(@questions))
+
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+      shown = :sys.get_state(view.pid).socket.assigns.questions
+
+      # Another member's move withdraws the first question; the click comes before the
+      # page reads the questions again, as in the case above.
+      withdraw!(asking, work_item, "q1")
+      render(view)
+      :sys.replace_state(view.pid, &put_in(&1.socket.assigns.questions, shown))
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{
+          "q1" => %{"option" => "1"},
+          "q2" => %{"note" => "Yes, both use one template."}
+        }
+      })
+
+      q = "#work-item-explore-questions"
+      assert has_element?(view, "#{q}-error", "The questions changed after the page showed them")
+
+      # That move's message arrives after the refusal: the page reads the same questions.
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+
+      assert has_element?(view, "#{q}-error", "The questions changed after the page showed them")
+      assert has_element?(view, "#{q}-answer-2", "Yes, both use one template.")
+    end
+
+    test "an answer's field error stays after a Thread comment", %{conn: conn, scope: scope} do
+      work_item = asked_after_proposal(scope)
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+      field = "#work-item-explore-questions-answer-1"
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q1" => %{"option" => "own", "note" => " "}}
+      })
+
+      assert has_element?(view, "#{field}-error", "Write your option, or pick one above.")
+
+      {:ok, _comment} =
+        WorkItems.comment(scope, Repo.get!(WorkItems.WorkItem, work_item.id), "Seen on staging")
+
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+
+      assert has_element?(view, "#{field}-error", "Write your option, or pick one above.")
+      assert has_element?(view, "#{field}-own[checked]")
+    end
   end
 
   describe "the questions after Take in again" do
