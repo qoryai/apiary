@@ -3,8 +3,9 @@ defmodule Apiary.ArtifactStoreHook do
   An artifact store for tests that need something to happen during a push: the volume
   store (`Apiary.Artifacts.Store.Volume`), with a function that runs once, when the first
   file is staged. That moment comes after a caller's read of the work item and before
-  the push locks it; a push keeps its files in the store only after it locked it. The store adapter is an application setting, so a test that uses
-  this is not async.
+  the push locks it; a push keeps its files in the store only after it locks the work
+  item. The store adapter is an application setting, so a test that uses this is not
+  async.
   """
 
   @behaviour Apiary.Artifacts.Store
