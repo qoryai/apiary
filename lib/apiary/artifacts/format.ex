@@ -24,9 +24,10 @@ defmodule Apiary.Artifacts.Format do
   #     (`Apiary.Artifacts.CustomSchema`); `application/json`. A document of the standard
   #     type `questions` also has each question's `id` once, which its schema cannot
   #     check: a second question with an `id` is refused at that `id`. A document of a
-  #     standard type has each member name once in each object, which a JSON parser
-  #     does not check: Jason keeps the last of two, another parser may keep the first,
-  #     so the second is refused at its place, before the schema reads the document.
+  #     standard type has each key once in each object, which a JSON parser does not
+  #     check (Jason keeps the last of two, another parser may keep the first): a key
+  #     that comes twice is refused at its object's place, before the schema reads the
+  #     document.
   #
   # A refusal is `{:error, reason}`: `:format` for bytes the base view does not take,
   # `:extension` for a document whose filename does not end in `.md`,
