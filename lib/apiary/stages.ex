@@ -20,8 +20,9 @@ defmodule Apiary.Stages do
   #   * `take_in/2`, from `Apiary.Dispatches.queue/2`: a take in enters the first stage of
   #     the workspace's current version.
   #   * `next_run/2`, from `Apiary.Dispatches.queue_next/3`: answers to a run's questions,
-  #     Explore again after a run that stopped, or a review comment on Explore's proposal
-  #     at its gate, run the stage's next round.
+  #     a send of the review comments while those questions wait, Explore again after a
+  #     run that stopped, or a review comment on Explore's proposal at its gate, run the
+  #     stage's next round.
   #   * `run_ended/1`, from the end of a run (`Apiary.Dispatches.RunEnd.finish/5`) and from
   #     its settle (`Apiary.Dispatches.Settle.settle/1`), in their transaction: the runner
   #     reads what the run gave and acts. A run ended `run_ended` is read once its outcome
@@ -165,9 +166,10 @@ defmodule Apiary.Stages do
   end
 
   # next_run/2 runs the next round of the stage of the work item `id`, locked by the
-  # caller's transaction: after answers, the same workflow; after an escalation or a run
-  # that stopped, another round; at the gate, after a comment on the proposal, another
-  # round from where the stage's sequence runs again (`Apiary.Stages.Runner.step/4`).
+  # caller's transaction: after answers, or a send of the review comments while the
+  # questions wait, the same workflow; after an escalation or a run that stopped, another
+  # round; at the gate, after a comment on the proposal, another round from where the
+  # stage's sequence runs again (`Apiary.Stages.Runner.step/4`).
   # `{:ok, run}`; `{:error, :not_waiting}` when the stage
   # waits for a workflow; `:not_placed` for a work item the runner did not place.
   @doc false

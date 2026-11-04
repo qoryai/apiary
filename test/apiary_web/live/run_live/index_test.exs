@@ -841,6 +841,25 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       requeued = started_run(scope, %{}, ago: 40)
 
+      # A send of the review comments, at the gate and while questions wait, on a second
+      # work item.
+      sent_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Send them"})
+      queue_run!(scope, started_run(scope, %{}, ago: 65), work_item: sent_item)
+
+      for attempt <- [1, 2] do
+        work_item_event!(sent_item, :answered, user, %{
+          "take_in" => 1,
+          "attempt" => attempt,
+          "count" => 1,
+          "review_comments" => ["c1"]
+        })
+      end
+
+      at_gate = started_run(scope, %{}, ago: 64)
+      queue_run!(scope, at_gate, work_item: sent_item, attempt: 2)
+      while_asked = started_run(scope, %{}, ago: 63)
+      queue_run!(scope, while_asked, work_item: sent_item, attempt: 3)
+
       queue_run!(scope, requeued,
         work_item: work_item,
         attempt: 4,
@@ -876,6 +895,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       for {run, words} <- [
             {first, "Taken in by #{name}"},
             {answered, "Attempt 2 of 3, after answers from #{name}"},
+            {at_gate, "Attempt 2 of 3, after a comment from #{name}"},
+            {while_asked, "Attempt 3 of 3, after a comment from #{name}"},
             {again, "Explore again by #{name}"},
             {requeued, "Queued again after a missing image"},
             {second, "Taken in again by #{name}"},

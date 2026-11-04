@@ -184,10 +184,11 @@ defmodule Apiary.WorkItems.Moves do
   #   * The open review comments go to the next run with the answers (`answer/4`), which
   #     queues it, or by a send of the review comments (`send_review_comments/3`) where the
   #     latest run's questions or its proposal wait: for a member among the stage's
-  #     approvers, with at least one review comment open (else `:not_waiting`), it queues
-  #     the take in's next run as an answer does, at any count of runs. It writes nothing
-  #     to the questions, whose open questions stay open. Its event, `:answered`, has the
-  #     take in, the attempt, the count and the ids of the open review comments
+  #     approvers, with at least one review comment open on a proposal of the take in
+  #     (else `:not_waiting`; one left open in an earlier take in does not count), it
+  #     queues the take in's next run as an answer does, at any count of runs. It writes
+  #     nothing to the questions, whose open questions stay open. Its event, `:answered`,
+  #     has the take in, the attempt, the count and the ids of the open review comments
   #     (`"review_comments"`).
   #   * Today's form for a comment on the proposal (`answer/4` with a text, where the
   #     latest run's proposal waits) writes the review comment and sends the review
@@ -1041,12 +1042,21 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
-  # The ids of the open review comments of the newest version, in order.
+  # The ids of the open review comments of the newest version that are on a proposal of
+  # the work item's take in, in order. A review comment left open in an earlier take in
+  # is on a proposal of that take in, and does not count.
   defp open_review_comments(held) do
-    with {:ok, document} <- review_comments(held),
-         do:
-           {:ok,
-            for(%{"state" => "open", "id" => id} <- ReviewComments.entries(document), do: id)}
+    with {:ok, document} <- review_comments(held) do
+      versions = Explore.proposal_versions(held.id, held.take_in)
+
+      {:ok,
+       for(
+         %{"state" => "open", "id" => id, "on" => %{"artifact" => "proposal", "version" => v}} <-
+           ReviewComments.entries(document),
+         v in versions,
+         do: id
+       )}
+    end
   end
 
   # A new version of the work item's artifact of `type`, written by the member in the

@@ -4,10 +4,9 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
   # on: a review comment written wherever no run runs, also while questions are open, and
   # queuing no run (`Apiary.WorkItems.review_comment/4`); the open review comments sent
   # to the next run with the answers, or at the gate or while questions wait
-  # (`send_review_comments/3`); a reply
-  # that opens a review comment again (`reply/5`); the run that closes them with its
-  # reply; and today's form, a text at the gate, written and sent in one move
-  # (`answer/4`).
+  # (`send_review_comments/3`); a reply that opens a review comment again (`reply/5`);
+  # the run that closes them with its reply; and today's form, a text at the gate,
+  # written and sent in one move (`answer/4`).
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -342,6 +341,17 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
       assert WorkItems.explore(scope, reload(work_item)).status == :queued
 
+      # The queued run is the latest: a second send or an answer for it is running, and
+      # one for the run before it is stale.
+      assert WorkItems.send_review_comments(scope, work_item, 3) == {:error, :running}
+      assert WorkItems.send_review_comments(scope, work_item, 2) == {:error, :stale}
+
+      assert WorkItems.answer(scope, work_item, 3, %{"1" => "The full one."}) ==
+               {:error, :running}
+
+      assert WorkItems.answer(scope, work_item, 2, %{"1" => "The full one."}) == {:error, :stale}
+      assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
+
       data = %{"take_in" => 1, "attempt" => 2, "count" => 1, "review_comments" => ["c1"]}
       assert List.last(answered_events(work_item)) == data
       assert List.last(entries(work_item)) == data
@@ -358,11 +368,15 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       for member <- ~w(answers changes proposal facts solution review_comments),
           do: refute(Map.has_key?(inputs, member))
 
+      # The run gives a proposal and closes c1, but q1 is still open: the questions come
+      # first, so Explore stands at the questions.
       work_item = revised!(work_item)
       assert [%{"state" => "closed"}] = review_comments(work_item)
 
-      assert [%{version: 1, state: :closed, replies: [%{version: 2}]}] =
-               WorkItems.explore(scope, work_item).review_comments
+      assert %{
+               status: :questions,
+               review_comments: [%{version: 1, state: :closed, replies: [%{version: 2}]}]
+             } = WorkItems.explore(scope, work_item)
     end
 
     test "while questions wait is refused with none open, for a non-approver, and stale", %{
@@ -412,6 +426,80 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
                [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :ended}, {4, 4, :waiting}]
 
       assert input!(work_item)["run"] == %{"attempt" => 4}
+    end
+
+    test "while questions wait in a take in again with no proposal is refused", %{
+      scope: scope
+    } do
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      work_item =
+        work_item |> reload() |> end_run!(understood_result(%{"message" => "## Take in 1"}))
+
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {:ok, closed} = WorkItems.close(scope, work_item)
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      work_item = closed |> reload() |> end_run!(questions_result(["Which refund?"]))
+
+      assert %{take_in: 2, status: :questions, review_comments: []} =
+               WorkItems.explore(scope, work_item)
+
+      # Take in 1's review comment is still open, on take in 1's proposal.
+      assert [%{"id" => "c1", "state" => "open"}] = review_comments(work_item)
+      assert WorkItems.review_comment(scope, work_item, 1, "Also this.") == {:error, :not_waiting}
+      assert WorkItems.send_review_comments(scope, work_item, 1) == {:error, :not_waiting}
+      assert runs(work_item) == [{1, 3, :ended}, {1, 3, :ended}]
+      assert length(answered_events(work_item)) == 1
+    end
+
+    test "counts no review comment left open in an earlier take in, at the gate or while questions wait",
+         %{scope: scope} do
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      work_item =
+        work_item |> reload() |> end_run!(understood_result(%{"message" => "## Take in 1"}))
+
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {:ok, closed} = WorkItems.close(scope, work_item)
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      # Take in 2's first run gives a proposal: only take in 1's c1 is open.
+      work_item =
+        closed |> reload() |> end_run!(understood_result(%{"message" => "## Take in 2"}))
+
+      assert %{take_in: 2, status: :confirm} = WorkItems.explore(scope, work_item)
+      assert [%{"id" => "c1", "state" => "open"}] = review_comments(work_item)
+      assert WorkItems.send_review_comments(scope, work_item, 1) == {:error, :not_waiting}
+
+      # At the gate, the send has take in 2's c2 alone.
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Name the refund rule.")
+      assert {:ok, _} = WorkItems.send_review_comments(scope, work_item, 1)
+
+      assert List.last(answered_events(work_item)) ==
+               %{"take_in" => 2, "attempt" => 1, "count" => 1, "review_comments" => ["c2"]}
+
+      # Take in 2's second run asks and leaves c2 open: the send while questions wait has
+      # c2 alone too.
+      work_item = end_run!(work_item, questions_result(["Which refund?"]))
+      assert WorkItems.explore(scope, work_item).status == :questions
+
+      assert [%{"id" => "c1", "state" => "open"}, %{"id" => "c2", "state" => "open"}] =
+               review_comments(work_item)
+
+      assert {:ok, _} = WorkItems.send_review_comments(scope, work_item, 2)
+
+      assert List.last(answered_events(work_item)) ==
+               %{"take_in" => 2, "attempt" => 2, "count" => 1, "review_comments" => ["c2"]}
+
+      assert runs(work_item) ==
+               [{1, 3, :ended}, {1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
     end
 
     test "Send answers carries the open review comments to the next run", %{scope: scope} do
@@ -598,6 +686,19 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert [%{number: 1}] = Apiary.Artifacts.versions(version.artifact)
       assert [_comment] = answered_events(work_item)
       assert runs(work_item) == [{1, 3, :ended}]
+    end
+
+    test "is store_unavailable for a send while questions wait, which writes nothing", %{
+      scope: scope
+    } do
+      work_item = asked_after_proposal!(scope)
+      {version, _document} = ReviewComments.newest(reload(work_item))
+      unreadable!(version)
+
+      assert WorkItems.send_review_comments(scope, work_item, 2) == {:error, :store_unavailable}
+
+      assert length(answered_events(work_item)) == 2
+      assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}]
     end
 
     test "is store_unavailable for an answer, which writes nothing", %{scope: scope} do

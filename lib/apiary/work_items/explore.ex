@@ -385,6 +385,24 @@ defmodule Apiary.WorkItems.Explore do
     )
   end
 
+  # proposal_versions/2 is the numbers of the versions of the proposal named `main` that
+  # the runs of take in `take_in` of the work item `id` pushed, the versions a review
+  # comment of that take in is on.
+  @doc false
+  @spec proposal_versions(Ecto.UUID.t(), pos_integer) :: [pos_integer]
+  def proposal_versions(id, take_in) do
+    Repo.all(
+      from v in Version,
+        join: a in Artifact,
+        on: a.id == v.artifact_id,
+        join: d in DispatchRun,
+        on: d.id == v.run_id,
+        where: a.work_item_id == ^id and a.type == "proposal" and a.name == "main",
+        where: d.work_item_id == ^id and d.take_in == ^take_in,
+        select: v.number
+    )
+  end
+
   # proposal_text/2 is the Markdown of version `number` of the work item `id`'s proposal
   # named `main`, the text of `proposal/2`; nil where that is nil.
   @doc false
