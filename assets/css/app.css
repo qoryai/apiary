@@ -14007,22 +14007,25 @@
     line-height: 1.125rem;
   }
 
-  /* The take in's earlier runs, and earlier take ins: folded. */
+  /* The take in's earlier runs, and earlier take ins: folded. The rules reach the folds
+     and the run folds inside them, not the folds of a proposal inside those. */
   .q-xp-earlier > h3 {
     margin: 0 0 8px;
     color: var(--q-muted);
     font-size: 0.78125rem;
     font-weight: 500;
   }
-  .q-xp-earlier details {
+  .q-xp-earlier > details,
+  .q-xp-earlier > details > .q-xp-inner > details {
     border: 1px solid var(--q-border-subtle);
     border-radius: var(--radius-box);
     background-color: var(--color-base-100);
   }
-  .q-xp-earlier details + details {
+  .q-xp-earlier > details + details {
     margin-top: 8px;
   }
-  .q-xp-earlier summary {
+  .q-xp-earlier > details > summary,
+  .q-xp-earlier > details > .q-xp-inner > details > summary {
     display: flex;
     min-height: 40px;
     flex-wrap: wrap;
@@ -14034,7 +14037,8 @@
     list-style: none;
     cursor: pointer;
   }
-  .q-xp-earlier summary::-webkit-details-marker {
+  .q-xp-earlier > details > summary::-webkit-details-marker,
+  .q-xp-earlier > details > .q-xp-inner > details > summary::-webkit-details-marker {
     display: none;
   }
   .q-xp-chev {
@@ -14042,7 +14046,8 @@
     color: var(--q-faint);
     transition: rotate 120ms var(--q-ease-out);
   }
-  .q-xp-earlier details[open] > summary > .q-xp-chev {
+  .q-xp-earlier > details[open] > summary > .q-xp-chev,
+  .q-xp-earlier > details > .q-xp-inner > details[open] > summary > .q-xp-chev {
     rotate: 90deg;
   }
   .q-xp-it {
@@ -14115,9 +14120,6 @@
     background-color: var(--color-base-100);
     color: var(--q-muted);
     font-size: 0.8125rem;
-  }
-  .q-xp-inner > details + details {
-    margin-top: 0;
   }
   .q-xp-arts {
     margin-top: 4px;
