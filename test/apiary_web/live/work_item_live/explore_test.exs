@@ -322,6 +322,52 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
              )
     end
 
+    test "an answer by an option's place, from the form, reaches take in 2's question, not take in 1's open one",
+         %{conn: conn, scope: scope} do
+      work_item =
+        asked_in_two_take_ins(scope, %{
+          "question" => "Should the credit note PDF change too?",
+          "options" => [
+            %{"title" => "Yes", "explanation" => "One template for both."},
+            %{"title" => "No", "explanation" => "The credit note stays as it is."}
+          ]
+        })
+
+      runs = runs(work_item)
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+
+      q = "#work-item-explore-questions"
+      assert has_element?(view, "#{q}-answer-2-2[value='2']")
+      refute has_element?(view, "#{q}-form [name^='answers[q1]']")
+
+      view
+      |> element("#{q}-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q2" => %{"option" => "2"}}
+      })
+
+      # The stored questions: q2 answered with its second option; q1 open, with no answer.
+      {_version, document} = Apiary.Explore.Questions.newest(work_item)
+
+      assert [
+               %{"id" => "q1", "state" => "open"} = q1,
+               %{"id" => "q2", "state" => "answered", "answer" => %{"option" => "No"}}
+             ] = document["questions"]
+
+      refute Map.has_key?(q1, "answer")
+
+      # The next run of take in 2 is queued.
+      assert runs(work_item) == runs + 1
+
+      assert [%{take_in: 2, state: :waiting}] =
+               Repo.all(
+                 from d in DispatchRun,
+                   where: d.work_item_id == ^work_item.id and d.state == :waiting,
+                   select: %{take_in: d.take_in, state: d.state}
+               )
+    end
+
     test "a question answered in take in 1 that take in 2's run reopened: the frame and the form show it; take in 1's fold too",
          %{conn: conn, scope: scope} do
       work_item = reopened_in_take_in_2(scope)
@@ -485,8 +531,9 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
   end
 
   # A work item whose take in 1 wrote question q1, left open, and was closed; take in 2,
-  # taken in again, wrote question q2, so q1 and q2 are both open in its questions.
-  defp asked_in_two_take_ins(scope) do
+  # taken in again, wrote question q2 (`second`, else the credit note question), so q1
+  # and q2 are both open in its questions.
+  defp asked_in_two_take_ins(scope, second \\ nil) do
     [currency, credit_note] = @questions
     ticket = backlog_ticket_fixture(scope)
     {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
@@ -498,7 +545,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
 
     Repo.delete_all(from d in DispatchRun, where: d.work_item_id == ^again.id and d.take_in == 2)
 
-    explore_run_fixture(again, take_in: 2, result: questions_result([credit_note]))
+    explore_run_fixture(again, take_in: 2, result: questions_result([second || credit_note]))
 
     {_version, document} = Apiary.Explore.Questions.newest(again)
 
