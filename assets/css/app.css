@@ -12108,10 +12108,11 @@
       background-color: var(--color-base-200);
     }
   }
-  /* The ticket's top part (`.q-bl-prev-head`): the bar, then Take in and its hint, or why
-     the reader may not take it in. From 768 px it stays in place over a line, and only the
-     rest (`.q-bl-prev-body`) scrolls. On the sheet below 768 px both parts are one scroll,
-     and Take in moves back under the facts, where it sticks to the sheet's foot. */
+  /* The ticket's top part (`.q-bl-prev-head`): the bar, the whole title, then Take in and
+     its hint, or why the reader may not take it in. From 768 px it stays in place over a
+     line, and only the rest (`.q-bl-prev-body`: the meta line, the facts, the text and the
+     comments) scrolls. On the sheet below 768 px both parts are one scroll, and Take in
+     moves back under the facts, where it sticks to the sheet's foot. */
   @media (min-width: 768px) {
     .q-bl > .q-bl-prev {
       display: flex;
@@ -12125,7 +12126,10 @@
     }
     .q-bl-prev-head > .q-bl-ti-act {
       margin: 0;
-      padding: 4px 0 12px;
+      padding: 12px 0;
+    }
+    .q-bl-prev-head > .q-bl-h:last-child {
+      margin-bottom: 12px;
     }
     .q-bl-prev-body {
       min-height: 0;
@@ -12133,8 +12137,8 @@
       overflow-y: auto;
       overscroll-behavior: contain;
     }
-    .q-bl-prev-body > .q-bl-h {
-      margin-top: 16px;
+    .q-bl-prev-body > .q-bl-meta {
+      margin-top: 12px;
     }
   }
   @media (min-width: 1280px) {
@@ -12151,9 +12155,6 @@
     }
     .q-bl-prev-head > .q-bl-tb {
       border-bottom: 0;
-    }
-    .q-bl-prev-head > .q-bl-ti-act {
-      padding-top: 12px;
     }
     .q-bl-prev-body {
       padding: 0 24px 32px;
@@ -12327,9 +12328,9 @@
     line-height: 1.375rem;
   }
 
-  /* ---- Take in: at the top of the panel and the dialog, under the facts on the sheet, and
-     in the full ticket's side column; Take in and its hint, or why the reader may not take
-     it in ---- */
+  /* ---- Take in: at the top of the panel and the dialog, under the title; under the facts
+     on the sheet; and in the full ticket's side column. Take in and its hint, or why the
+     reader may not take it in ---- */
   .q-bl-ti-act {
     display: flex;
     flex-wrap: wrap;

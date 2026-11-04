@@ -298,10 +298,10 @@ defmodule ApiaryWeb.BacklogComponents do
       for its items in place of "ticket" (`item_noun`, `SourceComponents.item/1`):
       "Bug", "Open the full bug"; Close and a press on the scrim patch to
       `close_patch`. Whether the dialog is modal, and its focus, are the page's, by width.
-      Its top part (`.q-bl-prev-head`) has the bar, then Take in; the rest
-      (`.q-bl-prev-body`) has the title, the meta line, the facts, the text and the
-      comments. From 768 px only the rest scrolls; on the sheet below 768 px the CSS
-      puts Take in back under the facts.
+      Its top part (`.q-bl-prev-head`) has the bar, the title, then Take in; the rest
+      (`.q-bl-prev-body`) has the meta line, the facts, the text and the comments. From
+      768 px only the rest scrolls; on the sheet below 768 px the CSS puts Take in back
+      under the facts.
     * `:full` - the full ticket, a page: Backlog back (`back_path`), the head, the text
       and the comments, and beside them the facts, Filed by among them, the link out and
       Take in.
@@ -436,10 +436,10 @@ defmodule ApiaryWeb.BacklogComponents do
             <.icon name="hero-x-mark-micro" class="size-3.5" />
           </.button>
         </div>
+        <h2 id={"#{@id}-title"} class="q-bl-h"><.external_text text={@ticket.title} /></h2>
         {render_slot(@take_in)}
       </div>
       <div class="q-bl-prev-body">
-        <h2 id={"#{@id}-title"} class="q-bl-h"><.external_text text={@ticket.title} /></h2>
         <p class="q-bl-meta">{@meta}</p>
         <.facts
           id={@id}
