@@ -241,17 +241,6 @@ defmodule Apiary.Explore.Questions do
     |> Enum.find_value(&(is_map(&1) && get_in(&1, ["reopened", "run"])))
   end
 
-  # open?/1 is whether the newest questions of the work item have a question that waits
-  # for an answer.
-  @doc false
-  @spec open?(WorkItem.t()) :: boolean
-  def open?(%WorkItem{} = work_item) do
-    case newest(work_item) do
-      {_version, document} -> open(document) != []
-      nil -> false
-    end
-  end
-
   # ids/1 is the ids of the questions of `document`; none for nil.
   @doc false
   @spec ids(document | nil) :: [String.t()]
