@@ -110,6 +110,19 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end)
   end
 
+  # Saves the workspace's current version with Explore's sequence a loop of
+  # explore-a-ticket of `rounds` rounds, in place of the default's one workflow. A run of
+  # Explore pushes no verdict, so in the loop each run with no open question starts the
+  # next round, up to the limit.
+  defp explore_loop!(scope, rounds \\ 3) do
+    save!(
+      scope,
+      explore_sequence(scope, fn _sequence ->
+        [%{"loop" => %{"rounds" => rounds, "body" => [%{"workflow" => "explore-a-ticket"}]}}]
+      end)
+    )
+  end
+
   # Moves `work_item` to a trial version of the workspace's current one with 2 Explore
   # rounds instead of 3; its queued run moves with it and keeps its stored `of`.
   defp two_rounds!(scope, work_item) do
@@ -126,19 +139,19 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     work_item
   end
 
-  # A second take in after a first that used its 3 runs: the page's Details line while
+  # A second take in after a first that used its 3 runs, each with no result: the page's
+  # Details line while
   # attempt 1 of take in 2 is queued, then the line and its link after attempts 1 and 2
   # of take in 2 ended.
   defp details_of_a_second_take_in(conn, scope) do
-    answers = %{"1" => "a", "2" => "b"}
     ticket = backlog_ticket_fixture(scope)
     {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
 
-    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
-    {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
-    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
-    {:ok, _} = WorkItems.answer(scope, work_item, 2, answers)
-    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), nil)
+    {:ok, _} = WorkItems.explore_again(scope, work_item, 1)
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), nil)
+    {:ok, _} = WorkItems.explore_again(scope, work_item, 2)
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), nil)
     assert %DispatchRun{take_in: 1, attempt: 3} = newest_run(work_item)
     {:ok, _} = WorkItems.close(scope, work_item)
     {:ok, _} = WorkItems.take_in_again(scope, ticket.public_id)
@@ -148,9 +161,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     {:ok, view, _html} = live(conn, page(scope, work_item.number))
     queued = line(view, "#work-item-details-runs")
 
-    work_item = end_run!(work_item, questions_result())
-    {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
-    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
+    work_item = end_run!(work_item, nil)
+    {:ok, _} = WorkItems.explore_again(scope, work_item, 1)
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), nil)
     %DispatchRun{take_in: 2, attempt: 2} = latest = newest_run(work_item)
     number = Repo.one(from r in Run, where: r.dispatch_run_id == ^latest.id, select: r.number)
 
@@ -362,7 +375,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute render(view) =~ "Explore is running."
       assert has_element?(view, "#work-item-head-meta", "Explore is queued")
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
-      assert has_element?(view, "#work-item-stage-round", "Round 1 of 3")
+      # Explore has no loop, so the card counts no rounds.
+      refute has_element?(view, "#work-item-stage-round")
       assert has_element?(view, "#work-item-stage-version", "Process version 1")
       assert html =~ "Attempt 1 · explore-a-ticket · round 1 · queued"
 
@@ -375,6 +389,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       conn: conn,
       scope: scope
     } do
+      explore_loop!(scope)
       work_item = taken_in_fixture(scope)
       assert %DispatchRun{attempt: 1, of: 3} = newest_run(work_item)
 
@@ -390,6 +405,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "a later queued run moved to a version with fewer rounds: the step card counts that version's limit",
          %{conn: conn, scope: scope} do
+      explore_loop!(scope)
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
       {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
       assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
@@ -402,11 +418,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute render(view) =~ "Attempt 2 of 3 is queued."
     end
 
-    test "a run queued after Explore's loop counts the runs its entry may have", %{
+    test "a run queued for Explore's next workflow counts the runs its entry may have", %{
       conn: conn,
       scope: scope
     } do
-      # Explore: the loop of explore-a-ticket, 3 rounds, then one more workflow outside it.
+      # Explore: explore-a-ticket, then one more workflow.
       save!(
         scope,
         explore_sequence(scope, fn sequence ->
@@ -421,8 +437,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           Repo.get!(WorkItem, work_item.id)
         end)
 
-      # Round 3 proposes; the workflow after the loop is queued with the runs it may have
-      # in its round, not the loop's rounds.
+      # Run 3 proposes; the next workflow is queued with the runs it may have in its round,
+      # not the runs of the first.
       work_item = end_run!(work_item, understood_result())
       assert %DispatchRun{attempt: 4, of: 6} = newest_run(work_item)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -483,13 +499,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         )
 
       {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
-      assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
+      # The runs of Explore's entry count only the runs placed in it: the first is not.
+      assert %DispatchRun{attempt: 2, of: 4} = newest_run(work_item)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-runs-0", "Attempt 2 · explore-a-ticket")
       refute has_element?(view, "#work-item-runs-1")
-      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 3 is queued.")
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 4 is queued.")
       refute render(view) =~ "Attempt 1 · explore-a-ticket"
     end
 
@@ -615,8 +632,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       conn: conn,
       scope: scope
     } do
+      # A run that stopped, whose row a release before the run API kept as refused: the
+      # result Core read did not pass its check.
       work_item =
-        scope |> taken_in_fixture() |> end_run!(%{"version" => 1, "verdict" => "understood"})
+        scope
+        |> taken_in_fixture()
+        |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^newest_run(work_item).id),
+          set: [result_outcome: :refused]
+        )
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
@@ -629,7 +655,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
 
     test "a run that stopped: the escalation with its cause", %{conn: conn, scope: scope} do
-      work_item = scope |> taken_in_fixture() |> end_run!(nil)
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-state", "Waits for a person")
@@ -675,13 +705,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       render_hook(view, "explore_again", %{"number" => "#{work_item.number}"})
       assert runs.() == before
 
-      # Run another round starts round 2; the run that stopped still reads as it did.
+      # Run another round runs Explore again, in the same round, as it has no loop; the run
+      # that stopped still reads as it did.
       view
       |> form("#work-item-stage-escalation-form", %{"note" => ""})
       |> render_submit(%{"how" => "another_round"})
 
       html = render(view)
-      assert html =~ "Attempt 2 · explore-a-ticket · round 2"
+      assert html =~ "Attempt 2 · explore-a-ticket · round 1"
       assert html =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
     end
 
@@ -715,7 +746,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       |> render_submit(%{"how" => "another_round"})
 
       html = render(view)
-      assert html =~ "Attempt 2 · explore-a-ticket · round 2"
+      assert html =~ "Attempt 2 · explore-a-ticket · round 1 · queued"
       assert html =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
     end
   end
@@ -997,10 +1028,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-explore-reply-text", "Offer a refund first.")
       assert has_element?(view, "#work-item-explore-reply-text[aria-describedby]")
 
-      assert Repo.aggregate(
-               from(a in Apiary.WorkItems.Answer, where: a.work_item_id == ^work_item.id),
-               :count
-             ) == 0
+      assert Apiary.Explore.ReviewComments.newest(work_item) == nil
     end
 
     test "at Explore with a proposal waiting and no artifact: Confirm and no needs line", %{
@@ -1508,18 +1536,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
-    test "questions at Explore's last run: Run another round queues one more run", %{
+    test "the round limit at Explore's last run: Run another round queues one more run", %{
       conn: conn,
       scope: scope
     } do
+      # Explore's loop of 3 rounds, each run with no result.
+      explore_loop!(scope)
+
       work_item =
-        Enum.reduce(1..2, taken_in_fixture(scope), fn attempt, work_item ->
-          work_item = end_run!(work_item, questions_result())
-          {:ok, _} = WorkItems.answer(scope, work_item, attempt, %{"1" => "a", "2" => "b"})
-          Repo.get!(WorkItem, work_item.id)
+        Enum.reduce(1..3, taken_in_fixture(scope), fn _attempt, work_item ->
+          end_run!(work_item, nil)
         end)
 
-      work_item = end_run!(work_item, questions_result())
       assert %Escalation{cause: :round_limit} = escalation(work_item)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 

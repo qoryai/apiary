@@ -85,7 +85,6 @@ Returns `200` with the work item snapshot:
   "instruction": {"text": "...", "by": {"name": "dana"}, "at": "..."},
   "comments": [],
   "comments_omitted": 0,
-  "answers": [],
   "notes": [
     {"kind": "request_changes", "stage_id": "st_...", "by": {"name": "dana"},
      "note": "Add the empty cart.", "artifact_version_id": "av_...", "at": "..."}
@@ -100,16 +99,17 @@ Returns `200` with the work item snapshot:
   check: `passed`, `missing` or `not_checked`.
 - `verdict` is the work item's newest verdict, or null for none. `gaps` is the stage's
   gaps.
-- `ticket`, `instruction`, `comments`, `comments_omitted` and `answers` are the same as
-  in Explore's input, within the same bound: at most 768 KiB encoded, with the oldest
+- `ticket`, `instruction`, `comments` and `comments_omitted` are the same as in
+  Explore's input, within the same bound: at most 768 KiB encoded, with the oldest
   comments left out first and counted in `comments_omitted`. A test work item has no
   `ticket`.
 - `notes` contains what people wrote on the work item and the gaps of failed checks,
   oldest first. `kind` is `request_changes`, a request for changes at the gate of the
   stage `stage_id`, which may point at one version in `artifact_version_id`; `move`, a
   move of the work item out of the stage `stage_id`; `escalation`, an escalation that a
-  person resolved with a note; `answer`, an answer to a run's questions, whose
-  `stage_id` is null when the run of the question has no stage; or `check`, the Exists
+  person resolved with a note; `answer`, an answer to a run's questions, a review comment
+  on Explore's proposal or a reply to one, whose `stage_id` is null when the run it was
+  given at has no stage; or `check`, the Exists
   checks of the stage `stage_id` that failed and started another round, with one line
   per missing output type in `note`. `by` is the person, null for `check`; `note` is the
   text; `at` is the time it was written, or for an escalation the time it was resolved.
@@ -239,6 +239,17 @@ Checks, in order, after the checks of every request:
    in `names`, such as `files[0]`, or `files` for a video type's version without a video
    file. A version of the type `verdict` is checked against the type's JSON Schema, so
    its `verdict` is `passed`, `changes-requested` or `escalate`.
+7. A version of `questions` or `review-comments` that changes what members wrote,
+   compared with the newest version: `422` `invalid_artifact`, with the file in `names`
+   and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no
+   `answer` and changes none, keeps each `history`, moves the answer of a question it
+   reopens unchanged to the end of its `history`, and adds each question `open` with
+   `asked.run` set to its `run.number`. In `review-comments`, the run keeps every review
+   comment and every earlier reply unchanged, adds no review comment, and adds at most one
+   reply to an open review comment, by `{"run": <run.number>}`, which it closes; a reply
+   with the outcome `asked` has in `question` the id of a question of the newest version
+   of `questions` stored when the run pushes `review-comments`, so the run pushes its
+   questions first.
 
 ## POST verdict
 
@@ -276,7 +287,7 @@ is `400` `invalid_request`.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, or a video version has no video |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, or a run's version of `questions` or `review-comments` changes what members wrote |
 | `503` | `unavailable` | | The request could not be completed; try again |
 
 The messages:
@@ -304,3 +315,7 @@ The messages:
   - "Push checkout.png again: Qory Apiary could not read it after it was received."
   - "Add an MP4 or WebM video to the version of demo-video: a WebVTT file goes with a
     video."
+  - For a version of `questions` or `review-comments` that changes what members wrote,
+    one message per rule, such as "Leave each answer in questions.json as the newest
+    version of questions has it: members write the answers." or "Close each review
+    comment you reply to in review-comments.json."

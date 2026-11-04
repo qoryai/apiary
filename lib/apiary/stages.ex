@@ -20,11 +20,11 @@ defmodule Apiary.Stages do
   #   * `take_in/2`, from `Apiary.Dispatches.queue/2`: a take in enters the first stage of
   #     the workspace's current version.
   #   * `next_run/2`, from `Apiary.Dispatches.queue_next/3`: answers to a run's questions,
-  #     Explore again after a run that stopped, or a comment on Explore's proposal at its
-  #     gate, run the stage's next round.
+  #     Explore again after a run that stopped, or a review comment on Explore's proposal
+  #     at its gate, run the stage's next round.
   #   * `run_ended/1`, from the end of a run (`Apiary.Dispatches.RunEnd.finish/5`) and from
   #     its settle (`Apiary.Dispatches.Settle.settle/1`), in their transaction: the runner
-  #     reads what the run gave and acts. A run ended `run_ended` is read once what it gave
+  #     reads what the run gave and acts. A run ended `run_ended` is read once its outcome
   #     is stored.
   #   * `confirmed/2`, from `Apiary.WorkItems.confirm/3`: a confirmation of Explore's
   #     proposal approves Explore's gate.
@@ -35,15 +35,15 @@ defmodule Apiary.Stages do
   # instance with the reason `last_stage_done`: `closed_by_id` stays empty and
   # `stage_state` stays `:done` (`Apiary.WorkItems.Finished`).
   #
-  # ## Explore (decision D1, a transition until the harness change)
+  # ## Explore
   #
-  # A run of explore-a-ticket returns today's explore v1 result. The runner keeps a
-  # proposal as a `proposal` version written by the run, its `message` as `proposal.md`,
-  # plus a `verdict` version `passed`, and marks done the comments on the proposal the run
-  # read (`Apiary.WorkItems.mark_read/5`); questions as a `questions` version, and the
-  # stage waits for answers. A run with no result, an invalid result, or one that stopped
-  # escalates, `run_stopped`, with the cause. Any other workflow reports with artifacts:
-  # its newest `verdict` and its `questions`.
+  # A run of explore-a-ticket pushes its `proposal` and its `questions` during the run
+  # through the run API, and Core pushes nothing for it. At its end, the newest questions
+  # of the work item with a question that waits for an answer make the stage wait for
+  # answers, whatever else the run did (`Apiary.Explore.Questions`); otherwise a run that
+  # stopped escalates, `run_stopped`, with the cause, and any other counts as a run with no
+  # verdict. Any other workflow reports with artifacts: its newest `verdict` and its
+  # `questions`.
   #
   # ## What a person does
   #
@@ -383,52 +383,6 @@ defmodule Apiary.Stages do
       {0, _rows} -> {:ok, Repo.get!(WorkItem, work_item.id)}
       {:error, _reason} = refused -> refused
     end
-  end
-
-  # answers_used_up/2 escalates the stage of the work item, `round_limit`, with the
-  # newest run's questions as the gaps, when it waits for answers to a run that was the
-  # last its take in may have, as a work item the migration placed may (the answer to it
-  # is refused `:used_up`, `Apiary.WorkItems.Moves`): `{:ok, work_item}`. `refused`
-  # otherwise, also for a work item that is no longer `:exploring`: the answer's
-  # transaction ended, and a person may have closed the work item since.
-  @doc false
-  @spec answers_used_up(WorkItem.t(), {:error, term}) :: {:ok, WorkItem.t()} | {:error, term}
-  def answers_used_up(%WorkItem{id: id}, refused) do
-    transact(fn ->
-      work_item = lock!(id)
-
-      with :exploring <- work_item.state,
-           {:ok, version, stage} <- placed(work_item),
-           :waiting_answers <- work_item.stage_state do
-        run = newest_of_take_in(work_item)
-        questions = question_texts(((run && run.result) || %{})["questions"])
-
-        position =
-          position(work_item) ||
-            %{entry: 0, loop_entry: nil, round: max(work_item.stage_round || 1, 1)}
-
-        outcome = %{
-          state: :escalated,
-          position: position,
-          actions: [{:escalate, :round_limit, questions}]
-        }
-
-        {work_item, _run} = apply_outcome(work_item, version, stage, outcome, run && run.id)
-        tell_now(work_item)
-        {:ok, work_item}
-      else
-        _other -> refused
-      end
-    end)
-  end
-
-  defp newest_of_take_in(work_item) do
-    Repo.one(
-      from d in DispatchRun,
-        where: d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in,
-        order_by: [desc: d.attempt],
-        limit: 1
-    )
   end
 
   # confirmed_stage_id/2 is the stage whose proposal a confirmation of the run `attempt`
@@ -919,7 +873,9 @@ defmodule Apiary.Stages do
   # take in may reach), `status` (the state of the run of the
   # queue: waiting, claimed, handed_over or ended), `verdict` from its verdict artifact
   # (`:passed`; `:failed` for changes-requested or escalate; nil for none), and when it
-  # started and ended, nil for not yet.
+  # started and ended, nil for not yet. A run of Explore pushes no verdict: one whose
+  # outcome is its proposal (`Apiary.Explore.Outcome`) has the verdict `:passed`, as the
+  # work item page showed it when Core wrote that verdict for it.
   @doc false
   @spec runs(WorkItem.t()) :: [map]
   def runs(%WorkItem{id: id} = work_item) do
@@ -943,12 +899,17 @@ defmodule Apiary.Stages do
         attempt: dispatch_run.attempt,
         of: dispatch_run.of,
         status: dispatch_run.state,
-        verdict: verdicts[dispatch_run.id] || (run && verdicts[run.id]),
+        verdict: verdicts[dispatch_run.id] || (run && verdicts[run.id]) || proposed(dispatch_run),
         started_at: run && run.started_at,
         ended_at: ended_at(dispatch_run, run)
       }
     end)
   end
+
+  defp proposed(%DispatchRun{result_outcome: :proposal} = run),
+    do: if(explore_run?(run), do: :passed)
+
+  defp proposed(%DispatchRun{}), do: nil
 
   defp ended_at(%DispatchRun{state: :ended}, %Run{exited_at: %DateTime{} = at}), do: at
   defp ended_at(%DispatchRun{state: :ended, updated_at: at}, _run), do: at
@@ -975,11 +936,12 @@ defmodule Apiary.Stages do
   # notes/1 is what the work item's next run reads as work item data, oldest first: what
   # people wrote (requests for changes, escalations resolved with a note, moves and the
   # answers to a run's questions) and the gaps of failed checks that started a round
-  # (`:check`, with no person). An answer that is a comment on Explore's proposal has
-  # `comment` true; its kind stays `:answer`, as the run API sends it.
+  # (`:check`, with no person). What members gave Explore (`Apiary.Explore.Given`) are
+  # notes of kind `:answer`: an answer, a review comment or a reply, the last two with
+  # `comment` true, as the run API sends them.
   @doc false
   @spec notes(WorkItem.t()) :: [map]
-  def notes(%WorkItem{id: id}) do
+  def notes(%WorkItem{id: id} = work_item) do
     decisions =
       Repo.all(
         from d in GateDecision,
@@ -1022,27 +984,39 @@ defmodule Apiary.Stages do
           }
       )
 
-    answers =
-      Repo.all(
-        from a in Apiary.WorkItems.Answer,
-          left_join: r in DispatchRun,
-          on:
-            r.work_item_id == a.work_item_id and r.take_in == a.take_in and
-              r.attempt == a.attempt,
-          where: a.work_item_id == ^id and not is_nil(a.answered_at) and not is_nil(a.answer),
-          order_by: [a.take_in, a.attempt, a.position],
-          select: %{
-            kind: :answer,
-            comment: is_nil(a.question),
-            stage_id: r.stage_id,
-            user_id: a.answered_by_id,
-            note: a.answer,
-            artifact_version_id: nil,
-            inserted_at: a.answered_at
-          }
-      )
+    answers = given_notes(work_item)
 
     Enum.sort_by(decisions ++ escalations ++ checks ++ answers, & &1.inserted_at, DateTime)
+  end
+
+  # What members gave Explore as notes, each with the stage of the run it was given at.
+  defp given_notes(work_item) do
+    case Apiary.Explore.Given.all(work_item) do
+      [] ->
+        []
+
+      given ->
+        stages =
+          Map.new(
+            Repo.all(
+              from r in DispatchRun,
+                where: r.work_item_id == ^work_item.id,
+                select: {{r.take_in, r.attempt}, r.stage_id}
+            )
+          )
+
+        for entry <- given do
+          %{
+            kind: :answer,
+            comment: entry.kind != :answer,
+            stage_id: Map.get(stages, {entry.take_in, entry.attempt}),
+            user_id: entry.by_id,
+            note: entry.text,
+            artifact_version_id: nil,
+            inserted_at: entry.at
+          }
+        end
+    end
   end
 
   # A version of an artifact as the reads give it, with the approvals that cover it.
@@ -1086,7 +1060,7 @@ defmodule Apiary.Stages do
   defp enter_locked(work_item, version, stage), do: apply_event(work_item, version, stage, :enter)
 
   defp apply_event(work_item, version, stage, event, run_id \\ nil) do
-    facts = work_item |> facts(version, stage) |> Map.put(:last_attempt, last_attempt?(run_id))
+    facts = facts(work_item, version, stage)
     outcome = Runner.step(stage, position(work_item), event, facts)
     apply_outcome(work_item, version, stage, outcome, run_id)
   end
@@ -1202,13 +1176,6 @@ defmodule Apiary.Stages do
     struct!(work_item, fields)
   end
 
-  # Whether the run `run_id` is the last its take in may have (`attempt` reached `of`).
-  defp last_attempt?(nil), do: false
-
-  defp last_attempt?(run_id) do
-    Repo.one(from d in DispatchRun, where: d.id == ^run_id, select: d.attempt >= d.of) || false
-  end
-
   # A run's `of`: in a loop, the attempt plus the rounds left; outside a loop, the runs
   # its entry may have in one round, as many as a take in of today's Explore
   # (`@question_runs`), so a workflow may ask questions and run again with the answers.
@@ -1284,7 +1251,7 @@ defmodule Apiary.Stages do
   end
 
   # What the run gave, as the runner reads it; `:unsettled` while a run ended by its exit
-  # has nothing stored yet.
+  # has no outcome stored yet (`Apiary.Dispatches.Settle`).
   defp run_result(_work_item, %DispatchRun{end_cause: :run_ended, result_outcome: nil}, _ctx),
     do: :unsettled
 
@@ -1300,62 +1267,48 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp explore_run?(%DispatchRun{step: "explore", workflow: workflow}),
+  # explore_run?/1 is whether the run of the queue `run` is a run of Explore: one of the
+  # step `explore` with no workflow, as every run with the workflow model off, or of
+  # `explore_workflow/0`.
+  @doc false
+  @spec explore_run?(DispatchRun.t()) :: boolean
+  def explore_run?(%DispatchRun{step: "explore", workflow: workflow}),
     do: is_nil(workflow) or workflow == explore_workflow()
 
-  defp explore_run?(%DispatchRun{}), do: false
+  def explore_run?(%DispatchRun{}), do: false
 
-  # D1: today's explore v1 result as artifacts.
-  defp explore_result(
-         work_item,
-         %DispatchRun{end_cause: :run_ended, result_outcome: :proposal} = run,
-         _context
-       )
-       when is_map(run.result) do
-    with {:ok, file} <- proposal_file(run.result),
-         {:ok, proposal} <-
-           Artifacts.push({:run, run}, work_item, "proposal", [file],
-             stage_id: work_item.stage_id
-           ),
-         {:ok, _verdict} <-
-           Artifacts.push_json({:run, run}, work_item, "verdict", %{"verdict" => "passed"},
-             stage_id: work_item.stage_id
-           ) do
-      Apiary.WorkItems.mark_read(
-        work_item.id,
-        run.take_in,
-        run.attempt,
-        proposal.number,
-        DateTime.utc_now()
-      )
+  # Explore: open questions first, then a run that stopped, else a run with no verdict.
+  defp explore_result(work_item, run, context) do
+    open = open_questions(work_item)
 
-      {:verdict, :passed, nil}
-    else
-      _refused -> {:stopped, "The run's proposal could not be stored."}
+    cond do
+      open != [] -> {:questions, question_texts(open)}
+      stopped?(run) -> {:stopped, stop_cause(run, work_item, context)}
+      true -> {:verdict, nil, nil}
     end
   end
 
-  defp explore_result(
-         work_item,
-         %DispatchRun{end_cause: :run_ended, result_outcome: :questions} = run,
-         _context
-       )
-       when is_map(run.result) do
-    document = Map.take(run.result, ["questions"])
-
-    case Artifacts.push_json({:run, run}, work_item, "questions", document,
-           stage_id: work_item.stage_id
-         ) do
-      {:ok, _questions} -> {:questions, question_texts(run.result["questions"])}
-      {:error, _reason} -> {:stopped, "The run's questions could not be stored."}
+  defp open_questions(work_item) do
+    case Apiary.Explore.Questions.newest(work_item) do
+      {_version, document} -> Apiary.Explore.Questions.open(document)
+      nil -> []
     end
   end
 
-  defp explore_result(work_item, run, context),
-    do: {:stopped, stop_cause(run, work_item, context)}
+  # A run that ended before its exit, or whose registered run failed, was lost or was
+  # cancelled.
+  defp stopped?(%DispatchRun{end_cause: :run_ended} = run) do
+    match?(
+      %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
+      Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id)
+    )
+  end
 
-  # A workflow that reports with artifacts: its questions, else its newest verdict; a run
-  # whose registered run failed or was lost stopped.
+  defp stopped?(%DispatchRun{}), do: true
+
+  # A workflow that reports with artifacts: the questions it pushed that wait for an
+  # answer, else its newest verdict; a run whose registered run failed or was lost
+  # stopped.
   defp reported_result(work_item, run) do
     mine =
       for artifact <- Artifacts.list(work_item),
@@ -1368,10 +1321,14 @@ defmodule Apiary.Stages do
     verdict = Enum.find(mine, &(elem(&1, 0) == "verdict"))
     registered = Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id)
 
+    open =
+      if questions,
+        do: Apiary.Explore.Questions.open(Artifacts.read_json(elem(questions, 1))),
+        else: []
+
     cond do
-      questions ->
-        document = Artifacts.read_json(elem(questions, 1)) || %{}
-        {:questions, question_texts(document["questions"])}
+      open != [] ->
+        {:questions, question_texts(open)}
 
       verdict ->
         document = Artifacts.read_json(elem(verdict, 1)) || %{}
@@ -1397,18 +1354,9 @@ defmodule Apiary.Stages do
   @spec stop_cause(DispatchRun.t(), WorkItem.t(), StopCause.context()) :: String.t()
   def stop_cause(run, work_item, context \\ %{}), do: StopCause.text(run, work_item, context)
 
-  # proposal_file/1 is the one file of the `proposal` version of an explore v1 result:
-  # its `message`, the proposal as Markdown, as `proposal.md`. `:error` for a result with
-  # no `message`, stored before the proposal was Markdown.
-  @doc false
-  @spec proposal_file(map) :: {:ok, map} | :error
-  def proposal_file(%{"message" => message}) when is_binary(message),
-    do: {:ok, %{filename: "proposal.md", content_type: "text/markdown", binary: message}}
-
-  def proposal_file(_result), do: :error
-
-  # The questions of a result or of a `questions` version, as the gaps of an escalation
-  # and the questions a stage waits on show them: the text of each, one after the other.
+  # The questions of a `questions` version that wait for an answer, as the gaps of an
+  # escalation and the questions a stage waits on show them: the text of each, one after
+  # the other.
   defp question_texts(questions) do
     questions
     |> List.wrap()

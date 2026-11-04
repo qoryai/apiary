@@ -221,6 +221,203 @@ defmodule Apiary.Artifacts.FormatTest do
     assert {:ok, _type} = check(context, "change", "a", Jason.encode!(change))
   end
 
+  describe "the questions format" do
+    @at "2026-11-04T10:00:00Z"
+
+    defp question(attrs \\ %{}) do
+      Map.merge(
+        %{
+          "id" => "q1",
+          "question" => "Which basket keeps the price?",
+          "options" => [],
+          "state" => "open",
+          "asked" => %{"run" => 12, "at" => @at}
+        },
+        attrs
+      )
+    end
+
+    defp questions(context, list),
+      do: check(context, "questions", "questions.json", Jason.encode!(%{"questions" => list}))
+
+    test "a question is 1 to 500 characters on one line", context do
+      assert {:ok, "application/json"} =
+               questions(context, [question(%{"question" => String.duplicate("a", 500)})])
+
+      for text <- [String.duplicate("a", 501), "", "Two\nlines?"] do
+        assert {:error, {:schema, %{path: "#/questions/0/question"}}} =
+                 questions(context, [question(%{"question" => text})])
+      end
+    end
+
+    test "a context is optional, 1 to 20000 characters of Markdown", context do
+      assert {:ok, _} =
+               questions(context, [question(%{"context" => String.duplicate("a\n", 10_000)})])
+
+      for text <- [String.duplicate("a", 20_001), ""] do
+        assert {:error, {:schema, %{path: "#/questions/0/context"}}} =
+                 questions(context, [question(%{"context" => text})])
+      end
+    end
+
+    test "an id is 1 to 32 lower-case letters, digits and hyphens, each once", context do
+      assert {:ok, _} = questions(context, [question(%{"id" => String.duplicate("q-1", 10)})])
+
+      for id <- ["Q1", "q_1", "", String.duplicate("q", 33)] do
+        assert {:error, {:schema, %{path: "#/questions/0/id"}}} =
+                 questions(context, [question(%{"id" => id})])
+      end
+
+      assert {:error, {:schema, %{path: "#/questions/1/id", error: error}}} =
+               questions(context, [question(), question(%{"question" => "Which sale?"})])
+
+      assert error =~ "earlier question"
+    end
+
+    test "a question offers 0 to 10 options", context do
+      option = &%{"title" => "Option #{&1}", "explanation" => "Why #{&1}."}
+
+      assert {:ok, _} =
+               questions(context, [question(%{"options" => Enum.map(1..10, option)})])
+
+      assert {:error, {:schema, %{path: "#/questions/0/options"}}} =
+               questions(context, [question(%{"options" => Enum.map(1..11, option)})])
+    end
+
+    test "an answer chooses one of the question's option titles, or none and a note",
+         context do
+      options = [%{"title" => "The small one", "explanation" => "The checkout shows it."}]
+      by = %{"name" => "Ann Example"}
+
+      answered = fn answer ->
+        question(%{"options" => options, "state" => "answered", "answer" => answer})
+      end
+
+      assert {:ok, _} =
+               questions(context, [
+                 answered.(%{"option" => "The small one", "by" => by, "at" => @at})
+               ])
+
+      assert {:ok, _} =
+               questions(context, [
+                 answered.(%{
+                   "option" => nil,
+                   "note" => "The large one.",
+                   "by" => by,
+                   "at" => @at
+                 })
+               ])
+
+      assert {:error, {:schema, %{path: "#/questions/0/answer/option", error: error}}} =
+               questions(context, [
+                 answered.(%{"option" => "Another", "by" => by, "at" => @at})
+               ])
+
+      assert error =~ "not the title"
+
+      assert {:error, {:schema, %{path: "#/questions/0" <> _}}} =
+               questions(context, [answered.(%{"option" => nil, "by" => by, "at" => @at})])
+
+      # An earlier answer in the history too.
+      reopened = %{"run" => 13, "at" => @at}
+
+      history = [
+        %{"option" => "Another", "by" => by, "at" => @at, "reopened" => reopened}
+      ]
+
+      assert {:error, {:schema, %{path: "#/questions/0/history/0/option"}}} =
+               questions(context, [question(%{"options" => options, "history" => history})])
+    end
+
+    test "an answer is present exactly when the question is answered", context do
+      answer = %{"option" => nil, "note" => "Yes.", "by" => %{"name" => "Ann"}, "at" => @at}
+
+      assert {:error, {:schema, _}} = questions(context, [question(%{"answer" => answer})])
+
+      assert {:error, {:schema, _}} =
+               questions(context, [question(%{"state" => "answered"})])
+    end
+
+    test "a document of 1 MiB is the type's limit, and 1 MiB of questions passes the format",
+         context do
+      for name <- ["questions", "review-comments"],
+          do: assert(%Type{size_limit: 1_048_576, max_files: 1} = standard(name))
+
+      list =
+        for n <- 1..50,
+            do: question(%{"id" => "q#{n}", "context" => String.duplicate("a", 20_000)})
+
+      bytes = Jason.encode!(%{"questions" => list})
+      assert byte_size(bytes) > 1_000_000 and byte_size(bytes) < 1_048_576
+      assert {:ok, _} = check(context, "questions", "questions.json", bytes)
+    end
+  end
+
+  describe "the review comments format" do
+    defp review_comment(attrs \\ %{}) do
+      Map.merge(
+        %{
+          "id" => "c1",
+          "on" => %{"artifact" => "proposal", "version" => 1},
+          "text" => "Offer a replacement first.",
+          "by" => %{"name" => "Ann Example"},
+          "at" => "2026-11-04T10:00:00Z",
+          "state" => "open"
+        },
+        attrs
+      )
+    end
+
+    defp reply(attrs),
+      do: Map.merge(%{"text" => "Changed it.", "at" => "2026-11-04T11:00:00Z"}, attrs)
+
+    defp review_comments(context, list),
+      do:
+        check(
+          context,
+          "review-comments",
+          "review-comments.json",
+          Jason.encode!(%{"review_comments" => list})
+        )
+
+    test "each id once", context do
+      assert {:ok, _} = review_comments(context, [review_comment()])
+
+      assert {:error, {:schema, %{path: "#/review_comments/1/id", error: error}}} =
+               review_comments(context, [review_comment(), review_comment()])
+
+      assert error =~ "earlier review comment"
+    end
+
+    test "a run's reply has an outcome, a member's none; asked with a question", context do
+      run = %{"run" => 12}
+      member = %{"name" => "Ann Example"}
+
+      for replies <- [
+            [reply(%{"by" => run, "outcome" => "changed"})],
+            [reply(%{"by" => member})],
+            [reply(%{"by" => run, "outcome" => "asked", "question" => "q3"})]
+          ] do
+        assert {:ok, _} =
+                 review_comments(context, [
+                   review_comment(%{"state" => "closed", "replies" => replies})
+                 ])
+      end
+
+      for replies <- [
+            [reply(%{"by" => run})],
+            [reply(%{"by" => member, "outcome" => "declined"})],
+            [reply(%{"by" => run, "outcome" => "asked"})],
+            [reply(%{"by" => run, "outcome" => "changed", "question" => "q3"})],
+            [reply(%{"by" => run, "outcome" => "agreed"})]
+          ] do
+        assert {:error, {:schema, %{path: "#/review_comments/0/replies/0" <> _}}} =
+                 review_comments(context, [review_comment(%{"replies" => replies})]),
+               inspect(replies)
+      end
+    end
+  end
+
   describe "Filename.valid?/1" do
     test "takes a base name of 1 to 255 bytes" do
       for name <- ["a", "demo video.mp4", "été.md", ".hidden", "a..b", String.duplicate("a", 255)],

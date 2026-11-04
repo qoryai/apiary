@@ -89,6 +89,12 @@ defmodule Apiary.Artifacts do
   #   7. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
   #      else `{:invalid, :no_video}`.
   #
+  # In the transaction, under the work item's lock, a version a run pushes of the
+  # questions or the review comments keeps what members wrote in the artifact's newest
+  # version (`Apiary.Explore.Questions.check_run/3`,
+  # `Apiary.Explore.ReviewComments.check_run/4`), else
+  # `{:invalid, {:kept, 0, reason}}`, with the rule it breaks.
+  #
   # Then every file is kept in the store, and only then are the rows written, in one
   # transaction: for a standard type a workspace can hide, the workspace's row locked
   # `FOR SHARE` and its list read again, a hidden type `{:unknown_type, name}`; the work
@@ -143,6 +149,7 @@ defmodule Apiary.Artifacts do
   alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Filename, Format, Store, Type}
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Explore.{Questions, ReviewComments}
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes
   alias Apiary.Processes.Version, as: ProcessVersion
@@ -807,6 +814,7 @@ defmodule Apiary.Artifacts do
            :ok <- stage_kept(held, fields.expect_stage),
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
+           :ok <- members_kept(writer, artifact, stored),
            {:ok, version} <- version(artifact, writer, fields, now),
            :ok <- insert_files(version, stored),
            :ok <- audit_push(writer, held, artifact, version) do
@@ -816,6 +824,69 @@ defmodule Apiary.Artifacts do
         {:error, _reason} = error -> error
       end
     end)
+  end
+
+  # A run's version of the questions or the review comments, checked against the
+  # artifact's newest version under the work item's lock: what members wrote stays
+  # (`Apiary.Explore.Questions.check_run/3`, `Apiary.Explore.ReviewComments.check_run/4`),
+  # else `{:invalid, {:kept, 0, reason}}`. The format check passed, so the file is one
+  # JSON document of the type's format.
+  defp members_kept(%{writer: :run, run_id: run_id}, %Artifact{type: type} = artifact, [file])
+       when type in ["questions", "review-comments"] do
+    module = if type == "questions", do: Questions, else: ReviewComments
+
+    newest =
+      case Repo.one(
+             from v in Version,
+               where: v.artifact_id == ^artifact.id,
+               order_by: [desc: v.number],
+               limit: 1,
+               preload: [files: ^files_query()]
+           ) do
+        nil -> nil
+        version -> module.read(version)
+      end
+
+    number =
+      Repo.one(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run_id, select: r.number)
+
+    with {:ok, text} <- stored_text(file),
+         %{} = document <- module.decode(text) do
+      case check_run(module, artifact, newest, document, number || 0) do
+        :ok -> :ok
+        {:error, reason} -> {:error, {:invalid, {:kept, 0, reason}}}
+      end
+    else
+      _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
+    end
+  end
+
+  defp members_kept(_writer, _artifact, _stored), do: :ok
+
+  defp check_run(Questions, _artifact, newest, document, number),
+    do: Questions.check_run(newest, document, number)
+
+  # The question of a reply with the outcome `asked` is the id of a question of the newest
+  # questions stored now, under the work item's lock.
+  defp check_run(ReviewComments, artifact, newest, document, number) do
+    questions =
+      case Questions.newest(%WorkItem{
+             id: artifact.work_item_id,
+             workspace_id: artifact.workspace_id
+           }) do
+        {_version, questions} -> Questions.ids(questions)
+        nil -> []
+      end
+
+    ReviewComments.check_run(newest, document, number, questions)
+  end
+
+  defp stored_text(%{store_key: key}) do
+    case Store.impl().open(key) do
+      {:ok, path} when is_binary(path) -> File.read(path)
+      {:ok, stream} -> {:ok, stream |> Enum.to_list() |> IO.iodata_to_binary()}
+      {:error, _reason} -> :error
+    end
   end
 
   # A standard type a workspace can hide: the row of the workspace the push read, locked

@@ -73,9 +73,9 @@ defmodule Apiary.Runs.Projector do
   @heartbeat "dev.qory.run.heartbeat"
   # The events whose pass ends the open steps of a run that exited (`end_open_steps/1`).
   @ending ["dev.qory.run.exited", "dev.qory.run.step_started", "dev.qory.run.step_exited"]
-  # The events whose fold may decide what a run of a workspace's queue gave: its exit and
-  # its result.
-  @settling ["dev.qory.run.exited", "dev.qory.runtime.result"]
+  # The event whose fold decides what a run of a workspace's queue gave: its exit, after
+  # which the run pushes no artifact (`Apiary.Explore.Outcome`).
+  @settling ["dev.qory.run.exited"]
 
   @doc """
   Projects the run's unprojected events. Returns `{:ok, run}` with the run as it is now,
@@ -521,10 +521,10 @@ defmodule Apiary.Runs.Projector do
 
   defp end_refused(_run), do: :ok
 
-  # A run a workspace's queue handed over whose passes folded an exit or a result event
-  # has what it gave stored on the queue's run, once its passes and its end committed, in
-  # a separate transaction (`Apiary.Dispatches.Settle.settle/1`): a result that came
-  # after its outcome, or after it settled, counts so. The work item is told. A failure is
+  # A run a workspace's queue handed over whose passes folded an exit has what it gave
+  # stored on the queue's run, once its passes and its end committed, in a separate
+  # transaction (`Apiary.Dispatches.Settle.settle/1`), where its end has not stored it
+  # already. The work item is told. A failure is
   # logged, and what the queue's run holds is cleared (`Apiary.Dispatches.Settle.clear/1`),
   # so the sweep of the lost-run check stores it at a tick after, once the run is settled;
   # a clear that fails too is logged, and what was stored stays until the run's next

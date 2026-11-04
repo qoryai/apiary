@@ -60,7 +60,6 @@ defmodule Apiary.Harnesses.Reader do
   the list means for the workspaces made from the template.
   """
 
-  alias Apiary.Explore.Result
   alias Apiary.Kinds.{Budget, Schema}
 
   @max_bytes 65_536
@@ -435,7 +434,7 @@ defmodule Apiary.Harnesses.Reader do
   defp template_refusal(_file, _errors), do: :invalid_template
 
   defp template_root,
-    do: Schema.file!(@template_schema, &Result.code_point_lengths/1)
+    do: Schema.file!(@template_schema, &Schema.code_point_lengths/1)
 
   @doc """
   parse/1 is the value of one YAML file under the limits of the moduledoc: `{:ok,

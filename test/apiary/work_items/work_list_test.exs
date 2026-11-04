@@ -421,7 +421,7 @@ defmodule Apiary.WorkItems.WorkListTest do
         :questions -> [[result: questions_result()]]
         :no_result -> [[]]
         :lost -> [[end_cause: :lost]]
-        :used_up -> List.duplicate([result: questions_result()], 3)
+        :used_up -> List.duplicate([end_cause: :lost], 3)
         :shape -> [[result: understood_result()]]
       end
 

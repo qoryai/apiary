@@ -25,7 +25,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      type to switch it on; more files than the type takes `422` `too_many_files`; files
   #      over the type's size limit together `422` `too_large`; then a content that is not
   #      strict base64 `400` `invalid_request`; then what `Apiary.Artifacts.push/5` returns,
-  #      the files that do not match the type's format among it, `422` `invalid_artifact`.
+  #      the files that do not match the type's format among it, `422` `invalid_artifact`,
+  #      and a run's version of `questions` or `review-comments` that changes what members
+  #      wrote, `422` `invalid_artifact` with the rule it breaks.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -373,6 +375,13 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       "Fix #{filename} to match the format of #{push.name}: at #{path}, #{error}."}}
   end
 
+  # A run's version of the questions or the review comments that changes what members
+  # wrote (`Apiary.Artifacts.push/5`): the rule it breaks.
+  defp refused({:invalid, {:kept, index, reason}}, push) when is_integer(index) do
+    filename = Enum.at(push.filenames, index) || "files[#{index}]"
+    {:error, {:invalid_artifact, "files[#{index}]", kept(push.name, reason, filename)}}
+  end
+
   defp refused({:invalid, :no_video}, push),
     do:
       {:error,
@@ -384,6 +393,73 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
   defp refused(_refusal, _push), do: {:error, :unavailable}
+
+  # The message of a run's version that changes what members wrote, by the rule it breaks
+  # (`Apiary.Explore.Questions`, `Apiary.Explore.ReviewComments`).
+  defp kept("questions", reason, filename) do
+    case reason do
+      :id_dropped ->
+        "Keep every question of the newest version of questions in #{filename}: " <>
+          "the id of a question is missing."
+
+      :answer_changed ->
+        "Leave each answer in #{filename} as the newest version of questions has it: " <>
+          "members write the answers."
+
+      :history_changed ->
+        "Leave the history of each question in #{filename} as the newest version of " <>
+          "questions has it, and give a new question no history."
+
+      :reopen_not_kept ->
+        "Move the answer of a question you reopen, unchanged, to the end of its history " <>
+          "in #{filename}."
+
+      :new_not_open ->
+        "Set the state of each question you add in #{filename} to open."
+
+      :asked_run ->
+        "Set asked.run of each question you add in #{filename} to this run's number."
+    end
+  end
+
+  defp kept("review-comments", reason, filename) do
+    case reason do
+      :id_dropped ->
+        "Keep every review comment of the newest version of review-comments in " <>
+          "#{filename}: the id of a review comment is missing."
+
+      :comment_added ->
+        "Remove the review comment you added in #{filename}: members write review comments."
+
+      :comment_changed ->
+        "Leave on, text, by and at of each review comment in #{filename} as the newest " <>
+          "version of review-comments has them."
+
+      :reply_changed ->
+        "Leave each earlier reply in #{filename} as the newest version of " <>
+          "review-comments has it."
+
+      :reply_not_run ->
+        "Set by.run of your reply in #{filename} to this run's number."
+
+      :replies_added ->
+        "Add at most one reply to each review comment in #{filename}."
+
+      :not_open ->
+        "Reply in #{filename} only to review comments that are open."
+
+      :not_closed ->
+        "Close each review comment you reply to in #{filename}."
+
+      :state_changed ->
+        "Change the state of a review comment in #{filename} only by closing an open " <>
+          "one with your reply."
+
+      :question_unknown ->
+        "Push the question you asked first, then #{filename}: the question of a reply " <>
+          "with the outcome asked is the id of a question in the newest version of questions."
+    end
+  end
 
   # The message of a file that `Apiary.Artifacts` refuses by its format check: the file,
   # the type and what the type's base view takes.

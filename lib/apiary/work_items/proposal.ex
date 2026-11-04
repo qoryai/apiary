@@ -1,57 +1,50 @@
 defmodule Apiary.WorkItems.Proposal do
-  # Proposal reads an Explore run's result (`Apiary.Explore.Result`) as the work item pages
-  # draw it, and checks what a member gives Explore: the answers to a run's questions and
-  # a comment on a run's proposal. Pure: no database.
+  # Proposal reads the questions of a work item as the work item pages draw them, and
+  # checks what a member gives Explore: the answers to the open questions and a review
+  # comment on the proposal. Pure: no database.
   #
-  # ## The result as the pages draw it
+  # ## The questions as the pages draw them
   #
-  # `from_result/1` is the proposal of a result whose verdict is `understood`:
-  # `%{message: text}`, the proposal as Markdown, nil for a result stored before the
-  # proposal was Markdown, which has no `message`. `questions/1` is the questions of a
-  # result whose verdict is `not_understood`, in its order, each
-  # `%{question: text, options: [%{title: text, explanation: text}]}`: the question as
-  # Markdown and the options the run offers, none for a question that offers none. A
-  # question stored before questions had options is a text: its options are none.
+  # `question/1` is one question of a questions document (`Apiary.Explore.Questions`):
+  # `%{question: text, options: [%{title: text, explanation: text}]}`, the question and the
+  # options the run offers, none for a question that offers none.
   #
   # ## The checks
   #
-  # Each text a member gives is held to the rule the explore contract holds the text it
-  # carries to (`priv/contract/explore/v1/result.schema.json` `$defs/text`): no control
-  # character but tab, line feed and carriage return, and none of the invisible ones the
-  # rule lists (`:characters`), since a run is never given an input it would refuse.
-  # Lengths are counted in code points, as the contract counts them. A text is read with
-  # its line breaks as line feeds and without the white space around it; one empty then is
+  # Each text a member gives is held to the rule of the questions format's `$defs/text`
+  # (`priv/schemas/artifacts/questions.schema.json`): no control character but tab, line
+  # feed and carriage return, and none of the invisible ones the rule lists
+  # (`:characters`), since a run is never given a text it would refuse. Lengths are
+  # counted in code points, as the format counts them. A text is read with its line
+  # breaks as line feeds and without the white space around it; one empty then is
   # `:blank`.
   #
-  # `check_answers(questions, answers)` checks the answers a form gives to `questions`, by
-  # each question's position from 1, as text (`"1"` to `"20"`). Each question has one
-  # answer: `%{"option" => title}`, the title of one of the question's options, or
-  # `%{"custom" => text}`, the member's text, at most 2,000 code points, the explore
-  # input's answer (`inputs.schema.json` `answers[].answer`, a `$defs/short_text`). A
-  # member's text alone may also be given as a string. A member who selects no option and
-  # writes no text leaves the answer `:blank`; an empty `"option"` or `"custom"` counts as
-  # none. `{:ok, [{position, question, answer, custom}]}`, `question` the question's text
-  # and `custom` false for an option's title; or `{:error, errors}` by position (`:blank`,
-  # `{:too_long, 2000}`, `:characters`); or `{:error, :invalid}` for a form that names
+  # `check_answers(questions, answers)` checks the answers a form gives to `questions`,
+  # the open questions, by each question's position from 1, as text (`"1"` to `"20"`).
+  # A question has at most one answer: `%{"option" => title}`, the title of one of the
+  # question's options, or `%{"custom" => text}`, the member's text, at most 2,000 code
+  # points, the format's `answer.text`. A member's text alone may also be given as a
+  # string. A question the form leaves out, or whose answer has no option and no text, is
+  # not answered; an empty `"option"` or `"custom"` counts as none. At least one question
+  # is answered. `{:ok, [{position, question, answer, custom}]}`, for the questions
+  # answered, `question` the question's text and `custom` false for an option's title; or
+  # `{:error, errors}` by position (`{:too_long, 2000}`, `:characters`, and `:blank` for
+  # every question when none is answered); or `{:error, :invalid}` for a form that names
   # another question, gives no text, gives both an option and a text, or an option title
   # the question does not have.
   #
-  # `check_comment(text)` checks a member's comment on a proposal: `{:ok, text}`, at most
-  # 2,000 code points as an answer is, the explore input's `changes[].text`; or
-  # `{:error, error}` (`:blank`, `{:too_long, 2000}`, `:characters`), or
-  # `{:error, :invalid}` for no text.
+  # `check_comment(text)` checks a member's review comment on a proposal, or a reply to
+  # one: `{:ok, text}`, at most 2,000 code points; or `{:error, error}` (`:blank`,
+  # `{:too_long, 2000}`, `:characters`), or `{:error, :invalid}` for no text.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
-  # result.schema.json: `$defs/short_text` and the most `questions`.
+  # questions.schema.json: `$defs/short_text`, and the most questions a form shows.
   @max_short 2000
   @max_questions 20
-  # result.schema.json `$defs/text`: the characters a text refuses.
+  # questions.schema.json `$defs/text`: the characters a text refuses.
   @refused ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
-
-  @typedoc "A proposal as the work item pages draw it."
-  @type t :: %{message: String.t() | nil}
 
   @typedoc "An option a run offers for a question."
   @type option :: %{title: String.t(), explanation: String.t()}
@@ -67,32 +60,14 @@ defmodule Apiary.WorkItems.Proposal do
   @spec max_answer() :: pos_integer
   def max_answer, do: @max_short
 
-  # max_questions/0 is the most questions a run asks.
+  # max_questions/0 is the most questions a form answers at once.
   @doc false
   @spec max_questions() :: pos_integer
   def max_questions, do: @max_questions
 
-  ## The result
+  ## The questions
 
-  # from_result/1 is the proposal of `result`, a result whose verdict is `understood`.
-  @doc false
-  @spec from_result(map) :: t
-  def from_result(%{"verdict" => "understood"} = result) do
-    case result do
-      %{"message" => message} when is_binary(message) -> %{message: message}
-      _stored_before -> %{message: nil}
-    end
-  end
-
-  # questions/1 is the questions of `result`, a result whose verdict is `not_understood`.
-  @doc false
-  @spec questions(map) :: [question]
-  def questions(%{"verdict" => "not_understood", "questions" => questions})
-      when is_list(questions),
-      do: Enum.map(questions, &question/1)
-
-  # question/1 is one question of a result, or of a `questions` artifact, as the pages
-  # draw it: a question stored as a text offers no option.
+  # question/1 is one question of a questions document as the pages draw it.
   @doc false
   @spec question(map | String.t()) :: question
   def question(%{"question" => text} = question) when is_binary(text) do
@@ -115,14 +90,15 @@ defmodule Apiary.WorkItems.Proposal do
   def check_answers(questions, answers) when is_list(questions) and is_map(answers) do
     keys = for position <- 1..length(questions)//1, do: Integer.to_string(position)
 
-    with true <- Enum.sort(Map.keys(answers)) == Enum.sort(keys),
+    with true <- Enum.all?(Map.keys(answers), &(&1 in keys)),
          checked when is_list(checked) <- check_each(questions, answers) do
-      case for({key, {:error, error}} <- checked, into: %{}, do: {key, error}) do
-        errors when errors == %{} ->
-          {:ok, for({_key, {:ok, answer}} <- checked, do: answer)}
+      errors = for {key, {:error, error}} <- checked, error != :blank, into: %{}, do: {key, error}
+      given = for {_key, {:ok, answer}} <- checked, do: answer
 
-        errors ->
-          {:error, errors}
+      cond do
+        errors != %{} -> {:error, errors}
+        given == [] -> {:error, Map.new(keys, &{&1, :blank})}
+        true -> {:ok, given}
       end
     else
       _invalid -> {:error, :invalid}
@@ -137,7 +113,7 @@ defmodule Apiary.WorkItems.Proposal do
     |> Enum.reduce_while([], fn {question, position}, acc ->
       key = Integer.to_string(position)
 
-      case answer(question, answers[key]) do
+      case answer(question, Map.get(answers, key, %{})) do
         :invalid ->
           {:halt, :invalid}
 

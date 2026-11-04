@@ -1,13 +1,16 @@
 defmodule Apiary.Artifacts.Type do
   # An artifact type: what a version of an artifact must be, and how a page shows it.
   #
-  # A type is standard, one of the ten Qory Apiary ships (`standard/0`), or custom, a row
+  # A type is standard, one of the eleven Qory Apiary ships (`standard/0`), or custom, a row
   # of a workspace's `artifact_types`. Both are this struct; `standard` is true for the
   # first, and a standard type has no row, so no id, public id, organisation or
   # workspace. `view` is the dedicated view of a standard structured type (`:questions`,
   # `:verdict` or `:change`), nil for every other type. A `proposal` is a document, its one
-  # file Markdown, and a `questions` document holds the questions of an explore result,
-  # each up to 20,000 characters, so both take up to 256 KiB. A workspace can hide
+  # file Markdown, up to 256 KiB. A `questions` document holds every question of a work
+  # item and its answers, each question with a context of up to 20,000 characters, so it
+  # takes up to 1 MiB. A `review-comments` document holds every review comment of a work
+  # item, on a version of an artifact such as the proposal, with its replies, up to
+  # 1 MiB. A workspace can hide
   # a standard type unless it is always on (`always_on/0`); `shown` is whether the
   # workspace shows the type, as `Apiary.Artifacts.all_types/1` sets it.
   #
@@ -65,13 +68,15 @@ defmodule Apiary.Artifacts.Type do
     {"demo-video", :video, 200 * @mib, 5, nil},
     {"change", :structured, 64 * 1024, 1, :change},
     {"proposal", :document, 256 * 1024, 1, nil},
-    {"questions", :structured, 256 * 1024, 1, :questions},
+    {"questions", :structured, @mib, 1, :questions},
+    {"review-comments", :structured, @mib, 1, nil},
     {"verdict", :structured, 64 * 1024, 1, :verdict}
   ]
 
-  # The standard types no workspace can hide: Core's stage runner writes and reads them by
-  # name (`Apiary.Stages`), so a stage's run needs them in every workspace.
-  @always_on ~w(proposal questions verdict)
+  # The standard types no workspace can hide: Core's stage runner and Explore write and
+  # read them by name (`Apiary.Stages`, `Apiary.Explore`), so a stage's run needs them in
+  # every workspace.
+  @always_on ~w(proposal questions review-comments verdict)
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

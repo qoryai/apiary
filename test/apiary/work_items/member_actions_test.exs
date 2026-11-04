@@ -1,10 +1,9 @@
 defmodule Apiary.WorkItems.MemberActionsTest do
   # What a member gives Explore (`Apiary.WorkItems.answer/4`, `confirm/3` and
-  # `explore_again/3`): each where Explore waits for it, with its records, its event, its
-  # next run where it queues one, its entry in the trail, and each refusal; the answers a
-  # take in's next run reads (`take_in_answers/2`, through `Apiary.Dispatches.Inputs`);
-  # and the stage a close records. A comment on a proposal, on both states of the
-  # workflow model: `Apiary.WorkItems.ProposalCommentTest`.
+  # `explore_again/3`): each where Explore waits for it, with what it writes (the answers
+  # in a new version of the questions, `Apiary.Explore.Questions`), its event, its next
+  # run where it queues one, its entry in the trail, and each refusal; and the stage a
+  # close records. Review comments on a proposal: `Apiary.WorkItems.ReviewCommentsTest`.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -14,7 +13,8 @@ defmodule Apiary.WorkItems.MemberActionsTest do
   alias Apiary.{Repo, WorkItems}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Inputs}
-  alias Apiary.WorkItems.{Answer, Confirmation, WorkItem, WorkItemEvent}
+  alias Apiary.Explore.Questions
+  alias Apiary.WorkItems.{Confirmation, WorkItem, WorkItemEvent}
 
   @moduletag needs: :factory
 
@@ -79,16 +79,24 @@ defmodule Apiary.WorkItems.MemberActionsTest do
   @malformed ["not-a-uuid", nil, %{}, 1]
 
   # What stands for `work_item`: its row, its events, its runs, its entries in the trail,
-  # and the answers and confirmations kept.
+  # its questions and the confirmations kept.
   defp written(work_item),
     do: {
       Repo.get!(WorkItem, work_item.id),
       kinds(work_item),
       runs(work_item),
       Repo.aggregate(from(e in Entry, where: e.subject_id == ^work_item.id), :count),
-      Repo.aggregate(Answer, :count),
+      questions(work_item),
       Repo.aggregate(Confirmation, :count)
     }
+
+  # The questions of the newest version of the work item's questions, nil for none.
+  defp questions(work_item) do
+    case Questions.newest(Repo.get!(WorkItem, work_item.id)) do
+      {_version, document} -> document["questions"]
+      nil -> nil
+    end
+  end
 
   defp asked!(work_item, questions \\ ["Which basket?", "Which sale?"]),
     do: explore_run_fixture(work_item, result: questions_result(questions))
@@ -103,7 +111,8 @@ defmodule Apiary.WorkItems.MemberActionsTest do
     }
 
   describe "answer" do
-    test "keeps each answer with its question, and queues the take in's next run", ctx do
+    test "writes the answers into a new version of the questions, and queues the next run",
+         ctx do
       asked!(ctx.work_item)
       answers = %{"1" => "The one on the checkout page.", "2" => " The spring sale. "}
 
@@ -111,27 +120,27 @@ defmodule Apiary.WorkItems.MemberActionsTest do
                WorkItems.answer(ctx.scope, ctx.work_item, 1, answers)
 
       assert DateTime.compare(answered.updated_at, ctx.work_item.updated_at) == :gt
+      name = Inputs.person_name(ctx.scope.user.id)
 
       assert [
-               %Answer{
-                 position: 1,
-                 question: "Which basket?",
-                 answer: "The one on the checkout page."
-               } =
-                 first,
-               %Answer{position: 2, question: "Which sale?", answer: "The spring sale."}
-             ] = Repo.all(from a in Answer, order_by: a.position)
+               %{
+                 "id" => "q1",
+                 "state" => "answered",
+                 "answer" => %{
+                   "option" => nil,
+                   "note" => "The one on the checkout page.",
+                   "by" => %{"name" => ^name},
+                   "at" => at
+                 }
+               },
+               %{"id" => "q2", "state" => "answered", "answer" => %{"note" => "The spring sale."}}
+             ] = questions(ctx.work_item)
 
-      assert first.take_in == 1 and first.attempt == 1
-      assert first.answered_by_id == ctx.scope.user.id
-
+      assert at =~ ~r/\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/
       assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
-
-      assert [{:taken_in, _}, {:answered, %{"take_in" => 1, "attempt" => 1, "count" => 2}}] =
-               kinds(ctx.work_item)
-
-      assert entry("work_item.answer", ctx.work_item).details ==
-               %{"take_in" => 1, "attempt" => 1, "count" => 2}
+      data = %{"take_in" => 1, "attempt" => 1, "count" => 2, "questions" => ["q1", "q2"]}
+      assert [{:taken_in, _}, {:answered, ^data}] = kinds(ctx.work_item)
+      assert entry("work_item.answer", ctx.work_item).details == data
 
       explore = WorkItems.explore(ctx.scope, answered)
       assert explore.status == :queued
@@ -157,7 +166,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
              ]
     end
 
-    test "an option's title is kept as the run wrote it, not the member's text", ctx do
+    test "an option's title is the answer's option, the member's text its note", ctx do
       asked!(ctx.work_item, [
         %{
           "question" => "Which basket?",
@@ -172,17 +181,52 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       answers = %{"1" => %{"option" => "The large one"}, "2" => %{"custom" => "The spring one."}}
       assert {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, answers)
 
-      assert [
-               %Answer{position: 1, answer: "The large one", custom: false},
-               %Answer{position: 2, answer: "The spring one.", custom: true}
-             ] = Repo.all(from a in Answer, order_by: a.position)
-
-      assert [first, second] = WorkItems.take_in_answers(ctx.work_item, 1)
-      assert Jason.decode!(Jason.encode!(first))["custom"] == false
-      assert Jason.decode!(Jason.encode!(second))["custom"] == true
+      assert [%{"answer" => first}, %{"answer" => second}] = questions(ctx.work_item)
+      assert %{"option" => "The large one"} = first
+      refute Map.has_key?(first, "note")
+      assert %{"option" => nil, "note" => "The spring one."} = second
 
       assert [%{questions: [%{options: [_, _], custom: false}, %{options: [], custom: true}]}] =
                WorkItems.explore(ctx.scope, ctx.work_item).earlier_runs
+    end
+
+    @tag :tmp_dir
+    test "a member's own answer writes option null, a version the questions schema takes",
+         ctx do
+      asked!(ctx.work_item, [
+        %{
+          "question" => "Which basket?",
+          "options" => [%{"title" => "The small one", "explanation" => "The checkout."}]
+        }
+      ])
+
+      # The form gives an empty option beside the member's text, as "Give your own option"
+      # sends it.
+      answers = %{"1" => %{"option" => "", "custom" => "Neither: the saved one."}}
+      assert {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, answers)
+
+      {version, _document} = Questions.newest(Repo.get!(WorkItem, ctx.work_item.id))
+      [file] = version.files
+
+      bytes =
+        case Apiary.Artifacts.open_file(file) do
+          {:ok, path} when is_binary(path) -> File.read!(path)
+          {:ok, stream} -> stream |> Enum.to_list() |> IO.iodata_to_binary()
+        end
+
+      assert [%{"answer" => %{"option" => nil, "note" => "Neither: the saved one."} = answer}] =
+               Jason.decode!(bytes)["questions"]
+
+      assert Map.has_key?(answer, "option")
+
+      # The copied schema (`priv/schemas/artifacts/questions.schema.json`) and the checks
+      # after it take the version as stored.
+      path = Path.join(ctx.tmp_dir, "questions.json")
+      File.write!(path, bytes)
+      questions_type = Enum.find(Apiary.Artifacts.Type.standard(), &(&1.name == "questions"))
+
+      assert {:ok, _content_type} =
+               Apiary.Artifacts.Format.check(questions_type, "questions.json", path)
     end
 
     test "an option title the question does not have is refused, nothing written", ctx do
@@ -193,73 +237,58 @@ defmodule Apiary.WorkItems.MemberActionsTest do
         }
       ])
 
+      before = questions(ctx.work_item)
+
       assert WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => %{"option" => "Another"}}) ==
                {:error, {:invalid, :form}}
 
-      assert Repo.aggregate(Answer, :count) == 0
+      assert questions(ctx.work_item) == before
       assert runs(ctx.work_item) == [{1, 1, :ended}]
     end
 
-    test "the next run's input carries the answers, oldest first, as the contract has them",
-         ctx do
+    test "some of the open questions: the rest stay open, and the next run is queued", ctx do
+      asked!(ctx.work_item, ["Which basket?", "Which sale?", "Which shop?"])
+
+      assert {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"2" => "The spring one."})
+
+      assert [
+               %{"id" => "q1", "state" => "open"},
+               %{"id" => "q2", "state" => "answered"},
+               %{"id" => "q3", "state" => "open"}
+             ] = questions(ctx.work_item)
+
+      assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
+      assert [{:taken_in, _}, {:answered, %{"questions" => ["q2"]}}] = kinds(ctx.work_item)
+    end
+
+    test "at any count of runs, an answer queues the next run, past the run limit", ctx do
+      explore_run_fixture(ctx.work_item, end_cause: :lost)
+      explore_run_fixture(ctx.work_item, end_cause: :lost)
+      asked!(ctx.work_item, ["Which basket?", "Which sale?"])
+      assert WorkItems.explore(ctx.scope, ctx.work_item).status == :questions
+
+      assert {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 3, %{"1" => "The small one."})
+
+      assert runs(ctx.work_item) ==
+               [{1, 1, :ended}, {1, 2, :ended}, {1, 3, :ended}, {1, 4, :waiting}]
+
+      assert %DispatchRun{of: 4} = Repo.one!(from r in DispatchRun, where: r.attempt == 4)
+      assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
+    end
+
+    test "the next run reads the answers from the questions, not from its input", ctx do
       asked!(ctx.work_item, ["Which basket?"])
       {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "The small one."})
-      %{dispatch_run: second} = Repo.one!(from r in DispatchRun, where: r.attempt == 2) |> wrap()
-
-      # The second run asks again, and is answered; the third reads both.
-      {1, _} =
-        Repo.update_all(from(r in DispatchRun, where: r.id == ^second.id),
-          set: [state: :ended, end_cause: :run_ended]
-        )
-
-      run =
-        Repo.insert!(%Apiary.Runs.Run{
-          organisation_id: ctx.work_item.organisation_id,
-          workspace_id: ctx.work_item.workspace_id,
-          node_run_id: second.run_id,
-          dispatch_run_id: second.id,
-          state: "completed",
-          exit_state: "completed"
-        })
-
-      result_event!(run, 3, %{
-        "is_error" => false,
-        "result" => Jason.encode!(questions_result(["Which shop?"]))
-      })
-
-      {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 2, %{"1" => "The one in town."})
-      third = Repo.one!(from r in DispatchRun, where: r.attempt == 3)
-
-      [first_answer, second_answer] = WorkItems.take_in_answers(ctx.work_item, 1)
-      name = Inputs.person_name(ctx.scope.user.id)
-
-      assert Jason.decode!(Jason.encode!(first_answer)) == %{
-               "question" => "Which basket?",
-               "answer" => "The small one.",
-               "custom" => true,
-               "by" => %{"name" => name},
-               "at" => Jason.decode!(Jason.encode!(first_answer))["at"]
-             }
-
-      assert Enum.map(first_answer.values, &elem(&1, 0)) == [
-               "question",
-               "answer",
-               "custom",
-               "by",
-               "at"
-             ]
-
-      assert Jason.decode!(Jason.encode!(second_answer))["question"] == "Which shop?"
-
-      assert Jason.decode!(Jason.encode!(first_answer))["at"] =~
-               ~r/\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/
+      second = Repo.one!(from r in DispatchRun, where: r.attempt == 2)
 
       work_item = Repo.get!(WorkItem, ctx.work_item.id)
-      {:ok, inputs} = Inputs.explore(work_item, third, run(work_item))
+      {:ok, inputs} = Inputs.explore(work_item, second, run(work_item))
       inputs = inputs |> Jason.encode!() |> Jason.decode!()
 
-      assert Enum.map(inputs["answers"], & &1["answer"]) == ["The small one.", "The one in town."]
-      assert inputs["run"] == %{"attempt" => 3, "of" => 3}
+      assert inputs["run"] == %{"attempt" => 2}
+
+      for member <- ~w(answers changes proposal facts solution),
+          do: refute(Map.has_key?(inputs, member))
 
       validator =
         JSV.build!(%{"$ref" => @base <> "explore/v1/inputs.schema.json"},
@@ -275,62 +304,22 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert {:ok, _} = JSV.validate(inputs, validator)
     end
 
-    test "an answer whose member's account is gone is a former member's", ctx do
-      asked!(ctx.work_item, ["Which basket?"])
-      {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "The small one."})
-      Repo.update_all(Answer, set: [answered_by_id: nil])
-
-      assert [answer] = WorkItems.take_in_answers(ctx.work_item, 1)
-      assert Jason.decode!(Jason.encode!(answer))["by"] == %{"name" => "former member"}
-    end
-
-    test "an answer by a member whose name the contract refuses: the next run has no input",
-         ctx do
-      # The account's email rules now refuse a bidirectional control in the local part,
-      # but an account whose address took one before still holds it; the explore input's
-      # name refuses it.
-      email = "ann\u202Ex#{System.unique_integer([:positive])}@example.com"
-
-      refute Apiary.Accounts.User.email_changeset(%Apiary.Accounts.User{}, %{email: email},
-               validate_unique: false
-             ).valid?
-
-      %{user: user} = member_fixture(ctx.scope)
-
-      {1, _} =
-        Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^user.id),
-          set: [email: email]
-        )
-
-      member = workspace_scope(Repo.get!(Apiary.Accounts.User, user.id), ctx.scope.workspace)
-
-      asked!(ctx.work_item, ["Which basket?"])
-      {:ok, answered} = WorkItems.answer(member, ctx.work_item, 1, %{"1" => "The small one."})
-
-      next =
-        Repo.one!(from r in DispatchRun, where: r.work_item_id == ^answered.id and r.attempt == 2)
-
-      assert Inputs.explore(answered, next, run(answered)) == {:error, :inputs_invalid}
-    end
-
-    test "answers belong to their take in: another take in reads none of them", ctx do
-      asked!(ctx.work_item, ["Which basket?"])
-      {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "The small one."})
-
-      assert WorkItems.take_in_answers(ctx.work_item, 2) == []
-      assert length(WorkItems.take_in_answers(ctx.work_item, 1)) == 1
-    end
-
     test "answers that do not hold, refused with their errors, nothing written", ctx do
       asked!(ctx.work_item)
+      before = questions(ctx.work_item)
 
       assert WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => " ", "2" => "a\u200Bb"}) ==
-               {:error, {:invalid, %{"1" => :blank, "2" => :characters}}}
+               {:error, {:invalid, %{"2" => :characters}}}
 
-      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "Yes"}) ==
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => " ", "2" => "\r\n"}) ==
+               {:error, {:invalid, %{"1" => :blank, "2" => :blank}}}
+
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"3" => "Yes"}) ==
                {:error, {:invalid, :form}}
 
-      assert Repo.aggregate(Answer, :count) == 0
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, "Yes") == {:error, {:invalid, :form}}
+
+      assert questions(ctx.work_item) == before
       assert runs(ctx.work_item) == [{1, 1, :ended}]
       assert entry("work_item.answer", ctx.work_item) == nil
     end
@@ -341,7 +330,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert WorkItems.answer(ctx.scope, ctx.work_item, 1, answers) == {:error, :not_waiting}
       assert WorkItems.answer(ctx.scope, ctx.work_item, 2, answers) == {:error, :stale}
 
-      # Where a proposal waits, a member gives a comment, a text: answers are no form.
+      # Where a proposal waits, a member gives a review comment, a text: answers are no form.
       proposed = work_item_fixture(ctx.scope, external_ref: "acme/shop#12")
       proposed!(proposed)
       assert WorkItems.answer(ctx.scope, proposed, 1, answers) == {:error, {:invalid, :form}}
@@ -352,16 +341,6 @@ defmodule Apiary.WorkItems.MemberActionsTest do
 
       none = work_item_fixture(ctx.scope, external_ref: "acme/shop#14")
       assert WorkItems.answer(ctx.scope, none, 1, answers) == {:error, :stale}
-    end
-
-    test "at the run limit, refused: the work item stays live", ctx do
-      explore_run_fixture(ctx.work_item, end_cause: :lost)
-      explore_run_fixture(ctx.work_item, end_cause: :lost)
-      asked!(ctx.work_item, ["Which basket?"])
-
-      assert WorkItems.answer(ctx.scope, ctx.work_item, 3, %{"1" => "Yes"}) == {:error, :used_up}
-      assert %WorkItem{state: :exploring} = Repo.get!(WorkItem, ctx.work_item.id)
-      assert WorkItems.explore(ctx.scope, ctx.work_item).status == :used_up
     end
 
     test "of another take in than the page read, not live, or not in the workspace, refused",
@@ -395,7 +374,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
   end
 
   describe "confirm" do
-    test "the result kept, ready for Shape", ctx do
+    test "the proposal's version kept, ready for Shape", ctx do
       proposed!(ctx.work_item)
 
       assert {:ok, %WorkItem{state: :exploring}} = WorkItems.confirm(ctx.scope, ctx.work_item, 1)
@@ -403,7 +382,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert [%Confirmation{take_in: 1, attempt: 1, result: result} = confirmation] =
                Repo.all(Confirmation)
 
-      assert result == understood_result()
+      assert result == %{"proposal_version" => 1}
       assert confirmation.confirmed_by_id == ctx.scope.user.id
 
       assert [{:taken_in, _}, {:confirmed, %{"take_in" => 1, "attempt" => 1}}] =
@@ -488,13 +467,9 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       explore_run_fixture(running, state: :handed_over)
       assert WorkItems.explore_again(ctx.scope, running, 1) == {:error, :running}
 
-      # Ended by its outcome a moment ago, its result may still come.
+      # Ended, what it gave not yet stored: it reads as running.
       settling = work_item_fixture(ctx.scope, external_ref: "acme/shop#15")
-
-      explore_run_fixture(settling,
-        run: %{exit_state: nil, outcome_received_at: DateTime.utc_now()}
-      )
-
+      explore_run_fixture(settling, settle: false)
       assert WorkItems.explore_again(ctx.scope, settling, 1) == {:error, :running}
     end
 
@@ -548,6 +523,4 @@ defmodule Apiary.WorkItems.MemberActionsTest do
                %{status: :closed, stage: :shape}
     end
   end
-
-  defp wrap(dispatch_run), do: %{dispatch_run: dispatch_run}
 end

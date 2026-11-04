@@ -75,13 +75,14 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     refute render(view) =~ "Workflows</th>"
   end
 
-  test "marks proposal, questions and verdict Always on, and no other type", ctx do
+  test "marks proposal, questions, review-comments and verdict Always on, and no other type",
+       ctx do
     {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
 
-    for name <- ~w(proposal questions verdict),
+    for name <- ~w(proposal questions review-comments verdict),
         do: assert(has_element?(view, "#artifact-type-#{name}", "Always on"), name)
 
-    for name <- Type.standard_names() -- ~w(proposal questions verdict),
+    for name <- Type.standard_names() -- ~w(proposal questions review-comments verdict),
         do: refute(has_element?(view, "#artifact-type-#{name}", "Always on"), name)
 
     assert render(view) =~

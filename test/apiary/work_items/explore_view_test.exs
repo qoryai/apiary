@@ -429,8 +429,9 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       {:ok, _} = WorkItems.explore_again(ctx.scope, item, 1)
       second = Repo.get_by!(DispatchRun, work_item_id: item.id, attempt: 2)
 
+      # Ended by its exit and settled with nothing pushed (`Apiary.Dispatches.Settle`).
       Repo.update_all(from(r in DispatchRun, where: r.id == ^second.id),
-        set: [state: :ended, end_cause: :run_ended]
+        set: [state: :ended, end_cause: :run_ended, result_outcome: :none]
       )
 
       {:ok, closed} = WorkItems.close(ctx.scope, item)

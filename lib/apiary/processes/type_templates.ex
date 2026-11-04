@@ -63,6 +63,7 @@ defmodule Apiary.Processes.TypeTemplates do
     {"change", :structured},
     {"proposal", :document},
     {"questions", :structured},
+    {"review-comments", :structured},
     {"verdict", :structured}
   ]
 

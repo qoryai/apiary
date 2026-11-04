@@ -63,9 +63,7 @@ defmodule Apiary.WorkItems.FinishedTest do
         "id" => @stage,
         "name" => "Explore",
         "inputs" => [],
-        "sequence" => [
-          %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}
-        ],
+        "sequence" => [%{"workflow" => "explore-a-ticket"}],
         "outputs" => [%{"type" => "proposal", "required" => true}],
         "gate" => %{"kind" => "person", "approvers" => "members"}
       },

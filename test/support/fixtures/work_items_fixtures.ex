@@ -258,12 +258,14 @@ defmodule Apiary.WorkItemsFixtures do
   unless given (`:waiting`, `:claimed`, `:handed_over`); an ended run has `end_cause:`,
   `:run_ended` unless given. A run handed over, and one ended `run_ended`, `lost` or
   `released`, has a registered run (`registered: false` leaves it out): completed, its exit
-  folded and its outcome a minute old unless `run:` changes it. `result:` gives it a
-  `dev.qory.runtime.result` event: a map is the result document, given as its JSON with
-  `is_error` false; `{:data, data}` is the event's data as given; nil, the default, is no
-  event. A run ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
-  `inputs_invalid`, `target_access_gone`) has the outcome `:error`, as the handover writes it; any other has none
-  stored. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
+  folded and its outcome a minute old unless `run:` changes it. `result:` is what the run
+  pushed during the run (`push_result!/3`): `understood_result/1` a proposal,
+  `questions_result/1` questions; nil, the default, is nothing. A run ended `run_ended` or
+  `lost` is then settled as its end settles it (`Apiary.Dispatches.Settle.settle_locked/1`,
+  unless `settle: false`). A run ended for a cause its handover gives
+  (`variables_invalid`, `ticket_gone`, `inputs_invalid`, `target_access_gone`) has the
+  outcome `:error`, as the handover writes it. Returns
+  `%{dispatch_run: dispatch_run, run: run_or_nil}`.
   """
   def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
     take_in = Keyword.get(opts, :take_in, work_item.take_in)
@@ -335,17 +337,129 @@ defmodule Apiary.WorkItemsFixtures do
       end
 
     case {run, Keyword.get(opts, :result)} do
-      {%Run{} = run, %{} = document} ->
-        result_event!(run, 7, %{"is_error" => false, "result" => Jason.encode!(document)})
-
-      {%Run{} = run, {:data, data}} ->
-        result_event!(run, 7, data)
-
-      _none ->
-        nil
+      {%Run{} = run, %{} = result} -> push_result!(dispatch_run, run, result)
+      _none -> nil
     end
 
+    dispatch_run =
+      if state == :ended and end_cause in [:run_ended, :lost] and
+           Keyword.get(opts, :settle, true) do
+        {:ok, _told} =
+          Repo.transact(fn -> {:ok, Apiary.Dispatches.Settle.settle_locked(dispatch_run)} end)
+
+        Repo.get!(DispatchRun, dispatch_run.id)
+      else
+        dispatch_run
+      end
+
     %{dispatch_run: dispatch_run, run: run}
+  end
+
+  @doc """
+  Pushes what the run `run` of the run of the queue `dispatch_run` gave, as the run
+  pushes it through the run API: for `understood_result/1`, its `message` as a version of
+  the work item's proposal; for `questions_result/1`, its questions added, open, to the
+  newest questions, each with the id `q<n>` and asked by the run. A question of more than
+  one line keeps its first line as the question and the whole as its context.
+  """
+  def push_result!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => verdict} = result) do
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+
+    case verdict do
+      "understood" ->
+        push_as_run!(dispatch_run, work_item, "proposal", %{
+          filename: "proposal.md",
+          content_type: "text/markdown",
+          binary: result["message"] || "A proposal."
+        })
+
+      "not_understood" ->
+        earlier =
+          case Apiary.Explore.Questions.newest(work_item) do
+            {_version, document} -> document["questions"]
+            nil -> []
+          end
+
+        at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        added =
+          result["questions"]
+          |> Enum.with_index(length(earlier) + 1)
+          |> Enum.map(fn {question, n} ->
+            question_entry(question, "q#{n}", %{"run" => run.number, "at" => at})
+          end)
+
+        push_as_run!(
+          dispatch_run,
+          work_item,
+          "questions",
+          Apiary.Explore.Questions.file(%{"questions" => earlier ++ added})
+        )
+    end
+  end
+
+  defp question_entry(%{"question" => text} = question, id, asked) do
+    entry = %{
+      "id" => id,
+      "question" => text |> String.trim() |> String.split("\n") |> hd(),
+      "options" => question["options"] || [],
+      "state" => "open",
+      "asked" => asked
+    }
+
+    if String.contains?(String.trim(text), "\n"),
+      do: Map.put(entry, "context", String.trim(text)),
+      else: entry
+  end
+
+  @doc """
+  Pushes, as the run `run` of the run of the queue `dispatch_run`, the newest review
+  comments of its work item with the run's reply added to each open review comment, which
+  it closes: the reply's `outcome` (`"changed"` unless given), and for `"asked"` the id of
+  the question in `question`.
+  """
+  def reply_as_run!(
+        %DispatchRun{} = dispatch_run,
+        %Run{} = run,
+        outcome \\ "changed",
+        question \\ nil
+      ) do
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+    {_version, document} = Apiary.Explore.ReviewComments.newest(work_item)
+    at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+    reply =
+      %{"text" => "Changed the proposal.", "by" => %{"run" => run.number}, "at" => at}
+      |> Map.put("outcome", outcome)
+      |> then(&if(question, do: Map.put(&1, "question", question), else: &1))
+
+    comments =
+      Enum.map(document["review_comments"], fn
+        %{"state" => "open"} = comment ->
+          comment
+          |> Map.put("replies", (comment["replies"] || []) ++ [reply])
+          |> Map.put("state", "closed")
+
+        comment ->
+          comment
+      end)
+
+    push_as_run!(
+      dispatch_run,
+      work_item,
+      "review-comments",
+      Apiary.Explore.ReviewComments.file(%{"review_comments" => comments})
+    )
+  end
+
+  defp push_as_run!(dispatch_run, work_item, type, file) do
+    {:ok, version} =
+      Apiary.Artifacts.push({:run, dispatch_run}, work_item, type, [file],
+        name: "main",
+        stage_id: dispatch_run.stage_id
+      )
+
+    version
   end
 
   # A run its handover could not form ended with an error, as the handover writes it.

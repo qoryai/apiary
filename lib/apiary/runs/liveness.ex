@@ -103,9 +103,8 @@ defmodule Apiary.Runs.Liveness do
     # by their exit: their dispatches end and free their slots once
     # (`Apiary.Dispatches.RunEnd`).
     Apiary.Dispatches.broadcast(RunEnd.lose(now))
-    # Then the runs of the queue ended by their exit whose registered run is settled
-    # since, and whose result outcome is not yet stored: what each gave is stored
-    # (`Apiary.Dispatches.Settle`).
+    # Then the runs of the queue ended by their exit whose outcome is not yet stored, such
+    # as one whose settle failed: what each gave is stored (`Apiary.Dispatches.Settle`).
     Apiary.Dispatches.broadcast(Settle.sweep(now))
     lost
   end

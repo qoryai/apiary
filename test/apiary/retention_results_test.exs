@@ -1,8 +1,9 @@
 defmodule Apiary.RetentionResultsTest do
-  # The result a run of the queue keeps (`Apiary.Dispatches.Settle`), cleared by the
-  # retention job (`Apiary.Retention`) once the run registered for it is past the events
-  # cut-off and its take in no longer waits for a member: answered, confirmed,
-  # closed, undone, or run again or taken in again. While the take in waits the result
+  # The result a run of the queue kept from before Explore's runs pushed artifacts, which
+  # no run writes since (`Apiary.Dispatches.Settle`), cleared by the retention job
+  # (`Apiary.Retention`) once the run registered for it is past the events cut-off and its
+  # take in no longer waits for a member: confirmed, closed, undone, or run again, as an
+  # answer runs it again, or taken in again. While the take in waits the result
   # stays, past the setting; the outcome stays either way, and the pages read a cleared
   # run as one whose events were pruned.
   use Apiary.DataCase, async: true
@@ -29,17 +30,25 @@ defmodule Apiary.RetentionResultsTest do
     %{scope: scope, workspace: Repo.get!(Workspace, scope.workspace.id)}
   end
 
-  # A work item whose run gave `result`, stored, its registered run last heard `days` ago.
+  # A work item whose run gave `result`, stored as a run stored it before, its registered
+  # run last heard `days` ago.
   defp ran!(scope, result, days \\ 60) do
     work_item = work_item_fixture(scope)
     %{dispatch_run: dispatch_run, run: run} = explore_run_fixture(work_item, result: result)
     Settle.settle(dispatch_run.id)
+    kept!(dispatch_run, result)
 
     Repo.update_all(from(r in Run, where: r.id == ^run.id),
       set: [last_event_at: DateTime.add(DateTime.utc_now(), -days, :day)]
     )
 
     %{work_item: work_item, dispatch_run: dispatch_run}
+  end
+
+  defp kept!(dispatch_run, result) do
+    Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+      set: [result: result]
+    )
   end
 
   defp prune!(workspace, opts \\ []), do: Retention.prune_workspace(workspace, opts)
@@ -92,24 +101,8 @@ defmodule Apiary.RetentionResultsTest do
     end
   end
 
-  test "an answer of the run alone, or a confirmation alone, ends the wait", ctx do
-    answered = ran!(ctx.scope, questions_result())
+  test "a confirmation alone ends the wait", ctx do
     confirmed = ran!(ctx.scope, understood_result())
-    work_item = current(answered)
-
-    Repo.insert!(%WorkItems.Answer{
-      organisation_id: work_item.organisation_id,
-      workspace_id: work_item.workspace_id,
-      work_item_id: work_item.id,
-      take_in: 1,
-      attempt: 1,
-      position: 1,
-      question: "Which basket?",
-      answer: "The small one.",
-      custom: true,
-      answered_at: DateTime.utc_now()
-    })
-
     work_item = current(confirmed)
 
     Repo.insert!(%WorkItems.Confirmation{
@@ -123,7 +116,6 @@ defmodule Apiary.RetentionResultsTest do
     })
 
     prune!(ctx.workspace)
-    assert kept(answered) == {:questions, nil}
     assert kept(confirmed) == {:proposal, nil}
   end
 
@@ -131,29 +123,17 @@ defmodule Apiary.RetentionResultsTest do
     proposal = ran!(ctx.scope, understood_result())
     questions = ran!(ctx.scope, questions_result())
 
-    # Run again after its first questions were answered: the answers of attempt 1 end the
-    # wait of attempt 1 alone, and attempt 2 waits.
+    # Run again after its first questions were answered: the later run ends the wait of
+    # attempt 1 alone, and attempt 2 waits.
     again = ran!(ctx.scope, questions_result())
     work_item = current(again)
     %{dispatch_run: second, run: run} = explore_run_fixture(work_item, result: questions_result())
     Settle.settle(second.id)
+    kept!(second, questions_result())
 
     Repo.update_all(from(r in Run, where: r.id == ^run.id),
       set: [last_event_at: DateTime.add(DateTime.utc_now(), -60, :day)]
     )
-
-    Repo.insert!(%WorkItems.Answer{
-      organisation_id: work_item.organisation_id,
-      workspace_id: work_item.workspace_id,
-      work_item_id: work_item.id,
-      take_in: 1,
-      attempt: 1,
-      position: 1,
-      question: "Which basket?",
-      answer: "The small one.",
-      custom: true,
-      answered_at: DateTime.utc_now()
-    })
 
     prune!(ctx.workspace)
 
@@ -199,7 +179,7 @@ defmodule Apiary.RetentionResultsTest do
     for ran <- closed, do: assert(kept(ran) == {:proposal, nil})
   end
 
-  test "the pages read a cleared run as one whose events were pruned", ctx do
+  test "the pages read a cleared run, its proposal from the artifact it pushed", ctx do
     asked = ran!(ctx.scope, questions_result())
     {:ok, _} = WorkItems.answer(ctx.scope, current(asked), 1, @answers)
 
@@ -214,7 +194,10 @@ defmodule Apiary.RetentionResultsTest do
       assert [_ | _] = WorkItems.explore_thread(ctx.scope, work_item)
     end
 
-    assert %{run: %{place: :no_result, outcome: :none, proposal: nil}} =
+    # The job clears the run's result; the proposal is the version the run pushed.
+    assert %{run: %{place: :proposal, outcome: :proposal, proposal: %{message: message}}} =
              WorkItems.explore(ctx.scope, current(closed))
+
+    assert message == understood_result()["message"]
   end
 end

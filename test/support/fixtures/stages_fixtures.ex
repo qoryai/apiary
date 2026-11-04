@@ -44,9 +44,7 @@ defmodule Apiary.StagesFixtures do
             "id" => "st_r79kph11eg",
             "name" => "Explore",
             "inputs" => [],
-            "sequence" => [
-              %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}
-            ],
+            "sequence" => [%{"workflow" => "explore-a-ticket"}],
             "outputs" => [%{"type" => "proposal", "required" => true}],
             "gate" => %{"kind" => "person", "approvers" => "members"}
           }
@@ -82,11 +80,13 @@ defmodule Apiary.StagesFixtures do
   end
 
   @doc """
-  Ends the newest run of the work item by its exit, with `result` as its explore result
-  (nil for none), settles it as the projection does (`Apiary.Dispatches.Settle.settle/1`)
+  Ends the newest run of the work item by its exit, with `result` what the run pushed
+  during the run (`Apiary.WorkItemsFixtures.push_result!/3`, nil for nothing, or a
+  function of the run of the queue and the registered run that pushes it), and the
+  registered run's columns `run_changes` changes, settles it as the projection does (`Apiary.Dispatches.Settle.settle/1`)
   and tells what changed. The work item as it is after.
   """
-  def end_run!(%WorkItem{} = work_item, result) do
+  def end_run!(%WorkItem{} = work_item, result, run_changes \\ %{}) do
     run = newest_run(work_item)
     now = DateTime.utc_now()
 
@@ -111,13 +111,13 @@ defmodule Apiary.StagesFixtures do
         outcome_received_at: DateTime.add(now, -700, :second),
         outcome_digest: :crypto.strong_rand_bytes(32)
       })
+      |> Ecto.Changeset.change(run_changes)
       |> Repo.insert!()
 
-    if result do
-      Apiary.WorkItemsFixtures.result_event!(registered, 7, %{
-        "is_error" => false,
-        "result" => Jason.encode!(result)
-      })
+    cond do
+      is_function(result, 2) -> result.(run, registered)
+      result -> Apiary.WorkItemsFixtures.push_result!(run, registered, result)
+      true -> nil
     end
 
     run.id |> Settle.settle() |> Apiary.Dispatches.broadcast()

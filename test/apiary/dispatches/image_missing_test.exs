@@ -201,18 +201,17 @@ defmodule Apiary.Dispatches.ImageMissingTest do
     inputs
   end
 
-  test "the input of the requeued run counts only the runs that started: attempt 1 of 3",
-       ctx do
+  test "the input of the requeued run counts only the runs that started: attempt 1", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
-    assert input!(dispatch_run)["run"] == %{"attempt" => 1, "of" => 3}
+    assert input!(dispatch_run)["run"] == %{"attempt" => 1}
     exit!(run, @missing)
 
     requeued = run_of(dispatch_run.work_item_id, 2)
     assert %DispatchRun{attempt: 2, of: 4, image_requeue: true} = requeued
-    assert input!(requeued)["run"] == %{"attempt" => 1, "of" => 3}
+    assert input!(requeued)["run"] == %{"attempt" => 1}
   end
 
-  test "the input of the run after a requeued run that started: attempt 2 of 3", ctx do
+  test "the input of the run after a requeued run that started: attempt 2", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, @missing)
     requeued = run_of(dispatch_run.work_item_id, 2)
@@ -236,8 +235,10 @@ defmodule Apiary.Dispatches.ImageMissingTest do
     {:ok, next} =
       Repo.transact(fn -> Dispatches.queue_next(work_item, dispatch_run.take_in) end)
 
-    assert %DispatchRun{attempt: 3, of: 4, image_requeue: false} = next
-    assert input!(next)["run"] == %{"attempt" => 2, "of" => 3}
+    # Explore has no loop: the next run's `of` is its attempt plus the runs left of the
+    # three its entry may have, which count the requeued run (`Apiary.Stages`).
+    assert %DispatchRun{attempt: 3, of: 3, image_requeue: false} = next
+    assert input!(next)["run"] == %{"attempt" => 2}
   end
 
   test "an image recorded again and missing again is cleared and queued again", ctx do

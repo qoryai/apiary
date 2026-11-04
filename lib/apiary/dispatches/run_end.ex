@@ -9,8 +9,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # - its exit once folded, whatever its state: `run_ended`, by the projection that folded
   #   it, right after its pass (`run_ended/1`, from `Apiary.Runs.Projector`). A run that
   #   is not a prebuild, ended so, has what it gave stored on the run of the queue in the
-  #   same transaction when it is decided already (`Apiary.Dispatches.Settle`), and later
-  #   otherwise. No outcome is given to a run of the queue (`Apiary.Runs.Outcome` refuses
+  #   same transaction (`Apiary.Dispatches.Settle`), read from the artifacts it pushed.
+  #   No outcome is given to a run of the queue (`Apiary.Runs.Outcome` refuses
   #   one); a run that is not a prebuild and has an outcome given before that rule ends
   #   `run_ended` as by its exit;
   # - its gateway's refusal, once folded (`refused/1`, from `Apiary.Runs.Projector`):
@@ -287,8 +287,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # `cause`, when it is still handed over and `run` is its registered run, locked after it,
   # and, for a prebuild that ends `lost` or by a `failed` or `lost` exit, records its last
   # build as failed on the record of `held`, what `hold/1` held before, then queues the
-  # build once more or ends the runs held for it (the moduledoc). Ended `run_ended`, what
-  # the run gave is stored when it is decided already (`Apiary.Dispatches.Settle`); a run
+  # build once more or ends the runs held for it (the moduledoc). Ended `run_ended`, or
+  # `lost` with questions left open, what the run gave is stored
+  # (`Apiary.Dispatches.Settle`); a run
   # whose exit says its image was missing, with `held` `{:image_missing, records,
   # collections}`, then has that image cleared, its build queued and the next run of its
   # take in queued (the moduledoc). Such a run whose image `hold/1` did not hold ends
@@ -335,8 +336,8 @@ defmodule Apiary.Dispatches.RunEnd do
   defp staged(%DispatchRun{id: id}),
     do: if(Apiary.Stages.on?(), do: Apiary.Stages.run_ended(id), else: [])
 
-  defp settled(dispatch_run, run, :run_ended, now),
-    do: Settle.settle_locked(%{dispatch_run | state: :ended, end_cause: :run_ended}, run, now)
+  defp settled(dispatch_run, _run, cause, _now) when cause in [:run_ended, :lost],
+    do: Settle.settle_locked(%{dispatch_run | state: :ended, end_cause: cause})
 
   defp settled(%DispatchRun{work_item_id: work_item_id}, _run, :run_refused, _now),
     do: Settle.told(work_item_id)

@@ -74,7 +74,7 @@ defmodule Apiary.Retention do
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
   alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, Step}
-  alias Apiary.WorkItems.{Answer, Confirmation, WorkItem}
+  alias Apiary.WorkItems.{Confirmation, WorkItem}
 
   @log_type "dev.qory.run.log"
   @default_batch 2_000
@@ -550,12 +550,13 @@ defmodule Apiary.Retention do
 
   ## The results kept on the runs of the queue
 
-  # A run of the queue keeps the result of a proposal or questions
-  # (`Apiary.Dispatches.Settle`) past its run's events, while its take in waits for a
-  # member. The job clears it, `result` set to NULL and nothing else, its outcome kept,
-  # where the run registered for it is past the events cut-off, as `due/6` reads it
-  # whether or not its events are pruned yet, and its take in no longer waits: the take in
-  # was answered, for this run, or confirmed; the work item was closed or undone
+  # A run of the queue that ended before Explore's runs pushed their proposal and
+  # questions as artifacts keeps the result it gave then past its run's events, while its
+  # take in waits for a member; no run writes one since (`Apiary.Dispatches.Settle`). The
+  # job clears it, `result` set to NULL and nothing else, its outcome kept, where the run
+  # registered for it is past the events cut-off, as `due/6` reads it whether or not its
+  # events are pruned yet, and its take in no longer waits: the take in was confirmed;
+  # the work item was closed or undone
   # (no longer `:exploring`), or taken in again (its take in is later); or a later run of
   # the take in was queued. Each is kept for good once written, so a result cleared is
   # never waited for again. One statement over at most `:batch` rows at a time, a short
@@ -615,13 +616,6 @@ defmodule Apiary.Retention do
             l.take_in == parent_as(:dispatch_run).take_in and
             l.attempt > parent_as(:dispatch_run).attempt
 
-    answered =
-      from a in Answer,
-        where:
-          a.work_item_id == parent_as(:dispatch_run).work_item_id and
-            a.take_in == parent_as(:dispatch_run).take_in and
-            a.attempt == parent_as(:dispatch_run).attempt
-
     confirmed =
       from c in Confirmation,
         where:
@@ -650,7 +644,7 @@ defmodule Apiary.Retention do
           ),
       where:
         w.take_in > d.take_in or w.state != :exploring or exists(later_run) or
-          exists(answered) or exists(confirmed)
+          exists(confirmed)
   end
 
   ## What it says

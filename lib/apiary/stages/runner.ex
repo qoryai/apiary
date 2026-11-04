@@ -24,11 +24,8 @@ defmodule Apiary.Stages.Runner do
   #   * Outside a loop, the sequence goes on after each run, whatever its verdict.
   #   * `escalate` escalates, `escalate`; a run that stopped escalates, `run_stopped`, with
   #     its cause as the gaps.
-  #   * Questions wait for answers (`:waiting_answers`); the answers run the same workflow
-  #     again, as the loop's next round. Questions in a loop's last round escalate,
-  #     `round_limit`, with the questions as the gaps; so do questions outside a loop
-  #     from the last run its entry may have, as many as a take in of today's Explore
-  #     (`:last_attempt`, `Apiary.Stages`).
+  #   * Questions wait for answers (`:waiting_answers`), in any round and at any count of
+  #     runs; the answers run the same workflow again, as the loop's next round.
   #   * At the end of the sequence the Exists checks run. When every required output
   #     passes, a person gate waits (`:at_gate`) and a gate `none` passes on (`:advance`).
   #     On a failure, a stage with a loop starts another round of its last loop, with the
@@ -299,18 +296,8 @@ defmodule Apiary.Stages.Runner do
   defp run_ended(_stage, position, {:stopped, cause}, _facts),
     do: escalate(:run_stopped, cause, position)
 
-  defp run_ended(stage, position, {:questions, questions}, facts) do
-    cond do
-      in_loop?(position) and position.round >= rounds(stage, position.entry) ->
-        escalate(:round_limit, questions, position)
-
-      not in_loop?(position) and Map.get(facts, :last_attempt, false) ->
-        escalate(:round_limit, questions, position)
-
-      true ->
-        %{state: :waiting_answers, position: position, actions: []}
-    end
-  end
+  defp run_ended(_stage, position, {:questions, _questions}, _facts),
+    do: %{state: :waiting_answers, position: position, actions: []}
 
   # The next workflow of the loop's ring, or the next round from its first, or the round
   # limit.

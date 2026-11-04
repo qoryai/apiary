@@ -21,7 +21,9 @@ defmodule Apiary.Artifacts.Format do
   #   * file: any bytes; `application/octet-stream`.
   #   * structured: one JSON document valid against the type's JSON Schema: a standard
   #     type's file under `priv/schemas/artifacts/`, a custom type's in its row
-  #     (`Apiary.Artifacts.CustomSchema`); `application/json`.
+  #     (`Apiary.Artifacts.CustomSchema`); `application/json`. A document of the standard
+  #     type `questions` also has each question's `id` once, which its schema cannot
+  #     check: a second question with an `id` is refused at that `id`.
   #
   # A refusal is `{:error, reason}`: `:format` for bytes the base view does not take,
   # `:extension` for a document whose filename does not end in `.md`,
@@ -64,8 +66,15 @@ defmodule Apiary.Artifacts.Format do
   # allows: values in all, the longest string and the deepest nesting.
   @standard_limits [nodes: 65_536, string: 131_072, depth: 16]
 
-  # The keywords whose value is data, not a schema: their members are left as they are.
-  @data_keywords ~w(const enum default examples)
+  # The lists and members of a standard type whose schema leaves its lists unbounded,
+  # which `Apiary.Kinds.Bounds.file!/2` cannot read: the questions and the review comments
+  # formats, copied from qory, bound a document by its size, 1 MiB. Their lists are
+  # bounded here by the values in all, and their objects by the most members one has, a
+  # question's 9 and a review comment's 7.
+  @unbounded_lists %{
+    "questions" => [list: 65_536, members: 9],
+    "review-comments" => [list: 65_536, members: 7]
+  }
 
   @markdown "text/markdown; charset=utf-8"
   @json "application/json"
@@ -265,12 +274,14 @@ defmodule Apiary.Artifacts.Format do
 
   # The document of a standard type is checked in the caller's process: its bounds, the
   # schema file's and `@standard_limits`, are checked before JSV reads it.
-  defp structured(%Type{standard: true, schema_path: path}, document) when is_list(path) do
-    limits = Bounds.file!(path) ++ @standard_limits
+  defp structured(%Type{standard: true, name: name, schema_path: path}, document)
+       when is_list(path) do
+    limits =
+      Map.get_lazy(@unbounded_lists, name, fn -> Bounds.file!(path) end) ++ @standard_limits
 
     if Bounds.within?(document, limits) do
-      case JSV.validate(document, Schema.file!(path, &code_point_lengths/1), cast: false) do
-        {:ok, _document} -> :ok
+      case JSV.validate(document, Schema.file!(path, &Schema.code_point_lengths/1), cast: false) do
+        {:ok, _document} -> once(name, document)
         {:error, %JSV.ValidationError{} = error} -> {:error, {:schema, SchemaError.first(error)}}
       end
     else
@@ -288,6 +299,68 @@ defmodule Apiary.Artifacts.Format do
 
   defp structured(_type, _document), do: {:error, {:schema, refused(:unbuildable)}}
 
+  # A questions document has each question's `id` once, and a review comments document
+  # each review comment's: a second is refused at its place. A questions document's
+  # answers, and the earlier answers in a question's `history`, choose an `option` among
+  # the question's titles, or none.
+  defp once("questions", %{"questions" => questions}) do
+    with :ok <- once(questions, "questions", "question"), do: titled(questions)
+  end
+
+  defp once("review-comments", %{"review_comments" => comments}),
+    do: once(comments, "review_comments", "review comment")
+
+  defp once(_name, _document), do: :ok
+
+  defp titled(questions) do
+    questions
+    |> Enum.with_index()
+    |> Enum.find_value(:ok, fn {question, index} ->
+      titles = for %{"title" => title} <- question["options"], do: title
+
+      ([{"answer", question["answer"]}] ++
+         for(
+           {earlier, n} <- Enum.with_index(question["history"] || []),
+           do: {"history/#{n}", earlier}
+         ))
+      |> Enum.find_value(fn
+        {place, %{"option" => option}} when is_binary(option) ->
+          if option not in titles,
+            do:
+              {:error,
+               {:schema,
+                SchemaError.detail(
+                  "#/questions/#{index}/#{place}/option",
+                  "the option is not the title of an option of the question"
+                )}}
+
+        _none ->
+          nil
+      end)
+    end)
+  end
+
+  defp once(entries, key, word) do
+    entries
+    |> Enum.with_index()
+    |> Enum.reduce_while(MapSet.new(), fn {%{"id" => id}, index}, seen ->
+      if MapSet.member?(seen, id),
+        do:
+          {:halt,
+           {:error,
+            {:schema,
+             SchemaError.detail(
+               "#/#{key}/#{index}/id",
+               "the id #{id} is the id of an earlier #{word}"
+             )}}},
+        else: {:cont, MapSet.put(seen, id)}
+    end)
+    |> case do
+      {:error, _refusal} = refused -> refused
+      _seen -> :ok
+    end
+  end
+
   # Why a document was refused before JSV found a failing place in it, at its root.
   defp refused(:limits),
     do: SchemaError.detail("#", "the document has more values, or longer ones, than allowed")
@@ -296,35 +369,6 @@ defmodule Apiary.Artifacts.Format do
     do: SchemaError.detail("#", "the check of the document took more time or memory than allowed")
 
   defp refused(_unbuildable), do: SchemaError.detail("#", "the JSON Schema cannot be read")
-
-  # JSV counts `minLength` and `maxLength` in graphemes, and a standard type's schema
-  # counts code points, as JSON Schema does: each object with an integer `minLength` or
-  # `maxLength` gets the bounds as a pattern instead, `^[\s\S]{min,max}$`, which PCRE in
-  # UTF mode counts in code points. The members of `const`, `enum`, `default` and
-  # `examples` are data and stay as they are.
-  defp code_point_lengths(schema) when is_map(schema) do
-    schema =
-      Map.new(schema, fn
-        {keyword, value} when keyword in @data_keywords -> {keyword, value}
-        {keyword, value} -> {keyword, code_point_lengths(value)}
-      end)
-
-    case Map.split(schema, ["minLength", "maxLength"]) do
-      {bounds, rest} when bounds != %{} ->
-        min = Map.get(bounds, "minLength", 0)
-        max = Map.get(bounds, "maxLength")
-
-        if is_integer(min) and (is_integer(max) or is_nil(max)),
-          do: %{"allOf" => [rest, %{"pattern" => "^[\\s\\S]{#{min},#{max}}$"}]},
-          else: schema
-
-      _none ->
-        schema
-    end
-  end
-
-  defp code_point_lengths(list) when is_list(list), do: Enum.map(list, &code_point_lengths/1)
-  defp code_point_lengths(other), do: other
 
   ## Reading
 

@@ -35,9 +35,6 @@ defmodule Apiary.Stages.StopCause do
   @spec text(DispatchRun.t(), WorkItem.t(), context) :: String.t()
   def text(run, work_item, context \\ %{})
 
-  def text(%DispatchRun{end_cause: :run_ended, result_outcome: :refused}, _work_item, _context),
-    do: "The run's result does not match the explore result schema."
-
   def text(%DispatchRun{end_cause: :run_ended, result_outcome: :error}, _work_item, _context),
     do: "The run ended with an error."
 

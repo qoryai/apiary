@@ -18,6 +18,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Edition, EditionStubs, Repo, WorkItems}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Runs.Projector
   alias Apiary.WorkItems.WorkItem
 
@@ -48,6 +49,18 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
   end
 
   defp state(work_item), do: Repo.get!(WorkItem, work_item.id).state
+
+  # The answers of the newest questions, in order: `{option, note}` each.
+  defp answered(work_item) do
+    case Apiary.Explore.Questions.newest(work_item) do
+      {_version, document} ->
+        for %{"state" => "answered", "answer" => answer} <- document["questions"],
+            do: {answer["option"], answer["note"]}
+
+      nil ->
+        []
+    end
+  end
 
   describe "the tabs" do
     test "Ticket, Explore and the Thread, with the header, the step card and Details", %{
@@ -180,12 +193,8 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         "other" => "z"
       })
 
-      assert [%{answer: "The one at checkout"}, %{answer: "The spring sale."}] =
-               Repo.all(
-                 from a in Apiary.WorkItems.Answer,
-                   where: a.work_item_id == ^work_item.id,
-                   order_by: a.position
-               )
+      # An option's title is the answer's option; the member's text is its note.
+      assert answered(work_item) == [{"The one at checkout", nil}, {nil, "The spring sale."}]
 
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
     end
@@ -233,10 +242,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         "answers" => %{"1" => %{"option" => "The one at checkout", "custom" => "Mine."}}
       })
 
-      assert [%{answer: "The one at checkout"}] = Repo.all(Apiary.WorkItems.Answer)
+      assert answered(work_item) == [{"The one at checkout", nil}]
     end
 
-    test "a question with neither an option nor a text is marked under its field", %{
+    test "a send with no question answered marks each field; one answer is enough", %{
       conn: conn,
       scope: scope
     } do
@@ -248,18 +257,29 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         |> element("#work-item-explore-questions-form")
         |> render_submit(%{
           "number" => Integer.to_string(work_item.number),
-          "answers" => %{"1" => %{"custom" => "The one at checkout."}, "2" => %{"custom" => "  "}}
+          "answers" => %{"1" => %{"custom" => " "}, "2" => %{"custom" => "  "}}
         })
 
       assert html =~
                "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
 
+      assert has_element?(view, "#work-item-explore-questions-answer-1[aria-invalid]")
       assert has_element?(view, "#work-item-explore-questions-answer-2[aria-invalid]")
       assert state(work_item) == :exploring
-      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 0
+      assert answered(work_item) == []
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{
+        "number" => Integer.to_string(work_item.number),
+        "answers" => %{"1" => %{"custom" => "The one at checkout."}, "2" => %{"custom" => "  "}}
+      })
+
+      assert answered(work_item) == [{nil, "The one at checkout."}]
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
     end
 
-    test "an answer that is not text is refused with the form's errors, and nothing is written",
+    test "an answer that is not text counts as none: with no other answer, the form's errors, and nothing is written",
          %{conn: conn, scope: scope} do
       {work_item, _run} = asked(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
@@ -268,14 +288,14 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         html =
           render_hook(view, "answer", %{
             "number" => Integer.to_string(work_item.number),
-            "answers" => %{"1" => forged, "2" => %{"custom" => "The spring sale."}}
+            "answers" => %{"1" => forged, "2" => %{"custom" => "  "}}
           })
 
         assert html =~
                  "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
 
         assert has_element?(view, "#work-item-explore-questions-answer-1[aria-invalid]")
-        assert has_element?(view, "#work-item-explore-questions-answer-2", "The spring sale.")
+        assert has_element?(view, "#work-item-explore-questions-answer-2[aria-invalid]")
       end
 
       render_hook(view, "answer", %{
@@ -283,7 +303,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         "answers" => "x"
       })
 
-      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 0
+      assert answered(work_item) == []
       assert state(work_item) == :exploring
     end
 
@@ -305,7 +325,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       refute html =~ "Late."
       refute html =~ "Choose an option"
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
-      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 2
+      assert length(answered(work_item)) == 2
     end
   end
 
@@ -326,7 +346,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(view, "#work-item-step .q-wi-badge", "Ready")
       refute has_element?(view, "#work-item-explore-reply")
 
-      assert %{result: %{"verdict" => "understood"}} =
+      assert %{result: %{"proposal_version" => 1}} =
                Apiary.WorkItems.Explore.confirmation(work_item.id, 1)
     end
 
@@ -345,8 +365,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       render_submit(form, %{"change" => "Offer a refund first."})
 
-      assert [%{answer: "Offer a refund first.", question: nil}] =
-               Repo.all(Apiary.WorkItems.Answer)
+      {_version, comments} = Apiary.Explore.ReviewComments.newest(work_item)
+
+      assert [%{"text" => "Offer a refund first.", "state" => "open", "on" => %{"version" => 1}}] =
+               comments["review_comments"]
 
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
       assert has_element?(view, "#work-item-explore-comments h3", "Comments")
@@ -421,7 +443,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
                "Remove the invisible or control characters from the comment."
              )
 
-      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 0
+      assert Apiary.Explore.ReviewComments.newest(work_item) == nil
       assert state(work_item) == :exploring
     end
 
@@ -539,7 +561,14 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
     test "a run whose last result was an error still says so", %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
-      explore_run_fixture(work_item, result: {:data, %{"is_error" => true, "result" => "No"}})
+      %{dispatch_run: dispatch_run} = explore_run_fixture(work_item)
+
+      # A release that read the run's result event stored `error` for one whose
+      # `is_error` was true; Core reads that event no more, and the row keeps it.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+          set: [result_outcome: :error]
+        )
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
       assert has_element?(view, "#work-item-explore-none-h", "The run ended with an error.")

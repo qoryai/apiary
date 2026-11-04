@@ -70,7 +70,7 @@ defmodule Apiary.ArtifactsTest do
   defp count(schema), do: Repo.aggregate(schema, :count)
 
   describe "types/1 and type/2" do
-    test "list the ten standard types first, then the workspace's custom types by name", %{
+    test "list the eleven standard types first, then the workspace's custom types by name", %{
       scope: scope
     } do
       {:ok, _type} =
@@ -83,7 +83,7 @@ defmodule Apiary.ArtifactsTest do
 
       assert names ==
                ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video
-                  change proposal questions verdict demo-findings)
+                  change proposal questions review-comments verdict demo-findings)
     end
 
     test "have the base views and dedicated views of the workflow model", %{scope: scope} do
@@ -161,7 +161,7 @@ defmodule Apiary.ArtifactsTest do
       show!(scope.workspace, ["mockup", "change"])
 
       assert names(Artifacts.types(scope.workspace)) ==
-               ~w(mockup change proposal questions verdict demo-findings)
+               ~w(mockup change proposal questions review-comments verdict demo-findings)
 
       assert %Type{name: "mockup"} = Artifacts.type(scope.workspace, "mockup")
       assert Artifacts.type(scope.workspace, "explainer") == nil
@@ -171,7 +171,7 @@ defmodule Apiary.ArtifactsTest do
       show!(scope.workspace, [])
 
       assert names(Artifacts.types(scope.workspace)) ==
-               ~w(proposal questions verdict demo-findings)
+               ~w(proposal questions review-comments verdict demo-findings)
 
       for name <- Type.always_on() do
         assert %Type{name: ^name, standard: true} = Artifacts.type(scope.workspace, name)
@@ -189,7 +189,7 @@ defmodule Apiary.ArtifactsTest do
       assert names(types) == Type.standard_names() ++ ["demo-findings"]
 
       assert for(%Type{standard: true, shown: true, name: name} <- types, do: name) ==
-               ~w(mockup proposal questions verdict)
+               ~w(mockup proposal questions review-comments verdict)
     end
 
     test "are read by the workspace's id, whatever the struct has", %{scope: scope} do
@@ -795,6 +795,20 @@ defmodule Apiary.ArtifactsTest do
     end
   end
 
+  # A question `id` the run of the queue `run` asks, open, as a run pushes it: `asked.run`
+  # the number of its registered run.
+  defp asked(run, id, text) do
+    number = Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id).number
+
+    %{
+      "id" => id,
+      "question" => text,
+      "options" => [],
+      "state" => "open",
+      "asked" => %{"run" => number, "at" => "2026-11-04T10:00:00Z"}
+    }
+  end
+
   describe "push/5 by a run" do
     test "stores version 1 with the content type the bytes show",
          %{run: run, root: root} = context do
@@ -919,12 +933,13 @@ defmodule Apiary.ArtifactsTest do
                  {:run, run},
                  work_item,
                  "questions",
-                 [
-                   json("q.json", %{
-                     "questions" => [%{"question" => "Which basket?", "options" => []}]
-                   })
-                 ]
+                 [json("q.json", %{"questions" => [asked(run, "q1", "Which basket?")]})]
                )
+
+      assert {:ok, _version} =
+               Artifacts.push({:run, run}, work_item, "review-comments", [
+                 json("r.json", %{"review_comments" => []})
+               ])
     end
 
     test "refuses an unknown type and a type name of the wrong form", %{run: run} = context do
@@ -1139,15 +1154,15 @@ defmodule Apiary.ArtifactsTest do
       assert {:ok, _version} =
                push.("questions", %{
                  "questions" => [
-                   %{
-                     "question" => "Which basket?",
-                     "options" => [%{"title" => "The small one", "explanation" => "At checkout."}]
-                   },
-                   %{"question" => "Which sale?", "options" => []}
+                   Map.put(asked(run, "q1", "Which basket?"), "options", [
+                     %{"title" => "The small one", "explanation" => "At checkout."}
+                   ]),
+                   asked(run, "q2", "Which sale?")
                  ]
                })
 
-      assert {:error, {:invalid, {:schema, 0, %{path: "#/questions"}}}} =
+      # Each version the run pushes keeps the questions of the newest one.
+      assert {:error, {:invalid, {:kept, 0, :id_dropped}}} =
                push.("questions", %{"questions" => []})
 
       # A question is a question with its options: a text alone, or the members a

@@ -272,7 +272,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert get_resp_header(conn, "x-qory-signature-ed25519") == [expected]
     end
 
-    test "is the work item's snapshot: ticket, stage, outputs, verdict and answers", ctx do
+    test "is the work item's snapshot: ticket, stage, outputs and verdict", ctx do
       place!(ctx)
       conn = read(ctx, "/work-item")
       assert signed_answer?(conn)
@@ -296,13 +296,13 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert body["ticket"]["title"] == ctx.work_item.title
       assert is_list(body["comments"])
       assert body["comments_omitted"] == 0
-      assert body["answers"] == []
+      refute Map.has_key?(body, "answers")
 
       assert body["stage"] == %{
                "id" => @explore,
                "name" => "Explore",
                "round" => 1,
-               "rounds" => 3,
+               "rounds" => nil,
                "state" => "running"
              }
 
@@ -1035,6 +1035,78 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         assert signed_answer?(conn)
         assert json_response(conn, status) == answer, inspect(push_error)
       end
+    end
+
+    test "a run's version of questions or review comments that changes what members wrote is 422",
+         ctx do
+      cases = [
+        {"questions", :id_dropped,
+         "Keep every question of the newest version of questions in questions.json: " <>
+           "the id of a question is missing."},
+        {"questions", :answer_changed,
+         "Leave each answer in questions.json as the newest version of questions has it: " <>
+           "members write the answers."},
+        {"questions", :history_changed,
+         "Leave the history of each question in questions.json as the newest version of " <>
+           "questions has it, and give a new question no history."},
+        {"questions", :reopen_not_kept,
+         "Move the answer of a question you reopen, unchanged, to the end of its history " <>
+           "in questions.json."},
+        {"questions", :new_not_open,
+         "Set the state of each question you add in questions.json to open."},
+        {"questions", :asked_run,
+         "Set asked.run of each question you add in questions.json to this run's number."},
+        {"review-comments", :id_dropped,
+         "Keep every review comment of the newest version of review-comments in " <>
+           "review-comments.json: the id of a review comment is missing."},
+        {"review-comments", :comment_added,
+         "Remove the review comment you added in review-comments.json: " <>
+           "members write review comments."},
+        {"review-comments", :comment_changed,
+         "Leave on, text, by and at of each review comment in review-comments.json as the " <>
+           "newest version of review-comments has them."},
+        {"review-comments", :reply_changed,
+         "Leave each earlier reply in review-comments.json as the newest version of " <>
+           "review-comments has it."},
+        {"review-comments", :reply_not_run,
+         "Set by.run of your reply in review-comments.json to this run's number."},
+        {"review-comments", :replies_added,
+         "Add at most one reply to each review comment in review-comments.json."},
+        {"review-comments", :not_open,
+         "Reply in review-comments.json only to review comments that are open."},
+        {"review-comments", :not_closed,
+         "Close each review comment you reply to in review-comments.json."},
+        {"review-comments", :state_changed,
+         "Change the state of a review comment in review-comments.json only by closing an " <>
+           "open one with your reply."},
+        {"review-comments", :question_unknown,
+         "Push the question you asked first, then review-comments.json: the question of a " <>
+           "reply with the outcome asked is the id of a question in the newest version of " <>
+           "questions."}
+      ]
+
+      for {type, reason, message} <- cases do
+        RunApiStubs.put(:push_error, {:invalid, {:kept, 0, reason}})
+
+        conn =
+          write(ctx, "/artifacts", push_body(type, [{"#{type}.json", "application/json", "{}"}]))
+
+        assert signed_answer?(conn)
+
+        assert json_response(conn, 422) == %{
+                 "error" => "invalid_artifact",
+                 "names" => ["files[0]"],
+                 "message" => message
+               },
+               inspect({type, reason})
+      end
+
+      # Every reason of each check has its message.
+      assert Enum.sort(for {"questions", reason, _} <- cases, do: reason) ==
+               Enum.sort(Apiary.Explore.Questions.reasons())
+
+      assert Enum.sort(for {"review-comments", reason, _} <- cases, do: reason) ==
+               Enum.sort(Apiary.Explore.ReviewComments.reasons())
     end
 
     test "a run that has ended is 409 run_ended, for a push and a verdict", ctx do

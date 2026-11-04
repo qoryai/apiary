@@ -36,23 +36,24 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       With `workflow_model` on, a take in enters Explore.
     * The node pool **preview-pool** and its key. A run of Explore needs a gateway to be
       claimed, and the preview has none: the task hands a waiting run over in the
-      database and posts its events under the pool's key (`Apiary.Runs.Ingest`), a
-      result and an exit, as a gateway would. The exit ends the run as any exit does.
+      database, pushes the run's artifacts as the run would through the run API, and
+      posts its events under the pool's key (`Apiary.Runs.Ingest`), its start and its
+      exit, as a gateway would. The exit ends the run as any exit does.
     * The work items, by their ticket:
       * Save a basket for later: Explore running, its first run waiting for a machine,
         on the trial version;
       * Checkout total ignores the voucher after a reload: Explore at its gate, with
-        version 2 of its proposal, which read the comment Dana wrote on version 1, so
-        that comment is done;
+        version 2 of its proposal, whose run replied to the review comment Dana wrote on
+        version 1 and closed it;
       * Search returns no results for words with umlauts: Explore approved by Dana,
         Shape at its gate;
       * Basket badge shows 0 after signing in: Explore and Shape approved by Dana, Build
         waiting for its acceptance-criteria input;
-      * Product images load twice on the listing page: three rounds of questions, each
-        with options; Dana answers the first two, selecting an option for one question
-        and writing her own for the other, and the third escalates at the round limit;
-      * TypeError in the address form after autofill: a result that fails the explore
-        schema, escalated as a run that stopped;
+      * Product images load twice on the listing page: two runs that ask questions, each
+        with options; Dana answers the first run's, selecting an option for one question
+        and writing her own for the other, and the second run's wait for answers;
+      * TypeError in the address form after autofill: a run that exited failed with no
+        proposal, escalated as a run that stopped;
       * Show delivery dates on the product page: Shape at its gate, with an
         acceptance-criteria document (Markdown with a Mermaid diagram) and a mockup
         image that Max added;
@@ -65,8 +66,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         harness file at the root of `acme/web-shop` has no skill `explore-a-ticket`, so
         qory closed the run failed with the reason `workflow_not_in_harness`, which the
         run's page and the work item show with the workflow and that file.
-    * Last, Dana saves a trial version (Explore with 2 rounds instead of 3) and assigns
-      the first work item to it.
+    * Last, Dana saves a trial version (Explore with an optional acceptance-criteria
+      output) and assigns the first work item to it.
 
   Running it again on the instance it filled adds nothing. The trial version, the fill's
   last step, marks a fill that finished; an Acme without it is a fill that stopped half
@@ -94,6 +95,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   alias Apiary.Adapters.Wire, as: AdapterWire
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Explore.{Questions, ReviewComments}
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Batch, Ingest, Run}
@@ -118,7 +120,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   @grant_ref "G_acme"
   @pool "preview-pool"
   @forager "0.10.0"
-  # Dana's comment on the first version of a proposal.
+  # Dana's review comment on the first version of a proposal.
   @comment "Also check the total when a customer changes the basket after the reload."
 
   # The work items, in the order they are taken in: what happens to each, who takes its
@@ -132,7 +134,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
      "Searching for Kühlschrank finds nothing."},
     {:build_inputs, :dana, 104, "Basket badge shows 0 after signing in",
      "The badge counts the guest basket, not the merged one."},
-    {:round_limit, :max, 105, "Product images load twice on the listing page",
+    {:questions, :max, 105, "Product images load twice on the listing page",
      "The listing fetches each image once for the thumbnail and once for the zoom."},
     {:run_stopped, :dana, 106, "TypeError in the address form after autofill",
      "Reported 37 times in the last day."},
@@ -489,14 +491,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     workspace
     |> documents()
     |> List.last()
-    |> update_stage("Explore", fn stage ->
-      Map.update!(stage, "sequence", fn sequence ->
-        Enum.map(sequence, fn
-          %{"loop" => loop} = entry -> %{entry | "loop" => Map.put(loop, "rounds", 2)}
-          entry -> entry
-        end)
-      end)
-    end)
+    |> update_stage(
+      "Explore",
+      &Map.update!(&1, "outputs", fn outputs -> outputs ++ [optional("acceptance-criteria")] end)
+    )
   end
 
   defp optional(type), do: %{"type" => type, "required" => false}
@@ -757,15 +755,16 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # Its first run waits for a machine.
   defp drive!(:explore_running, _ctx, work_item), do: work_item
 
-  # Version 1 of the proposal, Dana's comment on it, and version 2, which read it.
+  # Version 1 of the proposal, Dana's review comment on it, sent, and version 2, whose
+  # run replied to it and closed it.
   defp drive!(:explore_gate, ctx, work_item) do
     work_item = proposed!(ctx, work_item)
 
     %{status: :confirm, step: %{attempt: attempt}} =
       Explore.current(work_item, DateTime.utc_now())
 
-    ok!(WorkItems.answer(ctx.dana, work_item, attempt, @comment), "a comment")
-    record_result!(ctx, work_item, {:result, proposal(work_item.title, :updated)})
+    ok!(WorkItems.answer(ctx.dana, work_item, attempt, @comment), "a review comment")
+    record_result!(ctx, work_item, {:proposal, proposal(work_item.title, :updated), :reply})
     current(ctx.dana, work_item)
   end
 
@@ -779,11 +778,18 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     approve!(ctx.dana, work_item, "Shaped enough to build.")
   end
 
-  defp drive!(:round_limit, ctx, work_item), do: rounds!(ctx, work_item, 1)
+  # Questions from the first run, which Dana answers, and from the second, which wait.
+  defp drive!(:questions, ctx, work_item) do
+    run = record_result!(ctx, work_item, {:questions, questions(1)})
+    work_item = current(ctx.dana, work_item)
+    ok!(WorkItems.answer(ctx.dana, work_item, run.attempt, answers()), "an answer")
+    record_result!(ctx, work_item, {:questions, questions(2)})
+    current(ctx.dana, work_item)
+  end
 
+  # A run that exited failed without a proposal: Explore escalates, as a run that stopped.
   defp drive!(:run_stopped, ctx, work_item) do
-    # A result the explore schema rejects: a verdict without the members it requires.
-    record_result!(ctx, work_item, {:text, ~s({"version":1,"verdict":"understood"})})
+    record_result!(ctx, work_item, :failed)
     current(ctx.dana, work_item)
   end
 
@@ -849,28 +855,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     approve!(ctx.dana, work_item, "Ready for the demo recording.")
   end
 
-  # Questions in each round, answered by Dana, until the stage escalates at its round
-  # limit; at most one round more than the default process's three.
-  defp rounds!(ctx, work_item, round) when round <= 4 do
-    run = record_result!(ctx, work_item, {:result, questions(round)})
-    work_item = current(ctx.dana, work_item)
-
-    if escalated?(work_item) do
-      work_item
-    else
-      ok!(WorkItems.answer(ctx.dana, work_item, run.attempt, answers(round)), "an answer")
-      work_item = current(ctx.dana, work_item)
-      if escalated?(work_item), do: work_item, else: rounds!(ctx, work_item, round + 1)
-    end
-  end
-
-  defp rounds!(_ctx, work_item, _round),
-    do: Shell.raise!("#{work_item.title} did not escalate at the round limit")
-
-  defp escalated?(%WorkItem{stage_state: state}), do: state == :escalated
-
   defp proposed!(ctx, work_item) do
-    record_result!(ctx, work_item, {:result, proposal(work_item.title, :first)})
+    record_result!(ctx, work_item, {:proposal, proposal(work_item.title, :first)})
     current(ctx.dana, work_item)
   end
 
@@ -912,12 +898,16 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   defp ok!({:ok, value}, _what), do: value
   defp ok!(other, what), do: Shell.raise!("#{what} was not made: #{inspect(other)}")
 
-  ## A run of Explore and its result
+  ## A run of Explore and what it pushes
 
-  # The waiting run of `work_item`'s Explore, handed over to the preview's pool, and its
-  # events posted under the pool's key as a gateway posts them: it starts, returns
-  # `result` and exits. The exit, once projected, ends the run of the queue, which
-  # settles the result. Returns the run of the queue.
+  # The waiting run of `work_item`'s Explore, handed over to the preview's pool; what it
+  # gives, pushed as the run pushes it through the run API; and its events posted under
+  # the pool's key as a gateway posts them: it starts and exits. `result` is
+  # `{:proposal, markdown}`, with `:reply` a third element when the run also replies to
+  # each open review comment and closes it; `{:questions, questions}`, the questions it
+  # adds; `:failed`, a run that exits failed; or `:workflow_not_in_harness`. The exit,
+  # once projected, ends the run of the queue, which reads what the run pushed. Returns
+  # the run of the queue.
   defp record_result!(%{key: key}, %WorkItem{} = work_item, result) do
     dispatch_run =
       Repo.one(
@@ -930,6 +920,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     now = DateTime.utc_now()
     if result == :workflow_not_in_harness, do: walked_file!(dispatch_run)
     run = hand_over!(dispatch_run, work_item, key, now)
+    push_run!(dispatch_run, run, work_item, result, now)
 
     meta = %{
       contract_version: 1,
@@ -943,6 +934,86 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       other -> Shell.raise!("the run of #{work_item.title} was not stored: #{inspect(other)}")
     end
   end
+
+  defp push_run!(dispatch_run, run, work_item, {:proposal, markdown}, now),
+    do: push_run!(dispatch_run, run, work_item, {:proposal, markdown, nil}, now)
+
+  defp push_run!(dispatch_run, run, work_item, {:proposal, markdown, reply}, now) do
+    run_push!(dispatch_run, work_item, "proposal", %{
+      filename: "proposal.md",
+      content_type: "text/markdown",
+      binary: markdown
+    })
+
+    if reply == :reply do
+      {_version, document} = ReviewComments.newest(current_row(work_item))
+
+      comments =
+        for comment <- ReviewComments.entries(document) do
+          if comment["state"] == "open" do
+            reply = %{
+              "text" => "Version 2 of the proposal adds a test for a basket change.",
+              "by" => %{"run" => run.number},
+              "at" => time(now),
+              "outcome" => "changed"
+            }
+
+            comment
+            |> Map.put("replies", (comment["replies"] || []) ++ [reply])
+            |> Map.put("state", "closed")
+          else
+            comment
+          end
+        end
+
+      run_push!(
+        dispatch_run,
+        work_item,
+        "review-comments",
+        ReviewComments.file(%{"review_comments" => comments})
+      )
+    end
+  end
+
+  defp push_run!(dispatch_run, run, work_item, {:questions, questions}, now) do
+    earlier =
+      case Questions.newest(current_row(work_item)) do
+        {_version, document} -> document["questions"]
+        nil -> []
+      end
+
+    added =
+      questions
+      |> Enum.with_index(length(earlier) + 1)
+      |> Enum.map(fn {question, n} ->
+        Map.merge(question, %{
+          "id" => "q#{n}",
+          "state" => "open",
+          "asked" => %{"run" => run.number, "at" => time(now)}
+        })
+      end)
+
+    run_push!(
+      dispatch_run,
+      work_item,
+      "questions",
+      Questions.file(%{"questions" => earlier ++ added})
+    )
+  end
+
+  defp push_run!(_dispatch_run, _run, _work_item, _result, _now), do: :ok
+
+  defp run_push!(dispatch_run, work_item, type, file) do
+    ok!(
+      Artifacts.push({:run, dispatch_run}, current_row(work_item), type, [file],
+        name: "main",
+        stage_id: dispatch_run.stage_id
+      ),
+      "the run's #{type}"
+    )
+  end
+
+  defp current_row(%WorkItem{id: id}), do: Repo.get!(WorkItem, id)
 
   # Stands in for the claim and handover, which need a gateway the preview does not have:
   # writes the handed-over run of the queue and its registered run straight to the
@@ -1033,11 +1104,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     ]
 
   defp events(result, work_item) do
-    text =
-      case result do
-        {:result, document} -> Jason.encode!(document)
-        {:text, text} -> text
-      end
+    {state, exit_code} = if result == :failed, do: {"failed", 1}, else: {"succeeded", 0}
 
     [
       {-90, {"dev.qory.run.started", started(work_item)}},
@@ -1051,22 +1118,12 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
           "dir" => "/work",
           "interactive" => false
         }}},
-      {-2,
-       {"dev.qory.runtime.result",
-        %{
-          "session_id" => Ecto.UUID.generate(),
-          "outcome" => "success",
-          "is_error" => false,
-          "turns" => 6,
-          "duration_ms" => 86_000,
-          "result" => text
-        }}},
       {-1,
        {"dev.qory.session.exited",
-        %{"session" => 1, "state" => "completed", "exit_code" => 0, "duration_ms" => 88_000}}},
+        %{"session" => 1, "state" => state, "exit_code" => exit_code, "duration_ms" => 88_000}}},
       {0,
        {"dev.qory.run.exited",
-        %{"state" => "completed", "exit_code" => 0, "duration_ms" => 90_000}}}
+        %{"state" => state, "exit_code" => exit_code, "duration_ms" => 90_000}}}
     ]
   end
 
@@ -1080,8 +1137,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       "about" => %{"kind" => "Explore", "title" => work_item.title}
     }
 
-  # An explore v1 result whose verdict is `understood`: its first version, or the version
-  # that read Dana's comment (`@comment`).
+  # The proposal's Markdown: its first version, or the version that changed for Dana's
+  # review comment (`@comment`).
   defp proposal(title, version) do
     {in_scope, why} =
       case version do
@@ -1095,82 +1152,91 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
            "It changes the cause, so the change stays after every reload and basket change."}
       end
 
-    %{
-      "version" => 1,
-      "verdict" => "understood",
-      "message" => """
-      ## What this is
+    """
+    ## What this is
 
-      The ticket is about this change: #{title}.
+    The ticket is about this change: #{title}.
 
-      ## In and out
+    ## In and out
 
-      - In: #{in_scope}
-      - Out: other pages of the web shop
+    - In: #{in_scope}
+    - Out: other pages of the web shop
 
-      ## How Qory would do it
+    ## How Qory would do it
 
-      Find the cause in the web shop's code, change it and add a test for it.
+    Find the cause in the web shop's code, change it and add a test for it.
 
-      ## Why this is the best
+    ## Why this is the best
 
-      - #{why}
-      - One page and its tests change.
+    - #{why}
+    - One page and its tests change.
 
-      ## Alternatives
+    ## Alternatives
 
-      - Hide the symptom on the page. Why not: the cause would stay.
+    - Hide the symptom on the page. Why not: the cause would stay.
 
-      Source: [docs.example.com/web-shop](https://docs.example.com/web-shop)
-      """
-    }
+    Source: [docs.example.com/web-shop](https://docs.example.com/web-shop)
+    """
   end
 
-  # An explore v1 result whose verdict is `not_understood`.
-  defp questions(round) do
-    %{
-      "version" => 1,
-      "verdict" => "not_understood",
-      "questions" => [
-        %{
-          "question" => """
-          Round #{round}. The category listing requests each product image twice:
+  # The questions a run adds, each with options: the first run's, or the second's.
+  defp questions(1) do
+    [
+      %{
+        "question" => "Which of the two loads of each product image should stay?",
+        "context" => """
+        The category listing requests each product image twice:
 
-          - once in the page the server sends
-          - once in the lazy loader
+        - once in the page the server sends
+        - once in the lazy loader
+        """,
+        "options" => [
+          %{
+            "title" => "Keep the lazy loader",
+            "explanation" => "The first page opens faster. Cost: images appear a moment later."
+          },
+          %{
+            "title" => "Keep the server's images",
+            "explanation" => "Every image shows at once. Cost: a slower first page on phones."
+          }
+        ]
+      },
+      %{
+        "question" => "Where should Qory test the change first?",
+        "options" => [
+          %{
+            "title" => "Phones",
+            "explanation" => "Most visitors use phones. Cost: desktops get a later check."
+          },
+          %{
+            "title" => "Phones and desktops",
+            "explanation" => "Covers every visitor. Cost: one more test run."
+          }
+        ]
+      }
+    ]
+  end
 
-          Which load should stay?
-          """,
-          "options" => [
-            %{
-              "title" => "Keep the lazy loader",
-              "explanation" => "The first page opens faster. Cost: images appear a moment later."
-            },
-            %{
-              "title" => "Keep the server's images",
-              "explanation" => "Every image shows at once. Cost: a slower first page on phones."
-            }
-          ]
-        },
-        %{
-          "question" => "Round #{round}. Where should Qory test the change first?",
-          "options" => [
-            %{
-              "title" => "Phones",
-              "explanation" => "Most visitors use phones. Cost: desktops get a later check."
-            },
-            %{
-              "title" => "Phones and desktops",
-              "explanation" => "Covers every visitor. Cost: one more test run."
-            }
-          ]
-        }
-      ]
-    }
+  defp questions(2) do
+    [
+      %{
+        "question" => "Should the lazy loader also load the zoom image?",
+        "options" => [
+          %{
+            "title" => "Yes, on the first zoom",
+            "explanation" => "The listing loads less. Cost: the first zoom waits a moment."
+          },
+          %{
+            "title" => "No, with the thumbnail",
+            "explanation" => "Zooming is at once. Cost: each image loads twice as many bytes."
+          }
+        ]
+      }
+    ]
   end
 
   # Dana selects an option for the first question and writes her own for the second.
-  defp answers(_round) do
+  defp answers do
     %{
       "1" => %{"option" => "Keep the lazy loader"},
       "2" => %{"custom" => "Test on the two oldest phones the shop supports."}

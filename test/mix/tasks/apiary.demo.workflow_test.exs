@@ -168,7 +168,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
              )
 
       assert :outputs_changed in kinds.(Processes.diff(v2, v3))
-      assert :sequence_changed in kinds.(Processes.diff(v3, trial))
+      assert :outputs_changed in kinds.(Processes.diff(v3, trial))
 
       items =
         Repo.all(from w in WorkItem, where: w.workspace_id == ^workspace.id)
@@ -212,13 +212,33 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       assert at.(waiting.title) == {"Build", "waiting_inputs"}
       assert length(decisions(waiting)) == 2
 
-      # Escalations: at the round limit after three rounds, and a result that fails the
-      # explore schema, as a run that stopped.
-      limit = items["Product images load twice on the listing page"]
-      assert at.(limit.title) == {"Explore", "escalated"}
-      assert to_string(Stages.status(limit).escalation.cause) == "round_limit"
-      assert limit.stage_round == 3
+      # Questions: the first run's answered by Dana, an option for one and her own text
+      # for the other; the second run's wait for answers.
+      asked = items["Product images load twice on the listing page"]
+      assert at.(asked.title) == {"Explore", "waiting_answers"}
+      {_version, document} = Apiary.Explore.Questions.newest(asked)
 
+      assert [
+               %{
+                 "id" => "q1",
+                 "state" => "answered",
+                 "answer" => %{"option" => "Keep the lazy loader"}
+               },
+               %{
+                 "id" => "q2",
+                 "state" => "answered",
+                 "answer" => %{"option" => nil, "note" => _note}
+               },
+               %{"id" => "q3", "state" => "open"}
+             ] = document["questions"]
+
+      # Explore's gate: the run of version 2 replied to Dana's review comment and closed it.
+      {_version, comments} = Apiary.Explore.ReviewComments.newest(gate)
+
+      assert [%{"state" => "closed", "replies" => [%{"outcome" => "changed"}]}] =
+               comments["review_comments"]
+
+      # A run that exited failed without a proposal, as a run that stopped.
       stopped = items["TypeError in the address form after autofill"]
       assert at.(stopped.title) == {"Explore", "escalated"}
       assert to_string(Stages.status(stopped).escalation.cause) == "run_stopped"
@@ -255,7 +275,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       end
 
       assert Enum.map(Artifacts.list(added), & &1.type) |> Enum.sort() ==
-               ["acceptance-criteria", "mockup", "proposal", "verdict"]
+               ["acceptance-criteria", "mockup", "proposal"]
 
       # Shape approved by Dana with Max's criteria: Build has its input and waits at its
       # gate.

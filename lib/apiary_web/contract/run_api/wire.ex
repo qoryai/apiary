@@ -6,8 +6,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   # Only the members listed here are written: a field the modules add is never sent to a
   # run until it is listed here.
   #
-  # - `work_item/2`: the work item as a run reads it: the ticket, the instruction, the
-  #   comments and the answers as Explore's input has them
+  # - `work_item/2`: the work item as a run reads it: the ticket, the instruction and the
+  #   comments as Explore's input has them
   #   (`Apiary.Dispatches.Inputs.explore/4`, within its 768 KiB with the oldest comments
   #   left out), then the stage, its inputs, its outputs with each check result, the
   #   newest verdict with its gaps, the stage's gaps and the work item's notes.
@@ -28,7 +28,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   @wire_version 1
 
   # The members of Explore's input that the work item's answer takes, in this order.
-  @from_explore ~w(ticket instruction comments comments_omitted answers)
+  @from_explore ~w(ticket instruction comments comments_omitted)
 
   @spec work_item(map, Jason.OrderedObject.t() | nil) ::
           {:ok, Jason.OrderedObject.t()} | {:error, :ticket_gone | :inputs_invalid}
@@ -201,8 +201,9 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   end
 
   # notes/1 is the notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
-  # request for changes, an escalation resolved with a note, a move, an answer to a run's
-  # questions and the gaps of failed checks that started a round.
+  # request for changes, an escalation resolved with a note, a move, what a member gave
+  # Explore (an answer, a review comment or a reply) and the gaps of failed checks that
+  # started a round.
   @spec notes([map]) :: [Jason.OrderedObject.t()]
   def notes(notes) do
     context = %{names: names(Enum.map(notes, &get(&1, :user_id)))}

@@ -1,10 +1,8 @@
 defmodule Apiary.WorkItems.ProposalTest do
-  # The result as the pages draw it, and the checks of what a member gives Explore: the
-  # answers to a run's questions, each an option's title or the member's text, and a
-  # comment on a proposal.
+  # The questions as the pages draw them, and the checks of what a member gives Explore:
+  # the answers to the open questions, each an option's title or the member's text, one
+  # or more at a time, and a review comment on a proposal.
   use ExUnit.Case, async: true
-
-  import Apiary.WorkItemsFixtures, only: [understood_result: 0, understood_result: 1]
 
   alias Apiary.WorkItems.Proposal
 
@@ -34,46 +32,29 @@ defmodule Apiary.WorkItems.ProposalTest do
   defp q(text, titles \\ []),
     do: %{question: text, options: for(t <- titles, do: %{title: t, explanation: "Why #{t}."})}
 
-  describe "the result as the pages draw it" do
-    test "from_result/1 is the proposal's Markdown, nil for a result stored before" do
-      assert Proposal.from_result(understood_result(%{"message" => "## What this is\n\nA."})) ==
-               %{message: "## What this is\n\nA."}
+  describe "the questions as the pages draw them" do
+    test "question/1 is a question with its options, and a text offers none" do
+      assert Proposal.question(%{
+               "id" => "q1",
+               "question" => "Which refund applies to **this order**?",
+               "options" => [
+                 %{"title" => "Full refund", "explanation" => "The policy covers it."},
+                 %{"title" => "Store credit", "explanation" => "No return is needed."}
+               ],
+               "state" => "open"
+             }) == %{
+               question: "Which refund applies to **this order**?",
+               options: [
+                 %{title: "Full refund", explanation: "The policy covers it."},
+                 %{title: "Store credit", explanation: "No return is needed."}
+               ]
+             }
 
-      stored_before =
-        understood_result()
-        |> Map.delete("message")
-        |> Map.put("understanding", "The basket keeps the price.")
+      assert Proposal.question(%{"question" => "Which order number?"}) ==
+               %{question: "Which order number?", options: []}
 
-      assert Proposal.from_result(stored_before) == %{message: nil}
-    end
-
-    test "questions/1 is each question with its options, and a text offers none" do
-      result = %{
-        "verdict" => "not_understood",
-        "questions" => [
-          %{
-            "question" => "Which refund applies to **this order**?",
-            "options" => [
-              %{"title" => "Full refund", "explanation" => "The policy covers it."},
-              %{"title" => "Store credit", "explanation" => "No return is needed."}
-            ]
-          },
-          %{"question" => "Which order number?", "options" => []},
-          "Stored before options?"
-        ]
-      }
-
-      assert Proposal.questions(result) == [
-               %{
-                 question: "Which refund applies to **this order**?",
-                 options: [
-                   %{title: "Full refund", explanation: "The policy covers it."},
-                   %{title: "Store credit", explanation: "No return is needed."}
-                 ]
-               },
-               %{question: "Which order number?", options: []},
+      assert Proposal.question("Stored before options?") ==
                %{question: "Stored before options?", options: []}
-             ]
     end
   end
 
@@ -192,9 +173,15 @@ defmodule Apiary.WorkItems.ProposalTest do
                {:error, :invalid}
     end
 
-    test "a form missing a question, naming another, or giving no text, is refused" do
-      assert Proposal.check_answers([q("A?"), q("B?")], %{"1" => "Yes"}) == {:error, :invalid}
+    test "a form may leave questions out: the questions it answers are kept" do
+      assert Proposal.check_answers([q("A?"), q("B?"), q("C?")], %{"2" => "Yes"}) ==
+               {:ok, [{2, "B?", "Yes", true}]}
 
+      assert Proposal.check_answers([q("A?"), q("B?")], %{"1" => "Yes", "2" => " "}) ==
+               {:ok, [{1, "A?", "Yes", true}]}
+    end
+
+    test "a form naming another question, or giving no text, is refused" do
       assert Proposal.check_answers([q("A?")], %{"1" => "Yes", "2" => "No"}) ==
                {:error, :invalid}
 
