@@ -491,12 +491,12 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, ".q-wi-badge") == "Ready"
 
       assert text(html, ".q-wi-step > p") ==
-               "Mirek confirmed the proposal 3 hours ago. Shape is the plan and its acceptance criteria."
+               "Mirek confirmed Qory's proposal 3 hours ago. Shape is the plan and its acceptance criteria."
 
       mine = card(work_item(%{status: :shape, confirmed_by: @dana, confirmed_at: ago(3 * 3600)}))
 
       assert text(mine, ".q-wi-step > p") ==
-               "You confirmed the proposal 3 hours ago. Shape is the plan and its acceptance criteria."
+               "You confirmed Qory's proposal 3 hours ago. Shape is the plan and its acceptance criteria."
     end
 
     test "an ended work item has no card" do
