@@ -734,34 +734,30 @@ defmodule ApiaryWeb.WorkItemComponents do
 
             :none ->
               gettext(
-                "When the run starts, Qory explores the %{item} and writes a proposal for the work.",
+                "When the run starts, Explore reads the %{item} and writes a proposal.",
                 item: assigns.item
               )
 
             :you ->
               gettext(
-                "When the run starts, Qory explores the %{item} and your answers, and writes a proposal for the work.",
+                "When the run starts, Explore reads the %{item} and your answers, and writes a proposal.",
                 item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "When the run starts, Qory explores the %{item} and the answers of %{name}, and writes a proposal for the work.",
+                "When the run starts, Explore reads the %{item} and the answers of %{name}, and writes a proposal.",
                 name: name,
                 item: assigns.item
               )
 
             :several ->
               gettext(
-                "When the run starts, Qory explores the %{item} and the answers of this take in, and writes a proposal for the work.",
+                "When the run starts, Explore reads the %{item} and the answers of this take in, and writes a proposal.",
                 item: assigns.item
               )
           end,
-        queued:
-          gettext("Attempt %{attempt} of %{of} is queued.",
-            attempt: Format.number(run.attempt),
-            of: Format.number(assigns.queued_of || run.of)
-          )
+        queued: gettext("Attempt %{attempt} is queued.", attempt: Format.number(run.attempt))
       )
 
     ~H"""
@@ -777,7 +773,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         line:
           test_line(assigns) ||
             gettext(
-              "When the run starts, Qory explores the %{item} and writes a proposal for the work.",
+              "When the run starts, Explore reads the %{item} and writes a proposal.",
               item: assigns.item
             )
       )
@@ -855,8 +851,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           ),
         waits:
           ngettext(
-            "Next, a member answers Qory's question.",
-            "Next, a member answers Qory's questions.",
+            "Next, a member answers the question.",
+            "Next, a member answers the questions.",
             n
           ),
         go: ngettext("Answer the question", "Answer the questions", n)
@@ -878,8 +874,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           if(run[:outcome] == :questions,
             do:
               ngettext(
-                "Qory still has %{number} question after attempt %{attempt} of %{of}, the last attempt of this take in.",
-                "Qory still has %{number} questions after attempt %{attempt} of %{of}, the last attempt of this take in.",
+                "%{number} question is still open after attempt %{attempt} of %{of}, the last attempt of this take in.",
+                "%{number} questions are still open after attempt %{attempt} of %{of}, the last attempt of this take in.",
                 length(run.questions),
                 number: Format.number(length(run.questions)),
                 attempt: Format.number(run.attempt),
@@ -922,9 +918,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         line: no_result_line(status, run),
         next:
           next_run?(run) &&
-            gettext("Run Explore again starts attempt %{attempt} of %{of}.",
-              attempt: Format.number(run.attempt + 1),
-              of: Format.number(run.of)
+            gettext("Run Explore again starts attempt %{attempt}.",
+              attempt: Format.number(run.attempt + 1)
             )
       )
 
@@ -1056,7 +1051,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       :refused ->
         rich_gettext(
-          "Attempt %{attempt} returned a result that did not pass Qory's check, so Explore has no result.",
+          "Attempt %{attempt} returned a result that did not pass Qory Apiary's check, so Explore has no result.",
           attempt: attempt_ref(run)
         )
 
@@ -1149,14 +1144,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     case {you?(by), assigns.can_undo} do
       {true, true} ->
         rich_gettext(
-          "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}.",
+          "You took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory Apiary changes nothing on the %{item}.",
           when: at,
           item: assigns.item
         )
 
       {false, true} ->
         rich_gettext(
-          "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory changes nothing on the %{item}.",
+          "%{name} took this in again %{when}. Until a run starts, you can undo the take in: the work item goes back to closed, and Qory Apiary changes nothing on the %{item}.",
           name: by.name,
           when: at,
           item: assigns.item
@@ -1178,7 +1173,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     case {assigns.uninstalled, you?(by), assigns.can_undo} do
       {true, true, true} ->
         rich_gettext(
-          "You took this in %{when}. Until a run starts, you can undo the take in. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
+          "You took this in %{when}. Until a run starts, you can undo the take in. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps the label and comment of Qory Apiary.",
           when: at,
           integration: integration,
           item: assigns.item
@@ -1186,7 +1181,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {true, true, false} ->
         rich_gettext(
-          "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
+          "You took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps the label and comment of Qory Apiary.",
           when: at,
           integration: integration,
           item: assigns.item
@@ -1194,7 +1189,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {true, false, true} ->
         rich_gettext(
-          "%{name} took this in %{when}. Until a run starts, you can undo the take in. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
+          "%{name} took this in %{when}. Until a run starts, you can undo the take in. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps the label and comment of Qory Apiary.",
           name: by.name,
           when: at,
           integration: integration,
@@ -1203,7 +1198,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {true, false, false} ->
         rich_gettext(
-          "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps Qory's label and comment.",
+          "%{name} took this in %{when}. %{integration} is no longer connected, so nothing changes on the %{item}: it keeps the label and comment of Qory Apiary.",
           name: by.name,
           when: at,
           integration: integration,
@@ -1212,7 +1207,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {false, true, true} ->
         rich_gettext(
-          "You took this in %{when}. Until a run starts, you can undo the take in: Qory removes its label from the %{item} and leaves its comment.",
+          "You took this in %{when}. Until a run starts, you can undo the take in: Qory Apiary removes its label from the %{item} and leaves its comment.",
           when: at,
           item: assigns.item
         )
@@ -1222,7 +1217,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
       {false, false, true} ->
         rich_gettext(
-          "%{name} took this in %{when}. Until a run starts, you can undo the take in: Qory removes its label from the %{item} and leaves its comment.",
+          "%{name} took this in %{when}. Until a run starts, you can undo the take in: Qory Apiary removes its label from the %{item} and leaves its comment.",
           name: by.name,
           when: at,
           item: assigns.item
@@ -2068,56 +2063,58 @@ defmodule ApiaryWeb.WorkItemComponents do
     run = assigns.run
     whose = answers_of(Enum.map(assigns.groups, & &1.answered_by))
     attempt = Format.number(run.attempt)
-    of = Format.number(run.of)
 
     {heading, line} =
       case {assigns.status, whose} do
         {:queued, _whose} when assigns.test ->
           {gettext("Explore is queued."),
            gettext(
-             "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. The agent answers the line in it.",
-             attempt: attempt,
-             of: of
+             "Attempt %{attempt} starts when the workspace's pool takes it. The agent writes a reply to the line.",
+             attempt: attempt
            )}
 
         {:running, _whose} when assigns.test ->
           {gettext("Explore is running."),
-           gettext("In attempt %{attempt} of %{of}, the agent writes a reply to the line.",
-             attempt: attempt,
-             of: of
+           gettext("In attempt %{attempt}, the agent writes a reply to the line.",
+             attempt: attempt
            )}
 
         {:queued, :none} ->
           {gettext("Explore is queued."),
            gettext(
-             "Qory starts attempt %{attempt} of %{of} when the workspace's pool takes it. It reads the %{item} and proposes what to do, or asks what it needs to know.",
+             "Attempt %{attempt} starts when the workspace's pool takes it. It reads the %{item}, then writes a proposal and questions.",
              attempt: attempt,
-             of: of,
              item: assigns.item
            )}
 
         {:queued, whose} ->
           {queued_heading(whose),
            gettext(
-             "Attempt %{attempt} of %{of} starts when the workspace's pool takes it. It reads the %{item} and these answers, from the start.",
+             "Attempt %{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest proposal and the questions with their answers.",
              attempt: attempt,
-             of: of,
              item: assigns.item
            )}
 
         {:running, :none} ->
           {gettext("Explore is running."),
            gettext(
-             "Attempt %{attempt} of %{of} reads the %{item}, then returns a proposal or questions.",
+             "Attempt %{attempt} reads the %{item}, then writes a proposal and questions.",
              attempt: attempt,
-             of: of,
+             item: assigns.item
+           )}
+
+        {:running, :you} ->
+          {running_heading(:you),
+           gettext(
+             "Attempt %{attempt} reads the %{item}, the newest proposal and the questions with your answers, then writes the next proposal and questions.",
+             attempt: attempt,
              item: assigns.item
            )}
 
         {:running, whose} ->
           {running_heading(whose),
            gettext(
-             "Attempt %{attempt} reads the %{item}, the newest proposal and the questions with your answers, then writes the next proposal and questions.",
+             "Attempt %{attempt} reads the %{item}, the newest proposal and the questions with their answers, then writes the next proposal and questions.",
              attempt: attempt,
              item: assigns.item
            )}
@@ -2396,24 +2393,24 @@ defmodule ApiaryWeb.WorkItemComponents do
     end)
   end
 
-  # Who confirmed the proposal and when; nil before.
+  # The proposal's version, who confirmed it and when; nil before.
   defp proposal_caption(_run, falsy, _now) when falsy in [nil, false], do: nil
 
   defp proposal_caption(run, %{by: by, at: at}, now) do
     at = inline_ago(at, now)
-    attempt = attempt_ref(run)
+    version = if is_integer(run[:version]), do: Format.number(run.version), else: gettext("n/a")
 
     if you?(by),
       do:
-        rich_gettext("You confirmed this proposal %{when}. Attempt %{attempt} wrote it.",
-          when: at,
-          attempt: attempt
+        rich_gettext("Version %{version}. You confirmed it %{when}.",
+          version: version,
+          when: at
         ),
       else:
-        rich_gettext("%{name} confirmed this proposal %{when}. Attempt %{attempt} wrote it.",
+        rich_gettext("Version %{version}. %{name} confirmed it %{when}.",
+          version: version,
           name: by.name,
-          when: at,
-          attempt: attempt
+          when: at
         )
   end
 
@@ -3046,7 +3043,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # comment_error/1 is the words of what is wrong with a review comment or a reply; nil
   # for an error without words.
   @spec comment_error(term) :: String.t() | nil
-  def comment_error(:blank), do: gettext("Write what to change.")
+  def comment_error(:blank), do: gettext("Write your review comment.")
   def comment_error(:reply_blank), do: gettext("Write your reply.")
 
   def comment_error({:too_long, _limit}),
@@ -3260,9 +3257,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp no_result_words(%{outcome: :refused}),
     do:
-      {"hero-exclamation-triangle-micro", gettext("The run's result did not pass Qory's check."),
+      {"hero-exclamation-triangle-micro",
+       gettext("The run's result did not pass Qory Apiary's check."),
        gettext(
-         "Qory accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so Qory does not show it."
+         "Qory Apiary accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so it is not shown."
        )}
 
   defp no_result_words(_error),
@@ -3622,7 +3620,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       assign(
         assigns,
         :heading,
-        ngettext("Qory's question, and the answer", "Qory's questions, and the answers", n)
+        ngettext("Question and answer", "Questions and answers", n)
       )
 
     ~H"""
@@ -3999,10 +3997,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         line: event_line(assigns),
         tag:
           assigns.kind == :started &&
-            gettext("Attempt %{attempt} of %{of}",
-              attempt: Format.number(assigns.run.attempt),
-              of: Format.number(assigns.run.of)
-            ),
+            gettext("Attempt %{attempt}", attempt: Format.number(assigns.run.attempt)),
         qory: assigns.kind in [:started, :asked, :proposed],
         bad: assigns.kind in [:no_result, :lost, :cancelled],
         at_words: time_tag(assigns.at, Format.relative(assigns.at, now)),
@@ -4127,23 +4122,22 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp event_line(%{kind: :started, start: :answers, run: run}),
     do:
-      rich_gettext("Qory started Explore again, with the answers, in attempt %{attempt}",
+      rich_gettext("Explore started again, with the answers, in attempt %{attempt}",
         attempt: attempt_ref(run)
       )
 
   defp event_line(%{kind: :started, start: :again, run: run}),
-    do:
-      rich_gettext("Qory started Explore again in attempt %{attempt}", attempt: attempt_ref(run))
+    do: rich_gettext("Explore started again in attempt %{attempt}", attempt: attempt_ref(run))
 
   defp event_line(%{kind: :started, run: run}),
-    do: rich_gettext("Qory started Explore in attempt %{attempt}", attempt: attempt_ref(run))
+    do: rich_gettext("Explore started in attempt %{attempt}", attempt: attempt_ref(run))
 
   defp event_line(%{kind: :asked, questions: questions, duration: duration}) do
     n = length(questions)
 
     ngettext(
-      "Qory wrote %{number} question, after %{duration}",
-      "Qory wrote %{number} questions, after %{duration}",
+      "Explore wrote 1 question, after %{duration}",
+      "Explore wrote %{number} questions, after %{duration}",
       n,
       number: Format.number(n),
       duration: duration
@@ -4175,18 +4169,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp event_line(%{kind: :proposed, owner: nil, duration: duration}),
-    do: rich_gettext("Qory wrote a proposal, after %{duration}.", duration: duration)
+    do: rich_gettext("Explore wrote a proposal, after %{duration}.", duration: duration)
 
   defp event_line(%{kind: :proposed, owner: owner, duration: duration}) do
     if you?(owner),
       do:
         rich_gettext(
-          "Qory wrote a proposal, after %{duration}. You confirm next",
+          "Explore wrote a proposal, after %{duration}. You confirm next",
           duration: duration
         ),
       else:
         rich_gettext(
-          "Qory wrote a proposal, after %{duration}. %{name} confirms next",
+          "Explore wrote a proposal, after %{duration}. %{name} confirms next",
           duration: duration,
           name: {:b, owner.name}
         )
@@ -4212,7 +4206,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp event_line(%{kind: :no_result, outcome: :refused, run: run}),
     do:
-      rich_gettext("Attempt %{attempt} returned a result that did not pass Qory's check",
+      rich_gettext("Attempt %{attempt} returned a result that did not pass Qory Apiary's check",
         attempt: attempt_ref(run)
       )
 
@@ -4242,18 +4236,18 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp event_line(%{kind: :confirmed, changed: true, actor: actor}) do
     if you?(actor),
-      do: gettext("You changed Qory's proposal and confirmed it. Ready for Shape"),
+      do: gettext("You changed the proposal and confirmed it. Ready for Shape"),
       else:
-        rich_gettext("%{name} changed Qory's proposal and confirmed it. Ready for Shape",
+        rich_gettext("%{name} changed the proposal and confirmed it. Ready for Shape",
           name: {:b, actor.name}
         )
   end
 
   defp event_line(%{kind: :confirmed, actor: actor}) do
     if you?(actor),
-      do: gettext("You confirmed Qory's proposal. Ready for Shape"),
+      do: gettext("You confirmed the proposal. Ready for Shape"),
       else:
-        rich_gettext("%{name} confirmed Qory's proposal. Ready for Shape", name: {:b, actor.name})
+        rich_gettext("%{name} confirmed the proposal. Ready for Shape", name: {:b, actor.name})
   end
 
   defp event_line(%{kind: :closed, actor: nil, reason: reason}), do: closed_words(reason)

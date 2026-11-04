@@ -613,7 +613,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       number = "#{work_item.number}"
 
       render_submit(form, %{"number" => number, "text" => " \n "})
-      assert has_element?(view, "#work-item-review-page-error", "Write what to change.")
+      assert has_element?(view, "#work-item-review-page-error", "Write your review comment.")
       assert has_element?(view, ~s(#work-item-review-page-text[aria-invalid="true"]))
 
       long = String.duplicate("a", 2_001)
@@ -1087,7 +1087,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/thread")
 
       refute has_element?(thread, ~s(a[href*="/runs/"]))
-      assert render(thread) =~ "Qory started Explore in attempt 1"
+      assert render(thread) =~ "Explore started in attempt 1"
       refute render(thread) =~ "Run #{ctx.run.number}"
       assert render(thread) =~ "At checkout."
     end

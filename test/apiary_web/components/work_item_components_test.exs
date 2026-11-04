@@ -278,10 +278,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
 
       assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory explores the ticket and writes a proposal for the work."
+               "When the run starts, Explore reads the ticket and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."
+               "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket and leaves its comment."
 
       assert text(html, "#work-item-step-undo button") == "Undo"
       assert attr(html, "#work-item-step-undo button", "phx-click") == ["undo"]
@@ -292,24 +292,24 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(queued(@priya, ago(20 * 60)))
 
       assert text(html, "#work-item-step-undo-line") ==
-               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."
+               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket and leaves its comment."
     end
 
     test "after the uninstall: the reader's line says nothing changes on the ticket" do
       html = card(queued(@dana, ago(20 * 60)), uninstalled: true)
 
       assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory explores the ticket and writes a proposal for the work."
+               "When the run starts, Explore reads the ticket and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+               "You took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps the label and comment of Qory Apiary."
     end
 
     test "after the uninstall, another's take in: who and when, nothing changes, and Undo" do
       html = card(queued(@priya, ago(20 * 60)), uninstalled: true)
 
       assert text(html, "#work-item-step-undo-line") ==
-               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps the label and comment of Qory Apiary."
 
       assert text(html, "#work-item-step-undo button") == "Undo"
     end
@@ -319,9 +319,9 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             {@dana, false, "You took this in just now."},
             {@priya, false, "Priya took this in just now."},
             {@dana, true,
-             "You took this in just now. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."},
+             "You took this in just now. GitHub is no longer connected, so nothing changes on the ticket: it keeps the label and comment of Qory Apiary."},
             {@priya, true,
-             "Priya took this in just now. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."}
+             "Priya took this in just now. GitHub is no longer connected, so nothing changes on the ticket: it keeps the label and comment of Qory Apiary."}
           ] do
         html = card(queued(by, ago(5)), can_undo: false, uninstalled: uninstalled)
         assert text(html, "#work-item-step-undo-line") == line
@@ -1330,10 +1330,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(queued(@dana, ago(5)), item_noun: @bug)
 
       assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory explores the bug and writes a proposal for the work."
+               "When the run starts, Explore reads the bug and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the bug and leaves its comment."
+               "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the bug and leaves its comment."
     end
 
     test "the notices, the close question and the end notice" do

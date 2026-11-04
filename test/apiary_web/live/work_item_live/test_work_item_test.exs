@@ -113,7 +113,12 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
                "When the run starts, the agent writes a reply to the line."
              )
 
-      assert has_element?(view, "#work-item-explore-wait", "The agent answers the line in it.")
+      assert has_element?(
+               view,
+               "#work-item-explore-wait",
+               "The agent writes a reply to the line."
+             )
+
       refute has_element?(view, "#work-item-explore", "the code")
       no_ticket!(view)
 

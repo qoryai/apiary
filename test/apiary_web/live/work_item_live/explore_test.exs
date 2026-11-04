@@ -204,7 +204,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       {:ok, view, _html} = live(conn, explore(scope, work_item.number))
       p = "#work-item-explore-proposal"
       assert has_element?(view, "#{p} .badge", "Confirmed")
-      assert has_element?(view, "#{p} .q-xp-cap", "You confirmed this proposal")
+      assert has_element?(view, "#{p} .q-xp-cap", "Version 1. You confirmed it")
       assert has_element?(view, "#{p}-text h4", "Proposed solution")
       refute has_element?(view, "#work-item-explore-gate")
       refute has_element?(view, "#{p}-review-add")

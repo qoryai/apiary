@@ -618,7 +618,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   # A comment on Qory's proposal is kept as an answer with no question.
   defp said(:"work_item.answer", %{"comment" => true}, _actor),
-    do: gettext("Commented on Qory's proposal for a work item")
+    do: gettext("Wrote a review comment on a work item's proposal")
 
   # The count of questions answered, one where the entry says none.
   defp said(:"work_item.answer", details, _actor) do
@@ -629,20 +629,20 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       end
 
     ngettext(
-      "Answered Qory's question on a work item",
-      "Answered Qory's %{count} questions on a work item",
+      "Answered 1 question on a work item",
+      "Answered %{count} questions on a work item",
       count
     )
   end
 
   defp said(:"work_item.confirm", %{"changed" => [_ | _]}, _actor),
-    do: gettext("Changed Qory's proposal for a work item and confirmed it")
+    do: gettext("Changed a work item's proposal and confirmed it")
 
   defp said(:"work_item.confirm", _details, _actor),
-    do: gettext("Confirmed Qory's proposal for a work item")
+    do: gettext("Confirmed a work item's proposal")
 
   defp said(:"work_item.explore_again", _details, _actor),
-    do: gettext("Asked Qory to explore a work item again")
+    do: gettext("Ran Explore again on a work item")
 
   defp said(:"work_item.comment", _details, _actor), do: gettext("Commented on a work item")
 

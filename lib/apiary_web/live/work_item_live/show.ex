@@ -1117,10 +1117,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
        when is_integer(attempt) do
     case queued_of(flow, item) do
       of when is_integer(of) ->
-        gettext("Attempt %{attempt} of %{of} is queued.",
-          attempt: Format.number(attempt),
-          of: Format.number(of)
-        )
+        gettext("Attempt %{attempt} is queued.", attempt: Format.number(attempt))
 
       nil ->
         nil

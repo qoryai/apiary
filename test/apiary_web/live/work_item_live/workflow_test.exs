@@ -396,7 +396,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute html =~ "explore-a-ticket · round"
 
       # Details names the queued run, as the run list does, and not None yet.
-      assert has_element?(view, "#work-item-details-runs", "Attempt 1 of 3 is queued.")
+      assert has_element?(view, "#work-item-details-runs", "Attempt 1 is queued.")
       refute has_element?(view, "#work-item-details-runs", "None yet")
     end
 
@@ -414,8 +414,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       # The runner stops after round 2 of the version the work item is on, whatever the
       # stored run says. Explore's card shows no round.
       refute has_element?(view, "#work-item-stage-round")
-      assert has_element?(view, "#work-item-details-runs", "Attempt 1 of 2 is queued.")
-      refute render(view) =~ "Attempt 1 of 3 is queued."
+      assert has_element?(view, "#work-item-details-runs", "Attempt 1 is queued.")
     end
 
     test "a later queued run moved to a version with fewer rounds: the step card counts that version's limit",
@@ -429,8 +428,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       refute has_element?(view, "#work-item-stage-round")
-      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 2 is queued.")
-      refute render(view) =~ "Attempt 2 of 3 is queued."
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 is queued.")
     end
 
     test "a run queued for Explore's next workflow counts the runs its entry may have", %{
@@ -458,8 +456,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert %DispatchRun{attempt: 4, of: 6} = newest_run(work_item)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert render(view) =~ "Attempt 4 of 6 is queued."
-      refute render(view) =~ "Attempt 4 of 4 is queued."
+      assert render(view) =~ "Attempt 4 is queued."
     end
 
     test "a second take in: the step card and the fold of the runs count its attempts", %{
@@ -484,7 +481,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       refute has_element?(view, "#work-item-runs-0")
-      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 3 is queued.")
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 is queued.")
       refute render(view) =~ "Attempt 4"
 
       # The fold of the runs on Explore's tab has this take in's two runs.
@@ -499,7 +496,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       scope: scope
     } do
       assert %{
-               queued: "Attempt 1 of 3 is queued.",
+               queued: "Attempt 1 is queued.",
                ended: "Attempt 2 · 2 runs, ended",
                link: true
              } = details_of_a_second_take_in(conn, scope)
@@ -522,7 +519,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       refute has_element?(view, "#work-item-runs-0")
-      assert has_element?(view, "#work-item-step-run", "Attempt 2 of 4 is queued.")
+      assert has_element?(view, "#work-item-step-run", "Attempt 2 is queued.")
     end
 
     test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do
@@ -666,7 +663,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert line(view, "#work-item-stage-escalation-run") == "From attempt 1 · explore-a-ticket"
 
       assert line(view, "#work-item-step-line") ==
-               "Attempt 1 returned a result that did not pass Qory's check, so Explore has no result."
+               "Attempt 1 returned a result that did not pass Qory Apiary's check, so Explore has no result."
 
       refute html =~ ~r/\bRun \d/
     end
@@ -1596,7 +1593,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       # The round past the limit is the last before the stage escalates again: the count
       # is never under the attempt.
-      assert has_element?(view, "#work-item-step-run", "Attempt 4 of 4 is queued.")
+      assert has_element?(view, "#work-item-step-run", "Attempt 4 is queued.")
       refute render(view) =~ "4 of 3"
     end
 
