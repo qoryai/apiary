@@ -450,7 +450,9 @@ defmodule Apiary.Stages do
 
   # confirmed/3 approves Explore's gate for the work item whose proposal the scope's
   # person confirmed in this transaction (`Apiary.WorkItems.confirm/3`), which passes
-  # the stage of the confirmed run as `expect_stage` (`confirmed_stage_id/2`).
+  # the stage of the confirmed run as `expect_stage` (`confirmed_stage_id/2`). At the
+  # gate only a person among the approvers of the stage confirms
+  # (`Apiary.Stages.Approvers.listed?/2`), else `:not_approver`.
   @doc false
   @spec confirmed(Scope.t(), WorkItem.t(), expect) :: {:ok, WorkItem.t()} | {:error, term}
   def confirmed(%Scope{} = scope, %WorkItem{id: id}, opts \\ []) do
@@ -564,12 +566,14 @@ defmodule Apiary.Stages do
     end
   end
 
-  # approver/2 says whether the scope's person may comment on the proposal of the work
-  # item `work_item`, which the caller holds: `:ok` with the workflow model off, for a
-  # work item the runner did not place, and for a person among the approvers of its
-  # stage, or a stage that lists none; `{:error, :not_approver}` otherwise, as for a
-  # confirmation (`confirmed/3`). The rule is the one `Apiary.Access` asks for
-  # `gate.approve` (`Apiary.Stages.Approvers.allows?/2`).
+  # approver/2 says whether the scope's person is among the approvers of the stage of
+  # the work item `work_item`: `:ok` with the workflow model off, for a work item the
+  # runner did not place, and for a person among the approvers of its stage, or a stage
+  # that lists none; `{:error, :not_approver}` otherwise. The approver rule alone, with
+  # no role: the one `Apiary.Access` asks after the role for `gate.approve` and
+  # `work_item.review_comment`
+  # (`Apiary.Stages.Approvers.allows?/2`). Only the work item page asks it; a move asks
+  # `Apiary.Access`.
   @doc false
   @spec approver(Scope.t(), WorkItem.t()) :: :ok | {:error, :not_approver}
   def approver(%Scope{} = scope, %WorkItem{} = work_item),

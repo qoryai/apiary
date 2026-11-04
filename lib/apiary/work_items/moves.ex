@@ -12,9 +12,11 @@ defmodule Apiary.WorkItems.Moves do
   # Each asks `Apiary.Access.authorize/3` first, inside its transaction: a take in and a
   # take in again `work_item.take_in` of the scope's workspace, where the work item will
   # be; an undo and a close `work_item.undo` and `work_item.close` of the work item, which
-  # must be in the scope's workspace; an answer,
-  # a confirmation and a run of Explore again `work_item.answer`, `work_item.confirm` and
-  # `work_item.explore_again` of the work item, likewise; a comment `work_item.comment` of
+  # must be in the scope's workspace; an answer, a review comment, a reply to one and a
+  # send of the review comments, a confirmation and a run of Explore again
+  # `work_item.answer`, `work_item.review_comment` (the three of the review comments),
+  # `work_item.confirm` and `work_item.explore_again` of the work item, likewise, asked
+  # of the work item once it is locked; a comment `work_item.comment` of
   # the work item, and a comment's deletion `work_item.comment_delete` of the comment, which
   # its author may take too while they may still comment (`Apiary.Access`). Each
   # writes its entry in the trail with the change (`Apiary.Audit.record/6`), about the work
@@ -169,7 +171,8 @@ defmodule Apiary.WorkItems.Moves do
   #     take in has a proposal: where its questions wait, where its proposal waits, and
   #     after a run that gave no result, was lost or was cancelled. Only a member among the
   #     approvers of the stage the work item is in, where the stage lists them
-  #     (`Apiary.Stages.approver/2`, else `:not_approver`), writes one: its text checked
+  #     (`work_item.review_comment`, `Apiary.Access`, else `:not_approver`), writes one:
+  #     its text checked
   #     (`Apiary.WorkItems.Proposal.check_comment/1`, else `{:invalid, %{comment:
   #     error}}`, or `{:invalid, :form}`). It writes a new version of the review comments,
   #     by the member, with the review comment, open, on the newest version of the take
@@ -196,6 +199,8 @@ defmodule Apiary.WorkItems.Moves do
   #   * Today's form for a comment on the proposal (`answer/4` with a text, where the
   #     latest run's proposal waits) writes the review comment and sends the review
   #     comments, in one move: one event, as a review comment's, and the next run queued.
+  #     It asks `work_item.answer`, then `work_item.review_comment` once it finds the
+  #     proposal waiting.
   #   * A confirmation (`confirm/3`) works where the latest run's proposal waits. It keeps
   #     the proposal's version (`Apiary.WorkItems.Confirmation`); the work item is then ready
   #     for Shape. Its event, `:confirmed`, has the take in and the attempt.
@@ -846,7 +851,7 @@ defmodule Apiary.WorkItems.Moves do
   @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t() | [answer_by_id]) ::
           {:ok, WorkItem.t()} | {:error, step_refusal}
   def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers) do
-    step(scope, work_item, fn held, current, now ->
+    step(scope, :"work_item.answer", work_item, fn held, current, now ->
       with :ok <- waiting(current, [:questions, :confirm], attempt),
            {:ok, count, given} <- keep_given(held, scope, current, answers, now),
            do: {:ok, Map.merge(answered(held, attempt, count), given), true}
@@ -860,9 +865,8 @@ defmodule Apiary.WorkItems.Moves do
   @spec review_comment(Scope.t(), WorkItem.t(), pos_integer, term) ::
           {:ok, WorkItem.t()} | {:error, step_refusal}
   def review_comment(%Scope{} = scope, %WorkItem{} = work_item, attempt, text) do
-    step(scope, work_item, fn held, current, now ->
+    step(scope, :"work_item.review_comment", work_item, fn held, current, now ->
       with :ok <- waiting(current, @no_run, attempt),
-           :ok <- Apiary.Stages.approver(scope, held),
            {:ok, text} <- comment_text(text),
            {:ok, id} <- keep_comment(held, scope, current, text, now),
            do: {:ok, comment_data(held, attempt, id), false}
@@ -875,9 +879,8 @@ defmodule Apiary.WorkItems.Moves do
   @spec reply(Scope.t(), WorkItem.t(), pos_integer, String.t(), term) ::
           {:ok, WorkItem.t()} | {:error, step_refusal}
   def reply(%Scope{} = scope, %WorkItem{} = work_item, attempt, id, text) when is_binary(id) do
-    step(scope, work_item, fn held, current, now ->
+    step(scope, :"work_item.review_comment", work_item, fn held, current, now ->
       with :ok <- waiting(current, @no_run, attempt),
-           :ok <- Apiary.Stages.approver(scope, held),
            {:ok, text} <- comment_text(text),
            {:ok, position} <- keep_reply(held, scope, id, text, now),
            do: {:ok, Map.put(comment_data(held, attempt, id), "reply", position), false}
@@ -891,9 +894,8 @@ defmodule Apiary.WorkItems.Moves do
   @spec send_review_comments(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, step_refusal}
   def send_review_comments(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
-    step(scope, work_item, fn held, current, _now ->
+    step(scope, :"work_item.review_comment", work_item, fn held, current, _now ->
       with :ok <- waiting(current, [:questions, :confirm], attempt),
-           :ok <- Apiary.Stages.approver(scope, held),
            {:ok, [_ | _] = ids} <- open_review_comments(held) do
         data =
           held
@@ -909,14 +911,15 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   # One move of what a member gives Explore, in one transaction under the work item's
-  # lock: `give` checks and writes, and returns the event's data and whether the take in's
-  # next run is queued.
-  defp step(scope, work_item, give) do
+  # lock, asked `action` (`hold_step/4`): `give` checks and writes, and returns the
+  # event's data and whether the take in's next run is queued. Every move writes the entry
+  # `work_item.answer` in the trail, whichever action it asks.
+  defp step(scope, action, work_item, give) do
     result =
       Repo.transact(fn ->
         now = DateTime.utc_now()
 
-        with {:ok, held, current} <- hold_step(scope, :"work_item.answer", work_item, now),
+        with {:ok, held, current} <- hold_step(scope, action, work_item, now),
              {:ok, data, queue?} <- give.(held, current, now),
              :ok <- event(held, :answered, scope, now, data),
              {:ok, _run} <- if(queue?, do: next_run(held, true), else: {:ok, nil}),
@@ -965,7 +968,7 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   defp keep_given(held, scope, %{status: :confirm} = current, text, now) do
-    with :ok <- Apiary.Stages.approver(scope, held),
+    with :ok <- Access.authorize(scope, :"work_item.review_comment", held),
          {:ok, text} <- comment_text(text),
          {:ok, id} <- keep_comment(held, scope, current, text, now),
          do: {:ok, 1, %{"comment" => true, "review_comment" => id}}
@@ -1110,6 +1113,7 @@ defmodule Apiary.WorkItems.Moves do
       {:ok, version} -> {:ok, version}
       {:error, :not_found} -> {:error, :not_found}
       {:error, :forbidden} -> {:error, :forbidden}
+      {:error, :not_approver} -> {:error, :not_approver}
       {:error, :store_unavailable} -> {:error, :store_unavailable}
       {:error, _refused} -> {:error, :not_waiting}
     end
@@ -1482,14 +1486,15 @@ defmodule Apiary.WorkItems.Moves do
   defp valid(%Ecto.Changeset{valid?: true} = changeset), do: {:ok, changeset}
   defp valid(%Ecto.Changeset{} = changeset), do: {:error, changeset}
 
-  # `work_item`, of the scope's workspace, asked `action` of, then held `FOR UPDATE` and
-  # read again: one that moved meanwhile is not found, as is one whose id is no UUID.
+  # `work_item`, of the scope's workspace, held `FOR UPDATE`, then asked `action` of: one
+  # that moved meanwhile is not found, as is one whose id is no UUID. Asked of the locked
+  # row, so an action of a stage's approvers (`Apiary.Access`) reads the stage the work
+  # item is in under its lock.
   defp hold(scope, action, %WorkItem{id: id}) do
     with {:ok, id} <- Ecto.UUID.cast(id),
          {:ok, workspace} <- workspace(scope),
-         %WorkItem{} = found <- in_workspace(workspace, id, false),
-         :ok <- Access.authorize(scope, action, found),
-         %WorkItem{} = held <- in_workspace(workspace, id, true) do
+         %WorkItem{} = held <- in_workspace(workspace, id, true),
+         :ok <- Access.authorize(scope, action, held) do
       {:ok, held}
     else
       :error -> {:error, :not_found}

@@ -59,8 +59,9 @@ defmodule Apiary.Artifacts do
   # the queue (`Apiary.Dispatches.DispatchRun`) of that work item; `{:person, scope}`,
   # a person who may `artifact.write` the work item (`Apiary.Access`); or
   # `{:member_action, scope}`, a member's answer, review comment or reply, which only
-  # `Apiary.WorkItems.Moves` passes, for a person who may `work_item.answer` the work
-  # item. A person's push and a member action's push write their entry in the audit
+  # `Apiary.WorkItems.Moves` passes, for a person who may `work_item.review_comment` the
+  # work item for the review comments, and `work_item.answer` for any other type. A
+  # person's push and a member action's push write their entry in the audit
   # trail. The questions and the review comments (`member_types/0`) take a person's
   # version only as a member action: Moves writes them from the newest version, with the
   # checks of each member action. A person's push of either type is
@@ -72,9 +73,10 @@ defmodule Apiary.Artifacts do
   # each refusal `{:error, {code, detail}}`:
   #
   #   1. the actor: a person whom `Apiary.Access` refuses `artifact.write` on the work
-  #      item, or a member action whose person it refuses `work_item.answer`,
-  #      `{:error, :not_found}` or `{:error, :forbidden}`; a run of another work item,
-  #      `{:error, :not_found}`;
+  #      item, or a member action whose person it refuses `work_item.review_comment` for
+  #      the review comments, or `work_item.answer` for any other type,
+  #      `{:error, :not_found}`, `{:error, :forbidden}` or `{:error, :not_approver}`; a
+  #      run of another work item, `{:error, :not_found}`;
   #   2. the type: a name of no type, or of a standard type the workspace hides,
   #      `{:unknown_type, name}`; a name of the wrong form, `{:invalid, :type}`; a type
   #      the actor does not write, as the actor rule says;
@@ -548,12 +550,13 @@ defmodule Apiary.Artifacts do
              refusal
              | :not_found
              | :forbidden
+             | :not_approver
              | :store_unavailable
              | :stage_changed
              | :run_ended}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
-         {:ok, writer} <- writer(actor, work_item),
+         {:ok, writer} <- writer(actor, work_item, type_name),
          {:ok, type} <- push_type(work_item, type_name),
          :ok <- actor_type(writer, type),
          {:ok, fields} <- fields(opts),
@@ -646,7 +649,7 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  defp writer({:person, %Scope{user: %{id: user_id}} = scope}, work_item)
+  defp writer({:person, %Scope{user: %{id: user_id}} = scope}, work_item, _type_name)
        when is_binary(user_id) do
     with :ok <- authorize(scope, @write, work_item),
          do:
@@ -654,10 +657,12 @@ defmodule Apiary.Artifacts do
   end
 
   # A member action: Moves checked the member's action, under the work item's lock, before
-  # it pushes; `artifact.write` is not needed.
-  defp writer({:member_action, %Scope{user: %{id: user_id}} = scope}, work_item)
+  # it pushes; `artifact.write` is not needed. The action asked is the one of the type: the
+  # review comments' for them, the answer's for the questions and any other type, which
+  # `actor_type/2` refuses.
+  defp writer({:member_action, %Scope{user: %{id: user_id}} = scope}, work_item, type_name)
        when is_binary(user_id) do
-    with :ok <- authorize(scope, :"work_item.answer", work_item),
+    with :ok <- authorize(scope, member_action(type_name), work_item),
          do:
            {:ok,
             %{
@@ -669,14 +674,17 @@ defmodule Apiary.Artifacts do
             }}
   end
 
-  defp writer({:run, %DispatchRun{id: run_id} = run}, %WorkItem{} = work_item)
+  defp writer({:run, %DispatchRun{id: run_id} = run}, %WorkItem{} = work_item, _type_name)
        when is_binary(run_id) do
     if run.work_item_id == work_item.id and run.organisation_id == work_item.organisation_id,
       do: {:ok, %{actor: :run, writer: :run, user_id: nil, run_id: run_id, scope: nil}},
       else: {:error, :not_found}
   end
 
-  defp writer(_actor, _work_item), do: {:error, :not_found}
+  defp writer(_actor, _work_item, _type_name), do: {:error, :not_found}
+
+  defp member_action("review-comments"), do: :"work_item.review_comment"
+  defp member_action(_type_name), do: :"work_item.answer"
 
   # The types each actor writes: a person never the member types, a member action only
   # those, a run any.
