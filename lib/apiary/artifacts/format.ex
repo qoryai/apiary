@@ -42,7 +42,9 @@ defmodule Apiary.Artifacts.Format do
   #     a place in the file, in an attribute or in text; no `@import`, no backslash in a
   #     `style` element or attribute (a CSS escape could spell `url(`), and no
   #     `<?xml-stylesheet ?>`. Else `:svg_content`. Attribute values and text are checked
-  #     as the parser reads them, with their character references replaced.
+  #     as the parser reads them, with their character references replaced; a `style`
+  #     element has no child element, and its text is checked as one, joined across
+  #     comments and CDATA sections, as a browser reads it.
   #
   # A version of `proposal` has exactly one Markdown file and at most one `sources.json`
   # (`stored?/2`, `Apiary.Artifacts.push/5`); its type bounds all files together, 5 MiB,
@@ -334,24 +336,24 @@ defmodule Apiary.Artifacts.Format do
   # In `:strict` mode, `:unsafe` for a well-formed document with an SVG root that fails
   # the strict check.
   defp svg_root(bytes, mode) do
-    event = fn event, _location, {root, safe?, open} ->
+    event = fn event, _location, {root, safe?, state} ->
       root = root(event, root)
 
       if mode == :strict and safe? do
-        {safe?, open} = strict(event, open)
-        {root, safe?, open}
+        {safe?, state} = strict(event, state)
+        {root, safe?, state}
       else
-        {root, safe?, open}
+        {root, safe?, state}
       end
     end
 
     case :xmerl_sax_parser.stream(bytes,
            event_fun: event,
-           event_state: {:none, true, []},
+           event_state: {:none, true, {[], nil}},
            external_entities: :none,
            fail_undeclared_ref: true
          ) do
-      {:ok, {:svg, safe?, _open}, rest} ->
+      {:ok, {:svg, safe?, _state}, rest} ->
         cond do
           not blank?(rest) -> :other
           safe? -> :svg
@@ -368,29 +370,38 @@ defmodule Apiary.Artifacts.Format do
 
   defp root(_event, root), do: root
 
-  # One event of the strict check: whether the document is still safe, and the local
-  # names of the open elements, innermost first.
-  defp strict({:startElement, uri, name, _qualified, attributes}, open) do
+  # One event of the strict check: whether the document is still safe, and the state:
+  # the local names of the open elements, innermost first, and the text of the open
+  # `style` element, nil outside one. A browser reads a `style` element's CSS as all its
+  # text joined, across comments, CDATA sections and child elements, so that text is
+  # checked as one at the element's end, and a `style` element has no child element.
+  defp strict({:startElement, uri, name, _qualified, attributes}, {open, style}) do
     local = name |> List.to_string() |> String.downcase()
 
     safe? =
-      local not in @svg_refused_elements and uri != @xhtml_namespace and
+      style == nil and local not in @svg_refused_elements and uri != @xhtml_namespace and
         Enum.all?(attributes, fn {_uri, _prefix, attribute, value} ->
           safe_attribute?(String.downcase(List.to_string(attribute)), List.to_string(value))
         end)
 
-    {safe?, [local | open]}
+    {safe?, {[local | open], if(local == "style", do: [], else: style)}}
   end
 
-  defp strict({:endElement, _uri, _name, _qualified}, [_closed | open]), do: {true, open}
+  defp strict({:endElement, _uri, _name, _qualified}, {["style" | open], style}),
+    do: {safe_text?(IO.chardata_to_string(style), true), {open, nil}}
 
-  defp strict({:characters, text}, open),
-    do: {safe_text?(List.to_string(text), match?(["style" | _], open)), open}
+  defp strict({:endElement, _uri, _name, _qualified}, {[_closed | open], style}),
+    do: {true, {open, style}}
 
-  defp strict({:processingInstruction, target, _data}, open),
-    do: {String.downcase(List.to_string(target)) != "xml-stylesheet", open}
+  defp strict({:characters, text}, {open, nil}),
+    do: {safe_text?(List.to_string(text), false), {open, nil}}
 
-  defp strict(_event, open), do: {true, open}
+  defp strict({:characters, text}, {open, style}), do: {true, {open, [style | text]}}
+
+  defp strict({:processingInstruction, target, _data}, state),
+    do: {String.downcase(List.to_string(target)) != "xml-stylesheet", state}
+
+  defp strict(_event, state), do: {true, state}
 
   defp safe_attribute?("on" <> _rest, _value), do: false
 

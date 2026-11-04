@@ -528,7 +528,12 @@ defmodule Apiary.Artifacts.FormatTest do
             "<style><![CDATA[rect { fill: url(//example.com/) }]]></style>",
             "<style>@import 'https://example.com/a.css';</style>",
             "<style>rect { fill: \\75 rl(x) }</style>",
-            "<text>@import</text>"
+            "<text>@import</text>",
+            ~s|<style>@imp<!---->ort "https://example.com/a.css";</style>|,
+            "<style>rect { fill: ur<!---->l(https://example.com/a) }</style>",
+            ~s|<style>@imp<![CDATA[ort "https://example.com/a.css";]]></style>|,
+            ~s|<style>@imp<g/>ort "https://example.com/a.css";</style>|,
+            "<style><g/></style>"
           ] do
         assert {:error, :svg_content} = check(context, "proposal", "a.svg", svg(body)), body
       end
