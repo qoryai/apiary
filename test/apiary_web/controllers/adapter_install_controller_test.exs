@@ -161,15 +161,14 @@ defmodule ApiaryWeb.AdapterInstallControllerTest do
     assert [%Connection{}] = connections(scope)
   end
 
-  test "a member without the right is refused 403 before anything is looked up or changed",
+  test "a member without the right finds no such path, before anything is looked up or changed",
        %{scope: scope, adapter: adapter} do
     %{user: member} = member_fixture(scope, :member)
 
     for adapter_id <- [adapter.public_id, "na_0000000000000000", "nope"] do
-      conn = build_conn() |> log_in_user(member) |> install(scope, adapter_id)
-      assert conn.status == 403, adapter_id
-      assert conn.resp_body == "Forbidden"
-      assert ConnectSession.fetch(conn, "anything") == nil
+      conn = build_conn() |> log_in_user(member)
+
+      assert_error_sent 404, fn -> install(conn, scope, adapter_id) end
     end
 
     assert connections(scope) == []
