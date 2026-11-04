@@ -2163,8 +2163,8 @@ defmodule Apiary.Organisations do
   owners first, then admins, then members, each by when they joined. Each carries
   `workspaces`, the workspaces it reaches, by name, of those the scope's membership
   reaches: a reader is not told of a workspace they do not reach. None for a person who
-  may not read them (`member.read`, asked of the organisation with `Access.can?/3`, from
-  the scope as loaded: every page's counts read them).
+  may not read them (`member.read`, asked of the organisation with
+  `Apiary.Access.can?/3`, from the scope as loaded: every page's counts read them).
   """
   @spec list_members(Scope.t()) :: [%Membership{}]
   def list_members(%Scope{organisation: %Organisation{} = organisation} = scope) do
