@@ -802,7 +802,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   describe "explore_tab/1, queued and running" do
-    test "queued, the first run: Attempt 1, Queued, and what Qory does" do
+    test "queued, the first run: Attempt 1, Queued, and what the attempt reads" do
       html = tab(work_item(%{number: 341, status: :queued, run: %{attempt: 1, of: 3}}))
 
       assert items(html, "work-item-explore-run") == ["Attempt 1", "Queued"]
@@ -864,7 +864,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "button[type=submit]") == 0
       assert count(html, "[id$='-reply']") == 0
 
-      # The open questions as text, with their options; the card says the run reads it.
+      # The open questions as text, with their options; the card shows that the run reads it.
       assert count(html, "#work-item-explore-questions-cap") == 0
       assert texts(html, "#work-item-explore-questions-question-2 .q-xp-opt-t") == ["Yes", "No"]
 
@@ -940,7 +940,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "q-xp-sources"
     end
 
-    test "Sources with a Mermaid block and an image: the fold holds both; the body is drawn" do
+    test "Sources after a Mermaid block and an image: the body shows both, the fold neither" do
       message =
         @invoice <>
           """
@@ -1368,7 +1368,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
     end
 
-    test "the draft: a picked option is checked; Give your own option asks for your option" do
+    test "the draft: a picked option is checked; Give your own option shows the Your option field" do
       html =
         questions_tab(
           answers: %{
@@ -1736,7 +1736,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
     end
 
-    test "an earlier run that wrote a proposal is a fold with it; a lost one says what happened" do
+    test "an earlier run that wrote a proposal is a fold with it; a lost one shows what happened" do
       wrote =
         acme_run(%{
           id: "rn_0000000000000040",

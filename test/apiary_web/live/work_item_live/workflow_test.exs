@@ -382,8 +382,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-step")
       refute has_element?(view, "#work-item-stage")
 
-      # The run waits for a machine: the card reads queued, as the head does, and says
-      # nothing runs.
+      # The run waits for a machine: the card shows Queued, as the head does, and not
+      # Running.
       assert has_element?(view, "#work-item-step-state", "Queued")
       refute has_element?(view, "#work-item-step-state", "Running")
       refute render(view) =~ "Explore is running."
@@ -412,7 +412,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       # The runner stops after round 2 of the version the work item is on, whatever the
-      # stored run says. Explore's card shows no round.
+      # stored run's limit is. Explore's card shows no round.
       refute has_element?(view, "#work-item-stage-round")
       assert has_element?(view, "#work-item-details-runs", "Attempt 1 is queued.")
     end

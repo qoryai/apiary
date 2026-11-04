@@ -46,7 +46,8 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
     "Should the credit note PDF change too?"
   ]
 
-  # Run 1 proposes; run 2 asks two questions, so the proposal and the questions wait.
+  # Run 1 proposes; run 2 writes two questions, so the proposal waits and the questions
+  # are open.
   defp asked_after_proposal(scope) do
     work_item = work_item_fixture(scope)
     explore_run_fixture(work_item, result: understood_result(%{"message" => @proposal}))
@@ -83,7 +84,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       assert has_element?(view, "#{q}-answer-2-own")
       assert has_element?(view, "#{q}-go", "Run with answers")
 
-      # The proposal stays above, with Add review comment while the questions wait.
+      # The proposal stays above, with Add review comment while the questions are open.
       assert has_element?(view, "#work-item-explore-proposal-h", "Proposal")
       assert has_element?(view, "#work-item-explore-proposal .q-xp-cap", "Version 1")
       assert has_element?(view, "#work-item-explore-proposal-review-add", "Add review comment")
@@ -118,7 +119,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       refute has_element?(view, "#{q} textarea")
       refute has_element?(view, "#{q} input[type=radio]")
 
-      # The wait line names the attempt, and nothing else starts a run.
+      # The wait line shows the attempt, and nothing else starts a run.
       assert has_element?(view, "#work-item-explore-run", "Attempt 3")
 
       assert has_element?(
@@ -166,7 +167,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       refute has_element?(view, "#work-item-review-c1-reply")
     end
 
-    test "questions that changed after the page showed them: no answer sent, the form says so and keeps the draft",
+    test "questions that changed after the page showed them: no answer sent, the form shows that and the draft stays",
          %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
       explore_run_fixture(work_item, result: understood_result(%{"message" => @proposal}))
@@ -339,7 +340,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       work_item
     end
 
-    test "every line names the proposal it wrote; none says there is nothing to show", %{
+    test "every line shows the proposal it wrote; none shows that there is nothing to show", %{
       conn: conn,
       scope: scope
     } do

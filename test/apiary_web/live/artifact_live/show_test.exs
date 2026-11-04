@@ -270,7 +270,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert shown.(%{"a" => List.duplicate(1, 5000)}) =~ "Shown: the first 5,000 values."
     end
 
-    test "names the run that made a version, without its round, or a run it cannot name", ctx do
+    test "shows the run that made a version, without its round, or A run for one with no number",
+         ctx do
       import Ecto.Query
 
       Apiary.Repo.update_all(from(d in Apiary.Dispatches.DispatchRun, where: d.id == ^ctx.run.id),
@@ -588,7 +589,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says to rename a proposal's file that is neither Markdown nor an image", ctx do
+    test "shows the line to rename a proposal's file that is neither Markdown nor an image",
+         ctx do
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
 
       input =
@@ -609,7 +611,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says which part to remove from a proposal's SVG", ctx do
+    test "shows which part to remove from a proposal's SVG", ctx do
       svg =
         ~s(<svg xmlns="http://www.w3.org/2000/svg" onload="start"><rect/></svg>)
 
@@ -622,7 +624,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says to shrink a proposal's Markdown file past 256 KiB", ctx do
+    test "shows the line to shrink a proposal's Markdown file past 256 KiB", ctx do
       big = "# Gift cards\n" <> String.duplicate("a", 262_144)
 
       html = push_proposal(ctx, [{"proposal.md", big}])
@@ -632,7 +634,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says to shrink a proposal's sources.json past 1 MiB", ctx do
+    test "shows the line to shrink a proposal's sources.json past 1 MiB", ctx do
       big = ~s({"sources":[]}) <> String.duplicate(" ", 1_048_576)
 
       html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"sources.json", big}])
@@ -642,7 +644,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says to add exactly one Markdown file to a proposal", ctx do
+    test "shows the line to add exactly one Markdown file to a proposal", ctx do
       html = push_proposal(ctx, [{"a.md", "# A"}, {"b.md", "# B"}])
 
       assert html =~ "Add exactly one Markdown file (.md) to the version."
@@ -650,7 +652,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says to replace a proposal's image that is not the type its name ends in", ctx do
+    test "shows the line to replace a proposal's image that is not the type its name ends in",
+         ctx do
       html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"chart.png", "Gift cards"}])
 
       assert html =~ "Replace chart.png with an image of the type its name ends in."
@@ -674,7 +677,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       end
     end
 
-    test "says to make a proposal's SVG a well-formed SVG file", ctx do
+    test "shows the line to make a proposal's SVG a well-formed SVG file", ctx do
       for svg <- [
             ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect></svg>),
             <<"<svg xmlns=\"http://www.w3.org/2000/svg\"><text>", 0xFF, "</text></svg>">>
@@ -689,15 +692,17 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       end
     end
 
-    test "says to set the SVG namespace on a proposal's svg root element with none", ctx do
+    test "shows the line to set the SVG namespace on a proposal's svg root element with none",
+         ctx do
       assert_svg_root(ctx, "<svg/>")
     end
 
-    test "says to set the SVG namespace on a proposal's svg root element of another", ctx do
+    test "shows the line to set the SVG namespace on a proposal's svg root element of another",
+         ctx do
       assert_svg_root(ctx, ~s(<svg xmlns="urn:x"/>))
     end
 
-    test "says to shrink a proposal's SVG past 512 KiB", ctx do
+    test "shows the line to shrink a proposal's SVG past 512 KiB", ctx do
       svg =
         ~s(<svg xmlns="http://www.w3.org/2000/svg"><!--) <>
           String.duplicate("a", 524_288) <> "--></svg>"
@@ -709,7 +714,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says to remove a DOCTYPE or too many attributes from a proposal's SVG", ctx do
+    test "shows the line to remove a DOCTYPE or too many attributes from a proposal's SVG", ctx do
       attributes = Enum.map_join(1..257, " ", &~s(data-a#{&1}="1"))
 
       for {svg, part} <- [
@@ -728,7 +733,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       end
     end
 
-    test "says to replace a proposal's Markdown file that is not UTF-8 text", ctx do
+    test "shows the line to replace a proposal's Markdown file that is not UTF-8 text", ctx do
       html = push_proposal(ctx, [{"proposal.md", <<"# Gift cards ", 0xFF, 0xFE>>}])
 
       assert html =~ "Replace proposal.md with a Markdown file of UTF-8 text."
@@ -736,7 +741,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says to make a proposal's sources.json valid JSON", ctx do
+    test "shows the line to make a proposal's sources.json valid JSON", ctx do
       html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"sources.json", "{"}])
 
       assert html =~ "Make sources.json valid JSON. The file does not parse as JSON."
@@ -744,7 +749,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says where a proposal's sources.json fails its format", ctx do
+    test "shows where a proposal's sources.json fails its format", ctx do
       html =
         push_proposal(ctx, [
           {"proposal.md", "# Gift cards"},
@@ -758,7 +763,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "gives the line of the proposal sources format for a key twice in sources.json" do
+    test "returns the line of the proposal sources format for a key twice in sources.json" do
       detail = %{path: "#", error: "the object has the key sources twice"}
       proposal = Enum.find(Apiary.Artifacts.Type.standard(), &(&1.name == "proposal"))
 

@@ -483,7 +483,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert runs(work_item) == 2
     end
 
-    test "Confirm with open review comments says how many it leaves unread, and confirms", %{
+    test "Confirm with open review comments shows how many it leaves unread, and confirms", %{
       conn: conn,
       scope: scope
     } do
