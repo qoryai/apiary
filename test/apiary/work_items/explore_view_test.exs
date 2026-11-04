@@ -11,6 +11,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
   alias Apiary.{Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Explore.Questions
   alias Apiary.Harnesses.RunHarness
   alias Apiary.WorkItems.{Explore, WorkItemEvent}
 
@@ -448,6 +449,36 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert entries == [%{kind: :started}, %{kind: :proposed, owner_id: nil}]
     end
 
+    test "a question reopened twice: each run that reopened it lists it, with the answer given at that run",
+         ctx do
+      item = ctx.work_item
+      explore_run_fixture(item, result: questions_result(["Which basket?"]))
+      {:ok, _} = WorkItems.answer(ctx.scope, item, 1, %{"1" => "The main one"})
+
+      # Run 2, queued by the answer, reopens q1, which is answered at it; run 3, queued
+      # by that answer, reopens q1 again.
+      item = Apiary.StagesFixtures.end_run!(reload(item), &reopen!(&1, &2, "q1"))
+      # An answer's time is recorded to the second, and the Thread finds an answer by its
+      # time (`Apiary.Explore.Given`): the second answer comes a second later.
+      Process.sleep(1_000)
+      {:ok, _} = WorkItems.answer(ctx.scope, item, 2, %{"1" => "The other one"})
+      item = Apiary.StagesFixtures.end_run!(reload(item), &reopen!(&1, &2, "q1"))
+
+      ends =
+        for %{kind: kind, run: %{attempt: attempt}} = entry <-
+              WorkItems.explore_thread(ctx.scope, item),
+            kind in [:asked, :proposed, :no_result],
+            do:
+              {attempt, kind,
+               entry[:questions] && Enum.map(entry.questions, &{&1.text, &1.answer})}
+
+      assert Enum.sort(ends) == [
+               {1, :asked, [{"Which basket?", "The main one"}]},
+               {2, :asked, [{"Which basket?", "The other one"}]},
+               {3, :asked, [{"Which basket?", nil}]}
+             ]
+    end
+
     test "a run asked to run again, one without a result, and the stage a close recorded",
          ctx do
       now = DateTime.utc_now()
@@ -728,6 +759,41 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert %{kind: :closed, reason: nil} =
                List.last(WorkItems.explore_thread(ctx.scope, by_person))
     end
+  end
+
+  defp reload(work_item), do: Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
+
+  # Pushes, as the run `registered` of the run of the queue `run`, the newest questions
+  # with the answered question `id` reopened by the run: its answer moved to the end of
+  # its history.
+  defp reopen!(run, registered, id) do
+    work_item = reload(%{id: run.work_item_id})
+    {_version, document} = Questions.newest(work_item)
+    at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+    questions =
+      Enum.map(document["questions"], fn
+        %{"id" => ^id, "answer" => answer} = question ->
+          reopened = Map.put(answer, "reopened", %{"run" => registered.number, "at" => at})
+
+          question
+          |> Map.delete("answer")
+          |> Map.put("state", "open")
+          |> Map.put("history", (question["history"] || []) ++ [reopened])
+
+        question ->
+          question
+      end)
+
+    {:ok, _version} =
+      Apiary.Artifacts.push(
+        {:run, run},
+        work_item,
+        "questions",
+        [Questions.file(%{"questions" => questions})],
+        name: "main",
+        stage_id: run.stage_id
+      )
   end
 
   # `work_item` closed by the instance, for `reason`, as the removal of an adapter closes
