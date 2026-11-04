@@ -38,7 +38,10 @@ defmodule Apiary.AccessRows do
   found, the owner of `home` among them, and the role anyone else there, forbidden, as the
   admin of the instance's organisation. Their feature is asked of the instance, so the
   `hidden` actor, which hides it from people, may. A password link is the instance's too,
-  asked of the member's account, as a release command makes one. On every other action
+  asked of the member's account, as a release command makes one. Sending the mail
+  settings' test link again and turning mail on are asked of the mail settings, which the
+  instance admin saved: there the instance's scope passes the instance step, and its role
+  is forbidden. On every other action
   the instance admin answers as an owner, and the admin of the instance's organisation as
   an admin, in the place `instance` (`rows/0`).
   Creating an organisation is a sign-up's, which asks nothing, in the core; an edition may
@@ -271,7 +274,7 @@ defmodule Apiary.AccessRows do
   @doc """
   refusal/3 is why the core's answer is no where it is not the role: an instance action is
   not found outside the instance's organisation, and forbidden to anyone there but an
-  instance admin; a feature that is off or hidden is not found, and so is a hidden part, anything of another organisation, an
+  instance admin, and to the instance's scope on the mail settings; a feature that is off or hidden is not found, and so is a hidden part, anything of another organisation, an
   organisation that does not exist yet, which is no place, an adapter, which is the
   instance's, to anyone but its key, to an adapter's key, anything but that adapter, and,
   to a node pool's key, anything but its workspace: it is asked of no node here, and the
@@ -285,7 +288,10 @@ defmodule Apiary.AccessRows do
         :not_found
 
       Apiary.Access.action(action).instance ->
-        if actor == :instance_org_admin, do: :forbidden, else: :not_found
+        if actor == :instance_org_admin or
+             (actor == :instance and match?(%Apiary.Mail.Settings{}, subject)),
+           do: :forbidden,
+           else: :not_found
 
       actor == :feature_off and Apiary.Access.feature(action) != nil ->
         :not_found

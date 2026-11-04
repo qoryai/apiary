@@ -42,8 +42,9 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
   alias Apiary.Mail.Settings
   alias ApiaryWeb.SettingsComponents
 
-  # Given: `id`, `current_scope`, `path`, the page's path, and, for the mail step, `step`
-  # true and the `back` and `actions` slots.
+  # Given: `id`, `current_scope`, `scope`, the reader's instance scope
+  # (`ApiaryWeb.Access`'s `:instance`), `path`, the page's path, and, for the mail step,
+  # `step` true and the `back` and `actions` slots.
   @impl true
   def render(assigns) do
     ~H"""
@@ -475,7 +476,8 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
       default_sender: Apiary.Mailer.default_address(),
       mail_verified_at: settings && settings.mail_verified_at,
       saver:
-        settings != nil and settings.mail_saved_by_id == socket.assigns.current_scope.user.id,
+        settings != nil and
+          Apiary.Access.can?(socket.assigns.scope, :"instance.mail_resend", settings),
       last: last_test_send(settings),
       state: state,
       link_waiting: Mail.test_link_waiting?(settings),

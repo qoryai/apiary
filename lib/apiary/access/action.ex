@@ -18,8 +18,9 @@ defmodule Apiary.Access.Action do
     `{:not, reason}` when it changes nothing worth one, with the reason.
   - `asked_of`: what it is asked of: `:organisation`, what the organisation owns, its
     name, its people, its trail; `:workspace`, what a workspace holds; `:account`, a
-    person's account, which is no organisation's; or `:new_organisation`, an organisation
-    before it exists.
+    person's account, which is no organisation's; `:mail_settings`, the instance's mail
+    settings (`Apiary.Mail.Settings`); or `:new_organisation`, an organisation before it
+    exists.
   - `instance`: `true` for an instance action, one of the instance's, which the instance
     organisation's owners, the instance admins, take: `Apiary.Access` answers it only in
     the instance organisation (`c:Apiary.Edition.instance_organisation_id/0`), and asks
@@ -41,7 +42,7 @@ defmodule Apiary.Access.Action do
             instance: false
 
   @typedoc "What an action is asked of."
-  @type asked_of :: :organisation | :workspace | :account | :new_organisation
+  @type asked_of :: :organisation | :workspace | :account | :mail_settings | :new_organisation
 
   @typedoc "An action of `Apiary.Access`."
   @type t :: %__MODULE__{
@@ -55,7 +56,7 @@ defmodule Apiary.Access.Action do
           instance: boolean
         }
 
-  @asked_of [:organisation, :workspace, :account, :new_organisation]
+  @asked_of [:organisation, :workspace, :account, :mail_settings, :new_organisation]
 
   @doc """
   new/3 is the action `name`, which is `what`, with the rest from `opts`: `feature:`

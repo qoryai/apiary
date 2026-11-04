@@ -488,8 +488,9 @@ defmodule Apiary.Accounts do
     account deleted, `{:error, :forbidden}` for anyone else there but an instance admin,
     and `{:error, :mail_set}` once mail is set,
     when the person asks for a log-in link instead. Never for the asking admin's account,
-    `{:error, :own_account}`: they change their password in Account settings, behind
-    a recent sign-in, which a link would get around. And only after a recent sign-in
+    `{:error, :own_account}` (`Apiary.Access`'s one-person rule): they change their
+    password in Account settings, behind a recent sign-in, which a link would get
+    around. And only after a recent sign-in
     (`sudo_mode?/2`), as Account settings ask: a link takes the account over, so a session
     left open is not enough, `{:error, :sudo}`, and the person signs in again first;
   - the instance (`Apiary.Accounts.Scope.for_instance/2`), a release command run on the
@@ -526,7 +527,6 @@ defmodule Apiary.Accounts do
 
     Repo.transact(fn ->
       with :ok <- may_make_password_link(by, account),
-           :ok <- not_own_account(by, user_id),
            :ok <- signed_in_recently(by),
            {:ok, organisation} <- instance_organisation(),
            {:ok, user} <- lock_account(user_id),
@@ -575,10 +575,6 @@ defmodule Apiary.Accounts do
       if by.user && Apiary.Mail.configured?(), do: {:error, :mail_set}, else: :ok
     end
   end
-
-  # A person's own password is changed in Account settings, behind a recent sign-in.
-  defp not_own_account(%Scope{user: %User{id: id}}, id), do: {:error, :own_account}
-  defp not_own_account(_by, _user_id), do: :ok
 
   # A person makes one only after a recent sign-in; the instance, in a release command,
   # signs in to nothing.

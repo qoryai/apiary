@@ -492,6 +492,43 @@ defmodule Apiary.AccessTest do
       assert Access.authorize(instance, :"instance.rename", ctx.instance) == {:error, :forbidden}
     end
 
+    test "only the instance admin who saved the mail settings resends their test link or turns mail on",
+         ctx do
+      settings = %Apiary.Mail.Settings{mail_saved_by_id: ctx.admin.user.id}
+      %{scope: second} = member_fixture(ctx.admin, :owner)
+      instance = Scope.for_instance(ctx.instance)
+
+      for action <- [:"instance.mail_resend", :"instance.mail_on"] do
+        assert Access.authorize(ctx.admin, action, settings) == :ok
+        assert Access.authorize(second, action, settings) == {:error, :not_saver}
+
+        assert Access.authorize(ctx.admin, action, %Apiary.Mail.Settings{}) ==
+                 {:error, :not_saver}
+
+        # The role, the instance step and the place answer first.
+        assert Access.authorize(ctx.inner_admin, action, settings) == {:error, :forbidden}
+        assert Access.authorize(instance, action, settings) == {:error, :forbidden}
+        assert Access.authorize(ctx.owner, action, settings) == {:error, :not_found}
+        assert Access.authorize(ctx.elsewhere, action, settings) == {:error, :not_found}
+        assert Access.authorize(ctx.admin, action, ctx.instance) == {:error, :not_found}
+      end
+    end
+
+    test "nobody makes a password link of the account they are signed in with; the instance may",
+         ctx do
+      %{scope: second} = member_fixture(ctx.admin, :owner)
+      action = :"account.password_link"
+
+      assert Access.authorize(ctx.admin, action, ctx.admin.user) == {:error, :own_account}
+      assert Access.check(ctx.admin, action, ctx.admin.user) == {:error, :own_account}
+      assert Access.authorize(second, action, ctx.admin.user) == :ok
+      assert Access.authorize(Scope.for_instance(ctx.instance), action, ctx.admin.user) == :ok
+
+      # The role answers first.
+      assert Access.authorize(ctx.inner_admin, action, ctx.inner_admin.user) ==
+               {:error, :forbidden}
+    end
+
     test "in_instance/1 and instance_scope/1 move a person into the instance's organisation",
          ctx do
       moved = Access.in_instance(ctx.elsewhere)

@@ -312,7 +312,7 @@ defmodule ApiaryWeb.MemberLive.Index do
               <% end %>
               <ApiaryWeb.Extension.slot name={:member_actions} scope={@current_scope} member={m} />
               <.menu_item
-                :if={password_link?(@password_scope, m.user) and m.user_id != @current_scope.user.id}
+                :if={password_link?(@password_scope, m.user)}
                 id={"member-#{m.id}-password-link"}
                 phx-click="password_link"
                 phx-value-membership_id={m.id}
@@ -1167,7 +1167,7 @@ defmodule ApiaryWeb.MemberLive.Index do
   end
 
   # Whether the page offers a password link for `account`: `account.password_link`, asked
-  # of the account in the instance scope.
+  # of the account in the instance scope, which refuses the reader's account.
   defp password_link?(nil, _account), do: false
 
   defp password_link?(instance, account),

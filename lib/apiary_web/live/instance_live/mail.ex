@@ -46,6 +46,7 @@ defmodule ApiaryWeb.InstanceLive.Mail do
           module={MailForm}
           id="mail"
           current_scope={@current_scope}
+          scope={@scope}
           path={~p"/instance/mail"}
         />
       </.settings_page>

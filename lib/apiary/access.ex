@@ -6,6 +6,7 @@ defmodule Apiary.Access do
   alias Apiary.Adapters.Connection
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.{Edition, Features}
+  alias Apiary.Mail.Settings
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Repo
@@ -142,14 +143,14 @@ defmodule Apiary.Access do
       :"instance.mail_resend",
       "send the test link of the saved mail settings again: the instance admin who saved them, after a recent sign-in, while mail waits for that link (Apiary.Mail.resend_test_link/2)",
       roles: @owners,
-      asked_of: :organisation,
+      asked_of: :mail_settings,
       instance: true
     ),
     Action.new(
       :"instance.mail_on",
       "turn the saved mail settings on by the test link their save sent: the instance admin who saved them, after a recent sign-in (Apiary.Mail.turn_on/2)",
       roles: @owners,
-      asked_of: :organisation,
+      asked_of: :mail_settings,
       instance: true
     ),
     # The product's name on the instance, in Instance settings › General.
@@ -810,9 +811,18 @@ defmodule Apiary.Access do
   # The level of the instance organisation's people who are the instance admins.
   @instance_admin_level :owner
 
-  # The instance actions asked of an account, which is no organisation's: the others are
-  # asked of the instance organisation.
+  # The instance actions asked of an account, which is no organisation's, and of the mail
+  # settings, which are the instance's: the others are asked of the instance organisation.
   @instance_on_accounts [:"account.password_link"]
+  @instance_on_mail_settings [:"instance.mail_resend", :"instance.mail_on"]
+
+  # The instance actions that only the instance admin who saved the mail settings takes
+  # on them (`one_person/3`): sending their test link again, and turning mail on by it.
+  @saver_only [:"instance.mail_resend", :"instance.mail_on"]
+
+  # The instance actions that nobody takes on the account they are signed in with: a
+  # password link, which would get around the recent sign-in of Account settings.
+  @not_own_account [:"account.password_link"]
 
   # What nobody takes on their own membership: an owner does not suspend themselves, and
   # nobody activates their own.
@@ -1004,11 +1014,18 @@ defmodule Apiary.Access do
      passes only in the instance's organisation, while it is not marked for deletion;
      anywhere else, `{:error, :not_found}`.
   3. **The edition** (`c:Apiary.Edition.check/3`), asked once, as in step 2 above.
-  4. **The place.** `account.password_link` is asked of an account in use; every other
-     instance action of the instance's organisation, the scope's. Anything else is
-     `{:error, :not_found}`.
+  4. **The place.** `account.password_link` is asked of an account in use;
+     #{Enum.map_join(@instance_on_mail_settings, " and ", &"`#{&1}`")} of the mail
+     settings (`Apiary.Mail.Settings`); every other instance action of the instance's
+     organisation, the scope's. Anything else is `{:error, :not_found}`.
   5. **The role** (`role/1`): one the action's roles do not hold is
      `{:error, :forbidden}`.
+  6. **One person.** Only the instance admin who saved the mail settings takes
+     #{Enum.map_join(@saver_only, " and ", &"`#{&1}`")} on them; anyone else is
+     `{:error, :not_saver}`. Nobody takes
+     #{Enum.map_join(@not_own_account, ", ", &"`#{&1}`")} on the account they are signed
+     in with, `{:error, :own_account}`: they change their password in Account settings.
+     The instance's scope has no account, and is not refused.
 
   A page of the instance admins and a context function ask in the person's scope in the
   instance's organisation, whichever organisation the page's path is in: `in_instance/1`
@@ -1063,9 +1080,11 @@ defmodule Apiary.Access do
 
   @typedoc """
   Why the answer is no: a feature that is off or hidden, or a subject out of reach, the
-  role, or a person who is not among the approvers of the work item's stage.
+  role, a person who is not among the approvers of the work item's stage, and, of an
+  instance action, an instance admin who did not save the mail settings or who asks of
+  the account they are signed in with.
   """
-  @type reason :: :not_found | :forbidden | :not_approver
+  @type reason :: :not_found | :forbidden | :not_approver | :not_saver | :own_account
 
   ## The registry
 
@@ -1447,7 +1466,9 @@ defmodule Apiary.Access do
   `{:error, :forbidden}` where the role does not allow it, a membership that is gone
   included, or allows it over other people than the subject's;
   `{:error, :not_approver}` where the role allows it and the work item's stage lists
-  approvers the person is not among (step 9 of the moduledoc).
+  approvers the person is not among (step 9 of the moduledoc);
+  `{:error, :not_saver}` or `{:error, :own_account}` where the role allows an instance
+  action and a one-person rule refuses it (step 6 of "The instance's admins").
   `check(reload(scope), action, subject)`.
   """
   @spec authorize(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
@@ -1515,23 +1536,43 @@ defmodule Apiary.Access do
     end
   end
 
-  # The place, then the role: an account's action is asked of an account in use, any other
-  # of the instance organisation, the scope's.
+  # The place, then the role, then the one-person rules: an account's action is asked of an
+  # account in use, an action of the mail settings of them, any other of the instance
+  # organisation, the scope's.
   defp instance_place_and_role(scope, action, subject) do
     cond do
       not instance_subject?(scope, action, subject) -> {:error, :not_found}
       role(scope) not in action(action).roles -> {:error, :forbidden}
-      true -> :ok
+      true -> one_person(scope, action, subject)
     end
   end
 
   defp instance_subject?(_scope, action, subject) when action in @instance_on_accounts,
     do: match?(%User{deleted_at: nil}, subject)
 
+  defp instance_subject?(_scope, action, subject) when action in @instance_on_mail_settings,
+    do: match?(%Settings{}, subject)
+
   defp instance_subject?(scope, _action, %Organisation{id: id} = subject) when is_binary(id),
     do: id == Edition.instance_organisation_id() and within?(scope, subject)
 
   defp instance_subject?(_scope, _action, _subject), do: false
+
+  # Of the mail settings, the admin who saved them alone; of an account, anyone but its
+  # person. The instance's scope has no account.
+  defp one_person(scope, action, %Settings{mail_saved_by_id: saved_by})
+       when action in @saver_only do
+    case scope do
+      %Scope{user: %User{id: id}} when is_binary(id) and id == saved_by -> :ok
+      _other -> {:error, :not_saver}
+    end
+  end
+
+  defp one_person(%Scope{user: %User{id: id}}, action, %User{id: id})
+       when action in @not_own_account and is_binary(id),
+       do: {:error, :own_account}
+
+  defp one_person(_scope, _action, _subject), do: :ok
 
   @doc """
   check_code_maker/2 is whether the maker of an enrolment code, `scope`, the person who

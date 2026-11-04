@@ -342,6 +342,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
           done={@mail_done}
           steps={@steps}
           current_scope={@current_scope}
+          scope={@scope}
         />
 
         <:context :if={@row}>
@@ -475,6 +476,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   attr :done, :boolean, required: true
   attr :steps, :list, required: true
   attr :current_scope, :map, required: true
+  attr :scope, :map, required: true
 
   # The mail step: the form of Instance settings › Mail, with Back, Save and send a test,
   # and Skip, or Continue once the step is done.
@@ -487,6 +489,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
         module={MailForm}
         id="mail"
         current_scope={@current_scope}
+        scope={@scope}
         path={~p"/instance/set-up"}
         step
       >

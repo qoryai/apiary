@@ -226,8 +226,8 @@ defmodule Apiary.AccessCase do
   # the action is for, an instance admin for an instance action, else an owner, an
   # adapter's key, an access key, a pool's key or the instance, in that one's place;
   # everyone else as themselves, in the place their module says, of what the action is
-  # asked of there: the organisation, the workspace, a new organisation, or the member's
-  # account, another than the asker's.
+  # asked of there: the organisation, the workspace, a new organisation, the member's
+  # account, another than the asker's, or the mail settings, which the instance admin saved.
   defp asked(ctx, modules, action, actor) when actor in [:feature_off, :hidden] do
     actor =
       cond do
@@ -260,6 +260,7 @@ defmodule Apiary.AccessCase do
       :workspace -> place.workspace
       :new_organisation -> %Organisation{}
       :account -> ctx.scopes.member.user
+      :mail_settings -> %Apiary.Mail.Settings{mail_saved_by_id: ctx.scopes.instance_admin.user.id}
       :adapter -> place.adapter
     end
   end
