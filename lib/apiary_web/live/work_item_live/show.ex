@@ -28,16 +28,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # with comments, and a review comment or a reply on its form page (`?review=new`,
   # `?reply=<id>`), each sent with the work item the page last read and the attempt of its
   # latest run, so an action from a page that read an earlier state fails
-  # (`Apiary.WorkItems.Moves`). Run with answers with every answer blank sends the open
-  # review comments (`Apiary.WorkItems.send_review_comments/3`), and with none open shows
-  # under the form that no answer was given. An action that fails shows no words: the
-  # page reads the work item again and draws where it stands now. Only a form whose fields
-  # are wrong shows why, under its fields, as does the form page of a reader who is not an
-  # approver of the stage; Run with comments from such a reader, at the gate or from the
-  # questions form, shows the stage runner's line under that form. The questions form's
-  # draft is kept as the reader writes
-  # (`"answer_draft"`): each question's option and note, as the form has them. An event
-  # with another number than the page's does nothing.
+  # (`Apiary.WorkItems.Moves`). Run with answers with every answer blank, from an
+  # approver of the stage, sends the open review comments
+  # (`Apiary.WorkItems.send_review_comments/3`); with none open, or from any other
+  # member, it shows under the form that no answer was given. An action that fails shows
+  # no words: the page reads the work item again and draws where it stands now. Only a
+  # form whose fields are wrong shows why, under its fields, as does the form page of a
+  # reader who is not an approver of the stage; Run with comments from such a reader, at
+  # the gate or from the questions form, shows the stage runner's line under that form.
+  # The questions form's draft is kept as the reader writes (`"answer_draft"`): each
+  # question's option and note, as the form has them. An event with another number than
+  # the page's does nothing.
   #
   # **People's comments** (`ApiaryWeb.WorkItemLive.Comments`) are in the Thread, in the
   # order they were written among its events, with the composer under it for a reader
@@ -523,8 +524,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # Run with answers: the answers given, each question with an option, Give your own
   # option, or a note; a question with neither stays open. With every answer blank, the
-  # open review comments go to the next run, as from the gate; with none open, nothing is
-  # sent.
+  # open review comments go to the next run, as from the gate, where the reader is an
+  # approver of the stage (`approver?/1`); with none open, or for any other reader,
+  # nothing is sent.
   defp act("answer", params, socket) do
     draft = drafted(params)
     open = Enum.filter(socket.assigns.questions, &(&1.state == :open))
@@ -534,7 +536,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         {:noreply, refused_answers(socket, draft, errors, nil)}
 
       {:ok, []} ->
-        if Enum.any?(socket.assigns.review_comments, &(&1.state == :open)),
+        if approver?(socket) and Enum.any?(socket.assigns.review_comments, &(&1.state == :open)),
           do: comments_only(socket, draft),
           else: {:noreply, refused_answers(socket, draft, %{}, :blank)}
 
@@ -872,6 +874,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         socket
     end
   end
+
+  # Whether the reader is an approver of the stage, as the stage card reads it for its
+  # gate (`ApiaryWeb.WorkItemLive.Workflow.page/2`, `can_decide`): any reader without the
+  # workflow model, as `Apiary.Stages.approver/2` reads it.
+  defp approver?(%{assigns: %{flow: %{can_decide: can_decide}}}), do: can_decide
+  defp approver?(_socket), do: true
 
   # Run with answers with every answer blank: the next run, with every open review
   # comment, and the questions left open. A refusal shows as for Run with comments.

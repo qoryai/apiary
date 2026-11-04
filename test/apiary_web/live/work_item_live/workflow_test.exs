@@ -1109,7 +1109,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-review-page-text", "Only for card payments.")
     end
 
-    test "Run with answers with every answer blank from a member Explore's gate does not list: the line under the form",
+    test "Run with answers with every answer blank from a member Explore's gate does not list: the blank-answer error, and no run",
          %{conn: conn, scope: scope} do
       listed = explore_gate_listing(scope)
       work_item = explore_gate_fixture(scope)
@@ -1129,10 +1129,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-explore-questions-error[role=alert]",
-               "Ask an approver of Explore to act on it."
+               "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
              )
 
-      refute render(view) =~ "Choose an option or write an answer."
+      refute render(view) =~ "Ask an approver of Explore to act on it."
 
       assert Repo.aggregate(
                from(d in DispatchRun, where: d.work_item_id == ^work_item.id),
