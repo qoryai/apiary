@@ -563,11 +563,10 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp file_line(_unreadable, filename, _type),
     do: gettext("Upload %{filename} again.", filename: filename)
 
-  # proposal_format_line/2 is the line for a proposal's file `filename` whose bytes the
-  # push refuses for `reason`: `:format` for `sources.json` that does not parse as JSON,
-  # a Markdown file that is not UTF-8 text, or an image; `:image_type` for an image whose
-  # bytes are not the type its name ends in. `:image_type` is the atom storage plans for
-  # that refusal; confirm it at the next merge of storage's work.
+  # proposal_format_line/2 is the line for a proposal's file `filename` when the push
+  # returns `reason` for it: for `:format`, the JSON line for `sources.json`, the Markdown
+  # line for a filename that ends in `.md`, else the image line; for `:image_type`, the
+  # image line.
   @doc false
   @spec proposal_format_line(:format | :image_type, String.t()) :: String.t()
   def proposal_format_line(:format, "sources.json"),

@@ -560,7 +560,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says to replace an image of another type for either reason storage gives" do
+    test "maps :format and :image_type on an image to the image line" do
       for reason <- [:image_type, :format] do
         assert ApiaryWeb.ArtifactLive.New.proposal_format_line(reason, "chart.png") ==
                  "Replace chart.png with an image of the type its name ends in."
@@ -568,6 +568,14 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert ApiaryWeb.ArtifactLive.New.proposal_format_line(:format, "sources.json") ==
                "Make sources.json valid JSON. The file does not parse as JSON."
+    end
+
+    test "says to replace a proposal's Markdown file that is not UTF-8 text", ctx do
+      html = push_proposal(ctx, [{"proposal.md", <<"# Gift cards ", 0xFF, 0xFE>>}])
+
+      assert html =~ "Replace proposal.md with a Markdown file of UTF-8 text."
+      refute html =~ "an image of the type its name ends in"
+      assert Artifacts.list(ctx.work_item) == []
     end
 
     test "says to make a proposal's sources.json valid JSON", ctx do
