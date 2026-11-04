@@ -330,7 +330,7 @@ test("draws again when data-theme on <html> changes, and only then", () => {
 
 test("watches nothing where there is no MutationObserver", () => {
   const html = {getAttribute: () => "qory-light"}
-  const stop = watchTheme(html, () => assert.fail("no redraw"), undefined)
+  const stop = watchTheme(html, () => assert.fail("no redraw"), null)
   assert.equal(typeof stop, "function")
   stop()
 })
