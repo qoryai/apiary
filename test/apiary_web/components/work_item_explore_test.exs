@@ -1698,7 +1698,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{f} button[type=submit]") == "Reply"
     end
 
-    test "comment_error/2: each refusal in words, on Add review comment and on Reply" do
+    test "comment_error/2: the words of each error, on Add review comment and on Reply" do
       for kind <- [:comment, :reply] do
         assert C.comment_error(:blank, kind) == "Write your review comment."
         assert C.comment_error(:reply_blank, kind) == "Write your reply."

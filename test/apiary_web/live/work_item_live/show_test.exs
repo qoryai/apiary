@@ -777,7 +777,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert state(work_item) == :exploring
     end
 
-    test "a long or hidden-character reply is refused under the field in the words of a reply",
+    test "a long or hidden-character reply shows its error under the field in the words of a reply",
          %{conn: conn, scope: scope} do
       {work_item, _run} = proposed(scope)
       {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")

@@ -78,10 +78,10 @@ defmodule Apiary.WorkItems.ExploreView do
   # for none; `questions`, each `%{public_id: position, text: question, options:
   # [%{title:, explanation:}], answer: answer or nil, custom: true, false or nil}`, for a
   # run that asked: where its questions wait, the open questions of the work item's
-  # newest questions that a run of the current take in wrote or reopened last, which the
-  # form answers by position, else the questions it asked and those answered at it
-  # (`Apiary.Explore.Questions`, `Apiary.Explore.Given`); and `answered_by_id` and
-  # `answered_at` once a member answered at it. A confirmed run's
+  # newest questions that a run of the current take in wrote or reopened last, which
+  # `Apiary.WorkItems.Moves.answer/4` refers to by position, else the questions it wrote
+  # and those answered at it (`Apiary.Explore.Questions`, `Apiary.Explore.Given`); and
+  # `answered_by_id` and `answered_at` once a member answered at it. A confirmed run's
   # proposal is the version in its confirmation. A run that ended before Explore's
   # runs pushed artifacts shows the proposal in its result, and no questions. `wrote` is
   # the version of the proposal the run pushed, nil for none, with `wrote_proposal`, that
@@ -604,8 +604,8 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # The questions of a run that asked: where its questions wait, the open questions of the
   # newest questions that a run of the current take in wrote or reopened last, in its
-  # order, which the form answers by position; otherwise the questions it asked
-  # (`asked.run`) and those answered at it, with their answers.
+  # order, which `Apiary.WorkItems.Moves.answer/4` refers to by position; otherwise the
+  # questions it wrote (`asked.run`) and those answered at it, with their answers.
   defp questions(step, ctx, rows) do
     answers = Map.new(rows, &{&1.id, &1})
 

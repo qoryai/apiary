@@ -2917,7 +2917,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :tip, :string,
     default: nil,
     doc:
-      "the class of the avatars' tooltips: `tooltip-right` in the right column, which cuts a tooltip above an avatar at its left edge"
+      "the class of the avatars' tooltips: `tooltip-right` in the right column, which scrolls and so cuts a tooltip above an avatar at its left edge; `tooltip-right` is not cut"
 
   attr :class, :any, default: nil
 
@@ -4015,7 +4015,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:asked` - how many questions Qory wrote and after how long (`questions`,
       `duration`), the questions quoted under it;
     * `:answered` - who answered Qory's questions, each question and its answer quoted;
-      or who wrote a review comment on Qory's proposal (`comment`), or a reply to one
+      or who wrote a review comment on the proposal (`comment`), or a reply to one
       (`comment`, with `reply` true), the text quoted;
     * `:proposed` - Qory wrote a proposal, after how long, and whose turn it is
       (`owner`), or only after how long where it has no owner;

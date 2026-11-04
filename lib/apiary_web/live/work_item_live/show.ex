@@ -34,8 +34,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # member, it shows under the form that no answer was given. An action that fails shows
   # no words: the page reads the work item again and draws where it stands now. Only a
   # form whose fields are wrong shows why, under its fields, as does the form page of a
-  # reader who is not an approver of the stage; Run with comments from such a reader, at
-  # the gate or from the questions form, shows the stage runner's line under that form.
+  # reader who is not an approver of the stage; Run with comments at the gate, or Run
+  # with answers with every answer blank, from such a reader, shows the stage runner's
+  # line under that form.
   # The questions form's draft is kept as the reader writes (`"answer_draft"`): each
   # question's option and note, as the form has them. An event with another number than
   # the page's does nothing.
@@ -859,9 +860,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
 
-  # Run with comments, at the gate or from the questions form, from a reader who is not
-  # an approver of the stage: the page read again, with the stage runner's line for that
-  # refusal (`refused/2`) under the form.
+  # Run with comments at the gate, or Run with answers with every answer blank, from a
+  # reader who is not an approver of the stage: the page read again, with the stage
+  # runner's line for that error (`refused/2`) under the form.
   defp not_approver(socket) do
     socket = refresh(socket)
 
@@ -882,7 +883,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp approver?(_socket), do: true
 
   # Run with answers with every answer blank: the next run, with every open review
-  # comment, and the questions left open. A refusal shows as for Run with comments.
+  # comment, and the questions left open. An error shows as for Run with comments.
   defp comments_only(socket, draft) do
     with_attempt(socket, fn attempt ->
       case WorkItems.send_review_comments(scope(socket), socket.assigns.row, attempt) do
