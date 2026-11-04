@@ -6,8 +6,7 @@
     "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
   },
   "run": {
-    "attempt": 3,
-    "of": 3
+    "attempt": 3
   },
   "ticket": {
     "external_ref": "TRK-77",
@@ -39,35 +38,7 @@
     }
   ],
   "comments_omitted": 12,
-  "answers": [
-    {
-      "question": "Which refund applies to **this order**?",
-      "answer": "Full refund",
-      "by": {
-        "name": "Sam Example"
-      },
-      "at": "2026-10-17T10:05:00Z"
-    },
-    {
-      "question": "When did the parcel arrive? The carrier's record shows no date.",
-      "answer": "It arrived on 2026-10-14, as the customer wrote.",
-      "custom": true,
-      "by": {
-        "name": "Sam Example"
-      },
-      "at": "2026-10-17T10:06:00Z"
-    }
-  ],
   "proposal": "## What this is\n\nOrder 4417 arrived nine days late, and the customer asks for a refund.\n\n## How to do it\n\nRefund the full amount and tell the customer.\n\n## Why this is the best\n\nThe late delivery policy covers a delivery this late.\n",
-  "changes": [
-    {
-      "text": "Offer a replacement first.",
-      "by": {
-        "name": "Sam Example"
-      },
-      "at": "2026-10-17T11:45:00Z"
-    }
-  ],
   "target": {
     "system": "tracker.example.com",
     "path": "customer-care"

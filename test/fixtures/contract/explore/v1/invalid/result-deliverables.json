@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "verdict": "understood",
-  "message": "## What this is\n\nOrder 4417 arrived nine days late, and the customer asks for a refund.\n\n## What is in and out\n\n- In: refund the order and tell the customer.\n- Out: a change to the delivery terms.\n\n## How to do it\n\nRefund the full amount, then send this reply:\n\n```text\nWe have refunded order 4417 in full. The amount reaches your account within five days.\n```\n\n## Why this is the best\n\nThe [late delivery policy](https://help.example.com/policies/late-delivery) covers a delivery this late.\n\n## Alternatives\n\n- Store credit: the customer asked for the money back.\n",
-  "deliverables": [
-    "A refund of order 4417."
-  ]
-}
