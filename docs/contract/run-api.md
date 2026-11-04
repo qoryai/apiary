@@ -57,6 +57,10 @@ The checks run in this order:
    is `404` `not_found`, the same answer whatever the cause.
 4. For a POST: a run that is no longer pending or running, whose sending has ended, or
    whose run of the workspace's queue has ended, is `409` `run_ended`. A run reads its work item after it ends; it writes nothing.
+   A push or a verdict checks the run of the queue again when it stores the version,
+   under the lock of the work item that the end of a run also takes: a run whose run of
+   the queue ended between the two checks is `409` `run_ended`, and no version is
+   stored.
 5. The checks listed with each request below.
 
 An error is a JSON object with `error`, the code. Some errors also have `type`,
@@ -264,7 +268,9 @@ Checks, in order, after the checks of every request:
    questions first. Numbers compare by value, as the schemas' integers do: `4.0` is
    `4`. A version of `questions` or `review-comments` is stored with each number that
    is an integer in value written as an integer, so a later read of it has `4` where
-   the push had `4.0`.
+   the push had `4.0`. A newest version of `questions` or `review-comments` whose file
+   cannot be read, or whose newest `questions` a `review-comments` version is checked
+   against cannot be read, is `503` `unavailable`, and no version is stored.
 
 ## POST verdict
 
@@ -295,7 +301,7 @@ is `400` `invalid_request`.
 | `401` | `unauthorized` | | The request does not verify; unsigned |
 | `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file |
 | `404` | (the error page) | | The instance does not have `workflow_model` |
-| `409` | `run_ended` | `message` | A push or a verdict after the run ended |
+| `409` | `run_ended` | `message` | A push or a verdict after the run ended, checked before the push and again when the version is stored |
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |
 | `413` | `payload_too_large` | | A body over its size |
@@ -303,7 +309,7 @@ is `400` `invalid_request`.
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, or a run's version of `questions` or `review-comments` changes what members wrote |
-| `503` | `unavailable` | | The request could not be completed; try again |
+| `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
 
