@@ -151,7 +151,11 @@ defmodule Apiary.WorkItems.ExploreView do
     ctx = Map.put(ctx, :written, written(steps, ctx))
 
     taken = take_ins(events)
-    runs = Enum.map(current, &run_view(&1, ctx, confirmation, work_item))
+
+    {runs, read} =
+      Enum.map_reduce(current, ctx.written, &run_view(&1, ctx, confirmation, work_item, &2))
+
+    {earlier, read} = earlier_take_ins(work_item, taken, by_take_in, ctx, take_in, read)
 
     %{
       status: if(live?, do: status, else: work_item.state),
@@ -163,13 +167,13 @@ defmodule Apiary.WorkItems.ExploreView do
       previous: previous(taken, take_in),
       run: List.last(runs),
       earlier_runs: Enum.drop(runs, -1),
-      earlier_take_ins: earlier_take_ins(work_item, taken, by_take_in, ctx, take_in),
+      earlier_take_ins: earlier,
       answers_by_ids:
         for(%{kind: :answer, take_in: ^take_in, by_id: by_id} <- ctx.given, do: by_id)
         |> Enum.uniq(),
       confirmed_by_id: confirmation && confirmation.confirmed_by_id,
       confirmed_at: confirmation && confirmation.confirmed_at,
-      proposal: newest_proposal(work_item, List.last(runs), ctx.written),
+      proposal: newest_proposal(work_item, List.last(runs), ctx, read),
       questions: questions_view(ctx),
       questions_version: ctx.questions_version,
       review_comments: review_comments(ctx, take_in)
@@ -177,25 +181,26 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   # The newest proposal of the current take in: the one its latest run stands at, or the
-  # one in its confirmation; nil for none. `wrote` is the versions the runs wrote, read
-  # once, by number (`written/2`), so a version a run wrote is not read again.
-  defp newest_proposal(_work_item, nil, _wrote), do: nil
+  # one in its confirmation; nil for none. `read` is the versions the run views read, by
+  # number (`read_version/3`), so a version read there is not read again.
+  defp newest_proposal(_work_item, nil, _ctx, _read), do: nil
 
   defp newest_proposal(
          %WorkItem{id: id},
          %{proposal: %{message: message}, version: version},
-         wrote
+         _ctx,
+         read
        )
        when is_binary(message) do
-    case version && Map.get_lazy(wrote, version, fn -> shown_proposal(id, version) end) do
-      %{} = proposal -> Map.put(proposal, :version, version)
+    case read_version(id, version, read) do
+      {%{} = proposal, _read} -> Map.put(proposal, :version, version)
       _kept -> %{version: version, message: message}
     end
   end
 
-  defp newest_proposal(%WorkItem{id: id, take_in: take_in}, %{attempt: attempt}, wrote) do
-    with version when is_integer(version) <- Explore.proposal_version(id, take_in, attempt),
-         %{} = proposal <- Map.get_lazy(wrote, version, fn -> shown_proposal(id, version) end) do
+  defp newest_proposal(%WorkItem{id: id, take_in: take_in}, %{attempt: attempt}, ctx, read) do
+    with version when is_integer(version) <- version_at(id, take_in, attempt, ctx),
+         {%{} = proposal, _read} <- read_version(id, version, read) do
       Map.put(proposal, :version, version)
     else
       _none -> nil
@@ -203,14 +208,29 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   # The versions of the proposal that the runs of `steps` wrote (`wrote/2`), each read
-  # once, by number, as the page shows it (`shown_proposal/2`).
+  # once, by number, as the page shows it (`shown_proposal/2`), nil for one with none.
   defp written(steps, ctx) do
     for step <- steps,
         version = wrote(step, ctx),
         is_integer(version),
-        %{} = proposal <- [shown_proposal(step.dispatch_run.work_item_id, version)],
         into: %{},
-        do: {version, proposal}
+        do: {version, shown_proposal(step.dispatch_run.work_item_id, version)}
+  end
+
+  # Version `version` of the work item `id`'s proposal as the page shows it, from `read`,
+  # the versions read already, by number; a version not in it is read and added. `{nil,
+  # read}` for no version.
+  defp read_version(_id, nil, read), do: {nil, read}
+
+  defp read_version(id, version, read) do
+    case Map.fetch(read, version) do
+      {:ok, shown} ->
+        {shown, read}
+
+      :error ->
+        shown = shown_proposal(id, version)
+        {shown, Map.put(read, version, shown)}
+    end
   end
 
   # Version `version` of the work item `id`'s proposal as the page shows it (`message`,
@@ -456,10 +476,12 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp workflow_gap(_step, _work_item), do: nil
 
-  defp run_view(step, ctx, confirmation, work_item) do
+  # The run map of the run `step` (the moduledoc), with `read`, the versions of the
+  # proposal read already, by number, and those it read added (`read_version/3`).
+  defp run_view(step, ctx, confirmation, work_item, read) do
     rows = answers_of(ctx, step)
     wrote = wrote(step, ctx)
-    wrote_proposal = wrote && Map.get(ctx.written, wrote)
+    wrote_proposal = wrote && Map.get(read, wrote)
 
     ended_at = Explore.ended_at(step)
 
@@ -491,42 +513,33 @@ defmodule Apiary.WorkItems.ExploreView do
       asked: asked(step, ctx)
     }
 
-    view =
+    {view, read} =
       case {step.outcome, confirmed_result(step, confirmation)} do
         {_outcome, %{} = result} ->
           version = result["proposal_version"] || version(step, ctx)
+          {proposal, read} = proposal(step, version, result, read)
 
-          %{
-            view
-            | outcome: :proposal,
-              place: :proposal,
-              proposal: proposal(step, version, result, ctx),
-              version: version
-          }
+          {%{view | outcome: :proposal, place: :proposal, proposal: proposal, version: version},
+           read}
 
         {:proposal, nil} ->
           version = version(step, ctx)
-          result = step.dispatch_run.result
-
-          %{
-            view
-            | proposal: proposal(step, version, result, ctx),
-              version: version
-          }
+          {proposal, read} = proposal(step, version, step.dispatch_run.result, read)
+          {%{view | proposal: proposal, version: version}, read}
 
         {:questions, nil} ->
-          %{view | questions: questions(step, ctx, rows)}
+          {%{view | questions: questions(step, ctx, rows)}, read}
 
         _other ->
-          view
+          {view, read}
       end
 
     case rows do
       [first | _rest] ->
-        %{view | answered_by_id: first.by_id, answered_at: first.at}
+        {%{view | answered_by_id: first.by_id, answered_at: first.at}, read}
 
       [] ->
-        view
+        {view, read}
     end
   end
 
@@ -578,21 +591,20 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # The proposal of a run, at `version`: the Markdown of that version of the work item's
   # proposal, else the `message` a result kept before Explore's runs pushed their
-  # proposal as an artifact; nil for none. A version a run wrote, read already
-  # (`ctx.written`), is not read again; so a run that stands at the version an earlier
-  # run wrote reads nothing.
-  defp proposal(step, version, result, ctx) do
-    text =
-      case Map.get(ctx.written, version) do
-        %{message: text} when is_binary(text) -> text
-        _not_written -> Explore.proposal_text(step.dispatch_run.work_item_id, version)
+  # proposal as an artifact; nil for none. With `read`, the versions read already, by
+  # number, and this one added (`read_version/3`): a run that stands at a version read
+  # already, whether a run wrote it or a member added it, reads nothing again.
+  defp proposal(step, version, result, read) do
+    {shown, read} = read_version(step.dispatch_run.work_item_id, version, read)
+
+    proposal =
+      case {shown, result} do
+        {%{message: text}, _result} when is_binary(text) -> %{message: text}
+        {_none, %{"message" => message}} when is_binary(message) -> %{message: message}
+        _none -> %{message: nil}
       end
 
-    case {text, result} do
-      {text, _result} when is_binary(text) -> %{message: text}
-      {nil, %{"message" => message}} when is_binary(message) -> %{message: message}
-      _none -> %{message: nil}
-    end
+    {proposal, read}
   end
 
   # The answers given at the run `step`, in the order they were given.
@@ -701,27 +713,31 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # The take ins before the current one: each `:taken_in` event and the end that followed
   # it, before the next take in, with its runs as the current take in's are drawn, each
-  # read with that take in's confirmation.
-  defp earlier_take_ins(%WorkItem{id: id} = work_item, taken, by_take_in, ctx, current) do
+  # read with that take in's confirmation; with `read`, the versions of the proposal
+  # read already, by number, and those its runs read added.
+  defp earlier_take_ins(%WorkItem{id: id} = work_item, taken, by_take_in, ctx, current, read) do
     taken
     |> Enum.filter(fn {take_in, _taken, _end} -> take_in < current end)
-    |> Enum.map(fn {take_in, taken, ended} ->
+    |> Enum.map_reduce(read, fn {take_in, taken, ended}, read ->
       confirmation = Explore.confirmation(id, take_in)
 
-      %{
-        take_in: take_in,
-        taken_in_by_id: taken.actor_id,
-        taken_in_at: taken.at,
-        ended: ended && ended.kind,
-        ended_by_id: ended && ended.actor_id,
-        ended_at: ended && ended.at,
-        ended_reason: close_reason(ended),
-        runs:
-          Enum.map(
-            Map.get(by_take_in, take_in, []),
-            &run_view(&1, ctx, confirmation, work_item)
-          )
-      }
+      {runs, read} =
+        Enum.map_reduce(
+          Map.get(by_take_in, take_in, []),
+          read,
+          &run_view(&1, ctx, confirmation, work_item, &2)
+        )
+
+      {%{
+         take_in: take_in,
+         taken_in_by_id: taken.actor_id,
+         taken_in_at: taken.at,
+         ended: ended && ended.kind,
+         ended_by_id: ended && ended.actor_id,
+         ended_at: ended && ended.at,
+         ended_reason: close_reason(ended),
+         runs: runs
+       }, read}
     end)
   end
 
