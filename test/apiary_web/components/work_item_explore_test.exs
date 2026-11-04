@@ -2558,6 +2558,30 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert line(one) == "Priya answered 1 question 14 Oct, 11:25"
     end
 
+    test "answered: each question is a block, with no white space drawn around it" do
+      html = event(kind: :answered, actor: @priya, questions: questions(@answers))
+
+      # The question is its Markdown block, with the template's line breaks around it;
+      # the answer is plain text.
+      assert count(html, "#ev-1-answers .q-wi-qa-q > .q-xp-md") == 3
+      assert count(html, "#ev-1-answers .q-wi-qa-a > *") == 0
+
+      # Under `pre-wrap` those line breaks drew empty lines above and below the question.
+      # Every rule for the question that sets its white space sets `normal`; the answer
+      # is drawn with the line breaks of its text.
+      rules = Regex.scan(~r/([^{}]*)\{([^{}]*)\}/, app_css(), capture: :all_but_first)
+
+      spacing = fn class ->
+        for [selectors, body] <- rules,
+            selectors =~ ~r/\.#{class}(?![\w-])/,
+            [_, value] <- Regex.scan(~r/white-space:\s*([^;]+);/, body),
+            do: value
+      end
+
+      assert spacing.("q-wi-qa-q") == ["normal"]
+      assert spacing.("q-wi-qa-a") == ["pre-wrap"]
+    end
+
     test "proposed: after how long, and whose turn; only how long without an owner" do
       assert line(event(kind: :proposed, owner: @dana, duration: "11 minutes")) ==
                "Explore wrote a proposal, after 11 minutes. You confirm next 14 Oct, 11:25"

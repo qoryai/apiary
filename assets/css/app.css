@@ -14407,13 +14407,16 @@
   .q-wi-qa-a {
     padding-left: 8px;
     overflow-wrap: anywhere;
-    white-space: pre-wrap;
   }
+  /* The question is a block, as in `.q-wi-qs`, so the white space of the template
+     around it is not drawn; the answer is plain text, drawn with its line breaks. */
   .q-wi-qa-q {
     border-left: 2px solid var(--q-border-strong);
     color: var(--q-faint);
+    white-space: normal;
   }
   .q-wi-qa-a {
+    white-space: pre-wrap;
     margin-top: 2px;
     border-left: 2px solid var(--color-accent);
     color: var(--color-base-content);
