@@ -35,6 +35,8 @@ defmodule Apiary.WorkItems.ProposalCommentsMigrationTest do
   end
 
   setup do
+    # The table this migration changes, dropped by a later one, back for the test.
+    Apiary.AnswersTable.back!()
     %{scope: scope} = sign_up_fixture()
     %{scope: scope}
   end
