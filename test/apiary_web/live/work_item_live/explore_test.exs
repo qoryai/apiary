@@ -238,8 +238,8 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
   end
 
   # Runs `push` with the run of the queue `dispatch_run` live, as a run pushes before it
-  # ends (`Apiary.Artifacts.push/5` refuses a run that ended), then sets the run back to
-  # its state, end and outcome.
+  # ends (`Apiary.Artifacts.push/5` returns `{:error, :run_ended}` for a run that
+  # ended), then sets the run back to its state, end and outcome.
   defp while_live(dispatch_run, push) do
     was = Repo.get!(DispatchRun, dispatch_run.id)
     set_run!(was, state: :handed_over, end_cause: nil, result_outcome: nil, result: nil)

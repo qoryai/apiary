@@ -1808,16 +1808,16 @@ defmodule ApiaryWeb.WorkItemComponents do
   (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause`,
   `:end_detail`, `:wrote` (the version of the proposal it pushed, nil for none) with
   `:wrote_proposal` (that version, `%{message:}`), and `:asked` (how many questions it
-  asked).
+  wrote).
 
   A proposal is `%{version:, message:}`, its text Markdown. A question is `%{id:, number:,
   text:, context:, options:, state:, answer:, history:, follows:}` as
-  `Apiary.WorkItems.ExploreView` gives it, each answer with `:by`, a person. A review
+  `Apiary.WorkItems.ExploreView` returns it, each answer with `:by`, a person. A review
   comment is as `review_comments/1` takes it.
 
   A run's proposal and a question's context are untrusted Markdown, shown as
-  `ApiaryWeb.ArtifactLive.Markdown.render/2` gives them: raw HTML dropped, http, https
-  and mailto links only, headings two levels down. Each map may carry that render as
+  `ApiaryWeb.ArtifactLive.Markdown.render/2` returns them: raw HTML dropped, http, https
+  and mailto links only, headings two levels down. Each map may have that render as
   `:rendered` (`markdown/1`), so the page renders once for what it read; without it, the
   component renders. A question, an option's title and explanation, an answer, a review
   comment and a reply are plain text: escaped, their line breaks kept, isolated from the
@@ -2061,7 +2061,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :test, :boolean, default: false, doc: "whether it is a test work item"
 
   # Queued or running: what the run does next, with whose answers. A test work item's
-  # run answers its line, in words that no workspace's words change.
+  # run writes a reply to its line, in words that no workspace's words change.
   defp explore_wait(assigns) do
     run = assigns.run
     whose = answers_of(Enum.map(assigns.groups, & &1.answered_by))
@@ -2341,8 +2341,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   # to a file of none of them as "Image not in this version"; with `images` nil, the
   # version's files are not known, and an image is its words. It draws its Mermaid
   # diagrams in the browser (`assets/js/hooks/mermaid.js`); its block has an id of the
-  # version and is left alone by later patches (`phx-update="ignore"`), so the hook keeps
-  # its drawings and a new version is drawn again. Its Sources, the list under its last
+  # version and is left alone by later patches (`phx-update="ignore"`), so the drawings of
+  # the hook stay and a new version is drawn again. Its Sources, the list under its last
   # `## Sources` heading, are in a fold at the foot of the frame, closed
   # (`split_sources/1`).
   def proposal_frame(assigns) do
@@ -2696,7 +2696,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   # An open question: the question it follows, its question in bold and its context, its
   # earlier answer where a run reopened it; then its options, Give your own option and one
-  # field without a visible label, whose placeholder says what it takes. As text: its
+  # field without a visible label, whose placeholder shows what it takes. As text: its
   # options only.
   defp open_question(assigns) do
     question = assigns.question
@@ -2854,7 +2854,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   question on the Explore tab (`explore_path`, its address; nil on that tab). A closed
   card is muted, with a tick, and folded shows its outcome under its
   first line; a click on the header of a card folds or opens it, in the browser. While a run
-  reads the open review comments (`reading`, its attempt), an open card says so, and no
+  reads the open review comments (`reading`, its attempt), an open card shows that, and no
   card has Reply.
 
   A review comment is `%{id:, text:, by:, version:, state:, reopened:, replies:}`, `state`
@@ -3274,8 +3274,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  # A run that pushed a proposal before it ended shows that proposal on the tab, so no
-  # line here says there is nothing to show.
+  # A run that pushed a proposal before it ended shows that proposal on the tab, so the
+  # page shows no line that there is nothing to show.
   defp no_result_words(%{state: :failed, wrote: version}) when is_integer(version),
     do: {"hero-exclamation-triangle-micro", failed_after(version), nil}
 
@@ -3978,7 +3978,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
       (`outcome`: `:error`, `:none` or `:refused`), or for a failed run that pushed a
-      proposal first, its version (`wrote`); for a run the gateway refused for
+      proposal first, its version (`wrote`); for a run the gateway stopped for
       want of a model key (`end_cause: :run_refused`, `end_detail: "model_key_missing"`),
       what a member fixes;
     * `:explore_again` - who ran Explore again;

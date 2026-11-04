@@ -569,8 +569,8 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # proposal_format_line/2 is the line for a proposal's file `filename` when the push
   # returns `reason` for it: for `:format`, the JSON line for `sources.json`, else the
   # Markdown line, since the push returns `:format` for a proposal's `sources.json` and
-  # Markdown file only; for `:svg_format`, the SVG line; for `:svg_root`, the line that
-  # asks for the SVG namespace on the svg root element; for `:image_type`, the image line.
+  # Markdown file only; for `:svg_format`, the SVG line; for `:svg_root`, the line to
+  # set the SVG namespace on the svg root element; for `:image_type`, the image line.
   @doc false
   @spec proposal_format_line(:format | :image_type | :svg_format | :svg_root, String.t()) ::
           String.t()
@@ -598,11 +598,12 @@ defmodule ApiaryWeb.ArtifactLive.New do
         filename: filename
       )
 
-  # schema_line/3 is the line for the file `filename` of a version of `type` that the push
-  # refuses at `path` for `error`: for a proposal's `sources.json`, the line of the
-  # proposal sources format; else the line of the type's format. Both say format, since
-  # the check refuses more than the JSON Schema does (`Apiary.Artifacts.Format`). `path`
-  # and `error` come from the file; the page shows them as text.
+  # schema_line/3 is the line for the file `filename` of a version of `type` that fails
+  # the push's check at `path` with `error`: for a proposal's `sources.json`, the line of
+  # the proposal sources format; else the line of the type's format. Both use the word
+  # format, since the check finds more errors than the JSON Schema does
+  # (`Apiary.Artifacts.Format`). `path` and `error` come from the file; the page shows
+  # them as text.
   @doc false
   @spec schema_line(String.t(), Type.t(), %{path: String.t(), error: String.t()}) ::
           String.t()

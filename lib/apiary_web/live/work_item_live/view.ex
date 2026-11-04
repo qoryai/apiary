@@ -71,7 +71,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   # take in's earlier runs, the earlier take ins, the newest proposal, the questions and
   # the review comments of this take in, and the Thread (`thread` of
   # `Apiary.WorkItems.thread/3`, or none), with the names its ticket has
-  # (`Apiary.WorkItems.ticket_names/2`); and the people it names, for `person/2`.
+  # (`Apiary.WorkItems.ticket_names/2`); and the people in it, for `person/2`.
   @spec page(Scope.t(), Apiary.WorkItems.WorkItem.t(), map, [map], map) :: map
   def page(%Scope{} = scope, row, explore, thread, names) do
     ctx = context(scope, row, explore, thread)
@@ -139,8 +139,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp answer(answer, ctx),
     do: answer |> Map.put(:by, given_by(answer.by_id, answer.by, ctx)) |> Map.delete(:by_id)
 
-  # Who gave an answer or a reply: the person of its move, else the name the document
-  # keeps.
+  # Who gave an answer or a reply: the person of its move, else the name in the
+  # document.
   defp given_by(id, _name, ctx) when is_binary(id), do: person(ctx.people, id)
 
   defp given_by(_id, name, _ctx) when is_binary(name),

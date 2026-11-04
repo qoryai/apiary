@@ -27,10 +27,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # **What a reader does.** Undo, Close, Run Explore again, Run with answers, Confirm, Run
   # with comments, and a review comment or a reply on its form page (`?review=new`,
   # `?reply=<id>`), each sent with the work item the page last read and the attempt of its
-  # latest run, so a page that read an earlier state is refused
-  # (`Apiary.WorkItems.Moves`). A refused action shows no words: the page reads the work
-  # item again and draws where it stands now. Only a form whose fields are wrong shows
-  # why, under its fields, as does the form page of a reader who is not an approver of
+  # latest run, so an action from a page that read an earlier state fails
+  # (`Apiary.WorkItems.Moves`). An action that fails shows no words: the page reads the
+  # work item again and draws where it stands now. Only a form whose fields are wrong
+  # shows why, under its fields, as does the form page of a reader who is not an approver of
   # the stage. The questions form's draft is kept as the reader writes
   # (`"answer_draft"`): each question's option and note, as the form has them. An event
   # with another number than the page's does nothing.
@@ -412,7 +412,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
      |> ticketed()}
   end
 
-  # The form page an address on Explore's tab asks for: `?review=new` for Add review
+  # The form page of an address on Explore's tab: `?review=new` for Add review
   # comment, `?reply=<id>` for Reply to that review comment; nil for none.
   defp asked_page(:explore, %{"review" => "new"}), do: :comment
   defp asked_page(:explore, %{"reply" => id}) when is_binary(id), do: {:reply, id}
@@ -844,9 +844,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
 
-  # A review comment or a reply written: back to Explore's tab. A text the check refuses,
-  # or a reader who is not an approver of the stage, keeps the draft and says why under
-  # the field; `blank` is the word for an empty one.
+  # A review comment or a reply written: back to Explore's tab. For a text that fails the
+  # check, or a reader who is not an approver of the stage, the draft stays in the field,
+  # with why under it; `blank` is the error for an empty one.
   defp written(socket, text, result, blank \\ :blank)
 
   defp written(socket, _text, {:ok, _work_item}, _blank) do
@@ -876,7 +876,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`:note_required`, `{:too_long, max}`, `:characters`) shows under its question. A
   # question answered or withdrawn since the page drew it, an id or an option it no
   # longer has, is not the reader's error: the page reads the questions again, with the
-  # draft kept, and says under the form that no answer was sent (`:stale`).
+  # draft kept, and shows under the form that no answer was sent (`:stale`).
   defp refused_by_id(socket, draft, errors) do
     fields =
       for {id, error} <- errors, field_error?(error), into: %{}, do: {id, error}
@@ -917,7 +917,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   @doc false
-  # answer_list/2 is the answers the form's draft `draft` gives to the open questions
+  # answer_list/2 is the answers in the form's draft `draft` to the open questions
   # `open` (each with `:id` and `:options`), in their order, as
   # `Apiary.WorkItems.answer/4` takes them: `{:ok, [%{"id" => id, "option" => title or
   # nil, "note" => text or nil}]}`. An option picked is its title, with the note where
@@ -948,7 +948,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # The option a choice names: `:own`, an option's title by its place from 1, or nil.
+  # The option of a choice: `:own`, an option's title by its place from 1, or nil.
   defp picked("own", _options), do: :own
 
   defp picked(choice, options) when is_binary(choice) do
@@ -1144,8 +1144,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # At Explore, while its run runs, its questions wait or its gate waits, the step card is
   # the stage's one card, with the stage's state: the stage card is not shown. Explore's
-  # status says the same: a run that ended without a result, while the stage still runs,
-  # keeps both cards, so the step card says what happened.
+  # status must match too: after a run that ended without a result, while the stage
+  # still runs, both cards show, so the step card shows what happened.
   defp one_card?(%{explore: true, state: state}, item),
     do: {state, status(item)} in @one_card
 

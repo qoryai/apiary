@@ -7,7 +7,7 @@
 // element after the draw. After the draw, the page has only the <img>: a browser runs
 // no script of an SVG shown as an image and loads no address from it. The block's
 // source moves into a <details> under the image.
-// A block of another type, or one that the checks below refuse, stays as text, with the
+// A block of another type, or one that fails the checks below, stays as text, with the
 // sentence from data-not-drawn above it. A block of one of the five types that does not
 // parse stays as text, with the sentence from data-failed above it.
 //
@@ -426,7 +426,7 @@ export const drawing = async (mermaid, text) => {
 }
 
 // Each diagram drawn in `el`, drawn again with the colours of the theme now; a diagram
-// that does not draw keeps its image.
+// that does not draw stays as its image.
 const redraw = async el => {
   const figures = [...el.querySelectorAll("figure.q-mermaid")]
   if (figures.length === 0) return

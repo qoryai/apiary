@@ -34,14 +34,14 @@ defmodule Apiary.WorkItems.ExploreView do
   #     none;
   #   * `proposal`: the newest proposal of the current take in, `%{version:, message:,
   #     version_id:, images:}` (`Apiary.WorkItems.Explore.proposal/2`), the version its
-  #     latest run stands at, or the one its confirmation keeps; nil for none. A result
-  #     kept before runs pushed their proposal as an artifact has `message` alone;
+  #     latest run stands at, or the one in its confirmation; nil for none. A result
+  #     stored before runs pushed their proposal as an artifact has `message` alone;
   #   * `questions`: every question of the work item's newest questions, in their order,
   #     each `%{id:, number:, text:, context:, options:, state:, asked_run:, answer:,
   #     history:, follows:}`: `number` its place in the document, from 1, `state`
   #     `:open`, `:answered` or `:withdrawn`, `answer` nil or `%{option:, note:, by_id:,
   #     by:, at:}` (`by_id` by the move that wrote it, nil where none matches, `by` the
-  #     name the document keeps), `history` its earlier answers in the same form, and
+  #     name in the document), `history` its earlier answers in the same form, and
   #     `follows` the numbers of the questions it follows; and `questions_version`, the
   #     number of that version, nil for none;
   #   * `review_comments`: the review comments on the current take in's proposals, oldest
@@ -80,11 +80,11 @@ defmodule Apiary.WorkItems.ExploreView do
   # newest questions, which the form answers by position, else the questions it asked and
   # those answered at it (`Apiary.Explore.Questions`, `Apiary.Explore.Given`); and
   # `answered_by_id` and `answered_at` once a member answered at it. A confirmed run's
-  # proposal is the version its confirmation keeps. A run that ended before Explore's
-  # runs pushed artifacts shows the proposal its result kept, and no questions. `wrote` is
+  # proposal is the version in its confirmation. A run that ended before Explore's
+  # runs pushed artifacts shows the proposal in its result, and no questions. `wrote` is
   # the version of the proposal the run pushed, nil for none, with `wrote_proposal`, that
-  # version as the top-level `proposal` gives one, without `version`, and `asked` how
-  # many questions of the newest questions it asked: both read from the artifacts the
+  # version in the form of the top-level `proposal`, without `version`, and `asked` how
+  # many questions of the newest questions it wrote: both read from the artifacts the
   # run pushed, so a run that failed after it pushed them has them too.
   #
   # ## `thread/2`
@@ -173,7 +173,7 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   # The newest proposal of the current take in: the one its latest run stands at, or the
-  # one its confirmation keeps; nil for none. `wrote` is the versions the runs read, by
+  # one in its confirmation; nil for none. `wrote` is the versions the runs read, by
   # number, so a version a run wrote is not read again.
   defp newest_proposal(_work_item, nil, _wrote), do: nil
 
@@ -248,8 +248,8 @@ defmodule Apiary.WorkItems.ExploreView do
   defp question_state(_open), do: :open
 
   # An answer of the questions document, with who gave it by the move that wrote it
-  # (`Apiary.Explore.Given`): `by_id` nil where no move matches, with `by`, the name the
-  # document keeps.
+  # (`Apiary.Explore.Given`): `by_id` nil where no move matches, with `by`, the name in
+  # the document.
   defp given_answer(%{"at" => at} = answer, id, given) do
     move = Enum.find(given, &(&1.id == id and second(&1.at) == at))
 
@@ -542,7 +542,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp wrote_proposal(step, version), do: shown_proposal(step.dispatch_run.work_item_id, version)
 
-  # How many questions of the newest questions the run `step` asked.
+  # How many questions of the newest questions the run `step` wrote.
   defp asked(%{run: %{number: number}}, ctx) when is_integer(number),
     do:
       Enum.count(
