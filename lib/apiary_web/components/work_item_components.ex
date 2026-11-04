@@ -1877,7 +1877,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         mode: if(status == :questions and assigns.can_act, do: :form, else: :read),
         gate: status == :confirm and assigns.can_act,
         open_comments: open,
-        runs: assigns.earlier_runs ++ List.wrap(run && run[:workspace_id] && run),
+        # The latest run, where it is one: a run not yet queued has no workspace.
+        latest: run && run[:workspace_id] && run,
         item: SourceComponents.item(assigns.item_noun)
       )
 
@@ -1931,9 +1932,10 @@ defmodule ApiaryWeb.WorkItemComponents do
         now={@now}
       />
       <.record
-        :if={@runs != [] or @artifacts != []}
+        :if={@earlier_runs != [] or @latest != nil or @artifacts != []}
         id="work-item-record"
-        runs={@runs}
+        runs={@earlier_runs ++ List.wrap(@latest)}
+        latest={@latest}
         proposal={@proposal}
         questions_version={@questions_version}
         item={@item}
@@ -3015,6 +3017,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :id, :string, required: true
   attr :runs, :list, required: true, doc: "the take in's runs, oldest first"
+  attr :latest, :map, default: nil, doc: "its latest run, where it is among `runs`"
   attr :proposal, :map, default: nil
   attr :questions_version, :integer, default: nil
   attr :item, :string, required: true
@@ -3026,13 +3029,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # run that wrote a proposal is a fold with that version, one without a result a fold
   # with what happened; the latest run, and a run with nothing to show, a row.
   defp record(assigns) do
-    last = List.last(assigns.runs)
-
-    assigns =
-      assign(assigns,
-        count: length(assigns.runs),
-        last: last
-      )
+    assigns = assign(assigns, :count, length(assigns.runs))
 
     ~H"""
     <section id={@id} class="q-xp-earlier" aria-label={gettext("Runs and artifacts")}>
@@ -3049,7 +3046,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         </summary>
         <div class="q-xp-inner">
           <%= for run <- @runs do %>
-            <%= case run_shows(run, run == @last) do %>
+            <%= case run_shows(run, run == @latest) do %>
               <% :row -> %>
                 <div id={"#{@id}-#{run_dom(run)}"} class="q-xp-runrow">
                   <span :for={part <- run_parts(run, @now)} class="q-xp-it">
