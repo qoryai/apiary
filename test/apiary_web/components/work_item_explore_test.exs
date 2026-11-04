@@ -990,6 +990,68 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html3, "#{p}-v2") == 0
     end
 
+    test "the proposal frame shows the version's images, and no other" do
+      message =
+        "![Invoice header](checkout.svg)\n\n![x](sources.json) ![Logo](https://example.com/l.png)"
+
+      src = "/acme/main/work/7/artifacts/av_1/files/checkout.svg"
+
+      frame =
+        &render_component(
+          &C.proposal_frame/1,
+          [
+            id: "work-item-explore-proposal",
+            run: run(%{version: 2, proposal: proposal(%{message: message})}),
+            now: @now
+          ] ++ &1
+        )
+
+      html = frame.(images: [{"checkout.svg", src}])
+      p = "#work-item-explore-proposal"
+      assert attr(html, "#{p}-v2 #{p}-text img", "src") == [src]
+      assert attr(html, "#{p}-v2 #{p}-text img", "alt") == ["Invoice header"]
+      assert text(html, "#{p}-text") =~ "Image not in this version: x"
+      assert text(html, "#{p}-text") =~ "Image: Logo"
+
+      # A version with no images: each file it refers to is not in this version.
+      html = frame.(images: [])
+      assert count(html, "img") == 0
+      assert text(html, "#{p}-text") =~ "Image not in this version: Invoice header"
+      assert text(html, "#{p}-text") =~ "Image not in this version: x"
+
+      # Images not given: no image is loaded, and an image is its words.
+      html = frame.([])
+      assert count(html, "img") == 0
+      assert text(html, "#{p}-text") =~ "Image: Invoice header"
+      refute text(html, "#{p}-text") =~ "not in this version"
+    end
+
+    test "the proposal frame shows no file of the version but an image as an image" do
+      message =
+        "![a](sources.json) ![b](proposal.md) ![c](notes.txt) ![d](header.SVG) ![e](form.png)"
+
+      files =
+        for name <- ~w(sources.json proposal.md notes.txt header.SVG form.png),
+            do: {name, "/acme/main/work/7/artifacts/av_1/files/#{name}"}
+
+      html =
+        render_component(&C.proposal_frame/1,
+          id: "work-item-explore-proposal",
+          run: run(%{version: 2, proposal: proposal(%{message: message})}),
+          now: @now,
+          images: files
+        )
+
+      p = "#work-item-explore-proposal-text"
+
+      assert attr(html, "#{p} img", "src") == [
+               "/acme/main/work/7/artifacts/av_1/files/header.SVG",
+               "/acme/main/work/7/artifacts/av_1/files/form.png"
+             ]
+
+      for alt <- ~w(a b c), do: assert(text(html, p) =~ "Image not in this version: #{alt}")
+    end
+
     test "a result stored before the proposal was Markdown shows no text, and does not fail" do
       html = tab(invoice_item(), can_act: true, proposal: %{version: 1, message: nil})
 

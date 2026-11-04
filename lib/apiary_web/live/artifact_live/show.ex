@@ -167,11 +167,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          version: version,
          type: type,
          shown: nil,
-         content:
-           if(connected?(socket),
-             do: Load.content(type, version, nil, images(scope, work_item, type, version)),
-             else: :pending
-           ),
+         content: if(connected?(socket), do: Load.content(type, version), else: :pending),
          stage: Load.stage_name(work_item, version.stage_id),
          note: Apiary.ExternalText.present_lines(version.note),
          writes: Access.can?(scope, :"artifact.write", work_item),
@@ -187,24 +183,20 @@ defmodule ApiaryWeb.ArtifactLive.Show do
     do: assign(socket, :history, Artifacts.versions(socket.assigns.version.artifact))
 
   # Another file of a document version: rendered as the reader opens it, in place of the
-  # one shown (`Load.content/4`). The file already shown is not rendered again. Only a
+  # one shown (`Load.content/3`). The file already shown is not rendered again. Only a
   # document of the version (`ArtifactComponents.documents/2`) is rendered.
   @impl true
   def handle_event("show-document", %{"file" => filename}, socket) do
-    %{type: type, version: version, shown: shown, work_item: work_item, current_scope: scope} =
-      socket.assigns
-
+    %{type: type, version: version, shown: shown} = socket.assigns
     documents = ArtifactComponents.documents(type, version)
     shown = shown || Enum.at(Enum.map(documents, & &1.filename), 0)
 
     if type.base_view == :document and filename != shown and
-         Enum.any?(documents, &(&1.filename == filename)) do
-      images = images(scope, work_item, type, version)
-      content = Load.content(type, version, filename, images)
-      {:noreply, assign(socket, shown: filename, content: content)}
-    else
-      {:noreply, socket}
-    end
+         Enum.any?(documents, &(&1.filename == filename)),
+       do:
+         {:noreply,
+          assign(socket, shown: filename, content: Load.content(type, version, filename))},
+       else: {:noreply, socket}
   end
 
   def handle_event("show-document", _params, socket), do: {:noreply, socket}
@@ -229,12 +221,6 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
-
-  # The images a proposal's Markdown shows, by filename, each with its download address.
-  defp images(scope, work_item, type, version) do
-    path = &ArtifactComponents.file_path(scope, work_item.number, version.public_id, &1)
-    ArtifactComponents.images(type, version, path)
-  end
 
   defp add_path(scope, number, artifact),
     do:

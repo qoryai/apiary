@@ -124,24 +124,13 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, ~s(#artifact-history a[aria-current="page"]), "Version 2")
     end
 
-    test "shows a proposal's Markdown with the version's images and its diagram for the hook",
-         ctx do
-      text = """
-      # Invoice total
-
-      ![Invoice header after the change](checkout.svg)
-
-      ![x](sources.json) ![Logo](https://example.com/logo.png)
-
-      ```mermaid
-      flowchart LR
-        Cart --> Invoice
-      ```
-      """
-
+    test "shows only a proposal's Markdown file as its document, its images as words", ctx do
+      text = "# Invoice total\n\n![Invoice header](checkout.svg)\n\n![x](sources.json)\n"
       version = pushed!(ctx, "proposal", [{"proposal.md", text}])
-      # A proposal version with an image and sources.json: the push of today takes one
-      # Markdown file, so the other files are added to the version as rows.
+
+      # A proposal version with an image and sources.json beside its Markdown: the push of
+      # this branch takes one Markdown file, so the other files are added as rows, before
+      # the Markdown file in the version's order.
       [markdown] = version.files
 
       for {filename, type} <- [
@@ -157,28 +146,21 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         })
       end
 
+      version = %{version | files: Enum.reverse(Repo.preload(version, :files, force: true).files)}
+      assert List.last(version.files).filename == "proposal.md"
+      type = ApiaryWeb.ArtifactLive.Load.type(ctx.work_item, "proposal")
+
+      assert Enum.map(ArtifactComponents.documents(type, version), & &1.filename) == [
+               "proposal.md"
+             ]
+
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
       view_id = "#artifact-view-#{version.public_id}"
-      hook = ~s([phx-hook="Mermaid"][phx-update="ignore"][data-script="/assets/js/mermaid.js"])
 
-      assert has_element?(view, "#{view_id}-0#{hook}")
       assert has_element?(view, "#{view_id}-0 h3", "Invoice total")
-      assert has_element?(view, "#{view_id}-0 pre.q-mermaid-source code", "Cart --> Invoice")
-
-      src = file_path(ctx, version, "checkout.svg")
-
-      assert has_element?(
-               view,
-               ~s(#{view_id}-0 img[src="#{src}"][alt="Invoice header after the change"])
-             )
-
-      # sources.json is no image, and an outside image is never loaded.
-      refute has_element?(view, ~s(img[src*="sources.json"]))
-      assert has_element?(view, "#{view_id}-0", "Image not in this version: x")
-      refute has_element?(view, ~s(img[src*="example.com"]))
-      assert has_element?(view, "#{view_id}-0", "Image: Logo")
-
-      # One document, so no list of documents; Files lists every file.
+      assert has_element?(view, "#{view_id}-0", "Image: Invoice header")
+      assert has_element?(view, "#{view_id}-0", "Image: x")
+      refute has_element?(view, "#{view_id}-0 img")
       refute has_element?(view, "#{view_id}-documents")
 
       for filename <- ["proposal.md", "checkout.svg", "sources.json"] do
@@ -189,10 +171,12 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                )
       end
 
-      # Only a document of the version is rendered: an image or sources.json is not.
-      render_hook(view, "show-document", %{"file" => "sources.json"})
-      assert has_element?(view, "#{view_id}-0 h3", "Invoice total")
-      refute has_element?(view, "#{view_id}-1")
+      # An image or sources.json is never rendered as a document.
+      for filename <- ["sources.json", "checkout.svg"] do
+        render_hook(view, "show-document", %{"file" => filename})
+        assert has_element?(view, "#{view_id}-0 h3", "Invoice total")
+        refute has_element?(view, "#{view_id}-1")
+      end
     end
 
     test "shows raster images inline and an SVG as a download only", ctx do

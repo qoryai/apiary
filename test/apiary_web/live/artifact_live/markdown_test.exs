@@ -123,21 +123,20 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
       assert out =~ "Image not in this version: footer.svg"
     end
 
-    test "shows a sources.json reference as words, never as an image" do
-      # A proposal version may contain sources.json; it is no image, so the caller
-      # leaves it out of the images.
-      out = html("![x](sources.json)", @images)
+    test "a proposal version with no images: a filename is not in this version" do
+      out = html("![Form](checkout.svg) ![](footer.svg)", [])
 
       assert imgs(out) == []
-      assert out =~ "Image not in this version: x"
+      assert out =~ "Image not in this version: Form"
+      assert out =~ "Image not in this version: footer.svg"
     end
 
-    test "with no images, a filename stays the words of today" do
-      out = html("![Form](checkout.svg)", [])
-
-      assert imgs(out) == []
-      assert out =~ "Image: Form"
-      refute out =~ "not in this version"
+    test "a text of no proposal version (nil, and render/1): a filename stays its words" do
+      for out <- [html("![Form](checkout.svg)", nil), html("![Form](checkout.svg)")] do
+        assert imgs(out) == []
+        assert out =~ "Image: Form"
+        refute out =~ "not in this version"
+      end
     end
 
     test "shows an image of the version inside a link, and the link once" do

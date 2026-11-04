@@ -2168,11 +2168,14 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, default: nil
   attr :value, :map, required: true, doc: "a map with `:rendered`, or with the text under `key`"
   attr :key, :atom, required: true, doc: "where `value` has the text without `:rendered`"
-  attr :images, :any, default: [], doc: "a proposal version's images, as `markdown/2` takes them"
+
+  attr :images, :any,
+    default: nil,
+    doc: "a proposal version's images, as `markdown/2` takes them; nil for none known"
 
   # A run's Markdown text: formatted, or as written where the renderer does not format it;
-  # nothing for none. With `images`, the text is rendered here with them, in place of
-  # `:rendered`.
+  # nothing for none. With `images`, even empty, the text is rendered here with them, in
+  # place of `:rendered`.
   defp run_text(assigns) do
     assigns = assign(assigns, :rendered, rendered(assigns.value, assigns.key, assigns.images))
 
@@ -2190,7 +2193,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  defp rendered(%{} = value, key, images) when images != [] and images != %{},
+  defp rendered(%{} = value, key, images) when images != nil,
     do: markdown(Map.get(value, key), images)
 
   defp rendered(%{rendered: rendered}, _key, _images), do: rendered
@@ -2200,13 +2203,14 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc false
   # markdown/2 is a run's Markdown text, a proposal's or a question's, as the work item
   # pages show it (`ApiaryWeb.ArtifactLive.Markdown.render/2`), with a proposal version's
-  # `images`, pairs of a filename and its download address: `{:html, safe}`, or
+  # `images`, pairs of a filename and its download address, nil for none known (as
+  # `ApiaryWeb.ArtifactLive.Markdown.render/2` takes them): `{:html, safe}`, or
   # `{:as_written, text}` for a text the renderer does not format, or one past its bounds,
   # which a page interpolates; nil for no text. A contract's text is at most 128 KiB,
   # within the renderer's bounds.
-  @spec markdown(term, Enumerable.t()) ::
+  @spec markdown(term, Enumerable.t() | nil) ::
           {:html, Phoenix.HTML.safe()} | {:as_written, String.t()} | nil
-  def markdown(text, images \\ [])
+  def markdown(text, images \\ nil)
 
   def markdown(text, images) when is_binary(text) do
     case ApiaryWeb.ArtifactLive.Markdown.render(text, images) do
@@ -2264,8 +2268,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :now, :any, required: true
 
   attr :images, :any,
-    default: [],
-    doc: "the proposal version's images: pairs of a filename and its download address"
+    default: nil,
+    doc: "the proposal version's images, filename and download address; nil if not known"
 
   attr :review_path, :any,
     default: nil,
@@ -2277,18 +2281,21 @@ defmodule ApiaryWeb.WorkItemComponents do
   # proposal_frame/1 is the proposal, in a frame with its version, and Add review comment
   # where `review_path` is given; confirmed, who confirmed it. A result stored before the
   # proposal was Markdown has no text: the frame shows none. The text shows the version's
-  # `images` and draws its Mermaid diagrams in the browser (`assets/js/hooks/mermaid.js`);
-  # its block has an id of the version and is left alone by later patches
-  # (`phx-update="ignore"`), so the hook keeps its drawings and a new version is drawn
-  # again. Its Sources, the list under its last `## Sources` heading, are in a fold at the
-  # foot of the frame, closed (`split_sources/1`).
+  # `images` (PNG, JPEG, GIF, WebP and SVG files only, `image_files/1`), and a reference
+  # to a file of none of them as "Image not in this version"; with `images` nil, the
+  # version's files are not known, and an image is its words. It draws its Mermaid
+  # diagrams in the browser (`assets/js/hooks/mermaid.js`); its block has an id of the
+  # version and is left alone by later patches (`phx-update="ignore"`), so the hook keeps
+  # its drawings and a new version is drawn again. Its Sources, the list under its last
+  # `## Sources` heading, are in a fold at the foot of the frame, closed
+  # (`split_sources/1`).
   def proposal_frame(assigns) do
     proposal = assigns.run[:proposal] || %{}
     text? = proposal[:rendered] != nil or is_binary(proposal[:message])
 
     {body, sources, count} =
       if text?,
-        do: split_sources(rendered(proposal, :message, assigns.images)),
+        do: split_sources(rendered(proposal, :message, image_files(assigns.images))),
         else: {nil, nil, 0}
 
     assigns =
@@ -2350,6 +2357,21 @@ defmodule ApiaryWeb.WorkItemComponents do
       </details>
     </section>
     """
+  end
+
+  @doc false
+  # image_files/1 is the images of a proposal version, by the extension of each filename:
+  # PNG, JPEG, GIF, WebP and SVG only, so another file of the version, such as
+  # sources.json, is never shown as an image, whatever the caller passes; nil for nil, the
+  # version's files not known.
+  @spec image_files([{String.t(), String.t()}] | nil) :: [{String.t(), String.t()}] | nil
+  def image_files(nil), do: nil
+
+  def image_files(images) do
+    Enum.filter(images, fn {filename, _path} ->
+      is_binary(filename) and
+        String.downcase(Path.extname(filename)) in ~w(.png .jpg .jpeg .gif .webp .svg)
+    end)
   end
 
   # Who confirmed the proposal and when; nil before.

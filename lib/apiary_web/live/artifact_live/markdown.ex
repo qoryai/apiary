@@ -17,7 +17,8 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   #     text, unlinked. A link's title is dropped, and a link opens in a new tab with
   #     `rel="nofollow noopener noreferrer"`.
   #   * An image of the version is shown: `render/2` takes `images`, a map (or a list of
-  #     pairs) from a filename of the version to its download address. An image whose URL,
+  #     pairs) from a filename of a proposal version's images to its download address, or
+  #     nil for a text of no such version. An image whose URL,
   #     one leading `./` stripped, equals one of those filenames byte for byte, with no
   #     `/`, is `<img src="<address>" alt="<alt>">`, both escaped; its alt is the
   #     filename where it has none (`Apiary.ExternalText.present_lines/1`). The renderer
@@ -25,8 +26,8 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   #     the `<img>` after sanitising, so no markup of the document reaches the page.
   #   * Any other image is never loaded. It is a link to its URL, where the URL may be a
   #     link, whose words are "Image: <alt>", or "Image" with no alt text. Where `images`
-  #     is not empty, a filename of none of them (no `/` and no `:`) is the words "Image
-  #     not in this version: <alt>", the filename where it has no alt text.
+  #     is not nil, even empty, a filename of none of them (no `/` and no `:`) is the
+  #     words "Image not in this version: <alt>", the filename where it has no alt text.
   #   * Headings move down two levels, so the document's `#` is an `h3` under the page's
   #     `h1` and `h2`.
   #   * A code block whose language is `mermaid` becomes
@@ -37,7 +38,7 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # classes, with `http`, `https` and `mailto` the only URL schemes and no relative URL.
   #
   # The work is bounded by the input and by a budget. A text over `max_bytes/0` bytes is
-  # `:too_large`, and is not read at all (`ApiaryWeb.ArtifactLive.Load.content/4`). Every
+  # `:too_large`, and is not read at all (`ApiaryWeb.ArtifactLive.Load.content/3`). Every
   # other step runs in another process within `budget/0` (`Apiary.Kinds.Budget`): a heap
   # of at most 64 MiB, 100,000,000 reductions and 10 s. There, a text with more table
   # cells than `max_cells/0`, nested deeper than `max_depth/0`, or not valid UTF-8 is
@@ -120,20 +121,20 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   def max_depth, do: @max_depth
 
   # render/2 is the document `text` as the view shows it, with `images`, a map or a list
-  # of pairs from a filename of the version to its download address: `{:html, safe}`;
-  # `{:as_written, text}` for a text it does not format; or `:too_large` for a text over
-  # `max_bytes/0` bytes or one whose render passes the budget. `render/1` is
-  # `render(text, [])`.
+  # of pairs from a filename of a proposal version's images to its download address, or
+  # nil for a text of no such version: `{:html, safe}`; `{:as_written, text}` for a text
+  # it does not format; or `:too_large` for a text over `max_bytes/0` bytes or one whose
+  # render passes the budget. `render/1` is `render(text, nil)`.
   @doc false
-  @spec render(binary, Enumerable.t()) ::
+  @spec render(binary, Enumerable.t() | nil) ::
           {:html, Phoenix.HTML.safe()} | {:as_written, String.t()} | :too_large
-  def render(text, images \\ [])
+  def render(text, images \\ nil)
 
   def render(text, _images) when is_binary(text) and byte_size(text) > @max_bytes,
     do: :too_large
 
   def render(text, images) when is_binary(text) do
-    images = Map.new(images)
+    images = if images == nil, do: nil, else: Map.new(images)
 
     case budgeted(text, images) do
       {:ok, {:html, html}} -> {:html, Phoenix.HTML.raw(html)}
@@ -223,7 +224,8 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
 
   # Each placeholder, after sanitising, as its `<img>`: the address of a filename of
   # `images` and the alt, both escaped.
-  defp images(html, %{images: images, token: token}) when map_size(images) > 0 do
+  defp images(html, %{images: images, token: token})
+       when is_map(images) and map_size(images) > 0 do
     Regex.replace(~r/QIMG#{token}([0-9a-f]*)X([0-9a-f]*)Z/, html, fn whole, name, alt ->
       with {:ok, filename} <- Base.decode16(name, case: :lower),
            {:ok, path} when is_binary(path) <- Map.fetch(images, filename),
@@ -300,11 +302,11 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
     label = alt || (filename && Apiary.ExternalText.present_lines(filename))
 
     cond do
-      filename != nil and Map.has_key?(context.images, filename) ->
+      filename != nil and is_map(context.images) and Map.has_key?(context.images, filename) ->
         literal = placeholder(context.token, filename, label || "")
         [%MDEx.Text{literal: literal, sourcepos: at}]
 
-      label != nil and filename != nil and map_size(context.images) > 0 and
+      label != nil and filename != nil and is_map(context.images) and
           not String.contains?(filename, ":") ->
         words = gettext("Image not in this version: %{alt}", alt: label)
         [%MDEx.Text{literal: words, sourcepos: at}]
