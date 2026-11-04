@@ -819,8 +819,9 @@ defmodule Apiary.Access do
      Every person the role allows may with the workflow model off, on a work item the
      runner did not place, and at a stage that lists none. An answer to the questions
      (`work_item.answer`) is every member's. Asked of a workspace, as a page asks whether
-     to show the gates at all, the role alone answers. The answer reads the work item's
-     process version, unless the work item has it loaded.
+     to show the gates at all, the role alone answers; asked of any other subject, these
+     actions are `{:error, :not_approver}`. The answer reads the work item's process
+     version, unless the work item has it loaded.
 
   A context function that changes something asks `authorize/3` before it acts: that is the
   check that counts. It reads the person's membership again from the database, with what
@@ -1354,10 +1355,17 @@ defmodule Apiary.Access do
 
   # Once the role allows it, an action of `@approver_actions` on a work item is the stage's
   # approvers' alone, where the stage lists them (`Apiary.Stages.Approvers.allows?/2`).
+  # Asked of a workspace, the role alone answers, as a page asks whether to show the gates
+  # at all. Asked of any other subject, it is refused: no subject skips the list.
   defp check_approver(scope, action, %WorkItem{} = work_item)
        when action in @approver_actions do
     if Approvers.allows?(scope, work_item), do: :ok, else: {:error, :not_approver}
   end
+
+  defp check_approver(_scope, action, %Workspace{}) when action in @approver_actions, do: :ok
+
+  defp check_approver(_scope, action, _subject) when action in @approver_actions,
+    do: {:error, :not_approver}
 
   defp check_approver(_scope, _action, _subject), do: :ok
 
