@@ -124,6 +124,61 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, ~s(#artifact-history a[aria-current="page"]), "Version 2")
     end
 
+    test "shows only a proposal's Markdown file as its document, its images as words", ctx do
+      text = "# Invoice total\n\n![Invoice header](checkout.svg)\n\n![x](sources.json)\n"
+      version = pushed!(ctx, "proposal", [{"proposal.md", text}])
+
+      # A proposal version with an image and sources.json beside its Markdown: the push of
+      # this branch takes one Markdown file, so the other files are added as rows, before
+      # the Markdown file in the version's order.
+      [markdown] = version.files
+
+      for {filename, type} <- [
+            {"checkout.svg", "image/svg+xml"},
+            {"sources.json", "application/json"}
+          ] do
+        Repo.insert!(%{
+          markdown
+          | id: nil,
+            __meta__: %{markdown.__meta__ | state: :built},
+            filename: filename,
+            content_type: type
+        })
+      end
+
+      version = %{version | files: Enum.reverse(Repo.preload(version, :files, force: true).files)}
+      assert List.last(version.files).filename == "proposal.md"
+      type = ApiaryWeb.ArtifactLive.Load.type(ctx.work_item, "proposal")
+
+      assert Enum.map(ArtifactComponents.documents(type, version), & &1.filename) == [
+               "proposal.md"
+             ]
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      view_id = "#artifact-view-#{version.public_id}"
+
+      assert has_element?(view, "#{view_id}-0 h3", "Invoice total")
+      assert has_element?(view, "#{view_id}-0", "Image: Invoice header")
+      assert has_element?(view, "#{view_id}-0", "Image: x")
+      refute has_element?(view, "#{view_id}-0 img")
+      refute has_element?(view, "#{view_id}-documents")
+
+      for filename <- ["proposal.md", "checkout.svg", "sources.json"] do
+        assert has_element?(
+                 view,
+                 ~s(#artifact-files a[href="#{file_path(ctx, version, filename)}"]),
+                 filename
+               )
+      end
+
+      # An image or sources.json is never rendered as a document.
+      for filename <- ["sources.json", "checkout.svg"] do
+        render_hook(view, "show-document", %{"file" => filename})
+        assert has_element?(view, "#{view_id}-0 h3", "Invoice total")
+        refute has_element?(view, "#{view_id}-1")
+      end
+    end
+
     test "shows raster images inline and an SVG as a download only", ctx do
       version = pushed!(ctx, "mockup", [{"form.png", @png}, {"form.svg", @svg}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))

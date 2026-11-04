@@ -37,7 +37,7 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # classes, with `http`, `https` and `mailto` the only URL schemes and no relative URL.
   #
   # The work is bounded by the input and by a budget. A text over `max_bytes/0` bytes is
-  # `:too_large`, and is not read at all (`ApiaryWeb.ArtifactLive.Load.content/4`). Every
+  # `:too_large`, and is not read at all (`ApiaryWeb.ArtifactLive.Load.content/3`). Every
   # other step runs in another process within `budget/0` (`Apiary.Kinds.Budget`): a heap
   # of at most 64 MiB, 100,000,000 reductions and 10 s. There, a text with more table
   # cells than `max_cells/0`, nested deeper than `max_depth/0`, or not valid UTF-8 is

@@ -84,6 +84,20 @@ defmodule ApiaryWeb.ArtifactComponents do
     end
   end
 
+  @doc """
+  documents/2 is the files of `version` that its document view shows: of a `proposal`,
+  its Markdown files (`text/markdown`), so an image or `sources.json` of the version is
+  never shown as a document; of any other type, every file.
+  """
+  @spec documents(Type.t(), Version.t()) :: [ArtifactFile.t()]
+  def documents(%Type{name: "proposal"}, %Version{files: files}),
+    do: Enum.filter(files, &markdown?/1)
+
+  def documents(_type, %Version{files: files}), do: files
+
+  defp markdown?(%ArtifactFile{content_type: type}),
+    do: is_binary(type) and String.starts_with?(type, "text/markdown")
+
   ## The plain list
 
   @doc """
@@ -297,10 +311,11 @@ defmodule ApiaryWeb.ArtifactComponents do
   @doc """
   view/1 is a version shown by its type's base view:
 
-    * document: the Markdown file `shown`, the first unless given, rendered
-      (`ApiaryWeb.ArtifactLive.Markdown`), with Mermaid diagrams drawn in the browser
-      (`assets/js/hooks/mermaid.js`); with more than one file, a list of the files above
-      it, each other file a button that sends `show-document` with its filename;
+    * document: the Markdown file `shown` of the version's documents (`documents/2`),
+      the first unless given, rendered (`ApiaryWeb.ArtifactLive.Markdown`), with Mermaid
+      diagrams drawn in the browser (`assets/js/hooks/mermaid.js`); with more than one
+      document, a list of them above it, each other document a button that sends
+      `show-document` with its filename;
     * image: PNG, JPEG, GIF and WebP inline from the download address; an SVG as a
       download only;
     * video: each MP4 or WebM file with the controls, the version's WebVTT files as its
@@ -331,19 +346,19 @@ defmodule ApiaryWeb.ArtifactComponents do
     do: ~H|<div id={"#{@id}-pending"} class="min-h-6"></div>|
 
   def view(%{type: %Type{base_view: :document}} = assigns) do
-    files = assigns.version.files
+    files = documents(assigns.type, assigns.version)
     index = Enum.find_index(files, &(&1.filename == assigns.shown)) || 0
-    assigns = assign(assigns, index: index, file: Enum.at(files, index))
+    assigns = assign(assigns, files: files, index: index, file: Enum.at(files, index))
 
     ~H"""
     <div class="grid gap-4">
       <nav
-        :if={length(@version.files) > 1}
+        :if={length(@files) > 1}
         id={"#{@id}-documents"}
         aria-label={gettext("Documents of this version")}
       >
         <ul class="flex flex-wrap gap-x-4 gap-y-1 text-[13px]/5">
-          <li :for={{file, at} <- Enum.with_index(@version.files)}>
+          <li :for={{file, at} <- Enum.with_index(@files)}>
             <span :if={at == @index} class="font-medium break-all" aria-current="true">
               {file.filename}
             </span>
