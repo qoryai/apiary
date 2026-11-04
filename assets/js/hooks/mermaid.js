@@ -25,6 +25,8 @@
 // Mermaid draws a block in the page before the hook turns it into an image, so an
 // address in a block would be loaded then. A block with a syntax that loads an address
 // (loads below) is not drawn: it stays as text, with the sentence from data-failed.
+// When the app's theme changes (data-theme on <html>), the hook draws each diagram again
+// with the new colours (watchTheme below).
 // The <img> gets the diagram's width from the SVG's max-width (width below): Mermaid
 // writes width="100%", so without it the CSS width rule of .q-mermaid-diagram has no
 // effect.
@@ -52,10 +54,9 @@ const load = script => {
 const handled = new WeakSet()
 let count = 0
 
-const dark = () => {
-  const theme = document.documentElement.dataset.theme
-  return theme === "dark" || (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)
-}
+// The layout sets data-theme on <html> to qory-dark or qory-light, from the reader's
+// choice or the system's (root.html.heex).
+const dark = () => (document.documentElement.dataset.theme ?? "").includes("dark")
 
 const font = "ui-sans-serif, system-ui, sans-serif"
 
@@ -150,6 +151,21 @@ export const loads = text => {
   return /(^|;)\s*properties(\s|$)/im.test(text)
 }
 
+// Calls `changed` each time the value of data-theme on `root` changes, and returns a
+// function that stops it. `Observer` is the MutationObserver class.
+export const watchTheme = (root, changed, Observer = globalThis.MutationObserver) => {
+  if (!Observer) return () => {}
+  let theme = root.getAttribute("data-theme")
+  const observer = new Observer(() => {
+    const now = root.getAttribute("data-theme")
+    if (now === theme) return
+    theme = now
+    changed()
+  })
+  observer.observe(root, {attributes: true, attributeFilter: ["data-theme"]})
+  return () => observer.disconnect()
+}
+
 // The width in pixels of a drawn SVG, from its max-width style, rounded up; null for none.
 export const width = svg => {
   const max = /max-width:\s*([\d.]+)px/.exec(svg)
@@ -192,15 +208,20 @@ const colours = el => {
   return Object.fromEntries(Object.entries(variables).filter(([, value]) => value !== undefined))
 }
 
+const paint = (img, svg) => {
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
+  const pixels = width(svg)
+  if (pixels) img.width = pixels
+  else img.removeAttribute("width")
+}
+
 const show = (el, pre, svg) => {
   const figure = document.createElement("figure")
   figure.className = "q-mermaid"
   const img = document.createElement("img")
   img.className = "q-mermaid-diagram"
   img.alt = el.dataset.alt ?? ""
-  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
-  const pixels = width(svg)
-  if (pixels) img.width = pixels
+  paint(img, svg)
   figure.appendChild(img)
   pre.before(figure)
   const details = document.createElement("details")
@@ -259,11 +280,41 @@ const render = async (mermaid, text) => {
   }
 }
 
+// Each diagram drawn in `el`, drawn again with the colours of the theme now; a diagram
+// that does not draw keeps its image.
+const redraw = async el => {
+  const figures = [...el.querySelectorAll("figure.q-mermaid")]
+  if (figures.length === 0) return
+
+  let mermaid
+  try {
+    mermaid = await load(el.dataset.script)
+  } catch (_error) {
+    return
+  }
+
+  mermaid.initialize(settings(colours(el)))
+
+  for (const figure of figures) {
+    const img = figure.querySelector("img.q-mermaid-diagram")
+    const pre = figure.querySelector("pre.q-mermaid-source")
+    if (!figure.isConnected || !img || !pre) continue
+    const text = source((pre.querySelector("code") ?? pre).textContent)
+    if (loads(text)) continue
+    const svg = await render(mermaid, text)
+    if (svg) paint(img, svg)
+  }
+}
+
 export const Mermaid = {
   mounted() {
     draw(this.el)
+    this.stopTheme = watchTheme(document.documentElement, () => redraw(this.el))
   },
   updated() {
     draw(this.el)
+  },
+  destroyed() {
+    this.stopTheme?.()
   },
 }

@@ -2,13 +2,13 @@
 // its directive lines, its front matter, and its click, link, links and callback lines;
 // the settings it passes to mermaid.initialize (`settings`), with the secure list that
 // the vendored Mermaid applies to a document's front matter; the blocks it does not draw,
-// as drawing them would load an address (`loads`); and the width it gives the <img>
-// (`width`). `node --test 'assets/js/test/*.test.mjs'` (no npm).
+// as drawing them would load an address (`loads`); the redraw on a theme change
+// (`watchTheme`); and the width it gives the <img> (`width`). `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {loads, secure, settings, source, width} from "../hooks/mermaid.js"
+import {loads, secure, settings, source, watchTheme, width} from "../hooks/mermaid.js"
 
 // The front matter of the security round's finding: it turns HTML labels back on.
 const FRONT_MATTER = [
@@ -189,4 +189,59 @@ test("draws a diagram with no address", () => {
     "  linkStyle 0 stroke:#888",
   ].join("\n")
   assert.equal(loads(text), false)
+})
+
+// A MutationObserver stand-in: it keeps what it observes, and `fire` runs its callback.
+class FakeObserver {
+  static last = null
+  constructor(callback) {
+    this.callback = callback
+    this.disconnected = false
+    FakeObserver.last = this
+  }
+  observe(target, options) {
+    this.target = target
+    this.options = options
+  }
+  disconnect() {
+    this.disconnected = true
+  }
+  fire() {
+    this.callback([])
+  }
+}
+
+test("draws again when data-theme on <html> changes, and only then", () => {
+  let redraws = 0
+  const html = {
+    value: "qory-light",
+    getAttribute: name => (name === "data-theme" ? html.value : null),
+  }
+  const stop = watchTheme(html, () => redraws++, FakeObserver)
+  const observer = FakeObserver.last
+
+  assert.equal(observer.target, html)
+  assert.deepEqual(observer.options, {attributes: true, attributeFilter: ["data-theme"]})
+
+  html.value = "qory-dark"
+  observer.fire()
+  assert.equal(redraws, 1)
+
+  // The same value again, such as the system theme set once more: no redraw.
+  observer.fire()
+  assert.equal(redraws, 1)
+
+  html.value = "qory-light"
+  observer.fire()
+  assert.equal(redraws, 2)
+
+  stop()
+  assert.equal(observer.disconnected, true)
+})
+
+test("watches nothing where there is no MutationObserver", () => {
+  const html = {getAttribute: () => "qory-light"}
+  const stop = watchTheme(html, () => assert.fail("no redraw"), undefined)
+  assert.equal(typeof stop, "function")
+  stop()
 })
