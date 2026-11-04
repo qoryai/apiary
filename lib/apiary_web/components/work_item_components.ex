@@ -599,11 +599,6 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
-  attr :queued_of, :integer,
-    default: nil,
-    doc:
-      "the most runs of the take in for a later run that is queued, where the round limit of the work item's version sets it; nil for `:run`'s `:of`"
-
   slot :badge,
     doc:
       "the state in place of the step's badge: the stage's, where the card is the stage's one card at Explore under the feature `workflow_model`"
@@ -662,7 +657,6 @@ defmodule ApiaryWeb.WorkItemComponents do
         explore_path={@explore_path}
         item={@item}
         now={@now}
-        queued_of={@queued_of}
       />
     </section>
     """
@@ -724,7 +718,6 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :explore_path, :string, required: true
   attr :item, :string, required: true, doc: "the source's word for one of its items"
   attr :now, :any, required: true
-  attr :queued_of, :integer, default: nil
 
   # A later run of the take in: what it reads, with whose answers, and which run is
   # queued. Undo is only until the first run of a take in starts.

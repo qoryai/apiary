@@ -202,7 +202,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             explore_path={if @tab != :explore, do: tab_path(@current_scope, @number, :explore)}
             item_noun={@source.item_noun}
             now={@now}
-            queued_of={queued_of(@flow, @item)}
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
           >
             <:badge :if={one_card?(@flow, @item)}>
@@ -1134,35 +1133,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Details' Runs under the workflow model, while the newest run waits for a machine and
-  # none has started: that run, in place of None yet, counted as the step card counts it.
-  defp queued_run(%{runs: [%{shows: :queued} | _]} = flow, %{run: %{attempt: attempt}} = item)
-       when is_integer(attempt) do
-    case queued_of(flow, item) do
-      of when is_integer(of) ->
-        gettext("Attempt %{attempt} is queued.", attempt: Format.number(attempt))
-
-      nil ->
-        nil
-    end
-  end
+  # none has started: that run, in place of None yet; nil for a run without its attempt
+  # and `of`.
+  defp queued_run(%{runs: [%{shows: :queued} | _]}, %{run: %{attempt: attempt, of: of}})
+       when is_integer(attempt) and is_integer(of),
+       do: gettext("Attempt %{attempt} is queued.", attempt: Format.number(attempt))
 
   defp queued_run(_flow, _item), do: nil
-
-  # The most runs of the take in for its latest run. In a loop the runner applies the
-  # round limit of the work item's version, the stage card's rounds. The database row of a
-  # run queued before the work item moved to a version with fewer rounds keeps the old
-  # `of`, so in a loop the count does not use it. Outside a loop the runner caps the runs
-  # by the row's `of`, and the count is that `of`. Nil without a run.
-  defp queued_of(flow, %{run: %{attempt: attempt, of: of}})
-       when is_integer(attempt) and is_integer(of),
-       do: runs_of(flow, attempt, of)
-
-  defp queued_of(_flow, _item), do: nil
-
-  defp runs_of(%{rounds: rounds, loop: true} = flow, attempt, _of) when is_integer(rounds),
-    do: attempt + max(rounds - (Map.get(flow, :round) || 1), 0)
-
-  defp runs_of(_flow, _attempt, of), do: of
 
   # At Explore, while its run runs, its questions wait or its gate waits, the step card is
   # the stage's one card, with the stage's state: the stage card is not shown. Explore's
