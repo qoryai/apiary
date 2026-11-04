@@ -455,7 +455,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
 
     test "that changes a member's words is refused, and stores nothing", %{scope: scope} do
       work_item = proposed!(scope)
-      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      # Sent at once, so the newest run is the next one, live.
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
       [comment] = review_comments(work_item)
 
       assert push_review_comments(work_item, %{

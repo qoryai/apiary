@@ -43,7 +43,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
     %{user: user, scope: scope} = sign_up_fixture()
     work_item = work_item_fixture(scope)
-    %{dispatch_run: run, run: registered} = explore_run_fixture(work_item)
+    %{dispatch_run: run, run: registered} = explore_run_fixture(work_item, state: :handed_over)
 
     Map.merge(context, %{
       conn: log_in_user(build_conn(), user),

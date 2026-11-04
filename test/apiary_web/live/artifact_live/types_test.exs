@@ -144,7 +144,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
       Processes.save(ctx.scope, ctx.scope.workspace, with_type("screenshot"), trial: true)
 
     work_item = work_item_fixture(ctx.scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
 
     store =
       Path.join(System.tmp_dir!(), "apiary-types-test-#{System.unique_integer([:positive])}")
@@ -337,7 +337,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     used = custom!(ctx.scope, %{"name" => "bid-set", "base_view" => "document"})
 
     work_item = work_item_fixture(ctx.scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
 
     store =
       Path.join(System.tmp_dir!(), "apiary-types-test-#{System.unique_integer([:positive])}")

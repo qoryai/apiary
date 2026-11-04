@@ -1043,12 +1043,9 @@ defmodule Apiary.StagesTest do
 
       assert id == proposal.public_id
 
+      # The run ended and pushes nothing more; a person adds the newer version.
       {:ok, _version} =
-        Stages.Artifacts.push(
-          {:run, newest_run(work_item)},
-          work_item,
-          "proposal",
-          a_proposal(),
+        Stages.Artifacts.push({:person, scope}, work_item, "proposal", a_proposal(),
           stage_id: @explore
         )
 
