@@ -565,13 +565,16 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
       work_item = revised!(work_item)
 
-      # Both replies within one second, as the documents store the time to the second.
-      %{microsecond: {micro, _precision}} = DateTime.utc_now()
-      if micro > 700_000, do: Process.sleep(div(1_000_000 - micro, 1_000) + 10)
       assert {:ok, _} = WorkItems.reply(scope, work_item, 2, "c1", "Not yet: name the rule.")
       assert {:ok, _} = WorkItems.reply(member.scope, work_item, 2, "c1", "And the refund.")
 
-      assert [%{"replies" => [_run, %{"at" => at}, %{"at" => at}]}] = review_comments(work_item)
+      # Both replies in one second, as the documents store the time to the second: the
+      # second reply's `at` and the time of its move set to the first reply's second.
+      [%{"replies" => [_run, %{"at" => at}, _second]}] = review_comments(work_item)
+      same_second!(member.scope, work_item, at)
+
+      assert [%{"replies" => [_run, %{"at" => ^at}, %{"at" => ^at}]}] =
+               review_comments(work_item)
 
       assert [%{replies: [%{run: run}, first, second]}] =
                WorkItems.explore(scope, reload(work_item)).review_comments
@@ -579,6 +582,47 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert is_integer(run)
       assert {first.text, first.by_id} == {"Not yet: name the rule.", scope.user.id}
       assert {second.text, second.by_id} == {"And the refund.", member.scope.user.id}
+    end
+
+    # A new version of the review comments, pushed as the member of `scope`, with the
+    # third reply of c1 at `at`, and the moves of its second and third replies in the
+    # second `at`, the third after the second.
+    defp same_second!(scope, work_item, at) do
+      work_item = reload(work_item)
+      {_version, document} = ReviewComments.newest(work_item)
+
+      comments =
+        Enum.map(document["review_comments"], fn
+          %{"id" => "c1", "replies" => [run, first, second]} = comment ->
+            %{comment | "replies" => [run, first, %{second | "at" => at}]}
+
+          comment ->
+            comment
+        end)
+
+      {:ok, _version} =
+        Apiary.Artifacts.push(
+          {:member_action, scope},
+          work_item,
+          "review-comments",
+          [ReviewComments.file(%{document | "review_comments" => comments})],
+          stage_id: work_item.stage_id
+        )
+
+      {:ok, second, _offset} = DateTime.from_iso8601(at)
+      second = DateTime.add(second, 0, :microsecond)
+
+      for {position, micro} <- [{2, 100}, {3, 200}] do
+        {1, _rows} =
+          Repo.update_all(
+            from(e in WorkItemEvent,
+              where:
+                e.work_item_id == ^work_item.id and e.kind == :answered and
+                  fragment("(?->>'reply')::int", e.data) == ^position
+            ),
+            set: [at: DateTime.add(second, micro, :microsecond)]
+          )
+      end
     end
 
     test "to a review comment the document does not have, or with no text, is refused", %{
