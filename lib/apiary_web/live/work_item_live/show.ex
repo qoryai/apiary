@@ -413,7 +413,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(:tab, socket.assigns.live_action)
+     |> assign(tab: socket.assigns.live_action, move_error: nil)
      |> ask_page(asked_page(socket.assigns.live_action, params))
      |> load()
      |> ticketed()}
@@ -1023,23 +1023,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @impl true
   def handle_info({:work_items_changed, ids}, %{assigns: %{row: %{public_id: id}}} = socket) do
     if is_list(ids) and id in ids,
-      do: {:noreply, refresh(socket)},
+      do: {:noreply, changed(socket)},
       else: {:noreply, socket}
   end
 
   def handle_info({:stage_changed, id}, %{assigns: %{row: %{} = row}} = socket) do
     if socket.assigns.flow && id in [row.id, row.public_id],
-      do: {:noreply, refresh(socket)},
+      do: {:noreply, changed(socket)},
       else: {:noreply, socket}
   end
 
   def handle_info({:artifact_pushed, _work_item_id, _version_id}, socket) do
     if socket.assigns.flow,
-      do: {:noreply, refresh(socket)},
+      do: {:noreply, changed(socket)},
       else: {:noreply, socket}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # The page read again after the work item changed elsewhere, without the line of the
+  # last move that was not made (`move_error`): that line is about the page before.
+  defp changed(socket), do: socket |> assign(:move_error, nil) |> refresh()
 
   ## Reads
 

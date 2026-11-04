@@ -1177,6 +1177,52 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-explore-gate-error")
     end
 
+    test "the line from Run with comments of a member the gate does not list is gone once the page reads the work item again",
+         %{conn: conn, scope: scope} do
+      listed = explore_gate_listing(scope)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      view
+      |> element("#work-item-explore-gate")
+      |> render_submit(%{"number" => "#{work_item.number}"})
+
+      assert has_element?(view, "#work-item-explore-gate-error")
+
+      # The approver sends the review comments, and the run ends with a question.
+      {:ok, _} = WorkItems.send_review_comments(listed, work_item, 1)
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result(["Which refund?"]))
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+
+      assert has_element?(view, "#work-item-explore-questions-form")
+      refute has_element?(view, "#work-item-explore-questions-error")
+      refute render(view) =~ "Ask an approver of Explore to act on it."
+    end
+
+    test "the line from Run with comments of a member the gate does not list is gone after Add review comment and back",
+         %{conn: conn, scope: scope} do
+      listed = explore_gate_listing(scope)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
+      explore = page(scope, work_item.number) <> "/explore"
+      {:ok, view, _html} = live(conn, explore)
+
+      view
+      |> element("#work-item-explore-gate")
+      |> render_submit(%{"number" => "#{work_item.number}"})
+
+      assert has_element?(view, "#work-item-explore-gate-error")
+
+      render_patch(view, explore <> "?review=new")
+      assert has_element?(view, "#work-item-review-page-form")
+      render_patch(view, explore)
+
+      assert has_element?(view, "#work-item-explore-gate")
+      refute has_element?(view, "#work-item-explore-gate-error")
+      refute render(view) =~ "Ask an approver of Explore to act on it."
+    end
+
     test "at Explore with a proposal waiting and no artifact: Confirm and no needs line", %{
       conn: conn,
       scope: scope
