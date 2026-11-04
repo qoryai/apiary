@@ -1082,8 +1082,10 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the " <>
            "elements and attributes the run API document lists, with no script, HTML or " <>
            "reference outside the file."},
-        {[md, {"checkout.svg", "image/svg+xml", "<svg/>"}], ["files[1]"],
+        {[md, {"checkout.svg", "image/svg+xml", "<svg><rect></svg>"}], ["files[1]"],
          "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."},
+        {[md, {"checkout.svg", "image/svg+xml", "<svg/>"}], ["files[1]"],
+         ~s(Add xmlns="http://www.w3.org/2000/svg" to the svg root element of checkout.svg.)},
         {[md, {"checkout.svg", "image/svg+xml", big_svg}], ["files[1]"],
          "Shrink checkout.svg to at most 524288 bytes."},
         {[md, {"checkout.svg", "image/svg+xml", "<!DOCTYPE svg>" <> @svg}], ["files[1]"],

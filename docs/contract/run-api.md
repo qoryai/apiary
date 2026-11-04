@@ -302,10 +302,11 @@ Checks, in order, after the checks of every request:
        `radialGradient` and `pattern`, and only to a place in the file: `#`, then an
        ASCII letter or `_`, then ASCII letters, digits, `_`, `-` or `.`, such as `#card`.
 
-     Namespace declarations, `xmlns` and `xmlns:…`, may appear on any element. Every
-     other attribute is refused, such as `target`, `ping`, `src`, `cursor`, `xml:base`
-     and every `on…` attribute.
+     Namespace declarations, `xmlns` and `xmlns:…`, may appear on any element; their
+     values get the CSS checks below. Every other attribute is refused, such as
+     `target`, `ping`, `src`, `cursor`, `xml:base` and every `on…` attribute.
    - Structure:
+     - nothing but white space after the end of the root `svg` element;
      - `title`, `desc` and `style` contain text only;
      - a CDATA section appears only inside `style`;
      - no comment's text starts with `>` or `->`, as in `<!-->` or `<!--->`;
@@ -319,9 +320,11 @@ Checks, in order, after the checks of every request:
      that starts with `#`.
 
    An SVG is also at most 512 KiB (524288 bytes), else "Shrink checkout.svg to at most
-   524288 bytes."; and UTF-8 text an XML parser reads to its end, with a root element
-   `svg` in the SVG namespace, else "Make checkout.svg a well-formed SVG file in UTF-8
-   with an svg root element." Before the parse, a document type declaration
+   524288 bytes."; UTF-8 text an XML parser reads to its end, with a root element `svg`,
+   else "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element.";
+   and that root, written with no prefix, in the SVG namespace, else "Add
+   xmlns="http://www.w3.org/2000/svg" to the svg root element of checkout.svg." Before
+   the parse, a document type declaration
    (`<!DOCTYPE` or `<!ENTITY`, any case, outside a comment, a CDATA section and a
    processing instruction) is refused as "the DOCTYPE", and an element with more than 256
    attributes as "the attributes past the 256th on the rect element".
@@ -409,17 +412,19 @@ The messages:
     - "Replace cart.png with an image of the type its name ends in."
     - "Shrink checkout.svg to at most 524288 bytes."
     - "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."
+    - "Add xmlns="http://www.w3.org/2000/svg" to the svg root element of checkout.svg."
     - "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the
       elements and attributes the run API document lists, with no script, HTML or
       reference outside the file." The part after "Remove" names the first part
-      refused, with element and attribute names as the file writes them: "the DOCTYPE",
-      "the attributes past the 256th on the rect element", "the iframe element", "the
-      s:rect element", "the HTML element h:div", "the ping attribute", "the href
-      attribute", "the g element inside the desc element", "the CDATA section in the
-      desc element", "the comment that starts with >", "the processing instruction foo",
-      "a backslash in the fill attribute", "the url() in the style element", "the
-      @import in the text of the desc element" or "the image-set() in the style
-      attribute". A name past 64 characters is cut to 64 and "…".
+      refused, with element and attribute names as the file writes them: "everything
+      after the end of the svg element", "the DOCTYPE", "the attributes past the 256th
+      on the rect element", "the iframe element", "the s:rect element", "the HTML
+      element h:div", "the ping attribute", "the href attribute", "the g element inside
+      the desc element", "the CDATA section in the desc element", "the comment that
+      starts with >", "the processing instruction foo", "a backslash in the fill
+      attribute", "the url() in the style element", "the url() in the xmlns:a
+      attribute", "the @import in the text of the desc element" or "the image-set() in
+      the style attribute". A name past 64 characters is cut to 64 and "…".
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
     - "Fix sources.json to match the JSON Schema of proposal sources: at #, additional

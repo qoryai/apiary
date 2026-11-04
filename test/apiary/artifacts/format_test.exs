@@ -860,10 +860,17 @@ defmodule Apiary.Artifacts.FormatTest do
                bytes
       end
 
-      # Not well-formed, so not an SVG.
       for bytes <- [
             svg("<rect/>") <> "<?foo x><script>alert(1)</script>?>",
-            svg("<rect/>") <> ~s|<!--><script>alert(1)</script>-->|,
+            svg("<rect/>") <> ~s|<!--><script>alert(1)</script>-->|
+          ] do
+        assert {:error, {:svg_content, "everything after the end of the svg element"}} =
+                 check(context, "proposal", "a.svg", bytes),
+               bytes
+      end
+
+      # Not well-formed, so not an SVG.
+      for bytes <- [
             ~s|<?xml version="1.0>"?>| <> svg("<rect/>"),
             svg(~s|<rect onl&#111;ad="x"/>|)
           ] do
@@ -889,6 +896,20 @@ defmodule Apiary.Artifacts.FormatTest do
                  "a.svg",
                  svg("<desc><![CDATA[<?xml-stylesheet x?>]]></desc>")
                )
+
+      # A file that does not parse is read for its first instruction outside a comment and
+      # a CDATA section.
+      for bytes <- [
+            ~s(<!-- <?xml-stylesheet href="a.css"?> -->) <> svg("<rect>"),
+            svg("<style><![CDATA[ <?xml-stylesheet ]]></style><rect>")
+          ] do
+        assert {:error, :svg_format} = check(context, "proposal", "a.svg", bytes), bytes
+      end
+
+      declared = ~s(<?xml version="1.0"?><?xml-stylesheet href="a.css"?>) <> svg("<rect/>")
+
+      assert {:error, {:svg_content, "the processing instruction xml-stylesheet"}} =
+               check(context, "proposal", "a.svg", declared)
     end
 
     test "the strict check is a proposal's: a mockup takes the same SVG", context do
@@ -899,12 +920,10 @@ defmodule Apiary.Artifacts.FormatTest do
     test "refuses an SVG that is not well-formed UTF-8 with an svg root, as :svg_format",
          context do
       for bytes <- [
-            "<svg/>",
-            "<svg><rect/></svg>",
             ~s(<html xmlns="#{@svg_namespace}"/>),
             svg("<rect>"),
-            svg("<rect/>") <> "<rect/>",
             svg("<text>") <> <<0xFF>> <> "</text></svg>",
+            ~s(<svg xmlns="#{@svg_namespace}"/>]]>),
             "",
             "not markup"
           ] do
@@ -912,7 +931,57 @@ defmodule Apiary.Artifacts.FormatTest do
       end
 
       # Another image type keeps :format.
+      assert {:error, :format} = check(context, "mockup", "a.svg", "not markup")
+    end
+
+    test "refuses a root svg outside the SVG namespace as :svg_root", context do
+      for bytes <- ["<svg/>", "<svg><rect/></svg>", ~s(<svg xmlns="urn:x"><rect/></svg>)] do
+        assert {:error, :svg_root} = check(context, "proposal", "a.svg", bytes), bytes
+      end
+
+      assert {:error, :svg_format} =
+               check(context, "proposal", "a.svg", ~s(<x:svg xmlns:x="urn:x"/>))
+
       assert {:error, :format} = check(context, "mockup", "a.svg", "<svg/>")
+    end
+
+    test "refuses anything but white space after the end of the svg element", context do
+      closed = svg("<rect/>")
+      empty = ~s(<svg xmlns="#{@svg_namespace}"/>)
+
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", closed <> "\n \n")
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", empty <> "\n")
+
+      for bytes <- [
+            closed <> "\n<!-- x -->",
+            empty <> "\n<!-- x -->\n",
+            empty <> "<?pi x?>",
+            closed <> "text",
+            empty <> "<![CDATA[x]]>",
+            empty <> empty
+          ] do
+        assert {:error, {:svg_content, "everything after the end of the svg element"}} =
+                 check(context, "proposal", "a.svg", bytes),
+               bytes
+      end
+
+      assert {:error, :format} = check(context, "mockup", "a.svg", closed <> "<!-- x -->")
+    end
+
+    test "checks a namespace declaration's address as an attribute's value", context do
+      for {body, part} <- [
+            {~s|<rect xmlns:a="url(https://example.com/)"/>|,
+             "the url() in the xmlns:a attribute"},
+            {~s|<g xmlns:b="a\\b"/>|, "a backslash in the xmlns:b attribute"},
+            {~s|<g xmlns:c="image-set('https://example.com/a.png' 1x)"/>|,
+             "the image-set() in the xmlns:c attribute"}
+          ] do
+        assert {:error, {:svg_content, ^part}} = check(context, "proposal", "a.svg", svg(body)),
+               body
+      end
+
+      assert {:ok, "image/svg+xml"} =
+               check(context, "proposal", "a.svg", svg(~s(<g xmlns:x="urn:example:x"/>)))
     end
 
     test "refuses a document type declaration as the DOCTYPE, before the parse", context do

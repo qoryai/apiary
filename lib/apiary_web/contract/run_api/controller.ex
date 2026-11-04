@@ -359,7 +359,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :unreadable, :document_size, :image_type, :svg_format] and
+       when check in [
+              :format,
+              :extension,
+              :unreadable,
+              :document_size,
+              :image_type,
+              :svg_format,
+              :svg_root
+            ] and
               is_integer(index),
        do:
          {:error,
@@ -501,10 +509,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp mismatch(:image_type, filename, _push),
     do: "Replace #{filename} with an image of the type its name ends in."
 
-  # A proposal's SVG that does not parse, is not UTF-8, or has another root than svg in
-  # the SVG namespace (`Apiary.Artifacts.Format`).
+  # A proposal's SVG that does not parse, is not UTF-8, or has another root than svg
+  # (`Apiary.Artifacts.Format`).
   defp mismatch(:svg_format, filename, _push),
     do: "Make #{filename} a well-formed SVG file in UTF-8 with an svg root element."
+
+  # A proposal's SVG whose root svg is outside the SVG namespace, such as an SVG copied
+  # from an HTML page with no xmlns.
+  defp mismatch(:svg_root, filename, _push),
+    do: ~s(Add xmlns="http://www.w3.org/2000/svg" to the svg root element of #{filename}.)
 
   # A proposal's sources.json that is not one JSON document.
   defp mismatch(:format, "sources.json" = filename, %{name: "proposal"}),
