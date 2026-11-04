@@ -4213,6 +4213,11 @@ msgstr ""
 msgid "Add at least one file."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Add exactly one Markdown file (.md) to the version."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add for this target"
@@ -11554,6 +11559,11 @@ msgstr ""
 msgid "Make default"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Make sources.json valid JSON. The file does not parse as JSON."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Make the trial current, or drop it, before you save another trial."
@@ -15248,6 +15258,11 @@ msgstr ""
 msgid "Remove %{name}?"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{part} from %{filename}. An SVG in a proposal has no script, animation, HTML, processing instruction, backslash or reference outside the file."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{stage}"
@@ -15585,6 +15600,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Replace %{filename} with an MP4 or WebM video, or a WebVTT file (.vtt)."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Replace %{filename} with an image of the type its name ends in."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -17222,6 +17242,11 @@ msgstr ""
 #: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shown: the first %{number} values. Download the file for the rest."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Shrink %{filename} to at most %{size}."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

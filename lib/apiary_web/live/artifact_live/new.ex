@@ -422,6 +422,11 @@ defmodule ApiaryWeb.ArtifactLive.New do
       {:invalid, {reason, index}} ->
         assign(socket, :file_errors, [file_line(reason, filename.(index), type)])
 
+      {:invalid, :one_markdown} ->
+        assign(socket, :file_errors, [
+          gettext("Add exactly one Markdown file (.md) to the version.")
+        ])
+
       :store_unavailable ->
         Artifacts.log_refusal(socket.assigns.work_item, params["type"], refusal)
 
@@ -529,6 +534,35 @@ defmodule ApiaryWeb.ArtifactLive.New do
       gettext("Rename %{filename} to end in .md: a document is a Markdown file.",
         filename: filename
       )
+
+  # A proposal's files, each checked by its filename (`Apiary.Artifacts.Format`):
+  # `sources.json`, a Markdown file (`.md`), or an image.
+  defp file_line({:svg_content, part}, filename, _type),
+    do:
+      gettext(
+        "Remove %{part} from %{filename}. An SVG in a proposal has no script, animation, HTML, processing instruction, backslash or reference outside the file.",
+        part: part,
+        filename: filename
+      )
+
+  defp file_line(:document_size, filename, _type),
+    do:
+      gettext("Shrink %{filename} to at most %{size}.",
+        filename: filename,
+        size: ArtifactComponents.size(Apiary.Artifacts.Format.proposal_bytes(filename))
+      )
+
+  defp file_line(:format, "sources.json", %Type{standard: true, name: "proposal"}),
+    do: gettext("Make sources.json valid JSON. The file does not parse as JSON.")
+
+  defp file_line(:format, filename, %Type{standard: true, name: "proposal"}) do
+    if String.downcase(Path.extname(filename)) == ".md",
+      do: format_line(:document, filename),
+      else:
+        gettext("Replace %{filename} with an image of the type its name ends in.",
+          filename: filename
+        )
+  end
 
   defp file_line(:format, filename, %Type{base_view: base_view}),
     do: format_line(base_view, filename)

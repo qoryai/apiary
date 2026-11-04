@@ -380,6 +380,29 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     |> render_submit()
   end
 
+  # Adds `files`, `{filename, bytes}`, on an open Add a version page.
+  defp upload_proposal(view, files) do
+    input =
+      file_input(
+        view,
+        "#artifact-form",
+        :files,
+        for({name, content} <- files, do: %{name: name, content: content})
+      )
+
+    for {name, _content} <- files, do: render_upload(input, name)
+  end
+
+  # Pushes `files` as a proposal on the Add a version page; the page's HTML after.
+  defp push_proposal(ctx, files) do
+    {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+    upload_proposal(view, files)
+
+    view
+    |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+    |> render_submit()
+  end
+
   describe "adding a version by hand" do
     test "stores the files and goes to the new version's page", ctx do
       {:ok, view, html} =
@@ -486,6 +509,90 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert html =~ "Rename notes.txt to end in .md: a document is a Markdown file."
       assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says which part to remove from a proposal's SVG", ctx do
+      svg =
+        ~s(<svg xmlns="http://www.w3.org/2000/svg" onload="start"><rect/></svg>)
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+      assert html =~
+               "Remove the onload attribute from diagram.svg. An SVG in a proposal has no script, animation, HTML, processing instruction, backslash or reference outside the file."
+
+      refute html =~ "Upload diagram.svg again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to shrink a proposal's Markdown file past 256 KiB", ctx do
+      big = "# Gift cards\n" <> String.duplicate("a", 262_144)
+
+      html = push_proposal(ctx, [{"proposal.md", big}])
+
+      assert html =~ "Shrink proposal.md to at most 256 KiB."
+      refute html =~ "Upload proposal.md again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to shrink a proposal's sources.json past 1 MiB", ctx do
+      big = ~s({"sources":[]}) <> String.duplicate(" ", 1_048_576)
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"sources.json", big}])
+
+      assert html =~ "Shrink sources.json to at most 1 MiB."
+      refute html =~ "Upload sources.json again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to add exactly one Markdown file to a proposal", ctx do
+      html = push_proposal(ctx, [{"a.md", "# A"}, {"b.md", "# B"}])
+
+      assert html =~ "Add exactly one Markdown file (.md) to the version."
+      refute html =~ "Add the version again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to replace a proposal's image that is not the type its name ends in", ctx do
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"chart.png", "Gift cards"}])
+
+      assert html =~ "Replace chart.png with an image of the type its name ends in."
+      refute html =~ "Markdown file of UTF-8 text"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to make a proposal's sources.json valid JSON", ctx do
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"sources.json", "{"}])
+
+      assert html =~ "Make sources.json valid JSON. The file does not parse as JSON."
+      refute html =~ "Markdown file of UTF-8 text"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "stores a proposal with an image and sources.json", ctx do
+      sources =
+        Jason.encode!(%{
+          "sources" => [
+            %{"kind" => "page", "ref" => "https://example.com/plan", "why" => "The plan."}
+          ]
+        })
+
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+
+      upload_proposal(view, [
+        {"proposal.md", "# Gift cards"},
+        {"chart.png", @png},
+        {"diagram.svg", @svg},
+        {"sources.json", sources}
+      ])
+
+      assert {:error, {:live_redirect, _to}} =
+               view
+               |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+               |> render_submit()
+
+      [artifact] = Artifacts.list(ctx.work_item)
+      [version] = artifact.versions
+      assert_redirect(view, page(ctx, version))
     end
 
     test "counts the chosen type's most files as the reader adds them", ctx do
