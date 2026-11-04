@@ -555,7 +555,8 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp file_line(:format, filename, %Type{standard: true, name: "proposal"}),
     do: proposal_format_line(:format, filename)
 
-  defp file_line(:image_type, filename, _type), do: proposal_format_line(:image_type, filename)
+  defp file_line(reason, filename, _type) when reason in [:image_type, :svg_format],
+    do: proposal_format_line(reason, filename)
 
   defp file_line(:format, filename, %Type{base_view: base_view}),
     do: format_line(base_view, filename)
@@ -565,18 +566,26 @@ defmodule ApiaryWeb.ArtifactLive.New do
 
   # proposal_format_line/2 is the line for a proposal's file `filename` when the push
   # returns `reason` for it: for `:format`, the JSON line for `sources.json`, the Markdown
-  # line for a filename that ends in `.md`, else the image line; for `:image_type`, the
-  # image line.
+  # line for a filename that ends in `.md`, the SVG line for one that ends in `.svg`, else
+  # the image line; for `:svg_format`, the SVG line; for `:image_type`, the image line.
   @doc false
-  @spec proposal_format_line(:format | :image_type, String.t()) :: String.t()
+  @spec proposal_format_line(:format | :image_type | :svg_format, String.t()) :: String.t()
   def proposal_format_line(:format, "sources.json"),
     do: gettext("Make sources.json valid JSON. The file does not parse as JSON.")
 
   def proposal_format_line(:format, filename) do
-    if String.downcase(Path.extname(filename)) == ".md",
-      do: format_line(:document, filename),
-      else: proposal_format_line(:image_type, filename)
+    case String.downcase(Path.extname(filename)) do
+      ".md" -> format_line(:document, filename)
+      ".svg" -> proposal_format_line(:svg_format, filename)
+      _image -> proposal_format_line(:image_type, filename)
+    end
   end
+
+  def proposal_format_line(:svg_format, filename),
+    do:
+      gettext("Make %{filename} a well-formed SVG file in UTF-8 with an svg root element.",
+        filename: filename
+      )
 
   def proposal_format_line(:image_type, filename),
     do:

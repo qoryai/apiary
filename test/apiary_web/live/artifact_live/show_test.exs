@@ -566,8 +566,25 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                  "Replace chart.png with an image of the type its name ends in."
       end
 
+      for reason <- [:svg_format, :format] do
+        assert ApiaryWeb.ArtifactLive.New.proposal_format_line(reason, "diagram.svg") ==
+                 "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."
+      end
+
       assert ApiaryWeb.ArtifactLive.New.proposal_format_line(:format, "sources.json") ==
                "Make sources.json valid JSON. The file does not parse as JSON."
+    end
+
+    test "says to make a proposal's SVG that does not parse a well-formed SVG file", ctx do
+      svg = ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect></svg>)
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+      assert html =~
+               "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."
+
+      refute html =~ "an image of the type its name ends in"
+      assert Artifacts.list(ctx.work_item) == []
     end
 
     test "says to replace a proposal's Markdown file that is not UTF-8 text", ctx do

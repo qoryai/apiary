@@ -11524,6 +11524,11 @@ msgstr ""
 msgid "Main session"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Make %{filename} a well-formed SVG file in UTF-8 with an svg root element."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #, elixir-autogen, elixir-format
 msgid "Make a diagnostics key"
