@@ -268,7 +268,9 @@ Checks, in order, after the checks of every request:
    questions first. Numbers compare by value, as the schemas' integers do: `4.0` is
    `4`. A version of `questions` or `review-comments` is stored with each number that
    is an integer in value written as an integer, so a later read of it has `4` where
-   the push had `4.0`. A newest version of `questions` or `review-comments` whose file
+   the push had `4.0`. Its size is measured as stored, after that change (`1e3` is
+   stored as `1000`): a file that is then over the type's size limit is `422`
+   `too_large`. A newest version of `questions` or `review-comments` whose file
    cannot be read, or whose newest `questions` a `review-comments` version is checked
    against cannot be read, is `503` `unavailable`, and no version is stored.
 
@@ -307,7 +309,7 @@ is `400` `invalid_request`.
 | `413` | `payload_too_large` | | A body over its size |
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
-| `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes |
+| `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, or a run's version of `questions` or `review-comments` changes what members wrote |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 

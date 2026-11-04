@@ -26,9 +26,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      type to switch it on; more files than the type takes `422` `too_many_files`; files
   #      over the type's size limit together `422` `too_large`; then a content that is not
   #      strict base64 `400` `invalid_request`; then what `Apiary.Artifacts.push/5` returns,
-  #      the files that do not match the type's format among it, `422` `invalid_artifact`,
-  #      and a run's version of `questions` or `review-comments` that changes what members
-  #      wrote, `422` `invalid_artifact` with the rule it breaks.
+  #      the files that do not match the type's format among it, `422` `invalid_artifact`;
+  #      a run's version of `questions` or `review-comments` that changes what members
+  #      wrote, `422` `invalid_artifact` with the rule it breaks; and a version of
+  #      `questions` or `review-comments` whose file is over the size limit as stored,
+  #      with each number that is an integer in value written as an integer (`1e3` as
+  #      `1000`), `422` `too_large`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
