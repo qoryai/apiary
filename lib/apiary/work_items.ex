@@ -27,7 +27,7 @@ defmodule Apiary.WorkItems do
   # `Apiary.Explore.ReviewComments`); `review_comment/4` and `reply/5` write a review
   # comment or a reply while no run is running, and queue no run;
   # `send_review_comments(scope, work_item, attempt)` queues the next run where the
-  # proposal waits and a review comment is open; `confirm(scope, work_item, attempt)`
+  # questions or the proposal wait and a review comment is open; `confirm(scope, work_item, attempt)`
   # confirms the latest run's proposal, which makes the work item ready for Shape;
   # `explore_again(scope, work_item, attempt)` queues the take in's next run after a run
   # that gave no result, was lost or was cancelled. `attempt` is the latest run's, as the
@@ -215,8 +215,8 @@ defmodule Apiary.WorkItems do
 
   @doc false
   # send_review_comments/3 queues the next run of `work_item`'s take in, where the
-  # proposal of its latest run, `attempt`, waits and a review comment is open
-  # (`Apiary.WorkItems.Moves`).
+  # questions or the proposal of its latest run, `attempt`, wait and a review comment is
+  # open (`Apiary.WorkItems.Moves`).
   @spec send_review_comments(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
   defdelegate send_review_comments(scope, work_item, attempt), to: Moves
