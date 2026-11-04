@@ -2443,13 +2443,26 @@ defmodule ApiaryWeb.WorkItemComponents do
     end)
   end
 
-  # The proposal's version, who confirmed it and when; nil before.
+  # The proposal's version, who confirmed it and when; nil before. A proposal with no
+  # version, stored before proposals were artifacts, has who and when alone.
   defp proposal_caption(_run, falsy, _now) when falsy in [nil, false], do: nil
 
   defp proposal_caption(run, %{by: by, at: at}, now) do
     at = inline_ago(at, now)
-    version = if is_integer(run[:version]), do: Format.number(run.version), else: gettext("n/a")
 
+    cond do
+      not is_integer(run[:version]) and you?(by) ->
+        rich_gettext("You confirmed it %{when}.", when: at)
+
+      not is_integer(run[:version]) ->
+        rich_gettext("%{name} confirmed it %{when}.", name: by.name, when: at)
+
+      true ->
+        versioned_caption(Format.number(run.version), by, at)
+    end
+  end
+
+  defp versioned_caption(version, by, at) do
     if you?(by),
       do:
         rich_gettext("Version %{version}. You confirmed it %{when}.",

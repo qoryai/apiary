@@ -1183,6 +1183,21 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Version 2. Priya confirmed it 3 hours ago."
     end
 
+    test "confirmed, a proposal with no version: who and when, without the version" do
+      w = invoice_item(%{status: :shape, confirmed_by: @dana, confirmed_at: ago(30)})
+      p = "#work-item-explore-proposal"
+
+      assert text(tab(w, proposal: proposal_v(nil)), "#{p} .q-xp-cap") ==
+               "You confirmed it just now."
+
+      other = %{w | confirmed_by: @priya, confirmed_at: ago(3 * 3600)}
+
+      assert text(tab(other, proposal: proposal_v(nil)), "#{p} .q-xp-cap") ==
+               "Priya confirmed it 3 hours ago."
+
+      refute tab(w, proposal: proposal_v(nil)) =~ "n/a"
+    end
+
     test "closed at Confirm: the proposal, read" do
       w =
         invoice_item(%{status: :closed, stage: :confirm, ended_by: @priya, ended_at: ago(86_400)})

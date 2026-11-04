@@ -1089,6 +1089,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{name} confirmed it %{when}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{name} confirmed the proposal. Ready for Shape"
 msgstr ""
 
@@ -22037,6 +22042,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "You confirmed Qory's proposal %{when}. Shape is the plan and its acceptance criteria."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You confirmed it %{when}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
