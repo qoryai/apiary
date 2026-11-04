@@ -14061,7 +14061,8 @@
   .q-xp-it {
     white-space: nowrap;
   }
-  .q-xp-it:not(:last-child)::after {
+  /* The separator opens the piece after it, so a line that wraps never ends in one. */
+  .q-xp-it + .q-xp-it::before {
     content: "·";
     margin: 0 8px;
     color: var(--q-faint);

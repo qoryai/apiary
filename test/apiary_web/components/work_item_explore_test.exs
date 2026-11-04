@@ -1770,6 +1770,18 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
     end
 
+    test "a proposal with no version, as an older confirmed one: the fold's line has no proposal piece" do
+      last = acme_run(%{attempt: 1, version: nil, wrote: nil, asked: 0, ended_at: ago(3600)})
+
+      html =
+        tab(invoice_item(%{run: last}),
+          proposal: proposal_v(nil),
+          questions_version: nil
+        )
+
+      assert texts(html, "#work-item-record-fold > summary .q-xp-it") == ["1 run"]
+    end
+
     test "an earlier run that wrote a proposal is a fold with it; a lost one shows what happened" do
       wrote =
         acme_run(%{

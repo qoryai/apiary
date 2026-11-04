@@ -2421,9 +2421,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       <details :if={@sources} id={"#{@id}-sources"} class="q-xp-sources">
         <summary>
           <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
-          <span class="q-xp-it">
-            <b>{gettext("Sources (%{count})", count: Format.number(@count))}</b>
-          </span>
+          <span class="q-xp-it"><b>{gettext("Sources (%{count})", count: Format.number(@count))}</b></span>
         </summary>
         <div class="q-xp-inner">
           <div class="q-ticket-formatted q-xp-md">{@sources}</div>
@@ -2679,12 +2677,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     <details id={@id}>
       <summary>
         <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
-        <span class="q-xp-it q-xp-wrap">
-          <b>{@question.number}. <bdi phx-no-format>{@question.text}</bdi></b>
-        </span>
-        <span :if={@question.state == :withdrawn} class="q-xp-it">
-          <.badge>{gettext("Withdrawn")}</.badge>
-        </span>
+        <span class="q-xp-it q-xp-wrap"><b>{@question.number}. <bdi phx-no-format>{@question.text}</bdi></b></span>
+        <span :if={@question.state == :withdrawn} class="q-xp-it" phx-no-format><.badge>{gettext("Withdrawn")}</.badge></span>
         <span :if={@words} class="q-xp-it q-xp-wrap q-xp-said" phx-no-format>{@words}</span>
       </summary>
       <div class="q-xp-inner">
@@ -3184,11 +3178,27 @@ defmodule ApiaryWeb.WorkItemComponents do
   slot :inner_block, doc: "the artifacts"
 
   # One fold of the take in's runs and its artifacts: how many runs, and the newest
-  # proposal's and questions' versions; opened, each run with what it wrote. An earlier
-  # run that wrote a proposal is a fold with that version, one without a result a fold
-  # with what happened; the latest run, and a run with nothing to show, a row.
+  # proposal's and questions' versions, each where it has a number; opened, each run with
+  # what it wrote. An earlier run that wrote a proposal is a fold with that version, one
+  # without a result a fold with what happened; the latest run, and a run with nothing to
+  # show, a row.
   defp record(assigns) do
-    assigns = assign(assigns, :count, length(assigns.runs))
+    proposal_version =
+      case assigns.proposal do
+        %{version: version} when is_integer(version) -> version
+        _none -> nil
+      end
+
+    assigns =
+      assign(assigns,
+        count: length(assigns.runs),
+        proposal_piece:
+          proposal_version &&
+            gettext("proposal v%{version}", version: Format.number(proposal_version)),
+        questions_piece:
+          assigns.questions_version &&
+            gettext("questions v%{version}", version: Format.number(assigns.questions_version))
+      )
 
     ~H"""
     <section id={@id} class="q-xp-earlier" aria-labelledby={"#{@id}-h"}>
@@ -3197,29 +3207,25 @@ defmodule ApiaryWeb.WorkItemComponents do
         <summary>
           <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
           <span class="q-xp-it"><b>{ngettext("1 run", "%{count} runs", @count)}</b></span>
-          <span :if={@proposal} class="q-xp-it">
-            {gettext("proposal v%{version}", version: Format.number(@proposal.version))}
-          </span>
-          <span :if={@questions_version} class="q-xp-it">
-            {gettext("questions v%{version}", version: Format.number(@questions_version))}
-          </span>
+          <span :if={@proposal_piece} class="q-xp-it">{@proposal_piece}</span>
+          <span :if={@questions_piece} class="q-xp-it">{@questions_piece}</span>
         </summary>
         <div class="q-xp-inner">
           <%= for run <- @runs do %>
             <%= case run_shows(run, run == @latest) do %>
               <% :row -> %>
                 <div id={"#{@id}-#{run_dom(run)}"} class="q-xp-runrow">
-                  <span :for={part <- run_parts(run, @now)} class="q-xp-it">
-                    <.rich text={part} />
-                  </span>
+                  <%= for part <- run_parts(run, @now) do %>
+                    <span class="q-xp-it"><.rich text={part} /></span>
+                  <% end %>
                 </div>
               <% shows -> %>
                 <details id={"#{@id}-#{run_dom(run)}"}>
                   <summary>
                     <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
-                    <span :for={part <- run_parts(run, @now)} class="q-xp-it">
-                      <.rich text={part} />
-                    </span>
+                    <%= for part <- run_parts(run, @now) do %>
+                      <span class="q-xp-it"><.rich text={part} /></span>
+                    <% end %>
                   </summary>
                   <div class="q-xp-inner">
                     <.proposal_frame
@@ -3795,12 +3801,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         <summary>
           <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
           <span class="q-xp-it"><b><.rich text={taken_in_words(take_in, @now)} /></b></span>
-          <span :if={ended_words(take_in, @now)} class="q-xp-it">
-            <.rich text={ended_words(take_in, @now)} />
-          </span>
-          <span class="q-xp-it">
-            {ngettext("%{count} run", "%{count} runs", length(take_in.runs))}
-          </span>
+          <span :if={ended_words(take_in, @now)} class="q-xp-it" phx-no-format><.rich text={ended_words(take_in, @now)} /></span>
+          <span class="q-xp-it">{ngettext("%{count} run", "%{count} runs", length(take_in.runs))}</span>
         </summary>
         <div class="q-xp-inner">
           <p>{gettext("These runs do not count toward the run limit of this take in.")}</p>
