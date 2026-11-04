@@ -559,7 +559,8 @@ defmodule Apiary.Artifacts.FormatTest do
                check(context, "proposal", "a.svg", stylesheet)
     end
 
-    test "refuses an image whose extension is not the type its bytes show", context do
+    test "refuses an image whose extension is not the type its bytes show, as :image_type",
+         context do
       svg = svg("<rect/>")
       assert {:ok, "image/jpeg"} = check(context, "proposal", "A.JPEG", <<0xFF, 0xD8, 0xFF, 0>>)
       assert {:ok, "image/svg+xml"} = check(context, "proposal", "A.SVG", svg)
@@ -574,7 +575,7 @@ defmodule Apiary.Artifacts.FormatTest do
             {"a.png", svg},
             {"a.png", svg("<script>alert(1)</script>")}
           ] do
-        assert {:error, :format} = check(context, "proposal", filename, bytes), filename
+        assert {:error, :image_type} = check(context, "proposal", filename, bytes), filename
       end
     end
 
@@ -620,12 +621,247 @@ defmodule Apiary.Artifacts.FormatTest do
              "the image() in the style element"},
             {"<style>rect {}<g/></style>", "the g element inside the style element"},
             {"<?foo bar?><rect/>", "the processing instruction foo"},
-            {~s(<rect on#{long}="x"/>), "the on#{String.duplicate("a", 62)}… attribute"}
+            {~s(<rect on#{long}="x"/>), "the on#{String.duplicate("a", 62)}… attribute"},
+            {"<iframe/>", "the iframe element"},
+            {~s(<s:rect xmlns:s="#{@svg_namespace}"/>), "the s:rect element"},
+            {~s(<a href="#x" ping="https://example.com/p"><text>a</text></a>),
+             "the ping attribute"},
+            {~s(<rect href="#x"/>), "the href attribute"},
+            {"<desc><g/></desc>", "the g element inside the desc element"},
+            {"<desc><![CDATA[a]]></desc>", "the CDATA section in the desc element"},
+            {"<!--><rect/>-->", "the comment that starts with >"},
+            {"<!---><rect/>-->", "the comment that starts with ->"},
+            {~s|<rect style="mask-image: src('https://example.com/m.png')"/>|,
+             "the src() in the style attribute"}
           ] do
         assert {:error, {:svg_content, ^part}} =
                  check(context, "proposal", "a.svg", svg(body)),
                body
       end
+    end
+
+    test "takes a wireframe of the elements and attributes the allowlist names", context do
+      wireframe =
+        ~s(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n) <>
+          "<!-- Checkout, step 2 -->\n" <>
+          ~s(<svg xmlns="#{@svg_namespace}" xmlns:xlink="http://www.w3.org/1999/xlink" ) <>
+          ~s(version="1.1" viewBox="0 0 800 600" width="800" height="600" ) <>
+          ~s(preserveAspectRatio="xMidYMid meet" role="img" aria-label="Checkout" xml:lang="en">) <>
+          """
+          <title>Checkout &amp; payment</title>
+          <desc>The second step: address, then card.</desc>
+          <defs>
+            <style><![CDATA[
+              .box { fill: #fff; stroke: #d0d5dd; stroke-width: 1; }
+              .label { font: 14px Inter, sans-serif; fill: #101828; }
+              .accent { fill: url(#brand); }
+            ]]></style>
+            <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+              <stop offset="0" stop-color="#7f56d9"/>
+              <stop offset="1" stop-color="#9e77ed" stop-opacity="0.8"/>
+            </linearGradient>
+            <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fff"/></radialGradient>
+            <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+              <path d="M8 0 L0 0 0 8" fill="none" stroke="#eaecf0"/>
+            </pattern>
+            <clipPath id="card"><rect width="360" height="200" rx="12"/></clipPath>
+            <mask id="fade"><rect width="360" height="200" fill="url(#glow)"/></mask>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+              <polygon points="0 0, 8 4, 0 8" fill="#667085"/>
+            </marker>
+            <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+              <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#101828" flood-opacity="0.1"/>
+              <feGaussianBlur in="SourceAlpha" stdDeviation="1" result="blur"/>
+              <feOffset in="blur" dy="1" result="offset"/>
+              <feFlood flood-color="#000" flood-opacity="0.05" result="tint"/>
+              <feComposite in="tint" in2="offset" operator="in" result="soft"/>
+              <feColorMatrix type="saturate" values="0.5"/>
+              <feBlend in="SourceGraphic" in2="soft" mode="normal"/>
+              <feMerge><feMergeNode in="soft"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <symbol id="field" viewBox="0 0 320 40"><rect class="box" width="320" height="40" rx="6"/></symbol>
+            <path id="curve" d="M10 80 Q 95 10 180 80"/>
+          </defs>
+          <rect width="800" height="600" fill="url(#grid)"/>
+          <g id="form" transform="translate(40 40)" filter="url(#shadow)" clip-path="url(#card)">
+            <rect class="box" width="360" height="200" rx="12" mask="url(#fade)"/>
+            <use href="#field" x="20" y="40" width="320" height="40"/>
+            <use xlink:href="#field" x="20" y="100" width="320" height="40"/>
+            <text class="label" x="20" y="30" font-weight="600">Address <tspan dx="4" fill="#667085">(required)</tspan></text>
+            <text><textPath href="#curve" startOffset="10%">Add image (PNG)</textPath></text>
+            <circle cx="340" cy="20" r="6" class="accent"/>
+            <ellipse cx="20" cy="180" rx="6" ry="4" fill="#12b76a"/>
+            <line x1="20" y1="160" x2="340" y2="160" stroke="#eaecf0" stroke-dasharray="4 2" marker-end="url(#arrow)"/>
+            <polyline points="20,170 40,175 60,170" fill="none" stroke="#98a2b3"/>
+            <a href="#form"><text x="20" y="190" text-decoration="underline">Back to cart</text></a>
+          </g>
+          <svg x="420" y="40" width="300" height="200"><rect width="300" height="200" fill="#f9fafb"/></svg>
+          </svg>
+          """
+
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "checkout.svg", wireframe)
+    end
+
+    test "takes text that only looks like markup or CSS outside CSS", context do
+      for bytes <- [
+            "<!-- Created with a drawing tool -->" <> svg("<rect/>"),
+            svg(~s|<rect fill="red"/><!-- fill="url(https://example.com/a)" -->|),
+            svg(~s|<!-- <?xml-stylesheet href="a"?> -->|),
+            svg("<desc>\\75 rl(x) and image-set(\"a\")</desc>"),
+            svg("<text>C:\\path</text>"),
+            svg(~s|<title>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;</title>|),
+            svg("<style>rect { fill: ur/**/l(https://example.com/a) }</style>")
+          ] do
+        assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", bytes), bytes
+      end
+    end
+
+    # The bypasses the two security reviews of the strict check found, each with the part
+    # the run's message names. The HTML cases run script or load from outside when the file
+    # is opened as a page after a rename to `.html`.
+    test "refuses each bypass of the security reviews, with the part it names", context do
+      ev = ~s(xmlns:ev="http://www.w3.org/2001/xml-events")
+
+      for {bytes, part} <- [
+            # Text joined in a style element (S1).
+            {svg(
+               ~s|<style>svg{mask-image:image-<!---->set("https://example.com/a.png" 1x)}</style>|
+             ), "the image-set() in the style element"},
+            {svg(
+               ~s|<style><![CDATA[rect{fill:ur]]><![CDATA[l(https://example.com/a)}]]></style>|
+             ), "the url() in the style element"},
+            {svg(~s|<style>@&#105;mp<!-- x -->ort "https://example.com/a.css";</style>|),
+             "the @import in the style element"},
+            {svg(
+               ~s|<x:style xmlns:x="urn:x">@imp<!---->ort "https://example.com/a.css";</x:style>|
+             ), "the x:style element"},
+            {svg(~s|<svg><style>@imp<!---->ort "https://example.com/a.css";</style></svg>|),
+             "the @import in the style element"},
+            {svg(~s|<style>@imp<?x y?>ort "https://example.com/a.css";</style>|),
+             "the processing instruction x"},
+            # A CSS escape in an attribute (S2).
+            {svg(~s|<rect fill="&#92;75 rl(https://example.com/a)"/>|),
+             "a backslash in the fill attribute"},
+            {svg(~s|<rect cursor="\\75 rl(https://example.com/c.png), auto"/>|),
+             "the cursor attribute"},
+            # An outside address as a plain string in CSS (S3).
+            {svg(~s|<rect style="mask-image:image&#45;set('https://example.com/m.png' 1x)"/>|),
+             "the image-set() in the style attribute"},
+            {svg(~s|<rect style="mask-image:src('https://example.com/m.png')"/>|),
+             "the src() in the style attribute"},
+            # A base address (S4).
+            {svg(~s|<a XML:BASE="javascript:alert(1)//" href="#x"><text>x</text></a>|),
+             "the XML:BASE attribute"},
+            {svg(
+               ~s|<a xmlns:q="http://www.w3.org/XML/1998/namespace" q:base="javascript:alert(1)//" href="#x"><text>x</text></a>|
+             ), "the q:base attribute"},
+            {svg(~s|<a base="javascript:alert(1)//" href="#x"><text>x</text></a>|),
+             "the base attribute"},
+            # A comment an HTML parser ends at once (S6).
+            {~s|<!--><script>alert(1)</script>-->| <> svg("<rect/>"),
+             "the comment that starts with >"},
+            {~s|<!---><script>alert(1)</script>-->| <> svg("<rect/>"),
+             "the comment that starts with ->"},
+            {svg(~s|<!--><img src="x" onerror="alert(1)">-->|), "the comment that starts with >"},
+            # An HTML tag name, or a CDATA section, an HTML parser reads as markup (S7).
+            {svg(~s|<img src="https://example.com/a.png"/>|), "the img element"},
+            {svg(~s|<embed src="https://example.com/a.svg"/>|), "the embed element"},
+            {svg(~s|<meta http-equiv="refresh" content="0;URL=https://example.com/"/>|),
+             "the meta element"},
+            {svg(~s|<img srcset="https://example.com/a.png 1x"/>|), "the img element"},
+            {svg(~s|<img xmlns="urn:x" src="https://example.com/a.png"/>|), "the img element"},
+            {svg(~s|<b><![CDATA[><img src=x onerror=alert(1)>]]></b>|), "the b element"},
+            {svg(~s|<desc><g><![CDATA[><img src=x onerror=alert(1)>]]></g></desc>|),
+             "the g element inside the desc element"},
+            {svg(~s|<desc><object data="https://example.com/a.html"/></desc>|),
+             "the object element inside the desc element"},
+            {svg(~s|<desc><video src="https://example.com/a.mp4" autoplay=""/></desc>|),
+             "the video element inside the desc element"},
+            {svg(~s|<title><input type="image" src="https://example.com/a.png"/></title>|),
+             "the input element inside the title element"},
+            {svg(
+               ~s|<desc><noembed><![CDATA[</noembed><img src=x onerror=alert(1)>]]></noembed></desc>|
+             ), "the noembed element inside the desc element"},
+            {svg(~s|<text><![CDATA[><img src=x onerror=alert(1)>]]></text>|),
+             "the CDATA section in the text element"},
+            {svg(~s|<desc><![CDATA[<?xml-stylesheet x?>]]></desc>|),
+             "the CDATA section in the desc element"},
+            {svg(
+               ~s|<m:math xmlns:m="http://www.w3.org/1998/Math/MathML"><m:mglyph src="https://example.com/a.png"/></m:math>|
+             ), "the m:math element"},
+            {svg(~s|<s:style xmlns:s="#{@svg_namespace}"><![CDATA[><img src=x>]]></s:style>|),
+             "the s:style element"},
+            {~s|<s:svg xmlns:s="#{@svg_namespace}"><s:rect/></s:svg>|, "the s:svg element"},
+            # Animation and other elements a wireframe does not need (M2 and the listed cases).
+            {svg(
+               ~s|<a href="#x"><animateTransform attributeName="href" values="javascript:alert(1)"/></a>|
+             ), "the animateTransform element"},
+            {svg(
+               ~s|<a href="#x"><animateColor attributeName="href" values="javascript:alert(1)"/></a>|
+             ), "the animateColor element"},
+            {svg(~s|<circle r="1"><animateMotion path="M0 0 L9 9" dur="1s"/></circle>|),
+             "the animateMotion element"},
+            {svg(~s|<discard begin="1s" href="#x"/>|), "the discard element"},
+            {svg(
+               ~s|<handler #{ev} ev:event="load" type="application/ecmascript">alert(1)</handler>|
+             ), "the handler element"},
+            {svg(~s|<listener #{ev} ev:event="click" ev:handler="#h"/>|), "the listener element"},
+            {svg(~s|<a href="#x" target="_top"><text>x</text></a>|), "the target attribute"},
+            {svg(~s|<filter id="f"><feImage href="#x"/></filter>|), "the feImage element"},
+            {svg(~s|<text><tref xlink:href="#t"/></text>|), "the tref element"},
+            {svg(~s|<cursor id="c" xlink:href="https://example.com/c.png"/>|),
+             "the cursor element"},
+            {svg(~s|<font-face><font-face-src/></font-face>|), "the font-face element"},
+            {svg(~s|<color-profile name="x" local="x"/>|), "the color-profile element"},
+            {svg(~s|<use q:href="#x" xmlns:q="urn:q"/>|), "the q:href attribute"},
+            {svg(~s|<use src="https://example.com/a.svg#x"/>|), "the src attribute"},
+            {svg(~s|<xi:include xmlns:xi="http://www.w3.org/2001/XInclude" href="a.svg"/>|),
+             "the xi:include element"},
+            {svg(~s|<a xlink:href="#x" xlink:show="new"><text>x</text></a>|),
+             "the xlink:show attribute"},
+            {svg(~s|<a href="jav&#x09;ascript:alert(1)"><text>x</text></a>|),
+             "the href attribute"},
+            {svg(~s|<use href="#a b"/>|), "the href attribute"},
+            {svg(~s|<rect one="1"/>|), "the one attribute"},
+            {svg(~s|<rect data-u="https://example.com/a.png"/>|), "the data-u attribute"},
+            {svg(~s|<style>@namespace x url(https://example.com/);</style>|),
+             "the url() in the style element"},
+            {svg(~s|<rect style="-moz-binding:url(https://example.com/x.xml#x)"/>|),
+             "the url() in the style attribute"}
+          ] do
+        assert {:error, {:svg_content, ^part}} = check(context, "proposal", "a.svg", bytes),
+               bytes
+      end
+
+      # Not well-formed, so not an SVG.
+      for bytes <- [
+            svg("<rect/>") <> "<?foo x><script>alert(1)</script>?>",
+            svg("<rect/>") <> ~s|<!--><script>alert(1)</script>-->|,
+            ~s|<?xml version="1.0>"?>| <> svg("<rect/>"),
+            svg(~s|<rect onl&#111;ad="x"/>|)
+          ] do
+        assert {:error, :format} = check(context, "proposal", "a.svg", bytes), bytes
+      end
+    end
+
+    test "names xml-stylesheet only for an instruction, never for text that mentions one",
+         context do
+      assert {:error, {:svg_content, "the processing instruction xml-stylesheet"}} =
+               check(context, "proposal", "a.svg", ~s(<?xml-stylesheet href="a.css"?>) <> svg(""))
+
+      assert {:error, {:svg_content, "the processing instruction xml-stylesheet"}} =
+               check(context, "proposal", "a.svg", svg(~s(<?xml-stylesheet href="a.css"?>)))
+
+      assert {:ok, "image/svg+xml"} =
+               check(context, "proposal", "a.svg", svg("<!-- <?xml-stylesheet href=\"a\"?> -->"))
+
+      assert {:error, {:svg_content, "the CDATA section in the desc element"}} =
+               check(
+                 context,
+                 "proposal",
+                 "a.svg",
+                 svg("<desc><![CDATA[<?xml-stylesheet x?>]]></desc>")
+               )
     end
 
     test "the strict check is a proposal's: a mockup takes the same SVG", context do
