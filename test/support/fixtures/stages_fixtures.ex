@@ -50,10 +50,11 @@ defmodule Apiary.StagesFixtures do
   end
 
   @doc """
-  Makes `dispatch_run`, the first run of its take in and not ended, the second, after
-  a first run of the same take in that registered, ended by its exit and was settled,
-  as after a run that asked and a send while its questions wait. Returns the number of the first run's
-  registered run, the run that asked, for `unreadable_questions!/3`.
+  Makes `dispatch_run`, the first run of its take in and not ended, the second run of
+  that take in. A first run is inserted before it, which registered, ended by its exit
+  and was settled, as a run that asked does before a send while its questions wait.
+  Returns the number of the first run's registered run, the run that asked, for
+  `unreadable_questions!/3`.
   """
   def asked_before!(%DispatchRun{attempt: 1, state: state} = dispatch_run)
       when state != :ended do
