@@ -554,6 +554,39 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:error, :svg_content} = check(context, "proposal", "a.svg", stylesheet)
     end
 
+    test "refuses an image whose extension is not the type its bytes show", context do
+      svg = svg("<rect/>")
+      assert {:ok, "image/jpeg"} = check(context, "proposal", "A.JPEG", <<0xFF, 0xD8, 0xFF, 0>>)
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "A.SVG", svg)
+
+      for {filename, bytes} <- [
+            {"a.png", "GIF89a" <> <<1>>},
+            {"a.gif", @png},
+            {"a.jpg", @png},
+            {"a.webp", @png},
+            {"a.svg", @png},
+            {"a.svg", "GIF89a" <> svg},
+            {"a.png", svg},
+            {"a.png", svg("<script>alert(1)</script>")}
+          ] do
+        assert {:error, :format} = check(context, "proposal", filename, bytes), filename
+      end
+    end
+
+    test "refuses every processing instruction in an SVG, but not the XML declaration",
+         context do
+      declared = ~s(<?xml version="1.0" encoding="UTF-8"?>\n) <> svg("<rect/>")
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "a.svg", declared)
+
+      for bytes <- [
+            "<?foo bar?>" <> svg("<rect/>"),
+            "<?foo x><script>alert(1)</script>?>" <> svg("<rect/>"),
+            svg("<?foo x><img src=x onerror=alert(1)>?><rect/>")
+          ] do
+        assert {:error, :svg_content} = check(context, "proposal", "a.svg", bytes), bytes
+      end
+    end
+
     test "the strict check is a proposal's: a mockup takes the same SVG", context do
       unsafe = svg(~s|<rect onload="alert(1)"/><script>alert(1)</script>|)
       assert {:ok, "image/svg+xml"} = check(context, "mockup", "a.svg", unsafe)

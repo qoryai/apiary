@@ -34,7 +34,9 @@ defmodule Apiary.Artifacts.Format do
   #     sources format, copied from qory (`priv/schemas/artifacts/
   #     proposal-sources.schema.json`); `application/json`. Qory Apiary reads none of its
   #     members;
-  #   * any other filename: the image check, where an SVG also passes the strict check:
+  #   * any other filename: the image check, where the type the bytes show is the one
+  #     the extension names, `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg` (any
+  #     case), else `:format`; and an SVG also passes the strict check:
   #     no element `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, in
   #     any namespace and any case, and no element in the HTML namespace
   #     (`http://www.w3.org/1999/xhtml`); no attribute whose name starts with `on`, and
@@ -43,7 +45,8 @@ defmodule Apiary.Artifacts.Format do
   #     a place in the file, in an attribute or in text; no `@import`, no backslash in a
   #     `style` element or in any attribute (a CSS escape could spell `url(`), no
   #     `image-set(` or `image(` there either (any case, also with spaces before the
-  #     `(`), and no `<?xml-stylesheet ?>`. Else `:svg_content`. Attribute values and text are checked
+  #     `(`), and no processing instruction, such as `<?xml-stylesheet ?>` (the XML
+  #     declaration is not one). Else `:svg_content`. Attribute values and text are checked
   #     as the parser reads them, with their character references replaced; a `style`
   #     element has no child element, and its text is checked as one, joined across
   #     comments and CDATA sections, as a browser reads it.
@@ -104,6 +107,16 @@ defmodule Apiary.Artifacts.Format do
     "proposal-sources" => [list: 65_536, members: 6]
   }
 
+  # A proposal's images by their extension, in lower case.
+  @proposal_images %{
+    ".png" => "image/png",
+    ".jpg" => "image/jpeg",
+    ".jpeg" => "image/jpeg",
+    ".gif" => "image/gif",
+    ".webp" => "image/webp",
+    ".svg" => "image/svg+xml"
+  }
+
   # A proposal's Markdown file, its sources and the schema of its sources.
   @proposal_markdown 262_144
   @sources "sources.json"
@@ -147,8 +160,10 @@ defmodule Apiary.Artifacts.Format do
   def check(%Type{base_view: :file}, _filename, _path), do: {:ok, "application/octet-stream"}
 
   def check(%Type{standard: true, name: "proposal"}, filename, path) do
+    extension = String.downcase(Path.extname(filename))
+
     cond do
-      String.downcase(Path.extname(filename)) == ".md" ->
+      extension == ".md" ->
         with {:ok, %File.Stat{size: size}} <- stat(path),
              true <- size <= @proposal_markdown || {:error, :document_size} do
           markdown(path)
@@ -158,12 +173,7 @@ defmodule Apiary.Artifacts.Format do
         sources(path)
 
       true ->
-        with {:ok, head} <- head(path) do
-          case image(head) do
-            nil -> svg(path, :strict)
-            content_type -> {:ok, content_type}
-          end
-        end
+        proposal_image(Map.get(@proposal_images, extension), path)
     end
   end
 
@@ -196,6 +206,18 @@ defmodule Apiary.Artifacts.Format do
          {:ok, document} <- decode(bytes),
          :ok <- structured(type, document) do
       {:ok, @json}
+    end
+  end
+
+  # A proposal's image: the type its bytes show is the one its extension names, so a
+  # downloaded file opens as that type, never as a page.
+  defp proposal_image(expected, path) do
+    with {:ok, head} <- head(path) do
+      case image(head) do
+        nil when expected == "image/svg+xml" -> svg(path, :strict)
+        ^expected when expected != nil -> {:ok, expected}
+        _other -> {:error, :format}
+      end
     end
   end
 
@@ -402,8 +424,9 @@ defmodule Apiary.Artifacts.Format do
 
   defp strict({:characters, text}, {open, style}), do: {true, {open, [style | text]}}
 
-  defp strict({:processingInstruction, target, _data}, state),
-    do: {String.downcase(List.to_string(target)) != "xml-stylesheet", state}
+  # An SVG needs no processing instruction; the XML declaration is not one. An HTML
+  # parser ends one at its first `>`, so its data could hold markup.
+  defp strict({:processingInstruction, _target, _data}, state), do: {false, state}
 
   defp strict(_event, state), do: {true, state}
 

@@ -248,12 +248,14 @@ Checks, in order, after the checks of every request:
      format (`contracts/harness/v1/proposal-sources.schema.json`, copied to
      `priv/schemas/artifacts/proposal-sources.schema.json`). Qory Apiary checks the file
      against the schema and reads none of its members;
-   - the rest PNG, JPEG, GIF, WebP or SVG images. An SVG of a proposal has no element
+   - the rest PNG, JPEG, GIF, WebP or SVG images, each with the extension of its
+     format: `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg`. An SVG of a proposal has no element
      `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, and no element
      in the HTML namespace; no attribute whose name starts with `on`, and no `xml:base`;
      no `href` or CSS `url(` to anything but a place in the file (`#…`); no `@import`;
      no backslash in a `style` element or in any attribute, and no `image-set(` or
-     `image(` there either; and no `<?xml-stylesheet ?>`.
+     `image(` there either; and no processing instruction, such as
+     `<?xml-stylesheet ?>` (the XML declaration is not one).
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no
