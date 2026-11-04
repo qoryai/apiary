@@ -586,7 +586,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
   def proposal_format_line(:svg_root, filename),
     do:
       gettext(
-        ~s(Add xmlns="http://www.w3.org/2000/svg" to the svg root element of %{filename}.),
+        ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of %{filename}.),
         filename: filename
       )
 

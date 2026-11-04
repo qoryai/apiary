@@ -4336,11 +4336,6 @@ msgstr ""
 msgid "Add workflow to the loop"
 msgstr ""
 
-#: lib/apiary_web/live/artifact_live/new.ex
-#, elixir-autogen, elixir-format
-msgid "Add xmlns=\"http://www.w3.org/2000/svg\" to the svg root element of %{filename}."
-msgstr ""
-
 #: lib/apiary_web/controllers/page_html/home.html.heex
 #, elixir-autogen, elixir-format
 msgid "Add your machines, connect each with a separate key, and every run they make lands here."
@@ -16958,6 +16953,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. A read-only run cannot run its setup inside the agent's container."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Set xmlns=\"http://www.w3.org/2000/svg\" on the svg root element of %{filename}."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/password.ex
