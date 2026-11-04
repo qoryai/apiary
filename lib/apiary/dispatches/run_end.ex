@@ -19,7 +19,7 @@ defmodule Apiary.Dispatches.RunEnd do
   #   refusal's code is kept as `end_detail`. The registered run stays failed with that
   #   code as its reason (`Apiary.Runs.Fold`). A refusal that comes after an exit or any
   #   other end changes nothing, and a prebuild's refusal ends nothing of the queue;
-  # - the lost-run check (`lose/1`, from `Apiary.Runs.Liveness`): `lost`, for a run its
+  # - the lost-run check (`lose/3`, from `Apiary.Runs.Liveness`): `lost`, for a run its
   #   gateway never attached by its `attach_by`, or with no exit by its `backstop_at`,
   #   which its attach sets to the attach and `backstop_seconds/1` of its step. The check
   #   marks the registered run lost by its rules first; this ends the run of the queue. It
