@@ -877,10 +877,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Whether the reader is an approver of the stage, as the stage card reads it for its
-  # gate (`ApiaryWeb.WorkItemLive.Workflow.page/2`, `can_decide`): any reader without the
-  # workflow model, as `Apiary.Stages.approver/2` reads it.
+  # gate (`ApiaryWeb.WorkItemLive.Workflow.page/2`, `can_decide`). With no stage card
+  # (`flow` nil, as for a reader not shown the workflow model), by the check the send
+  # makes (`Apiary.Stages.approver/2`), which reads the instance's feature.
   defp approver?(%{assigns: %{flow: %{can_decide: can_decide}}}), do: can_decide
-  defp approver?(_socket), do: true
+
+  defp approver?(socket),
+    do: Apiary.Stages.approver(scope(socket), socket.assigns.row) == :ok
 
   # Run with answers with every answer blank: the next run, with every open review
   # comment, and the questions left open. An error shows as for Run with comments.

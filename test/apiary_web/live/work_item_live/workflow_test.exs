@@ -270,6 +270,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
   defp page(scope, number), do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}"
 
+  # The ids of the work item's open review comments, in their order.
+  defp open_review_comments(work_item) do
+    {_version, document} = Apiary.Explore.ReviewComments.newest(work_item)
+
+    for %{"id" => id, "state" => "open"} <-
+          Apiary.Explore.ReviewComments.entries(document),
+        do: id
+  end
+
   # The workspace's process saved with one member as the only approver of Explore's gate:
   # that member's scope.
   defp explore_gate_listing(scope) do
@@ -1244,6 +1253,44 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                :count
              ) ==
                runs
+    end
+
+    test "Run with answers with every answer blank from a member Explore's gate does not list, not shown the workflow model: the blank-answer error, and no run",
+         %{conn: conn, scope: scope} do
+      listed = explore_gate_listing(scope)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
+      {:ok, _} = WorkItems.send_review_comments(listed, work_item, 1)
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result(["Which refund?"]))
+
+      runs =
+        Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+
+      # The instance has the workflow model; the reader is not shown it, so the page has
+      # no stage card.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:workflow_model])
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      refute has_element?(view, "#work-item-stage")
+      assert open_review_comments(work_item) == ["c1"]
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
+
+      assert has_element?(
+               view,
+               "#work-item-explore-questions-error[role=alert]",
+               "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
+             )
+
+      assert Repo.aggregate(
+               from(d in DispatchRun, where: d.work_item_id == ^work_item.id),
+               :count
+             ) ==
+               runs
+
+      assert open_review_comments(work_item) == ["c1"]
     end
 
     test "Run with comments from a member Explore's gate does not list: the line under the gate",
