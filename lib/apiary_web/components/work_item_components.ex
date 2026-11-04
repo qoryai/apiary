@@ -2260,11 +2260,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, default: nil
   attr :value, :map, required: true, doc: "a map with `:rendered`, or with the text under `key`"
   attr :key, :atom, required: true, doc: "where `value` has the text without `:rendered`"
+  attr :images, :any, default: [], doc: "a proposal version's images, as `markdown/2` takes them"
 
   # A run's Markdown text: formatted, or as written where the renderer does not format it;
-  # nothing for none.
+  # nothing for none. With `images`, the text is rendered here with them, in place of
+  # `:rendered`.
   defp run_text(assigns) do
-    assigns = assign(assigns, :rendered, rendered(assigns.value, assigns.key))
+    assigns = assign(assigns, :rendered, rendered(assigns.value, assigns.key, assigns.images))
 
     ~H"""
     <%= case @rendered do %>
@@ -2280,25 +2282,32 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  defp rendered(%{rendered: rendered}, _key), do: rendered
-  defp rendered(%{} = value, key), do: markdown(Map.get(value, key))
-  defp rendered(_value, _key), do: nil
+  defp rendered(%{} = value, key, images) when images != [] and images != %{},
+    do: markdown(Map.get(value, key), images)
+
+  defp rendered(%{rendered: rendered}, _key, _images), do: rendered
+  defp rendered(%{} = value, key, _images), do: markdown(Map.get(value, key))
+  defp rendered(_value, _key, _images), do: nil
 
   @doc false
-  # markdown/1 is a run's Markdown text, a proposal's or a question's, as the work item
-  # pages show it (`ApiaryWeb.ArtifactLive.Markdown.render/1`): `{:html, safe}`, or
+  # markdown/2 is a run's Markdown text, a proposal's or a question's, as the work item
+  # pages show it (`ApiaryWeb.ArtifactLive.Markdown.render/2`), with a proposal version's
+  # `images`, pairs of a filename and its download address: `{:html, safe}`, or
   # `{:as_written, text}` for a text the renderer does not format, or one past its bounds,
   # which a page interpolates; nil for no text. A contract's text is at most 128 KiB,
   # within the renderer's bounds.
-  @spec markdown(term) :: {:html, Phoenix.HTML.safe()} | {:as_written, String.t()} | nil
-  def markdown(text) when is_binary(text) do
-    case ApiaryWeb.ArtifactLive.Markdown.render(text) do
+  @spec markdown(term, Enumerable.t()) ::
+          {:html, Phoenix.HTML.safe()} | {:as_written, String.t()} | nil
+  def markdown(text, images \\ [])
+
+  def markdown(text, images) when is_binary(text) do
+    case ApiaryWeb.ArtifactLive.Markdown.render(text, images) do
       :too_large -> {:as_written, text}
       rendered -> rendered
     end
   end
 
-  def markdown(_text), do: nil
+  def markdown(_text, _images), do: nil
 
   attr :id, :string, required: true
   attr :number, :integer, required: true
@@ -2545,10 +2554,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :confirmed, :any, default: nil
   attr :now, :any, required: true
 
-  # Qory's proposal, in a frame that names the run and the proposal's version; confirmed,
-  # who confirmed it. A result stored before the proposal was Markdown has no text: the
-  # frame shows none.
-  defp proposal_frame(assigns) do
+  attr :images, :any,
+    default: [],
+    doc: "the proposal version's images: pairs of a filename and its download address"
+
+  @doc false
+  # proposal_frame/1 is Qory's proposal, in a frame that names the run and the proposal's
+  # version; confirmed, who confirmed it. A result stored before the proposal was Markdown
+  # has no text: the frame shows none. The text shows the version's `images` and draws its
+  # Mermaid diagrams in the browser (`assets/js/hooks/mermaid.js`); its block has an id of
+  # the version and is left alone by later patches (`phx-update="ignore"`), so the hook
+  # keeps its drawings and a new version is drawn again.
+  def proposal_frame(assigns) do
     proposal = assigns.run[:proposal] || %{}
 
     assigns =
@@ -2570,8 +2587,18 @@ defmodule ApiaryWeb.WorkItemComponents do
         <span><.rich text={@caption} /></span>
       </p>
       <.wrote_caption :if={!@caption} run={@run} version={@run[:version]} />
-      <div :if={@text?} class="q-xp-body q-xp-prop">
-        <.run_text id={"#{@id}-text"} value={@proposal} key={:message} />
+      <div
+        :if={@text?}
+        id={"#{@id}-v#{@run[:version]}"}
+        class="q-xp-body q-xp-prop"
+        phx-hook="Mermaid"
+        phx-update="ignore"
+        data-script={~p"/assets/js/mermaid.js"}
+        data-alt={gettext("Diagram")}
+        data-source={gettext("Diagram source")}
+        data-failed={gettext("This diagram has an error, so it is shown as written.")}
+      >
+        <.run_text id={"#{@id}-text"} value={@proposal} key={:message} images={@images} />
       </div>
     </section>
     """

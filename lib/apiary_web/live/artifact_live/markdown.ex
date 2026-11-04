@@ -3,8 +3,8 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # as its view shows it (`ApiaryWeb.ArtifactComponents.view/1`). An artifact is untrusted
   # data: a run or a person wrote it, so nothing of it reaches the page as markup.
   #
-  # `render/1` takes the file's text and returns `{:html, safe}`, `{:as_written, text}` or
-  # `:too_large`:
+  # `render/2` takes the file's text and the version's images, and returns
+  # `{:html, safe}`, `{:as_written, text}` or `:too_large`:
   #
   #   * The text is parsed as GitHub Flavored Markdown: tables, strikethrough, autolinks
   #     and task lists. Raw HTML is never rendered (`unsafe: false`), and its blocks and
@@ -16,8 +16,17 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   #     host and no user name or password, or a `mailto:` address; any other link is its
   #     text, unlinked. A link's title is dropped, and a link opens in a new tab with
   #     `rel="nofollow noopener noreferrer"`.
-  #   * An image is never loaded. It is a link to its URL, where the URL may be a link,
-  #     whose words are "Image: <alt>", or "Image" with no alt text.
+  #   * An image of the version is shown: `render/2` takes `images`, a map (or a list of
+  #     pairs) from a filename of the version to its download address. An image whose URL,
+  #     one leading `./` stripped, equals one of those filenames byte for byte, with no
+  #     `/`, is `<img src="<address>" alt="<alt>">`, both escaped; its alt is the
+  #     filename where it has none (`Apiary.ExternalText.present_lines/1`). The renderer
+  #     writes a placeholder of a random token per render in its place and swaps it for
+  #     the `<img>` after sanitising, so no markup of the document reaches the page.
+  #   * Any other image is never loaded. It is a link to its URL, where the URL may be a
+  #     link, whose words are "Image: <alt>", or "Image" with no alt text. Where `images`
+  #     is not empty, a filename of none of them (no `/` and no `:`) is the words "Image
+  #     not in this version: <alt>", the filename where it has no alt text.
   #   * Headings move down two levels, so the document's `#` is an `h3` under the page's
   #     `h1` and `h2`.
   #   * A code block whose language is `mermaid` becomes
@@ -28,7 +37,7 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # classes, with `http`, `https` and `mailto` the only URL schemes and no relative URL.
   #
   # The work is bounded by the input and by a budget. A text over `max_bytes/0` bytes is
-  # `:too_large`, and is not read at all (`ApiaryWeb.ArtifactLive.Load.content/3`). Every
+  # `:too_large`, and is not read at all (`ApiaryWeb.ArtifactLive.Load.content/4`). Every
   # other step runs in another process within `budget/0` (`Apiary.Kinds.Budget`): a heap
   # of at most 64 MiB, 100,000,000 reductions and 10 s. There, a text with more table
   # cells than `max_cells/0`, nested deeper than `max_depth/0`, or not valid UTF-8 is
@@ -110,16 +119,23 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @spec max_depth() :: pos_integer
   def max_depth, do: @max_depth
 
-  # render/1 is the document `text` as the view shows it: `{:html, safe}`;
-  # `{:as_written, text}` for a text `render/1` does not format; or `:too_large` for a
-  # text over `max_bytes/0` bytes or one whose render passes the budget.
+  # render/2 is the document `text` as the view shows it, with `images`, a map or a list
+  # of pairs from a filename of the version to its download address: `{:html, safe}`;
+  # `{:as_written, text}` for a text it does not format; or `:too_large` for a text over
+  # `max_bytes/0` bytes or one whose render passes the budget. `render/1` is
+  # `render(text, [])`.
   @doc false
-  @spec render(binary) ::
+  @spec render(binary, Enumerable.t()) ::
           {:html, Phoenix.HTML.safe()} | {:as_written, String.t()} | :too_large
-  def render(text) when is_binary(text) and byte_size(text) > @max_bytes, do: :too_large
+  def render(text, images \\ [])
 
-  def render(text) when is_binary(text) do
-    case budgeted(text) do
+  def render(text, _images) when is_binary(text) and byte_size(text) > @max_bytes,
+    do: :too_large
+
+  def render(text, images) when is_binary(text) do
+    images = Map.new(images)
+
+    case budgeted(text, images) do
       {:ok, {:html, html}} -> {:html, Phoenix.HTML.raw(html)}
       {:ok, {:as_written, written}} -> {:as_written, written}
       {:error, _passed} -> :too_large
@@ -128,22 +144,22 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
 
   # The words the HTML adds, such as "Not done", are in the reader's language and domain:
   # the process takes the caller's Gettext locale, as `ApiaryWeb.Async` does.
-  defp budgeted(text) do
+  defp budgeted(text, images) do
     locale = Gettext.get_locale()
 
     Apiary.Kinds.Budget.run(
       fn ->
         Gettext.put_locale(locale)
-        shown(text)
+        shown(text, images)
       end,
       @budget
     )
   end
 
   # The text as HTML, or as written where it is not formatted; run within the budget.
-  defp shown(text) do
+  defp shown(text, images) do
     with true <- formattable?(text),
-         {:ok, html} <- markdown(text) do
+         {:ok, html} <- markdown(text, images) do
       {:html, html}
     else
       _not -> {:as_written, Apiary.ExternalText.lines(text)}
@@ -179,20 +195,47 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   defp scan(<<_byte, rest::binary>>, here, most, lines), do: scan(rest, here, most, lines)
   defp scan(<<>>, here, most, lines), do: {max(here, most), lines}
 
-  defp markdown(text) do
+  defp markdown(text, images) do
     document = MDEx.parse_document!(text, @parse_options)
+    # The placeholders' token: random per render, so no document can write one.
+    token = 16 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+    context = %{in_link: false, images: images, token: token}
 
-    case walk_document(document.nodes) do
-      {:ok, nodes} -> {:ok, html(%{document | nodes: nodes})}
+    case walk_document(document.nodes, context) do
+      {:ok, nodes} -> {:ok, document |> Map.put(:nodes, nodes) |> html() |> images(context)}
       :too_deep -> :too_deep
     end
   end
 
-  defp walk_document(nodes) do
-    {:ok, walk(nodes, false, 1)}
+  defp walk_document(nodes, context) do
+    {:ok, walk(nodes, context, 1)}
   catch
     :too_deep -> :too_deep
   end
+
+  # An image of the version is the text `QIMG<token><filename>X<alt>Z`, filename and alt
+  # in lowercase hexadecimal, which the renderer and the sanitiser leave as it is.
+  defp placeholder(token, filename, alt),
+    do:
+      "QIMG" <>
+        token <>
+        Base.encode16(filename, case: :lower) <> "X" <> Base.encode16(alt, case: :lower) <> "Z"
+
+  # Each placeholder, after sanitising, as its `<img>`: the address of a filename of
+  # `images` and the alt, both escaped.
+  defp images(html, %{images: images, token: token}) when map_size(images) > 0 do
+    Regex.replace(~r/QIMG#{token}([0-9a-f]*)X([0-9a-f]*)Z/, html, fn whole, name, alt ->
+      with {:ok, filename} <- Base.decode16(name, case: :lower),
+           {:ok, path} when is_binary(path) <- Map.fetch(images, filename),
+           {:ok, alt} <- Base.decode16(alt, case: :lower) do
+        ~s(<img src="#{escape(path)}" alt="#{escape(alt)}">)
+      else
+        _not -> whole
+      end
+    end)
+  end
+
+  defp images(html, _context), do: html
 
   defp html(document) do
     document
@@ -225,45 +268,64 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   defp escape(text), do: text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
   # Each node, and those under it, as the view shows them: a list, as a link may become
-  # its words and raw HTML nothing. Under a link (`in_link`), an image is its words, so no
-  # link is ever inside another. Past `@max_depth`, it throws `:too_deep`.
-  defp walk(_nodes, _in_link, depth) when depth > @max_depth, do: throw(:too_deep)
-  defp walk(nodes, in_link, depth), do: Enum.flat_map(nodes, &shown(&1, in_link, depth))
+  # its words and raw HTML nothing. `context` has the version's `images`, the
+  # placeholders' `token`, and `in_link`: under a link, an image that is not of the
+  # version is its words, so no link is ever inside another. Past `@max_depth`, it
+  # throws `:too_deep`.
+  defp walk(_nodes, _context, depth) when depth > @max_depth, do: throw(:too_deep)
+  defp walk(nodes, context, depth), do: Enum.flat_map(nodes, &shown(&1, context, depth))
 
-  defp shown(%MDEx.HtmlBlock{}, _in_link, _depth), do: []
-  defp shown(%MDEx.HtmlInline{}, _in_link, _depth), do: []
-  defp shown(%MDEx.Raw{}, _in_link, _depth), do: []
+  defp shown(%MDEx.HtmlBlock{}, _context, _depth), do: []
+  defp shown(%MDEx.HtmlInline{}, _context, _depth), do: []
+  defp shown(%MDEx.Raw{}, _context, _depth), do: []
 
-  defp shown(%MDEx.Heading{} = heading, in_link, depth) do
+  defp shown(%MDEx.Heading{} = heading, context, depth) do
     level = min(heading.level + 2, 6)
-    [%{heading | level: level, nodes: walk(heading.nodes, in_link, depth + 1)}]
+    [%{heading | level: level, nodes: walk(heading.nodes, context, depth + 1)}]
   end
 
-  defp shown(%MDEx.Link{url: url} = link, in_link, depth) do
-    if link?(url) and not in_link,
-      do: [%{link | title: "", nodes: walk(link.nodes, true, depth + 1)}],
-      else: walk(link.nodes, in_link, depth + 1)
+  defp shown(%MDEx.Link{url: url} = link, context, depth) do
+    if link?(url) and not context.in_link,
+      do: [
+        %{link | title: "", nodes: walk(link.nodes, %{context | in_link: true}, depth + 1)}
+      ],
+      else: walk(link.nodes, context, depth + 1)
   end
 
-  defp shown(%MDEx.Image{url: url} = image, in_link, _depth) do
+  defp shown(%MDEx.Image{url: url} = image, context, _depth) do
     alt = image.nodes |> plain_text() |> Apiary.ExternalText.present_lines()
-
-    words =
-      if alt == nil,
-        do: gettext("Image"),
-        else: gettext("Image: %{alt}", alt: alt)
-
     at = image.sourcepos
-    text = [%MDEx.Text{literal: words, sourcepos: at}]
+    filename = filename(url)
+    # The words for the image: its alt text, else its filename as an external text.
+    label = alt || (filename && Apiary.ExternalText.present_lines(filename))
 
-    if link?(url) and not in_link,
-      do: [%MDEx.Link{url: url, title: "", nodes: text, sourcepos: at}],
-      else: text
+    cond do
+      filename != nil and Map.has_key?(context.images, filename) ->
+        literal = placeholder(context.token, filename, label || "")
+        [%MDEx.Text{literal: literal, sourcepos: at}]
+
+      label != nil and filename != nil and map_size(context.images) > 0 and
+          not String.contains?(filename, ":") ->
+        words = gettext("Image not in this version: %{alt}", alt: label)
+        [%MDEx.Text{literal: words, sourcepos: at}]
+
+      true ->
+        words =
+          if alt == nil,
+            do: gettext("Image"),
+            else: gettext("Image: %{alt}", alt: alt)
+
+        text = [%MDEx.Text{literal: words, sourcepos: at}]
+
+        if link?(url) and not context.in_link,
+          do: [%MDEx.Link{url: url, title: "", nodes: text, sourcepos: at}],
+          else: text
+    end
   end
 
   # A code block keeps only the first word of its info string, so its class is
   # `language-<word>` and a Mermaid block's is `language-mermaid` exactly.
-  defp shown(%MDEx.CodeBlock{literal: literal, info: info} = block, _in_link, _depth) do
+  defp shown(%MDEx.CodeBlock{literal: literal, info: info} = block, _context, _depth) do
     language = info |> to_string() |> String.split(~r/\s/, parts: 2) |> hd()
 
     [
@@ -275,13 +337,27 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
     ]
   end
 
-  defp shown(%{nodes: nodes} = node, in_link, depth) when is_list(nodes),
-    do: [%{node | nodes: walk(nodes, in_link, depth + 1)}]
+  defp shown(%{nodes: nodes} = node, context, depth) when is_list(nodes),
+    do: [%{node | nodes: walk(nodes, context, depth + 1)}]
 
-  defp shown(%{literal: literal} = node, _in_link, _depth) when is_binary(literal),
+  defp shown(%{literal: literal} = node, _context, _depth) when is_binary(literal),
     do: [%{node | literal: Apiary.ExternalText.lines(literal)}]
 
-  defp shown(node, _in_link, _depth), do: [node]
+  defp shown(node, _context, _depth), do: [node]
+
+  # The filename an image's URL refers to, one leading `./` stripped: nil where it is
+  # empty or has a `/`, so an address of another path is none.
+  defp filename(url) when is_binary(url) do
+    name =
+      case url do
+        "./" <> rest -> rest
+        url -> url
+      end
+
+    if name == "" or String.contains?(name, "/"), do: nil, else: name
+  end
+
+  defp filename(_url), do: nil
 
   defp plain_text(nodes) do
     nodes
