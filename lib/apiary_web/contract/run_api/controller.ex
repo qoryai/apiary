@@ -45,6 +45,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   require Logger
 
+  alias Apiary.Artifacts.Format
   alias Apiary.PublicId
   alias ApiaryWeb.Contract.Configuration
   alias ApiaryWeb.Contract.RunApi.{Body, Boundary, Run, Wire}
@@ -358,12 +359,24 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :unreadable, :document_size, :svg_content] and
+       when check in [:format, :extension, :unreadable, :document_size, :image_type, :svg_format] and
               is_integer(index),
        do:
          {:error,
           {:invalid_artifact, "files[#{index}]",
            mismatch(check, Enum.at(push.filenames, index) || "files[#{index}]", push)}}
+
+  # A proposal's SVG that fails the strict check, with the part refused
+  # (`Apiary.Artifacts.Format`).
+  defp refused({:invalid, {{:svg_content, part}, index}}, push) when is_integer(index) do
+    filename = Enum.at(push.filenames, index) || "files[#{index}]"
+
+    {:error,
+     {:invalid_artifact, "files[#{index}]",
+      "Remove #{part} from #{filename}. An SVG in a proposal uses only the elements and " <>
+        "attributes the run API document lists, with no script, HTML or reference outside " <>
+        "the file."}}
+  end
 
   # A failed schema check, with the JSON pointer of the first failing value and JSV's message
   # for it, as `Apiary.Artifacts.SchemaError` returns them: text, written as it is.
@@ -373,7 +386,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
     {:error,
      {:invalid_artifact, "files[#{index}]",
-      "Fix #{filename} to match the format of #{push.name}: at #{path}, #{error}."}}
+      "Fix #{filename} to match #{schema_of(push.name, filename)}: at #{path}, #{error}."}}
   end
 
   # A run's version of the questions or the review comments that changes what members
@@ -400,6 +413,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
   defp refused(_refusal, _push), do: {:error, :unavailable}
+
+  # A proposal's sources.json is checked against the proposal sources format; a structured
+  # type's file, against its type's.
+  defp schema_of("proposal", "sources.json"), do: "the JSON Schema of proposal sources"
+  defp schema_of(type, _filename), do: "the format of #{type}"
 
   # The message of a run's version that changes what members wrote, by the rule it breaks
   # (`Apiary.Explore.Questions`, `Apiary.Explore.ReviewComments`).
@@ -473,29 +491,40 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp mismatch(:unreadable, filename, _push),
     do: "Push #{filename} again: Qory Apiary could not read it after it was received."
 
-  # A proposal's Markdown file over 256 KiB (`Apiary.Artifacts.Format`).
+  # A proposal's Markdown file over 256 KiB, its SVG over 512 KiB or its sources.json over
+  # 1 MiB (`Apiary.Artifacts.Format`).
   defp mismatch(:document_size, filename, _push),
-    do: "Shrink #{filename} to at most 262144 bytes."
+    do: "Shrink #{filename} to at most #{Format.proposal_bytes(filename)} bytes."
+
+  # A proposal's image whose bytes are not the type its extension names, such as cart.png
+  # with the bytes of a GIF (`Apiary.Artifacts.Format`).
+  defp mismatch(:image_type, filename, _push),
+    do: "Replace #{filename} with an image of the type its name ends in."
+
+  # A proposal's SVG that does not parse, is not UTF-8, or has another root than svg in
+  # the SVG namespace (`Apiary.Artifacts.Format`).
+  defp mismatch(:svg_format, filename, _push),
+    do: "Make #{filename} a well-formed SVG file in UTF-8 with an svg root element."
+
+  # A proposal's sources.json that is not one JSON document.
+  defp mismatch(:format, "sources.json" = filename, %{name: "proposal"}),
+    do: "Make #{filename} valid JSON. The file does not parse as JSON."
 
   defp mismatch(check, filename, push),
     do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, filename, push)}."
 
-  defp takes(:extension, _filename, _push), do: "the filename of a document ends in .md"
-
-  defp takes(:svg_content, _filename, _push),
-    do:
-      "an SVG has no script, no foreignObject, no image element and no reference outside " <>
-        "the file"
-
-  # A proposal's file that is neither Markdown, its sources nor an image gets the
-  # proposal's line; its Markdown file that is not UTF-8 text, a document's.
-  defp takes(:format, filename, %{name: "proposal"}) do
-    if String.downcase(Path.extname(filename)) == ".md",
+  # A proposal's file that is neither Markdown, its sources nor an image, by its
+  # extension or its bytes, gets the proposal's line; its Markdown file that is not UTF-8
+  # text, a document's.
+  defp takes(check, filename, %{name: "proposal"}) when check in [:format, :extension] do
+    if check == :format and String.downcase(Path.extname(filename)) == ".md",
       do: "a document is a Markdown file of UTF-8 text",
       else:
         "a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images " <>
           "and an optional sources.json"
   end
+
+  defp takes(:extension, _filename, _push), do: "the filename of a document ends in .md"
 
   defp takes(:format, _filename, push) do
     case field(push.type, :base_view) do

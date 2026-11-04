@@ -4227,6 +4227,11 @@ msgstr ""
 msgid "Add details (optional)"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Add exactly one Markdown file (.md) to the version."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add for this target"
@@ -11625,6 +11630,11 @@ msgstr ""
 msgid "Main session"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Make %{filename} a well-formed SVG file in UTF-8 with an svg root element."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #, elixir-autogen, elixir-format
 msgid "Make a diagnostics key"
@@ -11658,6 +11668,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Make default"
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Make sources.json valid JSON. The file does not parse as JSON."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -15285,6 +15300,11 @@ msgstr ""
 msgid "Remove %{name}?"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{part} from %{filename}. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{stage}"
@@ -15627,6 +15647,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Replace %{filename} with an MP4 or WebM video, or a WebVTT file (.vtt)."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Replace %{filename} with an image of the type its name ends in."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -16983,6 +17008,11 @@ msgstr ""
 msgid "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. A read-only run cannot run its setup inside the agent's container."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Set xmlns=\"http://www.w3.org/2000/svg\" on the svg root element of %{filename}."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Set your password"
@@ -17280,6 +17310,11 @@ msgstr ""
 #: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shown: the first %{number} values. Download the file for the rest."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Shrink %{filename} to at most %{size}."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

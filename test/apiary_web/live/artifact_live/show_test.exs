@@ -446,6 +446,40 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     |> render_submit()
   end
 
+  # Adds `files`, `{filename, bytes}`, on an open Add a version page.
+  defp upload_proposal(view, files) do
+    input =
+      file_input(
+        view,
+        "#artifact-form",
+        :files,
+        for({name, content} <- files, do: %{name: name, content: content})
+      )
+
+    for {name, _content} <- files, do: render_upload(input, name)
+  end
+
+  # Pushes `files` as a proposal on the Add a version page; the page's HTML after.
+  defp push_proposal(ctx, files) do
+    {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+    upload_proposal(view, files)
+
+    view
+    |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+    |> render_submit()
+  end
+
+  # Pushes `svg` as a proposal's diagram.svg and checks the line for `:svg_root`.
+  defp assert_svg_root(ctx, svg) do
+    html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+    assert html =~
+             "Set xmlns=&quot;http://www.w3.org/2000/svg&quot; on the svg root element of diagram.svg."
+
+    refute html =~ "Upload diagram.svg again."
+    assert Artifacts.list(ctx.work_item) == []
+  end
+
   describe "adding a version by hand" do
     test "stores the files and goes to the new version's page", ctx do
       {:ok, view, html} =
@@ -531,6 +565,191 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                "Use lowercase letters and digits, in groups joined by single hyphens, at most 64 characters."
 
       assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to rename a proposal's file that is neither Markdown nor an image", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+
+      input =
+        file_input(view, "#artifact-form", :files, [
+          %{name: "proposal.md", content: "# Gift cards", type: "text/markdown"},
+          %{name: "notes.txt", content: "Gift cards.", type: "text/plain"}
+        ])
+
+      render_upload(input, "proposal.md")
+      render_upload(input, "notes.txt")
+
+      html =
+        view
+        |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+        |> render_submit()
+
+      assert html =~ "Rename notes.txt to end in .md: a document is a Markdown file."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says which part to remove from a proposal's SVG", ctx do
+      svg =
+        ~s(<svg xmlns="http://www.w3.org/2000/svg" onload="start"><rect/></svg>)
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+      assert html =~
+               "Remove the onload attribute from diagram.svg. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file."
+
+      refute html =~ "Upload diagram.svg again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to shrink a proposal's Markdown file past 256 KiB", ctx do
+      big = "# Gift cards\n" <> String.duplicate("a", 262_144)
+
+      html = push_proposal(ctx, [{"proposal.md", big}])
+
+      assert html =~ "Shrink proposal.md to at most 256 KiB."
+      refute html =~ "Upload proposal.md again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to shrink a proposal's sources.json past 1 MiB", ctx do
+      big = ~s({"sources":[]}) <> String.duplicate(" ", 1_048_576)
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"sources.json", big}])
+
+      assert html =~ "Shrink sources.json to at most 1 MiB."
+      refute html =~ "Upload sources.json again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to add exactly one Markdown file to a proposal", ctx do
+      html = push_proposal(ctx, [{"a.md", "# A"}, {"b.md", "# B"}])
+
+      assert html =~ "Add exactly one Markdown file (.md) to the version."
+      refute html =~ "Add the version again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to replace a proposal's image that is not the type its name ends in", ctx do
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"chart.png", "Gift cards"}])
+
+      assert html =~ "Replace chart.png with an image of the type its name ends in."
+      refute html =~ "Upload chart.png again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "maps each reason for a proposal's file to its line" do
+      for {reason, filename, line} <- [
+            {:image_type, "chart.png",
+             "Replace chart.png with an image of the type its name ends in."},
+            {:svg_format, "diagram.svg",
+             "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."},
+            {:svg_root, "diagram.svg",
+             ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of diagram.svg.)},
+            {:format, "proposal.md", "Replace proposal.md with a Markdown file of UTF-8 text."},
+            {:format, "sources.json",
+             "Make sources.json valid JSON. The file does not parse as JSON."}
+          ] do
+        assert ApiaryWeb.ArtifactLive.New.proposal_format_line(reason, filename) == line
+      end
+    end
+
+    test "says to make a proposal's SVG a well-formed SVG file", ctx do
+      for svg <- [
+            ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect></svg>),
+            <<"<svg xmlns=\"http://www.w3.org/2000/svg\"><text>", 0xFF, "</text></svg>">>
+          ] do
+        html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+        assert html =~
+                 "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."
+
+        refute html =~ "Upload diagram.svg again."
+        assert Artifacts.list(ctx.work_item) == []
+      end
+    end
+
+    @tag skip: "storage returns :svg_root for an svg root with no namespace after 454793f6"
+    test "says to set the SVG namespace on a proposal's svg root element with none", ctx do
+      assert_svg_root(ctx, "<svg/>")
+    end
+
+    @tag skip: "storage returns :svg_root for an svg root of another namespace after 454793f6"
+    test "says to set the SVG namespace on a proposal's svg root element of another", ctx do
+      assert_svg_root(ctx, ~s(<svg xmlns="urn:x"/>))
+    end
+
+    test "says to shrink a proposal's SVG past 512 KiB", ctx do
+      svg =
+        ~s(<svg xmlns="http://www.w3.org/2000/svg"><!--) <>
+          String.duplicate("a", 524_288) <> "--></svg>"
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+      assert html =~ "Shrink diagram.svg to at most 512 KiB."
+      refute html =~ "Upload diagram.svg again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to remove a DOCTYPE or too many attributes from a proposal's SVG", ctx do
+      attributes = Enum.map_join(1..257, " ", &~s(data-a#{&1}="1"))
+
+      for {svg, part} <- [
+            {~s(<!DOCTYPE svg><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>),
+             "the DOCTYPE"},
+            {~s(<svg xmlns="http://www.w3.org/2000/svg"><rect #{attributes}/></svg>),
+             "the attributes past the 256th on the rect element"}
+          ] do
+        html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+        assert html =~
+                 "Remove #{part} from diagram.svg. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file."
+
+        refute html =~ "Upload diagram.svg again."
+        assert Artifacts.list(ctx.work_item) == []
+      end
+    end
+
+    test "says to replace a proposal's Markdown file that is not UTF-8 text", ctx do
+      html = push_proposal(ctx, [{"proposal.md", <<"# Gift cards ", 0xFF, 0xFE>>}])
+
+      assert html =~ "Replace proposal.md with a Markdown file of UTF-8 text."
+      refute html =~ "an image of the type its name ends in"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to make a proposal's sources.json valid JSON", ctx do
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"sources.json", "{"}])
+
+      assert html =~ "Make sources.json valid JSON. The file does not parse as JSON."
+      refute html =~ "Markdown file of UTF-8 text"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "stores a proposal with an image and sources.json", ctx do
+      sources =
+        Jason.encode!(%{
+          "sources" => [
+            %{"kind" => "page", "ref" => "https://example.com/plan", "why" => "The plan."}
+          ]
+        })
+
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+
+      upload_proposal(view, [
+        {"proposal.md", "# Gift cards"},
+        {"chart.png", @png},
+        {"diagram.svg", @svg},
+        {"sources.json", sources}
+      ])
+
+      assert {:error, {:live_redirect, _to}} =
+               view
+               |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+               |> render_submit()
+
+      [artifact] = Artifacts.list(ctx.work_item)
+      [version] = artifact.versions
+      assert_redirect(view, page(ctx, version))
     end
 
     test "counts the chosen type's most files as the reader adds them", ctx do

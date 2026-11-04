@@ -82,10 +82,11 @@ defmodule Apiary.Artifacts do
   #      `{:invalid, {:unreadable, index}}`;
   #   6. each staged file passes its base view's format check, else
   #      `{:invalid, {:format | :extension | :unreadable, index}}`, for a file of a
-  #      proposal also `{:invalid, {:document_size | :svg_content, index}}`, or, for a
-  #      structured file or a proposal's `sources.json` that its JSON Schema refuses,
-  #      `{:invalid, {:schema, index, %{path: path,
-  #      error: error}}}`: the JSON pointer of the first failing value, at most 256
+  #      proposal also `{:invalid, {:document_size | :image_type | :svg_format, index}}` or
+  #      `{:invalid, {{:svg_content, part}, index}}`, `part` the part of an SVG refused
+  #      (`Apiary.Artifacts.Format`), or, for a structured file or a proposal's
+  #      `sources.json` that its JSON Schema refuses,
+  #      `{:invalid, {:schema, index, %{path: path, error: error}}}`: the JSON pointer of the first failing value, at most 256
   #      bytes, and the validator's message for it, at most 300 characters, both with
   #      their control characters replaced (`Apiary.Artifacts.SchemaError`);
   #   7. a version of a video type has an MP4 or WebM file beside its WebVTT captions,

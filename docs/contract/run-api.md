@@ -244,16 +244,87 @@ Checks, in order, after the checks of every request:
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
    - exactly one Markdown file, whose filename ends in `.md`, of at most 262144 bytes;
-   - at most one `sources.json`, of at most 1 MiB, valid against qory's proposal sources
-     format (`contracts/harness/v1/proposal-sources.schema.json`, copied to
+   - at most one `sources.json`, of at most 1 MiB (1048576 bytes), one JSON document
+     valid against qory's proposal sources format
+     (`contracts/harness/v1/proposal-sources.schema.json`, copied to
      `priv/schemas/artifacts/proposal-sources.schema.json`). Qory Apiary checks the file
      against the schema and reads none of its members;
-   - the rest PNG, JPEG, GIF, WebP or SVG images. An SVG of a proposal has no element
-     `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, and no element
-     in the HTML namespace; no attribute
-     whose name starts with `on`; no `href` or CSS `url(` to anything but a place in the
-     file (`#…`); no `@import`; no backslash in a `style` element or attribute; and no
-     `<?xml-stylesheet ?>`.
+   - the rest PNG, JPEG, GIF, WebP or SVG images, each with the extension of its
+     format: `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg`. A file with another
+     extension gets the proposal's format message; an image whose bytes are another
+     format than its extension names, such as `cart.png` with the bytes of a GIF, gets
+     "Replace cart.png with an image of the type its name ends in."
+
+   An SVG of a proposal uses only the elements, attributes and structure below, so that
+   it runs no script and loads nothing from outside the file: shown in an `<img>`, opened
+   as an SVG, or opened as a page after a rename to `.html`, where an HTML parser reads
+   no namespace. Names are compared as written, case included. Values and text are read
+   with character references replaced. The message names the first part outside the
+   list.
+
+   - Elements, in the SVG namespace (`http://www.w3.org/2000/svg`), written with no
+     prefix:
+     - structure: `svg`, `g`, `defs`, `symbol`, `use`, `title`, `desc`
+     - shapes: `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `path`
+     - text: `text`, `tspan`, `textPath`
+     - link: `a`
+     - paint: `linearGradient`, `radialGradient`, `stop`, `pattern`, `clipPath`, `mask`,
+       `marker`
+     - style: `style`
+     - filters: `filter`, `feGaussianBlur`, `feOffset`, `feFlood`, `feComposite`,
+       `feMerge`, `feMergeNode`, `feBlend`, `feColorMatrix`, `feDropShadow`
+   - Attributes, on any of these elements, written with no prefix unless one is shown:
+     - core: `id`, `class`, `style`, `lang`, `xml:lang`, `xml:space`, `role`,
+       `aria-label`, `aria-hidden`
+     - root: `version`, `viewBox`, `preserveAspectRatio`
+     - geometry: `x`, `y`, `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `fx`,
+       `fy`, `fr`, `width`, `height`, `d`, `points`, `pathLength`, `transform`,
+       `transform-origin`
+     - text: `dx`, `dy`, `rotate`, `textLength`, `lengthAdjust`, `startOffset`,
+       `method`, `spacing`, `side`
+     - presentation: `fill`, `fill-opacity`, `fill-rule`, `stroke`, `stroke-width`,
+       `stroke-opacity`, `stroke-dasharray`, `stroke-dashoffset`, `stroke-linecap`,
+       `stroke-linejoin`, `stroke-miterlimit`, `opacity`, `color`, `display`,
+       `visibility`, `overflow`, `clip-path`, `clip-rule`, `mask`, `filter`,
+       `marker-start`, `marker-mid`, `marker-end`, `stop-color`, `stop-opacity`,
+       `flood-color`, `flood-opacity`, `font-family`, `font-size`, `font-weight`,
+       `font-style`, `font-variant`, `text-anchor`, `dominant-baseline`,
+       `alignment-baseline`, `baseline-shift`, `letter-spacing`, `word-spacing`,
+       `text-decoration`, `writing-mode`, `white-space`, `vector-effect`,
+       `shape-rendering`, `text-rendering`, `paint-order`, `mix-blend-mode`, `isolation`
+     - paint servers and markers: `offset`, `gradientUnits`, `gradientTransform`,
+       `spreadMethod`, `patternUnits`, `patternContentUnits`, `patternTransform`,
+       `clipPathUnits`, `maskUnits`, `maskContentUnits`, `markerWidth`, `markerHeight`,
+       `markerUnits`, `refX`, `refY`, `orient`
+     - filters: `filterUnits`, `primitiveUnits`, `in`, `in2`, `result`, `stdDeviation`,
+       `mode`, `operator`, `k1`, `k2`, `k3`, `k4`, `type`, `values`
+     - links: `href` and `xlink:href`, only on `use`, `a`, `textPath`, `linearGradient`,
+       `radialGradient` and `pattern`, and only to a place in the file: `#`, then an
+       ASCII letter or `_`, then ASCII letters, digits, `_`, `-` or `.`, such as `#card`.
+
+     Namespace declarations, `xmlns` and `xmlns:…`, may appear on any element. Every
+     other attribute is refused, such as `target`, `ping`, `src`, `cursor`, `xml:base`
+     and every `on…` attribute.
+   - Structure:
+     - `title`, `desc` and `style` contain text only;
+     - a CDATA section appears only inside `style`;
+     - no comment's text starts with `>` or `->`, as in `<!-->` or `<!--->`;
+     - no processing instruction, such as `<?xml-stylesheet ?>`. The XML declaration
+       `<?xml version="1.0"?>` is not one.
+   - CSS, in a `style` element and in every attribute value: no backslash, no
+     `image-set(` (also `-webkit-image-set(`), `image(` or `src(`, any case, also with
+     spaces before the `(`. The text of a `style` element is checked as one, joined
+     across comments and CDATA sections.
+   - In any text and attribute value: no `@import`, and a CSS `url(` only to an address
+     that starts with `#`.
+
+   An SVG is also at most 512 KiB (524288 bytes), else "Shrink checkout.svg to at most
+   524288 bytes."; and UTF-8 text an XML parser reads to its end, with a root element
+   `svg` in the SVG namespace, else "Make checkout.svg a well-formed SVG file in UTF-8
+   with an svg root element." Before the parse, a document type declaration
+   (`<!DOCTYPE` or `<!ENTITY`, any case, outside a comment, a CDATA section and a
+   processing instruction) is refused as "the DOCTYPE", and an element with more than 256
+   attributes as "the attributes past the 256th on the rect element".
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no
@@ -335,11 +406,26 @@ The messages:
       (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."
     - "Push one Markdown file (.md) in each version of proposal."
     - "Shrink proposal.md to at most 262144 bytes."
-    - "Fix checkout.svg to match the format of proposal: an SVG has no script, no
-      foreignObject, no image element and no reference outside the file."
-    - A `sources.json` the schema refuses gets the structured type's message, such as
-      "Fix sources.json to match the format of proposal: at #, additional properties
-      are not allowed but found property 'items'."
+    - "Replace cart.png with an image of the type its name ends in."
+    - "Shrink checkout.svg to at most 524288 bytes."
+    - "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."
+    - "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the
+      elements and attributes the run API document lists, with no script, HTML or
+      reference outside the file." The part after "Remove" names the first part
+      refused, with element and attribute names as the file writes them: "the DOCTYPE",
+      "the attributes past the 256th on the rect element", "the iframe element", "the
+      s:rect element", "the HTML element h:div", "the ping attribute", "the href
+      attribute", "the g element inside the desc element", "the CDATA section in the
+      desc element", "the comment that starts with >", "the processing instruction foo",
+      "a backslash in the fill attribute", "the url() in the style element", "the
+      @import in the text of the desc element" or "the image-set() in the style
+      attribute". A name past 64 characters is cut to 64 and "…".
+    - "Shrink sources.json to at most 1048576 bytes."
+    - "Make sources.json valid JSON. The file does not parse as JSON."
+    - "Fix sources.json to match the JSON Schema of proposal sources: at #, additional
+      properties are not allowed but found property 'items'." The part after the colon
+      is the structured form: the JSON pointer of the first failing value and the text
+      of the schema check.
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review
