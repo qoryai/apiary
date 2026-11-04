@@ -60,8 +60,9 @@ defmodule Apiary.Stages do
   # ## What a person does
   #
   # `approve/3`, `request_changes/4`, `resolve_escalation/4` and `move/4` ask
-  # `gate.approve` (`Apiary.Access`) of the work item, and only the stage's listed
-  # approvers may act where the stage lists them (by their account's id). Each writes one
+  # `gate.approve` (`Apiary.Access`) of the work item, which allows only the stage's
+  # listed approvers where the stage lists them (by their account's id,
+  # `Apiary.Stages.Approvers`), else `:not_approver`. Each writes one
   # entry in the audit trail, `gate.approve`, with `details.change` `approve`,
   # `request_changes`, `escalation_<resolution>` or `move`.
   #
@@ -95,7 +96,7 @@ defmodule Apiary.Stages do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Run
   alias Apiary.Stacks.Sources
-  alias Apiary.Stages.{Artifacts, Check, Escalation, GateDecision, Runner, StopCause}
+  alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Runner, StopCause}
   alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, WorkItem}
 
@@ -459,7 +460,7 @@ defmodule Apiary.Stages do
     with {:ok, version, stage} <- placed(work_item),
          :ok <- expected(work_item, opts),
          :at_gate <- work_item.stage_state do
-      with :ok <- if(may_approve?(scope, stage), do: :ok, else: {:error, :not_approver}),
+      with :ok <- if(Approvers.listed?(scope, stage), do: :ok, else: {:error, :not_approver}),
            {:ok, work_item} <- approve_locked(scope, work_item, version, stage, nil, false) do
         tell_now(work_item)
         {:ok, work_item}
@@ -567,18 +568,12 @@ defmodule Apiary.Stages do
   # item `work_item`, which the caller holds: `:ok` with the workflow model off, for a
   # work item the runner did not place, and for a person among the approvers of its
   # stage, or a stage that lists none; `{:error, :not_approver}` otherwise, as for a
-  # confirmation (`confirmed/3`).
+  # confirmation (`confirmed/3`). The rule is the one `Apiary.Access` asks for
+  # `gate.approve` (`Apiary.Stages.Approvers.allows?/2`).
   @doc false
   @spec approver(Scope.t(), WorkItem.t()) :: :ok | {:error, :not_approver}
-  def approver(%Scope{} = scope, %WorkItem{} = work_item) do
-    with true <- on?(),
-         {:ok, _version, stage} <- placed(work_item),
-         false <- may_approve?(scope, stage) do
-      {:error, :not_approver}
-    else
-      _may -> :ok
-    end
-  end
+  def approver(%Scope{} = scope, %WorkItem{} = work_item),
+    do: if(Approvers.allows?(scope, work_item), do: :ok, else: {:error, :not_approver})
 
   ## What a person does
 
@@ -953,9 +948,9 @@ defmodule Apiary.Stages do
         waiting_workflow: waiting_workflow(work_item, stage),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
-          approvers: approvers(stage),
+          approvers: Approvers.listed(stage),
           approvable?:
-            state == :at_gate and may_approve?(scope, stage) and
+            state == :at_gate and Approvers.listed?(scope, stage) and
               not (Runner.people?(stage) and missing != []),
           approvals: approvals(work_item, stage, artifacts)
         }
@@ -1569,7 +1564,7 @@ defmodule Apiary.Stages do
          :ok <- expected(work_item, opts),
          :ok <- live(work_item),
          {:ok, version, stage} <- placed(work_item),
-         :ok <- if(may_approve?(scope, stage), do: :ok, else: {:error, :not_approver}) do
+         :ok <- if(Approvers.listed?(scope, stage), do: :ok, else: {:error, :not_approver}) do
       {:ok, work_item, version, stage}
     else
       :error -> {:error, :not_found}
@@ -1608,22 +1603,6 @@ defmodule Apiary.Stages do
           w.id == ^id and w.organisation_id == ^organisation_id and
             w.workspace_id == ^workspace_id
     )
-  end
-
-  defp approvers(stage) do
-    case get_in(stage, ["gate", "approvers"]) do
-      %{"members" => members} when is_list(members) -> members
-      _members -> :members
-    end
-  end
-
-  defp may_approve?(nil, _stage), do: false
-
-  defp may_approve?(%Scope{user: user}, stage) do
-    case approvers(stage) do
-      :members -> true
-      members -> match?(%{id: id} when is_binary(id), user) and user.id in members
-    end
   end
 
   defp at_gate(work_item, stage) do

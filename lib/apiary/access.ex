@@ -9,6 +9,8 @@ defmodule Apiary.Access do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Repo
+  alias Apiary.Stages.Approvers
+  alias Apiary.WorkItems.WorkItem
 
   @owners [:owner]
   # How many times `lock_organisations/1` takes the organisation rows before it gives up.
@@ -718,6 +720,10 @@ defmodule Apiary.Access do
   # role still holds that one (`author?/3`): deleting their comment on a work item.
   @authored %{"work_item.comment_delete": :"work_item.comment"}
 
+  # What only the approvers of the stage a work item is in take on it, where the stage
+  # lists them (`check_approver/3`): approving its gate.
+  @approver_actions [:"gate.approve"]
+
   # What may still be done to an organisation or a workspace marked for deletion: cancel
   # the deletion, and purge it once its grace period is over. Nothing else is.
   @on_marked [
@@ -796,6 +802,12 @@ defmodule Apiary.Access do
      workspace or the organisation, as a page asks whether to show the button at all, the
      role alone answers. A level other than the role allows is `{:error, :forbidden}`. An
      invitation is the organisation's, whichever workspace it grants.
+  9. **The stage's approvers**, for approving a stage's gate (`gate.approve`), asked of a
+     work item. Where the stage the work item is in lists approvers, a person who is not
+     among them is `{:error, :not_approver}`. Every person the role allows may on a work
+     item the runner did not place, and at a stage that lists none. Asked of a workspace,
+     as a page asks whether to show the gates at all, the role alone answers. The answer
+     reads the work item's process version, unless the work item has it loaded.
 
   A context function that changes something asks `authorize/3` before it acts: that is the
   check that counts. It reads the person's membership again from the database, with what
@@ -916,10 +928,10 @@ defmodule Apiary.Access do
   @type subject :: struct()
 
   @typedoc """
-  Why the answer is no: a feature that is off or hidden, or a subject out of reach, or the
-  role.
+  Why the answer is no: a feature that is off or hidden, or a subject out of reach, the
+  role, or a person who is not among the approvers of the work item's stage.
   """
-  @type reason :: :not_found | :forbidden
+  @type reason :: :not_found | :forbidden | :not_approver
 
   ## The registry
 
@@ -1253,7 +1265,9 @@ defmodule Apiary.Access do
   subject is not in the scope's organisation and workspace, or the person does not reach
   its workspace;
   `{:error, :forbidden}` where the role does not allow it, a membership that is gone
-  included, or allows it over other people than the subject's.
+  included, or allows it over other people than the subject's;
+  `{:error, :not_approver}` where the role allows it and the work item's stage lists
+  approvers the person is not among (step 9 of the moduledoc).
   `check(reload(scope), action, subject)`.
   """
   @spec authorize(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
@@ -1308,17 +1322,31 @@ defmodule Apiary.Access do
     role = role(scope)
 
     with :ok <- check_place(scope, action, subject),
-         :ok <- key_subject(role, scope, action, subject) do
-      cond do
-        own?(scope, action, subject) -> :ok
-        author?(scope, action, subject) -> :ok
-        not_own?(scope, action, subject) -> {:error, :forbidden}
-        role not in action(action).roles -> {:error, :forbidden}
-        not over?(role, action, subject) -> {:error, :forbidden}
-        true -> :ok
-      end
+         :ok <- key_subject(role, scope, action, subject),
+         :ok <- check_role(scope, role, action, subject) do
+      check_approver(scope, action, subject)
     end
   end
+
+  defp check_role(scope, role, action, subject) do
+    cond do
+      own?(scope, action, subject) -> :ok
+      author?(scope, action, subject) -> :ok
+      not_own?(scope, action, subject) -> {:error, :forbidden}
+      role not in action(action).roles -> {:error, :forbidden}
+      not over?(role, action, subject) -> {:error, :forbidden}
+      true -> :ok
+    end
+  end
+
+  # Once the role allows it, an action of `@approver_actions` on a work item is the stage's
+  # approvers' alone, where the stage lists them (`Apiary.Stages.Approvers.allows?/2`).
+  defp check_approver(scope, action, %WorkItem{} = work_item)
+       when action in @approver_actions do
+    if Approvers.allows?(scope, work_item), do: :ok, else: {:error, :not_approver}
+  end
+
+  defp check_approver(_scope, _action, _subject), do: :ok
 
   # An adapter's key acts on that adapter alone, which has no organisation, as the key has
   # none: any other subject, another adapter, an organisation, or anything else, is not
