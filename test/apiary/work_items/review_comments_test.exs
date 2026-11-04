@@ -452,6 +452,52 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert length(answered_events(work_item)) == 1
     end
 
+    test "counts no review comment left open in an earlier take in, at the gate or while questions wait",
+         %{scope: scope} do
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      work_item =
+        work_item |> reload() |> end_run!(understood_result(%{"message" => "## Take in 1"}))
+
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {:ok, closed} = WorkItems.close(scope, work_item)
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      # Take in 2's first run gives a proposal: only take in 1's c1 is open.
+      work_item =
+        closed |> reload() |> end_run!(understood_result(%{"message" => "## Take in 2"}))
+
+      assert %{take_in: 2, status: :confirm} = WorkItems.explore(scope, work_item)
+      assert [%{"id" => "c1", "state" => "open"}] = review_comments(work_item)
+      assert WorkItems.send_review_comments(scope, work_item, 1) == {:error, :not_waiting}
+
+      # At the gate, the send has take in 2's c2 alone.
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Name the refund rule.")
+      assert {:ok, _} = WorkItems.send_review_comments(scope, work_item, 1)
+
+      assert List.last(answered_events(work_item)) ==
+               %{"take_in" => 2, "attempt" => 1, "count" => 1, "review_comments" => ["c2"]}
+
+      # Take in 2's second run asks and leaves c2 open: the send while questions wait has
+      # c2 alone too.
+      work_item = end_run!(work_item, questions_result(["Which refund?"]))
+      assert WorkItems.explore(scope, work_item).status == :questions
+
+      assert [%{"id" => "c1", "state" => "open"}, %{"id" => "c2", "state" => "open"}] =
+               review_comments(work_item)
+
+      assert {:ok, _} = WorkItems.send_review_comments(scope, work_item, 2)
+
+      assert List.last(answered_events(work_item)) ==
+               %{"take_in" => 2, "attempt" => 2, "count" => 1, "review_comments" => ["c2"]}
+
+      assert runs(work_item) ==
+               [{1, 3, :ended}, {1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
+    end
+
     test "Send answers carries the open review comments to the next run", %{scope: scope} do
       work_item = proposed!(scope)
       {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
