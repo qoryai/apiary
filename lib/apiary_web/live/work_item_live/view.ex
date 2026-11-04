@@ -153,7 +153,16 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   # The run's questions, and its proposal where `proposal?`, with their Markdown rendered.
   defp rendered(run, proposal?) do
-    run = Map.update(run, :questions, [], &rendered_questions/1)
+    run =
+      run
+      |> Map.update(:questions, [], &rendered_questions/1)
+      |> Map.update(:wrote_proposal, nil, fn
+        %{message: message} = wrote ->
+          Map.put(wrote, :rendered, WorkItemComponents.markdown(message))
+
+        none ->
+          none
+      end)
 
     case run do
       %{proposal: %{} = proposal} when proposal? ->
@@ -342,7 +351,10 @@ defmodule ApiaryWeb.WorkItemLive.View do
       questions: [],
       answered_by: nil,
       answered_at: nil,
-      answers_by: []
+      answers_by: [],
+      wrote: nil,
+      wrote_proposal: nil,
+      asked: 0
     }
   end
 

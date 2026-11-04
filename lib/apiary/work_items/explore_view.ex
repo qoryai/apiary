@@ -87,8 +87,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # `answered_by_id` and `answered_at` once a member answered at it. A confirmed run's
   # proposal is the version its confirmation keeps. A run that ended before Explore's
   # runs pushed artifacts shows the proposal its result kept, and no questions. `wrote` is
-  # the version of the proposal the run pushed, nil for none, and `asked` how many
-  # questions of the newest questions it asked.
+  # the version of the proposal the run pushed, nil for none, with `wrote_proposal`, that
+  # version's `%{message: text}`, and `asked` how many questions of the newest questions
+  # it asked.
   #
   # ## `thread/2`
   #
@@ -423,6 +424,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp run_view(step, ctx, confirmation, work_item) do
     rows = answers_of(ctx, step)
+    wrote = wrote(step)
 
     ended_at = Explore.ended_at(step)
 
@@ -449,7 +451,8 @@ defmodule Apiary.WorkItems.ExploreView do
       questions: [],
       answered_by_id: nil,
       answered_at: nil,
-      wrote: wrote(step),
+      wrote: wrote,
+      wrote_proposal: wrote && wrote_proposal(step, wrote),
       asked: asked(step, ctx)
     }
 
@@ -509,6 +512,13 @@ defmodule Apiary.WorkItems.ExploreView do
     case version(step) do
       version when is_integer(version) and version != before -> version
       _same -> nil
+    end
+  end
+
+  defp wrote_proposal(step, version) do
+    case Explore.proposal_text(step.dispatch_run.work_item_id, version) do
+      text when is_binary(text) -> %{message: text}
+      nil -> nil
     end
   end
 
