@@ -1043,6 +1043,9 @@ defmodule ApiaryWeb.WorkItemComponents do
            attempt: attempt_ref(run)
          )
 
+  defp no_result_line(:no_result, %{state: :failed, wrote: version}) when is_integer(version),
+    do: failed_after(version)
+
   defp no_result_line(:no_result, run) do
     case run[:outcome] do
       :none ->
@@ -1073,8 +1076,19 @@ defmodule ApiaryWeb.WorkItemComponents do
         attempt: attempt_ref(run)
       )
 
+  # A failed run that pushed version `version` of the proposal before it failed: the
+  # words of the stage's escalation (`Apiary.Stages.StopCause.failed_after_proposal/1`).
+  defp failed_after(version),
+    do:
+      gettext("The run failed after it wrote proposal version %{version}.",
+        version: Format.number(version)
+      )
+
   # The take in's last run, which gave no result, as one sentence with its attempt: for a
   # missing model key, the fix first, as `no_result_line/2` puts it.
+  defp used_up_line(%{state: :failed, wrote: version}) when is_integer(version),
+    do: failed_after(version)
+
   defp used_up_line(%{end_cause: :run_refused, end_detail: "model_key_missing"} = run),
     do:
       rich_gettext(
@@ -3137,7 +3151,12 @@ defmodule ApiaryWeb.WorkItemComponents do
               else: []
 
           said = wrote ++ asked
-          said = if said == [], do: [RunComponents.state_label(run.state)], else: said
+
+          said =
+            if said == [] or run.state in [:failed, :lost, :cancelled],
+              do: said ++ [RunComponents.state_label(run.state)],
+              else: said
+
           said ++ List.wrap(run[:ended_at] && ended_ago(run.ended_at, now))
       end
 
@@ -3175,10 +3194,21 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  # A run that pushed a proposal before it ended shows that proposal on the tab, so no
+  # line here says there is nothing to show.
+  defp no_result_words(%{state: :failed, wrote: version}) when is_integer(version),
+    do: {"hero-exclamation-triangle-micro", failed_after(version), nil}
+
+  defp no_result_words(%{state: :lost, wrote: version}) when is_integer(version),
+    do: {"hero-signal-slash-micro", gettext("The run was lost."), nil}
+
   defp no_result_words(%{state: :lost}),
     do:
       {"hero-signal-slash-micro", gettext("The run was lost."),
        gettext("Qory Apiary has no result from the run. There is nothing to show or confirm.")}
+
+  defp no_result_words(%{state: :cancelled, wrote: version}) when is_integer(version),
+    do: {"hero-stop-circle-micro", gettext("The run was cancelled."), nil}
 
   defp no_result_words(%{state: :cancelled}),
     do:
@@ -3865,7 +3895,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:proposed` - Qory wrote a proposal, after how long, and whose turn it is
       (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
-      (`outcome`: `:error`, `:none` or `:refused`); for a run the gateway refused for
+      (`outcome`: `:error`, `:none` or `:refused`), or for a failed run that pushed a
+      proposal first, its version (`wrote`); for a run the gateway refused for
       want of a model key (`end_cause: :run_refused`, `end_detail: "model_key_missing"`),
       what a member fixes;
     * `:explore_again` - who ran Explore again;
@@ -3929,6 +3960,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :end_detail, :string,
     default: nil,
     doc: "`:no_result`: the code that end kept, as a run map has it"
+
+  attr :wrote, :integer,
+    default: nil,
+    doc: "`:no_result`: the version of the proposal a failed run pushed before it failed"
 
   attr :changed, :boolean, default: false, doc: "`:confirmed`: with the member's changes"
 
@@ -4157,6 +4192,9 @@ defmodule ApiaryWeb.WorkItemComponents do
            "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}",
            attempt: attempt_ref(run)
          )
+
+  defp event_line(%{kind: :no_result, wrote: version}) when is_integer(version),
+    do: failed_after(version)
 
   defp event_line(%{kind: :no_result, outcome: :none, run: run}),
     do: rich_gettext("Attempt %{attempt} ended without a result", attempt: attempt_ref(run))

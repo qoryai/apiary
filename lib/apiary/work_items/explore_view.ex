@@ -89,8 +89,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # proposal is the version its confirmation keeps. A run that ended before Explore's
   # runs pushed artifacts shows the proposal its result kept, and no questions. `wrote` is
   # the version of the proposal the run pushed, nil for none, with `wrote_proposal`, that
-  # version as the top-level `proposal` gives one, without `version`, and `asked` how many questions of the newest questions
-  # it asked.
+  # version as the top-level `proposal` gives one, without `version`, and `asked` how
+  # many questions of the newest questions it asked: both read from the artifacts the
+  # run pushed, so a run that failed after it pushed them has them too.
   #
   # ## `thread/2`
   #
@@ -110,9 +111,10 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * the runs: `:started` (`run`, `start`: nil for a take in's first run, `:answers` for
   #     a run after answers, `:again` for any other), at its start, for a run handed over;
   #     then at its end `:asked` (`run`, `questions`, `duration_ms`), `:proposed` (`run`,
-  #     `duration_ms`, `owner_id`), `:no_result` (`run`, `outcome`, and the end cause and
-  #     its code, `end_cause` and `end_detail`, as a run map has them), `:lost` or
-  #     `:cancelled` (`run`).
+  #     `duration_ms`, `owner_id`), `:no_result` (`run`, `outcome`, the end cause and
+  #     its code, `end_cause` and `end_detail`, as a run map has them, and `wrote`, the
+  #     version of the proposal a failed run pushed before it failed, nil for none),
+  #     `:lost` or `:cancelled` (`run`).
   #
   # `run` is `%{id, workspace_id, attempt, of}`. A run that has not ended, or reads as
   # running, has no entry at its end.
@@ -904,7 +906,8 @@ defmodule Apiary.WorkItems.ExploreView do
                 run: run,
                 outcome: step.outcome,
                 end_cause: step.dispatch_run.end_cause,
-                end_detail: step.dispatch_run.end_detail
+                end_detail: step.dispatch_run.end_detail,
+                wrote: (Explore.run_state(step) == :failed && wrote(step)) || nil
               }
             ]
 

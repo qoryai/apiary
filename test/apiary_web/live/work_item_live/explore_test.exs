@@ -2,8 +2,9 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
   # Explore's tab of a work item's page (`ApiaryWeb.WorkItemLive.Show`) in each state, on
   # data the moves and the runs write: the questions with the answer form, a partial send
   # with the next run queued, the gate without and with open review comments, the
-  # proposal confirmed, and what a running run hides. The answer form's draft as the
-  # answers `Apiary.WorkItems.answer/4` takes (`answer_list/2`).
+  # proposal confirmed, what a running run hides, and a run that failed after it wrote a
+  # proposal. The answer form's draft as the answers `Apiary.WorkItems.answer/4` takes
+  # (`answer_list/2`).
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query
@@ -223,6 +224,56 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       assert has_element?(view, summary, "questions v1")
       assert has_element?(view, "#work-item-record[aria-label='Runs and artifacts']")
       refute render(view) =~ "Earlier runs of this take in"
+    end
+  end
+
+  describe "a run that failed after it wrote a proposal" do
+    # Run 1 proposes version 1; run 2 pushes version 2, then fails, and its stored outcome
+    # stays `none`.
+    defp failed_after_proposal(scope) do
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: understood_result(%{"message" => @proposal}))
+
+      %{dispatch_run: dispatch_run, run: run} =
+        explore_run_fixture(work_item,
+          settle: false,
+          run: %{state: "failed", exit_state: "failed", outcome_state: "failed"}
+        )
+
+      push_result!(dispatch_run, run, understood_result(%{"message" => "Version two."}))
+
+      dispatch_run
+      |> Ecto.Changeset.change(result_outcome: :none)
+      |> Repo.update!()
+
+      work_item
+    end
+
+    test "every line names the proposal it wrote; none says there is nothing to show", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = failed_after_proposal(scope)
+      {:ok, view, html} = live(conn, explore(scope, work_item.number))
+
+      failed = "The run failed after it wrote proposal version 2."
+      assert has_element?(view, "#work-item-explore-none-h", failed)
+      assert has_element?(view, "#work-item-explore-proposal-text", "Version two.")
+      assert has_element?(view, "#work-item-step", failed)
+      assert has_element?(view, "#work-item-record .q-xp-runrow", "Wrote a proposal")
+      assert has_element?(view, "#work-item-record .q-xp-runrow", "Failed")
+
+      for part <- ["#work-item-step", "#work-item-explore"],
+          do: refute(has_element?(view, part, "ended without a result"))
+
+      refute html =~ "There is nothing to show or confirm."
+
+      {:ok, thread, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}/thread")
+
+      events = "[id^='work-item-thread-ev-']"
+      assert has_element?(thread, events, failed)
+      refute has_element?(thread, events, "ended without a result")
     end
   end
 

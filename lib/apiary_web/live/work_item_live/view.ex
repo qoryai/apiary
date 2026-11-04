@@ -438,7 +438,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
       run: run_ref(entry.run, ctx),
       outcome: entry.outcome,
       end_cause: entry.end_cause,
-      end_detail: entry.end_detail
+      end_detail: entry.end_detail,
+      wrote: entry[:wrote]
     }
 
   defp event_fields(%{kind: kind} = entry, _row, _names, ctx)
