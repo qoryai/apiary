@@ -153,6 +153,25 @@ defmodule Apiary.Dispatches.SettleTest do
       assert stored(failed) == {:questions, nil}
     end
 
+    test "a proposal under a name other than main: none, as Explore reads main alone", ctx do
+      handed = handed_over!(ctx)
+      dispatch_run = queue_run!(handed)
+
+      {:ok, _version} =
+        Apiary.Artifacts.push(
+          {:run, dispatch_run},
+          work_item!(handed),
+          "proposal",
+          [%{filename: "draft.md", content_type: "text/markdown", binary: "A draft."}],
+          name: "draft",
+          stage_id: dispatch_run.stage_id
+        )
+
+      exited!(handed, 9)
+      project!(handed)
+      assert stored(handed) == {:none, nil}
+    end
+
     test "a proposal from a run that failed: none", ctx do
       handed = handed_over!(ctx)
       proposal!(handed)
