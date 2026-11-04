@@ -137,6 +137,19 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
+  @doc """
+  The stage's state as the stage card shows it, as a badge: on the step card, where it is
+  the one card of the stage at Explore.
+  """
+  attr :id, :string, default: "work-item-step-state"
+  attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
+
+  def stage_badge(assigns) do
+    ~H"""
+    <span id={@id}><.state_badge state={shown_state(@page)} /></span>
+    """
+  end
+
   attr :state, :atom, required: true
 
   defp state_badge(assigns) do

@@ -152,7 +152,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         </:header>
         <:rail>
           <StageComponents.stage_card
-            :if={@flow && !@flow.ended}
+            :if={@flow && !@flow.ended && !one_card?(@flow)}
             page={@flow}
             number={@number}
             add_path={&add_path(@current_scope, @number, &1)}
@@ -176,7 +176,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             item_noun={@source.item_noun}
             now={@now}
             queued_of={queued_of(@flow, @item)}
-          />
+          >
+            <:badge :if={one_card?(@flow)}><StageComponents.stage_badge page={@flow} /></:badge>
+          </.step_card>
           <.work_item_details
             work_item={@item}
             ticket={@source.ticket}
@@ -185,6 +187,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             item_noun={@source.item_noun}
             collection_noun={@source.collection_noun}
             queued={queued_run(@flow, @item)}
+            process_version={@flow && @flow.version}
             now={@now}
           />
         </:rail>
@@ -975,6 +978,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do: attempt + max(rounds - (Map.get(flow, :round) || 1), 0)
 
   defp runs_of(_flow, _attempt, of), do: of
+
+  # At Explore, while its run runs, its questions wait or its gate waits, the step card is
+  # the stage's one card, with the stage's state: the stage card is not shown.
+  defp one_card?(%{explore: true, state: state}),
+    do: state in [:running, :waiting_answers, :at_gate]
+
+  defp one_card?(_flow), do: false
 
   # Today's step card, beside the stage card at Explore. At the run limit it says that the
   # run was "the last run of this take in", which is false while the escalation card

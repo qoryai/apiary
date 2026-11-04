@@ -12983,10 +12983,17 @@
       grid-template-rows: auto 1fr;
       grid-template-areas: "h r" "b r";
     }
+    /* The rail stays in place while the page scrolls the main column; a rail taller
+       than the window scrolls within itself. */
     .q-wi-r {
       position: sticky;
       top: calc(var(--q-bar) + 1.5rem);
       grid-row: 1 / span 2;
+      max-height: calc(100dvh - var(--q-bar) - 3rem);
+      margin: -2px;
+      padding: 2px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
   }
   .q-wi-grow {
@@ -13110,6 +13117,8 @@
     border-radius: 9999px;
     font-size: 0.6875rem;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
   }
   .q-wi-stage-done {
     color: var(--color-base-content);
@@ -13329,6 +13338,21 @@
     }
     .q-wi-dtoggle[aria-expanded="true"] + .q-wi-det > .q-wi-det-h {
       display: block;
+    }
+    /* While review comments take the rail, Details stays folded behind its button. */
+    .q-wi-dtoggle.q-wi-dfold {
+      display: flex;
+    }
+    .q-wi-dfold + .q-wi-det {
+      display: none;
+    }
+    .q-wi-dfold[aria-expanded="true"] + .q-wi-det {
+      display: block;
+      margin-top: -12px;
+      padding: 4px 12px 14px;
+    }
+    .q-wi-dfold[aria-expanded="true"] + .q-wi-det > .q-wi-det-h {
+      display: none;
     }
   }
   .q-wi-det dd {

@@ -598,6 +598,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "the most runs of the take in for a later run that is queued, where the round limit of the work item's version sets it; nil for `:run`'s `:of`"
 
+  slot :badge,
+    doc:
+      "the state in place of the step's badge: the stage's, where the card is the stage's one card at Explore under the feature `workflow_model`"
+
   def step_card(%{work_item: %{status: status}} = assigns) when status in @ended, do: ~H""
 
   def step_card(assigns) do
@@ -626,7 +630,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       <div class="q-wi-step-h">
         <.work_item_mark kind={@mark} />
         <h2 id={"#{@id}-h"}>{stage_name(@stage)}</h2>
-        <.step_badge status={@status} mine={@mine} run={@run} />
+        <.step_badge :if={@badge == []} status={@status} mine={@mine} run={@run} />
+        {render_slot(@badge)}
       </div>
       <.step_body
         id={@id}
@@ -795,39 +800,33 @@ defmodule ApiaryWeb.WorkItemComponents do
 
             :none ->
               gettext(
-                "Qory reads the %{item} and writes a proposal.",
+                "Explore reads the %{item} and writes a proposal.",
                 item: assigns.item
               )
 
             :you ->
               gettext(
-                "Qory reads the %{item} and your answers, and writes a proposal.",
+                "Explore reads the %{item} and your answers, and writes a proposal.",
                 item: assigns.item
               )
 
             {:name, name} ->
               gettext(
-                "Qory reads the %{item} and the answers of %{name}, and writes a proposal.",
+                "Explore reads the %{item} and the answers of %{name}, and writes a proposal.",
                 name: name,
                 item: assigns.item
               )
 
             :several ->
               gettext(
-                "Qory reads the %{item} and the answers of this take in, and writes a proposal.",
+                "Explore reads the %{item} and the answers of this take in, and writes a proposal.",
                 item: assigns.item
               )
-          end,
-        started:
-          rich_gettext("Attempt %{attempt} started %{when}.",
-            attempt: attempt_ref(run),
-            when: inline_ago(run.started_at, assigns.now)
-          )
+          end
       )
 
     ~H"""
-    <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
-    <p id={"#{@id}-run"}><.rich text={@started} /></p>
+    <p id={"#{@id}-line"}>{@line}</p>
     """
   end
 
@@ -841,15 +840,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           if(assigns.can_act,
             do:
               ngettext(
-                "Answer Qory's question, and Explore runs again with your answer.",
-                "Answer Qory's %{number} questions, and Explore runs again with your answers.",
-                n,
-                number: number
-              ),
-            else:
-              ngettext(
-                "Qory returned %{number} question instead of a proposal.",
-                "Qory returned %{number} questions instead of a proposal.",
+                "Answer the question, and Explore runs again with your answer.",
+                "Answer the %{number} questions, and Explore runs again with your answers.",
                 n,
                 number: number
               )
@@ -864,7 +856,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
+    <p :if={@line} id={"#{@id}-line"}>{@line}</p>
     <p :if={!@can_act} id={"#{@id}-waits"} class="q-wi-reader">{@waits}</p>
     <.go_link :if={@can_act} id={"#{@id}-explore"} path={@explore_path} words={@go} />
     """
@@ -956,7 +948,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         line:
           cond do
             assigns.can_act ->
-              gettext("Confirm Qory's proposal, or write what to change.")
+              gettext("Confirm the proposal, or add review comments and send them.")
 
             you?(owner) ->
               gettext("You confirm next")
@@ -970,12 +962,12 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <p :if={@line} class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
+    <p :if={@line} id={"#{@id}-line"}>{@line}</p>
     <.go_link
       :if={@can_act}
       id={"#{@id}-explore"}
       path={@explore_path}
-      words={gettext("Read Qory's proposal")}
+      words={gettext("Read the proposal")}
     />
     """
   end
@@ -1535,6 +1527,15 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: nil,
     doc: "Runs' line while a run waits for a machine and none has started, in place of None yet"
 
+  attr :process_version, :integer,
+    default: nil,
+    doc: "the number of the work item's process version, under the feature `workflow_model`"
+
+  attr :fold, :boolean,
+    default: false,
+    doc:
+      "whether Details stays folded behind its button at every width: while review comments take the rail"
+
   def work_item_details(assigns) do
     work_item = assigns.work_item
     now = now(assigns)
@@ -1565,7 +1566,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     <button
       id={"#{@id}-toggle"}
       type="button"
-      class="q-wi-dtoggle"
+      class={["q-wi-dtoggle", @fold && "q-wi-dfold"]}
       aria-expanded="false"
       aria-controls={@id}
       phx-click={JS.toggle_attribute({"aria-expanded", "true", "false"})}
@@ -1617,6 +1618,12 @@ defmodule ApiaryWeb.WorkItemComponents do
           <span :if={@instruction} class="q-wi-q">{@instruction}</span>
           <span :if={!@instruction} class="q-faint">{gettext("None")}</span>
         </dd>
+        <%= if @process_version do %>
+          <dt>{gettext("Process")}</dt>
+          <dd id={"#{@id}-process"}>
+            {gettext("Version %{version}", version: Format.number(@process_version))}
+          </dd>
+        <% end %>
         <dt>{gettext("Runs")}</dt>
         <dd id={"#{@id}-runs"}>
           <span :if={@runs} class="q-wi-runs"><.rich text={runs_line(@runs)} /></span>
