@@ -268,7 +268,8 @@ defmodule Apiary.Stages do
   # stored. Every act of the runner on a run's end moves the stage or queues a newer run,
   # so an end acted on is not read again. At most `limit`, `@stage_batch` by default, by
   # id after `after_id`, or from the first for nil, each in a transaction that locks the
-  # work item, then the run; one that raises is logged in one line by its id and the
+  # work item, then the run, with the context a claim gives (`claim_context/1`); one that
+  # raises is logged in one line by its id and the
   # exception's module. `{told, next}`: the work items to tell, and the `after_id` of the
   # next sweep, the last id read when it read `limit`, nil when it read fewer. With the
   # workflow model off, none.
@@ -316,7 +317,7 @@ defmodule Apiary.Stages do
     {:ok, told} =
       Repo.transact(fn ->
         :ok = hold_work_item(id)
-        {:ok, run_ended(id)}
+        {:ok, run_ended(id, claim_context(id))}
       end)
 
     told
@@ -325,6 +326,30 @@ defmodule Apiary.Stages do
       Logger.error("stage end failed dispatch_run=#{id} error=#{inspect(exception.__struct__)}")
 
       []
+  end
+
+  # The context a claim gives its ends (`claim_ended/2`), made again for the run of the
+  # queue `id`: the gateway and the keys of the pool of the run's newest dispatch, as
+  # `Apiary.Dispatches.Handover.gateway/1` reads them now, in the shape the claim passes.
+  # A run with no dispatch, or whose pool no longer resolves to a gateway, has none.
+  defp claim_context(id) do
+    pool =
+      Repo.one(
+        from d in Dispatches.Dispatch,
+          join: n in Apiary.Nodes.Node,
+          on: n.id == d.pool_id,
+          where: d.dispatch_run_id == ^id,
+          order_by: [desc: d.claimed_at],
+          limit: 1,
+          select: n
+      )
+
+    with %Apiary.Nodes.Node{} <- pool,
+         {:ok, gateway, keys} <- Dispatches.Handover.gateway(pool) do
+      %{gateway: gateway, keys: keys}
+    else
+      _none -> %{}
+    end
   end
 
   # claim_ended/1 acts on the end of each run of the queue in `dispatch_run_ids`, which a

@@ -637,6 +637,59 @@ defmodule Apiary.StagesTest do
       assert Stages.sweep(DateTime.utc_now(), nil) == {[], nil}
     end
 
+    test "the stage sweep writes the text a claim writes for a gateway with no secrets",
+         %{scope: scope} do
+      gateway = Apiary.NodesFixtures.gateway_fixture(scope)
+      Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, gateway, %{allow_secrets: false})
+
+      pool =
+        Apiary.NodesFixtures.pool_fixture(scope, %{gateway_choice: :named, gateway_id: gateway.id})
+
+      %{access_key: pool_key} = Apiary.AccessKeysFixtures.browser_key_fixture(scope, pool)
+      {:ok, through, keys} = Apiary.Dispatches.Handover.gateway(pool)
+
+      # Two runs a claim through the pool ended `secrets_not_allowed`.
+      [by_claim, by_sweep] =
+        for _n <- 1..2 do
+          work_item = take_in!(scope)
+          run = newest_run(work_item)
+          now = DateTime.utc_now()
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [state: :ended, end_cause: :secrets_not_allowed, result_outcome: :error]
+          )
+
+          %Apiary.Dispatches.Dispatch{
+            organisation_id: run.organisation_id,
+            workspace_id: run.workspace_id
+          }
+          |> Apiary.Dispatches.Dispatch.claim_changeset(%{
+            dispatch_run_id: run.id,
+            pool_id: pool.id,
+            access_key_id: pool_key.id,
+            claimed_at: now,
+            lease_until: Apiary.Dispatches.lease_until(now)
+          })
+          |> Apiary.PublicId.Insert.insert!()
+
+          work_item
+        end
+
+      # The claim's act, with what the claim knew; the sweep's, with what it reads again.
+      assert [_] = Stages.claim_ended([newest_run(by_claim).id], %{gateway: through, keys: keys})
+      assert {[_], nil} = Stages.sweep(DateTime.utc_now(), nil)
+
+      # The same text, but the work item's number.
+      texts =
+        for work_item <- [by_claim, by_sweep] do
+          assert %Escalation{cause: :run_stopped, gaps: text} = escalation(work_item)
+          String.replace(text, "##{reload(work_item).number}", "#N")
+        end
+
+      assert [text, text] = texts
+      assert text =~ "allowed to receive the run's secrets"
+    end
+
     test "the stage sweep reads after where the sweep before stopped", %{scope: scope} do
       # Two runs ended by a claim whose stage did not act.
       [first, second] =
