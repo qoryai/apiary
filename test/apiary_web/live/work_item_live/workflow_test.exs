@@ -400,7 +400,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-details-runs", "None yet")
     end
 
-    test "a queued run moved to a version with fewer rounds counts that version's limit", %{
+    test "a queued run moved to a version with fewer rounds: Details shows its attempt", %{
       conn: conn,
       scope: scope
     } do
@@ -417,7 +417,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-details-runs", "Attempt 1 is queued.")
     end
 
-    test "a later queued run moved to a version with fewer rounds: the step card counts that version's limit",
+    test "a later queued run moved to a version with fewer rounds: the step card shows its attempt",
          %{conn: conn, scope: scope} do
       explore_loop!(scope)
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
@@ -431,7 +431,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-step-run", "Attempt 2 is queued.")
     end
 
-    test "a run queued for Explore's next workflow counts the runs its entry may have", %{
+    test "a run queued for Explore's next workflow: the page shows its attempt", %{
       conn: conn,
       scope: scope
     } do
@@ -502,7 +502,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              } = details_of_a_second_take_in(conn, scope)
     end
 
-    test "a run before the work item was placed: the step card counts the placed runs",
+    test "a run before the work item was placed: the step card shows its attempt",
          %{conn: conn, scope: scope} do
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
 
