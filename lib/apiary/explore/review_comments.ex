@@ -30,8 +30,9 @@ defmodule Apiary.Explore.ReviewComments do
   # A run is named by its number in the run API (`Apiary.Runs.Run`, `number`), which a
   # member sees as "Run N": a reply's `by.run`.
   #
-  # Values compare strictly, as JSON has them: the number `4.0` is not `4`, though the
-  # schema takes both as an integer.
+  # Numbers compare by value, as the schema's integers do: `4.0` is `4`. Qory Apiary stores
+  # each number of a version that is an integer in value as an integer
+  # (`Apiary.Artifacts.push/5`), so a reader finds `4`, never `4.0`.
   #
   # The schema's checks, and each `id` once, come first, at the format check of the push
   # (`Apiary.Artifacts.Format`).
@@ -201,10 +202,10 @@ defmodule Apiary.Explore.ReviewComments do
     added = Enum.drop(now, length(before))
 
     cond do
-      Map.take(given, @kept) !== Map.take(earlier, @kept) ->
+      Map.take(given, @kept) != Map.take(earlier, @kept) ->
         {:error, :comment_changed}
 
-      length(now) < length(before) or Enum.take(now, length(before)) !== before ->
+      length(now) < length(before) or Enum.take(now, length(before)) != before ->
         {:error, :reply_changed}
 
       added == [] and given["state"] != earlier["state"] ->
@@ -216,7 +217,7 @@ defmodule Apiary.Explore.ReviewComments do
       length(added) > 1 ->
         {:error, :replies_added}
 
-      get_in(hd(added), ["by", "run"]) !== run_number ->
+      get_in(hd(added), ["by", "run"]) != run_number ->
         {:error, :reply_not_run}
 
       earlier["state"] != "open" ->

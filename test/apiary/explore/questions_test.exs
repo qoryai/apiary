@@ -198,16 +198,18 @@ defmodule Apiary.Explore.QuestionsTest do
       assert Questions.check_run(newest, doc([reopened(answered("q1", 12), 13)]), 13) == :ok
     end
 
-    test "compares numbers strictly: 13.0 is not run 13" do
-      assert Questions.check_run(nil, doc([open("q1", 13.0)]), 13) == {:error, :asked_run}
+    test "compares numbers by value, as the schema's integers: 13.0 is run 13" do
+      assert Questions.check_run(nil, doc([open("q1", 13.0)]), 13) == :ok
+      assert Questions.check_run(nil, doc([open("q1", 13.5)]), 13) == {:error, :asked_run}
 
       newest = doc([answered("q1", 12)])
 
-      assert Questions.check_run(newest, doc([answered("q1", 12.0)]), 13) ==
+      assert Questions.check_run(newest, doc([answered("q1", 12.0)]), 13) == :ok
+
+      assert Questions.check_run(newest, doc([answered("q1", 11.0)]), 13) ==
                {:error, :asked_changed}
 
-      assert Questions.check_run(newest, doc([reopened(answered("q1", 12), 13.0)]), 13) ==
-               {:error, :reopened_run}
+      assert Questions.check_run(newest, doc([reopened(answered("q1", 12), 13.0)]), 13) == :ok
     end
 
     test "reasons/0 is each reason the check refuses for" do

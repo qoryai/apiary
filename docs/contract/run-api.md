@@ -257,7 +257,10 @@ Checks, in order, after the checks of every request:
    reply to an open review comment, by `{"run": <run.number>}`, which it closes; a reply
    with the outcome `asked` has in `question` the id of a question of the newest version
    of `questions` stored when the run pushes `review-comments`, so the run pushes its
-   questions first. Numbers compare as JSON writes them: `4.0` is not `4`.
+   questions first. Numbers compare by value, as the schemas' integers do: `4.0` is
+   `4`. A version of `questions` or `review-comments` is stored with each number that
+   is an integer in value written as an integer, so a later read of it has `4` where
+   the push had `4.0`.
 
 ## POST verdict
 

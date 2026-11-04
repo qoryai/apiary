@@ -158,25 +158,18 @@ defmodule Apiary.Explore.ReviewCommentsTest do
                {:error, :state_changed}
     end
 
-    test "compares numbers strictly: 1.0 is not 1, and 13.0 is not run 13" do
+    test "compares numbers by value, as the schema's integers: 1.0 is 1, 13.0 is run 13" do
       newest = doc([comment("c1"), comment("c2", "closed", [run_reply(12)])])
 
       assert ReviewComments.check_run(
                newest,
                doc([
                  put_in(comment("c1"), ["on", "version"], 1.0),
-                 comment("c2", "closed", [run_reply(12)])
+                 comment("c2", "closed", [run_reply(12.0)])
                ]),
                13,
                []
-             ) == {:error, :comment_changed}
-
-      assert ReviewComments.check_run(
-               newest,
-               doc([comment("c1"), comment("c2", "closed", [run_reply(12.0)])]),
-               13,
-               []
-             ) == {:error, :reply_changed}
+             ) == :ok
 
       assert ReviewComments.check_run(
                newest,
@@ -186,7 +179,17 @@ defmodule Apiary.Explore.ReviewCommentsTest do
                ]),
                13,
                []
-             ) == {:error, :reply_not_run}
+             ) == :ok
+
+      assert ReviewComments.check_run(
+               newest,
+               doc([
+                 put_in(comment("c1"), ["on", "version"], 2.0),
+                 comment("c2", "closed", [run_reply(12)])
+               ]),
+               13,
+               []
+             ) == {:error, :comment_changed}
     end
   end
 

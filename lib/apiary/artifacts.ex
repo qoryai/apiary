@@ -99,6 +99,13 @@ defmodule Apiary.Artifacts do
   #   7. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
   #      else `{:invalid, :no_video}`.
   #
+  # A version of the questions or the review comments that passed these checks is stored
+  # with each number that is an integer in value, at most 2^53, written as an integer: a
+  # file with `4.0`, which the schemas take as an integer, is stored as the document
+  # re-encoded with `4` (`integers/2`), staged and checked again; a file with none is
+  # stored as it came. So every reader of these two types, the run checks
+  # included, finds `4`, never `4.0`.
+  #
   # In the transaction, under the work item's lock, a version a run pushes of the
   # questions or the review comments keeps what members wrote in the artifact's newest
   # version (`Apiary.Explore.Questions.check_run/3`,
@@ -541,7 +548,8 @@ defmodule Apiary.Artifacts do
          :ok <- member_name(type, fields),
          {:ok, files} <- files(type, files),
          {:ok, staged} <- stage_all(type, files),
-         :ok <- complete(type, staged) do
+         :ok <- complete(type, staged),
+         {:ok, staged} <- integers(type, staged) do
       case commit_all(staged) do
         {:ok, stored} -> writer |> write(work_item, type, fields, stored) |> broadcast()
         {:error, _reason} = error -> error
@@ -816,6 +824,50 @@ defmodule Apiary.Artifacts do
   end
 
   defp complete(_type, _staged), do: :ok
+
+  # The questions or the review comments with each number that is an integer in value
+  # written as an integer: the one staged file as it is when it has no such float, else
+  # the document re-encoded, staged and checked in its place, the first copy dropped. The
+  # format check of the bytes as they came, each member name once included, ran first.
+  # A float past 2^53 is left as it is: no run number or version is that large, so a run
+  # check refuses it.
+  defp integers(%Type{name: name} = type, [%{staged: staged, filename: filename}] = files)
+       when name in @member_types do
+    store = Store.impl()
+
+    with {:ok, bytes} <- File.read(staged.path),
+         {:ok, document} <- Jason.decode(bytes),
+         normal = integer_values(document),
+         false <- normal === document do
+      store.discard(staged)
+
+      case stage_one(store, type, 0, filename, {:binary, Jason.encode!(normal)}, type.size_limit) do
+        {:ok, restaged} -> {:ok, [restaged]}
+        {:error, _refusal} = refused -> refused
+      end
+    else
+      true -> {:ok, files}
+      _unreadable -> discard_all(store, files, {:invalid, {:unreadable, 0}})
+    end
+  end
+
+  defp integers(_type, staged), do: {:ok, staged}
+
+  defp discard_all(store, files, refusal) do
+    Enum.each(files, &store.discard(&1.staged))
+    {:error, refusal}
+  end
+
+  @max_exact 9_007_199_254_740_992
+
+  defp integer_values(value) when is_float(value) and abs(value) <= @max_exact do
+    integer = trunc(value)
+    if integer == value, do: integer, else: value
+  end
+
+  defp integer_values(%{} = object), do: Map.new(object, fn {k, v} -> {k, integer_values(v)} end)
+  defp integer_values(list) when is_list(list), do: Enum.map(list, &integer_values/1)
+  defp integer_values(value), do: value
 
   defp stage_one(store, type, index, filename, source, left) do
     case store.stage(source, left) do

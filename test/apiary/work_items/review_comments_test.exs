@@ -466,6 +466,59 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert [^comment] = review_comments(work_item)
     end
 
+    test "with 1.0 for version 1 and 13.0 for run 13 is taken, stored as 1 and 13", %{
+      scope: scope
+    } do
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
+      [comment] = review_comments(work_item)
+      version = comment["on"]["version"]
+      assert is_integer(version)
+
+      end_run!(work_item, fn run, registered ->
+        push_result!(run, registered, understood_result(%{"message" => "## Again\n\nIt."}))
+        at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        reply = %{
+          "text" => "Changed the order.",
+          "by" => %{"run" => registered.number * 1.0},
+          "at" => at,
+          "outcome" => "changed"
+        }
+
+        floats =
+          comment
+          |> put_in(["on", "version"], version * 1.0)
+          |> Map.put("replies", [reply])
+          |> Map.put("state", "closed")
+
+        file = ReviewComments.file(%{"review_comments" => [floats]})
+        assert file.binary =~ "#{version}.0"
+
+        assert {:ok, stored} = push_review_comments(work_item, %{"review_comments" => [floats]})
+        [stored_file] = stored.files
+        {:ok, path} = Apiary.Artifacts.open_file(stored_file)
+
+        assert %{"review_comments" => [%{"on" => %{"version" => ^version}} = kept]} =
+                 path |> File.read!() |> Jason.decode!()
+
+        assert [%{"by" => %{"run" => number}}] = kept["replies"]
+        assert number === registered.number
+      end)
+
+      # The member's reply finds the review comment the run closed.
+      assert {:ok, _} = WorkItems.reply(scope, work_item, 2, "c1", "Not yet: name the rule.")
+
+      assert [
+               %{
+                 "state" => "open",
+                 "on" => %{"version" => ^version},
+                 "replies" => [_run, _member]
+               }
+             ] =
+               review_comments(work_item)
+    end
+
     test "an asked reply's question is the id of a question stored before the push", %{
       scope: scope
     } do

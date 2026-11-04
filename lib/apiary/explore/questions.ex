@@ -33,8 +33,9 @@ defmodule Apiary.Explore.Questions do
   # A run is named by its number in the run API (`Apiary.Runs.Run`, `number`), which a
   # member sees as "Run N": `asked.run` and `reopened.run`.
   #
-  # Values compare strictly, as JSON has them: the number `4.0` is not `4`, though the
-  # schema takes both as an integer.
+  # Numbers compare by value, as the schema's integers do: `4.0` is `4`. Qory Apiary stores
+  # each number of a version that is an integer in value as an integer
+  # (`Apiary.Artifacts.push/5`), so a reader finds `4`, never `4.0`.
   #
   # The schema's checks, and each `id` once, come first, at the format check of the push
   # (`Apiary.Artifacts.Format`).
@@ -230,7 +231,7 @@ defmodule Apiary.Explore.Questions do
 
   # Who asked a question, and when, stays in every case.
   defp kept(earlier, given, run_number) do
-    if Map.get(given, "asked") !== Map.get(earlier, "asked"),
+    if Map.get(given, "asked") != Map.get(earlier, "asked"),
       do: {:error, :asked_changed},
       else: answer_kept(earlier, given, run_number)
   end
@@ -248,23 +249,23 @@ defmodule Apiary.Explore.Questions do
     cond do
       Map.has_key?(given, "answer") -> {:error, :answer_changed}
       length(now) != length(history) + 1 -> {:error, :reopen_not_kept}
-      Enum.take(now, length(history)) !== history -> {:error, :history_changed}
-      Map.delete(List.last(now), "reopened") !== answer -> {:error, :reopen_not_kept}
-      get_in(List.last(now), ["reopened", "run"]) !== run_number -> {:error, :reopened_run}
+      Enum.take(now, length(history)) != history -> {:error, :history_changed}
+      Map.delete(List.last(now), "reopened") != answer -> {:error, :reopen_not_kept}
+      get_in(List.last(now), ["reopened", "run"]) != run_number -> {:error, :reopened_run}
       true -> :ok
     end
   end
 
   defp answer_kept(earlier, given, _run_number) do
     cond do
-      Map.get(given, "answer") !== Map.get(earlier, "answer") ->
+      Map.get(given, "answer") != Map.get(earlier, "answer") ->
         {:error, :answer_changed}
 
-      history(given) !== history(earlier) ->
+      history(given) != history(earlier) ->
         {:error, :history_changed}
 
       answered?(earlier) and answered?(given) and
-          Map.take(given, @answered_kept) !== Map.take(earlier, @answered_kept) ->
+          Map.take(given, @answered_kept) != Map.take(earlier, @answered_kept) ->
         {:error, :answered_changed}
 
       true ->
@@ -277,7 +278,7 @@ defmodule Apiary.Explore.Questions do
   defp new(%{"state" => "open"} = given, run_number) do
     cond do
       history(given) != [] -> {:error, :history_changed}
-      get_in(given, ["asked", "run"]) !== run_number -> {:error, :asked_run}
+      get_in(given, ["asked", "run"]) != run_number -> {:error, :asked_run}
       true -> :ok
     end
   end
