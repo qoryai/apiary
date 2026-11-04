@@ -59,10 +59,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   #   * `"undo"`, `"ask_close"`, `"close"`, `"explore_again"` - with
   #     `phx-value-number`, the work item's number;
   #   * `"answer_draft"`, `"answer"` - the questions form, on change and on submit:
-  #     `number`, and `answers`, a map of each question's `public_id` to its answer,
-  #     `%{"option" => title, "custom" => text}`, the option selected and the text written;
-  #   * `"change_draft"`, `"send_change"` - the form under Qory's proposal, on change and
-  #     on submit: `number`, and `change`, the text written, empty to confirm;
+  #     `answers`, a map of each open question's `public_id` to its answer,
+  #     `%{"option" => choice, "note" => text}`: the index of the option picked, or
+  #     `"own"` for Give your own option, and the text written;
+  #   * `"run_with_comments"`, `"confirm"` - the gate's buttons under the proposal;
+  #   * `"review_comment"`, `"reply"` - the form pages Add review comment and Reply: `text`,
+  #     and for a reply `comment`, the review comment's id;
   #   * `"ask_delete_comment"`, `"delete_comment"` - with `phx-value-comment`, the
   #     comment's `public_id`;
   #   * `"comment"` - the composer's form, its text as `body`;
@@ -528,24 +530,22 @@ defmodule ApiaryWeb.WorkItemComponents do
       the ticket, which keeps Qory's label and comment.
     * Explore, queued, a later run (`:run`, `%{attempt:, of:, answers_by:}`): what Qory
       reads, with whose answers, and which run of the take in is queued. No Undo.
-    * Explore, running: what Qory does, and with whose answers from a second run (`:run`,
-      `%{attempt:, path:, started_at:, answers_by:}`), and when the run started; the attempt
-      number links the run's page where `path` is given.
-    * Explore, questions (`:questions`): how many questions Qory wrote; with `can_act`,
-      that answering them explores again, and Answer the questions (a link to Explore's
-      tab, `explore_path`, where it is given); without, that it waits for a member to
-      answer.
+    * Explore, running: what Explore reads, with whose answers from a second run (`:run`,
+      `%{attempt:, answers_by:}`).
+    * Explore, questions (`:questions`): with `can_act`, that answering the questions runs
+      Explore again, and Answer the questions (a link to Explore's tab, `explore_path`,
+      where it is given); without, that a member answers next.
     * Explore, no result (`:no_result`, `:lost`, `:cancelled`): what happened to the run;
       with `can_act`, Run Explore again (`"explore_again"`), which starts the next run of
       the take in.
     * Explore, the run limit (`:used_up`, and questions or no result at the take in's
       last run): that the take in used its runs, and why Qory cannot explore again; with
       `can_act`, the way on and, with `can_close`, Close work item… (`"ask_close"`).
-    * Confirm: Qory's proposal waits; with `can_act`, what to do and Read Qory's proposal
-      (`explore_path`), where the field and the button under the proposal are (`explore_tab/1`).
+    * Confirm: the proposal waits; with `can_act`, what to do and Read the proposal
+      (`explore_path`), where the gate under the proposal is (`explore_tab/1`).
       Without `can_act`, whose turn it is: the work item's `:owner`, by name, or "you"
       where the owner is the reader.
-    * Shape: who confirmed Qory's proposal and when (`:confirmed_by`, `:confirmed_at`).
+    * Shape: who confirmed the proposal and when (`:confirmed_by`, `:confirmed_at`).
 
   While its ticket's repository keeps its tickets out of the Backlog (`backlog_off`),
   Take in again cannot be reached there, so no line says it can.
@@ -4087,18 +4087,24 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp event_line(%{kind: :answered, actor: actor, comment: comment})
        when is_binary(comment) do
     if you?(actor),
-      do: gettext("You commented on Qory's proposal"),
-      else: rich_gettext("%{name} commented on Qory's proposal", name: {:b, actor.name})
+      do: gettext("You wrote a review comment on the proposal"),
+      else: rich_gettext("%{name} wrote a review comment on the proposal", name: {:b, actor.name})
   end
 
   defp event_line(%{kind: :answered, actor: actor, questions: questions}) do
     n = length(questions)
+    number = Format.number(n)
 
     if you?(actor),
-      do: ngettext("You answered Qory's question", "You answered Qory's questions", n),
+      do:
+        ngettext("You answered 1 question", "You answered %{number} questions", n, number: number),
       else:
-        rich_ngettext("%{name} answered Qory's question", "%{name} answered Qory's questions", n,
-          name: {:b, actor.name}
+        rich_ngettext(
+          "%{name} answered 1 question",
+          "%{name} answered %{number} questions",
+          n,
+          name: {:b, actor.name},
+          number: number
         )
   end
 

@@ -113,14 +113,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <h2 id={"#{@id}-h"}>{@page.stage.name}</h2>
         <span id={"#{@id}-state"}><.state_badge state={shown_state(@page)} /></span>
       </div>
-      <p :if={@page.rounds} id={"#{@id}-round"} class="q-wi-bee-line">
+      <p :if={@page.rounds && !@page.at_explore} id={"#{@id}-round"} class="q-wi-bee-line">
         {gettext("Round %{round} of %{rounds}",
           round: Format.number(@page.round || 1),
           rounds: Format.number(@page.rounds)
         )}
-      </p>
-      <p :if={@page.version} id={"#{@id}-version"} class="text-xs opacity-70">
-        {gettext("Process version %{number}", number: Format.number(@page.version))}
       </p>
       <p :if={@notice} id={"#{@id}-notice"} class="q-xp-err" role="alert">{@notice}</p>
       <.stage_body

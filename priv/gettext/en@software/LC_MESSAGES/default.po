@@ -1042,8 +1042,8 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} answered Qory's question"
-msgid_plural "%{name} answered Qory's questions"
+msgid "%{name} answered 1 question"
+msgid_plural "%{name} answered %{number} questions"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1080,11 +1080,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} closed this work item on %{date}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} commented on Qory's proposal"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -1411,6 +1406,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} undid the take in, before a run started"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} wrote a review comment on the proposal"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3262,6 +3262,13 @@ msgstr ""
 msgid "1 overrides it with observe"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "1 run"
+msgid_plural "%{count} runs"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "1 target overrides it with enforce."
@@ -4213,6 +4220,11 @@ msgstr ""
 msgid "Add at least one file."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Add details (optional)"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add for this target"
@@ -4269,6 +4281,12 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add pool"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Add review comment"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4980,26 +4998,21 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Answer Qory's question, and Explore runs again with your answer."
-msgid_plural "Answer Qory's %{number} questions, and Explore runs again with your answers."
+msgid "Answer the question"
+msgid_plural "Answer the questions"
 msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Answer the question"
-msgid_plural "Answer the questions"
+msgid "Answer the question, and Explore runs again with your answer."
+msgid_plural "Answer the %{number} questions, and Explore runs again with your answers."
 msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Answer the questions"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Answer to question %{number}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -5016,7 +5029,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Answers for attempt %{attempt}"
+msgid "Answered in version %{version}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -5184,6 +5197,11 @@ msgstr ""
 msgid "Asked Qory to explore a work item again"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Asked as question %{number}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Asked for a build of its environment"
@@ -5303,6 +5321,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Attempt %{attempt}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} ended with an error, so Explore has no result"
 msgstr ""
 
@@ -5339,11 +5362,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Attempt %{attempt} of %{of} reads the %{item} and these answers from the start, then returns a proposal or more questions."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of} reads the %{item}, then returns a proposal or questions."
 msgstr ""
 
@@ -5369,17 +5387,22 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} reads the %{item}, the newest proposal and the questions with your answers, then writes the next proposal and questions."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} reads this review comment."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} returned a result that did not pass Qory's check"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} returned a result that did not pass Qory's check, so Explore has no result."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Attempt %{attempt} started %{when}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -5405,11 +5428,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} wrote these questions."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Attempt %{attempt} wrote this."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -5981,6 +5999,11 @@ msgstr ""
 msgid "Changed in %{page}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Changed in version %{version}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the configuration of Qory Apiary"
@@ -6322,7 +6345,7 @@ msgstr "Choose an image without nested Docker in the workspace's policy or the r
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
+msgid "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -6613,11 +6636,6 @@ msgstr ""
 msgid "Commented on a work item"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Comments"
-msgstr ""
-
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -6671,15 +6689,17 @@ msgstr ""
 msgid "Confirm"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Confirm Qory's proposal, or write what to change."
-msgstr ""
-
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Confirm it is you"
 msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm leaves 1 review comment unread."
+msgid_plural "Confirm leaves %{count} review comments unread."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
@@ -6695,6 +6715,11 @@ msgstr ""
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Confirm password"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm the proposal, or add review comments and send them."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -7267,6 +7292,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Declined a work item to resolve an escalation"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Declined in version %{version}"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -7922,11 +7952,6 @@ msgctxt "ticket task"
 msgid "Done"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Done in version %{version}"
-msgstr ""
-
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Done:"
@@ -8013,7 +8038,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Earlier runs of this take in"
+msgid "Earlier answer"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
@@ -8590,6 +8615,26 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Explore reads the %{item} and the answers of %{name}, and writes a proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Explore reads the %{item} and the answers of this take in, and writes a proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Explore reads the %{item} and writes a proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Explore reads the %{item} and your answers, and writes a proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Explore used its %{of} run"
 msgid_plural "Explore used its %{of} runs"
 msgstr[0] ""
@@ -9035,6 +9080,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Follows %{workspace}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Follows question %{number}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -9608,6 +9658,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Hi! Where are you running?"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Hide the review comment"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/show.ex
@@ -13774,6 +13829,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open"
 msgstr ""
@@ -13860,6 +13916,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open policy"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open questions"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -14474,14 +14535,14 @@ msgstr ""
 msgid "Previous"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Process"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Process changed"
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "Process version %{number}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -14513,6 +14574,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Prompt"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Proposal"
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
@@ -14849,11 +14915,6 @@ msgstr ""
 msgid "Qory harness, stack %{stack}"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Qory is updating the proposal"
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Qory policy of %{subject}, version %{version}"
@@ -14866,35 +14927,8 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory reads the %{item} and the answers of %{name}, and writes a proposal."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Qory reads the %{item} and the answers of this take in, and writes a proposal."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Qory reads the %{item} and writes a proposal."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Qory reads the %{item} and your answers, and writes a proposal."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "Qory removed its label from the %{item} and left its comment. To bring the work item back, use Take in again."
 msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Qory returned %{number} question instead of a proposal."
-msgid_plural "Qory returned %{number} questions instead of a proposal."
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -14947,18 +14981,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory's proposal"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Qory's question"
-msgid_plural "Qory's questions"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "Qory's question, and the answer"
 msgid_plural "Qory's questions, and the answers"
 msgstr[0] ""
@@ -14966,8 +14988,10 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Questions"
-msgstr ""
+msgid "Question"
+msgid_plural "Questions"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
@@ -15001,14 +15025,14 @@ msgstr ""
 msgid "Raw log"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Read Qory's proposal"
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the log as text"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Read the proposal"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -15579,6 +15603,11 @@ msgstr ""
 msgid "Rendered the run configurations again"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Reopened"
+msgstr ""
+
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Replace %{filename} with a Markdown file of UTF-8 text."
@@ -15636,6 +15665,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Replaces this target's allow rule."
 msgstr "Replaces this repository's allow rule."
+
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Reply"
+msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
@@ -15717,6 +15752,16 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Review"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Review comment"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Review comments"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -15896,11 +15941,6 @@ msgstr ""
 msgid "Run %{run}"
 msgstr ""
 
-#: lib/apiary_web/components/artifact_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run %{run} · round %{round}"
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run Explore again"
@@ -16057,6 +16097,16 @@ msgstr ""
 msgid "Run this on the Linux machine with Docker that runs the runs in %{workspace}. It joins that machine to the pool %{pool}. Install qory there first:"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run with answers"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run with comments"
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_components.ex
@@ -16066,6 +16116,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Running"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Running again sends your review comments, and the agent updates the proposal."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/node.ex
@@ -16106,6 +16161,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs a page"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs and artifacts"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -16605,16 +16665,6 @@ msgstr ""
 msgid "Send a new link"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Send answers"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Send change"
-msgstr ""
-
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Send invitation"
@@ -16651,16 +16701,6 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Sending"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Sending starts attempt %{attempt} of %{of}, which reads the %{item}, its comments, the first instruction and every answer of this take in."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Sending starts attempt %{attempt} of %{of}, which reads the line and every answer of this take in."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -17124,6 +17164,11 @@ msgstr ""
 msgid "Show the locked rule"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show the review comment"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show the rule"
@@ -17365,6 +17410,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Source on GitHub"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Sources (%{count})"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -18296,6 +18346,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "The agent escalated."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The agent is waiting for your answers. Running again sends them and updates the proposal."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -19698,13 +19753,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "These questions come from %{number} earlier run of this take in."
-msgid_plural "These questions come from %{number} earlier runs of this take in."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "These runs do not count toward the run limit of this take in."
 msgstr ""
 
@@ -20045,20 +20093,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "This stage is not in the current version."
 msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "This take in used its %{of} run, so Explore cannot run again for these questions."
-msgid_plural "This take in used all %{of} runs, so Explore cannot run again for these questions."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "This take in used its %{of} run, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog."
-msgid_plural "This take in used all %{of} runs, so Explore cannot run again for these questions. To start a new count, close the work item, then use Take in again in the Backlog."
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
@@ -20780,6 +20814,7 @@ msgid "Version %{n}. Open the exact document."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/target_live/show.ex
@@ -20810,11 +20845,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Version %{version}. Attempt %{attempt} wrote this."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -21047,11 +21077,6 @@ msgstr ""
 msgid "What runs and people store on a work item, and how Qory Apiary shows it."
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "What should change?"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "What should runs do?"
@@ -21282,6 +21307,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "With no rules, runs reach everything and every connection is recorded."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrawn"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -21597,6 +21627,16 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Write your option, or pick one above."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Write your reply."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Wrote %{number} question"
 msgid_plural "Wrote %{number} questions"
 msgstr[0] ""
@@ -21688,8 +21728,8 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You answered Qory's question"
-msgid_plural "You answered Qory's questions"
+msgid "You answered 1 question"
+msgid_plural "You answered %{number} questions"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -21902,11 +21942,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "You commented on Qory's proposal"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "You confirm next"
 msgstr ""
 
@@ -22097,6 +22132,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "You wrote a review comment on the proposal"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "You, on version %{version}"
 msgstr ""
 
@@ -22190,6 +22230,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Your membership in these organisations is suspended: you cannot open them or act in them. An owner or an admin of each can activate it."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Your option"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -23293,6 +23338,11 @@ msgstr ""
 msgid "pool default"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "proposal v%{version}"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "qory makes the key on %{name}, sends Qory Apiary only its public half, and saves everything else there itself."
@@ -23311,6 +23361,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "questions"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "questions v%{version}"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

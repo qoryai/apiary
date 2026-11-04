@@ -241,22 +241,14 @@ defmodule ApiaryWeb.ArtifactComponents do
   @doc """
   writer/1 is who made a version, in words: a person's email address, "Former member"
   for an account that is gone; for a run, "Run" and the number of the run its claim
-  registered (`Apiary.Runs.Run`) and the round where the run of the queue has one, such
-  as "Run 14 · round 2", or "A run" where no run is registered or read.
+  registered (`Apiary.Runs.Run`), such as "Run 14", or "A run" where no run is
+  registered or read.
   """
   @spec writer(Version.t()) :: String.t()
   def writer(%Version{writer: :person, user: %Apiary.Accounts.User{} = user}),
     do: People.email(user)
 
   def writer(%Version{writer: :person}), do: People.former_member()
-
-  def writer(%Version{writer: :run, run: %{run: %Run{number: number}, round: round}})
-      when is_integer(number) and is_integer(round),
-      do:
-        gettext("Run %{run} · round %{round}",
-          run: number,
-          round: Format.number(round)
-        )
 
   def writer(%Version{writer: :run, run: %{run: %Run{number: number}}}) when is_integer(number),
     do: gettext("Run %{run}", run: number)
