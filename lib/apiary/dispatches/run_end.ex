@@ -144,8 +144,6 @@ defmodule Apiary.Dispatches.RunEnd do
 
   import Ecto.Query, only: [from: 2]
 
-  require Logger
-
   alias Apiary.{Dispatches, Environments, Repo}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle, Slots}
   alias Apiary.Environments.Record
@@ -607,10 +605,16 @@ defmodule Apiary.Dispatches.RunEnd do
   defp lose_guarded(id, now) do
     {:ok, {changed, silenced}} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
     if silenced, do: Apiary.Runs.broadcast_changed(silenced)
+    Apiary.Runs.StuckLog.clear({:lose, id})
     changed
   rescue
     error ->
-      Logger.error("run end failed dispatch_run=#{id} error=#{inspect(error.__struct__)}")
+      module = error.__struct__
+
+      Apiary.Runs.StuckLog.log(:error, {:lose, id}, module, fn ->
+        "run end failed dispatch_run=#{id} error=#{inspect(module)}"
+      end)
+
       []
   end
 

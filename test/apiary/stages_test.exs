@@ -633,18 +633,24 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_state: :running} = reload(work_item)
       assert %DispatchRun{state: :ended, end_cause: :key_gone} = Repo.get!(DispatchRun, run.id)
 
-      # The stage sweep reads it at each tick, one line each, until the file can be read.
+      # The stage sweep reads it at each tick until the file can be read, with one line
+      # an hour.
       {{[], nil}, log} =
         ExUnit.CaptureLog.with_log(fn -> Stages.sweep(DateTime.utc_now(), nil) end)
 
       assert log =~
                "stage end failed dispatch_run=#{run.id} error=Apiary.Stages.QuestionsUnreadable"
 
+      {{[], nil}, log} =
+        ExUnit.CaptureLog.with_log(fn -> Stages.sweep(DateTime.utc_now(), nil) end)
+
+      refute log =~ "dispatch_run=#{run.id}"
       assert %WorkItem{stage_state: :running} = reload(work_item)
 
       File.rename!(path <> ".away", path)
       assert {[_], nil} = Stages.sweep(DateTime.utc_now(), nil)
       assert %WorkItem{stage_state: :waiting_answers} = reload(work_item)
+      assert Apiary.Runs.StuckLog.lines() == %{}
 
       # An end the stage acted on is not read again.
       assert Stages.sweep(DateTime.utc_now(), nil) == {[], nil}

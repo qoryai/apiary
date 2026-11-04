@@ -298,12 +298,15 @@ defmodule Apiary.Dispatches.SettleTest do
                  "dispatch_run=#{handed.dispatch_run.id} " <>
                  "work_item=#{work_item!(handed).public_id} questions_version=#{version.public_id}"
 
-      assert Settle.sweep(Dispatches.now()) == []
+      # The sweep reads it again within the hour, in the same process: no second line.
+      log = ExUnit.CaptureLog.capture_log(fn -> assert Settle.sweep(Dispatches.now()) == [] end)
+      refute log =~ "dispatch_run=#{handed.dispatch_run.id}"
       assert stored(handed) == {nil, nil}
 
       File.rename!(path <> ".away", path)
       assert [_] = Settle.sweep(Dispatches.now())
       assert stored(handed) == {:questions, nil}
+      assert Apiary.Runs.StuckLog.lines() == %{}
     end
 
     test "reads after where the sweep before stopped, so runs left unset fill no batch",
@@ -395,6 +398,11 @@ defmodule Apiary.Dispatches.SettleTest do
       assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
       assert %WorkItem{stage_state: :running} = work_item!(handed)
 
+      # The next tick, within the hour, reads the run again and writes neither line.
+      log = ExUnit.CaptureLog.capture_log(fn -> Liveness.check(lost_at) end)
+      refute log =~ "dispatch_run=#{id}"
+      assert %DispatchRun{state: :handed_over} = queue_run!(handed)
+
       File.rename!(path <> ".away", path)
       Liveness.check(lost_at)
 
@@ -402,6 +410,8 @@ defmodule Apiary.Dispatches.SettleTest do
                queue_run!(handed)
 
       assert %WorkItem{stage_state: :waiting_answers} = work_item!(handed)
+      # Ended and settled, the run is no longer kept for its lines.
+      assert Apiary.Runs.StuckLog.lines() == %{}
     end
 
     # A lost run the stage runner does not read, as its stage is not running: Settle's

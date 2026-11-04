@@ -325,10 +325,15 @@ defmodule Apiary.Stages do
         {:ok, run_ended(id, claim_context(id))}
       end)
 
+    Apiary.Runs.StuckLog.clear({:stage, id})
     told
   rescue
     exception ->
-      Logger.error("stage end failed dispatch_run=#{id} error=#{inspect(exception.__struct__)}")
+      module = exception.__struct__
+
+      Apiary.Runs.StuckLog.log(:error, {:stage, id}, module, fn ->
+        "stage end failed dispatch_run=#{id} error=#{inspect(module)}"
+      end)
 
       []
   end

@@ -206,16 +206,17 @@ defmodule Apiary.Dispatches.Settle do
 
   # A run whose newest questions cannot be read: no outcome stored, and a warning with its
   # id, its work item's public id (`wi_…`) and the questions version's (`av_…`), so the
-  # instance admin finds the questions file the store cannot read.
+  # instance admin finds the questions file the store cannot read. At most once an hour
+  # for each run (`Apiary.Runs.StuckLog`).
   defp unread(%DispatchRun{id: id, work_item_id: work_item_id}) do
-    work_item = Repo.get(WorkItem, work_item_id)
-    version = work_item && Apiary.Artifacts.newest(work_item, "questions")
+    Apiary.Runs.StuckLog.log(:warning, {:settle, id}, nil, fn ->
+      work_item = Repo.get(WorkItem, work_item_id)
+      version = work_item && Apiary.Artifacts.newest(work_item, "questions")
 
-    Logger.warning(
       "run outcome not stored, newest questions unreadable dispatch_run=#{id} " <>
         "work_item=#{work_item && work_item.public_id} " <>
         "questions_version=#{version && version.public_id}"
-    )
+    end)
 
     []
   end
@@ -227,6 +228,7 @@ defmodule Apiary.Dispatches.Settle do
         set: [result_outcome: outcome]
       )
 
+    Apiary.Runs.StuckLog.clear({:settle, id})
     told(work_item_id)
   end
 
