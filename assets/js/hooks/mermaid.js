@@ -1,13 +1,12 @@
 // The diagrams of an artifact's Document view and of a proposal on the work item page.
 // The hook element (phx-update="ignore") contains blocks
-// <pre class="q-mermaid-source"><code>…</code></pre>; the hook draws each
-// block with Mermaid and shows the result as an <img> of the SVG. Mermaid draws in a
-// temporary element of the page, which it removes after the draw; the hook keeps what it
-// puts there free of script, of elements and attributes that load an address or link,
-// and of a document's styles and classes (the settings and checks below). After the
-// draw, the page has only the <img>, which runs no script. The block's source moves into a
-// <details> under the image. A block that does not parse stays as text, with the sentence
-// from data-failed above it.
+// <pre class="q-mermaid-source"><code>…</code></pre>; the hook draws each block with
+// Mermaid and shows the result as an <img> of the SVG. Mermaid draws the SVG in a
+// temporary element of the page and removes that element after the draw. After the
+// draw, the page has only the <img>: a browser runs no script of an SVG shown as an
+// image and loads no address from it. The block's source moves into a <details> under
+// the image. A block that does not parse stays as text, with the sentence from
+// data-failed above it.
 //
 // Attributes of the hook element, translated on the server: data-script (the bundle URL),
 // data-alt (the images' alt text), data-source (the label of the source's <details>) and
@@ -22,15 +21,19 @@
 // characters and 200 edges, and the theme "base" with the app's colours, read from its
 // CSS variables. A document can change Mermaid's settings in two ways, a directive
 // (%%{init: …}%%) and a front matter config: block (--- … --- at its start). The hook
-// drops both before a block is drawn, with its click, link, links and callback
-// statements (source below). Every setting that changes HTML, CSS or links is also in Mermaid's
-// secure list (secure below), which Mermaid removes, at every depth, from what a
-// document sets. So a document cannot change these settings or add links.
-// A text that Mermaid puts into the page as HTML, such as an eventmodeling field or a
-// sequence message with $$…$$, goes through Mermaid's sanitizer with the hook's
-// dompurifyConfig (below): no element or attribute in it loads an address, links or
-// styles the page. A block with a syntax that makes Mermaid load an address itself
-// (loads below) is not drawn: it stays as text, with the sentence from data-failed.
+// drops both before a block is drawn (source below). Mermaid also removes, at every
+// depth, each setting of its secure list from what a document sets; the hook's list
+// (secure below) has every setting that changes the HTML, the CSS or the links of a
+// drawing.
+// The hook drops each click, link, links and callback statement of Mermaid 11.17.2
+// (linkStatements below) before a block is drawn.
+// Mermaid passes each text that it puts into the temporary element as HTML, such as a
+// sequence message with $$…$$, through its sanitizer, with the hook's dompurifyConfig
+// (below), which removes the elements and attributes that load an address, link or
+// style. An eventmodeling diagram changes its fields after the sanitizer, so the hook
+// does not draw one that contains a "<" (loads below).
+// The hook does not draw a block with a syntax that makes Mermaid load an address
+// (loads below): the block stays as text, with the sentence from data-failed.
 // When the app's theme changes (data-theme on <html>), the hook draws each diagram again
 // with the new colours (watchTheme below).
 // The <img> gets the diagram's width from the SVG's max-width (width below): Mermaid
@@ -90,13 +93,12 @@ export const secure = [
   "ticketBaseUrl",
 ]
 
-// What Mermaid's sanitizer (DOMPurify) removes from each text it puts into the page as
-// HTML, such as an eventmodeling field or a sequence message with $$…$$: each element
-// that loads an address or links, and the attributes style, class, id and those with an
-// address, so a text cannot load, link, style the page or take an id of it while the
-// diagram draws. Mermaid applies this site setting, which a document cannot change
-// (secure above), to every text it sanitizes. It removes only what a document wrote:
-// the markup Mermaid adds around a text, such as a label's <div style>, stays.
+// What Mermaid's sanitizer (DOMPurify) removes from each text it sanitizes, such as a
+// sequence message with $$…$$: the elements listed, which load an address or link, and
+// the attributes style, class, id and those with an address. Mermaid applies this site
+// setting, which a document cannot change (secure above), to every text it sanitizes.
+// It removes only what a document wrote: the markup Mermaid adds around a text, such as
+// a label's <div style>, stays.
 export const dompurifyConfig = {
   FORBID_TAGS: [
     "style",
