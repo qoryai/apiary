@@ -60,8 +60,8 @@ defmodule Apiary.Stages do
   # ## What a person does
   #
   # `approve/3`, `request_changes/4`, `resolve_escalation/4` and `move/4` ask
-  # `gate.approve` (`Apiary.Access`) of the work item, which allows only the stage's
-  # listed approvers where the stage lists them (by their account's id,
+  # `gate.approve` (`Apiary.Access`) of the locked work item, which allows only the
+  # stage's listed approvers where the stage lists them (by their account's id,
   # `Apiary.Stages.Approvers`), else `:not_approver`. Each writes one
   # entry in the audit trail, `gate.approve`, with `details.change` `approve`,
   # `request_changes`, `escalation_<resolution>` or `move`.
@@ -1554,17 +1554,17 @@ defmodule Apiary.Stages do
   ## Gates
 
   # The work item in the scope's workspace, locked, with its version and stage, once the
-  # scope may take `gate.approve` on it and is a listed approver of its stage.
+  # scope may take `gate.approve` on it, asked of the locked row: its role, then a place
+  # among the approvers of the stage the row is in (`Apiary.Access`).
   defp hold(scope, %WorkItem{id: id}, opts) do
     with {:ok, id} <- Ecto.UUID.cast(id),
          {:ok, workspace} <- workspace(scope),
          %WorkItem{} = found <- in_workspace(workspace, id),
-         :ok <- Access.authorize(scope, @action, found),
          work_item = lock!(found.id),
+         :ok <- Access.authorize(scope, @action, work_item),
          :ok <- expected(work_item, opts),
          :ok <- live(work_item),
-         {:ok, version, stage} <- placed(work_item),
-         :ok <- if(Approvers.listed?(scope, stage), do: :ok, else: {:error, :not_approver}) do
+         {:ok, version, stage} <- placed(work_item) do
       {:ok, work_item, version, stage}
     else
       :error -> {:error, :not_found}
