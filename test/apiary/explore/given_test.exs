@@ -43,4 +43,73 @@ defmodule Apiary.Explore.GivenTest do
       assert given == Given.all(work_item)
     end
   end
+
+  describe "an answer" do
+    @at "2026-11-04T10:00:00Z"
+
+    defp given(note, run \\ nil) do
+      answer = %{"option" => nil, "note" => note, "by" => %{"name" => "ann"}, "at" => @at}
+      if run, do: Map.put(answer, "reopened", %{"run" => run, "at" => @at}), else: answer
+    end
+
+    # A move that answered the question q1, in the second of `@at`, `micro` microseconds
+    # into it.
+    defp answered(micro) do
+      {:ok, at, 0} = DateTime.from_iso8601(@at)
+
+      %{
+        kind: :answered,
+        id: Ecto.UUID.generate(),
+        actor_id: Ecto.UUID.generate(),
+        at: DateTime.add(at, micro, :microsecond),
+        data: %{"take_in" => 1, "attempt" => micro, "questions" => ["q1"]}
+      }
+    end
+
+    defp questions(question),
+      do: %{
+        "questions" => [
+          Map.merge(
+            %{"id" => "q1", "question" => "Which basket?", "options" => []},
+            question
+          )
+        ]
+      }
+
+    test "two answers to one question in the same second each pair with their move" do
+      questions =
+        questions(%{
+          "state" => "answered",
+          "history" => [given("The main one.", 2)],
+          "answer" => given("The other one.")
+        })
+
+      [first, second] = events = [answered(1), answered(2)]
+
+      assert [
+               %{event_id: first_id, text: "The main one.", custom: true},
+               %{event_id: second_id, text: "The other one."}
+             ] = Given.from_events(events, questions, nil)
+
+      assert {first_id, second_id} == {first.id, second.id}
+    end
+
+    test "a move with no answer at its place gives none, not the question's answer" do
+      reopened =
+        questions(%{
+          "state" => "open",
+          "history" => [given("The main one.", 2), given("The other one.", 3)]
+        })
+
+      events = [answered(1), answered(2), answered(3)]
+
+      assert Enum.map(Given.from_events(events, reopened, nil), & &1.text) ==
+               ["The main one.", "The other one."]
+
+      once = questions(%{"state" => "answered", "answer" => given("The main one.")})
+
+      assert [%{attempt: 1, text: "The main one."}] =
+               Given.from_events(events, once, nil)
+    end
+  end
 end

@@ -20,7 +20,10 @@ defmodule Apiary.Explore.Given do
   #   * `by_id` and `at`: the member's account and the move's time, and `event_id`, the
   #     move's event.
   #
-  # An answer a run reopened is read from the question's `history`, by its time. An
+  # The moves that answered a question pair with its answers by order: the first move,
+  # oldest first, gave the first of the question's `history`, oldest first, and the
+  # question's `answer` is the last (a run that reopens a question moves its answer to
+  # the end of its `history`). A move with no answer at its place gives no entry. An
   # entry whose text no newest version has is left out. A send of the review comments
   # gives nothing to read.
   #
@@ -72,41 +75,51 @@ defmodule Apiary.Explore.Given do
   @doc false
   @spec from_events([map], map | nil, map | nil) :: [entry]
   def from_events(events, questions, comments) when is_list(events) do
-    events
-    |> Enum.filter(&(&1.kind == :answered))
-    |> Enum.flat_map(&entries(&1, questions, comments))
+    {entries, _counts} =
+      events
+      |> Enum.filter(&(&1.kind == :answered))
+      |> Enum.flat_map_reduce(%{}, &entries(&1, questions, comments, &2))
+
+    entries
   end
 
   defp document({_version, document}), do: document
   defp document(nil), do: nil
 
-  defp entries(%{data: %{"questions" => ids}} = event, questions, _comments) when is_list(ids) do
-    for id <- ids,
-        %{} = question <- [Questions.entry(questions, id)],
-        %{} = answer <- [answer(question, event.at)] do
-      {text, custom} = Questions.words(answer)
+  # The entries of one move, with `counts`, the number of earlier moves that answered
+  # each question, for the next.
+  defp entries(%{data: %{"questions" => ids}} = event, questions, _comments, counts)
+       when is_list(ids) do
+    entries =
+      for id <- ids,
+          %{} = question <- [Questions.entry(questions, id)],
+          %{} = answer <- [answer(question, Map.get(counts, id, 0))] do
+        {text, custom} = Questions.words(answer)
 
-      Map.merge(base(event, :answer, id), %{
-        question: question["question"],
-        text: text,
-        custom: custom,
-        option: answer["option"],
-        note: answer["note"]
-      })
-    end
+        Map.merge(base(event, :answer, id), %{
+          question: question["question"],
+          text: text,
+          custom: custom,
+          option: answer["option"],
+          note: answer["note"]
+        })
+      end
+
+    {entries, Enum.reduce(ids, counts, &Map.update(&2, &1, 1, fn n -> n + 1 end))}
   end
 
-  defp entries(%{data: %{"review_comment" => id} = data} = event, _questions, comments)
+  defp entries(%{data: %{"review_comment" => id} = data} = event, _questions, comments, counts)
        when is_binary(id) do
     with %{} = comment <- Enum.find(ReviewComments.entries(comments), &(&1["id"] == id)),
          {kind, text} when is_binary(text) <- comment_text(comment, data["reply"]) do
-      [Map.merge(base(event, kind, id), %{text: text, on: get_in(comment, ["on", "version"])})]
+      {[Map.merge(base(event, kind, id), %{text: text, on: get_in(comment, ["on", "version"])})],
+       counts}
     else
-      _none -> []
+      _none -> {[], counts}
     end
   end
 
-  defp entries(_event, _questions, _comments), do: []
+  defp entries(_event, _questions, _comments, counts), do: {[], counts}
 
   defp comment_text(comment, position) when is_integer(position) do
     case Enum.at(comment["replies"] || [], position - 1) do
@@ -117,11 +130,11 @@ defmodule Apiary.Explore.Given do
 
   defp comment_text(comment, _none), do: {:comment, comment["text"]}
 
-  # The answer given at `at`: the question's answer, or one its history kept.
-  defp answer(question, at) do
-    at = at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-    given = [question["answer"] | question["history"] || []]
-    Enum.find(given, &match?(%{"at" => ^at}, &1)) || question["answer"]
+  # The answer at `position`, from 0, among the question's answers oldest first: its
+  # history, then its answer; nil for none.
+  defp answer(question, position) do
+    given = (question["history"] || []) ++ List.wrap(question["answer"])
+    Enum.at(given, position)
   end
 
   defp base(event, kind, id),
