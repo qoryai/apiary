@@ -285,8 +285,8 @@ defmodule ApiaryWeb.BacklogComponents do
   ## The ticket
 
   @doc """
-  One ticket, with its head, its meta line, its facts, the Take in block, its text and its
-  comments.
+  One ticket, with its head, its meta line, its facts, its text, its comments and
+  Take in, where each frame below puts it.
 
   `frame` is `:list` or `:full`:
 
@@ -298,9 +298,13 @@ defmodule ApiaryWeb.BacklogComponents do
       for its items in place of "ticket" (`item_noun`, `SourceComponents.item/1`):
       "Bug", "Open the full bug"; Close and a press on the scrim patch to
       `close_patch`. Whether the dialog is modal, and its focus, are the page's, by width.
+      Its top part (`.q-bl-prev-head`) has the bar, the title, then Take in; the rest
+      (`.q-bl-prev-body`) has the meta line, the facts, the text and the comments. From
+      768 px only the rest scrolls; on the sheet below 768 px the CSS puts Take in back
+      under the facts.
     * `:full` - the full ticket, a page: Backlog back (`back_path`), the head, the text
       and the comments, and beside them the facts, Filed by among them, the link out and
-      the Take in block.
+      Take in.
 
   The first fact is the collection the ticket is listed from, labelled with its source's
   word for one of its collections (`collection_noun`, `SourceComponents.collection/1`),
@@ -395,53 +399,57 @@ defmodule ApiaryWeb.BacklogComponents do
     >
     </div>
     <div id={@id} class="q-bl-prev" role="dialog" aria-label={SourceComponents.item_label(@item_noun)}>
-      <div class="q-bl-tb">
-        <.integration_tile name={@integration} class="q-bl-src" />
-        <span class="q-bl-key" title={@full_form}><.external_text text={@full_form} /></span>
-        <span class="q-bl-grow"></span>
-        <.button
-          :if={@full_path}
-          id={"#{@id}-full"}
-          variant="ghost"
-          class="btn-square"
-          navigate={@full_path}
-          aria-label={gettext("Open the full %{item}", item: @item)}
-          title={gettext("Open the full %{item}", item: @item)}
-        >
-          <.icon name="hero-arrows-pointing-out-micro" class="size-3.5" />
-        </.button>
-        <.external_link
-          :if={@out}
-          id={"#{@id}-out"}
-          href={@ticket.url}
-          class="btn btn-ghost btn-sm btn-square q-bl-out-icon"
-          title={@open_on}
-        >
-          <span class="sr-only">{@open_on}</span>
-        </.external_link>
-        <.button
-          :if={@close_patch}
-          id={"#{@id}-close"}
-          variant="ghost"
-          class="btn-square"
-          patch={@close_patch}
-          aria-label={gettext("Close the %{item}", item: @item)}
-          title={gettext("Close")}
-        >
-          <.icon name="hero-x-mark-micro" class="size-3.5" />
-        </.button>
+      <div class="q-bl-prev-head">
+        <div class="q-bl-tb">
+          <.integration_tile name={@integration} class="q-bl-src" />
+          <span class="q-bl-key" title={@full_form}><.external_text text={@full_form} /></span>
+          <span class="q-bl-grow"></span>
+          <.button
+            :if={@full_path}
+            id={"#{@id}-full"}
+            variant="ghost"
+            class="btn-square"
+            navigate={@full_path}
+            aria-label={gettext("Open the full %{item}", item: @item)}
+            title={gettext("Open the full %{item}", item: @item)}
+          >
+            <.icon name="hero-arrows-pointing-out-micro" class="size-3.5" />
+          </.button>
+          <.external_link
+            :if={@out}
+            id={"#{@id}-out"}
+            href={@ticket.url}
+            class="btn btn-ghost btn-sm btn-square q-bl-out-icon"
+            title={@open_on}
+          >
+            <span class="sr-only">{@open_on}</span>
+          </.external_link>
+          <.button
+            :if={@close_patch}
+            id={"#{@id}-close"}
+            variant="ghost"
+            class="btn-square"
+            patch={@close_patch}
+            aria-label={gettext("Close the %{item}", item: @item)}
+            title={gettext("Close")}
+          >
+            <.icon name="hero-x-mark-micro" class="size-3.5" />
+          </.button>
+        </div>
+        <h2 id={"#{@id}-title"} class="q-bl-h"><.external_text text={@ticket.title} /></h2>
+        {render_slot(@take_in)}
       </div>
-      <h2 id={"#{@id}-title"} class="q-bl-h"><.external_text text={@ticket.title} /></h2>
-      <p class="q-bl-meta">{@meta}</p>
-      <.facts
-        id={@id}
-        ticket={@ticket}
-        collection_noun={@collection_noun}
-        filed_by={false}
-      />
-      {render_slot(@take_in)}
-      <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
-      <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
+      <div class="q-bl-prev-body">
+        <p class="q-bl-meta">{@meta}</p>
+        <.facts
+          id={@id}
+          ticket={@ticket}
+          collection_noun={@collection_noun}
+          filed_by={false}
+        />
+        <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
+        <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
+      </div>
     </div>
     """
   end
@@ -543,73 +551,37 @@ defmodule ApiaryWeb.BacklogComponents do
   ## Take in
 
   @doc """
-  The Take in block of a ticket, over the list and as a page (`ticket/1`'s `take_in`):
-  what Take in does and how, then Take in, a press of which sends `take_in` (`phx-click`,
-  an event name or a `Phoenix.LiveView.JS`) with the ticket's id as `phx-value-id`. To
-  whoever may not take a ticket in, `refused` says why in place of Take in.
-
-  The help names the workspace. Where the workspace's domain reads a target's harness file
-  (`Apiary.Lingo.Domain.harness_file?/1`), it says that one there stands in for the
-  workflow; where the domain needs a target (`Apiary.Lingo.Domain.target_required?/1`),
-  that the ticket must be in a repository assigned to the workspace.
+  Take in for a ticket, over the list and as a page (`ticket/1`'s `take_in`): Take in, a
+  press of which sends `take_in` (`phx-click`, an event name or a `Phoenix.LiveView.JS`)
+  with the ticket's id as `phx-value-id`, and beside it a hint that Take in starts
+  exploring the ticket. To whoever may not take a ticket in, `refused` says why in place
+  of both.
   """
-  attr :id, :string, required: true, doc: "the block's DOM id"
+  attr :id, :string, required: true, doc: "the row's DOM id"
   attr :ticket_id, :string, required: true, doc: "the ticket's public id, `\"tk_…\"`"
-  attr :workspace, :string, required: true, doc: "the workspace's name"
-  attr :harness_file, :boolean, default: false, doc: "whether the domain reads a harness file"
-  attr :target_required, :boolean, default: false, doc: "whether the domain needs a target"
   attr :take_in, :any, default: "take_in", doc: "Take in's `phx-click`"
   attr :refused, :string, default: nil, doc: "why the reader may not take it in; nil if they may"
 
   def take_in_block(assigns) do
     ~H"""
-    <div id={@id} class="q-bl-ti">
-      <div id={"#{@id}-help"} class="grid gap-1.5 text-[0.78125rem]/[1.1875rem] text-muted">
-        <p :if={@harness_file}>
-          <.rich text={
-            rich_gettext(
-              "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow, unless the ticket's target has a %{harness} or %{qory}.",
-              workspace: @workspace,
-              harness: {:code, "harness.yaml"},
-              qory: {:code, "qory.yaml"}
-            )
-          } />
-        </p>
-        <p :if={!@harness_file}>
-          {gettext(
-            "Take in makes a work item from a ticket and starts its explore run. %{workspace} needs a workflow first, set in Workspace settings › Workflow.",
-            workspace: @workspace
-          )}
-        </p>
-        <ol class="grid list-decimal gap-0.5 pl-5">
-          <li>
-            <.rich text={rich_gettext("Open %{backlog}.", backlog: {:b, gettext("Backlog")})} />
-          </li>
-          <li>{gettext("Press a ticket's title. Its panel opens.")}</li>
-          <li>
-            <.rich text={rich_gettext("Press %{take_in}.", take_in: {:b, gettext("Take in")})} />
-          </li>
-        </ol>
-        <p :if={@target_required}>
-          {gettext(
-            "In a software workspace, the ticket must be in a target assigned to %{workspace}.",
-            workspace: @workspace
-          )}
-        </p>
-      </div>
-      <div class="q-bl-ti-act">
+    <div id={@id} class="q-bl-ti-act">
+      <%= if @refused do %>
+        <p id={"#{@id}-refused"} class="text-[0.8125rem] text-muted">{@refused}</p>
+      <% else %>
         <.button
-          :if={!@refused}
           id={"#{@id}-button"}
           type="button"
           variant="primary"
           phx-click={@take_in}
           phx-value-id={@ticket_id}
+          aria-describedby={"#{@id}-hint"}
         >
           {gettext("Take in")}
         </.button>
-        <p :if={@refused} id={"#{@id}-refused"} class="text-[0.8125rem] text-muted">{@refused}</p>
-      </div>
+        <p id={"#{@id}-hint"} class="text-[0.8125rem] text-muted">
+          {gettext("Take in starts exploring this ticket.")}
+        </p>
+      <% end %>
     </div>
     """
   end

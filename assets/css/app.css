@@ -11881,7 +11881,7 @@
   .q-bl-wi > span {
     color: var(--q-faint);
   }
-  /* With the ticket open beside the list, its Take in is the panel's block. */
+  /* With the ticket open beside the list, its Take in is the one at the panel's top. */
   @media (min-width: 1280px) {
     .q-bl:has(> .q-bl-prev) .q-bl-row:has([aria-current="true"]):not(:hover, :focus-within) .q-bl-take {
       opacity: 0;
@@ -12006,6 +12006,47 @@
       border-left: 1px solid var(--q-border-subtle);
     }
   }
+  /* From 768 px the page is the window's height and the window does not scroll: the
+     header, the bar and the filters stay, and the list's box scrolls under them. From
+     1280 px the open ticket beside the list scrolls in its column, down to the window's
+     foot. Below 768 px the window scrolls the page, under the ticket's sheet. */
+  @media (min-width: 768px) {
+    .q-page:has(> * > .q-bl) {
+      display: flex;
+      height: calc(100dvh - var(--q-bar));
+      flex-direction: column;
+      padding-bottom: 1.5rem;
+    }
+    .q-page:has(> * > .q-bl) > *,
+    .q-page > * > .q-bl {
+      display: flex;
+      min-height: 0;
+      flex: 1 1 0;
+      flex-direction: column;
+    }
+    .q-bl > .q-bl-main {
+      min-height: 0;
+      flex: 1 1 0;
+    }
+    .q-bl-main > .q-blk {
+      min-height: 0;
+      flex: 0 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+  }
+  @media (min-width: 1280px) {
+    .q-page > * > .q-bl:has(> .q-bl-prev) {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      align-items: stretch;
+    }
+    .q-bl > .q-bl-prev {
+      position: static;
+      height: auto;
+      margin-bottom: -1.5rem;
+    }
+  }
   /* From 768 to 1279 px: a dialog over the list, at most 760 px wide, on a scrim. */
   @media (max-width: 1279.98px) {
     .q-bl-prev-scrim {
@@ -12040,8 +12081,8 @@
     }
   }
   /* Below 768 px: a sheet from the foot of the screen, from min(472 px, 56% of the window)
-     down, so the list's first rows show above it. While the Take in block is in view, its
-     button sticks to the sheet's foot. */
+     down, so the list's first rows show above it. Take in, with its hint, sticks to the
+     sheet's foot until the sheet scrolls it to its place under the facts. */
   @media (max-width: 767.98px) {
     .q-bl-prev {
       inset: min(472px, 56dvh) 0 0;
@@ -12050,7 +12091,7 @@
       border-radius: 12px 12px 0 0;
       animation-name: q-bl-sheet;
     }
-    .q-bl-prev > :last-child {
+    .q-bl-prev-body > :last-child {
       margin-bottom: 32px;
     }
     .q-bl-prev .q-bl-tb {
@@ -12061,11 +12102,78 @@
       position: sticky;
       bottom: 0;
       z-index: 1;
-      margin: 0 -16px -16px;
+      margin: 18px -16px 0;
       padding: 10px 16px 12px;
       border-top: 1px solid var(--q-border-subtle);
-      border-radius: 0 0 var(--radius-box) var(--radius-box);
       background-color: var(--color-base-200);
+    }
+  }
+  /* The ticket's top part (`.q-bl-prev-head`): the bar, the whole title, then Take in and
+     its hint, or why the reader may not take it in. From 768 px it stays in place over a
+     line, and only the rest (`.q-bl-prev-body`: the meta line, the facts, the text and the
+     comments) scrolls. On the sheet below 768 px both parts are one scroll, and Take in
+     moves back under the facts, where it sticks to the sheet's foot. */
+  @media (min-width: 768px) {
+    .q-bl > .q-bl-prev {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+    }
+    .q-bl-prev-head {
+      flex: none;
+      border-bottom: 1px solid var(--q-border-subtle);
+    }
+    .q-bl-prev-head > .q-bl-ti-act {
+      margin: 0;
+      padding: 12px 0;
+    }
+    .q-bl-prev-head > .q-bl-h:last-child {
+      margin-bottom: 12px;
+    }
+    .q-bl-prev-body {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .q-bl-prev-body > .q-bl-meta {
+      margin-top: 12px;
+    }
+  }
+  @media (min-width: 1280px) {
+    .q-bl-prev-head {
+      padding: 0 4px 0 24px;
+    }
+    .q-bl-prev-body {
+      padding: 0 4px 40px 24px;
+    }
+  }
+  @media (min-width: 768px) and (max-width: 1279.98px) {
+    .q-bl-prev-head {
+      padding: 0 24px;
+    }
+    .q-bl-prev-head > .q-bl-tb {
+      border-bottom: 0;
+    }
+    .q-bl-prev-body {
+      padding: 0 24px 32px;
+    }
+  }
+  @media (max-width: 767.98px) {
+    .q-bl-prev {
+      display: flex;
+      flex-direction: column;
+    }
+    .q-bl-prev-head,
+    .q-bl-prev-body {
+      display: contents;
+    }
+    .q-bl-prev-head > .q-bl-ti-act {
+      order: 1;
+    }
+    .q-bl-prev-body > :is(.q-bl-text, .q-bl-thread) {
+      order: 2;
     }
   }
   @keyframes q-bl-fade {
@@ -12220,105 +12328,15 @@
     line-height: 1.375rem;
   }
 
-  /* ---- Take in: a block inside the ticket, in the panel, the dialog, the sheet and the
-     full ticket; never a separate dialog. The page fills it (`ticket/1`'s `take_in`):
-     `.q-bl-ti` > `.q-bl-ti-h`, a `<.notice>` where there is one, `.q-bl-ti-facts`, the
-     first instruction's field, `.q-bl-ti-note`, `.q-bl-ti-act`. ---- */
-  .q-bl-ti {
-    display: grid;
-    max-width: 72ch;
-    gap: 14px;
-    margin-top: 18px;
-    padding: 14px 16px 16px;
-    border: 1px solid var(--q-border-subtle);
-    border-radius: var(--radius-box);
-    background-color: var(--color-base-200);
-  }
-  .q-bl-ti-h {
-    color: var(--q-muted);
-    font-size: 0.78125rem;
-    line-height: 1.125rem;
-    font-weight: 600;
-  }
-  .q-bl-ti-facts {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    align-items: center;
-    gap: 6px 16px;
-    margin: 0;
-    font-size: 0.8125rem;
-  }
-  .q-bl-ti-facts dt {
-    color: var(--q-muted);
-  }
-  .q-bl-ti-facts dd {
-    min-width: 0;
-    margin: 0;
-  }
-  .q-bl-ti :is(.input, .select, .textarea) {
-    background-color: var(--color-base-100);
-  }
-  .q-bl-ti .select {
-    max-width: 300px;
-  }
-  .q-bl-ti .textarea {
-    min-height: 64px;
-  }
-  .q-bl-ti-note {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    color: var(--q-muted);
-    font-size: 0.78125rem;
-    line-height: 1.25rem;
-  }
-  .q-bl-ti-note > .q-bl-bee {
-    margin-top: -2px;
-  }
+  /* ---- Take in: at the top of the panel and the dialog, under the title; under the facts
+     on the sheet; and in the full ticket's side column. Take in and its hint, or why the
+     reader may not take it in ---- */
   .q-bl-ti-act {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-  }
-  /* A first instruction over the limit: its count, beside the field's error. */
-  .q-bl-ti-count {
-    flex: none;
-    color: var(--color-error);
-    font-size: 0.78125rem;
-    font-variant-numeric: tabular-nums;
-  }
-  /* Taken in: the block on the success fill, the work item's number and Undo. */
-  .q-bl-ti.q-bl-ti-ok {
-    border-color: transparent;
-    background-color: var(--q-success-soft);
-  }
-  .q-bl-ti-done {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .q-bl-ti-done-i {
-    flex: none;
-    margin-top: 1px;
-    color: var(--color-success);
-  }
-  .q-bl-ti-l1 {
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  .q-bl-ti-l1 a {
-    color: var(--color-accent);
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-  }
-  .q-bl-ti-l2 {
-    margin-top: 2px;
-    color: var(--q-muted);
-    font-size: 0.78125rem;
-  }
-  .q-bl-ti-ok .q-bl-ti-l2 {
-    color: var(--q-success-soft-content);
+    gap: 8px 12px;
+    margin-top: 18px;
   }
 
   /* ---- The full ticket: a page of the Backlog; the text and comments on the left, the
@@ -12375,7 +12393,7 @@
     gap: 6px 16px;
     margin: 0;
   }
-  .q-bl-tk-side .q-bl-ti {
+  .q-bl-tk-side .q-bl-ti-act {
     margin-top: 0;
   }
   .q-bl-out {
