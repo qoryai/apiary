@@ -9830,6 +9830,11 @@ msgstr ""
 msgid "Image"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/markdown.ex
+#, elixir-autogen, elixir-format
+msgid "Image not in this version: %{alt}"
+msgstr ""
+
 #: lib/apiary/sources/body.ex
 #, elixir-autogen, elixir-format
 msgctxt "ticket image"
