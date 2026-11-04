@@ -227,6 +227,19 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     end
   end
 
+  test "an adapter's key is forbidden each action its role holds, before any lookup",
+       %{key: key} do
+    key_scope = Scope.for_access_key(key)
+
+    for action <- Map.fetch!(Access.roles(), :adapter_key) do
+      assert Connections.key_rights(key_scope, action) == {:error, :forbidden}, "#{action}"
+
+      assert Connections.connection_for_key(key_scope, "ac_0000000000000000", action) ==
+               {:error, :forbidden},
+             "#{action}"
+    end
+  end
+
   test "an adapter's key is not revoked, nor its code cancelled", %{
     scope: scope,
     admin: admin,

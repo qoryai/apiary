@@ -83,7 +83,7 @@ defmodule Apiary.Adapters.Connections do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, AccessKeys, Features, Organisations, PublicId, Repo}
+  alias Apiary.{Access, AccessKeys, Organisations, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collections, ConnectPass, Connection, Grants, LinkedPass, ReturnToken}
@@ -545,9 +545,9 @@ defmodule Apiary.Adapters.Connections do
     end
   end
 
-  # The id of the adapter whose key `key_scope` carries, where the feature is on:
-  # `{:ok, adapter_id}`. `{:error, :forbidden}` for a scope of no adapter's key, and where
-  # the feature is off. It looks up no connection.
+  # The id of the adapter whose key `key_scope` carries: `{:ok, adapter_id}`.
+  # `{:error, :forbidden}` for a scope of no adapter's key. Whether the key may take the
+  # action, the feature included, is `key_may/2`'s. It looks up no connection.
   defp key_adapter(%Scope{
          access_key: %AccessKey{
            node_id: adapter_id,
@@ -556,9 +556,8 @@ defmodule Apiary.Adapters.Connections do
            node: %Node{kind: :adapter, organisation_id: nil, workspace_id: nil}
          }
        })
-       when is_binary(adapter_id) do
-    if Features.on?(:factory), do: {:ok, adapter_id}, else: {:error, :forbidden}
-  end
+       when is_binary(adapter_id),
+       do: {:ok, adapter_id}
 
   defp key_adapter(_scope), do: {:error, :forbidden}
 
