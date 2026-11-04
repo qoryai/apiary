@@ -368,6 +368,7 @@ const DRAWN = {
   stateDiagram: "stateDiagram\n  [*] --> Draft\n  Draft --> Sent",
   "stateDiagram-v2": "stateDiagram-v2\n  [*] --> Draft\n  Draft --> Paid",
   classDiagram: "classDiagram\n  Invoice <|-- CreditNote",
+  "classDiagram-v2": "classDiagram-v2\n  Invoice <|-- Refund",
   erDiagram: "erDiagram\n  CUSTOMER ||--o{ INVOICE : receives",
 }
 
@@ -410,7 +411,13 @@ test("shows the not-drawn line for each other type, and draws nothing", async ()
     assert.deepEqual(await drawing(mermaid, text), {line: "notDrawn"}, name)
     assert.deepEqual(mermaid.rendered, [])
   }
-  for (const text of ["flowchart-elk LR\n  A --> B", "classDiagram-v2\n  A <|-- B", "Flowchart LR"])
+  // A first word that only starts with a type in types is another type.
+  for (const text of [
+    "flowchart-elk LR\n  A --> B",
+    "classDiagram-v20\n  A <|-- B",
+    "stateDiagram-v20\n  [*] --> A",
+    "Flowchart LR",
+  ])
     assert.deepEqual(await drawing(library(true), text), {line: "notDrawn"})
   assert.deepEqual(await drawing(library(true), ""), {line: "notDrawn"})
   // A byte order mark, or front matter that reaches drawing, leaves gantt not drawn.
@@ -442,8 +449,23 @@ test("each type the hook draws is one of the five to the vendored Mermaid", asyn
   const {default: mermaid} = await import("../../vendor/mermaid/mermaid.esm.min.mjs")
   mermaid.initialize(settings({}))
   await mermaid.parse(DRAWN.flowchart)
-  const five = ["flowchart-v2", "flowchart", "sequence", "state", "stateDiagram", "class", "er"]
+  // Mermaid's ids of the five: classDiagram-v2 is "classDiagram", classDiagram "class".
+  const five = [
+    "flowchart-v2",
+    "flowchart",
+    "sequence",
+    "state",
+    "stateDiagram",
+    "class",
+    "classDiagram",
+    "er",
+  ]
   for (const text of Object.values(DRAWN)) assert.ok(five.includes(mermaid.detectType(text)), text)
   for (const text of Object.values(NOT_DRAWN))
     assert.ok(!five.includes(mermaid.detectType(text)), text)
+  assert.equal(mermaid.detectType(DRAWN["classDiagram-v2"]), "classDiagram")
+  // Mermaid reads classDiagram-v20 as a class diagram and does not parse it; the hook's
+  // type is classDiagram-v20, which is not in types.
+  await assert.rejects(mermaid.parse("classDiagram-v20\n  A <|-- B"), /Parse error/)
+  assert.equal(type("classDiagram-v20\n  A <|-- B"), "classDiagram-v20")
 })

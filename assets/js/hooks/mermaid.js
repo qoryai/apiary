@@ -1,8 +1,8 @@
 // The diagrams of an artifact's Document view and of a proposal on the work item page.
 // The hook element (phx-update="ignore") contains blocks
 // <pre class="q-mermaid-source"><code>…</code></pre>. The hook draws only five types
-// (types below): flowchart (flowchart and graph), sequence, state, class and ER
-// diagrams. It draws each such block with Mermaid and shows the result as an <img> of
+// (types below): flowchart (flowchart and graph), sequence, state (stateDiagram and
+// stateDiagram-v2), class (classDiagram and classDiagram-v2) and ER diagrams. It draws each such block with Mermaid and shows the result as an <img> of
 // the SVG. Mermaid draws the SVG in a temporary element of the page and removes that
 // element after the draw. After the draw, the page has only the <img>: a browser runs
 // no script of an SVG shown as an image and loads no address from it. The block's
@@ -253,6 +253,7 @@ export const types = [
   "stateDiagram",
   "stateDiagram-v2",
   "classDiagram",
+  "classDiagram-v2",
   "erDiagram",
 ]
 
