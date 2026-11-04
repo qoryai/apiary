@@ -91,6 +91,22 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       refute has_element?(view, "#work-item-explore-gate")
       refute has_element?(view, "#work-item-explore-run")
       refute render(view) =~ "Qory&#39;s"
+
+      # Run 1 wrote version 1, the newest: its fold in the runs fold shows that proposal.
+      run_1 =
+        Repo.one(
+          from r in Apiary.Runs.Run,
+            join: d in DispatchRun,
+            on: r.dispatch_run_id == d.id,
+            where: d.work_item_id == ^work_item.id and d.attempt == 1,
+            select: r.number
+        )
+
+      assert has_element?(
+               view,
+               "#work-item-record-#{run_1}",
+               "Read the currency from the order."
+             )
     end
 
     test "a partial send: the answered question folds to one line, the other stays open as text while the run is queued",
