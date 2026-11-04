@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/harness/v1/review-comments.schema.json",
   "title": "The review comments format, version 1",
-  "description": "A work item's review comments on its artifact versions, such as a proposal, and the replies to them: the file of a version of the artifact type review-comments, one document per work item. The control plane writes the members' review comments and replies. A version that a run pushes only adds the run's reply to each open review comment and closes that review comment: it changes no member's text, drops no id and adds no review comment. Each review comment's id is unique in the document, which a JSON Schema cannot check. The file is at most 1 MiB (1,048,576 bytes), the type's size limit, which a JSON Schema cannot check either. No object has a member this schema does not define.",
+  "description": "A work item's review comments on its artifact versions, such as a proposal, and the replies to them: the file of a version of the artifact type review-comments, one document per work item. The control plane writes the members' review comments and replies. A version that a run pushes only adds the run's reply to any of the open review comments, at most one reply to each, and closes each review comment it adds a reply to: it changes no member's text, drops no id and adds no review comment. Each review comment's id is unique in the document, which a JSON Schema cannot check. The file is at most 1 MiB (1,048,576 bytes), the type's size limit, which a JSON Schema cannot check either. No object has a member this schema does not define.",
   "type": "object",
   "required": ["review_comments"],
   "additionalProperties": false,
@@ -34,7 +34,7 @@
         "text": {"description": "The review comment, as Markdown.", "$ref": "#/$defs/short_text"},
         "by": {"description": "The member who wrote the review comment.", "$ref": "#/$defs/member"},
         "at": {"description": "When the member wrote the review comment.", "$ref": "#/$defs/time"},
-        "state": {"description": "open until a run adds a reply to the review comment, closed once a run added one.", "enum": ["open", "closed"]},
+        "state": {"description": "open until a run replies to the review comment and closes it, closed after that. When a member replies to a closed review comment, the control plane sets it to open again.", "enum": ["open", "closed"]},
         "replies": {
           "description": "The replies to the review comment, oldest first: absent or empty when it has none.",
           "type": "array",
