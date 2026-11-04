@@ -303,7 +303,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 class="q-xp-sec"
                 aria-labelledby="work-item-artifacts-h"
               >
-                <h3 id="work-item-artifacts-h">{gettext("Artifacts")}</h3>
+                <h2 id="work-item-artifacts-h" class="q-xp-sec-t">{gettext("Artifacts")}</h2>
                 <StageComponents.approval_marks index={@flow.index} />
                 <ArtifactComponents.list
                   id="work-item-artifact-list"

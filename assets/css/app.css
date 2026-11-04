@@ -13741,7 +13741,8 @@
     margin-top: 14px;
     border-top: 1px solid var(--q-border-subtle);
   }
-  .q-xp-sec > h3 {
+  .q-xp-sec > h3,
+  .q-xp-sec > .q-xp-sec-t {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
