@@ -479,6 +479,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def exempt do
     %{
       reads: [
+        :"member.read",
         :"run.read",
         :"run.read_log",
         :"security_policy.read",
