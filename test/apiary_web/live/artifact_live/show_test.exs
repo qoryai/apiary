@@ -566,6 +566,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
              "Replace chart.png with an image of the type its name ends in."},
             {:svg_format, "diagram.svg",
              "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."},
+            {:svg_root, "diagram.svg",
+             ~s(Add xmlns="http://www.w3.org/2000/svg" to the svg root element of diagram.svg.)},
             {:format, "proposal.md", "Replace proposal.md with a Markdown file of UTF-8 text."},
             {:format, "sources.json",
              "Make sources.json valid JSON. The file does not parse as JSON."}
@@ -587,6 +589,17 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         refute html =~ "Upload diagram.svg again."
         assert Artifacts.list(ctx.work_item) == []
       end
+    end
+
+    @tag skip: "storage returns :svg_root for an svg root with no namespace after 454793f6"
+    test "says to add the SVG namespace to a proposal's svg root element", ctx do
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", "<svg/>"}])
+
+      assert html =~
+               "Add xmlns=&quot;http://www.w3.org/2000/svg&quot; to the svg root element of diagram.svg."
+
+      refute html =~ "Upload diagram.svg again."
+      assert Artifacts.list(ctx.work_item) == []
     end
 
     test "says to shrink a proposal's SVG past 512 KiB", ctx do

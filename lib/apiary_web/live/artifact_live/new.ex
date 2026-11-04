@@ -555,7 +555,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp file_line(:format, filename, %Type{standard: true, name: "proposal"}),
     do: proposal_format_line(:format, filename)
 
-  defp file_line(reason, filename, _type) when reason in [:image_type, :svg_format],
+  defp file_line(reason, filename, _type) when reason in [:image_type, :svg_format, :svg_root],
     do: proposal_format_line(reason, filename)
 
   defp file_line(:format, filename, %Type{base_view: base_view}),
@@ -567,9 +567,11 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # proposal_format_line/2 is the line for a proposal's file `filename` when the push
   # returns `reason` for it: for `:format`, the JSON line for `sources.json`, else the
   # Markdown line, since the push returns `:format` for a proposal's `sources.json` and
-  # Markdown file only; for `:svg_format`, the SVG line; for `:image_type`, the image line.
+  # Markdown file only; for `:svg_format`, the SVG line; for `:svg_root`, the line that
+  # asks for the SVG namespace on the svg root element; for `:image_type`, the image line.
   @doc false
-  @spec proposal_format_line(:format | :image_type | :svg_format, String.t()) :: String.t()
+  @spec proposal_format_line(:format | :image_type | :svg_format | :svg_root, String.t()) ::
+          String.t()
   def proposal_format_line(:format, "sources.json"),
     do: gettext("Make sources.json valid JSON. The file does not parse as JSON.")
 
@@ -578,6 +580,13 @@ defmodule ApiaryWeb.ArtifactLive.New do
   def proposal_format_line(:svg_format, filename),
     do:
       gettext("Make %{filename} a well-formed SVG file in UTF-8 with an svg root element.",
+        filename: filename
+      )
+
+  def proposal_format_line(:svg_root, filename),
+    do:
+      gettext(
+        ~s(Add xmlns="http://www.w3.org/2000/svg" to the svg root element of %{filename}.),
         filename: filename
       )
 

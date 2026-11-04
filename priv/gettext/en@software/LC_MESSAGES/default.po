@@ -4336,6 +4336,11 @@ msgstr ""
 msgid "Add workflow to the loop"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Add xmlns=\"http://www.w3.org/2000/svg\" to the svg root element of %{filename}."
+msgstr ""
+
 #: lib/apiary_web/controllers/page_html/home.html.heex
 #, elixir-autogen, elixir-format
 msgid "Add your machines, connect each with a separate key, and every run they make lands here."
