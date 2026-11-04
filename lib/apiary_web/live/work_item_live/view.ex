@@ -90,10 +90,57 @@ defmodule ApiaryWeb.WorkItemLive.View do
       earlier_runs: runs,
       earlier_take_ins: Enum.map(explore.earlier_take_ins, &take_in(&1, ctx)),
       comments: Enum.map(explore.comments, &comment(&1, ctx)),
+      proposal: proposal(explore[:proposal]),
+      questions: Enum.map(explore[:questions] || [], &question(&1, ctx)),
+      questions_version: explore[:questions_version],
+      review_comments: Enum.map(explore[:review_comments] || [], &review_comment(&1, ctx)),
       thread: thread(thread, row, names, ctx),
       people: ctx.people
     }
   end
+
+  # The newest proposal, with its Markdown rendered.
+  defp proposal(%{message: message} = proposal),
+    do: Map.put(proposal, :rendered, WorkItemComponents.markdown(message))
+
+  defp proposal(_none), do: nil
+
+  # A question of the newest questions, with its context rendered and each answer's
+  # person.
+  defp question(question, ctx) do
+    %{
+      question
+      | answer: answer(question.answer, ctx),
+        history: Enum.map(question.history, &answer(&1, ctx))
+    }
+    |> Map.put(:rendered, WorkItemComponents.markdown(question.context))
+  end
+
+  defp answer(nil, _ctx), do: nil
+
+  defp answer(answer, ctx),
+    do: answer |> Map.put(:by, given_by(answer.by_id, answer.by, ctx)) |> Map.delete(:by_id)
+
+  # Who gave an answer or a reply: the person of its move, else the name the document
+  # keeps.
+  defp given_by(id, _name, ctx) when is_binary(id), do: person(ctx.people, id)
+
+  defp given_by(_id, name, _ctx) when is_binary(name),
+    do: %{id: nil, name: name, email: name, you: false}
+
+  defp given_by(_id, _name, _ctx), do: former(nil)
+
+  defp review_comment(comment, ctx) do
+    comment
+    |> Map.put(:by, person(ctx.people, comment.by_id))
+    |> Map.put(:replies, Enum.map(comment.replies, &reply(&1, ctx)))
+    |> Map.delete(:by_id)
+  end
+
+  defp reply(%{run: number} = reply, _ctx) when is_integer(number), do: Map.delete(reply, :by_id)
+
+  defp reply(reply, ctx),
+    do: reply |> Map.put(:by, given_by(reply.by_id, nil, ctx)) |> Map.delete(:by_id)
 
   defp comment(comment, ctx) do
     %{
@@ -138,6 +185,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
         Enum.map(all_runs, & &1.answered_by_id) ++
         Enum.flat_map(take_ins, &[&1.taken_in_by_id, &1.ended_by_id]) ++
         Enum.map(explore.comments, & &1.by_id) ++
+        given_ids(explore) ++
         Enum.flat_map(thread, &[&1[:actor_id], &1[:owner_id]]) ++
         ApiaryWeb.WorkItemLive.Comments.people_ids(thread) ++
         [scope.user && scope.user.id]
@@ -151,6 +199,23 @@ defmodule ApiaryWeb.WorkItemLive.View do
       people: people(scope, ids),
       readable: readable(scope, workspace_ids)
     }
+  end
+
+  # The people who answered the questions and wrote the review comments and their
+  # replies.
+  defp given_ids(explore) do
+    answers =
+      for question <- explore[:questions] || [],
+          answer <- [question.answer | question.history],
+          answer != nil,
+          do: answer.by_id
+
+    comments =
+      for comment <- explore[:review_comments] || [],
+          id <- [comment.by_id | Enum.map(comment.replies, & &1.by_id)],
+          do: id
+
+    answers ++ comments
   end
 
   # The workspaces of `ids` whose runs the scope's person may read, by id.

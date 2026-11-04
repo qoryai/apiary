@@ -38,6 +38,25 @@ defmodule Apiary.WorkItems.ExploreView do
   #     it was written, `version` the proposal's version it is on, and once a run replied
   #     and closed it, `done_version`, the proposal's version that run stood at, and
   #     `done_at`, the time of its reply (`Apiary.Explore.ReviewComments`).
+  #   * `proposal`: the newest proposal of the current take in, `%{version:, message:}`,
+  #     the version its latest run stands at, or the one its confirmation keeps; nil for
+  #     none;
+  #   * `questions`: every question of the work item's newest questions, in their order,
+  #     each `%{id:, number:, text:, context:, options:, state:, asked_run:, answer:,
+  #     history:, follows:}`: `number` its place in the document, from 1, `state`
+  #     `:open`, `:answered` or `:withdrawn`, `answer` nil or `%{option:, note:, by_id:,
+  #     by:, at:}` (`by_id` by the move that wrote it, nil where none matches, `by` the
+  #     name the document keeps), `history` its earlier answers in the same form, and
+  #     `follows` the numbers of the questions it follows; and `questions_version`, the
+  #     number of that version, nil for none;
+  #   * `review_comments`: the review comments on the current take in's proposals, oldest
+  #     first, each `%{id:, text:, by_id:, at:, version:, state:, reopened:, replies:}`:
+  #     `state` `:open` or `:closed`, `reopened` true for an open one a run replied to,
+  #     and each reply `%{run:, by_id:, text:, at:, outcome:, question:,
+  #     question_number:, version:}`: a run's with its number, its `outcome`
+  #     (`:changed`, `:answered`, `:declined` or `:asked`, with the question's id and
+  #     number) and the proposal's version that run stood at; a member's with `by_id`
+  #     and the proposal's version the take in's latest run stood at when it was written.
   #
   # A run map: `id` and `number` (its registered run's public id and number, both nil for
   # a run with none: one waiting, or one that ended before its handover), `workspace_id`, the workspace it was queued in, where it stays
@@ -67,7 +86,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # those answered at it (`Apiary.Explore.Questions`, `Apiary.Explore.Given`); and
   # `answered_by_id` and `answered_at` once a member answered at it. A confirmed run's
   # proposal is the version its confirmation keeps. A run that ended before Explore's
-  # runs pushed artifacts shows the proposal its result kept, and no questions.
+  # runs pushed artifacts shows the proposal its result kept, and no questions. `wrote` is
+  # the version of the proposal the run pushed, nil for none, and `asked` how many
+  # questions of the newest questions it asked.
   #
   # ## `thread/2`
   #
@@ -144,25 +165,172 @@ defmodule Apiary.WorkItems.ExploreView do
         |> Enum.uniq(),
       confirmed_by_id: confirmation && confirmation.confirmed_by_id,
       confirmed_at: confirmation && confirmation.confirmed_at,
-      comments: comments(ctx, take_in)
+      comments: comments(ctx, take_in),
+      proposal: newest_proposal(work_item, List.last(runs)),
+      questions: questions_view(ctx),
+      questions_version: ctx.questions_version,
+      review_comments: review_comments(ctx, take_in)
     }
   end
+
+  # The newest proposal of the current take in: the one its latest run stands at, or the
+  # one its confirmation keeps; nil for none.
+  defp newest_proposal(_work_item, nil), do: nil
+
+  defp newest_proposal(_work_item, %{proposal: %{message: message}, version: version})
+       when is_binary(message),
+       do: %{version: version, message: message}
+
+  defp newest_proposal(%WorkItem{id: id, take_in: take_in}, %{attempt: attempt}) do
+    with version when is_integer(version) <- Explore.proposal_version(id, take_in, attempt),
+         text when is_binary(text) <- Explore.proposal_text(id, version) do
+      %{version: version, message: text}
+    else
+      _none -> nil
+    end
+  end
+
+  # Every question of the newest questions, in their order (the moduledoc).
+  defp questions_view(ctx) do
+    entries = (ctx.questions || %{})["questions"] || []
+    numbers = for {%{"id" => id}, n} <- Enum.with_index(entries, 1), into: %{}, do: {id, n}
+    given = for %{kind: :answer} = entry <- ctx.given, do: entry
+
+    for {%{"id" => id} = question, number} <- Enum.with_index(entries, 1) do
+      %{options: options} = Proposal.question(question)
+
+      %{
+        id: id,
+        number: number,
+        text: question["question"],
+        context: question["context"],
+        options: options,
+        state: question_state(question["state"]),
+        asked_run: get_in(question, ["asked", "run"]),
+        answer: given_answer(question["answer"], id, given),
+        history: Enum.map(question["history"] || [], &given_answer(&1, id, given)),
+        follows: for(other <- question["follows"] || [], n = numbers[other], do: n)
+      }
+    end
+  end
+
+  defp question_state("answered"), do: :answered
+  defp question_state("withdrawn"), do: :withdrawn
+  defp question_state(_open), do: :open
+
+  # An answer of the questions document, with who gave it by the move that wrote it
+  # (`Apiary.Explore.Given`): `by_id` nil where no move matches, with `by`, the name the
+  # document keeps.
+  defp given_answer(%{"at" => at} = answer, id, given) do
+    move = Enum.find(given, &(&1.id == id and second(&1.at) == at))
+
+    %{
+      option: answer["option"],
+      note: answer["note"],
+      by_id: move && move.by_id,
+      by: get_in(answer, ["by", "name"]),
+      at: (move && move.at) || time(at)
+    }
+  end
+
+  defp given_answer(_none, _id, _given), do: nil
+
+  defp second(%DateTime{} = at), do: at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+  defp time(at) when is_binary(at) do
+    case DateTime.from_iso8601(at) do
+      {:ok, at, _offset} -> at
+      _invalid -> nil
+    end
+  end
+
+  defp time(_at), do: nil
+
+  # The review comments on the proposals of take in `take_in`, oldest first, each with
+  # its replies (the moduledoc).
+  defp review_comments(ctx, take_in) do
+    written = for %{kind: :comment, id: id} = given <- ctx.given, into: %{}, do: {id, given}
+    replies = for %{kind: :reply} = given <- ctx.given, do: given
+    entries = (ctx.questions || %{})["questions"] || []
+    numbers = for {%{"id" => id}, n} <- Enum.with_index(entries, 1), into: %{}, do: {id, n}
+
+    for %{"on" => %{"artifact" => "proposal", "version" => version}} = comment <-
+          ReviewComments.entries(ctx.review_comments),
+        %{take_in: ^take_in} = given <- [Map.get(written, comment["id"])] do
+      shown = Enum.map(comment["replies"] || [], &reply_view(&1, comment["id"], replies, ctx))
+      open? = comment["state"] != "closed"
+
+      %{
+        id: comment["id"],
+        text: comment["text"],
+        by_id: given.by_id,
+        at: given.at,
+        version: version,
+        state: if(open?, do: :open, else: :closed),
+        reopened: open? and Enum.any?(shown, &is_integer(&1.run)),
+        replies: Enum.map(shown, &Map.put(&1, :question_number, numbers[&1.question]))
+      }
+    end
+  end
+
+  # A reply to a review comment: a run's, with its outcome and the version of the
+  # proposal that run stood at; a member's, with who wrote it and the version of the
+  # proposal the take in's latest run stood at then.
+  defp reply_view(%{"by" => %{"run" => number}} = reply, _id, _replies, ctx) do
+    %{
+      run: number,
+      by_id: nil,
+      text: reply["text"],
+      at: time(reply["at"]),
+      outcome: outcome(reply["outcome"]),
+      question: reply["question"],
+      version: (step = Map.get(ctx.by_number, number)) && version(step)
+    }
+  end
+
+  defp reply_view(reply, id, replies, ctx) do
+    move = Enum.find(replies, &(&1.id == id and second(&1.at) == reply["at"]))
+    step = move && Enum.find(ctx.current, &(&1.attempt == move.attempt))
+
+    %{
+      run: nil,
+      by_id: move && move.by_id,
+      text: reply["text"],
+      at: (move && move.at) || time(reply["at"]),
+      outcome: nil,
+      question: nil,
+      version: step && version(step)
+    }
+  end
+
+  defp outcome("changed"), do: :changed
+  defp outcome("answered"), do: :answered
+  defp outcome("declined"), do: :declined
+  defp outcome("asked"), do: :asked
+  defp outcome(_none), do: nil
 
   # What the pages read besides the runs: what members gave (`Apiary.Explore.Given`), the
   # newest questions and review comments, the runs by their registered run's number, and
   # `waiting`, the latest run of the current take in where its questions wait, else nil.
   defp context(work_item, steps, events, waiting) do
+    questions = Questions.newest(work_item)
+
     %{
       given: Given.from_events(work_item, events),
-      questions: document(Questions.newest(work_item)),
+      questions: document(questions),
+      questions_version: number(questions),
       review_comments: document(ReviewComments.newest(work_item)),
       by_number: for(%{run: %{number: n}} = step <- steps, into: %{}, do: {n, step}),
+      current: Enum.filter(steps, &(&1.take_in == work_item.take_in)),
       waiting: waiting || nil
     }
   end
 
   defp document({_version, document}), do: document
   defp document(nil), do: nil
+
+  defp number({%{number: number}, _document}), do: number
+  defp number(_none), do: nil
 
   # The review comments on the proposals of take in `take_in`, oldest first: each with who
   # wrote it and when, by its move (`Apiary.Explore.Given`), the run whose proposal it is
@@ -280,7 +448,9 @@ defmodule Apiary.WorkItems.ExploreView do
       version: nil,
       questions: [],
       answered_by_id: nil,
-      answered_at: nil
+      answered_at: nil,
+      wrote: wrote(step),
+      asked: asked(step, ctx)
     }
 
     view =
@@ -326,6 +496,31 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp version(step),
     do: Explore.proposal_version(step.dispatch_run.work_item_id, step.take_in, step.attempt)
+
+  # The version of the proposal the run `step` pushed: its version, where the run before
+  # it stood at another; nil for none.
+  defp wrote(%{run: nil}), do: nil
+
+  defp wrote(%{attempt: attempt} = step) do
+    before =
+      attempt > 1 &&
+        Explore.proposal_version(step.dispatch_run.work_item_id, step.take_in, attempt - 1)
+
+    case version(step) do
+      version when is_integer(version) and version != before -> version
+      _same -> nil
+    end
+  end
+
+  # How many questions of the newest questions the run `step` asked.
+  defp asked(%{run: %{number: number}}, ctx) when is_integer(number),
+    do:
+      Enum.count(
+        (ctx.questions || %{})["questions"] || [],
+        &(get_in(&1, ["asked", "run"]) == number)
+      )
+
+  defp asked(_step, _ctx), do: 0
 
   # The proposal of a run, at `version`: the Markdown of that version of the work item's
   # proposal, else the `message` a result kept before Explore's runs pushed their
