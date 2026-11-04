@@ -40,7 +40,7 @@ defmodule Apiary.Artifacts.Format do
   #     (`http://www.w3.org/1999/xhtml`); no attribute whose name starts with `on`; an
   #     `href`, in any namespace, only to a place in the file (`#…`); a CSS `url(` only to
   #     a place in the file, in an attribute or in text; no `@import`, no backslash in a
-  #     `style` element or attribute (a CSS escape could spell `url(`), and no
+  #     `style` element or in any attribute (a CSS escape could spell `url(`), and no
   #     `<?xml-stylesheet ?>`. Else `:svg_content`. Attribute values and text are checked
   #     as the parser reads them, with their character references replaced; a `style`
   #     element has no child element, and its text is checked as one, joined across
@@ -405,14 +405,16 @@ defmodule Apiary.Artifacts.Format do
 
   defp safe_attribute?("on" <> _rest, _value), do: false
 
+  # Every attribute's value is checked as CSS: a browser reads presentation attributes,
+  # such as `fill`, `mask` or `cursor`, as CSS, where an escape such as `\75 rl(` is `url(`.
   defp safe_attribute?("href", value),
-    do: String.starts_with?(value, "#") and safe_text?(value, false)
+    do: String.starts_with?(value, "#") and safe_text?(value, true)
 
-  defp safe_attribute?("style", value), do: safe_text?(value, true)
-  defp safe_attribute?(_name, value), do: safe_text?(value, false)
+  defp safe_attribute?(_name, value), do: safe_text?(value, true)
 
   # Text with no `@import` and every CSS `url(` to a place in the file; in CSS (`css?`),
-  # no backslash either, since a CSS escape could spell `url(`.
+  # a `style` element's text or an attribute's value, no backslash either, since a CSS
+  # escape could spell `url(`.
   defp safe_text?(text, css?) do
     lower = String.downcase(text)
 

@@ -533,7 +533,10 @@ defmodule Apiary.Artifacts.FormatTest do
             "<style>rect { fill: ur<!---->l(https://example.com/a) }</style>",
             ~s|<style>@imp<![CDATA[ort "https://example.com/a.css";]]></style>|,
             ~s|<style>@imp<g/>ort "https://example.com/a.css";</style>|,
-            "<style><g/></style>"
+            "<style><g/></style>",
+            ~s|<rect cursor="\\75 rl(https://example.com/c.png), auto"/>|,
+            ~s|<rect mask="\\75 rl(https://example.com/m.svg#m)"/>|,
+            ~s|<use href="#r\\"/>|
           ] do
         assert {:error, :svg_content} = check(context, "proposal", "a.svg", svg(body)), body
       end
