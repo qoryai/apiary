@@ -2695,13 +2695,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :earlier, :boolean, default: false
 
   # An answer: the option chosen, and the note under it, then who answered and when; an
-  # earlier answer muted, under Earlier answer.
+  # earlier answer muted, under Earlier answer. The pieces of the Earlier answer line
+  # have no white space between them, so the margins of the "·" alone set its gaps.
   defp given_answer(assigns) do
     ~H"""
-    <p :if={@earlier} id={"#{@id}-who"} class="q-xp-cm-m">
-      <span class="q-xp-it">{gettext("Earlier answer")}</span>
-      <span class="q-xp-it"><.rich text={answered_words(@answer, @now)} /></span>
-    </p>
+    <p :if={@earlier} id={"#{@id}-who"} class="q-xp-cm-m" phx-no-format><span class="q-xp-it">{gettext("Earlier answer")}</span><span class="q-xp-it"><.rich text={answered_words(@answer, @now)} /></span></p>
     <div id={@id} class={["q-xp-ans", @earlier && "q-xp-ans-old"]} phx-no-format><span :if={@answer.option} class="block">{@answer.option}</span><span :if={@answer.note}>{@answer.note}</span></div>
     <p :if={!@earlier} id={"#{@id}-who"} class="q-xp-cm-m">
       <span class="q-xp-it"><.rich text={answered_words(@answer, @now)} /></span>

@@ -1371,7 +1371,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = questions_tab([])
       q2 = "#work-item-explore-questions-question-2"
 
-      assert text(html, "#{q2}-earlier-who") == "Earlier answer Priya answered 2 hours ago"
+      assert texts(html, "#{q2}-earlier-who > span") ==
+               ["Earlier answer", "Priya answered 2 hours ago"]
+
+      # No white space of the template between the pieces, which would widen the gap left
+      # of the "·" that opens the second piece.
+      assert html =~ ~r{>Earlier answer</span><span class="q-xp-it">}
       assert texts(html, "#{q2}-earlier > span") == ["No", "Only invoices."]
       # No white space of the template in the quote, whose white space is kept.
       assert html =~ ~r{<span class="block">No</span><span>Only invoices.</span></div>}
