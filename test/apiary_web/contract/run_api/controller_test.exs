@@ -1066,8 +1066,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Set reopened.run in the history of each question you reopen in questions.json " <>
            "to this run's number."},
         {"questions", :answered_changed,
-         "Leave question, context, options and follows of each answered question in " <>
+         "Leave question, context and options of each answered question in " <>
            "questions.json as the newest version of questions has them."},
+        {"questions", :follows_changed,
+         "Leave follows of each question in questions.json as the newest version of " <>
+           "questions has it."},
+        {"questions", :follows_unknown,
+         "Set follows of each question you add in questions.json to ids of questions " <>
+           "before it in questions.json."},
         {"questions", :new_not_open,
          "Set the state of each question you add in questions.json to open."},
         {"questions", :asked_run,

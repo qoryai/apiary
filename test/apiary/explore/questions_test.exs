@@ -142,7 +142,7 @@ defmodule Apiary.Explore.QuestionsTest do
                {:error, :asked_changed}
     end
 
-    test "refuses the question, context, options or follows of an answered question changed" do
+    test "refuses the question, context or options of an answered question changed" do
       question =
         "q1"
         |> answered(12)
@@ -165,8 +165,7 @@ defmodule Apiary.Explore.QuestionsTest do
              [
                %{"title" => "Yes", "explanation" => "Keep them."},
                %{"title" => "No", "explanation" => "Delete them."}
-             ]},
-            {"follows", ["q0"]}
+             ]}
           ] do
         assert Questions.check_run(newest, doc([Map.put(question, key, value)]), 13) ==
                  {:error, :answered_changed},
@@ -187,6 +186,79 @@ defmodule Apiary.Explore.QuestionsTest do
                ]),
                13
              ) == :ok
+    end
+
+    test "refuses follows changed on any question the newest version has" do
+      newest =
+        doc([open("q1", 12), Map.put(open("q2", 12), "follows", ["q1"]), answered("q3", 12)])
+
+      for {id, follows} <- [{"q1", ["q2"]}, {"q2", []}, {"q2", ["q1", "q3"]}, {"q3", ["q1"]}] do
+        pushed =
+          update_in(newest, ["questions"], fn questions ->
+            Enum.map(
+              questions,
+              &if(&1["id"] == id, do: Map.put(&1, "follows", follows), else: &1)
+            )
+          end)
+
+        assert Questions.check_run(newest, pushed, 13) == {:error, :follows_changed},
+               inspect({id, follows})
+      end
+
+      # Absent and empty are the same: the question follows from none.
+      assert Questions.check_run(
+               newest,
+               update_in(newest, ["questions", Access.at(0)], &Map.put(&1, "follows", [])),
+               13
+             ) == :ok
+
+      # A reopen keeps it too.
+      reopen = newest |> update_in(["questions", Access.at(2)], &reopened(&1, 13))
+      assert Questions.check_run(newest, reopen, 13) == :ok
+
+      assert Questions.check_run(
+               newest,
+               update_in(reopen, ["questions", Access.at(2)], &Map.put(&1, "follows", ["q1"])),
+               13
+             ) == {:error, :follows_changed}
+    end
+
+    test "takes follows on a new question only to ids of questions before it" do
+      newest = doc([open("q1", 12), answered("q2", 12)])
+
+      added = fn follows -> Map.put(open("q3", 13), "follows", follows) end
+
+      for follows <- [["q1"], ["q1", "q2"], []] do
+        assert Questions.check_run(newest, doc(newest["questions"] ++ [added.(follows)]), 13) ==
+                 :ok,
+               inspect(follows)
+      end
+
+      # A new question before it in the same version counts.
+      assert Questions.check_run(
+               newest,
+               doc(
+                 newest["questions"] ++
+                   [added.(["q1"]), Map.put(open("q4", 13), "follows", ["q3"])]
+               ),
+               13
+             ) == :ok
+
+      for follows <- [["q9"], ["q3"], ["q1", "q4"]] do
+        assert Questions.check_run(
+                 newest,
+                 doc(newest["questions"] ++ [added.(follows), open("q4", 13)]),
+                 13
+               ) == {:error, :follows_unknown},
+               inspect(follows)
+      end
+
+      # An earlier question placed after it does not count.
+      assert Questions.check_run(
+               newest,
+               doc([open("q1", 12), added.(["q2"]), answered("q2", 12)]),
+               13
+             ) == {:error, :follows_unknown}
     end
 
     test "refuses a reopen that names another run" do
@@ -217,13 +289,15 @@ defmodule Apiary.Explore.QuestionsTest do
                [
                  :id_dropped,
                  :asked_changed,
+                 :follows_changed,
                  :answer_changed,
                  :history_changed,
                  :reopen_not_kept,
                  :reopened_run,
                  :answered_changed,
                  :new_not_open,
-                 :asked_run
+                 :asked_run,
+                 :follows_unknown
                ]
     end
   end

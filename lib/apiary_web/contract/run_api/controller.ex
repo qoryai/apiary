@@ -410,6 +410,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Leave asked of each question in #{filename} as the newest version of " <>
           "questions has it."
 
+      :follows_changed ->
+        "Leave follows of each question in #{filename} as the newest version of " <>
+          "questions has it."
+
       :answer_changed ->
         "Leave each answer in #{filename} as the newest version of questions has it: " <>
           "members write the answers."
@@ -427,7 +431,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           "to this run's number."
 
       :answered_changed ->
-        "Leave question, context, options and follows of each answered question in " <>
+        "Leave question, context and options of each answered question in " <>
           "#{filename} as the newest version of questions has them."
 
       :new_not_open ->
@@ -435,6 +439,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
       :asked_run ->
         "Set asked.run of each question you add in #{filename} to this run's number."
+
+      :follows_unknown ->
+        "Set follows of each question you add in #{filename} to ids of questions " <>
+          "before it in #{filename}."
     end
   end
 
