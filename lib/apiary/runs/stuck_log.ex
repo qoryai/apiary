@@ -9,9 +9,10 @@ defmodule Apiary.Runs.StuckLog do
   # The time of each run's last line is kept in the dictionary of the process that wrote
   # it, Liveness's process (`Apiary.Runs.Liveness`) or the projector's, so each process
   # keeps the lines it wrote. A line is written again when its run's detail changes, such
-  # as another exception, or an hour after the last. An entry is dropped once its run
-  # ends or settles (`clear/1`), and once its last line is an hour old, at the next line
-  # the process writes, so the dictionary keeps at most the runs stuck in the last hour.
+  # as another exception, or an hour after the last. An entry is dropped when its run
+  # ends or settles in the same process (`clear/1`), and an hour after its last line, at
+  # the next line the process writes. So the dictionary keeps at most the runs that had a
+  # line in the hour before the process's last line.
   @moduledoc false
 
   require Logger
