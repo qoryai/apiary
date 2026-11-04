@@ -219,27 +219,23 @@ const dataBlocks = text => {
   return blocks
 }
 
-// Whether a node data block has an img key, quoted or not, after a tag or an anchor or
-// not. A quoted value, a string not followed by ":", is left out first, so a label such
-// as "img: the tag" is no key.
-const imgKey = block =>
-  /(^|[\s{,"'])img["']?\s*:/i.test(
-    block.replace(/"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'/g, (string, at, all) =>
-      /^\s*:/.test(all.slice(at + string.length)) ? string : '""',
-    ),
-  )
+// Whether a node data block contains the word img anywhere: in a key, a value or a
+// label, quoted or not. Its YAML can write a key in many ways, such as after a plain
+// scalar with an apostrophe (label: it's, img: "…"), so the hook does not try to find
+// only the keys.
+const imgWord = block => /\bimg\b/i.test(block)
 
 // Whether drawing `text` would load an address, by the syntaxes of the vendored Mermaid
 // 11.17.2 that do: CSS with an address, in any style, classDef, linkStyle or C4 style
 // (cssAddresses above); a flowchart node's image (A@{ img: "…" }), which Mermaid loads as
-// an Image and draws as <image href>, so a node data block with an img key, or with a
-// backslash, which its YAML could use to write "img"; and a sequence diagram's
+// an Image and draws as <image href>, so a node data block with the word img in it, or
+// with a backslash, which its YAML could use to write "img"; and a sequence diagram's
 // properties line, whose "icon" Mermaid draws as <image xlink:href>.
 export const loads = text => {
   const written = text.toLowerCase()
   const read = unescaped(text).toLowerCase()
   if (cssAddresses.some(css => written.includes(css) || read.includes(css))) return true
-  if (dataBlocks(text).some(block => imgKey(block) || block.includes("\\"))) return true
+  if (dataBlocks(text).some(block => imgWord(block) || block.includes("\\"))) return true
   return /(^|;)\s*properties(\s|$)/im.test(text)
 }
 

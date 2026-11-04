@@ -189,14 +189,19 @@ test("does not draw a flowchart node's image, written in any way YAML reads", ()
   assert.equal(loads("flowchart LR\n  A@{ shape: rect, label: \"Invoice\" }\n  A --> B"), false)
 })
 
-test("draws a label with img in it next to a node data block", () => {
+test("draws imgur, and img outside a node data block", () => {
   const text = [
     "flowchart LR",
     "  A[Upload to imgur] --> B@{ shape: rect, label: \"imgur: the host\" }",
-    "  B --> C@{ shape: circle, label: 'img: the tag' }",
-    "  C --> D[img: the tag]",
+    "  B --> C[img: the tag]",
   ].join("\n")
   assert.equal(loads(text), false)
+})
+
+test("does not draw a node data block with the word img in it, even in a label", () => {
+  assert.equal(loads("flowchart LR\n  A@{ label: it's, img: \"/x\", other: 'y' }"), true)
+  assert.equal(loads("flowchart LR\n  A@{ label: it's, img: \"/acme/q1\", other: 'y' }"), true)
+  assert.equal(loads("flowchart LR\n  C@{ shape: circle, label: 'img: the tag' }"), true)
 })
 
 test("finds an img key after a quoted closing brace and in a later block", () => {
