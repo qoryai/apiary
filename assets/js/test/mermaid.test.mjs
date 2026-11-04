@@ -1,10 +1,11 @@
 // What the Mermaid hook draws of a block (assets/js/hooks/mermaid.js, `source`): without
 // its directive lines, its front matter, and its click, link, links and callback lines;
-// the settings it passes to mermaid.initialize (`settings`), with the secure list that
-// the vendored Mermaid applies to a document's front matter; the five diagram types it
-// draws (`types`, `type`) and what it shows for a block (`drawing`); the blocks it does
-// not draw, as drawing them would load an address (`loads`); the redraw on a theme
-// change (`watchTheme`); and the width it sets on the <img> (`width`).
+// the settings it passes to mermaid.initialize (`settings`), with the hand-drawn look
+// and the secure list that the vendored Mermaid applies to a document's front matter;
+// the five diagram types it draws (`types`, `type`) and what it shows for a block
+// (`drawing`); the blocks it does not draw, as drawing them would load an address
+// (`loads`); the redraw on a theme change (`watchTheme`); and the width it sets on the
+// <img> (`width`).
 // `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
@@ -203,6 +204,54 @@ test("the site themeCSS makes the edge label box opaque in flowcharts and state 
   const {themeCSS} = settings({})
   assert.match(themeCSS, /\.edgeLabel rect[,\s]/)
   assert.match(themeCSS, /\.edgeLabel \.label rect\s*\{\s*opacity: 1;\s*\}/)
+})
+
+// A front matter config that sets the classic look, another seed and a script font.
+const LOOK_FRONT_MATTER = [
+  "---",
+  "config:",
+  "  look: classic",
+  "  handDrawnSeed: 7",
+  "  fontFamily: cursive",
+  "---",
+  "flowchart LR",
+  "  A[Invoice] --> B[Refund]",
+].join("\n")
+
+test("the site config has the hand-drawn look, a fixed seed and the font, all secure", () => {
+  const config = settings({})
+
+  assert.equal(config.look, "handDrawn")
+  assert.equal(config.handDrawnSeed, 1)
+  assert.equal(config.fontFamily, "ui-sans-serif, system-ui, sans-serif")
+  for (const key of ["look", "handDrawnSeed", "fontFamily"])
+    assert.ok(secure.includes(key), key)
+})
+
+test("drops a front matter look and seed before the draw", () => {
+  assert.equal(source(LOOK_FRONT_MATTER), "flowchart LR\n  A[Invoice] --> B[Refund]")
+})
+
+test("the vendored Mermaid keeps look, seed and font against a front matter config", async () => {
+  // The front matter is not filtered here, so this shows the secure list alone.
+  const {default: mermaid} = await import("../../vendor/mermaid/mermaid.esm.min.mjs")
+
+  // Without look and handDrawnSeed in the secure list, the front matter sets both.
+  mermaid.initialize({
+    ...settings({}),
+    secure: secure.filter(key => key !== "look" && key !== "handDrawnSeed"),
+  })
+  await mermaid.parse(LOOK_FRONT_MATTER).catch(() => null)
+  assert.equal(mermaid.mermaidAPI.getConfig().look, "classic")
+  assert.equal(mermaid.mermaidAPI.getConfig().handDrawnSeed, 7)
+
+  mermaid.initialize(settings({}))
+  await mermaid.parse(LOOK_FRONT_MATTER).catch(() => null)
+  const config = mermaid.mermaidAPI.getConfig()
+
+  assert.equal(config.look, "handDrawn")
+  assert.equal(config.handDrawnSeed, 1)
+  assert.equal(config.fontFamily, "ui-sans-serif, system-ui, sans-serif")
 })
 
 test("does not draw a flowchart node's image, written in any way YAML reads", () => {
