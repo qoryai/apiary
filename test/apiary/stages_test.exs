@@ -804,6 +804,33 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_state: :running} = reload(work_item)
     end
 
+    test "with the workflow model back on, the stage sweep acts on one batch per call",
+         %{scope: scope} do
+      # Two ends while the workflow model was off: the sweep acts on neither.
+      [first, second] =
+        for(_n <- 1..2, do: newest_run(take_in!(scope))) |> Enum.sort_by(& &1.id)
+
+      workflow_model(false)
+
+      Repo.update_all(from(d in DispatchRun, where: d.id in ^[first.id, second.id]),
+        set: [state: :ended, end_cause: :key_gone, result_outcome: :error]
+      )
+
+      running? = fn run -> Repo.get!(WorkItem, run.work_item_id).stage_state == :running end
+      assert Stages.sweep(DateTime.utc_now(), nil, 1) == {[], nil}
+      assert {running?.(first), running?.(second)} == {true, true}
+
+      # Back on: a batch of one acts on the first alone, and the next call on the second.
+      workflow_model(true)
+
+      assert {[_], next} = Stages.sweep(DateTime.utc_now(), nil, 1)
+      assert next == first.id
+      assert {running?.(first), running?.(second)} == {false, true}
+
+      assert {[_], _next} = Stages.sweep(DateTime.utc_now(), next, 1)
+      assert {running?.(first), running?.(second)} == {false, false}
+    end
+
     test "a tick of the lost-run check keeps where the stage sweep stopped", %{scope: scope} do
       [first, second] =
         for _n <- 1..2 do
