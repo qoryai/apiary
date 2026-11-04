@@ -148,6 +148,8 @@ defmodule Apiary.WorkItems.ExploreView do
       |> context(steps, events, (live? and status == :questions) && List.last(current))
       |> Map.put(:versions, versions(steps))
 
+    ctx = Map.put(ctx, :written, written(steps, ctx))
+
     taken = take_ins(events)
     runs = Enum.map(current, &run_view(&1, ctx, confirmation, work_item))
 
@@ -167,7 +169,7 @@ defmodule Apiary.WorkItems.ExploreView do
         |> Enum.uniq(),
       confirmed_by_id: confirmation && confirmation.confirmed_by_id,
       confirmed_at: confirmation && confirmation.confirmed_at,
-      proposal: newest_proposal(work_item, List.last(runs), wrote_versions(runs)),
+      proposal: newest_proposal(work_item, List.last(runs), ctx.written),
       questions: questions_view(ctx),
       questions_version: ctx.questions_version,
       review_comments: review_comments(ctx, take_in)
@@ -175,8 +177,8 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   # The newest proposal of the current take in: the one its latest run stands at, or the
-  # one in its confirmation; nil for none. `wrote` is the versions the runs read, by
-  # number, so a version a run wrote is not read again.
+  # one in its confirmation; nil for none. `wrote` is the versions the runs wrote, read
+  # once, by number (`written/2`), so a version a run wrote is not read again.
   defp newest_proposal(_work_item, nil, _wrote), do: nil
 
   defp newest_proposal(
@@ -200,14 +202,16 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
-  # The versions of the proposal that `runs` wrote, as each run read it, by number.
-  defp wrote_versions(runs),
-    do:
-      for(
-        %{wrote: version, wrote_proposal: %{} = proposal} <- runs,
+  # The versions of the proposal that the runs of `steps` wrote (`wrote/2`), each read
+  # once, by number, as the page shows it (`shown_proposal/2`).
+  defp written(steps, ctx) do
+    for step <- steps,
+        version = wrote(step, ctx),
+        is_integer(version),
+        %{} = proposal <- [shown_proposal(step.dispatch_run.work_item_id, version)],
         into: %{},
         do: {version, proposal}
-      )
+  end
 
   # Version `version` of the work item `id`'s proposal as the page shows it (`message`,
   # its Markdown; `version_id`; `images`, its image files' filenames), nil for none.
@@ -455,7 +459,7 @@ defmodule Apiary.WorkItems.ExploreView do
   defp run_view(step, ctx, confirmation, work_item) do
     rows = answers_of(ctx, step)
     wrote = wrote(step, ctx)
-    wrote_proposal = wrote && wrote_proposal(step, wrote)
+    wrote_proposal = wrote && Map.get(ctx.written, wrote)
 
     ended_at = Explore.ended_at(step)
 
@@ -496,7 +500,7 @@ defmodule Apiary.WorkItems.ExploreView do
             view
             | outcome: :proposal,
               place: :proposal,
-              proposal: proposal(step, version, result, {wrote, wrote_proposal}),
+              proposal: proposal(step, version, result, ctx),
               version: version
           }
 
@@ -506,7 +510,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
           %{
             view
-            | proposal: proposal(step, version, result, {wrote, wrote_proposal}),
+            | proposal: proposal(step, version, result, ctx),
               version: version
           }
 
@@ -562,8 +566,6 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
-  defp wrote_proposal(step, version), do: shown_proposal(step.dispatch_run.work_item_id, version)
-
   # How many questions of the newest questions the run `step` wrote.
   defp asked(%{run: %{number: number}}, ctx) when is_integer(number),
     do:
@@ -576,13 +578,15 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # The proposal of a run, at `version`: the Markdown of that version of the work item's
   # proposal, else the `message` a result kept before Explore's runs pushed their
-  # proposal as an artifact; nil for none. The version the run wrote, read already, is
-  # not read again.
-  defp proposal(_step, version, _result, {version, %{message: text}}) when is_binary(text),
-    do: %{message: text}
-
-  defp proposal(step, version, result, _wrote) do
-    text = Explore.proposal_text(step.dispatch_run.work_item_id, version)
+  # proposal as an artifact; nil for none. A version a run wrote, read already
+  # (`ctx.written`), is not read again; so a run that stands at the version an earlier
+  # run wrote reads nothing.
+  defp proposal(step, version, result, ctx) do
+    text =
+      case Map.get(ctx.written, version) do
+        %{message: text} when is_binary(text) -> text
+        _not_written -> Explore.proposal_text(step.dispatch_run.work_item_id, version)
+      end
 
     case {text, result} do
       {text, _result} when is_binary(text) -> %{message: text}
