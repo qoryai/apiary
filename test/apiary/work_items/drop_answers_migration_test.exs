@@ -1,8 +1,8 @@
 defmodule Apiary.WorkItems.DropAnswersMigrationTest do
   # The migration that drops `work_item_answers` (`DropWorkItemAnswers`), run down and up
   # again inside the test's transaction, which rolls it all back: up, the table is gone;
-  # down, it is back, empty, with the columns and the checks of before. It changes the
-  # schema under every other test, so this is not async.
+  # down, it is back, empty, with the columns, the checks and the indexes of before. It
+  # changes the schema under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
   # Running a migration down and up again while later ones are applied makes Ecto warn
@@ -45,6 +45,18 @@ defmodule Apiary.WorkItems.DropAnswersMigrationTest do
     rows |> List.flatten() |> Enum.sort()
   end
 
+  # The table's indexes by name, each with whether it is unique, but the primary key's,
+  # which `checks/0` shows.
+  defp indexes do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT indexname, indexdef FROM pg_indexes " <>
+          "WHERE tablename = 'work_item_answers' AND indexname <> 'work_item_answers_pkey'"
+      )
+
+    Map.new(rows, fn [name, definition] -> {name, definition =~ "UNIQUE INDEX"} end)
+  end
+
   test "up drops the table; down brings it back empty, as it was; up drops it again" do
     assert columns() == %{}
 
@@ -80,9 +92,16 @@ defmodule Apiary.WorkItems.DropAnswersMigrationTest do
              "work_item_answers_workspace_id_fkey"
            ]
 
+    assert indexes() == %{
+             "work_item_answers_work_item_id_take_in_attempt_position_index" => true,
+             "work_item_answers_organisation_id_workspace_id_index" => false,
+             "work_item_answers_answered_by_id_index" => false
+           }
+
     assert %{rows: [[0]]} = Repo.query!("SELECT count(*) FROM work_item_answers")
 
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
     assert columns() == %{}
+    assert indexes() == %{}
   end
 end
