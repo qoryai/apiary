@@ -67,9 +67,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias ApiaryWeb.{ArtifactComponents, HarnessComponents, UserAuth}
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, View, Workflow}
 
-  @answer_keys for position <- 1..20, do: Integer.to_string(position)
   @comment_events Comments.events() -- ["cancel_question"]
-  @actions ~w(undo ask_close close explore_again answer_draft answer change_draft send_change)
+  @actions ~w(undo ask_close close explore_again answer_draft answer confirm run_with_comments review_comment reply)
+  # The statuses where no run runs, so a member may write review comments
+  # (`Apiary.WorkItems.Moves.review_comment/4`).
+  @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
   # The statuses of today's Explore (`Apiary.WorkItems.explore/3`) while the work item is
   # at Explore, its gate included.
   @explore_statuses [
@@ -99,16 +101,31 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:work_items}
-      width="work"
+      width={if @page, do: "read", else: "work"}
     >
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/work"}>
         {gettext("Work items")}
       </:crumb>
-      <:crumb patch={@tab != home(@row) && tab_path(@current_scope, @number, home(@row))}>
+      <:crumb patch={
+        (@page && tab_path(@current_scope, @number, :explore)) ||
+          (@tab != home(@row) && tab_path(@current_scope, @number, home(@row)))
+      }>
         {gettext("Work item #%{number}", number: @number)}
       </:crumb>
 
-      <.work_item_frame label={gettext("Work item #%{number}", number: @number)}>
+      <:crumb :if={@page}>{page_title(@page)}</:crumb>
+
+      <.review_page
+        :if={@page}
+        kind={elem(@page, 0)}
+        number={@number}
+        comment={elem(@page, 1)}
+        value={@page_value}
+        error={@page_error}
+        submits={@page_submits}
+        cancel={tab_path(@current_scope, @number, :explore)}
+      />
+      <.work_item_frame :if={!@page} label={gettext("Work item #%{number}", number: @number)}>
         <:header>
           <.work_item_header
             work_item={@item}
@@ -188,11 +205,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             collection_noun={@source.collection_noun}
             queued={queued_run(@flow, @item)}
             process_version={@flow && @flow.version}
+            fold={@review_comments != []}
             now={@now}
+          />
+          <.review_comments
+            :if={@review_comments != []}
+            id="work-item-review"
+            class="q-rc-rail"
+            comments={@review_comments}
+            reply_path={!running?(@item) && @can_review && (&reply_path(@current_scope, @number, &1))}
+            reading={running?(@item) && @item.run[:attempt]}
           />
         </:rail>
         <:body>
-          <div :if={@flow} id="work-item-flow" class="flex flex-col gap-3">
+          <div :if={@flow && !@flow.explore} id="work-item-flow" class="flex flex-col gap-3">
             <StageComponents.stage_runs runs={@flow.runs} />
             <StageComponents.stage_notes notes={@flow.notes} />
             <section
@@ -236,18 +262,39 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             work_item={@item}
             earlier_runs={@earlier_runs}
             earlier_take_ins={@earlier_take_ins}
-            comments={@comments}
+            proposal={@proposal}
+            questions={@questions}
+            questions_version={@questions_version}
+            review_comments={@review_comments}
             can_act={@can.act}
+            review_path={@can_review && review_path(@current_scope, @number)}
+            reply_path={@can_review && (&reply_path(@current_scope, @number, &1))}
             backlog_off={@backlog_off}
             answers={@answers}
             errors={@errors}
+            form_error={@form_error}
             submits={@submits}
-            change={@change}
-            change_error={@change_error}
-            change_submits={@change_submits}
             item_noun={@source.item_noun}
             now={@now}
-          />
+          >
+            <:artifacts :if={@flow && @flow.explore}>
+              <section
+                id="work-item-artifacts"
+                class="q-xp-sec"
+                aria-labelledby="work-item-artifacts-h"
+              >
+                <h3 id="work-item-artifacts-h">{gettext("Artifacts")}</h3>
+                <StageComponents.approval_marks index={@flow.index} />
+                <ArtifactComponents.list
+                  id="work-item-artifact-list"
+                  artifacts={@artifacts}
+                  scope={@current_scope}
+                  number={@number}
+                  add={@flow.can_add}
+                />
+              </section>
+            </:artifacts>
+          </.explore_tab>
           <.thread :if={@tab == :thread}>
             <%= for {event, i} <- Enum.with_index(@thread, 1) do %>
               <Comments.comment_line
@@ -313,10 +360,18 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            comment_count: 0,
            answers: %{},
            errors: %{},
+           form_error: nil,
            submits: 0,
-           change: "",
-           change_error: nil,
-           change_submits: 0,
+           page: nil,
+           asked_page: nil,
+           page_value: "",
+           page_error: nil,
+           page_submits: 0,
+           proposal: nil,
+           questions: [],
+           questions_version: nil,
+           review_comments: [],
+           can_review: false,
            flow: nil,
            artifacts: [],
            stage_asking: nil,
@@ -328,9 +383,45 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   @impl true
-  def handle_params(_params, _uri, socket) do
-    {:noreply, socket |> assign(:tab, socket.assigns.live_action) |> load() |> ticketed()}
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     socket
+     |> assign(:tab, socket.assigns.live_action)
+     |> assign(:asked_page, asked_page(socket.assigns.live_action, params))
+     |> load()
+     |> ticketed()}
   end
+
+  # The form page an address on Explore's tab asks for: `?review=new` for Add review
+  # comment, `?reply=<id>` for Reply to that review comment; nil for none.
+  defp asked_page(:explore, %{"review" => "new"}), do: :comment
+  defp asked_page(:explore, %{"reply" => id}) when is_binary(id), do: {:reply, id}
+  defp asked_page(_tab, _params), do: nil
+
+  # The form page as the work item stands: one the reader may use now, else none, and
+  # the address patches back to Explore's tab.
+  defp form_page(%{assigns: %{asked_page: nil}} = socket), do: assign(socket, :page, nil)
+
+  defp form_page(%{assigns: %{can_review: false}} = socket), do: back(socket)
+
+  defp form_page(%{assigns: %{asked_page: :comment}} = socket),
+    do: assign(socket, :page, {:comment, nil})
+
+  defp form_page(%{assigns: %{asked_page: {:reply, id}}} = socket) do
+    case Enum.find(socket.assigns.review_comments, &(&1.id == id)) do
+      nil -> back(socket)
+      comment -> assign(socket, :page, {:reply, comment})
+    end
+  end
+
+  defp back(socket) do
+    socket
+    |> assign(page: nil, asked_page: nil)
+    |> push_patch(to: tab_path(scope(socket), socket.assigns.number, :explore))
+  end
+
+  defp page_title({:comment, _comment}), do: gettext("Add review comment")
+  defp page_title({:reply, _comment}), do: gettext("Reply")
 
   # A test work item has no Ticket tab: its address is Explore's tab.
   defp ticketed(%{assigns: %{row: %{test: true}, tab: :ticket}} = socket),
@@ -391,64 +482,81 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end)
   end
 
-  # The questions form as the reader changes it: the question changed (`_target`) keeps
-  # its option or its text, whichever was changed, and clears the other.
-  defp act("answer_draft", params, socket) do
-    answers = given_answers(params)
+  # The questions form as the reader changes it.
+  defp act("answer_draft", params, socket),
+    do: {:noreply, assign(socket, :answers, drafted(params))}
 
-    answers =
-      case params["_target"] do
-        ["answers", key, "option"] when is_map_key(answers, key) ->
-          Map.update!(answers, key, &Map.put(&1, "custom", ""))
+  # Run with answers: the answers given, each question with an option, Give your own
+  # option, or a note; a question with neither stays open.
+  defp act("answer", params, socket) do
+    draft = drafted(params)
+    open = Enum.filter(socket.assigns.questions, &(&1.state == :open))
 
-        ["answers", key, "custom"] when is_map_key(answers, key) ->
-          Map.update!(answers, key, &Map.delete(&1, "option"))
+    case answer_list(draft, open) do
+      {:error, errors} ->
+        {:noreply, refused_answers(socket, draft, errors, nil)}
 
-        _other ->
-          answers
-      end
+      {:ok, []} ->
+        {:noreply, refused_answers(socket, draft, %{}, :blank)}
 
-    {:noreply, assign(socket, :answers, answers)}
+      {:ok, answers} ->
+        with_attempt(socket, fn attempt ->
+          scope = scope(socket)
+
+          case WorkItems.answer(scope, socket.assigns.row, attempt, cut_answers(answers, open)) do
+            {:ok, _work_item} ->
+              {:noreply, socket |> assign(answers: %{}, errors: %{}, form_error: nil) |> load()}
+
+            {:error, {:invalid, %{} = errors}} ->
+              {:noreply, refused_answers(socket, draft, by_id(errors, open), nil)}
+
+            {:error, _refused} ->
+              {:noreply,
+               socket |> assign(answers: draft, errors: %{}, form_error: nil) |> refresh()}
+          end
+        end)
+    end
   end
 
-  defp act("answer", params, socket) do
-    answers = params |> given_answers() |> one_each(socket.assigns.answers)
-
+  defp act("confirm", _params, socket) do
     with_attempt(socket, fn attempt ->
-      case WorkItems.answer(scope(socket), socket.assigns.row, attempt, answers) do
-        {:ok, _work_item} ->
-          {:noreply, socket |> assign(answers: %{}, errors: %{}) |> load()}
-
-        {:error, {:invalid, errors}} ->
-          errors = if errors == :form, do: form_errors(socket, answers), else: errors
-
-          {:noreply,
-           socket
-           |> assign(answers: answers, errors: errors)
-           |> update(:submits, &(&1 + 1))}
-
-        {:error, _refused} ->
-          {:noreply, socket |> assign(answers: answers, errors: %{}) |> refresh()}
-      end
+      done(socket, WorkItems.confirm(scope(socket), socket.assigns.row, attempt))
     end)
   end
 
-  defp act("change_draft", params, socket),
-    do: {:noreply, assign(socket, :change, change_text(params))}
-
-  # An empty field confirms the proposal; a text is a comment on it, which starts a run.
-  defp act("send_change", params, socket) do
-    case change_text(params) do
-      "" ->
-        with_attempt(socket, fn attempt ->
-          result = WorkItems.confirm(scope(socket), socket.assigns.row, attempt)
-          done(assign(socket, change_error: nil), result)
-        end)
-
-      text ->
-        with_attempt(socket, &send_change(socket, text, &1))
-    end
+  # Run with comments: the next run, with every open review comment.
+  defp act("run_with_comments", _params, socket) do
+    with_attempt(socket, fn attempt ->
+      done(socket, WorkItems.send_review_comments(scope(socket), socket.assigns.row, attempt))
+    end)
   end
+
+  defp act("review_comment", params, socket) do
+    text = text_of(params)
+
+    with_attempt(socket, fn attempt ->
+      written(
+        socket,
+        text,
+        WorkItems.review_comment(scope(socket), socket.assigns.row, attempt, text)
+      )
+    end)
+  end
+
+  defp act("reply", %{"comment" => id} = params, socket) when is_binary(id) do
+    text = text_of(params)
+
+    with_attempt(socket, fn attempt ->
+      written(
+        socket,
+        text,
+        WorkItems.reply(scope(socket), socket.assigns.row, attempt, id, text),
+        :reply_blank
+      )
+    end)
+  end
+
+  defp act(_event, _params, socket), do: {:noreply, socket}
 
   # The workflow model's actions. Each form sends the stage the reader saw (`seen`); the
   # page reads the work item again and acts only while it is still in that stage, asked
@@ -704,43 +812,50 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
 
-  # A comment sent: the field empties; a text the check refuses, or a reader who is not
-  # an approver of the stage, keeps the draft and says why under the field.
-  defp send_change(socket, text, attempt) do
-    case WorkItems.answer(scope(socket), socket.assigns.row, attempt, text) do
-      {:ok, _work_item} ->
-        {:noreply, socket |> assign(change: "", change_error: nil) |> load()}
+  # A review comment or a reply written: back to Explore's tab. A text the check refuses,
+  # or a reader who is not an approver of the stage, keeps the draft and says why under
+  # the field; `blank` is the word for an empty one.
+  defp written(socket, text, result, blank \\ :blank)
 
-      {:error, {:invalid, %{comment: error}}} ->
-        {:noreply, change_refused(socket, text, error)}
-
-      {:error, :not_approver} ->
-        {:noreply, change_refused(socket, text, :not_approver)}
-
-      {:error, _refused} ->
-        {:noreply, socket |> assign(change: text, change_error: nil) |> refresh()}
-    end
+  defp written(socket, _text, {:ok, _work_item}, _blank) do
+    socket = assign(socket, page_value: "", page_error: nil, asked_page: nil, page: nil)
+    {:noreply, push_patch(socket, to: tab_path(scope(socket), socket.assigns.number, :explore))}
   end
 
-  defp change_refused(socket, text, error) do
+  defp written(socket, text, {:error, {:invalid, %{comment: error}}}, blank),
+    do: {:noreply, page_refused(socket, text, if(error == :blank, do: blank, else: error))}
+
+  defp written(socket, text, {:error, :not_approver}, _blank),
+    do: {:noreply, page_refused(socket, text, :not_approver)}
+
+  defp written(socket, text, {:error, _refused}, _blank),
+    do: {:noreply, socket |> assign(page_value: text, page_error: nil) |> refresh()}
+
+  defp page_refused(socket, text, error) do
     socket
-    |> assign(change: text, change_error: error)
-    |> update(:change_submits, &(&1 + 1))
+    |> assign(page_value: text, page_error: error)
+    |> update(:page_submits, &(&1 + 1))
   end
 
-  defp change_text(%{"change" => text}) when is_binary(text), do: text
-  defp change_text(_params), do: ""
+  defp text_of(%{"text" => text}) when is_binary(text), do: text
+  defp text_of(_params), do: ""
 
-  # The questions' answers the form gives, each `%{"option" => title, "custom" => text}`
-  # with only text in it: anything else is no answer.
-  defp given_answers(params) do
+  defp refused_answers(socket, draft, errors, form_error) do
+    socket
+    |> assign(answers: draft, errors: errors, form_error: form_error)
+    |> update(:submits, &(&1 + 1))
+  end
+
+  # The questions form's draft: by question id, each `%{"option" => choice, "note" =>
+  # text}` with only text in it.
+  defp drafted(params) do
     case params["answers"] do
       %{} = given ->
-        for {key, %{} = value} <- Map.take(given, @answer_keys), into: %{} do
-          {key,
+        for {id, %{} = value} <- given, is_binary(id), into: %{} do
+          {id,
            for(
              {field, text} <- value,
-             field in ["option", "custom"],
+             field in ["option", "note"],
              is_binary(text),
              into: %{},
              do: {field, text}
@@ -752,33 +867,73 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # One answer for each question: where the form gives both an option and a text, as a
-  # change that has not reached the page yet can, the one the draft kept.
-  defp one_each(answers, draft) do
-    Map.new(answers, fn {key, value} ->
-      case {blank?(value["option"]), blank?(value["custom"])} do
-        {false, false} ->
-          if blank?(get_in(draft, [key, "custom"])),
-            do: {key, Map.put(value, "custom", "")},
-            else: {key, Map.delete(value, "option")}
+  @doc false
+  # answer_list/2 is the answers the form's draft `draft` gives to the open questions
+  # `open` (each with `:id` and `:options`), in their order, as
+  # `Apiary.WorkItems.answer/4` takes them: `{:ok, [%{"id" => id, "option" => title or
+  # nil, "note" => text or nil}]}`. An option picked is its title, with the note where
+  # one is written; Give your own option (`"own"`) is a nil option and needs a note; a
+  # note alone is a nil option with it. A question with nothing picked and an empty field
+  # is left out, and stays open. `{:error, errors}` by question id, `:note_required` for
+  # Give your own option with an empty field.
+  @spec answer_list(map, [map]) ::
+          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => atom}}
+  def answer_list(draft, open) when is_map(draft) and is_list(open) do
+    checked =
+      for %{id: id, options: options} <- open do
+        given = Map.get(draft, id, %{})
+        note = if blank?(given["note"]), do: nil, else: given["note"]
 
-        _one ->
-          {key, value}
+        case {picked(given["option"], options), note} do
+          {:own, nil} -> {:error, id, :note_required}
+          {:own, note} -> {:ok, %{"id" => id, "option" => nil, "note" => note}}
+          {nil, nil} -> :none
+          {nil, note} -> {:ok, %{"id" => id, "option" => nil, "note" => note}}
+          {title, note} -> {:ok, %{"id" => id, "option" => title, "note" => note}}
+        end
       end
-    end)
+
+    case for({:error, id, error} <- checked, into: %{}, do: {id, error}) do
+      errors when errors == %{} -> {:ok, for({:ok, answer} <- checked, do: answer)}
+      errors -> {:error, errors}
+    end
   end
+
+  # The option a choice names: `:own`, an option's title by its place from 1, or nil.
+  defp picked("own", _options), do: :own
+
+  defp picked(choice, options) when is_binary(choice) do
+    case Integer.parse(choice) do
+      {n, ""} when n >= 1 -> options |> Enum.at(n - 1) |> then(&(&1 && &1.title))
+      _other -> nil
+    end
+  end
+
+  defp picked(_choice, _options), do: nil
 
   defp blank?(text) when is_binary(text), do: String.trim(text) == ""
   defp blank?(_text), do: true
 
-  # A form that names another question or gives no answer: each question of the latest
-  # run with neither an option nor a text is to be answered.
-  defp form_errors(socket, answers) do
-    for question <- socket.assigns.item.run[:questions] || [],
-        blank?(answers[question.public_id]["option"]) and
-          blank?(answers[question.public_id]["custom"]),
-        into: %{},
-        do: {question.public_id, :blank}
+  # The answers as `Apiary.WorkItems.answer/4` takes them on this branch's base, until it
+  # takes the list: by the question's place among the open ones, an option's title, else
+  # the note as the member's text.
+  defp cut_answers(answers, open) do
+    places = open |> Enum.with_index(1) |> Map.new(fn {q, i} -> {q.id, Integer.to_string(i)} end)
+
+    Map.new(answers, fn
+      %{"id" => id, "option" => title} when is_binary(title) -> {places[id], %{"option" => title}}
+      %{"id" => id, "note" => note} -> {places[id], %{"custom" => note}}
+    end)
+  end
+
+  # The errors of `Apiary.WorkItems.answer/4`, by question id: keyed by id, or on this
+  # branch's base by the question's place among the open ones.
+  defp by_id(errors, open) do
+    ids = open |> Enum.with_index(1) |> Map.new(fn {q, i} -> {Integer.to_string(i), q.id} end)
+
+    for {key, error} <- errors, is_binary(key), into: %{} do
+      {Map.get(ids, key, key), error}
+    end
   end
 
   ## Live
@@ -874,6 +1029,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         earlier_runs: page.earlier_runs,
         earlier_take_ins: page.earlier_take_ins,
         comments: page.comments,
+        proposal: page.proposal,
+        questions: page.questions,
+        questions_version: page.questions_version,
+        review_comments: page.review_comments,
+        can_review: can_review?(scope, row, explore.status),
         thread: page.thread,
         people: page.people,
         comment_count: WorkItems.count_comments(scope, row),
@@ -883,6 +1043,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         flow: flow,
         artifacts: if(flow, do: Artifacts.list(row), else: [])
       )
+      |> form_page()
     else
       _gone ->
         socket
@@ -1003,6 +1164,21 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp escalated?(_flow, _status), do: false
 
   defp scope(socket), do: socket.assigns.current_scope
+
+  # Whether the reader may write review comments and replies now: while no run runs, as
+  # `Apiary.WorkItems.Moves.review_comment/4` checks it, with the permission to answer
+  # (`work_item.answer`). Whether the reader approves the stage is checked when they send.
+  defp can_review?(scope, row, status),
+    do: status in @no_run and Access.can?(scope, :"work_item.answer", row)
+
+  defp running?(%{status: status}), do: status in [:queued, :running]
+  defp running?(_item), do: false
+
+  defp review_path(scope, number),
+    do: tab_path(scope, number, :explore) <> "?" <> URI.encode_query(review: "new")
+
+  defp reply_path(scope, number, id),
+    do: tab_path(scope, number, :explore) <> "?" <> URI.encode_query(reply: id)
 
   defp tab_path(scope, number, :ticket),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}"

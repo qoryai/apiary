@@ -14113,6 +14113,232 @@
     font-size: 0.78125rem;
   }
 
+  /* Explore's tab as concept A: neutral icons on the frames, the questions' folds, the
+     gate under the proposal, the fold of the runs, the Sources fold. */
+  .q-xp-frame-i,
+  .q-xp-wait-i {
+    flex: none;
+    color: var(--q-muted);
+  }
+  .q-xp-wait-i {
+    margin-top: 1px;
+  }
+  .q-xp-frame-act {
+    margin-left: auto;
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+  .q-xp-opts + textarea {
+    margin-top: 10px;
+  }
+  .q-xp-qbody {
+    padding-top: 14px;
+  }
+  .q-xp-closed {
+    display: grid;
+    gap: 8px;
+  }
+  .q-xp-closed + .q-xp-sec {
+    margin-top: 16px;
+  }
+  .q-xp-closed details + details {
+    margin-top: 0;
+  }
+  .q-xp-wrap {
+    white-space: normal;
+  }
+  .q-xp-said {
+    color: var(--color-base-content);
+  }
+  .q-xp-qt {
+    margin: 0;
+  }
+  .q-xp-ans-old {
+    color: var(--q-muted);
+  }
+  .q-xp-runrow {
+    display: flex;
+    min-height: 40px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px 12px 8px 34px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-xp-inner > details + details {
+    margin-top: 0;
+  }
+  .q-xp-arts {
+    margin-top: 4px;
+  }
+  .q-xp-gate-cap {
+    padding: 0;
+    border: 0;
+  }
+  .q-xp-gate-go {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .q-xp-gate-go p {
+    margin: 0;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-xp-gate-b {
+    display: flex;
+    gap: 8px;
+  }
+  .q-xp-sources {
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-xp-sources > summary {
+    display: flex;
+    min-height: 40px;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 2px;
+    padding: 8px 14px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    list-style: none;
+    cursor: pointer;
+  }
+  .q-xp-sources > summary::-webkit-details-marker {
+    display: none;
+  }
+  .q-xp-sources[open] > summary > .q-xp-chev {
+    rotate: 90deg;
+  }
+  .q-xp-sources > .q-xp-inner {
+    padding: 0 14px 14px 36px;
+  }
+  @media (max-width: 767.98px) {
+    .q-xp-sources > summary {
+      padding: 8px 12px;
+    }
+    .q-xp-sources > .q-xp-inner {
+      padding: 0 12px 14px;
+    }
+  }
+
+  /* Review comments: cards in the rail from 1440 px, at the top of the proposal's text
+     below it. A card folds to its header with a click on it. */
+  .q-rc-list {
+    display: grid;
+    gap: 8px;
+  }
+  .q-rc-h {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .q-xp-rc-inline {
+    padding-bottom: 0;
+  }
+  @media (min-width: 1440px) {
+    .q-xp-rc-inline {
+      display: none;
+    }
+  }
+  @media (max-width: 1439.98px) {
+    .q-rc-rail {
+      display: none;
+    }
+  }
+  .q-rc {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-xs);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-rc:has(> .q-rc-head[aria-expanded="true"]) {
+    border-color: var(--color-primary);
+  }
+  .q-rc:has(> .q-rc-head[aria-expanded="false"]) > :not(.q-rc-head, .q-rc-out),
+  .q-rc:has(> .q-rc-head[aria-expanded="true"]) > .q-rc-out,
+  .q-rc-head[aria-expanded="true"] > .q-rc-snip,
+  .q-rc-head[aria-expanded="false"] > .q-rc-by {
+    display: none;
+  }
+  .q-rc-head {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .q-rc-by {
+    flex: 1;
+  }
+  .q-rc-snip {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--q-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rc-chev {
+    flex: none;
+    margin-left: auto;
+    color: var(--q-faint);
+    transition: rotate 120ms var(--q-ease-out);
+  }
+  .q-rc-head[aria-expanded="true"] > .q-rc-chev {
+    rotate: 180deg;
+  }
+  .q-rc-tick {
+    flex: none;
+    color: var(--color-success);
+  }
+  .q-rc-m {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .q-rc-text {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+  .q-rc-done .q-rc-snip,
+  .q-rc-done .q-rc-text {
+    color: var(--q-muted);
+  }
+  .q-rc-reply {
+    display: grid;
+    gap: 4px;
+    padding: 8px;
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-200);
+  }
+  .q-rc-member {
+    display: grid;
+    gap: 4px;
+    padding: 0 8px;
+  }
+  .q-rc-acts {
+    margin: 0;
+    font-size: 0.8125rem;
+  }
+
   /* The run limit's note. */
   .q-xp-note {
     display: flex;
