@@ -275,9 +275,9 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Queued"
-      assert count(html, ".q-wi-bee-line .q-wi-play.hero-play-circle") == 1
+      assert count(html, ".q-wi-icon-line .q-wi-play.hero-play-circle") == 1
 
-      assert text(html, ".q-wi-bee-line") ==
+      assert text(html, ".q-wi-icon-line") ==
                "When the run starts, Explore reads the ticket and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
@@ -298,7 +298,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "after the uninstall: the reader's line says nothing changes on the ticket" do
       html = card(queued(@dana, ago(20 * 60)), uninstalled: true)
 
-      assert text(html, ".q-wi-bee-line") ==
+      assert text(html, ".q-wi-icon-line") ==
                "When the run starts, Explore reads the ticket and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
@@ -1329,7 +1329,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "the step card and its Undo line" do
       html = card(queued(@dana, ago(5)), item_noun: @bug)
 
-      assert text(html, ".q-wi-bee-line") ==
+      assert text(html, ".q-wi-icon-line") ==
                "When the run starts, Explore reads the bug and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==

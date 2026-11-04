@@ -360,7 +360,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         html = card(w, can_undo: true)
 
         assert text(html, ".q-wi-badge") == "Queued"
-        assert text(html, ".q-wi-bee-line") == line
+        assert text(html, ".q-wi-icon-line") == line
         assert text(html, "#work-item-step-run") == "Attempt 2 is queued."
         assert count(html, "#work-item-step-undo") == 0
         assert count(html, "button") == 0
@@ -640,7 +640,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "When the run starts, Explore reads the ticket and the answers of this take in, and writes a proposal."}
             ] do
           w = work_item(%{status: :queued, run: %{attempt: 2, of: 3, answers_by: people}})
-          assert text(card(w), ".q-wi-bee-line") == line
+          assert text(card(w), ".q-wi-icon-line") == line
         end
 
         assert text(asked(3), "#work-item-step-line") ==

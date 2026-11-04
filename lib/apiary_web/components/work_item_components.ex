@@ -767,7 +767,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <p class="q-wi-bee-line"><.run_icon /><span>{@line}</span></p>
+    <p class="q-wi-icon-line"><.run_icon /><span>{@line}</span></p>
     <p id={"#{@id}-run"}>{@queued}</p>
     """
   end
@@ -785,7 +785,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <p class="q-wi-bee-line"><.run_icon /><span>{@line}</span></p>
+    <p class="q-wi-icon-line"><.run_icon /><span>{@line}</span></p>
     <div id={"#{@id}-undo"} class="q-wi-undo">
       <p id={"#{@id}-undo-line"}><.rich text={@undo_line} /></p>
       <div :if={@can_undo} class="q-wi-acts">
