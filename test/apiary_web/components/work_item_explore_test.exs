@@ -28,7 +28,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   Checkout totals are a cent off when a discount applies.
 
-  ## How Qory would do it
+  ## How to do it
 
   - Extract the order service's rounding into one function.
   - Use it in the basket.
@@ -739,7 +739,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert attr(html, "#{p} .q-xp-cap a", "href") == ["/8wonders/main/runs/12"]
 
       # The Markdown, its headings two levels down.
-      assert texts(html, "#{p}-text h4") == ["What this is", "How Qory would do it"]
+      assert texts(html, "#{p}-text h4") == ["What this is", "How to do it"]
 
       assert texts(html, "#{p}-text li") == [
                "Extract the order service's rounding into one function.",
@@ -871,7 +871,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         assert texts(html, "#work-item-explore-proposal-text h4") == [
                  "What this is",
-                 "How Qory would do it"
+                 "How to do it"
                ]
 
         assert text(html, "#work-item-explore-comments .q-xp-cm-m") ==

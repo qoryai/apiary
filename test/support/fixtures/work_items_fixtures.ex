@@ -522,7 +522,7 @@ defmodule Apiary.WorkItemsFixtures do
 
         The basket keeps the price from before the sale.
 
-        ## How Qory would do it
+        ## How to do it
 
         Read the price from the catalogue each time.
 

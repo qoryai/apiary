@@ -657,7 +657,7 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     Acme customers pay part of a Web shop order with a gift card.
 
-    ## How Qory would do it
+    ## How to do it
 
     Take the gift card as a second payment of the order.
 
