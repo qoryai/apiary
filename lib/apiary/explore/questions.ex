@@ -14,11 +14,18 @@ defmodule Apiary.Explore.Questions do
   # (`check_run/3`), else it is refused with one of these reasons:
   #
   #   * `:id_dropped`: an `id` of the newest version is missing;
+  #   * `:asked_changed`: the run changed the `asked` of a question the newest version
+  #     has;
   #   * `:answer_changed`: the run added, changed or removed an `answer`;
   #   * `:history_changed`: the run changed a question's `history`, or gave a new
   #     question one;
   #   * `:reopen_not_kept`: the run reopened an answered question without moving its
   #     answer, unchanged, into the end of its `history`;
+  #   * `:reopened_run`: the run reopened an answered question with a `reopened.run`
+  #     other than the run's number;
+  #   * `:answered_changed`: the run changed the `question`, `context`, `options` or
+  #     `follows` of a question that stays answered, so an answer keeps the question
+  #     the member answered;
   #   * `:new_not_open`: a question the newest version does not have is not `open`;
   #   * `:asked_run`: a question the newest version does not have has an `asked.run` other
   #     than the run's number.
@@ -39,12 +46,17 @@ defmodule Apiary.Explore.Questions do
   @name "main"
   @reasons [
     :id_dropped,
+    :asked_changed,
     :answer_changed,
     :history_changed,
     :reopen_not_kept,
+    :reopened_run,
+    :answered_changed,
     :new_not_open,
     :asked_run
   ]
+  # What a run leaves as it is on a question that stays answered.
+  @answered_kept ~w(question context options follows)
 
   @typedoc "A questions document, decoded: a map with string keys."
   @type document :: %{optional(String.t()) => term}
@@ -52,9 +64,12 @@ defmodule Apiary.Explore.Questions do
   @typedoc "Why a run's version of the questions is refused."
   @type reason ::
           :id_dropped
+          | :asked_changed
           | :answer_changed
           | :history_changed
           | :reopen_not_kept
+          | :reopened_run
+          | :answered_changed
           | :new_not_open
           | :asked_run
 
@@ -167,7 +182,7 @@ defmodule Apiary.Explore.Questions do
     given = Map.new(questions, &{&1["id"], &1})
     known = MapSet.new(earlier, & &1["id"])
 
-    with :ok <- each(earlier, &kept(&1, Map.get(given, &1["id"]))),
+    with :ok <- each(earlier, &kept(&1, Map.get(given, &1["id"]), run_number)),
          :ok <-
            each(Enum.reject(questions, &MapSet.member?(known, &1["id"])), &new(&1, run_number)),
          do: :ok
@@ -182,10 +197,22 @@ defmodule Apiary.Explore.Questions do
     end)
   end
 
-  defp kept(_earlier, nil), do: {:error, :id_dropped}
+  defp kept(_earlier, nil, _run_number), do: {:error, :id_dropped}
 
-  # A reopen: the earlier answer, unchanged, at the end of the history the question had.
-  defp kept(%{"state" => "answered", "answer" => answer} = earlier, %{"state" => "open"} = given) do
+  # Who asked a question, and when, stays in every case.
+  defp kept(earlier, given, run_number) do
+    if Map.get(given, "asked") !== Map.get(earlier, "asked"),
+      do: {:error, :asked_changed},
+      else: answer_kept(earlier, given, run_number)
+  end
+
+  # A reopen: the earlier answer, unchanged, at the end of the history the question had,
+  # reopened by this run.
+  defp answer_kept(
+         %{"state" => "answered", "answer" => answer} = earlier,
+         %{"state" => "open"} = given,
+         run_number
+       ) do
     history = history(earlier)
     now = history(given)
 
@@ -194,17 +221,29 @@ defmodule Apiary.Explore.Questions do
       length(now) != length(history) + 1 -> {:error, :reopen_not_kept}
       Enum.take(now, length(history)) != history -> {:error, :history_changed}
       Map.delete(List.last(now), "reopened") != answer -> {:error, :reopen_not_kept}
+      get_in(List.last(now), ["reopened", "run"]) !== run_number -> {:error, :reopened_run}
       true -> :ok
     end
   end
 
-  defp kept(earlier, given) do
+  defp answer_kept(earlier, given, _run_number) do
     cond do
-      Map.get(given, "answer") != Map.get(earlier, "answer") -> {:error, :answer_changed}
-      history(given) != history(earlier) -> {:error, :history_changed}
-      true -> :ok
+      Map.get(given, "answer") != Map.get(earlier, "answer") ->
+        {:error, :answer_changed}
+
+      history(given) != history(earlier) ->
+        {:error, :history_changed}
+
+      answered?(earlier) and answered?(given) and
+          Map.take(given, @answered_kept) !== Map.take(earlier, @answered_kept) ->
+        {:error, :answered_changed}
+
+      true ->
+        :ok
     end
   end
+
+  defp answered?(question), do: question["state"] == "answered"
 
   defp new(%{"state" => "open"} = given, run_number) do
     cond do

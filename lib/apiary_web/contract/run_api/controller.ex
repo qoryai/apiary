@@ -402,6 +402,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Keep every question of the newest version of questions in #{filename}: " <>
           "the id of a question is missing."
 
+      :asked_changed ->
+        "Leave asked of each question in #{filename} as the newest version of " <>
+          "questions has it."
+
       :answer_changed ->
         "Leave each answer in #{filename} as the newest version of questions has it: " <>
           "members write the answers."
@@ -413,6 +417,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       :reopen_not_kept ->
         "Move the answer of a question you reopen, unchanged, to the end of its history " <>
           "in #{filename}."
+
+      :reopened_run ->
+        "Set reopened.run in the history of each question you reopen in #{filename} " <>
+          "to this run's number."
+
+      :answered_changed ->
+        "Leave question, context, options and follows of each answered question in " <>
+          "#{filename} as the newest version of questions has them."
 
       :new_not_open ->
         "Set the state of each question you add in #{filename} to open."

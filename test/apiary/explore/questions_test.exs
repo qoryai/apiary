@@ -119,13 +119,95 @@ defmodule Apiary.Explore.QuestionsTest do
       assert Questions.check_run(nil, doc([open("q1", 12)]), 13) == {:error, :asked_run}
     end
 
+    test "refuses asked changed on any question the newest version has" do
+      newest = doc([open("q1", 12), answered("q2", 12)])
+      other_run = %{"run" => 1, "at" => "2020-01-01T00:00:00Z"}
+
+      for id <- ["q1", "q2"] do
+        pushed =
+          update_in(newest, ["questions"], fn questions ->
+            Enum.map(
+              questions,
+              &if(&1["id"] == id, do: Map.put(&1, "asked", other_run), else: &1)
+            )
+          end)
+
+        assert Questions.check_run(newest, pushed, 13) == {:error, :asked_changed}, id
+      end
+
+      # A reopen keeps it too.
+      moved = Map.put(reopened(answered("q2", 12), 13), "asked", other_run)
+
+      assert Questions.check_run(newest, doc([open("q1", 12), moved]), 13) ==
+               {:error, :asked_changed}
+    end
+
+    test "refuses the question, context, options or follows of an answered question changed" do
+      question =
+        "q1"
+        |> answered(12)
+        |> Map.merge(%{
+          "question" => "Delete the old records?",
+          "context" => "They are from 2020.",
+          "options" => [
+            %{"title" => "Yes", "explanation" => "Delete them."},
+            %{"title" => "No", "explanation" => "Keep them."}
+          ],
+          "follows" => []
+        })
+
+      newest = doc([question])
+
+      for {key, value} <- [
+            {"question", "Keep the old records?"},
+            {"context", "They are from 2021."},
+            {"options",
+             [
+               %{"title" => "Yes", "explanation" => "Keep them."},
+               %{"title" => "No", "explanation" => "Delete them."}
+             ]},
+            {"follows", ["q0"]}
+          ] do
+        assert Questions.check_run(newest, doc([Map.put(question, key, value)]), 13) ==
+                 {:error, :answered_changed},
+               key
+      end
+
+      assert Questions.check_run(newest, doc([Map.delete(question, "context")]), 13) ==
+               {:error, :answered_changed}
+
+      # An open question's text is the run's to change, and so is a reopened one's.
+      open = Map.merge(open("q2", 12), %{"question" => "Which month?"})
+
+      assert Questions.check_run(
+               doc([question, open]),
+               doc([
+                 question |> reopened(13) |> Map.put("question", "Delete the 2020 records?"),
+                 Map.put(open, "question", "Which month of 2020?")
+               ]),
+               13
+             ) == :ok
+    end
+
+    test "refuses a reopen that names another run" do
+      newest = doc([answered("q1", 12)])
+
+      assert Questions.check_run(newest, doc([reopened(answered("q1", 12), 99)]), 13) ==
+               {:error, :reopened_run}
+
+      assert Questions.check_run(newest, doc([reopened(answered("q1", 12), 13)]), 13) == :ok
+    end
+
     test "reasons/0 is each reason the check refuses for" do
       assert Questions.reasons() ==
                [
                  :id_dropped,
+                 :asked_changed,
                  :answer_changed,
                  :history_changed,
                  :reopen_not_kept,
+                 :reopened_run,
+                 :answered_changed,
                  :new_not_open,
                  :asked_run
                ]

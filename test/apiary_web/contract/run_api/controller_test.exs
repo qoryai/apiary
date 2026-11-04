@@ -1052,6 +1052,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {"questions", :reopen_not_kept,
          "Move the answer of a question you reopen, unchanged, to the end of its history " <>
            "in questions.json."},
+        {"questions", :asked_changed,
+         "Leave asked of each question in questions.json as the newest version of " <>
+           "questions has it."},
+        {"questions", :reopened_run,
+         "Set reopened.run in the history of each question you reopen in questions.json " <>
+           "to this run's number."},
+        {"questions", :answered_changed,
+         "Leave question, context, options and follows of each answered question in " <>
+           "questions.json as the newest version of questions has them."},
         {"questions", :new_not_open,
          "Set the state of each question you add in questions.json to open."},
         {"questions", :asked_run,
