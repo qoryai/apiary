@@ -295,7 +295,8 @@ defmodule Apiary.Dispatches.SettleTest do
 
       assert log =~
                "run outcome not stored, newest questions unreadable " <>
-                 "dispatch_run=#{handed.dispatch_run.id}"
+                 "dispatch_run=#{handed.dispatch_run.id} " <>
+                 "work_item=#{work_item!(handed).public_id} questions_version=#{version.public_id}"
 
       assert Settle.sweep(Dispatches.now()) == []
       assert stored(handed) == {nil, nil}
