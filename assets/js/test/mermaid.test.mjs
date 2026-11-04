@@ -411,6 +411,13 @@ test("shows the not-drawn line for each other type, and draws nothing", async ()
   for (const text of ["flowchart-elk LR\n  A --> B", "classDiagram-v2\n  A <|-- B", "Flowchart LR"])
     assert.deepEqual(await drawing(library(true), text), {line: "notDrawn"})
   assert.deepEqual(await drawing(library(true), ""), {line: "notDrawn"})
+  // A byte order mark, or front matter that reaches drawing, leaves gantt not drawn.
+  const gantt = "gantt\n  title Invoices\n  Send :a1, 2026-11-01, 3d"
+  assert.deepEqual(await drawing(library(true), `\ufeff${gantt}`), {line: "notDrawn"})
+  assert.deepEqual(await drawing(library(true), `---\ntitle: x\n---\n${gantt}`), {line: "notDrawn"})
+  assert.deepEqual(await drawing(library(true), source(`---\ntitle: x\n---\n${gantt}`)), {
+    line: "notDrawn",
+  })
 })
 
 test("shows the not-drawn line for a flowchart with a node image", async () => {
