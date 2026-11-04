@@ -1106,8 +1106,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {[md, {"sources.json", "application/json", String.duplicate(" ", 1_048_577)}],
          ["files[1]"], "Shrink sources.json to at most 1048576 bytes."},
         {[md, {"sources.json", "application/json", ~s({"items": []})}], ["files[1]"],
-         "Fix sources.json to match the JSON Schema of proposal sources: " <>
-           "at #, additional properties are not allowed but found property 'items'."}
+         "Fix sources.json to match the format of proposal sources: " <>
+           "at #, additional properties are not allowed but found property 'items'."},
+        {[md, {"sources.json", "application/json", ~s({"sources": [], "sources": []})}],
+         ["files[1]"],
+         "Fix sources.json to match the format of proposal sources: " <>
+           "at #, the object has the key sources twice."}
       ]
 
       for {files, names, message} <- cases do

@@ -619,6 +619,17 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:error, :document_size} = check(context, "proposal", "sources.json", big)
     end
 
+    test "refuses a key that comes twice in sources.json at its object's place", context do
+      assert {:error, {:schema, %{path: "#", error: "the object has the key sources twice"}}} =
+               check(context, "proposal", "sources.json", ~s({"sources": [], "sources": []}))
+
+      twice = ~s({"sources": [{"kind": "page", "ref": "x", "why": "y", "why": "z"}]})
+
+      assert {:error,
+              {:schema, %{path: "#/sources/0", error: "the object has the key why twice"}}} =
+               check(context, "proposal", "sources.json", twice)
+    end
+
     test "takes a source's system only as host labels that neither start nor end with a hyphen",
          context do
       source = fn system ->

@@ -454,7 +454,7 @@ The messages:
       the style attribute". A name past 64 characters is cut to 64 and "…".
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
-    - "Fix sources.json to match the JSON Schema of proposal sources: at #, additional
+    - "Fix sources.json to match the format of proposal sources: at #, additional
       properties are not allowed but found property 'items'." The part after the colon
       is the structured form: the JSON pointer of the first failing value and the text
       of the schema check.

@@ -429,9 +429,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   defp refused(_refusal, _push), do: {:error, :unavailable}
 
-  # A proposal's sources.json is checked against the proposal sources format; a structured
-  # type's file, against its type's.
-  defp schema_of("proposal", "sources.json"), do: "the JSON Schema of proposal sources"
+  # The format a refused file is fixed to: for a proposal's sources.json, the proposal
+  # sources format; for a structured type's file, its type's. The format includes the key
+  # that comes twice in an object, which the JSON Schema cannot state.
+  defp schema_of("proposal", "sources.json"), do: "the format of proposal sources"
   defp schema_of(type, _filename), do: "the format of #{type}"
 
   # The message of a run's version that changes what members wrote, by the rule it breaks
