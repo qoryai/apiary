@@ -189,6 +189,25 @@ test("does not draw a flowchart node's image, written in any way YAML reads", ()
   assert.equal(loads("flowchart LR\n  A@{ shape: rect, label: \"Invoice\" }\n  A --> B"), false)
 })
 
+test("draws a label with img in it next to a node data block", () => {
+  const text = [
+    "flowchart LR",
+    "  A[Upload to imgur] --> B@{ shape: rect, label: \"imgur: the host\" }",
+    "  B --> C@{ shape: circle, label: 'img: the tag' }",
+    "  C --> D[img: the tag]",
+  ].join("\n")
+  assert.equal(loads(text), false)
+})
+
+test("finds an img key after a quoted closing brace and in a later block", () => {
+  assert.equal(loads('flowchart LR\n  A@{ label: "a } b", img: "/a.png" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ label: "x", "img": "/q.png" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ shape: rect }\n  B@{ shape: rect, img: "/b.png" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ shape: rect, label: {img: "/c.png"} }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ shape: rect, &k img: "/d.png" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ shape: rect, img: "/e.png"'), true)
+})
+
 test("does not draw a sequence diagram's properties line, whose icon is an image", () => {
   const text = 'sequenceDiagram\n  participant Alice\n  properties Alice: {"icon": "/acme/a.png"}'
   assert.equal(loads(text), true)

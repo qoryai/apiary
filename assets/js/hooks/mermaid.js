@@ -192,18 +192,54 @@ const unescaped = text =>
       return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : "\ufffd"
     })
 
+// The node data blocks of `text` (A@{ … }), each from its "@{" to the "}" that closes
+// it, outside quotes; a block with no end runs to the end of the text.
+const dataBlocks = text => {
+  const blocks = []
+  let at = text.indexOf("@{")
+  while (at !== -1) {
+    let depth = 0
+    let quote = null
+    let end = text.length
+    for (let i = at + 1; i < text.length; i++) {
+      const char = text[i]
+      if (quote) {
+        if (char === "\\" && quote === '"') i++
+        else if (char === quote) quote = null
+      } else if (char === '"' || char === "'") quote = char
+      else if (char === "{") depth++
+      else if (char === "}" && --depth === 0) {
+        end = i + 1
+        break
+      }
+    }
+    blocks.push(text.slice(at, end))
+    at = text.indexOf("@{", end)
+  }
+  return blocks
+}
+
+// Whether a node data block has an img key, quoted or not, after a tag or an anchor or
+// not. A quoted value, a string not followed by ":", is left out first, so a label such
+// as "img: the tag" is no key.
+const imgKey = block =>
+  /(^|[\s{,"'])img["']?\s*:/i.test(
+    block.replace(/"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'/g, (string, at, all) =>
+      /^\s*:/.test(all.slice(at + string.length)) ? string : '""',
+    ),
+  )
+
 // Whether drawing `text` would load an address, by the syntaxes of the vendored Mermaid
 // 11.17.2 that do: CSS with an address, in any style, classDef, linkStyle or C4 style
 // (cssAddresses above); a flowchart node's image (A@{ img: "…" }), which Mermaid loads as
-// an Image and draws as <image href>, so a node's data (@{) with "img", or with a
+// an Image and draws as <image href>, so a node data block with an img key, or with a
 // backslash, which its YAML could use to write "img"; and a sequence diagram's
 // properties line, whose "icon" Mermaid draws as <image xlink:href>.
 export const loads = text => {
   const written = text.toLowerCase()
   const read = unescaped(text).toLowerCase()
   if (cssAddresses.some(css => written.includes(css) || read.includes(css))) return true
-  const data = text.indexOf("@{")
-  if (data !== -1 && (/img/i.test(text) || text.slice(data).includes("\\"))) return true
+  if (dataBlocks(text).some(block => imgKey(block) || block.includes("\\"))) return true
   return /(^|;)\s*properties(\s|$)/im.test(text)
 }
 
