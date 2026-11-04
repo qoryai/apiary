@@ -147,6 +147,7 @@ defmodule Apiary.AccessRows do
       {:"work_item.undo", yes: @owners ++ [:member, :admin]},
       {:"work_item.close", yes: @owners ++ [:member, :admin]},
       {:"work_item.answer", yes: @owners ++ [:member, :admin]},
+      {:"work_item.review_comment", yes: @owners ++ [:member, :admin]},
       {:"work_item.confirm", yes: @owners ++ [:member, :admin]},
       {:"work_item.explore_again", yes: @owners ++ [:member, :admin]},
       {:"work_item.comment", yes: @owners ++ [:member, :admin]},

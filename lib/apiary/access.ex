@@ -477,6 +477,15 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: @members
     ),
+    Action.new(
+      :"work_item.review_comment",
+      "write a review comment on Qory's proposal for a work item, reply to one, and send the open ones to Explore's next run. When the work item's stage lists approvers, only those people take it.",
+      feature: :factory,
+      roles: @members,
+      audited:
+        {:not,
+         "a review comment, a reply and a send each leave the entry of work_item.answer, with the move's details (Apiary.WorkItems.Moves)"}
+    ),
     Action.new(:"work_item.confirm", "confirm Qory's proposal for a work item",
       feature: :factory,
       roles: @members
@@ -721,8 +730,9 @@ defmodule Apiary.Access do
   @authored %{"work_item.comment_delete": :"work_item.comment"}
 
   # What only the approvers of the stage a work item is in take on it, where the stage
-  # lists them (`check_approver/3`): approving its gate.
-  @approver_actions [:"gate.approve"]
+  # lists them (`check_approver/3`): approving its gate, and the review comments on
+  # Explore's proposal.
+  @approver_actions [:"gate.approve", :"work_item.review_comment"]
 
   # What may still be done to an organisation or a workspace marked for deletion: cancel
   # the deletion, and purge it once its grace period is over. Nothing else is.
@@ -802,12 +812,15 @@ defmodule Apiary.Access do
      workspace or the organisation, as a page asks whether to show the button at all, the
      role alone answers. A level other than the role allows is `{:error, :forbidden}`. An
      invitation is the organisation's, whichever workspace it grants.
-  9. **The stage's approvers**, for approving a stage's gate (`gate.approve`), asked of a
-     work item. Where the stage the work item is in lists approvers, a person who is not
-     among them is `{:error, :not_approver}`. Every person the role allows may on a work
-     item the runner did not place, and at a stage that lists none. Asked of a workspace,
-     as a page asks whether to show the gates at all, the role alone answers. The answer
-     reads the work item's process version, unless the work item has it loaded.
+  9. **The stage's approvers**, for approving a stage's gate and the review comments on
+     Explore's proposal (`gate.approve`, `work_item.review_comment`), asked of a work
+     item. Where the stage the work item is
+     in lists approvers, a person who is not among them is `{:error, :not_approver}`.
+     Every person the role allows may with the workflow model off, on a work item the
+     runner did not place, and at a stage that lists none. An answer to the questions
+     (`work_item.answer`) is every member's. Asked of a workspace, as a page asks whether
+     to show the gates at all, the role alone answers. The answer reads the work item's
+     process version, unless the work item has it loaded.
 
   A context function that changes something asks `authorize/3` before it acts: that is the
   check that counts. It reads the person's membership again from the database, with what
