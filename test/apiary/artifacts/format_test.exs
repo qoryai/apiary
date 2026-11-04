@@ -897,16 +897,22 @@ defmodule Apiary.Artifacts.FormatTest do
                  svg("<desc><![CDATA[<?xml-stylesheet x?>]]></desc>")
                )
 
-      # A file that does not parse is read for its first instruction outside a comment and
-      # a CDATA section.
+      # A file that does not parse is read for its first instruction outside a comment, a
+      # CDATA section and a tag, whose target is an XML name.
       for bytes <- [
             ~s(<!-- <?xml-stylesheet href="a.css"?> -->) <> svg("<rect>"),
-            svg("<style><![CDATA[ <?xml-stylesheet ]]></style><rect>")
+            svg("<style><![CDATA[ <?xml-stylesheet ]]></style><rect>"),
+            svg(~s(<rect id="<?xml-stylesheet"/>)),
+            svg(~s(<rect <?xml-stylesheet ?>/>)),
+            "<?\u202Efoo?>" <> svg("<rect>")
           ] do
         assert {:error, :svg_format} = check(context, "proposal", "a.svg", bytes), bytes
       end
 
       declared = ~s(<?xml version="1.0"?><?xml-stylesheet href="a.css"?>) <> svg("<rect/>")
+
+      assert {:error, {:svg_content, "the processing instruction a"}} =
+               check(context, "proposal", "a.svg", "<?a>b<c x?>" <> svg("<rect/>"))
 
       assert {:error, {:svg_content, "the processing instruction xml-stylesheet"}} =
                check(context, "proposal", "a.svg", declared)

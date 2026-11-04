@@ -484,7 +484,8 @@ defmodule Apiary.Artifacts.Format do
 
   # `find` is `:limits` for the checks of `markup/2`, or `:instruction` for the target of
   # the first processing instruction, other than the XML declaration,
-  # `{:instruction, target}`.
+  # `{:instruction, target}`. The parser stops at a `<` inside a tag, so an instruction
+  # is looked for only before one.
   defp scan(bytes, find) do
     case :binary.match(bytes, "<") do
       :nomatch -> :ok
@@ -496,12 +497,17 @@ defmodule Apiary.Artifacts.Format do
   defp open(<<"!--", rest::binary>>, find), do: skip(rest, "-->", find)
   defp open(<<"![CDATA[", rest::binary>>, find), do: skip(rest, "]]>", find)
 
+  # The target of an instruction is an XML name; without one, no instruction is found.
   defp open(<<"?", rest::binary>>, :instruction) do
-    [target | _rest] = :binary.split(rest, [" ", "\t", "\n", "\r", "?"])
+    case Regex.run(~r/\A[A-Za-z_:][A-Za-z0-9_:.-]*/, rest) do
+      [target] ->
+        if String.downcase(target) == "xml",
+          do: skip(rest, "?>", :instruction),
+          else: {:instruction, target}
 
-    if target == "" or String.downcase(target) == "xml",
-      do: skip(rest, "?>", :instruction),
-      else: {:instruction, target}
+      nil ->
+        :ok
+    end
   end
 
   defp open(<<"?", rest::binary>>, find), do: skip(rest, "?>", find)
@@ -529,6 +535,7 @@ defmodule Apiary.Artifacts.Format do
     do: {:attributes, tag_name(start)}
 
   defp tag(<<">", rest::binary>>, _start, _count, find), do: scan(rest, find)
+  defp tag(<<"<", _rest::binary>>, _start, _count, :instruction), do: :ok
   defp tag(<<"<", rest::binary>>, _start, _count, find), do: open(rest, find)
   defp tag(<<"=", rest::binary>>, start, count, find), do: tag(rest, start, count + 1, find)
 
@@ -540,9 +547,11 @@ defmodule Apiary.Artifacts.Format do
       {at, 1} ->
         after_at = binary_part(rest, at + 1, byte_size(rest) - at - 1)
 
-        if :binary.at(rest, at) == quote,
-          do: tag(after_at, start, count, find),
-          else: open(after_at, find)
+        cond do
+          :binary.at(rest, at) == quote -> tag(after_at, start, count, find)
+          find == :instruction -> :ok
+          true -> open(after_at, find)
+        end
     end
   end
 
