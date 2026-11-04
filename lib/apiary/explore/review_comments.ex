@@ -11,7 +11,7 @@ defmodule Apiary.Explore.ReviewComments do
   # `Apiary.WorkItems.Moves`): a review comment is a new entry, `open`; a member's reply
   # is added to the review comment's replies and opens it again. A run reads the open
   # review comments, and in the version it pushes through the run API it may only add its
-  # reply to an open review comment and close it (`check_run/3`), else the version is
+  # reply to an open review comment and close it (`check_run/4`), else the version is
   # refused with one of these reasons:
   #
   #   * `:id_dropped`: an `id` of the newest version is missing;
@@ -85,7 +85,7 @@ defmodule Apiary.Explore.ReviewComments do
   @spec name() :: String.t()
   def name, do: @name
 
-  # reasons/0 is every reason `check_run/3` refuses a run's version for.
+  # reasons/0 is every reason `check_run/4` refuses a run's version for.
   @doc false
   @spec reasons() :: [reason]
   def reasons, do: @reasons
