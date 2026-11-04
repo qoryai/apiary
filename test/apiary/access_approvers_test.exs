@@ -1,8 +1,8 @@
 defmodule Apiary.AccessApproversTest do
-  # The approver rule of `Apiary.Access` (its moduledoc, step 9): `gate.approve` and
-  # `work_item.review_comment` asked of a work item allow only the approvers of the stage
-  # it is in, where the stage lists them. An answer to the questions stays every
-  # member's. A confirmation is refused at the gate (`Apiary.Stages.confirmed/3`).
+  # The approver rule of `Apiary.Access` (its moduledoc, step 9): `gate.approve`,
+  # `work_item.confirm` and `work_item.review_comment` asked of a work item allow only the
+  # approvers of the stage it is in, where the stage lists them. An answer to the
+  # questions stays every member's.
   # Not async: a test switches the workflow model off, the application's setting.
   use Apiary.DataCase, async: false
 
@@ -20,9 +20,9 @@ defmodule Apiary.AccessApproversTest do
   @moduletag needs: [:factory, :workflow_model]
 
   @explore "st_r79kph11eg"
-  @approver_actions [:"gate.approve", :"work_item.review_comment"]
+  @approver_actions [:"gate.approve", :"work_item.confirm", :"work_item.review_comment"]
   # The approver-only actions that are not part of the workflow model.
-  @factory_actions [:"work_item.review_comment"]
+  @factory_actions [:"work_item.confirm", :"work_item.review_comment"]
 
   setup do
     %{scope: scope} = sign_up_fixture()
