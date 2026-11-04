@@ -230,6 +230,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             reading={running?(@item) && @item.run[:attempt]}
             explore_path={tab_path(@current_scope, @number, :explore)}
             level="h2"
+            tip="tooltip-right"
           />
         </:rail>
         <:body>

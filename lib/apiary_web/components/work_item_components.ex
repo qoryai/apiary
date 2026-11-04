@@ -2886,6 +2886,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     values: ~w(h2 h3),
     doc: "the heading's level: `h2` in the right column, `h3` inside the proposal's frame"
 
+  attr :tip, :string,
+    default: nil,
+    doc:
+      "the class of the avatars' tooltips: `tooltip-right` in the right column, which cuts a tooltip above an avatar at its left edge"
+
   attr :class, :any, default: nil
 
   def review_comments(assigns) do
@@ -2904,6 +2909,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         reply_path={@reply_path && @reply_path.(comment.id)}
         reading={@reading}
         explore_path={@explore_path}
+        tip={@tip}
         expanded={place == 0}
       />
     </section>
@@ -2915,6 +2921,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :reply_path, :any, default: nil
   attr :reading, :any, default: nil
   attr :explore_path, :string, default: nil
+  attr :tip, :string, default: nil
   attr :expanded, :boolean, default: false, doc: "opened; else folded to its first line"
 
   # A review comment's card, opened or folded (`review_comments/1`).
@@ -2947,6 +2954,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           email={@comment.by.email}
           kind={kind(@comment.by)}
           size="xs"
+          class={@tip}
           in_link
         />
         <span class="q-rc-by q-rc-m">{comment_by(@comment)}</span>
@@ -2967,7 +2975,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         </div>
         <div :if={!reply.run} id={"#{@id}-reply-#{i}"} class="q-rc-member">
           <p class="q-rc-m">
-            <.avatar email={reply.by.email} kind={kind(reply.by)} size="xs" />
+            <.avatar email={reply.by.email} kind={kind(reply.by)} size="xs" class={@tip} />
             <span>{reply_by(reply)}</span>
           </p>
           <p class="q-rc-text" phx-no-format>{reply.text}</p>

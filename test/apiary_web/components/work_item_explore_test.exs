@@ -1578,10 +1578,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           id: "work-item-review",
           comments: invoice_comments(),
           explore_path: "/acme/main/work/41/explore",
-          level: "h2"
+          level: "h2",
+          tip: "tooltip-right"
         )
 
       assert count(rail, "h2#work-item-review-h.q-rc-h") == 1
+      # The avatars' tooltips open to the right, inside the right column.
+      assert count(rail, "#work-item-review abbr.tooltip.tooltip-right") == 3
+      assert count(html, "abbr.tooltip-right") == 0
 
       assert attr(rail, "#work-item-review-rc2-reply-1 .q-rc-m a", "href") == [
                "/acme/main/work/41/explore#work-item-explore-questions-question-2"
