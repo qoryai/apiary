@@ -414,7 +414,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def handle_params(params, _uri, socket) do
     {:noreply,
      socket
-     |> assign(tab: socket.assigns.live_action, move_error: nil)
+     |> assign(tab: socket.assigns.live_action, move_error: nil, form_error: nil, errors: %{})
      |> ask_page(asked_page(socket.assigns.live_action, params))
      |> load()
      |> ticketed()}
@@ -1046,8 +1046,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   # The page read again after the work item changed elsewhere, without the line of the
-  # last move that was not made (`move_error`): that line is about the page before.
-  defp changed(socket), do: socket |> assign(:move_error, nil) |> refresh()
+  # last move that was not made (`move_error`) and the errors under the questions form
+  # (`form_error`, `errors`): they are about the page before. The form's draft stays.
+  defp changed(socket),
+    do: socket |> assign(move_error: nil, form_error: nil, errors: %{}) |> refresh()
 
   ## Reads
 

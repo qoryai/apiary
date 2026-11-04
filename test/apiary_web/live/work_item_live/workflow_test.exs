@@ -1329,7 +1329,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-explore-gate-error")
     end
 
-    test "the line from Run with comments of a member the gate does not list is gone once the page reads the work item again",
+    test "the line from Run with comments, and the blank-answer error, of a member the gate does not list are gone once the page reads the work item again",
          %{conn: conn, scope: scope} do
       listed = explore_gate_listing(scope)
       work_item = explore_gate_fixture(scope)
@@ -1350,6 +1350,29 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-explore-questions-form")
       refute has_element?(view, "#work-item-explore-questions-error")
       refute render(view) =~ "Ask an approver of Explore to act on it."
+
+      # With the review comment still open, the member sends every answer blank and sees
+      # the blank-answer error. The approver sends the review comments again, and the run
+      # ends with another question: the error is gone from the form.
+      assert open_review_comments(work_item) == ["c1"]
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
+
+      assert has_element?(
+               view,
+               "#work-item-explore-questions-error",
+               "Choose an option or write an answer."
+             )
+
+      {:ok, _} = WorkItems.send_review_comments(listed, work_item, 2)
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result(["Which card?"]))
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+
+      assert has_element?(view, "#work-item-explore-questions-form", "Which card?")
+      refute has_element?(view, "#work-item-explore-questions-error")
+      refute render(view) =~ "Choose an option or write an answer."
     end
 
     test "the line from Run with comments of a member the gate does not list is gone after Add review comment and back",
