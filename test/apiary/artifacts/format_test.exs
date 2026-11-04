@@ -446,6 +446,7 @@ defmodule Apiary.Artifacts.FormatTest do
         <defs><linearGradient id="g"/><style>.box { fill: url('#g'); }</style></defs>
         <rect id="r" class="box" width="10" height="10" fill="url(#g)" style="stroke: url( #g )"/>
         <use href="#r"/><use xlink:href="#r"/><a href="#r"><text>Checkout</text></a>
+        <text>Add image (PNG)</text>
         """)
 
       assert {:ok, "image/svg+xml"} = check(context, "proposal", "checkout.svg", wireframe)
@@ -536,7 +537,12 @@ defmodule Apiary.Artifacts.FormatTest do
             "<style><g/></style>",
             ~s|<rect cursor="\\75 rl(https://example.com/c.png), auto"/>|,
             ~s|<rect mask="\\75 rl(https://example.com/m.svg#m)"/>|,
-            ~s|<use href="#r\\"/>|
+            ~s|<use href="#r\\"/>|,
+            ~s|<style>svg { background-image: image-set("https://example.com/a.png" 1x) }</style>|,
+            ~s|<rect style="mask-image: image-set('https://example.com/m.png' 1x)"/>|,
+            ~s|<rect style="mask-image: -WEBKIT-IMAGE-SET('https://example.com/m.png' 1x)"/>|,
+            ~s|<rect style="fill: IMAGE ('https://example.com/a.png')"/>|,
+            ~s|<style>rect { fill: image("https://example.com/a.png") }</style>|
           ] do
         assert {:error, :svg_content} = check(context, "proposal", "a.svg", svg(body)), body
       end

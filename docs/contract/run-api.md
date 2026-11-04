@@ -252,7 +252,8 @@ Checks, in order, after the checks of every request:
      `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, and no element
      in the HTML namespace; no attribute whose name starts with `on`; no `href` or CSS
      `url(` to anything but a place in the file (`#…`); no `@import`; no backslash in a
-     `style` element or in any attribute; and no `<?xml-stylesheet ?>`.
+     `style` element or in any attribute, and no `image-set(` or `image(` there either;
+     and no `<?xml-stylesheet ?>`.
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no

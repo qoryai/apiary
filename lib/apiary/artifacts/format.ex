@@ -40,8 +40,9 @@ defmodule Apiary.Artifacts.Format do
   #     (`http://www.w3.org/1999/xhtml`); no attribute whose name starts with `on`; an
   #     `href`, in any namespace, only to a place in the file (`#…`); a CSS `url(` only to
   #     a place in the file, in an attribute or in text; no `@import`, no backslash in a
-  #     `style` element or in any attribute (a CSS escape could spell `url(`), and no
-  #     `<?xml-stylesheet ?>`. Else `:svg_content`. Attribute values and text are checked
+  #     `style` element or in any attribute (a CSS escape could spell `url(`), no
+  #     `image-set(` or `image(` there either (any case, also with spaces before the
+  #     `(`), and no `<?xml-stylesheet ?>`. Else `:svg_content`. Attribute values and text are checked
   #     as the parser reads them, with their character references replaced; a `style`
   #     element has no child element, and its text is checked as one, joined across
   #     comments and CDATA sections, as a browser reads it.
@@ -414,13 +415,15 @@ defmodule Apiary.Artifacts.Format do
 
   # Text with no `@import` and every CSS `url(` to a place in the file; in CSS (`css?`),
   # a `style` element's text or an attribute's value, no backslash either, since a CSS
-  # escape could spell `url(`.
+  # escape could spell `url(`, and no `image-set(` (also `-webkit-image-set(`) or
+  # `image(`, which take an outside address as a plain string. Other text is not CSS, so
+  # a label such as "Add image (PNG)" passes.
   defp safe_text?(text, css?) do
     lower = String.downcase(text)
 
     not String.contains?(lower, "@import") and
       not Regex.match?(~r/url\(\s*+['"]?+\s*+(?!#)/, lower) and
-      not (css? and String.contains?(text, "\\"))
+      not (css? and (String.contains?(text, "\\") or Regex.match?(~r/image(-set)?\s*\(/, lower)))
   end
 
   defp blank?(rest) when is_binary(rest), do: String.trim(rest) == ""
