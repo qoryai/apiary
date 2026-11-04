@@ -443,7 +443,20 @@ action and the subject first, and returns what it answers:
   organisation or workspace, a subject of a workspace the person does not reach, and what
   the edition answers so (`c:Apiary.Edition.check/3`);
 - `{:error, :forbidden}` for a role that does not allow the action, or allows it over
-  other people than the subject's, and what the edition refuses so.
+  other people than the subject's, and what the edition refuses so;
+- `{:error, :not_approver}` where the role allows the action and the stage the work item
+  is in lists approvers the person is not among.
+
+The last step, after the role, is the stage's approvers. It applies to approving a
+stage's gate (`gate.approve`), confirming Explore's proposal (`work_item.confirm`) and
+the review comments on that proposal (`work_item.review_comment`), asked of a work item.
+Every person the role allows may take them with the workflow model off, on a work item
+the runner did not place, and at a stage that lists no approvers; an answer to the
+questions (`work_item.answer`) stays every member's. Asked of a workspace, as a page asks
+whether to show the gates at all, the role alone answers; asked of any other subject,
+they are `{:error, :not_approver}`. To answer, Qory Apiary reads the work item's process
+version, unless the work item has it loaded. An edition that answers the action
+(`c:Apiary.Edition.check/3`) answers before this step, and its answer stands.
 
 This is the check that counts. `authorize/3` reads the membership again, with what the
 edition put on the scope, so a scope loaded earlier cannot act on a level that has
@@ -697,6 +710,8 @@ The races are tested outside the sandbox, on connections that commit
 
 - A page shows a button, a link or a tab by `Apiary.Access.can?/3` with the same action as
   the function behind it, so the two cannot disagree. `can?/3` answers from the scope as
-  loaded, with no database read, and is cheap on every render.
+  loaded, with no database read of the scope, and is cheap on every render. The one read
+  is of a work item's process version, for the stage's approvers, when the work item does
+  not have it loaded.
 - A page that reads asks its read action on mount, `on_mount {ApiaryWeb.Access, action}`,
   after the path scope and the feature gate, and answers not found when refused.
