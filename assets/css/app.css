@@ -12951,10 +12951,11 @@
       grid-template-areas: "h r" "b r";
     }
     /* The rail stays in place while the page scrolls the main column; a rail taller
-       than the window scrolls within itself. */
+       than the window scrolls within itself. The top offset is 2 px less to match the
+       -2 px margin, so the content starts at the height of the main column. */
     .q-wi-r {
       position: sticky;
-      top: calc(var(--q-bar) + 1.5rem);
+      top: calc(var(--q-bar) + 1.5rem - 2px);
       grid-row: 1 / span 2;
       max-height: calc(100dvh - var(--q-bar) - 3rem);
       margin: -2px;
@@ -14111,6 +14112,7 @@
   }
   .q-xp-qt {
     margin: 0;
+    line-height: 1.375rem;
   }
   .q-xp-ans-old {
     color: var(--q-muted);
@@ -14201,6 +14203,9 @@
     padding-top: 10px;
     padding-bottom: 6px;
   }
+  .q-xp-rc-inline .q-rc-list {
+    gap: 6px;
+  }
   @media (max-width: 767.98px) {
     .q-xp-body.q-xp-rc-inline {
       padding-top: 8px;
@@ -14278,6 +14283,7 @@
     margin: 0;
     color: var(--q-faint);
     font-size: 0.75rem;
+    line-height: 1.125rem;
     font-weight: 500;
   }
   .q-rc-text {
