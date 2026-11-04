@@ -597,6 +597,63 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(view, "#work-item-explore")
     end
 
+    test "Add review comment without a proposal goes back to Explore's tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = asked(scope)
+      explore = page(scope, work_item.number, "/explore")
+
+      assert {:error, {:live_redirect, %{to: ^explore}}} = live(conn, explore <> "?review=new")
+
+      {:ok, view, _html} = live(conn, explore)
+      refute has_element?(view, "#work-item-explore-proposal-review-add")
+      render_patch(view, explore <> "?review=new")
+      assert_patch(view, explore)
+      refute has_element?(view, "#work-item-review-page")
+      assert has_element?(view, "#work-item-explore")
+    end
+
+    test "another form page starts with an empty field and no error", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = proposed(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Keep the old PDFs.")
+      explore = page(scope, work_item.number, "/explore")
+      number = "#{work_item.number}"
+
+      {:ok, view, _html} = live(conn, explore <> "?reply=c1")
+
+      view
+      |> element("#work-item-review-page-form")
+      |> render_submit(%{"number" => number, "comment" => "c1", "text" => " "})
+
+      assert has_element?(view, "#work-item-review-page-error", "Write your reply.")
+
+      render_patch(view, explore)
+      render_patch(view, explore <> "?review=new")
+      assert has_element?(view, "#work-item-review-page h1", "Add review comment")
+      refute has_element?(view, "#work-item-review-page-error")
+      refute has_element?(view, ~s(#work-item-review-page-text[aria-invalid]))
+
+      long = String.duplicate("a", 2_001)
+      render_patch(view, explore <> "?reply=c1")
+
+      view
+      |> element("#work-item-review-page-form")
+      |> render_submit(%{"number" => number, "comment" => "c1", "text" => long})
+
+      assert has_element?(view, "#work-item-review-page-text", long)
+
+      render_patch(view, explore)
+      render_patch(view, explore <> "?reply=c2")
+      assert has_element?(view, "#work-item-review-page-comment .q-rc-text", "Keep the old PDFs.")
+      refute has_element?(view, "#work-item-review-page-text", long)
+      refute has_element?(view, "#work-item-review-page-error")
+    end
+
     test "the proposal's Markdown on the tab, and the review comment in the Thread", %{
       conn: conn,
       scope: scope

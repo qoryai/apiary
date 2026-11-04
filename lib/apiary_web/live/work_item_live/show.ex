@@ -405,7 +405,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     {:noreply,
      socket
      |> assign(:tab, socket.assigns.live_action)
-     |> assign(:asked_page, asked_page(socket.assigns.live_action, params))
+     |> ask_page(asked_page(socket.assigns.live_action, params))
      |> load()
      |> ticketed()}
   end
@@ -416,11 +416,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp asked_page(:explore, %{"reply" => id}) when is_binary(id), do: {:reply, id}
   defp asked_page(_tab, _params), do: nil
 
+  # Another form page than the one asked before starts with an empty field and no error.
+  defp ask_page(%{assigns: %{asked_page: page}} = socket, page), do: socket
+
+  defp ask_page(socket, page),
+    do: assign(socket, asked_page: page, page_value: "", page_error: nil, page_submits: 0)
+
   # The form page as the work item stands: one the reader may use now, else none, and
-  # the address patches back to Explore's tab.
+  # the address patches back to Explore's tab. Add review comment needs a proposal to
+  # comment on.
   defp form_page(%{assigns: %{asked_page: nil}} = socket), do: assign(socket, :page, nil)
 
   defp form_page(%{assigns: %{can_review: false}} = socket), do: back(socket)
+
+  defp form_page(%{assigns: %{asked_page: :comment, proposal: nil}} = socket), do: back(socket)
 
   defp form_page(%{assigns: %{asked_page: :comment}} = socket),
     do: assign(socket, :page, {:comment, nil})
