@@ -345,7 +345,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert %{run: %{workflow_gap: nil}} = WorkItems.explore(ctx.scope, ctx.work_item)
     end
 
-    test "a question reopened twice: the run map of each run that wrote or reopened it counts it and lists it, with the answer given at that run",
+    test "a question reopened twice: the run map of each run that wrote or reopened it has it in `asked` and in `questions`, with the answer given at that run",
          ctx do
       item = reopened_twice!(ctx.scope, ctx.work_item)
       %{earlier_runs: earlier, run: latest} = WorkItems.explore(ctx.scope, item)
@@ -781,7 +781,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                )
     end
 
-    test "a question reopened in take in 2 and again in take in 3: the fold of each take in lists it at the run that reopened it",
+    test "a question reopened in take in 2 and again in take in 3: the fold of each take in lists it at each run that wrote or reopened it, and at the run it was answered at",
          ctx do
       scope = ctx.scope
       ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
