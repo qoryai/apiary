@@ -725,6 +725,28 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
+    test "says where a proposal's sources.json fails its format", ctx do
+      html =
+        push_proposal(ctx, [
+          {"proposal.md", "# Gift cards"},
+          {"sources.json", ~s({"sources":"none"})}
+        ])
+
+      assert html =~
+               "Fix sources.json to match the format of proposal sources: at #/sources, value is not of type array."
+
+      refute html =~ "JSON Schema"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "gives the line of the proposal sources format for a key twice in sources.json" do
+      detail = %{path: "#", error: "the object has the key sources twice"}
+      proposal = Enum.find(Apiary.Artifacts.Type.standard(), &(&1.name == "proposal"))
+
+      assert ApiaryWeb.ArtifactLive.New.schema_line("sources.json", proposal, detail) ==
+               "Fix sources.json to match the format of proposal sources: at #, the object has the key sources twice."
+    end
+
     test "stores a proposal with an image and sources.json", ctx do
       sources =
         Jason.encode!(%{

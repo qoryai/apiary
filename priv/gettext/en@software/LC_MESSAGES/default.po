@@ -9058,6 +9058,11 @@ msgstr ""
 msgid "Fix %{filename} to match the JSON Schema of %{type}: at %{path}, %{error}."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Fix sources.json to match the format of proposal sources: at %{path}, %{error}."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Fix the host to see the rule in plain words."
