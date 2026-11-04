@@ -13635,7 +13635,9 @@
   .q-xp > * {
     min-width: 0;
   }
-  /* The run line's "·" opens the item after it, so a line that wraps never ends in one. */
+  /* The run line's "·" opens the item after it, so a line that wraps never ends in one.
+     Its second `content` has no text for screen readers; a browser without that form
+     uses the first. */
   .q-xp-run {
     display: flex;
     flex-wrap: wrap;
@@ -13650,6 +13652,7 @@
   }
   .q-xp-run > * + *::before {
     content: "·";
+    content: "·" / "";
     margin: 0 8px;
     color: var(--q-faint);
   }
@@ -14061,9 +14064,12 @@
   .q-xp-it {
     white-space: nowrap;
   }
-  /* The separator opens the piece after it, so a line that wraps never ends in one. */
+  /* The separator opens the piece after it, so a line that wraps never ends in one.
+     Its second `content` has no text for screen readers; a browser without that form
+     uses the first. */
   .q-xp-it + .q-xp-it::before {
     content: "·";
+    content: "·" / "";
     margin: 0 8px;
     color: var(--q-faint);
   }
