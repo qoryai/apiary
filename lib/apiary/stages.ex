@@ -43,9 +43,13 @@ defmodule Apiary.Stages do
   # answers, whatever else the run did (`Apiary.Explore.Questions`); otherwise a run that
   # stopped escalates, `run_stopped`, with the cause, and any other counts as a run with no
   # verdict. Newest questions whose file cannot be read raise
-  # `Apiary.Stages.QuestionsUnreadable`, so the end's transaction rolls back and stores
-  # nothing; the lost-run check ends the run again at its next tick
-  # (`Apiary.Dispatches.RunEnd.lose/1`), as the run of the queue is still handed over. Any
+  # `Apiary.Stages.QuestionsUnreadable`. An exit, a refusal or a lost run
+  # (`Apiary.Dispatches.RunEnd`) rolls back and stores nothing, as the run of the queue is
+  # still handed over: the lost-run check ends it again at a later tick
+  # (`Apiary.Dispatches.RunEnd.lose/3`). A settle (`Apiary.Dispatches.Settle`) rolls back,
+  # and the settle sweep settles the run again. A claim, a failed harness walk and a held
+  # run whose build failed store the end and leave the stage as it is
+  # (`run_ended_or_later/2`), and the stage sweep acts on the end later (`sweep/3`). Any
   # other workflow reports with artifacts: its newest `verdict` and its `questions`.
   #
   # ## What a person does
