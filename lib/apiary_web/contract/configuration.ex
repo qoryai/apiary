@@ -9,7 +9,7 @@ defmodule ApiaryWeb.Contract.Configuration do
   its public id). A gateway's, whether it lives at a workspace or at an organisation,
   lists no workspaces: which workspaces a gateway serves follows from the nodes that use
   it, and Qory Apiary decides at each registration and attach whether it may serve the
-  run's workspace (`Apiary.Gateways.may_serve?/2`). The document says where the events
+  run's workspace (`Apiary.Access.may_serve?/2`). The document says where the events
   go, where a run registers and is reloaded (the `run` section,
   `ApiaryWeb.Contract.RegistrationController`), and lists the instance's signing key
   (`apiary_public_key`, `Apiary.SigningKey.apiary_public_key/0`), for information. So the

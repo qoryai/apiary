@@ -682,9 +682,7 @@ defmodule Apiary.Dispatches.Handover do
   # `register/2`, only the instance's gateway not deleted.
   @doc false
   @spec serves?(Node.t(), Workspace.t() | nil) :: boolean
-  def serves?(%Node{deleted_at: nil} = gateway, nil), do: Gateways.level(gateway) == :instance
-  def serves?(%Node{}, nil), do: false
-  def serves?(gateway, workspace), do: Gateways.may_serve?(gateway, workspace)
+  def serves?(gateway, workspace), do: Access.may_serve?(gateway, workspace)
 
   # A run formed with a work credential entry ends `secrets_not_allowed` when one of
   # `keys`, the gateway's keys its run key lists, was made without `allow_secrets`, as

@@ -56,7 +56,7 @@ defmodule Apiary.Runs.Ingest do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Gateways, Nodes, PublicId}
+  alias Apiary.{Access, AccessKeys, Nodes, PublicId}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
@@ -294,7 +294,7 @@ defmodule Apiary.Runs.Ingest do
   # run is registered only by its claim, so no batch opens it, and nothing of the batch,
   # the delivery included, is stored. A key reaches the run when it is a key of the run's
   # workspace, or a gateway's that may serve the run's workspace
-  # (`Apiary.Gateways.may_serve?/2`), at the workspace's level or the organisation's.
+  # (`Apiary.Access.may_serve?/2`), at the workspace's level or the organisation's.
   # Before the claim there is no run, so no key reaches one. After it, a key that
   # reaches the run keeps the answer it had: the gateway that attached it is taken,
   # another key of its workspace, the pool's included, and another gateway that may serve
@@ -355,7 +355,7 @@ defmodule Apiary.Runs.Ingest do
     case held do
       nil -> true
       {_id, nil} -> false
-      {_id, %Workspace{} = workspace} -> Gateways.may_serve?(gateway, workspace)
+      {_id, %Workspace{} = workspace} -> Access.may_serve?(gateway, workspace)
     end
   end
 

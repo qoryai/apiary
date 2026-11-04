@@ -784,7 +784,7 @@ defmodule Apiary.Runs.Registration do
   defp serving(%{through: %{gateway_id: gateway_id}}, %AccessKey{workspace: workspace}) do
     gateway = Repo.one(from n in Nodes.Node, where: n.id == ^gateway_id, lock: "FOR SHARE")
 
-    if gateway && Gateways.may_serve?(gateway, workspace),
+    if gateway && Access.may_serve?(gateway, workspace),
       do: :ok,
       else: {:error, :gateway_not_serving}
   end

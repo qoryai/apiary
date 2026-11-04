@@ -502,7 +502,7 @@ defmodule Apiary.GatewaysTest do
       elsewhere = %{pool | workspace_id: workspace.id, workspace: workspace}
 
       assert Gateways.resolve(pool) |> elem(0) == :gateway
-      refute Gateways.may_serve?(gateway, workspace)
+      refute Apiary.Access.may_serve?(gateway, workspace)
       assert Gateways.resolve(elsewhere) == {:error, :gateway_not_serving}
     end
 
@@ -562,22 +562,26 @@ defmodule Apiary.GatewaysTest do
       gateway = gateway_fixture(scope)
       %{workspace: workspace} = other_workspace(scope)
 
-      assert Gateways.may_serve?(gateway, scope.workspace)
-      refute Gateways.may_serve?(gateway, workspace)
-      refute Gateways.may_serve?(node_fixture(scope, gateway_choice: "direct"), scope.workspace)
+      assert Apiary.Access.may_serve?(gateway, scope.workspace)
+      refute Apiary.Access.may_serve?(gateway, workspace)
+
+      refute Apiary.Access.may_serve?(
+               node_fixture(scope, gateway_choice: "direct"),
+               scope.workspace
+             )
 
       assert Enum.map(Gateways.serves(gateway), & &1.id) == [scope.workspace.id]
       assert Gateways.serves(node_fixture(scope, gateway_choice: "direct")) == []
 
       {:ok, deleted} = Nodes.delete_node(scope, gateway)
-      refute Gateways.may_serve?(deleted, scope.workspace)
+      refute Apiary.Access.may_serve?(deleted, scope.workspace)
       assert Gateways.serves(deleted) == []
     end
 
     test "of another organisation, it serves nothing here", %{scope: scope} do
       %{scope: other} = sign_up_fixture()
       gateway = gateway_fixture(other)
-      refute Gateways.may_serve?(gateway, scope.workspace)
+      refute Apiary.Access.may_serve?(gateway, scope.workspace)
     end
   end
 

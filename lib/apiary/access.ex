@@ -5,11 +5,12 @@ defmodule Apiary.Access do
   alias Apiary.Access.Action
   alias Apiary.Adapters.Connection
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.{Edition, Features}
+  alias Apiary.{Edition, Features, Gateways}
   alias Apiary.Mail.Settings
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Repo
+  alias Apiary.Runs.Run
   alias Apiary.Stages.Approvers
   alias Apiary.WorkItems.WorkItem
 
@@ -848,6 +849,15 @@ defmodule Apiary.Access do
   # which approves Explore's gate, and the review comments on that proposal.
   @approver_actions [:"gate.approve", :"work_item.confirm", :"work_item.review_comment"]
 
+  # What a gateway's key takes at the server contract. Asked of a run, it is held to what
+  # the gateway may serve (`key_subject/4`).
+  @gateway_actions [
+    :"run.post_events",
+    :"run_configuration.fetch",
+    :"secret.seal",
+    :"run_credential.issue"
+  ]
+
   # What may still be done to an organisation or a workspace marked for deletion: cancel
   # the deletion, and purge it once its grace period is over. Nothing else is.
   @on_marked [
@@ -1600,6 +1610,46 @@ defmodule Apiary.Access do
       else: role_and_place(scope, action, code)
   end
 
+  @doc """
+  may_serve?/2 says whether `gateway` may serve `place`, a workspace or a run of one: the
+  answer of `check/3` for a key of the gateway, of `run.post_events` on a run there, the
+  rule `key_subject/4` holds a gateway's key to. For a caller that holds the gateway's row
+  and no key of it: a node's choice, a claim, a registration, an attach. The key and the
+  run it asks of are never stored. A gateway in use may serve a workspace at one of the
+  workspace's levels (`Apiary.Gateways.levels/1`), and the instance's gateway every
+  workspace. `place` nil is a claim of the instance's pool, whose workspace is not known
+  yet: only the instance's gateway in use may serve it, asked of its node. It reads the
+  ids of the place alone: a place marked for deletion is held to its use apart
+  (`Apiary.AccessKeys.place_in_use?/2`). False for nil and for a node that is no gateway.
+  """
+  @spec may_serve?(Node.t() | nil, %Workspace{} | Run.t() | nil) :: boolean
+  def may_serve?(
+        %Node{kind: :gateway} = gateway,
+        %Workspace{id: id, organisation_id: organisation_id}
+      ),
+      do: can_serve?(gateway, %Run{organisation_id: organisation_id, workspace_id: id})
+
+  def may_serve?(%Node{kind: :gateway} = gateway, %Run{} = run), do: can_serve?(gateway, run)
+
+  def may_serve?(
+        %Node{kind: :gateway, deleted_at: nil, organisation_id: nil, workspace_id: nil} = gateway,
+        nil
+      ),
+      do: can_serve?(gateway, gateway)
+
+  def may_serve?(_gateway, _place), do: false
+
+  defp can_serve?(%Node{} = gateway, subject) do
+    key = %AccessKey{
+      node_id: gateway.id,
+      node: gateway,
+      organisation_id: gateway.organisation_id,
+      workspace_id: gateway.workspace_id
+    }
+
+    can?(%Scope{access_key: key}, :"run.post_events", subject)
+  end
+
   defp role_and_place(scope, action, subject) do
     case Edition.check(scope, action, subject) do
       :continue -> check_in_place(scope, action, subject)
@@ -1698,6 +1748,21 @@ defmodule Apiary.Access do
     end
   end
 
+  # A gateway's key acts for a run of what the gateway may serve: at a workspace, that
+  # workspace; at an organisation, every workspace of it and of the organisations whose
+  # gateways the edition lets serve them; at the instance, every workspace. Any other run
+  # is not found to it. Asked of anything but a run, the place alone answers, as for a
+  # node's key, and the clause below holds the key of the instance's gateway.
+  defp key_subject(
+         :access_key,
+         %Scope{access_key: %AccessKey{node: %Node{kind: :gateway} = gateway}},
+         action,
+         %Run{} = run
+       )
+       when action in @gateway_actions do
+    if serves?(gateway, place(run)), do: :ok, else: {:error, :not_found}
+  end
+
   # The key of the instance's gateway is at the instance, where it acts on its gateway
   # alone: on no adapter and not on the instance's pool.
   defp key_subject(
@@ -1713,6 +1778,25 @@ defmodule Apiary.Access do
   end
 
   defp key_subject(_role, _scope, _action, _subject), do: :ok
+
+  # Whether `gateway`, not deleted, may serve the workspace at this place: one of the
+  # workspace's levels (`Apiary.Gateways.levels/1`). It reads no deletion mark: a run's
+  # place is held to its use apart, with a refusal of its own
+  # (`Apiary.AccessKeys.place_in_use?/2`).
+  defp serves?(%Node{deleted_at: nil} = gateway, {organisation_id, workspace_id}) do
+    case Gateways.level(gateway) do
+      {:workspace, id} ->
+        id == workspace_id and gateway.organisation_id == organisation_id
+
+      {:organisation, id} ->
+        id == organisation_id or id in Gateways.serving_organisations(organisation_id)
+
+      :instance ->
+        is_binary(workspace_id) and is_binary(organisation_id)
+    end
+  end
+
+  defp serves?(%Node{}, _place), do: false
 
   # What a dispatch action of a node pool's key is asked of: its workspace, the queue, of
   # which a waiting run is claimed; or a dispatch of that workspace that its pool claimed,
@@ -1801,6 +1885,16 @@ defmodule Apiary.Access do
        when action in @dispatch_actions and is_binary(pool_id) and
               is_binary(organisation_id) and is_binary(workspace_id),
        do: {nil, nil}
+
+  # A run asked of a gateway's key is asked of where the key is, whichever organisation and
+  # workspace the run is in: `key_subject/4` holds the key to what its gateway may serve.
+  defp subject_place(
+         %Scope{access_key: %AccessKey{node: %Node{kind: :gateway}}} = scope,
+         action,
+         %Run{}
+       )
+       when action in @gateway_actions,
+       do: place(scope)
 
   defp subject_place(_scope, _action, subject), do: place(subject)
 

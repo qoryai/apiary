@@ -206,15 +206,15 @@ defmodule Apiary.OrganisationGatewaysTest do
       %{workspace: second} = other_workspace(scope)
       %{scope: stranger} = sign_up_fixture()
 
-      assert Gateways.may_serve?(gateway, scope.workspace)
-      assert Gateways.may_serve?(gateway, second)
-      refute Gateways.may_serve?(gateway, stranger.workspace)
+      assert Apiary.Access.may_serve?(gateway, scope.workspace)
+      assert Apiary.Access.may_serve?(gateway, second)
+      refute Apiary.Access.may_serve?(gateway, stranger.workspace)
 
       assert gateway |> Gateways.serves() |> Enum.map(& &1.id) |> Enum.sort() ==
                Enum.sort([scope.workspace.id, second.id])
 
       deleted = %{gateway | deleted_at: DateTime.utc_now()}
-      refute Gateways.may_serve?(deleted, scope.workspace)
+      refute Apiary.Access.may_serve?(deleted, scope.workspace)
       assert Gateways.serves(deleted) == []
     end
 
@@ -265,8 +265,8 @@ defmodule Apiary.OrganisationGatewaysTest do
                :instance
              ]
 
-      assert Gateways.may_serve?(theirs, scope.workspace)
-      assert Gateways.may_serve?(theirs, other.workspace)
+      assert Apiary.Access.may_serve?(theirs, scope.workspace)
+      assert Apiary.Access.may_serve?(theirs, other.workspace)
       assert Enum.map(Gateways.gateway_choices(scope), & &1.id) == [theirs.id]
       assert Gateways.default_gateway_for(scope.workspace).id == theirs.id
 

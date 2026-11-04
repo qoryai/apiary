@@ -27,7 +27,7 @@ defmodule Apiary.Runs.Attach do
     4. a repeat: the same gateway node and the same instance id, under any of the node's
        active keys, attaching the same run again while the run is live, is given the
        answer it was given, nothing stored again, while the gateway may still serve the
-       run's workspace (`Apiary.Gateways.may_serve?/2`); once it may not, the repeat is
+       run's workspace (`Apiary.Access.may_serve?/2`); once it may not, the repeat is
        `{:error, :workspace_not_served}`, and the run goes lost by liveness. A repeat is the gateway's, its
        instance's and the run's, not the body's bytes, so a gateway that restarted, or
        replaced its key, takes its run on again: a restarted gateway keeps its instance
@@ -43,7 +43,7 @@ defmodule Apiary.Runs.Attach do
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
        person's clearing of its instance leaves it;
     7. a run key that names another gateway is `{:error, :wrong_gateway}`;
-    8. a gateway that may not serve the run's workspace (`Apiary.Gateways.may_serve?/2`),
+    8. a gateway that may not serve the run's workspace (`Apiary.Access.may_serve?/2`),
        or that is deleted or gone, read `FOR SHARE` once the run's row is held, is
        `{:error, :workspace_not_served}`;
     9. a run another gateway node attached, or another instance of this one, is
@@ -116,7 +116,7 @@ defmodule Apiary.Runs.Attach do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Dispatches, Environments, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Dispatches, Environments, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
@@ -355,7 +355,7 @@ defmodule Apiary.Runs.Attach do
       cond do
         # A repeat is held to the workspace as the first attach is: a gateway that may no
         # longer serve it is refused, and the run goes lost by liveness.
-        repeat?(run, gateway, meta[:instance_id]) and not Gateways.may_serve?(gateway, workspace) ->
+        repeat?(run, gateway, meta[:instance_id]) and not Access.may_serve?(gateway, workspace) ->
           {:error, :workspace_not_served}
 
         repeat?(run, gateway, meta[:instance_id]) ->
@@ -370,7 +370,7 @@ defmodule Apiary.Runs.Attach do
         grant.gateway != access_key.node.public_id or run.gateway_id != access_key.node_id ->
           {:error, :wrong_gateway}
 
-        not Gateways.may_serve?(gateway, workspace) ->
+        not Access.may_serve?(gateway, workspace) ->
           {:error, :workspace_not_served}
 
         not is_nil(run.attached_at) ->
