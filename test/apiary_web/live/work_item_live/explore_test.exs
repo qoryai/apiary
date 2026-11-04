@@ -225,14 +225,37 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       end)
 
     {:ok, _version} =
-      Apiary.Artifacts.push(
-        {:run, dispatch_run},
-        Repo.get!(Apiary.WorkItems.WorkItem, work_item.id),
-        "questions",
-        [Apiary.Explore.Questions.file(%{"questions" => questions})],
-        name: "main",
-        stage_id: dispatch_run.stage_id
-      )
+      while_live(dispatch_run, fn ->
+        Apiary.Artifacts.push(
+          {:run, dispatch_run},
+          Repo.get!(Apiary.WorkItems.WorkItem, work_item.id),
+          "questions",
+          [Apiary.Explore.Questions.file(%{"questions" => questions})],
+          name: "main",
+          stage_id: dispatch_run.stage_id
+        )
+      end)
+  end
+
+  # Runs `push` with the run of the queue `dispatch_run` live, as a run pushes before it
+  # ends (`Apiary.Artifacts.push/5` refuses a run that ended), then sets the run back to
+  # its state, end and outcome.
+  defp while_live(dispatch_run, push) do
+    was = Repo.get!(DispatchRun, dispatch_run.id)
+    set_run!(was, state: :handed_over, end_cause: nil, result_outcome: nil, result: nil)
+    value = push.()
+
+    set_run!(
+      was,
+      Keyword.new([:state, :end_cause, :result_outcome, :result], &{&1, Map.fetch!(was, &1)})
+    )
+
+    value
+  end
+
+  defp set_run!(dispatch_run, changes) do
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id), set: changes)
   end
 
   describe "the gate and the proposal" do
@@ -302,13 +325,12 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       work_item = work_item_fixture(scope)
       explore_run_fixture(work_item, result: understood_result(%{"message" => @proposal}))
 
-      %{dispatch_run: dispatch_run, run: run} =
+      %{dispatch_run: dispatch_run} =
         explore_run_fixture(work_item,
           settle: false,
-          run: %{state: "failed", exit_state: "failed", outcome_state: "failed"}
+          run: %{state: "failed", exit_state: "failed", outcome_state: "failed"},
+          result: understood_result(%{"message" => "Version two."})
         )
-
-      push_result!(dispatch_run, run, understood_result(%{"message" => "Version two."}))
 
       dispatch_run
       |> Ecto.Changeset.change(result_outcome: :none)

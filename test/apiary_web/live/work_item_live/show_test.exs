@@ -50,6 +50,27 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
   defp state(work_item), do: Repo.get!(WorkItem, work_item.id).state
 
+  # Runs `push` with the run of the queue `dispatch_run` live, as a run pushes before it
+  # ends (`Apiary.Artifacts.push/5` refuses a run that ended), then sets the run back to
+  # its state, end and outcome.
+  defp while_live(dispatch_run, push) do
+    was = Repo.get!(DispatchRun, dispatch_run.id)
+    set_run!(was, state: :handed_over, end_cause: nil, result_outcome: nil, result: nil)
+    value = push.()
+
+    set_run!(
+      was,
+      Keyword.new([:state, :end_cause, :result_outcome, :result], &{&1, Map.fetch!(was, &1)})
+    )
+
+    value
+  end
+
+  defp set_run!(dispatch_run, changes) do
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id), set: changes)
+  end
+
   # How many runs of the queue the work item has.
   defp runs(work_item),
     do: Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
@@ -495,7 +516,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         explore_run_fixture(work_item, result: understood_result())
 
       {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
-      reply_as_run!(dispatch_run, run, "declined")
+      while_live(dispatch_run, fn -> reply_as_run!(dispatch_run, run, "declined") end)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
       card = "#work-item-review-c1"
