@@ -3,7 +3,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
   # `review-comments` artifact (`Apiary.Explore.ReviewComments`), with the workflow model
   # on: a review comment written wherever no run runs, also while questions are open, and
   # queuing no run (`Apiary.WorkItems.review_comment/4`); the open review comments sent
-  # to the next run with the answers or at the gate (`send_review_comments/3`); a reply
+  # to the next run with the answers, or at the gate or while questions wait
+  # (`send_review_comments/3`); a reply
   # that opens a review comment again (`reply/5`); the run that closes them with its
   # reply; and today's form, a text at the gate, written and sent in one move
   # (`answer/4`).
@@ -17,7 +18,7 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
   alias Apiary.{Processes, Repo, WorkItems}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Inputs}
-  alias Apiary.Explore.ReviewComments
+  alias Apiary.Explore.{Questions, ReviewComments}
   alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
   @moduletag needs: [:factory, :workflow_model]
@@ -65,6 +66,37 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
           order_by: e.inserted_at,
           select: e.details
       )
+
+  # The Explore stage's gate lists the scope's member as its one approver.
+  defp approvers_only!(scope) do
+    stages =
+      Enum.map(Processes.current(scope.workspace).document["stages"], fn
+        %{"id" => "st_r79kph11eg"} = stage ->
+          put_in(stage, ["gate"], %{
+            "kind" => "person",
+            "approvers" => %{"members" => [scope.user.id]}
+          })
+
+        stage ->
+          stage
+      end)
+
+    {:ok, _version} =
+      Processes.save(scope, scope.workspace, %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => stages
+      })
+  end
+
+  # A proposal at run 1 with the review comment c1 open, sent, and run 2 that asks
+  # `question` and leaves c1 open.
+  defp asked_after_proposal!(scope, question \\ "Which refund?") do
+    work_item = proposed!(scope)
+    {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+    {:ok, _} = WorkItems.send_review_comments(scope, work_item, 1)
+    end_run!(work_item, questions_result([question]))
+  end
 
   defp proposed!(scope, message \\ "## What this is\n\nThe basket keeps the price.") do
     scope |> taken_in_fixture() |> end_run!(understood_result(%{"message" => message}))
@@ -186,27 +218,7 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
 
     test "a member not among the approvers the stage lists may not write one", %{scope: scope} do
       member = member_fixture(scope)
-      stages = Processes.current(scope.workspace).document["stages"]
-
-      stages =
-        Enum.map(stages, fn
-          %{"id" => "st_r79kph11eg"} = stage ->
-            put_in(stage, ["gate"], %{
-              "kind" => "person",
-              "approvers" => %{"members" => [scope.user.id]}
-            })
-
-          stage ->
-            stage
-        end)
-
-      {:ok, _version} =
-        Processes.save(scope, scope.workspace, %{
-          "schema" => "qory.process/v1",
-          "machine" => "default",
-          "stages" => stages
-        })
-
+      approvers_only!(scope)
       work_item = proposed!(scope)
 
       assert WorkItems.review_comment(member.scope, work_item, 1, @comment) ==
@@ -315,6 +327,90 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
 
       asked = scope |> taken_in_fixture() |> end_run!(questions_result(["Which basket?"]))
       assert WorkItems.send_review_comments(scope, asked, 1) == {:error, :not_waiting}
+    end
+
+    test "while questions wait queues the next run, and leaves the questions open", %{
+      scope: scope
+    } do
+      work_item = asked_after_proposal!(scope)
+      assert WorkItems.explore(scope, work_item).status == :questions
+      {_version, questions} = Questions.newest(reload(work_item))
+      assert [%{"id" => "q1", "state" => "open"}] = questions["questions"]
+
+      assert {:ok, %WorkItem{}} = WorkItems.send_review_comments(scope, work_item, 2)
+
+      assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
+      assert WorkItems.explore(scope, reload(work_item)).status == :queued
+
+      data = %{"take_in" => 1, "attempt" => 2, "count" => 1, "review_comments" => ["c1"]}
+      assert List.last(answered_events(work_item)) == data
+      assert List.last(entries(work_item)) == data
+
+      # Nothing is written to the questions: the newest version is the run's, unchanged.
+      assert {_version, ^questions} = Questions.newest(reload(work_item))
+
+      # The run reads the open review comment from the newest review comments, not from
+      # its input, as from the gate.
+      assert [%{"id" => "c1", "state" => "open"}] = review_comments(work_item)
+      inputs = input!(work_item)
+      assert inputs["run"] == %{"attempt" => 3}
+
+      for member <- ~w(answers changes proposal facts solution review_comments),
+          do: refute(Map.has_key?(inputs, member))
+
+      work_item = revised!(work_item)
+      assert [%{"state" => "closed"}] = review_comments(work_item)
+
+      assert [%{version: 1, done_version: 2}] = WorkItems.explore(scope, work_item).comments
+    end
+
+    test "while questions wait is refused with none open, for a non-approver, and stale", %{
+      scope: scope
+    } do
+      member = member_fixture(scope)
+      approvers_only!(scope)
+      work_item = asked_after_proposal!(scope)
+
+      assert WorkItems.send_review_comments(member.scope, work_item, 2) ==
+               {:error, :not_approver}
+
+      assert WorkItems.send_review_comments(scope, work_item, 1) == {:error, :stale}
+
+      # Run 3 asks q2 and closes c1 with a reply that points at q2: no review comment is
+      # open.
+      {:ok, _} = WorkItems.answer(scope, work_item, 2, %{"1" => "The full one."})
+
+      end_run!(work_item, fn run, registered ->
+        push_result!(run, registered, questions_result(["Who decides?"]))
+        reply_as_run!(run, registered, "asked", "q2")
+      end)
+
+      work_item = reload(work_item)
+      assert WorkItems.explore(scope, work_item).status == :questions
+      assert [%{"state" => "closed"}] = review_comments(work_item)
+      assert WorkItems.send_review_comments(scope, work_item, 3) == {:error, :not_waiting}
+
+      assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :ended}]
+      assert length(answered_events(work_item)) == 3
+    end
+
+    test "while questions wait at the take in's last run adds a run, as an answer does", %{
+      scope: scope
+    } do
+      work_item = asked_after_proposal!(scope)
+      {:ok, _} = WorkItems.answer(scope, work_item, 2, %{"1" => "The full one."})
+      work_item = end_run!(work_item, questions_result(["Who decides?"]))
+
+      assert %{status: :questions, run: %{attempt: 3, of: 3}} =
+               WorkItems.explore(scope, work_item)
+
+      assert [%{"id" => "c1", "state" => "open"}] = review_comments(work_item)
+      assert {:ok, _} = WorkItems.send_review_comments(scope, work_item, 3)
+
+      assert runs(work_item) ==
+               [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :ended}, {4, 4, :waiting}]
+
+      assert input!(work_item)["run"] == %{"attempt" => 4}
     end
 
     test "Send answers carries the open review comments to the next run", %{scope: scope} do

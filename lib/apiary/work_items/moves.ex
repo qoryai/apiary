@@ -182,11 +182,13 @@ defmodule Apiary.WorkItems.Moves do
   #     comment's has, and `"reply"`, the reply's position among the review comment's
   #     replies, from 1.
   #   * The open review comments go to the next run with the answers (`answer/4`), which
-  #     queues it, or where the latest run's proposal waits, by a send of the review
-  #     comments (`send_review_comments/3`): for a member among the stage's approvers, with
-  #     at least one review comment open (else `:not_waiting`), it queues the take in's
-  #     next run as an answer does. Its event, `:answered`, has the take in, the attempt,
-  #     the count and the ids of the open review comments (`"review_comments"`).
+  #     queues it, or by a send of the review comments (`send_review_comments/3`) where the
+  #     latest run's questions or its proposal wait: for a member among the stage's
+  #     approvers, with at least one review comment open (else `:not_waiting`), it queues
+  #     the take in's next run as an answer does, at any count of runs. It writes nothing
+  #     to the questions, whose open questions stay open. Its event, `:answered`, has the
+  #     take in, the attempt, the count and the ids of the open review comments
+  #     (`"review_comments"`).
   #   * Today's form for a comment on the proposal (`answer/4` with a text, where the
   #     latest run's proposal waits) writes the review comment and sends the review
   #     comments, in one move: one event, as a review comment's, and the next run queued.
@@ -879,13 +881,14 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   # send_review_comments/3 queues the take in's next run, which reads the open review
-  # comments, where the latest run's proposal, `attempt`, waits (the moduledoc).
+  # comments, where the questions or the proposal of the latest run, `attempt`, wait (the
+  # moduledoc).
   @doc false
   @spec send_review_comments(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, step_refusal}
   def send_review_comments(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
     step(scope, work_item, fn held, current, _now ->
-      with :ok <- waiting(current, [:confirm], attempt),
+      with :ok <- waiting(current, [:questions, :confirm], attempt),
            :ok <- Apiary.Stages.approver(scope, held),
            {:ok, [_ | _] = ids} <- open_review_comments(held) do
         data =
