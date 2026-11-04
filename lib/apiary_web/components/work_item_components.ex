@@ -602,6 +602,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "the state in place of the step's badge: the stage's, where the card is the stage's one card at Explore under the feature `workflow_model`"
 
+  attr :stage_name, :string,
+    default: nil,
+    doc: "the stage's name in place of the step's, where the card is the stage's one card"
+
   def step_card(%{work_item: %{status: status}} = assigns) when status in @ended, do: ~H""
 
   def step_card(assigns) do
@@ -629,7 +633,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     >
       <div class="q-wi-step-h">
         <.work_item_mark kind={@mark} />
-        <h2 id={"#{@id}-h"}>{stage_name(@stage)}</h2>
+        <h2 id={"#{@id}-h"}>{@stage_name || stage_name(@stage)}</h2>
         <.step_badge :if={@badge == []} status={@status} mine={@mine} run={@run} />
         {render_slot(@badge)}
       </div>
@@ -2611,10 +2615,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       <span class="q-xp-it">{gettext("Earlier answer")}</span>
       <span class="q-xp-it"><.rich text={answered_words(@answer, @now)} /></span>
     </p>
-    <div id={@id} class={["q-xp-ans", @earlier && "q-xp-ans-old"]}>
-      <b :if={@answer.option} class="block" phx-no-format>{@answer.option}</b>
-      <span :if={@answer.note} phx-no-format>{@answer.note}</span>
-    </div>
+    <div id={@id} class={["q-xp-ans", @earlier && "q-xp-ans-old"]} phx-no-format><b :if={@answer.option} class="block">{@answer.option}</b><span :if={@answer.note}>{@answer.note}</span></div>
     <p :if={!@earlier} id={"#{@id}-who"} class="q-xp-cm-m">
       <span class="q-xp-it"><.rich text={answered_words(@answer, @now)} /></span>
     </p>
