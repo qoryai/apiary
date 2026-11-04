@@ -359,7 +359,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :unreadable, :document_size] and
+       when check in [:format, :extension, :unreadable, :document_size, :image_type, :svg_format] and
               is_integer(index),
        do:
          {:error,
@@ -373,8 +373,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
     {:error,
      {:invalid_artifact, "files[#{index}]",
-      "Remove #{part} from #{filename}. An SVG in a proposal has no script, animation, " <>
-        "HTML, processing instruction, backslash or reference outside the file."}}
+      "Remove #{part} from #{filename}. An SVG in a proposal uses only the elements and " <>
+        "attributes the run API document lists, with no script, HTML or reference outside " <>
+        "the file."}}
   end
 
   # A failed schema check, with the JSON pointer of the first failing value and JSV's message
@@ -385,7 +386,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
     {:error,
      {:invalid_artifact, "files[#{index}]",
-      "Fix #{filename} to match the format of #{push.name}: at #{path}, #{error}."}}
+      "Fix #{filename} to match #{schema_of(push.name, filename)}: at #{path}, #{error}."}}
   end
 
   # A run's version of the questions or the review comments that changes what members
@@ -412,6 +413,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
   defp refused(_refusal, _push), do: {:error, :unavailable}
+
+  # A proposal's sources.json is checked against the proposal sources format; a structured
+  # type's file, against its type's.
+  defp schema_of("proposal", "sources.json"), do: "the JSON Schema of proposal sources"
+  defp schema_of(type, _filename), do: "the format of #{type}"
 
   # The message of a run's version that changes what members wrote, by the rule it breaks
   # (`Apiary.Explore.Questions`, `Apiary.Explore.ReviewComments`).
@@ -485,10 +491,20 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp mismatch(:unreadable, filename, _push),
     do: "Push #{filename} again: Qory Apiary could not read it after it was received."
 
-  # A proposal's Markdown file over 256 KiB or its sources.json over 1 MiB
-  # (`Apiary.Artifacts.Format`).
+  # A proposal's Markdown file over 256 KiB, its SVG over 512 KiB or its sources.json over
+  # 1 MiB (`Apiary.Artifacts.Format`).
   defp mismatch(:document_size, filename, _push),
     do: "Shrink #{filename} to at most #{Format.proposal_bytes(filename)} bytes."
+
+  # A proposal's image whose bytes are not the type its extension names, such as cart.png
+  # with the bytes of a GIF (`Apiary.Artifacts.Format`).
+  defp mismatch(:image_type, filename, _push),
+    do: "Replace #{filename} with an image of the type its name ends in."
+
+  # A proposal's SVG that does not parse, is not UTF-8, or has another root than svg in
+  # the SVG namespace (`Apiary.Artifacts.Format`).
+  defp mismatch(:svg_format, filename, _push),
+    do: "Make #{filename} a well-formed SVG file in UTF-8 with an svg root element."
 
   # A proposal's sources.json that is not one JSON document.
   defp mismatch(:format, "sources.json" = filename, %{name: "proposal"}),
