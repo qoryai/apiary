@@ -111,6 +111,16 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert has_element?(
                view,
+               ~s([phx-hook="Mermaid"][data-not-drawn="Qory Apiary does not draw this diagram, so it is shown as written."])
+             )
+
+      assert has_element?(
+               view,
+               ~s([phx-hook="Mermaid"][data-failed="This diagram has an error, so it is shown as written."])
+             )
+
+      assert has_element?(
+               view,
                ~s(#artifact-files a[href="#{file_path(ctx, version, "plan.md")}"])
              )
 

@@ -14688,6 +14688,12 @@ msgstr ""
 msgid "Qory Apiary did not accept the answer of the %{adapter} adapter. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary does not draw this diagram, so it is shown as written."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary does not prune runs automatically: a workspace's retention takes effect when the pruning job is run by hand."

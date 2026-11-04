@@ -1,21 +1,24 @@
 // The diagrams of an artifact's Document view and of a proposal on the work item page.
 // The hook element (phx-update="ignore") contains blocks
-// <pre class="q-mermaid-source"><code>…</code></pre>; the hook draws each block with
-// Mermaid and shows the result as an <img> of the SVG. Mermaid draws the SVG in a
-// temporary element of the page and removes that element after the draw. After the
-// draw, the page has only the <img>: a browser runs no script of an SVG shown as an
-// image and loads no address from it. The block's source moves into a <details> under
-// the image. A block that does not parse stays as text, with the sentence from
-// data-failed above it.
+// <pre class="q-mermaid-source"><code>…</code></pre>. The hook draws only five types
+// (types below): flowchart (flowchart and graph), sequence, state, class and ER
+// diagrams. It draws each such block with Mermaid and shows the result as an <img> of
+// the SVG. Mermaid draws the SVG in a temporary element of the page and removes that
+// element after the draw. After the draw, the page has only the <img>: a browser runs
+// no script of an SVG shown as an image and loads no address from it. The block's
+// source moves into a <details> under the image.
+// A block of another type, or one that the checks below refuse, stays as text, with the
+// sentence from data-not-drawn above it. A block of one of the five types that does not
+// parse stays as text, with the sentence from data-failed above it.
 //
-// Attributes of the hook element, translated on the server: data-script (the bundle URL),
-// data-alt (the images' alt text), data-source (the label of the source's <details>) and
-// data-failed. Nothing here assigns innerHTML: every element is built with createElement
-// and every text is set through textContent.
+// Attributes of the hook element, translated on the server: data-script (the bundle
+// URL), data-alt (the images' alt text), data-source (the label of the source's
+// <details>), data-not-drawn and data-failed. Nothing here assigns innerHTML: every
+// element is built with createElement and every text is set through textContent.
 //
 // Mermaid is vendored (assets/vendor/mermaid) and built as a separate bundle
 // (/assets/js/mermaid.js), not part of app.js. The hook adds its <script> the first time
-// it finds a Mermaid block to draw, so a page with no diagram never loads it.
+// it finds a block that it draws, so a page with no such block never loads it.
 //
 // The settings (settings below): securityLevel "strict", htmlLabels false, at most 20,000
 // characters and 200 edges, and the theme "base" with the app's colours, read from its
@@ -30,10 +33,9 @@
 // Mermaid passes each text that it puts into the temporary element as HTML, such as a
 // sequence message with $$…$$, through its sanitizer, with the hook's dompurifyConfig
 // (below), which removes the elements and attributes that load an address, link or
-// style. An eventmodeling diagram changes its fields after the sanitizer, so the hook
-// does not draw one that contains a "<" (loads below).
+// style.
 // The hook does not draw a block with a syntax that makes Mermaid load an address
-// (loads below): the block stays as text, with the sentence from data-failed.
+// (loads below).
 // When the app's theme changes (data-theme on <html>), the hook draws each diagram again
 // with the new colours (watchTheme below).
 // The <img> gets the diagram's width from the SVG's max-width (width below): Mermaid
@@ -235,6 +237,22 @@ const firstLine = text =>
     .map(line => line.trim())
     .find(line => line !== "" && !line.startsWith("%%")) ?? ""
 
+// The diagram types that the hook draws, as the first word of a block's first line
+// (type below). Mermaid draws more types; the hook leaves those as text.
+export const types = [
+  "flowchart",
+  "graph",
+  "sequenceDiagram",
+  "stateDiagram",
+  "stateDiagram-v2",
+  "classDiagram",
+  "erDiagram",
+]
+
+// The type of `text`: the first word of its first line that is not blank and not a
+// comment (firstLine above), up to a space or a ";".
+export const type = text => firstLine(text).split(/[\s;]/)[0]
+
 // Whether drawing `text` would load an address, by the syntaxes of the vendored Mermaid
 // 11.17.2 that do: CSS with an address, in any style, classDef, linkStyle or C4 style
 // (cssAddresses above); a flowchart node's image (A@{ img: "…" }), which Mermaid loads as
@@ -243,7 +261,8 @@ const firstLine = text =>
 // properties line, whose "icon" Mermaid draws as <image xlink:href>. Also an
 // eventmodeling diagram with a "<" in it: Mermaid sanitizes its fields, then wraps them
 // and writes &nbsp; into the result, which it puts into the page as HTML, so markup can
-// pass the sanitizer and change after it.
+// pass the sanitizer and change after it. eventmodeling is not in types (above), so the
+// hook draws no eventmodeling diagram; this check stays in case the list changes.
 export const loads = text => {
   if (/^eventmodeling/i.test(firstLine(text)) && text.includes("<")) return true
   const written = text.toLowerCase()
@@ -252,6 +271,10 @@ export const loads = text => {
   if (dataBlocks(text).some(block => imgWord(block) || block.includes("\\"))) return true
   return /(^|;)\s*properties(\s|$)/im.test(text)
 }
+
+// Whether the hook draws `text`, a block's source (source above): a type in types and
+// no syntax that loads an address.
+export const draws = text => types.includes(type(text)) && !loads(text)
 
 // Calls `changed` each time the value of data-theme on `root` changes, and returns a
 // function that stops it. `Observer` is the MutationObserver class.
@@ -334,17 +357,23 @@ const show = (el, pre, svg) => {
   figure.appendChild(details)
 }
 
-const fail = (el, pre) => {
+// The block `pre` left as text, under the sentence `line`.
+const fail = (pre, line) => {
   const p = document.createElement("p")
   p.className = "q-mermaid-failed"
-  p.textContent = el.dataset.failed ?? ""
+  p.textContent = line ?? ""
   pre.before(p)
 }
 
+// The text of the block `pre` as Mermaid draws it (source above).
+const blockText = pre => source((pre.querySelector("code") ?? pre).textContent)
+
 const draw = async el => {
-  const blocks = [...el.querySelectorAll("pre.q-mermaid-source")].filter(pre => !handled.has(pre))
+  const found = [...el.querySelectorAll("pre.q-mermaid-source")].filter(pre => !handled.has(pre))
+  found.forEach(pre => handled.add(pre))
+  const blocks = found.filter(pre => draws(blockText(pre)))
+  found.filter(pre => !blocks.includes(pre)).forEach(pre => fail(pre, el.dataset.notDrawn))
   if (blocks.length === 0) return
-  blocks.forEach(pre => handled.add(pre))
 
   let mermaid
   try {
@@ -359,14 +388,9 @@ const draw = async el => {
 
   for (const pre of blocks) {
     if (!pre.isConnected) continue
-    const text = source((pre.querySelector("code") ?? pre).textContent)
-    if (loads(text)) {
-      fail(el, pre)
-      continue
-    }
-    const svg = await render(mermaid, text)
+    const {svg, line} = await drawing(mermaid, blockText(pre))
     if (svg) show(el, pre, svg)
-    else fail(el, pre)
+    else fail(pre, el.dataset[line])
   }
 }
 
@@ -377,9 +401,19 @@ const render = async (mermaid, text) => {
     return (await mermaid.render(id, text)).svg
   } catch (_error) {
     // On an error, render can leave its temporary container in document.body.
-    document.getElementById(`d${id}`)?.remove()
+    globalThis.document?.getElementById(`d${id}`)?.remove()
     return null
   }
+}
+
+// What the hook shows for `text`, a block's source (source above), with the library
+// `mermaid`: {svg} for a drawn diagram; else {line}, the data attribute of the sentence
+// above the text: "notDrawn" for a block that the hook does not draw (draws above), and
+// "failed" for one that does not parse.
+export const drawing = async (mermaid, text) => {
+  if (!draws(text)) return {line: "notDrawn"}
+  const svg = await render(mermaid, text)
+  return svg ? {svg} : {line: "failed"}
 }
 
 // Each diagram drawn in `el`, drawn again with the colours of the theme now; a diagram
@@ -401,9 +435,8 @@ const redraw = async el => {
     const img = figure.querySelector("img.q-mermaid-diagram")
     const pre = figure.querySelector("pre.q-mermaid-source")
     if (!figure.isConnected || !img || !pre) continue
-    const text = source((pre.querySelector("code") ?? pre).textContent)
-    if (loads(text)) continue
-    const svg = await render(mermaid, text)
+    if (!draws(blockText(pre))) continue
+    const svg = await render(mermaid, blockText(pre))
     if (svg) paint(img, svg)
   }
 }

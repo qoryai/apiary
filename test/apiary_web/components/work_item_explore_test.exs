@@ -790,6 +790,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "This diagram has an error, so it is shown as written."
              ]
 
+      assert attr(html, hook, "data-not-drawn") == [
+               "Qory Apiary does not draw this diagram, so it is shown as written."
+             ]
+
       assert attr(html, "#{hook}.q-xp-body.q-xp-prop", "id") == ["work-item-explore-proposal-v2"]
       assert text(html, "#{hook} #{p}-text pre.q-mermaid-source code") =~ "Cart --> Invoice"
 
