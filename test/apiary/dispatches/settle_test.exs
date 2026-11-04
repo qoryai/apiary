@@ -199,6 +199,25 @@ defmodule Apiary.Dispatches.SettleTest do
       outcome!(ctx, handed)
       assert stored(handed) == {:none, nil}
     end
+
+    test "an answer after the run ended changes no outcome stored", ctx do
+      handed = handed_over!(ctx)
+      questions!(handed)
+      exited!(handed, 9)
+      project!(handed)
+      assert stored(handed) == {:questions, nil}
+
+      assert {:ok, _answered} =
+               WorkItems.answer(ctx.scope, work_item!(handed), 1, %{
+                 "1" => "The small one.",
+                 "2" => "The spring sale."
+               })
+
+      # A later settle of the same run, as a projection's, reads the questions answered,
+      # and keeps what the run gave.
+      assert Settle.settle(handed.dispatch_run.id) == []
+      assert stored(handed) == {:questions, nil}
+    end
   end
 
   describe "the sweep" do

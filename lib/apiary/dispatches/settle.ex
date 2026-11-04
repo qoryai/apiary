@@ -13,9 +13,11 @@ defmodule Apiary.Dispatches.Settle do
   # questions: open questions come before a run that stopped. A run whose claim could not
   # form it ends `error` in the same write as its end (`Apiary.Dispatches.Handover`).
   #
-  # Three writers, each through `settle_locked/1`, which writes the column only when it
-  # differs from what the row holds, and never `updated_at` (`Apiary.WorkItems.Explore`
-  # reads it as when a run ended):
+  # Three writers, each through `settle_locked/1`, which writes the column only while the
+  # row holds none, and never `updated_at` (`Apiary.WorkItems.Explore` reads it as when a
+  # run ended). Once stored, what a run gave stays: a member who answers the questions
+  # after the run ended changes the newest questions, and a later writer would read them
+  # as what the run gave.
   #
   # - the end of the run (`Apiary.Dispatches.RunEnd.finish/5`), in its transaction: once
   #   the run ended, it pushes no artifact (`ApiaryWeb.Contract.RunApi.Run.live?/1`, and
@@ -63,6 +65,12 @@ defmodule Apiary.Dispatches.Settle do
   # when it wrote, none otherwise.
   @doc false
   @spec settle_locked(DispatchRun.t()) :: [told]
+  def settle_locked(%DispatchRun{state: :ended, result_outcome: outcome})
+      when not is_nil(outcome) do
+    in_transaction!()
+    []
+  end
+
   def settle_locked(%DispatchRun{state: :ended, end_cause: :run_ended, step: step} = dispatch_run)
       when step != @prebuild do
     in_transaction!()
@@ -163,9 +171,7 @@ defmodule Apiary.Dispatches.Settle do
       []
   end
 
-  # The column, and nothing else, when it differs from what the row holds.
-  defp write(%DispatchRun{result_outcome: outcome}, outcome), do: []
-
+  # The column, and nothing else, on a row that holds none (`settle_locked/1`).
   defp write(%DispatchRun{id: id, work_item_id: work_item_id}, outcome) do
     {1, _rows} =
       Repo.update_all(from(d in DispatchRun, where: d.id == ^id),
