@@ -887,8 +887,8 @@ defmodule Apiary.Artifacts do
   end
 
   # The rows, with the staged files kept in the store after every check passed, last
-  # before the file rows. On a refusal, every staged copy is dropped, so a refused push
-  # keeps no file in the store.
+  # before the file rows. On a refusal, or an exception, which is raised again, every
+  # staged copy is dropped, so a refused push keeps no file in the store.
   defp write(writer, work_item, type, fields, staged) do
     Repo.transact(fn ->
       now = DateTime.utc_now()
@@ -915,6 +915,10 @@ defmodule Apiary.Artifacts do
         discard(staged)
         error
     end
+  rescue
+    exception ->
+      discard(staged)
+      reraise exception, __STACKTRACE__
   end
 
   # The version, its audit entry, then the files kept in the store and their rows. A
