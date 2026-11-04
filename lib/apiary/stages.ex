@@ -48,11 +48,12 @@ defmodule Apiary.Stages do
   # still handed over: the lost-run check ends it again at a later tick
   # (`Apiary.Dispatches.RunEnd.lose/3`). An exit is stored with no outcome
   # (`Apiary.Dispatches.Settle`); the settle sweep settles it later, and then the stage
-  # acts. A settle that raises rolls back, and the settle sweep settles the run again. A
-  # claim, a failed harness walk and a held run whose build failed store the end and leave
-  # the stage as it is (`run_ended_or_later/2`), and the stage sweep acts on the end later
-  # (`sweep/3`). Any other workflow reports with artifacts: its newest `verdict` and its
-  # `questions`.
+  # acts, unless the file becomes unreadable after Settle read it; then the exit rolls
+  # back and the lost-run check ends it again. A settle that raises rolls back, and the
+  # settle sweep settles the run again. A claim, a failed harness walk and a held run
+  # whose build failed store the end and leave the stage as it is
+  # (`run_ended_or_later/2`), and the stage sweep acts on the end later (`sweep/3`). Any
+  # other workflow reports with artifacts: its newest `verdict` and its `questions`.
   #
   # ## What a person does
   #
