@@ -77,6 +77,7 @@ export const secure = [
   "arrowMarkerAbsolute",
   "legacyMathML",
   "forceLegacyMathML",
+  "ticketBaseUrl",
 ]
 
 // What the hook passes to mermaid.initialize, with the theme's colours `themeVariables`.

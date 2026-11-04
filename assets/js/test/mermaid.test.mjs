@@ -115,6 +115,7 @@ test("passes the secure list, with every HTML, CSS and link setting, to initiali
     "theme",
     "themeVariables",
     "fontFamily",
+    "ticketBaseUrl",
   ])
     assert.ok(config.secure.includes(key), key)
 
