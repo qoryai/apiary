@@ -1363,6 +1363,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "4. Is the old template still used?"
              ]
 
+      assert texts(html, "#{closed} > .q-xp-it.q-xp-wrap.q-xp-said") == ["The order's currency"]
+
       assert attr(html, "#{closed} > .q-xp-chev", "class") ==
                List.duplicate("hero-chevron-right-micro q-xp-chev size-3.5", 2)
 
