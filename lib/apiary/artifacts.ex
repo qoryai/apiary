@@ -131,7 +131,8 @@ defmodule Apiary.Artifacts do
   # artifact are 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in
   # another stage is `{:error, :stage_changed}`, and no row, audit entry or message is
   # written; without it, the stage is not compared. A refusal, or a failure of the
-  # transaction, writes no row and drops every staged copy, so a refused push, and a file
+  # transaction before the files are kept, an exception included, writes no row and drops
+  # every staged copy, those `integers/2` made included, so a refused push, and a file
   # `integers/2` replaced, keep no file in the store. A failure of the database after the
   # files were kept, or an outer transaction that rolls back, leaves them in the store (a
   # content address that a later version may share). A store with no root, or one that
@@ -888,7 +889,8 @@ defmodule Apiary.Artifacts do
 
   # The rows, with the staged files kept in the store after every check passed, last
   # before the file rows. On a refusal, or an exception, which is raised again, every
-  # staged copy is dropped, so a refused push keeps no file in the store.
+  # staged copy is dropped, those `integers/2` made included (`keep/6`), so a refused
+  # push keeps no file in the store.
   defp write(writer, work_item, type, fields, staged) do
     Repo.transact(fn ->
       now = DateTime.utc_now()
@@ -922,7 +924,8 @@ defmodule Apiary.Artifacts do
   end
 
   # The version, its audit entry, then the files kept in the store and their rows. A
-  # refusal drops the staged copies `kept`, which `integers/2` may have made.
+  # refusal or an exception drops the staged copies `kept`, which `integers/2` may have
+  # made; the exception is raised again.
   defp keep(writer, held, artifact, fields, kept, now) do
     with {:ok, version} <- version(artifact, writer, fields, now),
          :ok <- audit_push(writer, held, artifact, version),
@@ -934,6 +937,10 @@ defmodule Apiary.Artifacts do
         discard(kept)
         error
     end
+  rescue
+    exception ->
+      discard(kept)
+      reraise exception, __STACKTRACE__
   end
 
   # Drops staged copies; one kept in the store already has no staged copy left.

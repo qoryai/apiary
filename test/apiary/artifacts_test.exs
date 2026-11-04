@@ -16,6 +16,36 @@ defmodule Apiary.ArtifactsTest do
   @moduletag :tmp_dir
   @moduletag needs: :workflow_model
 
+  defmodule CommitRaises do
+    # The volume store, with a `commit/1` that raises, as a store whose write fails with
+    # an exception.
+    @moduledoc false
+    @behaviour Apiary.Artifacts.Store
+
+    alias Apiary.Artifacts.Store.Volume
+
+    @impl true
+    defdelegate stage(source, limit), to: Volume
+    @impl true
+    def commit(_staged), do: raise("the store failed")
+    @impl true
+    defdelegate discard(staged), to: Volume
+    @impl true
+    defdelegate open(store_key), to: Volume
+  end
+
+  # Sets `CommitRaises` as the store for this test.
+  defp commit_raises do
+    previous = Application.get_env(:apiary, Store)
+    Application.put_env(:apiary, Store, adapter: CommitRaises)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:apiary, Store, previous),
+        else: Application.delete_env(:apiary, Store)
+    end)
+  end
+
   setup %{tmp_dir: tmp_dir} do
     root = Path.join(tmp_dir, "store")
     previous = Application.get_env(:apiary, :artifacts_dir)
@@ -1014,6 +1044,38 @@ defmodule Apiary.ArtifactsTest do
       refute File.read!(path) =~ ".0"
       assert stored_paths(root) == [path]
       assert staging_files(root) == []
+    end
+
+    test "a push whose store raises at the commit raises, and keeps no file",
+         %{run: run, root: root} = context do
+      commit_raises()
+
+      assert_raise RuntimeError, "the store failed", fn ->
+        Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
+      end
+
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
+
+      # The run's number written with .0: the copy with the integer, which replaced the
+      # file as it came, is dropped too.
+      question = asked(run, "q1", "Which basket?")
+      number = question["asked"]["run"]
+
+      bytes =
+        %{"questions" => [question]}
+        |> Jason.encode!()
+        |> String.replace(~s("run":#{number}), ~s("run":#{number}.0))
+
+      assert_raise RuntimeError, "the store failed", fn ->
+        Artifacts.push({:run, run}, context.work_item, "questions", [
+          file("questions.json", bytes, "application/json")
+        ])
+      end
+
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
+      assert count(Version) == 0
     end
 
     test "takes the questions and the review comments under the name main alone",
