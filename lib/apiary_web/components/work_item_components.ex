@@ -620,7 +620,10 @@ defmodule ApiaryWeb.WorkItemComponents do
         stage: stage_of(work_item),
         mark: mark(work_item, assigns.can_act),
         mine: hot?(work_item),
-        ask: hot?(work_item) or (status in [:questions, :used_up] and assigns.can_act),
+        # Orange while Explore runs too, as concept A draws the card in every state.
+        ask:
+          hot?(work_item) or status in [:queued, :running] or
+            (status in [:questions, :used_up] and assigns.can_act),
         run: work_item[:run],
         item: SourceComponents.item(assigns.item_noun)
       )

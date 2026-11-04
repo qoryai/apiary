@@ -351,6 +351,17 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Running"
 
+      # Orange while Explore runs, as concept A draws the card, also for a reader who
+      # may not act.
+      assert count(html, ".q-wi-step-ask") == 1
+
+      assert count(
+               card(work_item(%{status: :running, run: run}), can_act: false),
+               ".q-wi-step-ask"
+             ) == 1
+
+      assert count(card(work_item(%{status: :queued, run: nil})), ".q-wi-step-ask") == 1
+
       assert text(html, "#work-item-step-line") ==
                "Explore reads the ticket and writes a proposal."
 
