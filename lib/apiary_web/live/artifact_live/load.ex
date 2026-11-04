@@ -77,37 +77,33 @@ defmodule ApiaryWeb.ArtifactLive.Load do
     end
   end
 
-  # content/4 is what a view shows of the version's files, by filename: for a document,
-  # the file `shown` only, of the version's documents
-  # (`ApiaryWeb.ArtifactComponents.documents/2`), the first where it is nil or no
-  # document's name, as `{:markdown, rendered}`, the file's text as `Markdown.render/2`
-  # returns it with `images` (`ApiaryWeb.ArtifactComponents.images/3`), for a file of at
-  # most `Markdown.max_bytes/0` bytes whose render stays within the budget, else
+  # content/3 is what a view shows of the version's files, by filename: for a document,
+  # the file `shown` only, the first file where it is nil or no file's name, as
+  # `{:markdown, rendered}`, the file's text as `Markdown.render/1` returns it, for a file
+  # of at most `Markdown.max_bytes/0` bytes whose render stays within the budget, else
   # `:too_large`; for a structured type,
   # every file as `{:json, value}`, or `:unreadable`. Nothing for other views. The page
   # reads it on its connected mount, and again for each document file the reader opens
   # (`ApiaryWeb.ArtifactLive.Show`): rendering a document costs up to 64 MiB of heap and
   # seconds, so a page renders one at a time.
   @doc false
-  @spec content(Type.t(), Version.t(), String.t() | nil, Enumerable.t()) :: map
-  def content(type, version, shown \\ nil, images \\ [])
+  @spec content(Type.t(), Version.t(), String.t() | nil) :: map
+  def content(type, version, shown \\ nil)
 
-  def content(%Type{base_view: :document} = type, %Version{} = version, shown, images) do
-    files = ApiaryWeb.ArtifactComponents.documents(type, version)
-
+  def content(%Type{base_view: :document}, %Version{files: files}, shown) do
     case Enum.find(files, &(&1.filename == shown)) || List.first(files) do
       nil ->
         %{}
 
       file ->
         case read(file, Markdown.max_bytes()) do
-          {:ok, text} -> %{file.filename => markdown(text, images)}
+          {:ok, text} -> %{file.filename => markdown(text)}
           :error -> %{file.filename => :too_large}
         end
     end
   end
 
-  def content(%Type{base_view: :structured}, %Version{files: files}, _shown, _images) do
+  def content(%Type{base_view: :structured}, %Version{files: files}, _shown) do
     Map.new(files, fn file ->
       with {:ok, bytes} <- read(file, @max_json),
            {:ok, value} <- Jason.decode(bytes) do
@@ -118,10 +114,10 @@ defmodule ApiaryWeb.ArtifactLive.Load do
     end)
   end
 
-  def content(_type, _version, _shown, _images), do: %{}
+  def content(_type, _version, _shown), do: %{}
 
-  defp markdown(text, images) do
-    case Markdown.render(text, images) do
+  defp markdown(text) do
+    case Markdown.render(text) do
       :too_large -> :too_large
       rendered -> {:markdown, rendered}
     end
