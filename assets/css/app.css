@@ -14076,7 +14076,7 @@
   }
   /* An answer's who and when is one box: a line too narrow for it breaks first before
      its "·", and text in the box that is wider than the column wraps. */
-  .q-xp-it.q-xp-who {
+  .q-xp-it.q-xp-by {
     display: inline-block;
     max-width: 100%;
     white-space: normal;

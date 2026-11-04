@@ -2698,13 +2698,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   # earlier answer muted, under Earlier answer. The pieces of the Earlier answer line
   # have no white space between them, so the margins of the "·" alone set its gaps.
   # The <wbr> between them is the line's break point, and the CSS rule for the "·"
-  # covers the piece after the <wbr>. A `q-xp-who` piece wider than the column wraps.
+  # covers the piece after the <wbr>. A `q-xp-by` piece wider than the column wraps.
   defp given_answer(assigns) do
     ~H"""
-    <p :if={@earlier} id={"#{@id}-who"} class="q-xp-cm-m" phx-no-format><span class="q-xp-it">{gettext("Earlier answer")}</span><wbr /><span class="q-xp-it q-xp-who"><.rich text={answered_words(@answer, @now)} /></span></p>
+    <p :if={@earlier} id={"#{@id}-who"} class="q-xp-cm-m" phx-no-format><span class="q-xp-it">{gettext("Earlier answer")}</span><wbr /><span class="q-xp-it q-xp-by"><.rich text={answered_words(@answer, @now)} /></span></p>
     <div id={@id} class={["q-xp-ans", @earlier && "q-xp-ans-old"]} phx-no-format><span :if={@answer.option} class="block">{@answer.option}</span><span :if={@answer.note}>{@answer.note}</span></div>
     <p :if={!@earlier} id={"#{@id}-who"} class="q-xp-cm-m">
-      <span class="q-xp-it q-xp-who"><.rich text={answered_words(@answer, @now)} /></span>
+      <span class="q-xp-it q-xp-by"><.rich text={answered_words(@answer, @now)} /></span>
     </p>
     """
   end

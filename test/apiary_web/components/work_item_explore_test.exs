@@ -1321,7 +1321,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{q}-question-1-answer") == "The order's currency"
       assert text(html, "#{q}-question-1-answer-who") == "You answered 1 hour ago"
       # The piece wraps inside itself in a column narrower than it.
-      assert texts(html, "#{q}-question-1-answer-who > .q-xp-it.q-xp-who") ==
+      assert texts(html, "#{q}-question-1-answer-who > .q-xp-it.q-xp-by") ==
                ["You answered 1 hour ago"]
 
       # Open: in the form, one Run with answers for all.
@@ -1380,9 +1380,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       # No white space of the template between the pieces, which would widen the gap left
       # of the "·" that opens the second piece; a <wbr> lets a narrow column break there.
       # The CSS rule for the "·" covers a piece right after the <wbr>.
-      assert html =~ ~r{>Earlier answer</span><wbr></wbr><span class="q-xp-it q-xp-who">}
+      assert html =~ ~r{>Earlier answer</span><wbr></wbr><span class="q-xp-it q-xp-by">}
 
-      assert texts(html, "#{q2}-earlier-who > .q-xp-it + wbr + .q-xp-it.q-xp-who") ==
+      assert texts(html, "#{q2}-earlier-who > .q-xp-it + wbr + .q-xp-it.q-xp-by") ==
                ["Priya answered 2 hours ago"]
 
       css =
@@ -1406,7 +1406,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       # The who and when is one box, so a narrow line breaks first before its "·"; text in
       # the box wraps in a column narrower than the box.
       assert css =~
-               ~r/\n  \.q-xp-it\.q-xp-who \{\s*display: inline-block;\s*max-width: 100%;\s*white-space: normal;\s*overflow-wrap: anywhere;\s*\}/
+               ~r/\n  \.q-xp-it\.q-xp-by \{\s*display: inline-block;\s*max-width: 100%;\s*white-space: normal;\s*overflow-wrap: anywhere;\s*\}/
+
+      # No other rule in app.css matches the class, which would restyle both answer lines.
+      assert length(Regex.scan(~r/\.q-xp-by(?![\w-])/, css)) == 1
 
       assert texts(html, "#{q2}-earlier > span") == ["No", "Only invoices."]
       # No white space of the template in the quote, whose white space is kept.
