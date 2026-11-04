@@ -1026,7 +1026,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "then run the round again."
          }},
         {:not_found, 404, %{"error" => "not_found"}},
-        {:store_unavailable, 503, %{"error" => "unavailable"}}
+        {:store_unavailable, 503, %{"error" => "unavailable"}},
+        # A run that ended after the check before the push, found ended under the work
+        # item's lock.
+        {:run_ended, 409,
+         %{
+           "error" => "run_ended",
+           "message" => "The run has ended, so it can no longer push artifacts or give a verdict."
+         }}
       ]
 
       for {push_error, status, answer} <- cases do

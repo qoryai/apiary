@@ -18,8 +18,9 @@ defmodule Apiary.Dispatches.Settle do
   # reads it as when a run ended):
   #
   # - the end of the run (`Apiary.Dispatches.RunEnd.finish/5`), in its transaction: once
-  #   the run ended, it pushes no artifact (`ApiaryWeb.Contract.RunApi.Run.live?/1`), so
-  #   what it gave is decided;
+  #   the run ended, it pushes no artifact (`ApiaryWeb.Contract.RunApi.Run.live?/1`, and
+  #   `Apiary.Artifacts.push/5`, which reads the run of the queue again under the work
+  #   item's lock that the end holds first), so what it gave is decided;
   # - a projection that folded an exit (`settle/1`, from `Apiary.Runs.Projector`), in a
   #   separate transaction once its passes committed;
   # - the sweep (`sweep/1`, from `Apiary.Runs.Liveness`): a run ended `run_ended` with no

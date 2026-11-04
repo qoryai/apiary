@@ -17,7 +17,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `not_found`, and so is, for a file, a version id or a filename the run's
   #      work item does not have: another run's version, another work item's and an
   #      unknown one get the same answer;
-  #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, then a body
+  #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, read here
+  #      and again under the work item's lock (`Apiary.Artifacts.push/5`), then a body
   #      over its size `413` `payload_too_large`, then a body outside the contract `400`
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
@@ -391,6 +392,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   # A run of another work item; the person's refusals never come to a run.
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
+
+  # A run that ended after `live/1` read it, found ended under the work item's lock.
+  defp refused(:run_ended, _push), do: {:error, :run_ended}
 
   defp refused(_refusal, _push), do: {:error, :unavailable}
 

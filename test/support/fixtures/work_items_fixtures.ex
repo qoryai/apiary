@@ -286,6 +286,12 @@ defmodule Apiary.WorkItemsFixtures do
 
     now = DateTime.utc_now()
 
+    # A run that pushes a result pushes it while it is live (`Apiary.Artifacts.push/5`
+    # refuses a run that ended): it is handed over until then, and ends after.
+    pushes? =
+      state == :ended and is_map(Keyword.get(opts, :result)) and
+        Keyword.get(opts, :registered, end_cause in [:run_ended, :lost, :released])
+
     dispatch_run =
       %DispatchRun{
         organisation_id: work_item.organisation_id,
@@ -299,7 +305,12 @@ defmodule Apiary.WorkItemsFixtures do
         of: 3,
         queued_at: DateTime.add(now, -120, :second)
       })
-      |> Ecto.Changeset.change(state: state, end_cause: end_cause)
+      |> Ecto.Changeset.change(
+        if(pushes?,
+          do: [state: :handed_over, end_cause: nil],
+          else: [state: state, end_cause: end_cause]
+        )
+      )
       |> Ecto.Changeset.change(result_outcome: unformed_outcome(end_cause))
       |> Repo.insert!()
 
@@ -340,6 +351,15 @@ defmodule Apiary.WorkItemsFixtures do
       {%Run{} = run, %{} = result} -> push_result!(dispatch_run, run, result)
       _none -> nil
     end
+
+    dispatch_run =
+      if pushes? do
+        dispatch_run
+        |> Ecto.Changeset.change(state: state, end_cause: end_cause)
+        |> Repo.update!()
+      else
+        dispatch_run
+      end
 
     dispatch_run =
       if state == :ended and end_cause in [:run_ended, :lost] and

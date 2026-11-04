@@ -24,7 +24,8 @@ defmodule Apiary.ArtifactsTest do
 
     scope = without_template_types(scope_fixture())
     work_item = work_item_fixture(scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    # A live run: a run that ended pushes nothing.
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
     %{root: root, scope: scope, work_item: work_item, run: run}
   end
 
@@ -910,6 +911,27 @@ defmodule Apiary.ArtifactsTest do
     test "writes no audit entry", %{run: run} = context do
       {:ok, _version} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
       assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
+    end
+
+    test "refuses a run that ended, read again under the work item's lock",
+         %{run: run} = context do
+      # The run ends after the caller read it live, before the push locks the work item.
+      ArtifactStoreHook.on_commit(fn ->
+        {1, _rows} =
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [state: :ended, end_cause: :run_ended]
+          )
+      end)
+
+      assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+               {:error, :run_ended}
+
+      assert count(Artifact) == 0
+      assert count(Version) == 0
+
+      # A run ended before the push is refused the same way.
+      assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+               {:error, :run_ended}
     end
 
     test "refuses a run of another work item", %{scope: scope, run: run} do

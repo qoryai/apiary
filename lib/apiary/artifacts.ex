@@ -110,7 +110,8 @@ defmodule Apiary.Artifacts do
   # transaction: for a standard type a workspace can hide, the workspace's row locked
   # `FOR SHARE` and its list read again, a hidden type `{:unknown_type, name}`; the work
   # item locked `FOR UPDATE`, read again in the workspace it was in, else
-  # `{:error, :not_found}`; the artifact found or made; the next number, one more than the
+  # `{:error, :not_found}`; for a run, its run of the queue read again, one that ended
+  # `{:error, :run_ended}`; the artifact found or made; the next number, one more than the
   # highest; the version and its files. The workspace's lock comes first, as in the core's
   # lock order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
   # verdicts are the most frequent pushes, and the stage runner pushes them inside
@@ -524,7 +525,13 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec push(actor, WorkItem.t(), term, [file], keyword) ::
           {:ok, Version.t()}
-          | {:error, refusal | :not_found | :forbidden | :store_unavailable | :stage_changed}
+          | {:error,
+             refusal
+             | :not_found
+             | :forbidden
+             | :store_unavailable
+             | :stage_changed
+             | :run_ended}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item),
@@ -875,6 +882,7 @@ defmodule Apiary.Artifacts do
 
       with :ok <- shown_kept(work_item, type),
            %WorkItem{} = held <- held_work_item(work_item),
+           :ok <- run_live(writer),
            :ok <- stage_kept(held, fields.expect_stage),
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
@@ -996,6 +1004,22 @@ defmodule Apiary.Artifacts do
         lock: "FOR UPDATE"
     )
   end
+
+  # A run's push: its run of the queue read again under the work item's lock, so a run
+  # that ended since the caller's check pushes nothing, `{:error, :run_ended}`. The end
+  # of a run holds its work item before it ends the run of the queue and stores what the
+  # run gave (`Apiary.Dispatches.RunEnd.hold/1`, `Apiary.Dispatches.Settle`), so the end
+  # and the push take turns at the work item: the end reads every version the push
+  # stored, or the push reads the run ended.
+  defp run_live(%{writer: :run, run_id: run_id}) do
+    case Repo.one(from d in DispatchRun, where: d.id == ^run_id, select: d.state) do
+      :ended -> {:error, :run_ended}
+      nil -> {:error, :not_found}
+      _live -> :ok
+    end
+  end
+
+  defp run_live(_writer), do: :ok
 
   # The held work item's stage against `opts[:expect_stage]`, as `Keyword.fetch/2` read it:
   # nil is a value, a work item with no stage, and `:error` is an option not given.

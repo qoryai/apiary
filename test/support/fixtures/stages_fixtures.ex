@@ -81,18 +81,14 @@ defmodule Apiary.StagesFixtures do
 
   @doc """
   Ends the newest run of the work item by its exit, with `result` what the run pushed
-  during the run (`Apiary.WorkItemsFixtures.push_result!/3`, nil for nothing, or a
-  function of the run of the queue and the registered run that pushes it), and the
+  during the run, before it ended (`Apiary.WorkItemsFixtures.push_result!/3`, nil for
+  nothing, or a function of the run of the queue and the registered run that pushes it), and the
   registered run's columns `run_changes` changes, settles it as the projection does (`Apiary.Dispatches.Settle.settle/1`)
   and tells what changed. The work item as it is after.
   """
   def end_run!(%WorkItem{} = work_item, result, run_changes \\ %{}) do
     run = newest_run(work_item)
     now = DateTime.utc_now()
-
-    run
-    |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
-    |> Repo.update!()
 
     registered =
       %Run{
@@ -114,11 +110,17 @@ defmodule Apiary.StagesFixtures do
       |> Ecto.Changeset.change(run_changes)
       |> Repo.insert!()
 
+    # What the run pushes, it pushes while it is live (`Apiary.Artifacts.push/5` refuses a
+    # run that ended); then it ends.
     cond do
       is_function(result, 2) -> result.(run, registered)
       result -> Apiary.WorkItemsFixtures.push_result!(run, registered, result)
       true -> nil
     end
+
+    run
+    |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
+    |> Repo.update!()
 
     run.id |> Settle.settle() |> Apiary.Dispatches.broadcast()
     Repo.get!(WorkItem, work_item.id)
