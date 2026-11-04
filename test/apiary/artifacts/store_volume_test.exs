@@ -67,6 +67,14 @@ defmodule Apiary.Artifacts.Store.VolumeTest do
     assert {:ok, _key} = Volume.commit(fresh)
   end
 
+  test "fails the commit of a staged copy that was removed", %{root: root} do
+    {:ok, staged} = Volume.stage({:binary, "removed before its commit"}, 100)
+    File.rm!(staged.path)
+
+    assert {:error, _reason} = Volume.commit(staged)
+    assert Path.wildcard(Path.join(root, "*/*/*")) == []
+  end
+
   test "reads a path in chunks and stops past the limit", %{root: root, tmp_dir: tmp_dir} do
     source = Path.join(tmp_dir, "source")
     File.write!(source, :binary.copy("x", 300_000))

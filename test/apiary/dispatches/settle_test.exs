@@ -388,7 +388,9 @@ defmodule Apiary.Dispatches.SettleTest do
       lost_at = DateTime.add(handed.run.backstop_at, 1, :second)
       id = handed.dispatch_run.id
 
+      # Two reads of the questions, one line each: Settle's, then the stage runner's.
       log = ExUnit.CaptureLog.capture_log(fn -> Liveness.check(lost_at) end)
+      assert log =~ "run outcome not stored, newest questions unreadable dispatch_run=#{id} "
       assert log =~ "run end failed dispatch_run=#{id} error=Apiary.Stages.QuestionsUnreadable"
       assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
       assert %WorkItem{stage_state: :running} = work_item!(handed)
@@ -400,6 +402,32 @@ defmodule Apiary.Dispatches.SettleTest do
                queue_run!(handed)
 
       assert %WorkItem{stage_state: :waiting_answers} = work_item!(handed)
+    end
+
+    # A lost run the stage runner does not read, as its stage is not running: Settle's
+    # read alone logs, and the run ends with no outcome.
+    @tag needs: [:factory, :workflow_model]
+    test "with its newest questions unreadable and its stage not running: ended, one line",
+         ctx do
+      handed = handed_over!(ctx)
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+      unreadable!(handed)
+      id = handed.dispatch_run.id
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^handed.dispatch_run.work_item_id),
+        set: [stage_state: :waiting_answers]
+      )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+        end)
+
+      assert log =~ "run outcome not stored, newest questions unreadable dispatch_run=#{id} "
+      refute log =~ "run end failed dispatch_run=#{id}"
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: nil} =
+               queue_run!(handed)
     end
 
     # Runs whose end raises at every tick, more than one batch of them, keep no run after
@@ -423,7 +451,10 @@ defmodule Apiary.Dispatches.SettleTest do
         runs |> Enum.map(& &1.run.backstop_at) |> Enum.max(DateTime) |> DateTime.add(1, :second)
 
       lines = fn log, handed ->
-        log |> String.split("dispatch_run=#{handed.dispatch_run.id}") |> length() |> Kernel.-(1)
+        log
+        |> String.split("run end failed dispatch_run=#{handed.dispatch_run.id}")
+        |> length()
+        |> Kernel.-(1)
       end
 
       # A batch of two: the first two, both stuck.

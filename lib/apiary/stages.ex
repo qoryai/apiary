@@ -272,8 +272,8 @@ defmodule Apiary.Stages do
   # stored. Every act of the runner on a run's end moves the stage or queues a newer run,
   # so an end acted on is not read again. At most `limit`, `@stage_batch` by default, by
   # id after `after_id`, or from the first for nil, each in a transaction that locks the
-  # work item, then the run, with the context a claim gives (`claim_context/1`); one that
-  # raises is logged in one line by its id and the
+  # work item, then reads the run with no lock, with the context a claim gives
+  # (`claim_context/1`); one that raises is logged in one line by its id and the
   # exception's module. `{told, next}`: the work items to tell, and the `after_id` of the
   # next sweep, the last id read when it read `limit`, nil when it read fewer. With the
   # workflow model off, none.
@@ -358,9 +358,9 @@ defmodule Apiary.Stages do
 
   # claim_ended/1 acts on the end of each run of the queue in `dispatch_run_ids`, which a
   # claim ended before they started, once the claim committed: each in a transaction that
-  # locks its work item, then the run (`run_ended_or_later/2`). A failure is logged, and
-  # the run's work item stays as it was until the stage sweep acts on the run's end
-  # (`sweep/3`). The work items to tell (`Apiary.Dispatches.broadcast/1`).
+  # locks its work item, then reads the run with no lock (`run_ended_or_later/2`). A
+  # failure is logged, and the run's work item stays as it was until the stage sweep acts
+  # on the run's end (`sweep/3`). The work items to tell (`Apiary.Dispatches.broadcast/1`).
   @doc false
   @spec claim_ended([Ecto.UUID.t()], StopCause.context()) :: [Apiary.Dispatches.Settle.told()]
   def claim_ended(dispatch_run_ids, context \\ %{}) when is_list(dispatch_run_ids),

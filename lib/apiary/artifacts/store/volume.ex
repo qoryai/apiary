@@ -120,8 +120,10 @@ defmodule Apiary.Artifacts.Store.Volume do
   end
 
   # Removes the temporary files in the root last written more than an hour ago. A push
-  # in progress wrote its staged copy at its stage, seconds or minutes before its commit,
-  # so its copy is never that old. A file that cannot be read or removed stays.
+  # commits within minutes of its stage, as each query of its transaction, the wait for
+  # the work item's lock included, stops at the Repo's timeout. A copy removed all the
+  # same fails its commit, and the push writes no version (`{:error, :store_unavailable}`).
+  # A file that cannot be read or removed stays.
   defp sweep(root) when is_binary(root) do
     cutoff = System.os_time(:second) - @stale_seconds
 

@@ -34,10 +34,35 @@ defmodule Apiary.ArtifactsTest do
     defdelegate open(store_key), to: Volume
   end
 
+  defmodule CopyRemoved do
+    # The volume store, with a `commit/1` that finds its staged copy removed, as a copy
+    # removed from the root before its push commits.
+    @moduledoc false
+    @behaviour Apiary.Artifacts.Store
+
+    alias Apiary.Artifacts.Store.Volume
+
+    @impl true
+    defdelegate stage(source, limit), to: Volume
+    @impl true
+    def commit(staged) do
+      File.rm!(staged.path)
+      Volume.commit(staged)
+    end
+
+    @impl true
+    defdelegate discard(staged), to: Volume
+    @impl true
+    defdelegate open(store_key), to: Volume
+  end
+
   # Sets `CommitRaises` as the store for this test.
-  defp commit_raises do
+  defp commit_raises, do: store!(CommitRaises)
+
+  # Sets `adapter` as the store for this test.
+  defp store!(adapter) do
     previous = Application.get_env(:apiary, Store)
-    Application.put_env(:apiary, Store, adapter: CommitRaises)
+    Application.put_env(:apiary, Store, adapter: adapter)
 
     on_exit(fn ->
       if previous,
@@ -1076,6 +1101,21 @@ defmodule Apiary.ArtifactsTest do
       assert stored_paths(root) == []
       assert staging_files(root) == []
       assert count(Version) == 0
+    end
+
+    test "a push whose staged copy was removed before its commit writes no version",
+         %{run: run, root: root} = context do
+      store!(CopyRemoved)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+                 {:error, :store_unavailable}
+      end)
+
+      assert count(Version) == 0
+      assert count(ArtifactFile) == 0
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
     end
 
     test "takes the questions and the review comments under the name main alone",
