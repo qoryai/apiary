@@ -500,7 +500,8 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
       card = "#work-item-review-c1"
       assert has_element?(view, "#{card}.q-rc-done")
-      assert has_element?(view, "#{card}-h[aria-expanded=false]")
+      # The only closed card is the first of the closed ones, so it is opened.
+      assert has_element?(view, "#{card}-h[aria-expanded=true]")
       assert has_element?(view, "#{card} .q-rc-out", "Declined in version 1")
       refute has_element?(view, "#{card} .badge")
       refute has_element?(view, "#work-item-explore-gate-unread")

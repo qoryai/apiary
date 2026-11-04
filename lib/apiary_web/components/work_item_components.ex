@@ -2799,13 +2799,16 @@ defmodule ApiaryWeb.WorkItemComponents do
   def answer_error(_error), do: nil
 
   @doc """
-  The review comments on the take in's proposals, oldest first, each a card. A card shows
+  The review comments on the take in's proposals, each a card: the open ones first, then
+  the closed ones, each group oldest first, as `comments` comes. The first card of each
+  group is opened and the others are folded to their first line, as concept A draws
+  them. A card shows
   who wrote it on which version of the proposal, `Open` or `Reopened` (an open one a run
   replied to), its text, each reply, and Reply (`reply_path`). A run's reply shows its
   outcome with the version of the proposal that run stood at: `Changed`, `Answered` or
   `Declined in version %{version}`, or `Asked as question %{number}`, linked to that
-  question. A closed card is muted, with a tick, and folded to its first line and its
-  outcome; a click on the header of a card folds or opens it, in the browser. While a run
+  question. A closed card is muted, with a tick, and folded shows its outcome under its
+  first line; a click on the header of a card folds or opens it, in the browser. While a run
   reads the open review comments (`reading`, its attempt), an open card says so, and no
   card has Reply.
 
@@ -2824,15 +2827,19 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :class, :any, default: nil
 
   def review_comments(assigns) do
+    {open, closed} = Enum.split_with(assigns.comments, &(&1.state == :open))
+    assigns = assign(assigns, :cards, Enum.with_index(open) ++ Enum.with_index(closed))
+
     ~H"""
     <section id={@id} class={["q-rc-list", @class]} aria-labelledby={"#{@id}-h"}>
       <h3 id={"#{@id}-h"} class="q-rc-h">{gettext("Review comments")}</h3>
       <.review_card
-        :for={comment <- @comments}
+        :for={{comment, place} <- @cards}
         id={"#{@id}-#{comment.id}"}
         comment={comment}
         reply_path={@reply_path && @reply_path.(comment.id)}
         reading={@reading}
+        expanded={place == 0}
       />
     </section>
     """
@@ -2842,14 +2849,14 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :comment, :map, required: true
   attr :reply_path, :any, default: nil
   attr :reading, :any, default: nil
-  attr :expanded, :boolean, default: false, doc: "opened, also where it is closed"
+  attr :expanded, :boolean, default: false, doc: "opened; else folded to its first line"
 
-  # A review comment's card: an open one opened, a closed one folded (`review_comments/1`).
+  # A review comment's card, opened or folded (`review_comments/1`).
   defp review_card(assigns) do
     comment = assigns.comment
     closed = comment.state == :closed
     last = comment.replies |> Enum.filter(&is_integer(&1.run)) |> List.last()
-    folded = closed and not assigns.expanded
+    folded = not assigns.expanded
 
     assigns =
       assign(assigns,

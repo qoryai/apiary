@@ -1465,25 +1465,38 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       ]
     end
 
-    test "the cards: open ones opened with their badge, a closed one folded with a tick" do
+    test "the cards: open ones first, then closed ones; the first of each opened, the rest folded" do
       html = comments_tab(invoice_comments())
       r = "#work-item-explore-proposal-review"
 
       assert text(html, "#{r}-h") == "Review comments"
 
       assert attr(html, "#{r} > .q-rc", "id") == [
-               "#{String.trim_leading(r, "#")}-rc1",
                "#{String.trim_leading(r, "#")}-rc2",
-               "#{String.trim_leading(r, "#")}-rc3"
+               "#{String.trim_leading(r, "#")}-rc3",
+               "#{String.trim_leading(r, "#")}-rc1"
              ]
 
-      assert attr(html, "#{r} .q-rc-head", "aria-expanded") == ["false", "true", "true"]
+      assert attr(html, "#{r} .q-rc-head", "aria-expanded") == ["true", "false", "true"]
 
       assert attr(html, "#{r} .q-rc-head", "aria-label") == [
-               "Show the review comment",
                "Hide the review comment",
+               "Show the review comment",
                "Hide the review comment"
              ]
+
+      # A second closed card folds too.
+      closed = comment("rc4", %{state: :closed, replies: [run_reply(:answered, 2)]})
+      folded = comments_tab(invoice_comments() ++ [closed])
+
+      assert attr(folded, "#{r} .q-rc-head", "aria-expanded") == [
+               "true",
+               "false",
+               "true",
+               "false"
+             ]
+
+      assert text(folded, "#{r}-rc4 .q-rc-out") == "Answered in version 2"
 
       assert count(html, "#{r}-rc1 .q-rc-tick") == 1
       assert count(html, "#{r}-rc1 .badge") == 0
@@ -1491,9 +1504,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{r}-rc3 .badge") == "Open"
 
       assert texts(html, "#{r} .q-rc-by") == [
-               "You, on version 1",
                "Priya, on version 2",
-               "You, on version 2"
+               "You, on version 2",
+               "You, on version 1"
              ]
 
       assert text(html, "#{r}-rc1 .q-rc-out") == "Changed in version 2"
@@ -1534,9 +1547,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = comments_tab(invoice_comments())
 
       assert attr(html, "[id$='-reply'][data-phx-link=patch]", "href") == [
-               "/acme/main/work/41/explore?reply=rc1",
                "/acme/main/work/41/explore?reply=rc2",
-               "/acme/main/work/41/explore?reply=rc3"
+               "/acme/main/work/41/explore?reply=rc3",
+               "/acme/main/work/41/explore?reply=rc1"
              ]
 
       assert count(comments_tab(invoice_comments(), reply_path: nil), "[id$='-reply']") == 0
