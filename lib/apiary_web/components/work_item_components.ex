@@ -534,7 +534,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       in again (`previous`) goes back to closed, and nothing is sent to the
       ticket. After the integration's uninstall (`uninstalled`), that nothing changes on
       the ticket, which keeps Qory's label and comment.
-    * Explore, queued, a later run (`:run`, `%{attempt:, of:, answers_by:}`): what Qory
+    * Explore, queued, a later run (`:run`, `%{attempt:, of:, answers_by:}`): what Explore
       reads, with whose answers, and which run of the take in is queued. No Undo.
     * Explore, running: what Explore reads, with whose answers from a second run (`:run`,
       `%{attempt:, answers_by:}`).
@@ -1247,8 +1247,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp attempt_ref(run), do: shown_number(run[:attempt])
 
-  # A run's place in the take in ("Attempt 2 of 3"), as a link to the run's page where the
-  # page gives one.
+  # A run's place in the take in ("Attempt 2"), as a link to the run's page where the
+  # page has one.
   defp place_ref(%{path: path}, place) when is_binary(path), do: {:link, path, place, "q-wi-run"}
   defp place_ref(_run, place), do: place
 

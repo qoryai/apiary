@@ -616,7 +616,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
 
-  # A comment on Qory's proposal is kept as an answer with no question.
+  # A review comment or a reply: an entry of `work_item.answer` with `"comment"` set.
   defp said(:"work_item.answer", %{"comment" => true}, _actor),
     do: gettext("Wrote a review comment on a work item's proposal")
 

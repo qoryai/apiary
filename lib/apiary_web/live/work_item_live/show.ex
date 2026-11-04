@@ -24,16 +24,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`Apiary.WorkItems.subscribe/1`) and reads everything again when a message names its
   # work item; a work item that moved to another workspace is then not found here.
   #
-  # **What a reader does.** Undo, Close, Run Explore again, the answers, and under Qory's
-  # proposal Confirm or a comment, each sent with the work item the page last read and
-  # the attempt of its latest run, so a page that read an earlier state is refused
+  # **What a reader does.** Undo, Close, Run Explore again, Run with answers, Confirm, Run
+  # with comments, and a review comment or a reply on its form page (`?review=new`,
+  # `?reply=<id>`), each sent with the work item the page last read and the attempt of its
+  # latest run, so a page that read an earlier state is refused
   # (`Apiary.WorkItems.Moves`). A refused action shows no words: the page reads the work
-  # item again and draws where it stands now. Only a form whose fields are wrong says so,
-  # under its fields, and a comment by a reader who is not an approver of the stage. The
-  # forms' drafts are kept as the reader writes (`"answer_draft"`, `"change_draft"`): a
-  # selected option clears its question's text, and a text clears the selected option.
-  # A comment's field is empty to confirm. An event that names another number than the
-  # page's does nothing.
+  # item again and draws where it stands now. Only a form whose fields are wrong shows
+  # why, under its fields, as does the form page of a reader who is not an approver of
+  # the stage. The questions form's draft is kept as the reader writes
+  # (`"answer_draft"`): each question's option and note, as the form has them. An event
+  # with another number than the page's does nothing.
   #
   # **People's comments** (`ApiaryWeb.WorkItemLive.Comments`) are in the Thread, in the
   # order they were written among its events, with the composer under it for a reader
@@ -1010,8 +1010,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       names = Map.get(WorkItems.ticket_names(scope, [row]), row.id, %{})
       thread = if socket.assigns.tab == :thread, do: thread_entries(scope, row, now), else: []
       # Explore runs as before the workflow model: while the work item is at Explore,
-      # the step card stays beside the stage card, with Undo, the answers and Confirm. Its Confirm approves Explore's gate (`Apiary.WorkItems.confirm/4`), so
-      # the stage card offers no second Approve there. A proposal can still wait after the
+      # the step card has Undo, the answers and Confirm, beside the stage card, or as the
+      # stage's one card in the states of `@one_card`. Its Confirm approves Explore's gate
+      # (`Apiary.WorkItems.confirm/4`), so the stage card offers no second Approve there. A proposal can still wait after the
       # work item left Explore (a gate `none` passes on), so the Confirm gate and the step
       # card are Explore's.
       flow = if Workflow.on?(scope), do: Workflow.page(scope, row)
