@@ -1758,7 +1758,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         )
 
       r = "#work-item-record"
-      assert attr(html, r, "aria-label") == ["Runs and artifacts"]
+      assert attr(html, r, "aria-labelledby") == ["work-item-record-h"]
+      assert text(html, "h2#work-item-record-h.sr-only") == "Runs and artifacts"
       assert attr(html, "#{r}-fold", "open") == []
       assert text(html, "#{r}-fold > summary") == "2 runs proposal v2 questions v2"
       refute html =~ "Earlier runs of this take in"
@@ -1809,8 +1810,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert text(html, "#{r}-40 > summary") =~ "Attempt 1 Wrote a proposal"
       assert text(html, "#{r}-40-proposal-h") == "Proposal"
-      # One level below the tab's frames inside the fold, at the same size.
+      # One level below the tab's frames inside the fold, at the same size, under the
+      # fold's hidden h2.
       assert count(html, "h2#work-item-explore-proposal-h.q-xp-frame-t") == 1
+      assert count(html, "#{r} > h2#work-item-record-h.sr-only") == 1
       assert count(html, "h3#work-item-record-40-proposal-h.q-xp-frame-t") == 1
       assert text(html, "#{r}-40-proposal .q-xp-cap") == "Version 1"
       assert text(html, "#{r}-41-none-h") == "The run was lost."
@@ -2314,6 +2317,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = tab(w, earlier_take_ins: [take_in])
 
       assert text(html, "#work-item-explore-take-ins-h") == "Earlier take ins"
+      assert count(html, "h2#work-item-explore-take-ins-h.q-xp-earlier-t") == 1
 
       assert texts(html, "#work-item-explore-take-ins-1 summary .q-xp-it") ==
                ["Taken in 16 Oct by you", "Closed by you 4 minutes ago", "3 runs"]
@@ -2324,9 +2328,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert texts(html, "#work-item-explore-take-ins-1 .q-xp-run > span:first-child") ==
                ["Attempt 1", "Attempt 2", "Attempt 3"]
 
-      # The frames of its runs are under the h3 of Earlier take ins.
-      assert count(html, "#work-item-explore-take-ins h4.q-xp-frame-t") == 3
-      assert count(html, "#work-item-explore-take-ins :is(h2, h3.q-xp-frame-t)") == 0
+      # The frames of its runs are h3, under the h2 of Earlier take ins.
+      assert count(html, "#work-item-explore-take-ins h3.q-xp-frame-t") == 3
+      assert count(html, "#work-item-explore-take-ins :is(h2.q-xp-frame-t, h4.q-xp-frame-t)") == 0
     end
 
     test "every end, in both forms, and one run" do

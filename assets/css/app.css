@@ -14014,7 +14014,7 @@
 
   /* The take in's earlier runs, and earlier take ins: folded. The rules reach the folds
      and the run folds inside them, not the folds of a proposal inside those. */
-  .q-xp-earlier > h3 {
+  .q-xp-earlier > .q-xp-earlier-t {
     margin: 0 0 8px;
     color: var(--q-muted);
     font-size: 0.78125rem;

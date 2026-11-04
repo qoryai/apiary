@@ -523,7 +523,8 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       assert has_element?(view, summary, "2 runs")
       assert has_element?(view, summary, "proposal v1")
       assert has_element?(view, summary, "questions v1")
-      assert has_element?(view, "#work-item-record[aria-label='Runs and artifacts']")
+      assert has_element?(view, "#work-item-record[aria-labelledby=work-item-record-h]")
+      assert has_element?(view, "#work-item-record > h2#work-item-record-h", "Runs and artifacts")
       refute render(view) =~ "Earlier runs of this take in"
     end
   end
