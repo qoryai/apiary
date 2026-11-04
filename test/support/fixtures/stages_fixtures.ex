@@ -22,7 +22,10 @@ defmodule Apiary.StagesFixtures do
   @doc """
   Gives the work item a version of its questions with one open question no other test
   asks, written as a member's action, then moves the stored copy of its file away until
-  the test ends, as a store that cannot read it. Returns the stored copy's path.
+  the test ends, as a store that cannot read it. Returns the stored copy's path. The
+  question is of the work item's take in, so it counts once the file can be read again
+  (`Apiary.Explore.Questions.open_in_take_in/2`): asked by the registered run of the
+  newest run of the queue of the take in, registered here where it has none.
   """
   def unreadable_questions!(%Scope{} = scope, %WorkItem{} = work_item) do
     question = %{
@@ -30,7 +33,7 @@ defmodule Apiary.StagesFixtures do
       "question" => "Which basket #{System.unique_integer([:positive])}?",
       "options" => [],
       "state" => "open",
-      "asked" => %{"run" => 1, "at" => "2026-11-04T10:00:00Z"}
+      "asked" => %{"run" => asking_run!(work_item), "at" => "2026-11-04T10:00:00Z"}
     }
 
     {:ok, version} =
@@ -43,6 +46,29 @@ defmodule Apiary.StagesFixtures do
     File.rename!(path, path <> ".away")
     ExUnit.Callbacks.on_exit(fn -> File.rename(path <> ".away", path) end)
     path
+  end
+
+  # The number of the registered run of the newest run of the queue of the work item's
+  # take in, inserted, pending, where it has none.
+  defp asking_run!(%WorkItem{id: id, take_in: take_in}) do
+    run =
+      Repo.one!(
+        from d in DispatchRun,
+          where: d.work_item_id == ^id and d.take_in == ^take_in,
+          order_by: [desc: d.attempt],
+          limit: 1
+      )
+
+    registered =
+      Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id) ||
+        Repo.insert!(%Run{
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          node_run_id: run.run_id,
+          dispatch_run_id: run.id
+        })
+
+    registered.number
   end
 
   @doc "A work item at Explore's gate: taken in, its run ended with a proposal."
