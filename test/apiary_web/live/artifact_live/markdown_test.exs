@@ -123,9 +123,8 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     assert {:html, _html} = Markdown.render("| a | b |\r|---|---|\r\n| 1 | 2 |")
   end
 
-  # The value of `fun`, run in a process whose heap may have at most `words` words, 64 MiB
-  # unless given.
-  defp capped(fun, words \\ 8_388_608) do
+  # The value of `fun`, run in a process whose heap may have at most `words` words.
+  defp capped(fun, words) do
     parent = self()
 
     {pid, ref} =
