@@ -942,6 +942,9 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:error, :svg_format} =
                check(context, "proposal", "a.svg", ~s(<x:svg xmlns:x="urn:x"/>))
 
+      assert {:error, {:svg_content, "the s:svg element"}} =
+               check(context, "proposal", "a.svg", ~s(<s:svg xmlns:s="#{@svg_namespace}"/>))
+
       assert {:error, :format} = check(context, "mockup", "a.svg", "<svg/>")
     end
 

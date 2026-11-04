@@ -38,10 +38,12 @@ defmodule Apiary.Artifacts.Format do
   #     (any case): the image check, where the type the bytes show is the one the
   #     extension names, else `:image_type`. An SVG is at most 512 KiB, else
   #     `:document_size`; UTF-8 text an XML parser reads to its end, with a root element
-  #     `svg`, else `:svg_format`; that root in the SVG namespace, else `:svg_root`; and
-  #     passes the strict check, else
-  #     `{:svg_content, part}`, `part` the first part refused, in plain words with names as
-  #     the file writes them, such as "the script element". Before the parse, a document
+  #     `svg` written with no prefix or in the SVG namespace, else `:svg_format`; a root
+  #     `svg` with no prefix outside the SVG namespace is `:svg_root`, and a root with a
+  #     prefix in the SVG namespace, such as `s:svg`, is refused by the strict check. An
+  #     SVG passes the strict check, else `{:svg_content, part}`, `part` the first part
+  #     refused, in plain words with names as the file writes them, such as "the script
+  #     element". Before the parse, a document
   #     type declaration is "the DOCTYPE", and an element with more than 256 attributes
   #     "the attributes past the 256th on the rect element". An element that declares a
   #     prefix, or `xmlns`, twice is not well-formed: `:svg_format`. The strict check is

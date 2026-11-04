@@ -320,11 +320,13 @@ Checks, in order, after the checks of every request:
      that starts with `#`.
 
    An SVG is also at most 512 KiB (524288 bytes), else "Shrink checkout.svg to at most
-   524288 bytes."; UTF-8 text an XML parser reads to its end, with a root element `svg`,
-   else "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element.";
-   and that root, written with no prefix, in the SVG namespace, else "Set
-   xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg." Before
-   the parse, a document type declaration
+   524288 bytes."; and UTF-8 text an XML parser reads to its end, with a root element
+   `svg` written with no prefix or in the SVG namespace, else "Make checkout.svg a
+   well-formed SVG file in UTF-8 with an svg root element." A root `svg` with no prefix
+   outside the SVG namespace gets "Set xmlns="http://www.w3.org/2000/svg" on the svg root
+   element of checkout.svg." A root with a prefix in the SVG namespace, such as `s:svg`,
+   is refused by the strict check: "Remove the s:svg element from checkout.svg. …"
+   Before the parse, a document type declaration
    (`<!DOCTYPE` or `<!ENTITY`, any case, outside a comment, a CDATA section and a
    processing instruction) is refused as "the DOCTYPE", and an element with more than 256
    attributes as "the attributes past the 256th on the rect element". An element that
