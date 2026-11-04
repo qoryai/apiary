@@ -14361,8 +14361,9 @@
     line-height: 1.125rem;
     list-style: decimal;
   }
-  /* Each question is a block (`.q-xp-md`, or its text as written, which keeps its line
-     breaks), so the white space around it in the item is not drawn. */
+  /* Each question is a block (`.q-xp-md`, with a text shown as written in
+     `.q-ticket-written`, `white-space: pre-wrap`), so the white space around it in the
+     item is not drawn. */
   .q-wi-qs > li {
     overflow-wrap: anywhere;
     white-space: normal;

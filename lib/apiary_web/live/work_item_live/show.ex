@@ -1053,9 +1053,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # The page read again after the work item changed elsewhere, without the line of the
   # last move that was not made (`move_error`): that line is about the page before. The
   # errors under the questions form (`form_error`, `errors`) are cleared only where the
-  # read changed the form's questions or run (`form_of/1`), so a refused send that read
-  # the page again keeps its error after a change that left them as they were. The
-  # form's draft stays.
+  # read changed the form's questions or run (`form_of/1`). After a read that left them
+  # as they were, the page shows a refused send's error again: the line that no answer
+  # was sent, where the message of the other member's answer comes after the send, and
+  # a field error, after a Thread comment. The form's draft stays.
   defp changed(socket) do
     before = form_of(socket)
     socket = socket |> assign(:move_error, nil) |> refresh()
