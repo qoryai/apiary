@@ -22118,6 +22118,7 @@ msgid "You must log in to access this page."
 msgstr ""
 
 #: lib/apiary_web/controllers/instance_mail_controller.ex
+#: lib/apiary_web/controllers/user_session_controller.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
