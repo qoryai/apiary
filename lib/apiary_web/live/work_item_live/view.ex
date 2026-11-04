@@ -114,10 +114,14 @@ defmodule ApiaryWeb.WorkItemLive.View do
                  })}
 
         _kept ->
-          []
+          nil
       end
 
-    Map.put(proposal, :rendered, WorkItemComponents.markdown(proposal[:message], images))
+    Map.put(
+      proposal,
+      :rendered,
+      WorkItemComponents.markdown(proposal[:message], WorkItemComponents.image_files(images))
+    )
   end
 
   defp shown(_none, _ctx), do: nil
