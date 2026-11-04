@@ -230,7 +230,8 @@ const dataBlocks = text => {
 const imgWord = block => /\bimg\b/i.test(block)
 
 // The first line of `text` that is not blank and not a %% comment, trimmed, which
-// starts with the diagram's type; "" for none. Mermaid finds the type the same way.
+// starts with the diagram's type; "" for none. Mermaid reads the type from the start of
+// the text that is left after it drops its %% comments and the blank space before them.
 const firstLine = text =>
   text
     .split(/\r\n|\r|\n/)
