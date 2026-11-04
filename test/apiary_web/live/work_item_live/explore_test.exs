@@ -338,6 +338,46 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
                "Which currency should the invoice PDF show?"
              )
     end
+
+    test "Run with answers with every answer blank while take in 1's review comment is open: the error, and no run",
+         %{conn: conn, scope: scope} do
+      [_currency, credit_note] = @questions
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      Repo.delete_all(from d in DispatchRun, where: d.work_item_id == ^work_item.id)
+      explore_run_fixture(work_item, result: understood_result(%{"message" => @proposal}))
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Name the currency field.")
+      {:ok, _closed} = WorkItems.close(scope, Repo.get!(WorkItems.WorkItem, work_item.id))
+
+      {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id)
+
+      Repo.delete_all(
+        from d in DispatchRun, where: d.work_item_id == ^again.id and d.take_in == 2
+      )
+
+      explore_run_fixture(again, take_in: 2, result: questions_result([credit_note]))
+      runs = runs(again)
+
+      {:ok, view, _html} = live(conn, explore(scope, again.number))
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{"number" => "#{again.number}", "answers" => %{"q1" => %{"note" => ""}}})
+
+      assert has_element?(
+               view,
+               "#work-item-explore-questions-error",
+               "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
+             )
+
+      assert runs(again) == runs
+
+      assert [%{"id" => "c1", "state" => "open"}] =
+               again
+               |> Apiary.Explore.ReviewComments.newest()
+               |> elem(1)
+               |> Apiary.Explore.ReviewComments.entries()
+    end
   end
 
   # A work item whose take in 1 wrote question q1, a member answered it, and the take in
