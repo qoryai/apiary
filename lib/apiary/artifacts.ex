@@ -134,9 +134,9 @@ defmodule Apiary.Artifacts do
   # transaction before the files are kept, an exception included, writes no row and drops
   # every staged copy, those `integers/2` made included, so a refused push, and a file
   # `integers/2` replaced, keep no file in the store. A failure of the database after the
-  # files were kept, or an outer transaction that rolls back, leaves them in the store (a
-  # content address that a later version may share). A store with no root, or one that
-  # cannot write, is `{:error, :store_unavailable}`.
+  # files were kept, a commit that fails after it kept the first files, or an outer
+  # transaction that rolls back, leaves them in the store with no version (`commit_all/1`).
+  # A store with no root, or one that cannot write, is `{:error, :store_unavailable}`.
   #
   # Once the push's transaction commits, `{:artifact_pushed, work_item_id, version_id}`,
   # the work item's public id (`wi_…`) and the version's (`av_…`), goes to the work item's
@@ -866,6 +866,11 @@ defmodule Apiary.Artifacts do
     end
   end
 
+  # Keeps each staged file in the store, in order. When one cannot be kept, every staged
+  # copy left is dropped and the push is `{:error, :store_unavailable}`; the files kept
+  # before it stay in the store with no version. They are not deleted: the store has no
+  # delete path, and a content address may be a file of another version. A stored file
+  # that no version links to is harmless, and a later push of the same content uses it.
   defp commit_all(staged) do
     store = Store.impl()
 
