@@ -156,12 +156,12 @@ const withoutFrontMatter = lines => {
 
 // The statements of Mermaid 11.17.2 that add a link or a call, at a line's start or
 // after a ";": click (flowchart, class, state and gantt diagrams); a class diagram's
-// link <class> "<url>" and callback <class> "<function>"; a sequence diagram's
-// link <actor>: … and links <actor>: …. A flowchart node whose id is link, links or
-// callback, as in "link --> B", matches none of them.
+// link <class> "<url>" and callback <class> "<function>", with the class name plain or
+// in backticks; a sequence diagram's link <actor>: … and links <actor>: …. A flowchart
+// node whose id is link, links or callback, as in "link --> B", matches none of them.
 const linkStatements = [
   /(^|;)\s*click(\s|$)/i,
-  /(^|;)\s*(link|callback)\s+[^\s"]+\s+"/i,
+  /(^|;)\s*(link|callback)(\s*`[^`]*`|\s+[^\s"`]+)\s*"/i,
   /(^|;)\s*links?\s+[^\s:;|"<>-][^\s:;|"<>]*\s*:/i,
 ]
 

@@ -90,6 +90,9 @@ test("drops a class diagram's link and callback statements, and keeps linkStyle"
   const text = [
     "classDiagram",
     '  link Invoice "https://example.com/invoice" "Open"',
+    '  link `Big Invoice` "https://example.com"',
+    '  callback`Big Invoice`"pay"',
+    '  link Order"https://example.com/order"',
     '  callback Invoice "pay" "Pay"',
     '  class Order; LINK Order "https://example.com/order"',
     '  click Invoice href "https://example.com"',
