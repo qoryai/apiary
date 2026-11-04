@@ -14138,12 +14138,6 @@
     display: grid;
     gap: 8px;
   }
-  .q-xp-closed + .q-xp-sec {
-    margin-top: 16px;
-  }
-  .q-xp-closed details + details {
-    margin-top: 0;
-  }
   .q-xp-wrap {
     white-space: normal;
   }
