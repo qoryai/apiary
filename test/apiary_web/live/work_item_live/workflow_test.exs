@@ -379,11 +379,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # Answers to `questions_result/0`'s two questions, by question id.
   @answers [%{"id" => "q1", "note" => "a"}, %{"id" => "q2", "note" => "b"}]
 
-  # An answer to each open question of the work item's newest questions, by question id.
+  # An answer to each open question of the current take in in the work item's newest
+  # questions, by question id (`Apiary.Explore.Questions.open_in_take_in/2`).
   defp open_answers(work_item) do
-    {_version, document} = Apiary.Explore.Questions.newest(Repo.get!(WorkItem, work_item.id))
+    work_item = Repo.get!(WorkItem, work_item.id)
+    {_version, document} = Apiary.Explore.Questions.newest(work_item)
+    runs = Apiary.Explore.Questions.take_in_runs(work_item.id, work_item.take_in)
 
-    for %{"id" => id, "state" => "open"} <- document["questions"],
+    for %{"id" => id} <- Apiary.Explore.Questions.open_in_take_in(document, runs),
         do: %{"id" => id, "note" => "a"}
   end
 
