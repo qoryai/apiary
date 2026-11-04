@@ -193,6 +193,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             item_noun={@source.item_noun}
             now={@now}
             queued_of={queued_of(@flow, @item)}
+            stage_name={if one_card?(@flow), do: @flow.stage.name}
           >
             <:badge :if={one_card?(@flow)}><StageComponents.stage_badge page={@flow} /></:badge>
           </.step_card>

@@ -598,7 +598,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = explore_gate_fixture(scope)
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
-      # One card: the step card with the stage's state; no Outputs, no stage card.
+      # One card: the step card with the stage's name and state; no Outputs, no stage card.
+      assert has_element?(view, "#work-item-step-h", "Explore")
+      refute has_element?(view, "#work-item-step-h", "Confirm")
       assert has_element?(view, "#work-item-step-state", "At the gate")
       refute has_element?(view, "#work-item-stage")
       refute has_element?(view, "#work-item-stage-gate-output-proposal")
