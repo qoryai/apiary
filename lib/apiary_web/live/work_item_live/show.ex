@@ -521,6 +521,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             {:error, {:invalid, %{} = errors}} ->
               {:noreply, refused_by_id(socket, draft, errors)}
 
+            {:error, {:invalid, :form}} ->
+              {:noreply, socket |> refused_answers(draft, %{}, :stale) |> refresh()}
+
             {:error, _refused} ->
               {:noreply,
                socket |> assign(answers: draft, errors: %{}, form_error: nil) |> refresh()}
@@ -855,14 +858,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`:note_required`, `{:too_long, max}`, `:characters`) shows under its question. A
   # question answered or withdrawn since the page drew it, an id or an option it no
   # longer has, is not the reader's error: the page reads the questions again, with the
-  # draft kept.
+  # draft kept, and says under the form that no answer was sent (`:stale`).
   defp refused_by_id(socket, draft, errors) do
     fields =
       for {id, error} <- errors, field_error?(error), into: %{}, do: {id, error}
 
-    socket = refused_answers(socket, draft, fields, nil)
-
-    if map_size(fields) == map_size(errors), do: socket, else: refresh(socket)
+    if map_size(fields) == map_size(errors),
+      do: refused_answers(socket, draft, fields, nil),
+      else: socket |> refused_answers(draft, fields, :stale) |> refresh()
   end
 
   defp field_error?(error),

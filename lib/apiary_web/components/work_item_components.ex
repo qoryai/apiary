@@ -1834,7 +1834,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   The questions form's draft is `answers` (by question id, each `%{"option" => choice,
   "note" => text}`, the choice an option's place from 1, or `"own"` for Give your own
   option), and `errors` its errors by question id, as `answer_error/1` words them; and
-  `form_error`, `:blank` where the form gave no answer. The focus goes to the first
+  `form_error`, `:blank` where the form gave no answer, `:stale` where the questions
+  changed after the page showed them and no answer was sent. The focus goes to the first
   question at fault, again after each send (`submits`, counted by the page).
   """
   attr :id, :string, default: "work-item-explore"
@@ -1862,7 +1863,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :answers, :map, default: %{}, doc: "the questions form's draft, by question id"
   attr :errors, :map, default: %{}, doc: "the questions form's errors, by question id"
-  attr :form_error, :atom, default: nil, doc: "`:blank` where the form gave no answer"
+
+  attr :form_error, :atom,
+    default: nil,
+    doc:
+      "`:blank` where the form gave no answer, `:stale` where the questions changed after the page showed them"
 
   attr :submits, :integer,
     default: 0,
@@ -2507,6 +2512,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         form?: form?,
         numbers: numbers,
         first_error: first_error,
+        form_words: assigns.form_error in [:blank, :stale] && answer_error(assigns.form_error),
         heading: ngettext("Question", "Questions", length(assigns.questions))
       )
 
@@ -2561,8 +2567,8 @@ defmodule ApiaryWeb.WorkItemComponents do
                 hidden
                 phx-mounted={JS.focus(to: "##{@id}-answer-#{@first_error.number}")}
               ></span>
-              <p :if={@form_error == :blank} id={"#{@id}-error"} class="q-xp-err" role="alert">
-                <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{answer_error(:blank)}
+              <p :if={@form_words} id={"#{@id}-error"} class="q-xp-err" role="alert">
+                <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@form_words}
               </p>
               <div class="q-xp-form-foot">
                 <.button id={"#{@id}-go"} type="submit" variant="primary">
@@ -2782,7 +2788,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   @doc false
   # answer_error/1 is the words of what is wrong with an answer, or with the form for
-  # `:blank`; nil for an error without words.
+  # `:blank` and `:stale`; nil for an error without words.
   @spec answer_error(term) :: String.t() | nil
   def answer_error(nil), do: nil
 
@@ -2790,6 +2796,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       gettext(
         "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
+      )
+
+  def answer_error(:stale),
+    do:
+      gettext(
+        "Check the questions and your answers, then click Run with answers again. The questions changed after the page showed them, so no answer was sent."
       )
 
   def answer_error(:note_required), do: gettext("Write your option, or pick one above.")

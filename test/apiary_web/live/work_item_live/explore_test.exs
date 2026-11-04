@@ -165,6 +165,74 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
 
       refute has_element?(view, "#work-item-review-c1-reply")
     end
+
+    test "questions that changed after the page showed them: no answer sent, the form says so and keeps the draft",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: understood_result(%{"message" => @proposal}))
+
+      %{dispatch_run: asking} =
+        explore_run_fixture(work_item, result: questions_result(@questions))
+
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+      shown = :sys.get_state(view.pid).socket.assigns.questions
+
+      # Run 2 withdraws the first question. The click comes before the page reads the
+      # questions again, so the page still has the questions it showed.
+      withdraw!(asking, work_item, "q1")
+      render(view)
+      :sys.replace_state(view.pid, &put_in(&1.socket.assigns.questions, shown))
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{
+          "q1" => %{"option" => "1"},
+          "q2" => %{"note" => "Yes, both use one template."}
+        }
+      })
+
+      q = "#work-item-explore-questions"
+
+      assert has_element?(
+               view,
+               "#{q}-error",
+               "Check the questions and your answers, then click Run with answers again. The questions changed after the page showed them, so no answer was sent."
+             )
+
+      # The questions read again: the first is withdrawn, the second open with the draft.
+      refute has_element?(view, "#{q}-answer-1")
+      assert has_element?(view, "#{q}-answer-2", "Yes, both use one template.")
+
+      # No answer written, and no run queued.
+      assert runs(work_item) == 2
+      {_version, document} = Apiary.Explore.Questions.newest(work_item)
+      assert Enum.map(document["questions"], & &1["state"]) == ["withdrawn", "open"]
+      refute Enum.any?(document["questions"], &Map.has_key?(&1, "answer"))
+    end
+  end
+
+  # A new version of the questions, pushed as the run of the queue `dispatch_run`, with
+  # the question `id` withdrawn.
+  defp withdraw!(dispatch_run, work_item, id) do
+    {_version, document} = Apiary.Explore.Questions.newest(work_item)
+
+    questions =
+      Enum.map(document["questions"], fn
+        %{"id" => ^id} = question -> Map.put(question, "state", "withdrawn")
+        question -> question
+      end)
+
+    {:ok, _version} =
+      Apiary.Artifacts.push(
+        {:run, dispatch_run},
+        Repo.get!(Apiary.WorkItems.WorkItem, work_item.id),
+        "questions",
+        [Apiary.Explore.Questions.file(%{"questions" => questions})],
+        name: "main",
+        stage_id: dispatch_run.stage_id
+      )
   end
 
   describe "the gate and the proposal" do

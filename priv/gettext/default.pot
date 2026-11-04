@@ -6206,6 +6206,11 @@ msgstr ""
 msgid "Check the new stage and act again. The work item moved from %{stage} to %{current} before your click."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Check the questions and your answers, then click Run with answers again. The questions changed after the page showed them, so no answer was sent."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Check the sender address, and that the relay allows this server's IP address, then send the test link again. The relay refused the email at %{time} (reply code %{code})."
