@@ -993,12 +993,12 @@ defmodule ApiaryWeb.WorkItemComponents do
         if(you?(by),
           do:
             rich_gettext(
-              "You confirmed Qory's proposal %{when}. Shape is the plan and its acceptance criteria.",
+              "You confirmed the proposal %{when}. Shape is the plan and its acceptance criteria.",
               when: at
             ),
           else:
             rich_gettext(
-              "%{name} confirmed Qory's proposal %{when}. Shape is the plan and its acceptance criteria.",
+              "%{name} confirmed the proposal %{when}. Shape is the plan and its acceptance criteria.",
               name: by.name,
               when: at
             )
