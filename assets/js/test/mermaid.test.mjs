@@ -1,13 +1,14 @@
 // What the Mermaid hook draws of a block (assets/js/hooks/mermaid.js, `source`): without
 // its directive lines, its front matter, and its click, link, links and callback lines;
 // the settings it passes to mermaid.initialize (`settings`), with the secure list that
-// the vendored Mermaid applies to a document's front matter; and the width it gives the
-// <img> (`width`). `node --test 'assets/js/test/*.test.mjs'` (no npm).
+// the vendored Mermaid applies to a document's front matter; the blocks it does not draw,
+// as drawing them would load an address (`loads`); and the width it gives the <img>
+// (`width`). `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {secure, settings, source, width} from "../hooks/mermaid.js"
+import {loads, secure, settings, source, width} from "../hooks/mermaid.js"
 
 // The front matter of the security round's finding: it turns HTML labels back on.
 const FRONT_MATTER = [
@@ -150,4 +151,42 @@ test("the vendored Mermaid keeps htmlLabels off against a front matter config", 
   assert.equal(config.dompurifyConfig, undefined)
   assert.equal(config.securityLevel, "strict")
   assert.equal(config.theme, "base")
+})
+
+test("does not draw a flowchart node's image, written in any way YAML reads", () => {
+  assert.equal(loads('flowchart LR\n  A@{ img: "/acme/logo.png", label: "Logo" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{\n  "IMG": "https://example.com/a.png"\n  }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ "\\x69mg": "/a.png" }'), true)
+  assert.equal(loads("flowchart LR\n  A@{ shape: rect, label: \"Invoice\" }\n  A --> B"), false)
+})
+
+test("does not draw a sequence diagram's properties line, whose icon is an image", () => {
+  const text = 'sequenceDiagram\n  participant Alice\n  properties Alice: {"icon": "/acme/a.png"}'
+  assert.equal(loads(text), true)
+  assert.equal(loads("sequenceDiagram\n  Alice->>Bob: properties of the invoice"), false)
+})
+
+test("does not draw CSS that loads an address, escaped or not", () => {
+  for (const text of [
+    "flowchart LR\n  A --> B\n  style A fill:url(https://example.com/a.svg#p)",
+    "flowchart LR\n  classDef c fill:URL(/a.svg#p)",
+    "flowchart LR\n  classDef c fill:\\75 rl(/a.svg#p)",
+    "flowchart LR\n  classDef c fill:u\\rl(/a.svg#p)",
+    "flowchart LR\n  linkStyle 0 stroke:image-set(\"/a.png\" 1x)",
+    "flowchart LR\n  style A fill:-webkit-image-set(\"/a.png\" 1x)",
+    "flowchart LR\n  style A fill:red; @import \"/a.css\"",
+    'C4Context\n  UpdateElementStyle(a, $bgColor="url(/a.svg#p)")',
+  ])
+    assert.equal(loads(text), true, text)
+})
+
+test("draws a diagram with no address", () => {
+  const text = [
+    "flowchart LR",
+    "  A[Upload image] --> B(Invoice total)",
+    "  classDef total fill:#eef,stroke:#88a",
+    "  class B total",
+    "  linkStyle 0 stroke:#888",
+  ].join("\n")
+  assert.equal(loads(text), false)
 })

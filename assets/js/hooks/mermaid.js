@@ -22,6 +22,9 @@
 // (source below). Every setting that changes HTML, CSS or links is also in Mermaid's
 // secure list (secure below), which Mermaid removes, at every depth, from what a
 // document sets. So a document cannot change these settings or add links.
+// Mermaid draws a block in the page before the hook turns it into an image, so an
+// address in a block would be loaded then. A block with a syntax that loads an address
+// (loads below) is not drawn: it stays as text, with the sentence from data-failed.
 // The <img> gets the diagram's width from the SVG's max-width (width below): Mermaid
 // writes width="100%", so without it the CSS width rule of .q-mermaid-diagram has no
 // effect.
@@ -118,6 +121,35 @@ export const source = text =>
       ),
   ).join("\n")
 
+// The CSS that loads an address: url(), image-set() (and -webkit-image-set()) and
+// @import, looked for in lowercase, in the text as written and with its CSS comments
+// dropped and its CSS escapes (\75 rl, u\rl) read.
+const cssAddresses = ["url(", "image-set(", "@import"]
+
+const unescaped = text =>
+  text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\\([0-9a-f]{1,6})[ \t\n\f\r]?|\\([\s\S])/gi, (_, code, char) => {
+      if (code === undefined) return char === "\n" ? "" : char
+      const point = parseInt(code, 16)
+      return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : "\ufffd"
+    })
+
+// Whether drawing `text` would load an address, by the syntaxes of the vendored Mermaid
+// 11.17.2 that do: CSS with an address, in any style, classDef, linkStyle or C4 style
+// (cssAddresses above); a flowchart node's image (A@{ img: "…" }), which Mermaid loads as
+// an Image and draws as <image href>, so a node's data (@{) with "img", or with a
+// backslash, which its YAML could use to write "img"; and a sequence diagram's
+// properties line, whose "icon" Mermaid draws as <image xlink:href>.
+export const loads = text => {
+  const written = text.toLowerCase()
+  const read = unescaped(text).toLowerCase()
+  if (cssAddresses.some(css => written.includes(css) || read.includes(css))) return true
+  const data = text.indexOf("@{")
+  if (data !== -1 && (/img/i.test(text) || text.slice(data).includes("\\"))) return true
+  return /(^|;)\s*properties(\s|$)/im.test(text)
+}
+
 // The width in pixels of a drawn SVG, from its max-width style, rounded up; null for none.
 export const width = svg => {
   const max = /max-width:\s*([\d.]+)px/.exec(svg)
@@ -205,15 +237,25 @@ const draw = async el => {
   for (const pre of blocks) {
     if (!pre.isConnected) continue
     const text = source((pre.querySelector("code") ?? pre).textContent)
-    const id = `q-mermaid-${++count}`
-    try {
-      const {svg} = await mermaid.render(id, text)
-      show(el, pre, svg)
-    } catch (_error) {
-      // On an error, render can leave its temporary container in document.body.
-      document.getElementById(`d${id}`)?.remove()
+    if (loads(text)) {
       fail(el, pre)
+      continue
     }
+    const svg = await render(mermaid, text)
+    if (svg) show(el, pre, svg)
+    else fail(el, pre)
+  }
+}
+
+// The SVG of `text`, or null where it does not parse.
+const render = async (mermaid, text) => {
+  const id = `q-mermaid-${++count}`
+  try {
+    return (await mermaid.render(id, text)).svg
+  } catch (_error) {
+    // On an error, render can leave its temporary container in document.body.
+    document.getElementById(`d${id}`)?.remove()
+    return null
   }
 }
 
