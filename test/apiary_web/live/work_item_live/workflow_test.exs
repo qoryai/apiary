@@ -801,6 +801,108 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  # Take in 1 of a new work item: its run writes "Which basket?" (q1), and, with
+  # `answer`, a member answers it; then the work item is closed and taken in again. The
+  # work item in take in 2, its first run queued.
+  defp second_take_in!(scope, answer \\ false) do
+    ticket = backlog_ticket_fixture(scope)
+    {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+    work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result(["Which basket?"]))
+
+    if answer,
+      do: {:ok, _} = WorkItems.answer(scope, work_item, 1, [%{"id" => "q1", "note" => "a"}])
+
+    {:ok, _} = WorkItems.close(scope, Repo.get!(WorkItem, work_item.id))
+    {:ok, _} = WorkItems.take_in_again(scope, ticket.public_id)
+    Repo.get!(WorkItem, work_item.id)
+  end
+
+  describe "Explore after a take in that left a question" do
+    test "take in 1 left q1 open; take in 2's run writes a proposal: Confirm", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = second_take_in!(scope)
+      work_item = end_run!(work_item, understood_result())
+
+      assert %{status: :confirm} = WorkItems.explore(scope, work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      assert has_element?(view, "#work-item-explore-gate-go", "Confirm")
+      # q1 shows only in take in 1's fold, not in a Questions frame.
+      refute has_element?(view, "#work-item-explore-questions")
+      assert has_element?(view, "#work-item-explore-take-ins-1", "Which basket?")
+    end
+
+    test "take in 1 left q1 open; take in 2 writes q2, the member answers it, the next run writes a proposal: Confirm",
+         %{conn: conn, scope: scope} do
+      work_item = second_take_in!(scope)
+      work_item = end_run!(work_item, questions_result(["Which sale?"]))
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      q = "#work-item-explore-questions"
+      assert has_element?(view, "#{q}-form [name^='answers[q2]']")
+      refute has_element?(view, "#{q}-form [name^='answers[q1]']")
+
+      view
+      |> element("#{q}-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q2" => %{"note" => "The spring sale."}}
+      })
+
+      assert %DispatchRun{take_in: 2, attempt: 2, state: :waiting} = newest_run(work_item)
+      work_item = end_run!(work_item, understood_result())
+      assert %{status: :confirm} = WorkItems.explore(scope, work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      assert has_element?(view, "#work-item-explore-gate-go", "Confirm")
+      refute has_element?(view, "#{q}-form")
+    end
+
+    test "take in 1 answered q1; take in 2's run reopens it: the form shows q1", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = second_take_in!(scope, true)
+
+      work_item =
+        end_run!(work_item, fn run, registered ->
+          {_version, document} = Apiary.Explore.Questions.newest(work_item)
+          at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+          questions =
+            for %{"id" => "q1", "answer" => answer} = question <- document["questions"] do
+              question
+              |> Map.delete("answer")
+              |> Map.merge(%{
+                "state" => "open",
+                "history" => [
+                  Map.put(answer, "reopened", %{"run" => registered.number, "at" => at})
+                ]
+              })
+            end
+
+          {:ok, _version} =
+            Artifacts.push(
+              {:run, run},
+              work_item,
+              "questions",
+              [Apiary.Explore.Questions.file(%{"questions" => questions})],
+              name: "main",
+              stage_id: run.stage_id
+            )
+        end)
+
+      assert %{status: :questions} = WorkItems.explore(scope, work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      q = "#work-item-explore-questions"
+      assert has_element?(view, "#{q}-question-1", "Which basket?")
+      assert has_element?(view, "#{q}-form [name^='answers[q1]']")
+    end
+  end
+
   describe "at Shape's gate" do
     for level <- [:owner, :admin, :member] do
       test "#{level}: one Approve, and Request changes", %{conn: conn, scope: scope} do
