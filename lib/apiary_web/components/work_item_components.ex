@@ -2558,13 +2558,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc false
   # proposal_frame/1 is Qory's proposal, in a frame that names the run and the proposal's
   # version; confirmed, who confirmed it. A result stored before the proposal was Markdown
-  # has no text: the frame shows none. The text shows the version's `images` (PNG, JPEG,
-  # GIF, WebP and SVG files only), and a
-  # reference to a file of none of them as "Image not in this version"; with `images`
-  # nil, the version's files are not known, and an image is its words. It draws its
-  # Mermaid diagrams in the browser (`assets/js/hooks/mermaid.js`); its block has an id of
-  # the version and is left alone by later patches (`phx-update="ignore"`), so the hook
-  # keeps its drawings and a new version is drawn again.
+  # has no text: the frame shows none. A caller passes the version's image files as
+  # `images`, each filename with its download address; the text then shows each of them
+  # (PNG, JPEG, GIF, WebP and SVG files only) as an `<img>`, and a reference to a file of
+  # none of them as "Image not in this version". With `images` nil, the default, every
+  # image shows as its words; `explore_tab/1` and `run_body/1` pass no `images`, so on
+  # the work item page every image of a proposal shows as its words. The frame draws its
+  # Mermaid diagrams in the browser (`assets/js/hooks/mermaid.js`); its block has an id
+  # of the version and is left alone by later patches (`phx-update="ignore"`), so the
+  # hook keeps its drawings and a new version is drawn again.
   def proposal_frame(assigns) do
     proposal = assigns.run[:proposal] || %{}
 
