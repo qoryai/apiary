@@ -321,6 +321,80 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
                "Should the credit note PDF change too?"
              )
     end
+
+    test "a question answered in take in 1 that take in 2's run reopened: the frame and the form show it; take in 1's fold too",
+         %{conn: conn, scope: scope} do
+      work_item = reopened_in_take_in_2(scope)
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+
+      q = "#work-item-explore-questions"
+      assert has_element?(view, "#{q}-form")
+      assert has_element?(view, "#{q}-question-1", "Which currency should the invoice PDF show?")
+      assert has_element?(view, "#{q}-form [name^='answers[q1]']")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-take-ins-1",
+               "Which currency should the invoice PDF show?"
+             )
+    end
+  end
+
+  # A work item whose take in 1 wrote question q1, a member answered it, and the take in
+  # was closed; take in 2's run reopened q1, so q1 is open again.
+  defp reopened_in_take_in_2(scope) do
+    [currency, _credit_note] = @questions
+    ticket = backlog_ticket_fixture(scope)
+    {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+    Repo.delete_all(from d in DispatchRun, where: d.work_item_id == ^work_item.id)
+    explore_run_fixture(work_item, result: questions_result([currency]))
+    {:ok, _} = WorkItems.answer(scope, work_item, 1, [%{"id" => "q1", "note" => "The order's."}])
+    {:ok, _closed} = WorkItems.close(scope, Repo.get!(WorkItems.WorkItem, work_item.id))
+
+    {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id)
+
+    Repo.delete_all(from d in DispatchRun, where: d.work_item_id == ^again.id and d.take_in == 2)
+
+    %{dispatch_run: reopening, run: run} =
+      explore_run_fixture(again, take_in: 2, settle: false)
+
+    {_version, document} = Apiary.Explore.Questions.newest(again)
+    at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+    questions =
+      Enum.map(document["questions"], fn
+        %{"id" => "q1", "answer" => answer} = question ->
+          question
+          |> Map.delete("answer")
+          |> Map.put("state", "open")
+          |> Map.put("history", [
+            Map.put(answer, "reopened", %{"run" => run.number, "at" => at})
+          ])
+
+        question ->
+          question
+      end)
+
+    {:ok, _version} =
+      while_live(reopening, fn ->
+        Apiary.Artifacts.push(
+          {:run, reopening},
+          Repo.get!(Apiary.WorkItems.WorkItem, again.id),
+          "questions",
+          [Apiary.Explore.Questions.file(%{"questions" => questions})],
+          name: "main",
+          stage_id: reopening.stage_id
+        )
+      end)
+
+    {:ok, _told} =
+      Repo.transact(fn ->
+        {:ok, Apiary.Dispatches.Settle.settle_locked(Repo.get!(DispatchRun, reopening.id))}
+      end)
+
+    {_version, document} = Apiary.Explore.Questions.newest(again)
+    assert Enum.map(document["questions"], &{&1["id"], &1["state"]}) == [{"q1", "open"}]
+    again
   end
 
   # A work item whose take in 1 wrote question q1, left open, and was closed; take in 2,
