@@ -253,17 +253,17 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   # Whether a run of the current take in wrote the question (`asked.run`) or reopened it
-  # last (`reopened.run` of the last entry of its `history`). The questions document of a
-  # work item spans its take ins.
+  # last (the `reopened.run` of the last entry of its `history` that has one), the rule of
+  # `Apiary.Explore.Questions.open_in_take_in/2` for any state. The questions document of
+  # a work item spans its take ins.
   defp current_take_in?(question, ctx) do
     reopened =
-      case question["history"] do
-        [_ | _] = history -> get_in(List.last(history), ["reopened", "run"])
-        _none -> nil
-      end
+      (question["history"] || [])
+      |> Enum.reverse()
+      |> Enum.find_value(&(is_map(&1) && get_in(&1, ["reopened", "run"])))
 
     MapSet.member?(ctx.current_runs, get_in(question, ["asked", "run"])) or
-      (is_integer(reopened) and MapSet.member?(ctx.current_runs, reopened))
+      MapSet.member?(ctx.current_runs, reopened)
   end
 
   defp question_state("answered"), do: :answered
@@ -611,7 +611,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
     entries =
       if ctx.waiting && ctx.waiting.dispatch_run.id == step.dispatch_run.id do
-        ctx.questions |> Questions.open() |> Enum.filter(&current_take_in?(&1, ctx))
+        Questions.open_in_take_in(ctx.questions, ctx.current_runs)
       else
         number = step.run && step.run.number
 

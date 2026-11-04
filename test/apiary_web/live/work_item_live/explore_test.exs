@@ -331,6 +331,8 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       assert has_element?(view, "#{q}-form")
       assert has_element?(view, "#{q}-question-1", "Which currency should the invoice PDF show?")
       assert has_element?(view, "#{q}-form [name^='answers[q1]']")
+      refute has_element?(view, "#{q}-question-2")
+      refute has_element?(view, "#{q}-form [name^='answers[q2]']")
 
       assert has_element?(
                view,
@@ -378,16 +380,32 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
                |> elem(1)
                |> Apiary.Explore.ReviewComments.entries()
     end
+
+    test "the open questions the page shows are those Questions.open_in_take_in/2 returns",
+         %{scope: scope} do
+      work_item = reopened_in_take_in_2(scope)
+      {_version, document} = Apiary.Explore.Questions.newest(work_item)
+      runs = Apiary.Explore.Questions.take_in_runs(work_item.id, 2)
+      core = Apiary.Explore.Questions.open_in_take_in(document, runs)
+      assert Enum.map(core, & &1["id"]) == ["q1"]
+
+      explore = WorkItems.explore(scope, Repo.get!(WorkItems.WorkItem, work_item.id))
+
+      assert for(%{state: :open, id: id} <- explore.questions, do: id) ==
+               Enum.map(core, & &1["id"])
+
+      assert Enum.map(explore.run.questions, & &1.text) == Enum.map(core, & &1["question"])
+    end
   end
 
-  # A work item whose take in 1 wrote question q1, a member answered it, and the take in
-  # was closed; take in 2's run reopened q1, so q1 is open again.
+  # A work item whose take in 1 wrote questions q1 and q2, a member answered q1 only, and
+  # the take in was closed; take in 2's run reopened q1, so q1 and q2 are both open, and
+  # only q1 is the current take in's.
   defp reopened_in_take_in_2(scope) do
-    [currency, _credit_note] = @questions
     ticket = backlog_ticket_fixture(scope)
     {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
     Repo.delete_all(from d in DispatchRun, where: d.work_item_id == ^work_item.id)
-    explore_run_fixture(work_item, result: questions_result([currency]))
+    explore_run_fixture(work_item, result: questions_result(@questions))
     {:ok, _} = WorkItems.answer(scope, work_item, 1, [%{"id" => "q1", "note" => "The order's."}])
     {:ok, _closed} = WorkItems.close(scope, Repo.get!(WorkItems.WorkItem, work_item.id))
 
@@ -433,7 +451,12 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       end)
 
     {_version, document} = Apiary.Explore.Questions.newest(again)
-    assert Enum.map(document["questions"], &{&1["id"], &1["state"]}) == [{"q1", "open"}]
+
+    assert Enum.map(document["questions"], &{&1["id"], &1["state"]}) == [
+             {"q1", "open"},
+             {"q2", "open"}
+           ]
+
     again
   end
 
