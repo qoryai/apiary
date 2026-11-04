@@ -1,7 +1,8 @@
 defmodule Apiary.AccessApproversTest do
-  # The approver rule of `Apiary.Access` (its moduledoc, step 9): `gate.approve` asked of
-  # a work item allows only the approvers of the stage it is in, where the stage lists
-  # them. An answer to the questions stays every member's.
+  # The approver rule of `Apiary.Access` (its moduledoc, step 9): `gate.approve` and
+  # `work_item.review_comment` asked of a work item allow only the approvers of the stage
+  # it is in, where the stage lists them. An answer to the questions stays every
+  # member's. A confirmation is refused at the gate (`Apiary.Stages.confirmed/3`).
   # Not async: a test switches the workflow model off, the application's setting.
   use Apiary.DataCase, async: false
 
@@ -10,15 +11,18 @@ defmodule Apiary.AccessApproversTest do
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Access, Processes, Repo, Stages, WorkItems}
+  alias Apiary.{Access, Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Accounts.Scope
+  alias Apiary.Explore.ReviewComments
   alias Apiary.Organisations.Workspace
   alias Apiary.WorkItems.{Confirmation, WorkItem}
 
   @moduletag needs: [:factory, :workflow_model]
 
   @explore "st_r79kph11eg"
-  @approver_actions [:"gate.approve"]
+  @approver_actions [:"gate.approve", :"work_item.review_comment"]
+  # The approver-only actions that are not part of the workflow model.
+  @factory_actions [:"work_item.review_comment"]
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -127,12 +131,44 @@ defmodule Apiary.AccessApproversTest do
       expect = [expect_stage: @explore]
       assert Stages.approve(member, work_item, nil, expect) == {:error, :not_approver}
       assert Stages.move(member, work_item, @explore, nil, expect) == {:error, :not_approver}
-      assert WorkItems.confirm(member, work_item, 1) == {:error, :not_approver}
+
+      assert WorkItems.review_comment(member, work_item, 1, "Keep the price.") ==
+               {:error, :not_approver}
+
+      assert WorkItems.answer(member, work_item, 1, "Keep the price.") ==
+               {:error, :not_approver}
+
+      assert ReviewComments.newest(reload(work_item)) == nil
+
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Keep the price.")
+      {_version, document} = ReviewComments.newest(reload(work_item))
+      [%{"id" => id}] = ReviewComments.entries(document)
+
+      assert WorkItems.reply(member, reload(work_item), 1, id, "Agreed.") ==
+               {:error, :not_approver}
+
+      assert WorkItems.send_review_comments(member, reload(work_item), 1) ==
+               {:error, :not_approver}
+
+      assert WorkItems.confirm(member, reload(work_item), 1) == {:error, :not_approver}
       refute Repo.get_by(Confirmation, work_item_id: work_item.id)
       assert %{stage_id: @explore, stage_state: :at_gate} = reload(work_item)
+      assert {_version, ^document} = ReviewComments.newest(reload(work_item))
 
-      assert {:ok, _confirmed} = WorkItems.confirm(scope, work_item, 1)
+      assert {:ok, _confirmed} = WorkItems.confirm(scope, reload(work_item), 1)
       assert Repo.get_by(Confirmation, work_item_id: work_item.id)
+    end
+
+    test "a member action of a member who is not among them writes no review comments", %{
+      member: member,
+      work_item: work_item
+    } do
+      file = ReviewComments.file(%{"review_comments" => []})
+
+      assert Artifacts.push({:member_action, member}, work_item, "review-comments", [file]) ==
+               {:error, :not_approver}
+
+      assert ReviewComments.newest(reload(work_item)) == nil
     end
 
     test "allows every member with the workflow model off", %{
@@ -140,6 +176,11 @@ defmodule Apiary.AccessApproversTest do
       work_item: work_item
     } do
       workflow_model_off()
+
+      for action <- @factory_actions do
+        assert Access.can?(member, action, work_item), "#{action}"
+        assert Access.authorize(member, action, work_item) == :ok
+      end
 
       assert Stages.approver(member, work_item) == :ok
       # The gates are part of the workflow model: off, the action is not found to anyone.
