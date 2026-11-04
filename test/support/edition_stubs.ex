@@ -822,6 +822,18 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule ReviewsWithoutApprovers do
+    @moduledoc """
+    Every person in the place writes review comments (`work_item.review_comment`), whatever
+    the approvers the work item's stage lists: the edition answers `:ok` before the core's
+    approver step, which then is not asked.
+    """
+    def check(scope, :"work_item.review_comment" = action, subject),
+      do: Apiary.Access.check_place(scope, action, subject)
+
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoTakeIn do
     @moduledoc "Nobody takes an item in as a work item (`work_item.take_in`), whoever asks."
     def check(_scope, :"work_item.take_in", _subject), do: {:error, :forbidden}

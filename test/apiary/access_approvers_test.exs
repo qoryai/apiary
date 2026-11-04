@@ -13,8 +13,9 @@ defmodule Apiary.AccessApproversTest do
 
   alias Apiary.{Access, Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Accounts.Scope
-  alias Apiary.Explore.ReviewComments
+  alias Apiary.Explore.{Questions, ReviewComments}
   alias Apiary.Organisations.Workspace
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.{Confirmation, WorkItem}
 
   @moduletag needs: [:factory, :workflow_model]
@@ -27,7 +28,7 @@ defmodule Apiary.AccessApproversTest do
   setup do
     %{scope: scope} = sign_up_fixture()
     member = member_fixture(scope)
-    %{scope: scope, member: member.scope}
+    %{scope: scope, member: member.scope, membership: member.membership}
   end
 
   # The workspace's process with Explore's gate set to `approvers`, saved as the current
@@ -204,7 +205,110 @@ defmodule Apiary.AccessApproversTest do
     explore_approvers!(scope, %{"members" => [scope.user.id]})
     work_item = scope |> proposed!() |> Repo.preload(:process_version)
 
-    refute Access.can?(member, :"gate.approve", work_item)
-    assert Access.can?(scope, :"gate.approve", work_item)
+    # The loaded version, changed in memory only: Explore's gate lists the member, not the
+    # owner. The stored version lists the owner, so only an answer that reads the loaded
+    # one allows the member and refuses the owner.
+    stages =
+      Enum.map(work_item.process_version.document["stages"], fn
+        %{"id" => @explore} = stage ->
+          put_in(stage, ["gate", "approvers"], %{"members" => [member.user.id]})
+
+        stage ->
+          stage
+      end)
+
+    work_item =
+      put_in(work_item.process_version.document["stages"], stages)
+
+    for action <- @approver_actions do
+      assert Access.can?(member, action, work_item), "#{action}"
+      refute Access.can?(scope, action, work_item), "#{action}"
+    end
+  end
+
+  describe "questions at a stage that lists approvers" do
+    setup %{scope: scope} do
+      explore_approvers!(scope, %{"members" => [scope.user.id]})
+
+      work_item =
+        scope |> taken_in_fixture() |> end_run!(questions_result(["Which sale?"])) |> reload()
+
+      %{work_item: work_item}
+    end
+
+    test "a member who is not among them answers them", %{member: member, work_item: work_item} do
+      assert {:ok, _} = WorkItems.answer(member, work_item, 1, %{"1" => "The spring sale."})
+
+      assert {version, document} = Questions.newest(reload(work_item))
+      assert version.writer == :person and version.user_id == member.user.id
+      assert [%{"state" => "answered"}] = document["questions"]
+    end
+
+    test "a member action of a member who is not among them writes the questions", %{
+      member: member,
+      work_item: work_item
+    } do
+      {_version, document} = Questions.newest(work_item)
+
+      assert {:ok, version} =
+               Artifacts.push({:member_action, member}, work_item, "questions", [
+                 Questions.file(document)
+               ])
+
+      assert version.user_id == member.user.id
+    end
+  end
+
+  describe "a listed approver" do
+    setup %{scope: scope, member: member} do
+      explore_approvers!(scope, %{"members" => [member.user.id]})
+      %{work_item: proposed!(scope)}
+    end
+
+    test "is refused when the role is", %{
+      scope: scope,
+      member: member,
+      membership: membership,
+      work_item: work_item
+    } do
+      for action <- @approver_actions do
+        assert Access.authorize(member, action, work_item) == :ok
+      end
+
+      {:ok, _suspended} = Apiary.Organisations.suspend_member(scope, membership.id)
+
+      for action <- @approver_actions do
+        assert Access.authorize(member, action, work_item) == {:error, :forbidden}
+      end
+    end
+  end
+
+  test "a subject other than a work item or a workspace is refused", %{
+    scope: scope,
+    member: member
+  } do
+    work_item = proposed!(scope)
+    run = Repo.one!(from d in DispatchRun, where: d.work_item_id == ^work_item.id, limit: 1)
+
+    for action <- @approver_actions, who <- [scope, member] do
+      assert Access.check(who, action, run) == {:error, :not_approver}, "#{action}"
+    end
+  end
+
+  test "an edition that answers the action answers without the approver step", %{
+    scope: scope,
+    member: member
+  } do
+    explore_approvers!(scope, %{"members" => [scope.user.id]})
+    work_item = proposed!(scope)
+
+    assert Access.authorize(member, :"work_item.review_comment", work_item) ==
+             {:error, :not_approver}
+
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ReviewsWithoutApprovers)
+
+    assert Access.authorize(member, :"work_item.review_comment", work_item) == :ok
+    # The edition answers this action alone: the others still ask the approvers.
+    assert Access.authorize(member, :"gate.approve", work_item) == {:error, :not_approver}
   end
 end
