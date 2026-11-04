@@ -244,6 +244,60 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
     end
   end
 
+  describe "the questions after Take in again" do
+    test "the frame and the form show the questions of the current take in; the earlier take in's fold shows its question",
+         %{conn: conn, scope: scope} do
+      work_item = asked_in_two_take_ins(scope)
+      {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+
+      q = "#work-item-explore-questions"
+      assert has_element?(view, "#{q}-form")
+      assert has_element?(view, "#{q}-question-2", "Should the credit note PDF change too?")
+      assert has_element?(view, "#{q}-form [name^='answers[q2]']")
+      refute has_element?(view, "#{q}-question-1")
+      refute has_element?(view, "#{q}-form [name^='answers[q1]']")
+      refute has_element?(view, q, "Which currency should the invoice PDF show?")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-take-ins-1",
+               "Which currency should the invoice PDF show?"
+             )
+
+      refute has_element?(
+               view,
+               "#work-item-explore-take-ins-1",
+               "Should the credit note PDF change too?"
+             )
+    end
+  end
+
+  # A work item whose take in 1 wrote question q1, left open, and was closed; take in 2,
+  # taken in again, wrote question q2, so q1 and q2 are both open in its questions.
+  defp asked_in_two_take_ins(scope) do
+    [currency, credit_note] = @questions
+    ticket = backlog_ticket_fixture(scope)
+    {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+    Repo.delete_all(from d in DispatchRun, where: d.work_item_id == ^work_item.id)
+    explore_run_fixture(work_item, result: questions_result([currency]))
+    {:ok, _closed} = WorkItems.close(scope, work_item)
+
+    {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id)
+
+    Repo.delete_all(from d in DispatchRun, where: d.work_item_id == ^again.id and d.take_in == 2)
+
+    explore_run_fixture(again, take_in: 2, result: questions_result([credit_note]))
+
+    {_version, document} = Apiary.Explore.Questions.newest(again)
+
+    assert Enum.map(document["questions"], &{&1["id"], &1["state"]}) == [
+             {"q1", "open"},
+             {"q2", "open"}
+           ]
+
+    again
+  end
+
   # A new version of the questions, pushed as the run of the queue `dispatch_run`, with
   # the question `id` withdrawn.
   defp withdraw!(dispatch_run, work_item, id) do

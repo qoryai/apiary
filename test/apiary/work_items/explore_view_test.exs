@@ -612,6 +612,35 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                )
     end
 
+    test "a take in again: the questions and the waiting run's questions are those its runs wrote; the earlier take in's run has its question" do
+      %{scope: scope} = sign_up_fixture()
+      ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      explore_run_fixture(work_item, result: questions_result(["Which basket?"]))
+      {:ok, _closed} = WorkItems.close(scope, work_item)
+
+      {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      Repo.delete_all(
+        from r in DispatchRun, where: r.work_item_id == ^again.id and r.take_in == 2
+      )
+
+      %{run: %{number: asked_2}} =
+        explore_run_fixture(again, take_in: 2, result: questions_result(["Which sale?"]))
+
+      assert %{
+               status: :questions,
+               questions: [
+                 %{id: "q2", number: 2, text: "Which sale?", state: :open, asked_run: ^asked_2}
+               ],
+               run: %{questions: [%{public_id: "1", text: "Which sale?"}]},
+               earlier_take_ins: [
+                 %{take_in: 1, runs: [%{questions: [%{text: "Which basket?"}], asked: 1}]}
+               ]
+             } = WorkItems.explore(scope, again)
+    end
+
     test "a take in again undone gave its owner back, and no record keeps the one it had" do
       %{scope: scope} = sign_up_fixture()
       %{user: member} = member_fixture(scope)

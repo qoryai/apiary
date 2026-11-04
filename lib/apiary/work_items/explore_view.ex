@@ -36,14 +36,14 @@ defmodule Apiary.WorkItems.ExploreView do
   #     version_id:, images:}` (`Apiary.WorkItems.Explore.proposal/2`), the version its
   #     latest run stands at, or the one in its confirmation; nil for none. A result
   #     stored before runs pushed their proposal as an artifact has `message` alone;
-  #   * `questions`: every question of the work item's newest questions, in their order,
-  #     each `%{id:, number:, text:, context:, options:, state:, asked_run:, answer:,
-  #     history:, follows:}`: `number` its place in the document, from 1, `state`
-  #     `:open`, `:answered` or `:withdrawn`, `answer` nil or `%{option:, note:, by_id:,
-  #     by:, at:}` (`by_id` by the move that wrote it, nil where none matches, `by` the
-  #     name in the document), `history` its earlier answers in the same form, and
-  #     `follows` the numbers of the questions it follows; and `questions_version`, the
-  #     number of that version, nil for none;
+  #   * `questions`: the questions of the work item's newest questions that a run of the
+  #     current take in wrote (`asked.run`), in their order, each `%{id:, number:, text:,
+  #     context:, options:, state:, asked_run:, answer:, history:, follows:}`: `number`
+  #     its place in the document, from 1, `state` `:open`, `:answered` or `:withdrawn`,
+  #     `answer` nil or `%{option:, note:, by_id:, by:, at:}` (`by_id` by the move that
+  #     wrote it, nil where none matches, `by` the name in the document), `history` its
+  #     earlier answers in the same form, and `follows` the numbers of the questions it
+  #     follows; and `questions_version`, the number of that version, nil for none;
   #   * `review_comments`: the review comments on the current take in's proposals, oldest
   #     first, each `%{id:, text:, by_id:, at:, version:, state:, reopened:, replies:}`:
   #     `state` `:open` or `:closed`, `reopened` true for an open one a run replied to,
@@ -77,9 +77,10 @@ defmodule Apiary.WorkItems.ExploreView do
   # for none; `questions`, each `%{public_id: position, text: question, options:
   # [%{title:, explanation:}], answer: answer or nil, custom: true, false or nil}`, for a
   # run that asked: where its questions wait, the open questions of the work item's
-  # newest questions, which the form answers by position, else the questions it asked and
-  # those answered at it (`Apiary.Explore.Questions`, `Apiary.Explore.Given`); and
-  # `answered_by_id` and `answered_at` once a member answered at it. A confirmed run's
+  # newest questions that a run of the current take in wrote, which the form answers by
+  # position, else the questions it asked and those answered at it
+  # (`Apiary.Explore.Questions`, `Apiary.Explore.Given`); and `answered_by_id` and
+  # `answered_at` once a member answered at it. A confirmed run's
   # proposal is the version in its confirmation. A run that ended before Explore's
   # runs pushed artifacts shows the proposal in its result, and no questions. `wrote` is
   # the version of the proposal the run pushed, nil for none, with `wrote_proposal`, that
@@ -219,13 +220,15 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
-  # Every question of the newest questions, in their order (the moduledoc).
+  # The questions of the newest questions that a run of the current take in wrote, in
+  # their order, each numbered by its place in the document (the moduledoc).
   defp questions_view(ctx) do
     entries = (ctx.questions || %{})["questions"] || []
     numbers = for {%{"id" => id}, n} <- Enum.with_index(entries, 1), into: %{}, do: {id, n}
     given = for %{kind: :answer} = entry <- ctx.given, do: entry
 
-    for {%{"id" => id} = question, number} <- Enum.with_index(entries, 1) do
+    for {%{"id" => id} = question, number} <- Enum.with_index(entries, 1),
+        current_take_in?(question, ctx) do
       %{options: options} = Proposal.question(question)
 
       %{
@@ -242,6 +245,11 @@ defmodule Apiary.WorkItems.ExploreView do
       }
     end
   end
+
+  # Whether a run of the current take in wrote the question (`asked.run`). The questions
+  # document of a work item spans its take ins.
+  defp current_take_in?(question, ctx),
+    do: MapSet.member?(ctx.current_runs, get_in(question, ["asked", "run"]))
 
   defp question_state("answered"), do: :answered
   defp question_state("withdrawn"), do: :withdrawn
@@ -354,10 +362,12 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # What the pages read besides the runs: what members gave (`Apiary.Explore.Given`), the
   # position of the reply each move of a reply wrote, by the move's event, the newest
-  # questions and review comments, the runs by their registered run's number, and
+  # questions and review comments, the runs by their registered run's number, the steps
+  # of the current take in and their registered runs' numbers (`current_runs`), and
   # `waiting`, the latest run of the current take in where its questions wait, else nil.
   defp context(work_item, steps, events, waiting) do
     questions = Questions.newest(work_item)
+    current = Enum.filter(steps, &(&1.take_in == work_item.take_in))
 
     %{
       given: Given.from_events(work_item, events),
@@ -371,7 +381,8 @@ defmodule Apiary.WorkItems.ExploreView do
       questions_version: number(questions),
       review_comments: document(ReviewComments.newest(work_item)),
       by_number: for(%{run: %{number: n}} = step <- steps, into: %{}, do: {n, step}),
-      current: Enum.filter(steps, &(&1.take_in == work_item.take_in)),
+      current: current,
+      current_runs: for(%{run: %{number: n}} <- current, into: MapSet.new(), do: n),
       waiting: waiting || nil
     }
   end
@@ -577,14 +588,15 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   # The questions of a run that asked: where its questions wait, the open questions of the
-  # newest questions, in its order, which the form answers by position; otherwise the
-  # questions it asked (`asked.run`) and those answered at it, with their answers.
+  # newest questions that a run of the current take in wrote, in its order, which the
+  # form answers by position; otherwise the questions it asked (`asked.run`) and those
+  # answered at it, with their answers.
   defp questions(step, ctx, rows) do
     answers = Map.new(rows, &{&1.id, &1})
 
     entries =
       if ctx.waiting && ctx.waiting.dispatch_run.id == step.dispatch_run.id do
-        Questions.open(ctx.questions)
+        ctx.questions |> Questions.open() |> Enum.filter(&current_take_in?(&1, ctx))
       else
         number = step.run && step.run.number
 
