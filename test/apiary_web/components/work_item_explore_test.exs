@@ -819,7 +819,21 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{p}-text") =~ "Image not in this version: x"
       assert text(html, "#{p}-text") =~ "Image: Logo"
 
-      # Without images, as the frame shows a proposal today: no image is loaded.
+      # A version with no images: each file it refers to is not in this version.
+      html =
+        render_component(&C.proposal_frame/1,
+          id: "work-item-explore-proposal",
+          run: run(%{version: 2, proposal: proposal(%{message: message})}),
+          now: @now,
+          images: []
+        )
+
+      assert count(html, "img") == 0
+      assert text(html, "#{p}-text") =~ "Image not in this version: Invoice header"
+      assert text(html, "#{p}-text") =~ "Image not in this version: x"
+
+      # Images not given, as explore_tab/1 shows a proposal: no image is loaded, and an
+      # image is its words.
       html =
         render_component(&C.proposal_frame/1,
           id: "work-item-explore-proposal",
@@ -829,6 +843,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert count(html, "img") == 0
       assert text(html, "#{p}-text") =~ "Image: Invoice header"
+      refute text(html, "#{p}-text") =~ "not in this version"
     end
 
     test "with text in the field, the one button is Send change" do
