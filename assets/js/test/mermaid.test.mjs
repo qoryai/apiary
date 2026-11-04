@@ -8,7 +8,7 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {loads, secure, settings, source, watchTheme, width} from "../hooks/mermaid.js"
+import {dompurifyConfig, loads, secure, settings, source, watchTheme, width} from "../hooks/mermaid.js"
 
 // The front matter of the security round's finding: it turns HTML labels back on.
 const FRONT_MATTER = [
@@ -148,7 +148,7 @@ test("the vendored Mermaid keeps htmlLabels off against a front matter config", 
   assert.equal(config.htmlLabels, false)
   assert.equal(config.flowchart?.htmlLabels, undefined)
   assert.equal(config.themeCSS, undefined)
-  assert.equal(config.dompurifyConfig, undefined)
+  assert.deepEqual(config.dompurifyConfig, dompurifyConfig)
   assert.equal(config.securityLevel, "strict")
   assert.equal(config.theme, "base")
 })
@@ -244,4 +244,28 @@ test("watches nothing where there is no MutationObserver", () => {
   const stop = watchTheme(html, () => assert.fail("no redraw"), undefined)
   assert.equal(typeof stop, "function")
   stop()
+})
+
+test("Mermaid's sanitizer drops what loads, links or styles, in every text it sanitizes", () => {
+  const config = settings({})
+  assert.equal(config.dompurifyConfig, dompurifyConfig)
+  assert.ok(config.secure.includes("dompurifyConfig"))
+
+  for (const tag of ["img", "image", "picture", "source", "video", "audio", "iframe"])
+    assert.ok(dompurifyConfig.FORBID_TAGS.includes(tag), tag)
+  for (const tag of ["object", "embed", "form", "input", "a", "svg", "use", "style"])
+    assert.ok(dompurifyConfig.FORBID_TAGS.includes(tag), tag)
+  for (const attr of ["style", "class", "id", "src", "srcset", "href", "xlink:href"])
+    assert.ok(dompurifyConfig.FORBID_ATTR.includes(attr), attr)
+  for (const attr of ["background", "poster"]) assert.ok(dompurifyConfig.FORBID_ATTR.includes(attr))
+})
+
+test("the vendored Mermaid sanitizes with the site's dompurifyConfig", async () => {
+  // Mermaid's sanitizeText uses the dompurifyConfig of the config it is given, Mermaid's
+  // current config, where there is one. DOMPurify needs a window, so in Node this shows
+  // that the setting reaches that config, and that a directive cannot replace it.
+  const {default: mermaid} = await import("../../vendor/mermaid/mermaid.esm.min.mjs")
+  mermaid.initialize(settings({}))
+  await mermaid.parse('%%{init: {"dompurifyConfig": {"ADD_TAGS": ["img"]}}}%%\nflowchart LR\n  A').catch(() => null)
+  assert.deepEqual(mermaid.mermaidAPI.getConfig().dompurifyConfig, dompurifyConfig)
 })
