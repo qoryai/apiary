@@ -251,7 +251,7 @@ Checks, in order, after the checks of every request:
    reply to an open review comment, by `{"run": <run.number>}`, which it closes; a reply
    with the outcome `asked` has in `question` the id of a question of the newest version
    of `questions` stored when the run pushes `review-comments`, so the run pushes its
-   questions first.
+   questions first. Numbers compare as JSON writes them: `4.0` is not `4`.
 
 ## POST verdict
 
