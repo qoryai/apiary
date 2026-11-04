@@ -4,10 +4,9 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
   # on: a review comment written wherever no run runs, also while questions are open, and
   # queuing no run (`Apiary.WorkItems.review_comment/4`); the open review comments sent
   # to the next run with the answers, or at the gate or while questions wait
-  # (`send_review_comments/3`); a reply
-  # that opens a review comment again (`reply/5`); the run that closes them with its
-  # reply; and today's form, a text at the gate, written and sent in one move
-  # (`answer/4`).
+  # (`send_review_comments/3`); a reply that opens a review comment again (`reply/5`);
+  # the run that closes them with its reply; and today's form, a text at the gate,
+  # written and sent in one move (`answer/4`).
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
