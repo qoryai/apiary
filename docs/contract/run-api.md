@@ -456,8 +456,9 @@ The messages:
     - "Make sources.json valid JSON. The file does not parse as JSON."
     - "Fix sources.json to match the format of proposal sources: at #, additional
       properties are not allowed but found property 'items'." The part after the colon
-      is the structured form: the JSON pointer of the first failing value and the text
-      of the schema check.
+      is the JSON pointer of the first failing value and the text of the failed check: a
+      schema check, or a check outside the schema such as a key that comes twice in an
+      object ("the object has the key <key> twice", check 6).
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review
