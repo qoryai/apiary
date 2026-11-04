@@ -11659,11 +11659,21 @@
      the column is narrower, so its labels stay readable and it scrolls sideways. An image
      of a proposal version fits the column. */
   .q-mermaid {
+    margin: 12px 0;
     overflow-x: auto;
   }
   .q-mermaid-diagram {
+    display: block;
     max-width: max(100%, 40rem);
     height: auto;
+  }
+  .q-mermaid-details {
+    margin-top: 6px;
+  }
+  .q-mermaid-details > summary {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    cursor: pointer;
   }
   .q-ticket-formatted img:not(.q-mermaid-diagram) {
     max-width: 100%;

@@ -13,6 +13,7 @@ import assert from "node:assert/strict"
 import {
   dompurifyConfig,
   drawing,
+  labelCSS,
   loads,
   secure,
   settings,
@@ -192,7 +193,7 @@ test("the vendored Mermaid keeps htmlLabels off against a front matter config", 
 
   assert.equal(config.htmlLabels, false)
   assert.equal(config.flowchart?.htmlLabels, undefined)
-  assert.equal(config.themeCSS, undefined)
+  assert.equal(config.themeCSS, labelCSS)
   assert.deepEqual(config.dompurifyConfig, dompurifyConfig)
   assert.equal(config.securityLevel, "strict")
   assert.equal(config.theme, "base")
