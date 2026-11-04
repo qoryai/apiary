@@ -56,15 +56,25 @@ defmodule Apiary.Explore.Given do
   @doc false
   @spec from_events(WorkItem.t(), [map]) :: [entry]
   def from_events(%WorkItem{} = work_item, events) do
-    answered = Enum.filter(events, &(&1.kind == :answered))
-
-    if answered == [] do
-      []
+    if Enum.any?(events, &(&1.kind == :answered)) do
+      from_events(
+        events,
+        document(Questions.newest(work_item)),
+        document(ReviewComments.newest(work_item))
+      )
     else
-      questions = document(Questions.newest(work_item))
-      comments = document(ReviewComments.newest(work_item))
-      Enum.flat_map(answered, &entries(&1, questions, comments))
+      []
     end
+  end
+
+  # from_events/3 is the same, read from `events` and the documents of the work item's
+  # newest questions and newest review comments, nil for none, which the caller read.
+  @doc false
+  @spec from_events([map], map | nil, map | nil) :: [entry]
+  def from_events(events, questions, comments) when is_list(events) do
+    events
+    |> Enum.filter(&(&1.kind == :answered))
+    |> Enum.flat_map(&entries(&1, questions, comments))
   end
 
   defp document({_version, document}), do: document
