@@ -368,6 +368,49 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
   end
 
+  describe "where the factory feature is off and the registry feature on" do
+    @describetag :work
+
+    setup ctx do
+      previous = Application.get_env(:apiary, :features)
+      {:ok, features} = Apiary.Features.parse("observability,security,registry")
+      Application.put_env(:apiary, :features, features)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+
+      {key, _seed} = ctx.secrets_key
+
+      {:ok, %{digest: digest}} =
+        Apiary.Runs.Registration.fetch(key, ctx.run.node_run_id, instance_id())
+
+      %{digest: digest}
+    end
+
+    test "a request for the registry credential alone is answered", ctx do
+      conn = post_secrets(ctx, request(ctx, digest: ctx.digest, credentials: ["registry"]))
+      assert conn.status == 200, conn.resp_body
+    end
+
+    test "a request that names the model key finds no such credential", ctx do
+      conn = post_secrets(ctx, request(ctx, digest: ctx.digest))
+      assert conn.status == 409
+      assert code(conn) == "credentials_differ"
+    end
+
+    test "a request that names the work entry is not found, with no call and no entry", ctx do
+      {conn, log} =
+        with_log(fn ->
+          post_secrets(ctx, request(ctx, digest: ctx.digest, credentials: ["work-1"]))
+        end)
+
+      assert conn.status == 404
+      assert code(conn) == "not_found"
+      assert signed_answer?(conn)
+      assert log =~ ctx.run.node_run_id
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
+    end
+  end
+
   describe "a request that names the work entry" do
     @describetag :work
 

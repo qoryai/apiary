@@ -32,7 +32,8 @@ defmodule Apiary.GatewayServingTest do
     Repo.get!(Apiary.Organisations.Workspace, workspace.id)
   end
 
-  defp through(scope), do: run_fixture(scope, %{run_key_payload: "run-key"})
+  # A run through a gateway, as its row reads once it has its run key.
+  defp through(scope), do: %{run_fixture(scope) | run_key_payload: "run-key"}
 
   describe "a gateway" do
     test "of a workspace serves that workspace alone", ctx do
