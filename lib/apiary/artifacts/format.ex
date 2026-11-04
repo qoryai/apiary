@@ -43,7 +43,8 @@ defmodule Apiary.Artifacts.Format do
   #     `{:svg_content, part}`, `part` the first part refused, in plain words with names as
   #     the file writes them, such as "the script element". Before the parse, a document
   #     type declaration is "the DOCTYPE", and an element with more than 256 attributes
-  #     "the attributes past the 256th on the rect element". The strict check is
+  #     "the attributes past the 256th on the rect element". An element that declares a
+  #     prefix, or `xmlns`, twice is not well-formed: `:svg_format`. The strict check is
   #     an allowlist, so that the SVG runs no script and loads nothing from outside the
   #     file, shown in an `<img>`, opened as an SVG, or opened as a page after a rename to
   #     `.html`, where an HTML parser reads no namespace:
@@ -561,24 +562,28 @@ defmodule Apiary.Artifacts.Format do
   # which the strict check refuses. Either is "everything after the end of the svg
   # element".
   defp svg_root(bytes, mode) do
-    event = fn event, _location, {root, status, state} ->
+    event = fn event, _location, {root, status, state, declared} ->
       root = root(event, root)
+      declared = declared(event, declared)
 
       if mode == :strict and status == :safe do
         {status, state} = strict(event, state)
-        {root, status, state}
+        {root, status, state, declared}
       else
-        {root, status, state}
+        {root, status, state, declared}
       end
     end
 
     case :xmerl_sax_parser.stream(bytes,
            event_fun: event,
-           event_state: {:none, :safe, {[], nil}},
+           event_state: {:none, :safe, {[], nil}, []},
            external_entities: :none,
            fail_undeclared_ref: true
          ) do
-      {:ok, {:svg, status, _state}, rest} ->
+      {:ok, {_root, _status, _state, :twice}, _rest} ->
+        :other
+
+      {:ok, {:svg, status, _state, _declared}, rest} ->
         cond do
           status != :safe -> status
           blank?(rest) -> :svg
@@ -586,7 +591,7 @@ defmodule Apiary.Artifacts.Format do
           true -> :other
         end
 
-      {:ok, {:svg_root, _status, _state}, _rest} ->
+      {:ok, {:svg_root, _status, _state, _declared}, _rest} ->
         :svg_root
 
       {:ok, _root, _rest} ->
@@ -608,6 +613,18 @@ defmodule Apiary.Artifacts.Format do
   defp root({:startElement, _uri, _name, _qualified, _attributes}, :none), do: :other
 
   defp root(_event, root), do: root
+
+  # The prefixes declared on the next element, `[]` for `xmlns`, or `:twice` once an
+  # element declares one twice. XML has no attribute twice on one element, but xmerl's
+  # parser takes the last of two declarations and a browser the first, so the element
+  # could be in the HTML namespace in the browser and in the SVG namespace here.
+  defp declared(_event, :twice), do: :twice
+
+  defp declared({:startPrefixMapping, prefix, _uri}, declared),
+    do: if(prefix in declared, do: :twice, else: [prefix | declared])
+
+  defp declared({:startElement, _uri, _name, _qualified, _attributes}, _declared), do: []
+  defp declared(_event, declared), do: declared
 
   # One event of the strict check: `:safe`, or `{:unsafe, part}` with the part refused in
   # plain words, names as the file writes them; and the state: the open elements,

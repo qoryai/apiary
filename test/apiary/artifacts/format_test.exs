@@ -968,6 +968,29 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:error, :format} = check(context, "mockup", "a.svg", closed <> "<!-- x -->")
     end
 
+    test "refuses an element that declares a prefix or xmlns twice, as :svg_format",
+         context do
+      xhtml = "http://www.w3.org/1999/xhtml"
+
+      for body <- [
+            ~s(<rect id="r"/><a xmlns="#{xhtml}" xmlns="#{@svg_namespace}" href="#r"><text>x</text></a>),
+            ~s(<style xmlns="#{xhtml}" xmlns="#{@svg_namespace}">rect { fill: red; }</style>),
+            ~s(<g xmlns:x="urn:example:a" xmlns:x="urn:example:b"/>)
+          ] do
+        assert {:error, :svg_format} = check(context, "proposal", "a.svg", svg(body)), body
+        assert {:error, :format} = check(context, "mockup", "a.svg", svg(body)), body
+      end
+
+      # The same prefix on two elements is two declarations, one on each.
+      assert {:ok, "image/svg+xml"} =
+               check(
+                 context,
+                 "proposal",
+                 "a.svg",
+                 svg(~s(<g xmlns:x="urn:example:a"><g xmlns:x="urn:example:b"/></g>))
+               )
+    end
+
     test "checks a namespace declaration's address as an attribute's value", context do
       for {body, part} <- [
             {~s|<rect xmlns:a="url(https://example.com/)"/>|,

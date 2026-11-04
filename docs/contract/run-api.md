@@ -327,7 +327,9 @@ Checks, in order, after the checks of every request:
    the parse, a document type declaration
    (`<!DOCTYPE` or `<!ENTITY`, any case, outside a comment, a CDATA section and a
    processing instruction) is refused as "the DOCTYPE", and an element with more than 256
-   attributes as "the attributes past the 256th on the rect element".
+   attributes as "the attributes past the 256th on the rect element". An element that
+   declares a prefix, or `xmlns`, twice is not well-formed XML and gets the "Make
+   checkout.svg a well-formed SVG file …" message.
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no
