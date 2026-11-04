@@ -2,9 +2,11 @@ defmodule Apiary.Audit do
   @moduledoc """
   The audit trail: what people, access keys and the instance did to what Qory
   Apiary holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
-  when, from where, and the fields it changed as they were and as they are. It is not the
-  record: the record is what runs did (their events, their log), the trail is what was
-  done to Qory Apiary. The events the gateway posts are the record and leave no entry.
+  when, from where, and the fields it changed as they were and as they are. A member's
+  answer, review comment or reply leaves two entries: the move's, `work_item.answer`, and
+  `artifact.write` for the artifact version it writes. The trail is not the record: the
+  record is what runs did (their events, their log), the trail is what was done to Qory
+  Apiary. The events the gateway posts are the record and leave no entry.
 
   ## Written with the change
 
