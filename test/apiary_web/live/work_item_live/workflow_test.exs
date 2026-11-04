@@ -2083,6 +2083,51 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              )
     end
 
+    test "a request for changes at Explore shows above the tabs, without runs or artifacts", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = explore_gate_fixture(scope)
+
+      {:ok, _} =
+        WorkItems.review_comment(scope, work_item, 1, "Also check the total.")
+
+      {:ok, _work_item} =
+        Stages.request_changes(scope, work_item, "Change the credit note PDF too.", nil,
+          expect_stage: @explore
+        )
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      assert has_element?(view, "#work-item-notes-h", "Notes for the next run")
+      assert texts(view, "#work-item-notes li > p:first-child") == ["Changes requested · Explore"]
+      assert has_element?(view, "#work-item-notes-0", "Change the credit note PDF too.")
+
+      # Only the gate's note: the review comment is a card, and the runs and the
+      # artifacts are in the history fold.
+      refute has_element?(view, "#work-item-flow #work-item-runs")
+      refute has_element?(view, "#work-item-flow #work-item-artifacts")
+
+      [before_tabs, _after] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
+      assert before_tabs =~ ~s(id="work-item-flow")
+    end
+
+    test "at Explore without a note of a gate, an escalation or a check, no block", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = explore_gate_fixture(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Also check the total.")
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      refute has_element?(view, "#work-item-flow")
+      assert has_element?(view, "#work-item-explore-proposal")
+
+      [before_tabs, _after] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
+      refute before_tabs =~ ~s(id="work-item-explore-proposal")
+    end
+
     test "a move with no note has no note line", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :waiting_inputs)
       {:ok, _work_item} = Stages.move(scope, work_item, @shape, nil, expect_stage: @build)

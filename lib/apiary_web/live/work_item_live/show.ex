@@ -46,6 +46,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`ApiaryWeb.WorkItemLive.Workflow`), the header shows the stages of the work item's
   # process version, the rail the stage card in place of the step card, and the body
   # the runs and the artifacts above the tabs (`ApiaryWeb.WorkItemLive.StageComponents`).
+  # At Explore the runs and the artifacts are in the history fold, and the block above the
+  # tabs shows only while a note of a gate decision, an escalation or a check exists.
   # The page reads them again on `{:stage_changed, id}` and `{:artifact_pushed, …, …}` on the
   # work item's topics (`ApiaryWeb.WorkItemLive.Workflow.subscribe/2`), and does
   # Approve, Request changes, the escalation actions and Move back through
@@ -229,10 +231,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           />
         </:rail>
         <:body>
-          <div :if={@flow && !@flow.explore} id="work-item-flow" class="flex flex-col gap-3">
-            <StageComponents.stage_runs runs={@flow.runs} />
-            <StageComponents.stage_notes notes={@flow.notes} />
+          <div
+            :if={@flow && (!@flow.explore or stage_notes(@flow) != [])}
+            id="work-item-flow"
+            class="flex flex-col gap-3"
+          >
+            <StageComponents.stage_runs :if={!@flow.explore} runs={@flow.runs} />
+            <StageComponents.stage_notes notes={stage_notes(@flow)} />
             <section
+              :if={!@flow.explore}
               id="work-item-artifacts"
               class="q-xp-sec"
               aria-labelledby="work-item-artifacts-h"
@@ -1163,6 +1170,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp status(%{status: status}), do: status
   defp status(_item), do: nil
+
+  # The notes above the tabs. At Explore, only the notes that Explore's screen shows
+  # nowhere else: a gate decision, a resolved escalation or a failed check. The answers
+  # are in the Questions frame, the review comments and replies are cards, and the Runs
+  # list and the artifacts are in the history fold.
+  defp stage_notes(%{explore: true, notes: notes}),
+    do:
+      Enum.filter(
+        notes,
+        &(!&1.comment and &1.kind in [:request_changes, :move, :escalation, :check])
+      )
+
+  defp stage_notes(%{notes: notes}), do: notes
 
   defp escalated?(%{escalation: %{}}, status)
        when status in [:no_result, :lost, :cancelled, :used_up],
