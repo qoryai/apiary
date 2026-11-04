@@ -526,9 +526,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   What the work item needs now, from whom: one card, with at most one primary button, for
   a live work item; nothing for an ended one.
 
-    * Explore, queued, the first run of a take in: what Qory does when the run starts,
-      with Qory's bee; who took it in and when (the work item's `:taken_in_by` and
-      `:taken_in_at`). With `can_undo`, that the reader can undo this until a run starts,
+    * Explore, queued, the first run of a take in: what Explore does when the run
+      starts, with the run's icon; who took it in and when (the work item's
+      `:taken_in_by` and `:taken_in_at`). With `can_undo`, that the reader can undo this until a run starts,
       Undo (`"undo"`), and what undoing does: a first take in's, or an undone work item's
       taken in again, takes Qory's label off the ticket; a closed one's taken
       in again (`previous`) goes back to closed, and nothing is sent to the
@@ -767,7 +767,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
+    <p class="q-wi-bee-line"><.run_icon /><span>{@line}</span></p>
     <p id={"#{@id}-run"}>{@queued}</p>
     """
   end
@@ -785,7 +785,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <p class="q-wi-bee-line"><.bee /><span>{@line}</span></p>
+    <p class="q-wi-bee-line"><.run_icon /><span>{@line}</span></p>
     <div id={"#{@id}-undo"} class="q-wi-undo">
       <p id={"#{@id}-undo-line"}><.rich text={@undo_line} /></p>
       <div :if={@can_undo} class="q-wi-acts">
@@ -1263,12 +1263,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp shown_number(number) when is_integer(number), do: Integer.to_string(number)
   defp shown_number(_number), do: gettext("n/a")
 
-  attr :class, :any, default: "q-bl-bee q-bl-bee-lg"
-
-  # Qory's bee, beside Qory's words: decorative, the words name Qory.
-  defp bee(assigns) do
+  # The run's icon (`hero-play-circle`, the Runs icon in the left navigation), beside a
+  # line about Explore's run. Decorative: the line beside it has the words.
+  defp run_icon(assigns) do
     ~H"""
-    <span class={@class} aria-hidden="true"></span>
+    <.icon name="hero-play-circle" class="q-wi-play size-6" />
     """
   end
 
@@ -4026,7 +4025,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <li id={@id} class="q-wi-ev">
       <span class="q-wi-ev-ic" aria-hidden="true">
-        <.bee :if={@qory} class="q-bl-bee q-bl-bee-lg" />
+        <.run_icon :if={@qory} />
         <span :if={!@qory} class={@bad && "q-wi-ev-bad"}>
           <.icon name={event_icon(@kind)} class="size-3" />
         </span>

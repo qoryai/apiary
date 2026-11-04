@@ -391,7 +391,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert text(html, "#work-item-step-line") == line
         assert count(html, "#work-item-step p") == 1
         assert count(html, "#work-item-step-run") == 0
-        assert count(html, ".q-wi-bee") == 0
+        assert count(html, ".q-wi-play") == 0
       end
     end
   end
@@ -419,7 +419,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-step-line") ==
                "Answer the 3 questions, and Explore runs again with your answers."
 
-      assert count(html, ".q-wi-bee") == 0
+      assert count(html, ".q-wi-play") == 0
 
       assert text(html, "#work-item-step-explore") == "Answer the questions"
       assert attr(html, "#work-item-step-explore", "href") == ["/8wonders/main/work/94/explore"]
@@ -579,7 +579,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-step-line") ==
                "Confirm the proposal, or add review comments and send them."
 
-      assert count(html, ".q-wi-bee") == 0
+      assert count(html, ".q-wi-play") == 0
       assert text(html, "#work-item-step-explore") == "Read the proposal"
       assert attr(html, "#work-item-step-explore", "href") == ["/8wonders/main/work/88/explore"]
       assert count(html, "button") == 0
@@ -815,7 +815,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "hero-arrow-path"
 
       assert count(html, ".q-xp-frame") == 0
-      assert count(html, ".q-wi-bee") == 0
+      assert count(html, ".q-wi-play") == 0
     end
 
     test "a pending run reads Queued too" do
@@ -904,7 +904,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
 
       assert count(html, "#{p}-sources") == 0
-      assert count(html, ".q-wi-bee") == 0
+      assert count(html, ".q-wi-play") == 0
     end
 
     test "Add review comment, only with its page" do
@@ -2290,7 +2290,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   defp line(html), do: text(html, "li.q-wi-ev > div > p:first-child")
 
   describe "thread_event/1, Explore's lines" do
-    test "a run starts: first, with the answers, again; its place beside it; Qory's bee" do
+    test "a run starts: first, with the answers, again; its place beside it; the run's icon" do
       r = run(%{attempt: 2})
 
       for {start, words} <- [
@@ -2302,13 +2302,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         assert line(html) == words <> " Attempt 2 14 Oct, 11:25"
         assert text(html, ".q-wi-tag") == "Attempt 2"
         assert attr(html, "p a", "href") == ["/8wonders/main/runs/12"]
-        assert count(html, ".q-wi-ev-ic .q-bl-bee") == 1
+        assert count(html, ".q-wi-ev-ic .q-wi-play.hero-play-circle") == 1
       end
     end
 
     test "Qory asked: how many and after how long, the questions quoted under it" do
       html = event(kind: :asked, questions: questions(), duration: "9 minutes")
       assert line(html) == "Explore wrote 3 questions, after 9 minutes 14 Oct, 11:25"
+      assert count(html, ".q-wi-ev-ic .q-wi-play.hero-play-circle") == 1
       assert texts(html, "#ev-1-questions li") == Enum.map(questions(), & &1.text)
 
       one = event(kind: :asked, questions: [hd(questions())], duration: "8 minutes")
@@ -2383,6 +2384,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert line(event(kind: :proposed, owner: nil, duration: "7 minutes")) ==
                "Explore wrote a proposal, after 7 minutes. 14 Oct, 11:25"
+
+      assert count(
+               event(kind: :proposed, owner: nil, duration: "7 minutes"),
+               ".q-wi-ev-ic .q-wi-play.hero-play-circle"
+             ) == 1
     end
 
     test "a run without a result, lost or cancelled, with its mark" do

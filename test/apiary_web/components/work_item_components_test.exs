@@ -270,12 +270,12 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           runs: nil
         })
 
-    test "taken in by the reader: the bee, the Undo line and Undo" do
+    test "taken in by the reader: the run's icon, the Undo line and Undo" do
       html = card(queued(@dana, ago(5)))
 
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Queued"
-      assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
+      assert count(html, ".q-wi-bee-line .q-wi-play.hero-play-circle") == 1
 
       assert text(html, ".q-wi-bee-line") ==
                "When the run starts, Explore reads the ticket and writes a proposal."
@@ -365,10 +365,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "#work-item-step-line") ==
                "Explore reads the ticket and writes a proposal."
 
-      # One line only: no start time, no run link, no bee.
+      # One line only: no start time, no run link, no run icon.
       assert count(html, "#work-item-step-run") == 0
       refute html =~ "started"
-      assert count(html, ".q-bl-bee") == 0
+      assert count(html, ".q-wi-play") == 0
       assert count(html, "button") == 0
     end
 
@@ -411,7 +411,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                "Confirm the proposal, or add review comments and send them."
 
       refute html =~ "Mock-up"
-      assert count(html, ".q-bl-bee") == 0
+      assert count(html, ".q-wi-play") == 0
       assert text(html, "#work-item-step-explore") == "Read the proposal"
       assert attr(html, "#work-item-step-explore", "href") == ["/acme/main/work/88/explore"]
       assert count(html, "button") == 0
@@ -432,7 +432,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(html, "#work-item-step-line") == "Priya confirms next"
 
-      assert count(html, ".q-bl-bee") == 0
+      assert count(html, ".q-wi-play") == 0
       refute html =~ "Confirm the proposal"
       assert count(html, "button") == 0
       assert count(html, "[role=group]") == 0

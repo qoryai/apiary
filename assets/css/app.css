@@ -13281,7 +13281,8 @@
     align-items: flex-start;
     gap: 10px;
   }
-  .q-wi-bee-line > .q-bl-bee {
+  .q-wi-bee-line > .q-wi-play {
+    flex: none;
     margin-top: -2px;
   }
   .q-wi-acts {
@@ -13543,7 +13544,7 @@
     height: 24px;
     place-items: center;
   }
-  .q-wi-ev-ic > span {
+  .q-wi-ev-ic > span:where(:not(.q-wi-play)) {
     display: grid;
     width: 22px;
     height: 22px;
