@@ -40,10 +40,11 @@ defmodule Apiary.Stages do
   #
   # A run of explore-a-ticket pushes its `proposal` and its `questions` during the run
   # through the run API, and Core pushes nothing for it. At its end, the newest questions
-  # of the work item with a question that waits for an answer make the stage wait for
-  # answers, whatever else the run did (`Apiary.Explore.Questions`); otherwise a run that
-  # stopped escalates, `run_stopped`, with the cause, and any other counts as a run with no
-  # verdict. Newest questions whose file cannot be read raise
+  # of the work item with a question of the run's take in that waits for an answer make
+  # the stage wait for answers, whatever else the run did
+  # (`Apiary.Explore.Questions.open_in_take_in/2`; one left open in an earlier take in
+  # does not count); otherwise a run that stopped escalates, `run_stopped`, with the
+  # cause, and any other counts as a run with no verdict. Newest questions whose file cannot be read raise
   # `Apiary.Stages.QuestionsUnreadable`. A refusal or a lost run
   # (`Apiary.Dispatches.RunEnd`) rolls back and stores nothing, as the run of the queue is
   # still handed over: the lost-run check ends it again at a later tick
@@ -1431,7 +1432,7 @@ defmodule Apiary.Stages do
   # names the proposal's version (`StopCause.failed_after_proposal/1`), where the run
   # pushed none it reads as any stopped run.
   defp explore_result(work_item, run, context) do
-    open = open_questions(work_item)
+    open = open_questions(work_item, run)
 
     cond do
       open != [] ->
@@ -1448,13 +1449,20 @@ defmodule Apiary.Stages do
     end
   end
 
-  # The open questions of the work item's newest questions; a newest version whose file
-  # cannot be read raises, so the end is not read as one with no open question.
-  defp open_questions(work_item) do
+  # The open questions of the work item's newest questions that are of the run's take in
+  # (`Apiary.Explore.Questions.open_in_take_in/2`); a newest version whose file cannot be
+  # read raises, so the end is not read as one with no open question.
+  defp open_questions(work_item, %DispatchRun{take_in: take_in}) do
     case Apiary.Explore.Questions.current(work_item) do
-      {:ok, {_version, document}} -> Apiary.Explore.Questions.open(document)
-      {:ok, nil} -> []
-      {:error, :store_unavailable} -> raise Apiary.Stages.QuestionsUnreadable
+      {:ok, {_version, document}} ->
+        runs = Apiary.Explore.Questions.take_in_runs(work_item.id, take_in)
+        Apiary.Explore.Questions.open_in_take_in(document, runs)
+
+      {:ok, nil} ->
+        []
+
+      {:error, :store_unavailable} ->
+        raise Apiary.Stages.QuestionsUnreadable
     end
   end
 

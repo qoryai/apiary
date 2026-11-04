@@ -43,6 +43,10 @@ defmodule Apiary.Explore.Questions do
   # A run is named by its number in the run API (`Apiary.Runs.Run`, `number`), which a
   # member sees as "Run N": `asked.run` and `reopened.run`.
   #
+  # The one document spans the work item's take ins. Where Explore stands and what a
+  # member may answer count only the open questions of the current take in
+  # (`open_in_take_in/2`).
+  #
   # Numbers compare by value, as the schema's integers do: `4.0` is `4`. Qory Apiary stores
   # each number of a version that is an integer in value as an integer
   # (`Apiary.Artifacts.push/5`), so a reader finds `4`, never `4.0`.
@@ -53,7 +57,12 @@ defmodule Apiary.Explore.Questions do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
+  import Ecto.Query, only: [from: 2]
+
   alias Apiary.Artifacts
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Repo
+  alias Apiary.Runs.Run
   alias Apiary.WorkItems.WorkItem
 
   @type_name "questions"
@@ -188,6 +197,49 @@ defmodule Apiary.Explore.Questions do
     do: Enum.filter(questions, &match?(%{"state" => "open"}, &1))
 
   def open(_document), do: []
+
+  @doc """
+  The open questions of `document` that belong to the current take in, in its order;
+  none for nil. A question belongs to the current take in when it is open and its
+  `asked.run`, or the `reopened.run` of the last entry of its `history` that has one, is
+  in `runs`: the numbers of the registered runs of the current take in's runs of the
+  queue (`take_in_runs/2`). A work item has one questions document across its take ins,
+  so a question left open in an earlier take in stays open in it, and does not count.
+  """
+  @spec open_in_take_in(document | nil, MapSet.t(pos_integer)) :: [map]
+  def open_in_take_in(document, %MapSet{} = runs) do
+    Enum.filter(open(document), fn question ->
+      MapSet.member?(runs, get_in(question, ["asked", "run"])) or
+        MapSet.member?(runs, reopened_run(question))
+    end)
+  end
+
+  @doc """
+  The numbers of the registered runs of the runs of the queue of take in `take_in` of the
+  work item `work_item_id`, the runs `open_in_take_in/2` counts. `asked.run` and
+  `reopened.run` are a registered run's number (`Apiary.Runs.Run`, `number`), and its
+  run of the queue has the take in.
+  """
+  @spec take_in_runs(Ecto.UUID.t(), pos_integer) :: MapSet.t(pos_integer)
+  def take_in_runs(work_item_id, take_in) when is_integer(take_in) do
+    Repo.all(
+      from r in Run,
+        join: d in DispatchRun,
+        on: d.id == r.dispatch_run_id,
+        where: d.work_item_id == ^work_item_id and d.take_in == ^take_in,
+        select: r.number
+    )
+    |> MapSet.new()
+  end
+
+  # The `reopened.run` of the last entry of the question's history that has one, nil for
+  # none.
+  defp reopened_run(question) do
+    question
+    |> history()
+    |> Enum.reverse()
+    |> Enum.find_value(&(is_map(&1) && get_in(&1, ["reopened", "run"])))
+  end
 
   # open?/1 is whether the newest questions of the work item have a question that waits
   # for an answer.

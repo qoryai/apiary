@@ -329,6 +329,38 @@ defmodule Apiary.Explore.QuestionsTest do
     end
   end
 
+  describe "open_in_take_in/2" do
+    test "keeps the open questions whose asked.run or last reopened.run is a run given" do
+      # Runs 12 and 13 are take in 1's, runs 20 and 21 take in 2's.
+      ended = Map.put(answered("q5", 12)["answer"], "reopened", %{"run" => 13, "at" => @at})
+
+      twice =
+        answered("q5", 12)
+        |> reopened(21)
+        |> Map.update!("history", &[ended | &1])
+
+      document =
+        doc([
+          open("q1", 12),
+          open("q2", 20),
+          answered("q3", 20),
+          reopened(answered("q4", 12), 21),
+          reopened(answered("q6", 12), 13),
+          twice,
+          Map.put(open("q7", 21), "state", "withdrawn")
+        ])
+
+      ids = fn runs ->
+        document |> Questions.open_in_take_in(MapSet.new(runs)) |> Enum.map(& &1["id"])
+      end
+
+      assert ids.([20, 21]) == ["q2", "q4", "q5"]
+      assert ids.([13]) == ["q6"]
+      assert ids.([]) == []
+      assert Questions.open_in_take_in(nil, MapSet.new([20])) == []
+    end
+  end
+
   describe "answer/4" do
     test "answers the open questions given, an option or a note, and leaves the rest" do
       document =
