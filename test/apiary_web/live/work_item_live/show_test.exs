@@ -281,7 +281,10 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert runs(work_item) == 2
     end
 
-    test "a partial send answers what it gives; the rest stays open", %{conn: conn, scope: scope} do
+    test "a partial send writes the answers with text; the rest stays open", %{
+      conn: conn,
+      scope: scope
+    } do
       {work_item, _run} = asked(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
 
@@ -580,10 +583,11 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert runs(work_item) == 1
     end
 
-    test "a run's reply that asked, as stored: Asked as question 1, linked to that question", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "a run's reply with the outcome asked, as stored: Asked as question 1, linked to that question",
+         %{
+           conn: conn,
+           scope: scope
+         } do
       work_item = work_item_fixture(scope)
       explore_run_fixture(work_item, result: understood_result())
       {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Name the refund rule.")

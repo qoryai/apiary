@@ -932,7 +932,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "https://docs.example.org/currency"
              ]
 
-      # The heading goes; the body keeps the rest, before the fold.
+      # The heading goes; the rest of the section shows in the body, before the fold.
       assert texts(html, "#work-item-explore-proposal-text h4") == ["Facts", "Proposed solution"]
       refute text(html, "#work-item-explore-proposal-text") =~ "Currency notes"
 

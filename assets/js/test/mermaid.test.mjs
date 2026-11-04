@@ -4,7 +4,7 @@
 // the vendored Mermaid applies to a document's front matter; the five diagram types it
 // draws (`types`, `type`) and what it shows for a block (`drawing`); the blocks it does
 // not draw, as drawing them would load an address (`loads`); the redraw on a theme
-// change (`watchTheme`); and the width it gives the <img> (`width`).
+// change (`watchTheme`); and the width it sets on the <img> (`width`).
 // `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
@@ -280,7 +280,8 @@ test("draws a diagram with no address", () => {
   assert.equal(loads(text), false)
 })
 
-// A MutationObserver stand-in: it keeps what it observes, and `fire` runs its callback.
+// A MutationObserver stand-in: `observe` stores its target and options, and `fire` runs
+// the callback.
 class FakeObserver {
   static last = null
   constructor(callback) {

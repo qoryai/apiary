@@ -769,7 +769,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert %DispatchRun{attempt: 2} = newest_run(work_item)
       assert has_element?(view, "#work-item-step-state", "Queued")
 
-      # The run that ended at its claim keeps its line in the fold of the runs.
+      # The run that ended at its claim still has its line in the fold of the runs.
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
       assert line(view, "#work-item-record-fold > summary") =~ "2 runs"
       assert has_element?(view, "#work-item-record-fold", "Attempt 1")

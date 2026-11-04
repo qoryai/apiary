@@ -380,7 +380,7 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
       work_item = revised!(work_item)
 
-      # Both replies within one second, as the documents keep the time to the second.
+      # Both replies within one second, as the documents store the time to the second.
       %{microsecond: {micro, _precision}} = DateTime.utc_now()
       if micro > 700_000, do: Process.sleep(div(1_000_000 - micro, 1_000) + 10)
       assert {:ok, _} = WorkItems.reply(scope, work_item, 2, "c1", "Not yet: name the rule.")

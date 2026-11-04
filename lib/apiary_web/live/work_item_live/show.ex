@@ -418,7 +418,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp asked_page(:explore, %{"reply" => id}) when is_binary(id), do: {:reply, id}
   defp asked_page(_tab, _params), do: nil
 
-  # Another form page than the one asked before starts with an empty field and no error.
+  # Another form page than the one shown before starts with an empty field and no error.
   defp ask_page(%{assigns: %{asked_page: page}} = socket, page), do: socket
 
   defp ask_page(socket, page),
