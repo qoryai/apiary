@@ -297,6 +297,7 @@ defmodule Apiary.Stages do
           where: r.state == :ended and r.step == "explore",
           where: r.end_cause not in ^@ignored_ends,
           where: not (r.end_cause == :run_ended and is_nil(r.result_outcome)),
+          # Read through the partial index `work_items_exploring_running_index`.
           where: w.state == :exploring and w.stage_state == :running,
           where: w.take_in == r.take_in and (is_nil(r.stage_id) or r.stage_id == w.stage_id),
           where: r.attempt == subquery(newest),
