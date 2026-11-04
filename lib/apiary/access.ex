@@ -913,7 +913,10 @@ defmodule Apiary.Access do
      leaves every answer to them.
   3. **Where the subject is** (`check_place/3`). A subject of another organisation, or of
      another workspace than the scope's, is `{:error, :not_found}`, so the answer does not
-     tell that it exists.
+     tell that it exists. Two keys answer for a run in another way: a gateway's key, on
+     what it takes at the server contract, for a run of a workspace it may serve
+     (`may_serve?/2`), and a diagnostics key, on `run.read_diagnostics`, for a run of any
+     organisation.
   4. **Whether the person reaches the workspace.** A membership is the organisation's; the
      levels of `c:Apiary.Edition.every_workspace_levels/0` reach every workspace of it, in
      the core's edition all three, and the edition says which workspaces another level
