@@ -248,6 +248,27 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       assert runs(work_item) == 2
     end
 
+    test "the blank-answer error is gone after Add review comment and back to the tab",
+         %{conn: conn, scope: scope} do
+      work_item = asked_after_proposal(scope)
+      path = explore(scope, work_item.number)
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
+
+      assert has_element?(view, "#work-item-explore-questions-error")
+
+      render_patch(view, path <> "?review=new")
+      assert has_element?(view, "#work-item-review-page-form")
+      render_patch(view, path)
+
+      assert has_element?(view, "#work-item-explore-questions-form")
+      refute has_element?(view, "#work-item-explore-questions-error")
+      refute render(view) =~ "Choose an option or write an answer."
+    end
+
     test "questions that changed after the page showed them: no answer sent, the form shows that and the draft stays",
          %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
