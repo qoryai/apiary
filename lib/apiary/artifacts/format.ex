@@ -25,11 +25,34 @@ defmodule Apiary.Artifacts.Format do
   #     type `questions` also has each question's `id` once, which its schema cannot
   #     check: a second question with an `id` is refused at that `id`.
   #
+  # A version of the standard type `proposal` is one Markdown document with images
+  # beside it, and the sources the run used. Each file is checked by its filename:
+  #
+  #   * a filename that ends in `.md` (any case): the document check, and at most
+  #     262,144 bytes (256 KiB), else `:document_size`;
+  #   * `sources.json`: at most 1 MiB, one JSON document valid against the proposal
+  #     sources format, copied from qory (`priv/schemas/artifacts/
+  #     proposal-sources.schema.json`); `application/json`. Qory Apiary reads none of its
+  #     members;
+  #   * any other filename: the image check, where an SVG also passes the strict check:
+  #     no element `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, in
+  #     any namespace and any case, and no element in the HTML namespace
+  #     (`http://www.w3.org/1999/xhtml`); no attribute whose name starts with `on`; an
+  #     `href`, in any namespace, only to a place in the file (`#…`); a CSS `url(` only to
+  #     a place in the file, in an attribute or in text; no `@import`, no backslash in a
+  #     `style` element or attribute (a CSS escape could spell `url(`), and no
+  #     `<?xml-stylesheet ?>`. Else `:svg_content`. Attribute values and text are checked
+  #     as the parser reads them, with their character references replaced.
+  #
+  # A version of `proposal` has exactly one Markdown file and at most one `sources.json`
+  # (`stored?/2`, `Apiary.Artifacts.push/5`); its type bounds all files together, 5 MiB,
+  # and their count, 10 (`Apiary.Artifacts.Type`).
+  #
   # A refusal is `{:error, reason}`: `:format` for bytes the base view does not take,
   # `:extension` for a document whose filename does not end in `.md`,
   # `{:schema, detail}` for a structured document the schema refuses, `detail` its first
-  # failing place (`Apiary.Artifacts.SchemaError`), and `:unreadable` for a file that
-  # cannot be read.
+  # failing place (`Apiary.Artifacts.SchemaError`), `:document_size` and `:svg_content`
+  # for a file of a proposal, and `:unreadable` for a file that cannot be read.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -73,8 +96,21 @@ defmodule Apiary.Artifacts.Format do
   # question's 9 and a review comment's 7.
   @unbounded_lists %{
     "questions" => [list: 65_536, members: 9],
-    "review-comments" => [list: 65_536, members: 7]
+    "review-comments" => [list: 65_536, members: 7],
+    "proposal-sources" => [list: 65_536, members: 6]
   }
+
+  # A proposal's Markdown file, its sources and the schema of its sources.
+  @proposal_markdown 262_144
+  @sources "sources.json"
+  @sources_bytes 1_048_576
+  @sources_schema ["schemas", "artifacts", "proposal-sources.schema.json"]
+
+  # The elements a proposal's SVG has none of, by local name in lower case, and the
+  # namespace of HTML, whose elements, such as `img` or `object`, load what they refer to
+  # where a browser opens the SVG as a page.
+  @svg_refused_elements ~w(script foreignobject image iframe animate set)
+  @xhtml_namespace ~c"http://www.w3.org/1999/xhtml"
 
   @markdown "text/markdown; charset=utf-8"
   @json "application/json"
@@ -91,7 +127,13 @@ defmodule Apiary.Artifacts.Format do
   }
 
   @typedoc "Why a file is refused."
-  @type refusal :: :format | :extension | {:schema, SchemaError.t()} | :unreadable
+  @type refusal ::
+          :format
+          | :extension
+          | :document_size
+          | :svg_content
+          | {:schema, SchemaError.t()}
+          | :unreadable
 
   # check/3 is `{:ok, content_type}` for the file at `path`, named `filename`, that the
   # base view of `type` takes, else `{:error, refusal}`.
@@ -99,22 +141,37 @@ defmodule Apiary.Artifacts.Format do
   @spec check(Type.t(), String.t(), Path.t()) :: {:ok, String.t()} | {:error, refusal}
   def check(%Type{base_view: :file}, _filename, _path), do: {:ok, "application/octet-stream"}
 
-  def check(%Type{base_view: :document}, filename, path) do
-    if String.downcase(Path.extname(filename)) == ".md" do
-      with {:ok, bytes} <- read(path) do
-        if String.valid?(bytes) and not String.contains?(bytes, <<0>>),
-          do: {:ok, @markdown},
-          else: {:error, :format}
-      end
-    else
-      {:error, :extension}
+  def check(%Type{standard: true, name: "proposal"}, filename, path) do
+    cond do
+      String.downcase(Path.extname(filename)) == ".md" ->
+        with {:ok, %File.Stat{size: size}} <- stat(path),
+             true <- size <= @proposal_markdown || {:error, :document_size} do
+          markdown(path)
+        end
+
+      filename == @sources ->
+        sources(path)
+
+      true ->
+        with {:ok, head} <- head(path) do
+          case image(head) do
+            nil -> svg(path, :strict)
+            content_type -> {:ok, content_type}
+          end
+        end
     end
+  end
+
+  def check(%Type{base_view: :document}, filename, path) do
+    if String.downcase(Path.extname(filename)) == ".md",
+      do: markdown(path),
+      else: {:error, :extension}
   end
 
   def check(%Type{base_view: :image}, _filename, path) do
     with {:ok, head} <- head(path) do
       case image(head) do
-        nil -> svg(path)
+        nil -> svg(path, :plain)
         content_type -> {:ok, content_type}
       end
     end
@@ -137,13 +194,34 @@ defmodule Apiary.Artifacts.Format do
     end
   end
 
+  # Markdown: UTF-8 text with no NUL.
+  defp markdown(path) do
+    with {:ok, bytes} <- read(path) do
+      if String.valid?(bytes) and not String.contains?(bytes, <<0>>),
+        do: {:ok, @markdown},
+        else: {:error, :format}
+    end
+  end
+
   # stored?/2 is whether the content types of a version's files, as `check/3` returned
-  # them at the push, are a version `base_view` takes: one file or more, each of a content
-  # type of the base view, and, for a structured view, exactly one. The files of a version
-  # never change after its push, so the Exists check of a stage's output reads these
-  # (`Apiary.Artifacts.exists?/3`) and reads no file again.
+  # them at the push, are a version `type` takes: one file or more, each of a content
+  # type of the type's base view, and, for a structured view, exactly one. A version of
+  # `proposal` has exactly one Markdown file, at most one JSON file (its `sources.json`),
+  # and images. The files of a version never change after its push, so the Exists check
+  # of a stage's output reads these (`Apiary.Artifacts.exists?/3`) and reads no file
+  # again. A base view in place of a type is that view's rule.
   @doc false
-  @spec stored?(Type.base_view(), [String.t()]) :: boolean
+  @spec stored?(Type.t() | Type.base_view(), [String.t()]) :: boolean
+  def stored?(%Type{standard: true, name: "proposal"}, content_types)
+      when is_list(content_types) do
+    images = Map.fetch!(@content_types, :image)
+
+    Enum.count(content_types, &(&1 == @markdown)) == 1 and
+      Enum.count(content_types, &(&1 == @json)) <= 1 and
+      Enum.all?(content_types, &(&1 in [@markdown, @json | images]))
+  end
+
+  def stored?(%Type{base_view: base_view}, content_types), do: stored?(base_view, content_types)
   def stored?(_base_view, []), do: false
   def stored?(:file, _content_types), do: true
   def stored?(:structured, [content_type]), do: content_type == @json
@@ -205,19 +283,35 @@ defmodule Apiary.Artifacts.Format do
 
   ## SVG
 
-  defp svg(path) do
+  # `mode` is `:strict` for a proposal's SVG, which also passes the strict check (the
+  # moduledoc), else `:plain`.
+  defp svg(path, mode) do
     with {:ok, %File.Stat{size: size}} when size <= @svg_bytes <- stat(path),
          {:ok, bytes} <- read(path),
          true <- String.valid?(bytes),
          false <- declares_type?(bytes),
          true <- attributes_within?(bytes),
-         {:ok, :svg} <- Budget.run(fn -> svg_root(:binary.copy(bytes)) end, @svg_budget) do
+         :ok <- no_stylesheet(mode, bytes),
+         {:ok, :svg} <- Budget.run(fn -> svg_root(:binary.copy(bytes), mode) end, @svg_budget) do
       {:ok, "image/svg+xml"}
     else
       {:error, :unreadable} -> {:error, :unreadable}
+      {:ok, :unsafe} -> {:error, :svg_content}
+      {:error, :svg_content} -> {:error, :svg_content}
       _refused -> {:error, :format}
     end
   end
+
+  # A `<?xml-stylesheet ?>` instruction, which xmerl's parser refuses as a malformed XML
+  # declaration, is looked for before the parse in `:strict` mode, so the refusal says
+  # why.
+  defp no_stylesheet(:strict, bytes) do
+    if String.contains?(String.downcase(bytes), "<?xml-stylesheet"),
+      do: {:error, :svg_content},
+      else: :ok
+  end
+
+  defp no_stylesheet(:plain, _bytes), do: :ok
 
   # A document type declaration is where entities are declared, internal or external; an
   # SVG has none, so a file with one is refused before it is parsed.
@@ -237,29 +331,117 @@ defmodule Apiary.Artifacts.Format do
 
   # The root element's namespace and name, read by the SAX parser, which reads the whole
   # document: `:svg` for an SVG root in a well-formed document, anything else otherwise.
-  defp svg_root(bytes) do
-    event = fn
-      {:startElement, uri, name, _qualified, _attributes}, _location, :none ->
-        if uri == @svg_namespace and name == ~c"svg", do: :svg, else: :other
+  # In `:strict` mode, `:unsafe` for a well-formed document with an SVG root that fails
+  # the strict check.
+  defp svg_root(bytes, mode) do
+    event = fn event, _location, {root, safe?, open} ->
+      root = root(event, root)
 
-      _event, _location, state ->
-        state
+      if mode == :strict and safe? do
+        {safe?, open} = strict(event, open)
+        {root, safe?, open}
+      else
+        {root, safe?, open}
+      end
     end
 
     case :xmerl_sax_parser.stream(bytes,
            event_fun: event,
-           event_state: :none,
+           event_state: {:none, true, []},
            external_entities: :none,
            fail_undeclared_ref: true
          ) do
-      {:ok, :svg, rest} -> if blank?(rest), do: :svg, else: :other
-      _other -> :other
+      {:ok, {:svg, safe?, _open}, rest} ->
+        cond do
+          not blank?(rest) -> :other
+          safe? -> :svg
+          true -> :unsafe
+        end
+
+      _other ->
+        :other
     end
+  end
+
+  defp root({:startElement, uri, name, _qualified, _attributes}, :none),
+    do: if(uri == @svg_namespace and name == ~c"svg", do: :svg, else: :other)
+
+  defp root(_event, root), do: root
+
+  # One event of the strict check: whether the document is still safe, and the local
+  # names of the open elements, innermost first.
+  defp strict({:startElement, uri, name, _qualified, attributes}, open) do
+    local = name |> List.to_string() |> String.downcase()
+
+    safe? =
+      local not in @svg_refused_elements and uri != @xhtml_namespace and
+        Enum.all?(attributes, fn {_uri, _prefix, attribute, value} ->
+          safe_attribute?(String.downcase(List.to_string(attribute)), List.to_string(value))
+        end)
+
+    {safe?, [local | open]}
+  end
+
+  defp strict({:endElement, _uri, _name, _qualified}, [_closed | open]), do: {true, open}
+
+  defp strict({:characters, text}, open),
+    do: {safe_text?(List.to_string(text), match?(["style" | _], open)), open}
+
+  defp strict({:processingInstruction, target, _data}, open),
+    do: {String.downcase(List.to_string(target)) != "xml-stylesheet", open}
+
+  defp strict(_event, open), do: {true, open}
+
+  defp safe_attribute?("on" <> _rest, _value), do: false
+
+  defp safe_attribute?("href", value),
+    do: String.starts_with?(value, "#") and safe_text?(value, false)
+
+  defp safe_attribute?("style", value), do: safe_text?(value, true)
+  defp safe_attribute?(_name, value), do: safe_text?(value, false)
+
+  # Text with no `@import` and every CSS `url(` to a place in the file; in CSS (`css?`),
+  # no backslash either, since a CSS escape could spell `url(`.
+  defp safe_text?(text, css?) do
+    lower = String.downcase(text)
+
+    not String.contains?(lower, "@import") and
+      not Regex.match?(~r/url\(\s*+['"]?+\s*+(?!#)/, lower) and
+      not (css? and String.contains?(text, "\\"))
   end
 
   defp blank?(rest) when is_binary(rest), do: String.trim(rest) == ""
   defp blank?(rest) when is_list(rest), do: rest |> List.to_string() |> String.trim() == ""
   defp blank?(_rest), do: false
+
+  ## A proposal's sources
+
+  # `sources.json`: at most `@sources_bytes`, then one JSON document within the bounds of
+  # a standard type's document, valid against the proposal sources format.
+  defp sources(path) do
+    with {:ok, %File.Stat{size: size}} <- stat(path),
+         true <- size <= @sources_bytes || {:error, {:schema, refused(:limits)}},
+         {:ok, bytes} <- read(path),
+         {:ok, document} <- decode(bytes),
+         :ok <- sources_valid(document) do
+      {:ok, @json}
+    end
+  end
+
+  defp sources_valid(document) do
+    limits = Map.fetch!(@unbounded_lists, "proposal-sources") ++ @standard_limits
+
+    if Bounds.within?(document, limits) do
+      schema = Schema.file!(@sources_schema, &Schema.code_point_lengths/1)
+
+      case JSV.validate(document, schema, cast: false) do
+        {:ok, _document} -> :ok
+        {:error, %JSV.ValidationError{} = error} -> {:error, {:schema, SchemaError.first(error)}}
+      end
+    else
+      {:error, {:schema, refused(:limits)}}
+    end
+  end
 
   ## Structured
 

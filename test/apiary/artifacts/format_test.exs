@@ -418,6 +418,138 @@ defmodule Apiary.Artifacts.FormatTest do
     end
   end
 
+  describe "a proposal" do
+    @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0>>
+
+    defp svg(body),
+      do:
+        ~s(<svg xmlns="#{@svg_namespace}" xmlns:xlink="http://www.w3.org/1999/xlink">#{body}</svg>)
+
+    defp sources(list), do: Jason.encode!(%{"sources" => list})
+
+    test "is one Markdown file, images, and sources.json, each by its filename", context do
+      assert {:ok, "text/markdown; charset=utf-8"} =
+               check(context, "proposal", "proposal.md", "# Gift cards\n")
+
+      assert {:ok, "text/markdown; charset=utf-8"} =
+               check(context, "proposal", "PLAN.MD", "# Gift cards\n")
+
+      assert {:ok, "image/png"} = check(context, "proposal", "checkout.png", @png)
+      assert {:ok, "image/jpeg"} = check(context, "proposal", "a.jpg", <<0xFF, 0xD8, 0xFF, 0>>)
+      assert {:ok, "image/gif"} = check(context, "proposal", "a.gif", "GIF89a" <> <<1>>)
+
+      assert {:ok, "image/webp"} =
+               check(context, "proposal", "a.webp", "RIFF" <> <<0, 0, 0, 0>> <> "WEBPVP8 ")
+
+      wireframe =
+        svg("""
+        <defs><linearGradient id="g"/><style>.box { fill: url('#g'); }</style></defs>
+        <rect id="r" class="box" width="10" height="10" fill="url(#g)" style="stroke: url( #g )"/>
+        <use href="#r"/><use xlink:href="#r"/><a href="#r"><text>Checkout</text></a>
+        """)
+
+      assert {:ok, "image/svg+xml"} = check(context, "proposal", "checkout.svg", wireframe)
+
+      source = %{"kind" => "page", "ref" => "https://example.com/checkout", "why" => "The form."}
+
+      assert {:ok, "application/json"} =
+               check(context, "proposal", "sources.json", sources([source]))
+
+      assert {:ok, "application/json"} = check(context, "proposal", "sources.json", sources([]))
+    end
+
+    test "refuses a file that is neither Markdown, the sources nor an image", context do
+      assert {:error, :format} = check(context, "proposal", "notes.txt", "Gift cards.")
+      assert {:error, :format} = check(context, "proposal", "other.json", sources([]))
+      assert {:error, :format} = check(context, "proposal", "Sources.json", sources([]))
+      assert {:error, :format} = check(context, "proposal", "proposal.md", <<0xFF, 0xFE>>)
+      assert {:error, :format} = check(context, "proposal", "proposal.md", "a\0b")
+    end
+
+    test "takes a Markdown file of 262144 bytes and refuses one a byte larger", context do
+      assert {:ok, _type} =
+               check(context, "proposal", "proposal.md", String.duplicate("a", 262_144))
+
+      assert {:error, :document_size} =
+               check(context, "proposal", "proposal.md", String.duplicate("a", 262_145))
+
+      # Another document type keeps its rule: its size limit bounds the version.
+      assert {:ok, _type} =
+               check(context, "explainer", "notes.md", String.duplicate("a", 262_145))
+    end
+
+    test "checks sources.json against the proposal sources format, up to 1 MiB", context do
+      for document <- [
+            ~s({"sources": [{"kind": "page", "ref": "x"}]}),
+            ~s({"sources": [{"kind": "Page", "ref": "x", "why": "y"}]}),
+            ~s({"sources": [{"kind": "page", "ref": "x", "why": "y", "url": "z"}]}),
+            sources([%{"kind" => "page", "ref" => "a\nb", "why" => "y"}]),
+            ~s({"items": []}),
+            ~s([])
+          ] do
+        assert {:error, {:schema, %{path: "#" <> _, error: _}}} =
+                 check(context, "proposal", "sources.json", document),
+               document
+      end
+
+      assert {:error, :format} = check(context, "proposal", "sources.json", "{")
+
+      source = %{"kind" => "file", "ref" => String.duplicate("a", 2000), "why" => "w"}
+      big = sources(List.duplicate(source, 600))
+      assert byte_size(big) > 1_048_576
+      assert {:error, {:schema, _detail}} = check(context, "proposal", "sources.json", big)
+    end
+
+    test "refuses an SVG with script, an outside reference or a handler, each", context do
+      for body <- [
+            "<script>alert(1)</script>",
+            "<SCRIPT>alert(1)</SCRIPT>",
+            ~s|<x:script xmlns:x="http://www.w3.org/1999/xhtml">alert(1)</x:script>|,
+            "<foreignObject><p>a</p></foreignObject>",
+            ~s(<h:img xmlns:h="http://www.w3.org/1999/xhtml" src="https://example.com/a.png"/>),
+            ~s(<image href="#r"/>),
+            "<iframe/>",
+            ~s(<rect><animate attributeName="x" to="1"/></rect>),
+            ~s(<rect><set attributeName="x" to="1"/></rect>),
+            ~s|<rect onload="alert(1)"/>|,
+            ~s|<rect ONCLICK="alert(1)"/>|,
+            ~s(<a href="https://example.com/"><text>a</text></a>),
+            ~s|<a href="javascript:alert(1)"><text>a</text></a>|,
+            ~s|<a href="&#106;avascript:alert(1)"><text>a</text></a>|,
+            ~s|<a xlink:href="javascript:alert(1)"><text>a</text></a>|,
+            ~s(<use href="data:image/svg+xml,&lt;svg/&gt;"/>),
+            ~s(<use href="other.svg#r"/>),
+            ~s(<use href=" #r"/>),
+            ~s|<rect fill="url(https://example.com/a.svg#g)"/>|,
+            ~s|<rect fill="url('data:image/png,a')"/>|,
+            ~s|<rect style="fill: url(https://example.com/)"/>|,
+            ~s|<rect style="fill: \\75 rl(#g)"/>|,
+            "<style>rect { fill: url(https://example.com/) }</style>",
+            "<style><![CDATA[rect { fill: url(//example.com/) }]]></style>",
+            "<style>@import 'https://example.com/a.css';</style>",
+            "<style>rect { fill: \\75 rl(x) }</style>",
+            "<text>@import</text>"
+          ] do
+        assert {:error, :svg_content} = check(context, "proposal", "a.svg", svg(body)), body
+      end
+
+      stylesheet = ~s(<?xml-stylesheet href="https://example.com/a.css"?>\n) <> svg("<rect/>")
+      assert {:error, :svg_content} = check(context, "proposal", "a.svg", stylesheet)
+    end
+
+    test "the strict check is a proposal's: a mockup takes the same SVG", context do
+      unsafe = svg(~s|<rect onload="alert(1)"/><script>alert(1)</script>|)
+      assert {:ok, "image/svg+xml"} = check(context, "mockup", "a.svg", unsafe)
+    end
+
+    test "an SVG of a proposal still passes the image checks first", context do
+      assert {:error, :format} = check(context, "proposal", "a.svg", "<svg/>")
+
+      assert {:error, :format} =
+               check(context, "proposal", "a.svg", ~s(<!DOCTYPE svg>) <> svg("<rect/>"))
+    end
+  end
+
   describe "Filename.valid?/1" do
     test "takes a base name of 1 to 255 bytes" do
       for name <- ["a", "demo video.mp4", "été.md", ".hidden", "a..b", String.duplicate("a", 255)],
@@ -463,6 +595,25 @@ defmodule Apiary.Artifacts.FormatTest do
       refute Format.stored?(:image, ["image/png", "application/json"])
       refute Format.stored?(:document, ["application/octet-stream"])
       refute Format.stored?(:structured, ["application/json", "application/json"])
+
+      assert Format.stored?(standard("mockup"), ["image/png", "image/svg+xml"])
+      refute Format.stored?(standard("mockup"), [])
+    end
+
+    test "takes a proposal of one Markdown file, images and at most one JSON file" do
+      proposal = standard("proposal")
+      md = "text/markdown; charset=utf-8"
+
+      assert Format.stored?(proposal, [md])
+      assert Format.stored?(proposal, [md, "image/png", "image/svg+xml", "application/json"])
+      assert Format.stored?(proposal, ["image/webp", md, "image/gif", "image/jpeg"])
+
+      refute Format.stored?(proposal, [])
+      refute Format.stored?(proposal, ["image/png"])
+      refute Format.stored?(proposal, [md, md])
+      refute Format.stored?(proposal, [md, "application/json", "application/json"])
+      refute Format.stored?(proposal, [md, "application/octet-stream"])
+      refute Format.stored?(proposal, [md, "video/mp4"])
     end
   end
 end
