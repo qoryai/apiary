@@ -1492,7 +1492,7 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "refuses a file of the wrong format, an unsafe SVG, a large Markdown file and bad sources",
-         %{run: run} = context do
+         %{run: run, root: root} = context do
       push = &Artifacts.push({:run, run}, context.work_item, "proposal", &1)
 
       assert {:error, {:invalid, {:extension, 1}}} = push.([proposal(), file("notes.txt", "a")])
@@ -1510,13 +1510,16 @@ defmodule Apiary.ArtifactsTest do
                push.([proposal(), json("sources.json", %{"items" => []})])
 
       assert count(Version) == 0
+      assert stored_paths(root) == []
+      assert staging_files(root) == []
     end
 
-    test "refuses more than 10 files and more than 5 MiB together", %{run: run} = context do
+    test "refuses more than 10 files and more than 5 MiB together",
+         %{run: run, root: root} = context do
       push = &Artifacts.push({:run, run}, context.work_item, "proposal", &1)
       images = for n <- 1..9, do: file("#{n}.png", @png)
 
-      assert {:ok, _version} = push.([proposal() | images])
+      assert {:ok, %Version{files: files}} = push.([proposal() | images])
 
       assert {:error, {:too_many_files, 10}} =
                push.([proposal(), file("10.png", @png) | images])
@@ -1525,6 +1528,11 @@ defmodule Apiary.ArtifactsTest do
 
       assert {:error, {:too_large, 5_242_880}} =
                push.([proposal(), file("a.png", large), file("b.png", large)])
+
+      # The store keeps the first push's contents alone: its nine images are one content.
+      assert length(stored_paths(root)) == files |> Enum.uniq_by(& &1.store_key) |> length()
+      assert length(stored_paths(root)) == 2
+      assert staging_files(root) == []
     end
 
     test "the Exists check passes a proposal with images and sources.json",
