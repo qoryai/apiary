@@ -234,7 +234,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           <div
             :if={@flow && (!@flow.explore or stage_notes(@flow) != [])}
             id="work-item-flow"
-            class="flex flex-col gap-3"
+            class="q-wi-flow flex flex-col gap-3"
           >
             <StageComponents.stage_runs :if={!@flow.explore} runs={@flow.runs} />
             <StageComponents.stage_notes notes={stage_notes(@flow)} />

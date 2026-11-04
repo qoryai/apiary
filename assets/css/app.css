@@ -12964,6 +12964,16 @@
     margin-inline: 0;
     padding-inline: 0;
   }
+  /* The runs, notes and artifacts above the tabs: the gap between them and the tabs is the
+     gap between the tabs and Explore's run line (`.q-xp`). */
+  .q-wi-flow {
+    padding-bottom: 16px;
+  }
+  @media (max-width: 767.98px) {
+    .q-wi-flow {
+      padding-bottom: 12px;
+    }
+  }
   @media (min-width: 1440px) {
     .q-wi {
       grid-template-columns: minmax(0, 1fr) 320px;
