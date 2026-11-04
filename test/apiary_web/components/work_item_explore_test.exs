@@ -774,6 +774,63 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "#work-item-explore-comments") == 0
     end
 
+    test "the proposal's text is in the Mermaid hook, its id of the version" do
+      mermaid = "Steps:\n\n```mermaid\nflowchart LR\n  Cart --> Invoice\n```\n"
+      w = work_item(%{run: run(%{version: 2, proposal: proposal(%{message: mermaid})})})
+      html = tab(w)
+
+      p = "#work-item-explore-proposal"
+      assert count(html, "#{p} [phx-hook=Mermaid]") == 1
+      hook = "#{p}-v2[phx-hook=Mermaid][phx-update=ignore]"
+      assert attr(html, hook, "data-script") == ["/assets/js/mermaid.js"]
+      assert attr(html, hook, "data-alt") == ["Diagram"]
+      assert attr(html, hook, "data-source") == ["Diagram source"]
+
+      assert attr(html, hook, "data-failed") == [
+               "This diagram has an error, so it is shown as written."
+             ]
+
+      assert attr(html, "#{hook}.q-xp-body.q-xp-prop", "id") == ["work-item-explore-proposal-v2"]
+      assert text(html, "#{hook} #{p}-text pre.q-mermaid-source code") =~ "Cart --> Invoice"
+
+      # A new version is another block, so the hook draws it again.
+      w3 = work_item(%{run: run(%{version: 3, proposal: proposal(%{message: mermaid})})})
+      assert count(tab(w3), "#{p}-v3[phx-hook=Mermaid]") == 1
+      assert count(tab(w3), "#{p}-v2") == 0
+    end
+
+    test "the proposal frame shows the version's images, and no other" do
+      message =
+        "![Invoice header](checkout.svg)\n\n![x](sources.json) ![Logo](https://example.com/l.png)"
+
+      src = "/acme/main/work/7/artifacts/av_1/files/checkout.svg"
+
+      html =
+        render_component(&C.proposal_frame/1,
+          id: "work-item-explore-proposal",
+          run: run(%{version: 2, proposal: proposal(%{message: message})}),
+          now: @now,
+          images: [{"checkout.svg", src}]
+        )
+
+      p = "#work-item-explore-proposal"
+      assert attr(html, "#{p}-v2 #{p}-text img", "src") == [src]
+      assert attr(html, "#{p}-v2 #{p}-text img", "alt") == ["Invoice header"]
+      assert text(html, "#{p}-text") =~ "Image not in this version: x"
+      assert text(html, "#{p}-text") =~ "Image: Logo"
+
+      # Without images, as the frame shows a proposal today: no image is loaded.
+      html =
+        render_component(&C.proposal_frame/1,
+          id: "work-item-explore-proposal",
+          run: run(%{version: 2, proposal: proposal(%{message: message})}),
+          now: @now
+        )
+
+      assert count(html, "img") == 0
+      assert text(html, "#{p}-text") =~ "Image: Invoice header"
+    end
+
     test "with text in the field, the one button is Send change" do
       html = tab(work_item(%{}), can_act: true, change: "Also check the basket.")
 

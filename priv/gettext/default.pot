@@ -7805,11 +7805,13 @@ msgid "Diagnostics keys"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Diagram"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Diagram source"
 msgstr ""
@@ -19845,6 +19847,7 @@ msgid "This destination is no longer among the connections shown."
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "This diagram has an error, so it is shown as written."
 msgstr ""
