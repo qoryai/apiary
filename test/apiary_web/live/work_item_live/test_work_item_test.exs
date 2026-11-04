@@ -179,10 +179,11 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
 
       assert has_element?(
                view,
-               "#work-item-explore-questions",
-               "Sending starts attempt 2 of 3, which reads the line and every answer of this take in."
+               "#work-item-explore-questions-cap",
+               "The agent is waiting for your answers. Running again sends them and updates the proposal."
              )
 
+      refute has_element?(view, "#work-item-explore-questions", "ticket")
       refute has_element?(view, "#work-item-explore-questions", "its comments")
     end
   end

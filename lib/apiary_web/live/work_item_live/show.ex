@@ -68,6 +68,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, View, Workflow}
 
   @comment_events Comments.events() -- ["cancel_question"]
+  # The stage's state and Explore's status under which the step card is the one card.
+  @one_card [
+    {:running, :queued},
+    {:running, :running},
+    {:waiting_answers, :questions},
+    {:at_gate, :confirm}
+  ]
+
   @actions ~w(undo ask_close close explore_again answer_draft answer confirm run_with_comments review_comment reply)
   # The statuses where no run runs, so a member may write review comments
   # (`Apiary.WorkItems.Moves.review_comment/4`).
@@ -169,7 +177,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         </:header>
         <:rail>
           <StageComponents.stage_card
-            :if={@flow && !@flow.ended && !one_card?(@flow)}
+            :if={@flow && !@flow.ended && !one_card?(@flow, @item)}
             page={@flow}
             number={@number}
             add_path={&add_path(@current_scope, @number, &1)}
@@ -193,9 +201,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             item_noun={@source.item_noun}
             now={@now}
             queued_of={queued_of(@flow, @item)}
-            stage_name={if one_card?(@flow), do: @flow.stage.name}
+            stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
           >
-            <:badge :if={one_card?(@flow)}><StageComponents.stage_badge page={@flow} /></:badge>
+            <:badge :if={one_card?(@flow, @item)}>
+              <StageComponents.stage_badge page={@flow} />
+            </:badge>
           </.step_card>
           <.work_item_details
             work_item={@item}
@@ -1136,11 +1146,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp runs_of(_flow, _attempt, of), do: of
 
   # At Explore, while its run runs, its questions wait or its gate waits, the step card is
-  # the stage's one card, with the stage's state: the stage card is not shown.
-  defp one_card?(%{explore: true, state: state}),
-    do: state in [:running, :waiting_answers, :at_gate]
+  # the stage's one card, with the stage's state: the stage card is not shown. Explore's
+  # status says the same: a run that ended without a result, while the stage still runs,
+  # keeps both cards, so the step card says what happened.
+  defp one_card?(%{explore: true, state: state}, item),
+    do: {state, status(item)} in @one_card
 
-  defp one_card?(_flow), do: false
+  defp one_card?(_flow, _item), do: false
 
   # Today's step card, beside the stage card at Explore. At the run limit it says that the
   # run was "the last run of this take in", which is false while the escalation card
