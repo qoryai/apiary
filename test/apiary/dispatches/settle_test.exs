@@ -263,6 +263,32 @@ defmodule Apiary.Dispatches.SettleTest do
       assert Settle.sweep(DateTime.add(Dispatches.now(), 700, :second)) == []
     end
 
+    test "a run whose newest questions cannot be read is left unset, and settled once they can",
+         ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      # A question no other test asks, so no other test stores the same file.
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+
+      {version, _document} = Apiary.Explore.Questions.newest(work_item!(handed))
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The end reads no open question it can trust: no proposal or none is kept for good.
+      exited!(handed, 9)
+      project!(handed)
+      assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
+      assert stored(handed) == {nil, nil}
+      assert Settle.sweep(Dispatches.now()) == []
+      assert stored(handed) == {nil, nil}
+
+      File.rename!(path <> ".away", path)
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert stored(handed) == {:questions, nil}
+    end
+
     test "a run whose events were pruned is settled from its artifacts", ctx do
       handed = handed_over!(ctx)
       questions!(handed)

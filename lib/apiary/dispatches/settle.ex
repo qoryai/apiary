@@ -31,7 +31,9 @@ defmodule Apiary.Dispatches.Settle do
   #   the rest at the ticks after.
   #
   # A projection whose settle fails clears what the row holds (`clear/1`), so the sweep
-  # stores it again.
+  # stores it again. A run whose newest questions cannot be read at its end is left with
+  # no outcome (`Outcome.at_end/1` is nil), so the sweep reads it again; a run ended
+  # `lost` is then not settled, since the sweep reads `run_ended` runs alone.
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the work item's
@@ -74,7 +76,11 @@ defmodule Apiary.Dispatches.Settle do
   def settle_locked(%DispatchRun{state: :ended, end_cause: :run_ended, step: step} = dispatch_run)
       when step != @prebuild do
     in_transaction!()
-    write(dispatch_run, Outcome.at_end(dispatch_run))
+
+    case Outcome.at_end(dispatch_run) do
+      nil -> []
+      outcome -> write(dispatch_run, outcome)
+    end
   end
 
   def settle_locked(%DispatchRun{state: :ended, end_cause: :lost, step: step} = dispatch_run)
