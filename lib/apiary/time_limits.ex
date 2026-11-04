@@ -18,7 +18,9 @@ defmodule Apiary.TimeLimits do
   # `minutes`. Reading asks no action.
   #
   # Everything here needs the feature `factory`, shown to the scope: with it off, every
-  # function answers `{:error, :not_found}`.
+  # function answers `{:error, :not_found}`. A read checks the feature itself; a write
+  # leaves it to `time_limit.edit`, of that feature, which `Apiary.Access` answers before
+  # the write checks what it was given.
   #
   # ## Refused on save
   #
@@ -131,12 +133,10 @@ defmodule Apiary.TimeLimits do
   @spec put_limit(Scope.t(), holder, String.t(), term) ::
           {:ok, TimeLimit.t()} | {:error, Access.reason() | Ecto.Changeset.t()}
   def put_limit(%Scope{} = scope, holder, workflow, minutes) do
-    with :ok <- shown(scope),
-         {:ok, values} <- checked(workflow, minutes) do
-      write(scope, holder, fn scope, at ->
-        save(scope, at, lock_row(at, values.workflow), values)
-      end)
-    end
+    write(scope, holder, fn scope, at ->
+      with {:ok, values} <- checked(workflow, minutes),
+           do: save(scope, at, lock_row(at, values.workflow), values)
+    end)
   end
 
   @doc false
@@ -166,13 +166,11 @@ defmodule Apiary.TimeLimits do
   # A write at one place, in one transaction under the locks of the moduledoc: `fun` of
   # the scope, read again, and the place, `at`, once the scope may write there.
   defp write(scope, holder, fun) do
-    with :ok <- shown(scope) do
-      Repo.transact(fn ->
-        :ok = Access.lock_places(scope)
+    Repo.transact(fn ->
+      :ok = Access.lock_places(scope)
 
-        with {:ok, scope, at} <- hold_place(scope, holder), do: fun.(scope, at)
-      end)
-    end
+      with {:ok, scope, at} <- hold_place(scope, holder), do: fun.(scope, at)
+    end)
   end
 
   defp hold_place(%Scope{workspace: %Workspace{id: id}} = scope, holder) do

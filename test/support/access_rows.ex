@@ -107,6 +107,7 @@ defmodule Apiary.AccessRows do
       {:"organisation.delete", yes: @owners ++ [:feature_off, :hidden]},
       {:"organisation.restore", yes: @owners ++ [:feature_off, :hidden]},
       {:"organisation.purge", yes: [:instance, :feature_off, :hidden]},
+      {:"member.read", yes: @owners ++ [:member, :admin, :feature_off, :hidden]},
       {:"member.invite", yes: @owners ++ [:admin, :feature_off, :hidden], on: :workspace},
       {:"member.change_level", yes: @owners ++ [:feature_off, :hidden], on: :workspace},
       {:"member.remove", yes: @owners ++ [:admin, :feature_off, :hidden], on: :workspace},

@@ -58,6 +58,13 @@ defmodule Apiary.Access do
            "of it in purged_organisations, which names no one"}
     ),
     # Its people.
+    Action.new(
+      :"member.read",
+      "read the organisation's people: their memberships, levels and accounts, and the workspaces each reaches (Apiary.Organisations.list_members/1)",
+      roles: @members,
+      asked_of: :organisation,
+      audited: {:not, @read}
+    ),
     Action.new(:"member.invite", "invite a member, and see the pending invitations",
       roles: @admins,
       asked_of: :organisation

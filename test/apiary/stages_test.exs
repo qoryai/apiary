@@ -246,6 +246,31 @@ defmodule Apiary.StagesTest do
       assert Stages.check_workflows(other, work_item, read.([])) == {:error, :not_found}
     end
 
+    test "a check is for whoever may approve the stage's gate: anyone else reads nothing", %{
+      scope: scope
+    } do
+      member = member_fixture(scope)
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+
+      save!(scope, [
+        stage(@explore, "Explore", [%{"workflow" => "capture-demo"}], %{
+          "gate" => %{"kind" => "person", "approvers" => %{"members" => [scope.user.id]}}
+        })
+      ])
+
+      work_item = take_in!(scope)
+      assert work_item.stage_state == :waiting_workflow
+      read = fn _scope, _workspace -> flunk("read for a person who may not approve") end
+
+      assert Stages.check_workflows(member.scope, work_item, read) == {:error, :not_approver}
+      assert %{stage_state: :waiting_workflow} = reload(work_item)
+
+      assert {:ok, %WorkItem{stage_state: :running}} =
+               Stages.check_workflows(scope, work_item, fn _scope, _workspace ->
+                 {:ok, ["review", "capture-demo"]}
+               end)
+    end
+
     test "on a harness repository whose snapshot does not list the Explore workflow, Explore waits",
          %{scope: scope} do
       Repo.insert!(%Apiary.Stacks.Stack{
