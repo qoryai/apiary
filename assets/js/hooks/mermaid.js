@@ -22,8 +22,8 @@
 // characters and 200 edges, and the theme "base" with the app's colours, read from its
 // CSS variables. A document can change Mermaid's settings in two ways, a directive
 // (%%{init: …}%%) and a front matter config: block (--- … --- at its start). The hook
-// drops both before a block is drawn, with its click, link, links and callback lines
-// (source below). Every setting that changes HTML, CSS or links is also in Mermaid's
+// drops both before a block is drawn, with its click, link, links and callback
+// statements (source below). Every setting that changes HTML, CSS or links is also in Mermaid's
 // secure list (secure below), which Mermaid removes, at every depth, from what a
 // document sets. So a document cannot change these settings or add links.
 // A text that Mermaid puts into the page as HTML, such as an eventmodeling field or a
@@ -154,16 +154,27 @@ const withoutFrontMatter = lines => {
   return end === -1 ? [] : withoutFrontMatter(lines.slice(end + 1))
 }
 
+// The statements of Mermaid 11.17.2 that add a link or a call, at a line's start or
+// after a ";": click (flowchart, class, state and gantt diagrams); a class diagram's
+// link <class> "<url>" and callback <class> "<function>"; a sequence diagram's
+// link <actor>: … and links <actor>: …. A flowchart node whose id is link, links or
+// callback, as in "link --> B", matches none of them.
+const linkStatements = [
+  /(^|;)\s*click(\s|$)/i,
+  /(^|;)\s*(link|callback)\s+[^\s"]+\s+"/i,
+  /(^|;)\s*links?\s+[^\s:;|"<>-][^\s:;|"<>]*\s*:/i,
+]
+
 // The text of a block as Mermaid draws it: without each line that contains a directive
-// (%%{ … }%%, such as %%{init: …}%%), without each line with a click, link, links or
-// callback statement, at its start or after a ";", and without a front matter block at
-// its start, looked for after the other lines are dropped.
+// (%%{ … }%%, such as %%{init: …}%%), without each line with a link statement
+// (linkStatements above), and without a front matter block at its start, looked for
+// after the other lines are dropped.
 export const source = text =>
   withoutFrontMatter(
     text
       .split(/\r\n|\r|\n/)
       .filter(
-        line => !line.includes("%%{") && !/(^|;)\s*(click|links?|callback)(\s|$)/i.test(line),
+        line => !line.includes("%%{") && !linkStatements.some(statement => statement.test(line)),
       ),
   ).join("\n")
 

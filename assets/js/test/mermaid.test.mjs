@@ -86,17 +86,46 @@ test("keeps a --- line after the diagram's first line", () => {
   assert.equal(source(text), text)
 })
 
-test("drops each link, links and callback line, and keeps linkStyle", () => {
+test("drops a class diagram's link and callback statements, and keeps linkStyle", () => {
   const text = [
     "classDiagram",
     '  link Invoice "https://example.com/invoice" "Open"',
     '  callback Invoice "pay" "Pay"',
-    '  class Invoice; LINKS Invoice: {"Docs": "https://example.com"}',
+    '  class Order; LINK Order "https://example.com/order"',
+    '  click Invoice href "https://example.com"',
     "  Invoice --> Order",
     "  linkStyle 0 stroke:#888",
   ].join("\n")
 
   assert.equal(source(text), "classDiagram\n  Invoice --> Order\n  linkStyle 0 stroke:#888")
+})
+
+test("drops a sequence diagram's link and links statements", () => {
+  const text = [
+    "sequenceDiagram",
+    "  participant Alice",
+    "  link Alice: Dashboard @ https://example.com/dashboard",
+    '  links Alice: {"Docs": "https://example.com/docs"}',
+    "  Alice->>Bob: Send the invoice",
+  ].join("\n")
+
+  assert.equal(
+    source(text),
+    "sequenceDiagram\n  participant Alice\n  Alice->>Bob: Send the invoice",
+  )
+})
+
+test("keeps a flowchart node called link, links or callback", () => {
+  const text = [
+    "flowchart LR",
+    "  link --> B",
+    "  links --> callback",
+    "  callback -->|pay: now| link",
+    "  link-->C",
+    '  link --> D["Invoice"]',
+  ].join("\n")
+
+  assert.equal(source(text), text)
 })
 
 test("passes the secure list, with every HTML, CSS and link setting, to initialize", () => {
