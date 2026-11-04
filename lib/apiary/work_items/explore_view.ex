@@ -38,9 +38,10 @@ defmodule Apiary.WorkItems.ExploreView do
   #     it was written, `version` the proposal's version it is on, and once a run replied
   #     and closed it, `done_version`, the proposal's version that run stood at, and
   #     `done_at`, the time of its reply (`Apiary.Explore.ReviewComments`).
-  #   * `proposal`: the newest proposal of the current take in, `%{version:, message:}`,
-  #     the version its latest run stands at, or the one its confirmation keeps; nil for
-  #     none;
+  #   * `proposal`: the newest proposal of the current take in, `%{version:, message:,
+  #     version_id:, images:}` (`Apiary.WorkItems.Explore.proposal/2`), the version its
+  #     latest run stands at, or the one its confirmation keeps; nil for none. A result
+  #     kept before runs pushed their proposal as an artifact has `message` alone;
   #   * `questions`: every question of the work item's newest questions, in their order,
   #     each `%{id:, number:, text:, context:, options:, state:, asked_run:, answer:,
   #     history:, follows:}`: `number` its place in the document, from 1, `state`
@@ -76,8 +77,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # (`Apiary.Harnesses.WorkflowGap`), nil for any other run, `read_needs`, for a run qory
   # closed with a `read_needs_*` reason, the reason and whether the run's pool is the
   # instance's (`Apiary.Runs.ReadNeeds`), nil for any other run,
-  # and by what it gave: `proposal`, `%{message: text}`, the Markdown of the newest version
-  # of the work item's proposal a run of the take in up to it pushed, nil for none, with
+  # and by what it gave: `proposal`, `%{message: text, version_id: id, images:
+  # [filename]}`, the newest version of the work item's proposal a run of the take in up
+  # to it pushed (`Apiary.WorkItems.Explore.proposal/2`), nil for none, with
   # `version`, that version's number (`Apiary.WorkItems.Explore.proposal_version/3`), nil
   # for none; `questions`, each `%{public_id: position, text: question, options:
   # [%{title:, explanation:}], answer: answer or nil, custom: true, false or nil}`, for a
@@ -88,7 +90,7 @@ defmodule Apiary.WorkItems.ExploreView do
   # proposal is the version its confirmation keeps. A run that ended before Explore's
   # runs pushed artifacts shows the proposal its result kept, and no questions. `wrote` is
   # the version of the proposal the run pushed, nil for none, with `wrote_proposal`, that
-  # version's `%{message: text}`, and `asked` how many questions of the newest questions
+  # version as `proposal` gives one, and `asked` how many questions of the newest questions
   # it asked.
   #
   # ## `thread/2`
@@ -178,16 +180,28 @@ defmodule Apiary.WorkItems.ExploreView do
   # one its confirmation keeps; nil for none.
   defp newest_proposal(_work_item, nil), do: nil
 
-  defp newest_proposal(_work_item, %{proposal: %{message: message}, version: version})
+  defp newest_proposal(_work_item, %{proposal: %{message: message} = proposal, version: version})
        when is_binary(message),
-       do: %{version: version, message: message}
+       do: Map.put(proposal, :version, version)
 
   defp newest_proposal(%WorkItem{id: id, take_in: take_in}, %{attempt: attempt}) do
     with version when is_integer(version) <- Explore.proposal_version(id, take_in, attempt),
-         text when is_binary(text) <- Explore.proposal_text(id, version) do
-      %{version: version, message: text}
+         %{} = proposal <- shown_proposal(id, version) do
+      Map.put(proposal, :version, version)
     else
       _none -> nil
+    end
+  end
+
+  # Version `version` of the work item `id`'s proposal as the page shows it (`message`,
+  # its Markdown; `version_id`; `images`, its image files' filenames), nil for none.
+  defp shown_proposal(id, version) do
+    case Explore.proposal(id, version) do
+      %{text: text, version_id: version_id, images: images} ->
+        %{message: text, version_id: version_id, images: images}
+
+      nil ->
+        nil
     end
   end
 
@@ -515,12 +529,7 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
-  defp wrote_proposal(step, version) do
-    case Explore.proposal_text(step.dispatch_run.work_item_id, version) do
-      text when is_binary(text) -> %{message: text}
-      nil -> nil
-    end
-  end
+  defp wrote_proposal(step, version), do: shown_proposal(step.dispatch_run.work_item_id, version)
 
   # How many questions of the newest questions the run `step` asked.
   defp asked(%{run: %{number: number}}, ctx) when is_integer(number),
@@ -536,10 +545,8 @@ defmodule Apiary.WorkItems.ExploreView do
   # proposal, else the `message` a result kept before Explore's runs pushed their
   # proposal as an artifact; nil for none.
   defp proposal(step, version, result) do
-    text = Explore.proposal_text(step.dispatch_run.work_item_id, version)
-
-    case {text, result} do
-      {text, _result} when is_binary(text) -> %{message: text}
+    case {shown_proposal(step.dispatch_run.work_item_id, version), result} do
+      {%{} = proposal, _result} -> proposal
       {nil, %{"message" => message}} when is_binary(message) -> %{message: message}
       _none -> %{message: nil}
     end

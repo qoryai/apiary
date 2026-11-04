@@ -503,12 +503,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         with_attempt(socket, fn attempt ->
           scope = scope(socket)
 
-          case WorkItems.answer(scope, socket.assigns.row, attempt, cut_answers(answers, open)) do
+          case WorkItems.answer(scope, socket.assigns.row, attempt, answers) do
             {:ok, _work_item} ->
               {:noreply, socket |> assign(answers: %{}, errors: %{}, form_error: nil) |> load()}
 
             {:error, {:invalid, %{} = errors}} ->
-              {:noreply, refused_answers(socket, draft, by_id(errors, open), nil)}
+              {:noreply, refused_by_id(socket, draft, errors)}
 
             {:error, _refused} ->
               {:noreply,
@@ -840,6 +840,23 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp text_of(%{"text" => text}) when is_binary(text), do: text
   defp text_of(_params), do: ""
 
+  # The refusals of `Apiary.WorkItems.answer/4` by question id. A refusal of a field
+  # (`:note_required`, `{:too_long, max}`, `:characters`) shows under its question. A
+  # question answered or withdrawn since the page drew it, an id or an option it no
+  # longer has, is not the reader's error: the page reads the questions again, with the
+  # draft kept.
+  defp refused_by_id(socket, draft, errors) do
+    fields =
+      for {id, error} <- errors, field_error?(error), into: %{}, do: {id, error}
+
+    socket = refused_answers(socket, draft, fields, nil)
+
+    if map_size(fields) == map_size(errors), do: socket, else: refresh(socket)
+  end
+
+  defp field_error?(error),
+    do: error in [:note_required, :characters] or match?({:too_long, _max}, error)
+
   defp refused_answers(socket, draft, errors, form_error) do
     socket
     |> assign(answers: draft, errors: errors, form_error: form_error)
@@ -913,28 +930,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp blank?(text) when is_binary(text), do: String.trim(text) == ""
   defp blank?(_text), do: true
-
-  # The answers as `Apiary.WorkItems.answer/4` takes them on this branch's base, until it
-  # takes the list: by the question's place among the open ones, an option's title, else
-  # the note as the member's text.
-  defp cut_answers(answers, open) do
-    places = open |> Enum.with_index(1) |> Map.new(fn {q, i} -> {q.id, Integer.to_string(i)} end)
-
-    Map.new(answers, fn
-      %{"id" => id, "option" => title} when is_binary(title) -> {places[id], %{"option" => title}}
-      %{"id" => id, "note" => note} -> {places[id], %{"custom" => note}}
-    end)
-  end
-
-  # The errors of `Apiary.WorkItems.answer/4`, by question id: keyed by id, or on this
-  # branch's base by the question's place among the open ones.
-  defp by_id(errors, open) do
-    ids = open |> Enum.with_index(1) |> Map.new(fn {q, i} -> {Integer.to_string(i), q.id} end)
-
-    for {key, error} <- errors, is_binary(key), into: %{} do
-      {Map.get(ids, key, key), error}
-    end
-  end
 
   ## Live
 

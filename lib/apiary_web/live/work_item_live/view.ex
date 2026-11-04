@@ -20,9 +20,9 @@ defmodule ApiaryWeb.WorkItemLive.View do
   #
   # **Markdown.** A run's proposal and its questions are Markdown, rendered here once for
   # what the page read (`ApiaryWeb.WorkItemComponents.markdown/1`), as `:rendered` beside
-  # the text: the proposals of the latest run, of the run before it, and of the earlier
-  # take ins, and every question. The proposals of the other earlier runs of this take in
-  # are not shown, so not rendered.
+  # the text: the newest proposal, the proposals of the latest run, of the run before it,
+  # of the earlier take ins, and those each run wrote, and every question. A proposal is
+  # rendered with the image files of its version, which its Markdown may show.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -31,7 +31,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   alias Apiary.{Access, Organisations}
   alias Apiary.Accounts.Scope
-  alias ApiaryWeb.{People, RunComponents, WorkItemComponents}
+  alias Apiary.Artifacts.ArtifactFile
+  alias ApiaryWeb.{ArtifactComponents, People, RunComponents, WorkItemComponents}
 
   @qory [:started, :asked, :proposed, :no_result, :lost, :cancelled]
 
@@ -78,11 +79,11 @@ defmodule ApiaryWeb.WorkItemLive.View do
     runs =
       explore.earlier_runs
       |> Enum.with_index(1)
-      |> Enum.map(fn {run, i} -> run |> run(ctx) |> rendered(i == last) end)
+      |> Enum.map(fn {run, i} -> run |> run(ctx) |> rendered(i == last, ctx) end)
 
     latest =
       if explore.run,
-        do: explore.run |> latest_run(explore, ctx) |> rendered(true),
+        do: explore.run |> latest_run(explore, ctx) |> rendered(true, ctx),
         else: no_run()
 
     %{
@@ -90,7 +91,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       earlier_runs: runs,
       earlier_take_ins: Enum.map(explore.earlier_take_ins, &take_in(&1, ctx)),
       comments: Enum.map(explore.comments, &comment(&1, ctx)),
-      proposal: proposal(explore[:proposal]),
+      proposal: shown(explore[:proposal], ctx),
       questions: Enum.map(explore[:questions] || [], &question(&1, ctx)),
       questions_version: explore[:questions_version],
       review_comments: Enum.map(explore[:review_comments] || [], &review_comment(&1, ctx)),
@@ -99,11 +100,28 @@ defmodule ApiaryWeb.WorkItemLive.View do
     }
   end
 
-  # The newest proposal, with its Markdown rendered.
-  defp proposal(%{message: message} = proposal),
-    do: Map.put(proposal, :rendered, WorkItemComponents.markdown(message))
+  # A proposal as the page shows it: its Markdown rendered with the image files of its
+  # version, each a filename and the file's download address
+  # (`ApiaryWeb.ArtifactComponents.file_path/4`), for the Markdown's image references.
+  defp shown(%{} = proposal, ctx) do
+    images =
+      case proposal do
+        %{version_id: version_id, images: filenames} when is_binary(version_id) ->
+          for filename <- filenames,
+              do:
+                {filename,
+                 ArtifactComponents.file_path(ctx.scope, ctx.number, version_id, %ArtifactFile{
+                   filename: filename
+                 })}
 
-  defp proposal(_none), do: nil
+        _kept ->
+          []
+      end
+
+    Map.put(proposal, :rendered, WorkItemComponents.markdown(proposal[:message], images))
+  end
+
+  defp shown(_none, _ctx), do: nil
 
   # A question of the newest questions, with its context rendered and each answer's
   # person.
@@ -151,29 +169,17 @@ defmodule ApiaryWeb.WorkItemLive.View do
     }
   end
 
-  # The run's questions, and its proposal where `proposal?`, with their Markdown rendered.
-  defp rendered(run, proposal?) do
+  # The run's questions and the proposal it wrote, and its proposal where `proposal?`,
+  # as the page shows them (`shown/2`).
+  defp rendered(run, proposal?, ctx) do
     run =
       run
       |> Map.update(:questions, [], &rendered_questions/1)
-      |> Map.update(:wrote_proposal, nil, fn
-        %{message: message} = wrote ->
-          Map.put(wrote, :rendered, WorkItemComponents.markdown(message))
-
-        none ->
-          none
-      end)
+      |> Map.update(:wrote_proposal, nil, &shown(&1, ctx))
 
     case run do
-      %{proposal: %{} = proposal} when proposal? ->
-        %{
-          run
-          | proposal:
-              Map.put(proposal, :rendered, WorkItemComponents.markdown(proposal[:message]))
-        }
-
-      run ->
-        run
+      %{proposal: %{} = proposal} when proposal? -> %{run | proposal: shown(proposal, ctx)}
+      run -> run
     end
   end
 
@@ -205,6 +211,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
     %{
       scope: scope,
+      number: row.number,
       people: people(scope, ids),
       readable: readable(scope, workspace_ids)
     }
@@ -375,7 +382,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       ended_by: ended_by(take_in.ended, take_in.ended_by_id, ctx),
       ended_at: take_in.ended_at,
       ended_reason: reason(take_in.ended_reason),
-      runs: Enum.map(take_in.runs, &(&1 |> run(ctx) |> rendered(true)))
+      runs: Enum.map(take_in.runs, &(&1 |> run(ctx) |> rendered(true, ctx)))
     }
   end
 
