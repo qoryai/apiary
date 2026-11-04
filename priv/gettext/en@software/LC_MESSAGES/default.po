@@ -15260,7 +15260,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Remove %{part} from %{filename}. An SVG in a proposal has no script, animation, HTML, processing instruction, backslash or reference outside the file."
+msgid "Remove %{part} from %{filename}. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex

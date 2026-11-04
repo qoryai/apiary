@@ -518,7 +518,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
 
       assert html =~
-               "Remove the onload attribute from diagram.svg. An SVG in a proposal has no script, animation, HTML, processing instruction, backslash or reference outside the file."
+               "Remove the onload attribute from diagram.svg. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file."
 
       refute html =~ "Upload diagram.svg again."
       assert Artifacts.list(ctx.work_item) == []
@@ -558,6 +558,16 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert html =~ "Replace chart.png with an image of the type its name ends in."
       refute html =~ "Markdown file of UTF-8 text"
       assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to replace an image of another type for either reason storage gives" do
+      for reason <- [:image_type, :format] do
+        assert ApiaryWeb.ArtifactLive.New.proposal_format_line(reason, "chart.png") ==
+                 "Replace chart.png with an image of the type its name ends in."
+      end
+
+      assert ApiaryWeb.ArtifactLive.New.proposal_format_line(:format, "sources.json") ==
+               "Make sources.json valid JSON. The file does not parse as JSON."
     end
 
     test "says to make a proposal's sources.json valid JSON", ctx do

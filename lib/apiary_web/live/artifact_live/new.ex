@@ -540,7 +540,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp file_line({:svg_content, part}, filename, _type),
     do:
       gettext(
-        "Remove %{part} from %{filename}. An SVG in a proposal has no script, animation, HTML, processing instruction, backslash or reference outside the file.",
+        "Remove %{part} from %{filename}. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file.",
         part: part,
         filename: filename
       )
@@ -552,23 +552,38 @@ defmodule ApiaryWeb.ArtifactLive.New do
         size: ArtifactComponents.size(Apiary.Artifacts.Format.proposal_bytes(filename))
       )
 
-  defp file_line(:format, "sources.json", %Type{standard: true, name: "proposal"}),
-    do: gettext("Make sources.json valid JSON. The file does not parse as JSON.")
+  defp file_line(:format, filename, %Type{standard: true, name: "proposal"}),
+    do: proposal_format_line(:format, filename)
 
-  defp file_line(:format, filename, %Type{standard: true, name: "proposal"}) do
-    if String.downcase(Path.extname(filename)) == ".md",
-      do: format_line(:document, filename),
-      else:
-        gettext("Replace %{filename} with an image of the type its name ends in.",
-          filename: filename
-        )
-  end
+  defp file_line(:image_type, filename, _type), do: proposal_format_line(:image_type, filename)
 
   defp file_line(:format, filename, %Type{base_view: base_view}),
     do: format_line(base_view, filename)
 
   defp file_line(_unreadable, filename, _type),
     do: gettext("Upload %{filename} again.", filename: filename)
+
+  # proposal_format_line/2 is the line for a proposal's file `filename` whose bytes the
+  # push refuses for `reason`: `:format` for `sources.json` that does not parse as JSON,
+  # a Markdown file that is not UTF-8 text, or an image; `:image_type` for an image whose
+  # bytes are not the type its name ends in. `:image_type` is the atom storage plans for
+  # that refusal; confirm it at the next merge of storage's work.
+  @doc false
+  @spec proposal_format_line(:format | :image_type, String.t()) :: String.t()
+  def proposal_format_line(:format, "sources.json"),
+    do: gettext("Make sources.json valid JSON. The file does not parse as JSON.")
+
+  def proposal_format_line(:format, filename) do
+    if String.downcase(Path.extname(filename)) == ".md",
+      do: format_line(:document, filename),
+      else: proposal_format_line(:image_type, filename)
+  end
+
+  def proposal_format_line(:image_type, filename),
+    do:
+      gettext("Replace %{filename} with an image of the type its name ends in.",
+        filename: filename
+      )
 
   # `path` and `error` come from the file; the page shows them as text.
   defp schema_line(filename, type, %{path: path, error: error}),
