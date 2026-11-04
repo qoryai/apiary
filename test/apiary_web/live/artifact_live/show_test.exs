@@ -846,7 +846,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       line = view |> element("#artifact-files-error-0") |> render()
 
-      assert line =~ "Fix v.json to match the JSON Schema of verdict: at #,"
+      assert line =~ "Fix v.json to match the format of verdict: at #,"
+      refute line =~ "JSON Schema"
       assert line =~ "&lt;i&gt;x&lt;/i&gt;"
       refute line =~ "<i>"
       assert Artifacts.list(ctx.work_item) == []

@@ -9055,7 +9055,7 @@ msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
-msgid "Fix %{filename} to match the JSON Schema of %{type}: at %{path}, %{error}."
+msgid "Fix %{filename} to match the format of %{type}: at %{path}, %{error}."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex

@@ -598,9 +598,9 @@ defmodule ApiaryWeb.ArtifactLive.New do
 
   # schema_line/3 is the line for the file `filename` of a version of `type` that the push
   # refuses at `path` for `error`: for a proposal's `sources.json`, the line of the
-  # proposal sources format, whose check refuses more than its JSON Schema does; else the
-  # line of the type's JSON Schema. `path` and `error` come from the file; the page shows
-  # them as text.
+  # proposal sources format; else the line of the type's format. Both say format, since
+  # the check refuses more than the JSON Schema does (`Apiary.Artifacts.Format`). `path`
+  # and `error` come from the file; the page shows them as text.
   @doc false
   @spec schema_line(String.t(), Type.t(), %{path: String.t(), error: String.t()}) ::
           String.t()
@@ -617,7 +617,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
 
   def schema_line(filename, type, %{path: path, error: error}),
     do:
-      gettext("Fix %{filename} to match the JSON Schema of %{type}: at %{path}, %{error}.",
+      gettext("Fix %{filename} to match the format of %{type}: at %{path}, %{error}.",
         filename: filename,
         type: type.name,
         path: path,
