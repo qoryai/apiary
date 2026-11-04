@@ -1023,7 +1023,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         work_item: row,
         earlier_runs: page.earlier_runs,
         earlier_take_ins: page.earlier_take_ins,
-        comments: page.comments,
         proposal: page.proposal,
         questions: page.questions,
         questions_version: page.questions_version,
