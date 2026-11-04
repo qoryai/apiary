@@ -32,6 +32,12 @@ defmodule Apiary.WorkItems.ExploreView do
   #     answered, nil for an account whose row is gone;
   #   * `confirmed_by_id` and `confirmed_at`, the current take in's confirmation, nil for
   #     none;
+  #   * `comments`: the review comments on the current take in's proposals, oldest first,
+  #     each `%{text: text, by_id: id, at: at, attempt: attempt, version: version,
+  #     done_version: version or nil, done_at: at or nil}`: `attempt` the latest run when
+  #     it was written, `version` the proposal's version it is on, and once a run replied
+  #     and closed it, `done_version`, the proposal's version that run stood at, and
+  #     `done_at`, the time of its reply (`Apiary.Explore.ReviewComments`).
   #   * `proposal`: the newest proposal of the current take in, `%{version:, message:,
   #     version_id:, images:}` (`Apiary.WorkItems.Explore.proposal/2`), the version its
   #     latest run stands at, or the one its confirmation keeps; nil for none. A result
@@ -163,6 +169,7 @@ defmodule Apiary.WorkItems.ExploreView do
         |> Enum.uniq(),
       confirmed_by_id: confirmation && confirmation.confirmed_by_id,
       confirmed_at: confirmation && confirmation.confirmed_at,
+      comments: comments(ctx, take_in),
       proposal: newest_proposal(work_item, List.last(runs)),
       questions: questions_view(ctx),
       questions_version: ctx.questions_version,
@@ -344,6 +351,47 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp number({%{number: number}, _document}), do: number
   defp number(_none), do: nil
+
+  # The review comments on the proposals of take in `take_in`, oldest first: each with who
+  # wrote it and when, by its move (`Apiary.Explore.Given`), the run whose proposal it is
+  # on, and once a run replied and closed it, the version of the proposal that run stood
+  # at and when it replied.
+  defp comments(ctx, take_in) do
+    written =
+      for %{kind: :comment, id: id} = given <- ctx.given, into: %{}, do: {id, given}
+
+    for %{"on" => %{"artifact" => "proposal", "version" => version}} = comment <-
+          ReviewComments.entries(ctx.review_comments),
+        %{take_in: ^take_in} = given <- [Map.get(written, comment["id"])] do
+      {done_version, done_at} = done(comment, ctx)
+
+      %{
+        text: comment["text"],
+        by_id: given.by_id,
+        at: given.at,
+        attempt: given.attempt,
+        version: version,
+        done_version: done_version,
+        done_at: done_at
+      }
+    end
+  end
+
+  # A closed review comment: the version of the proposal the run that closed it stood at,
+  # and the time of its reply; `{nil, nil}` for an open one.
+  defp done(%{"state" => "closed"} = comment, ctx) do
+    replies = Enum.filter(comment["replies"] || [], &match?(%{"by" => %{"run" => _}}, &1))
+
+    with %{"by" => %{"run" => number}, "at" => at} <- List.last(replies),
+         %{} = step <- Map.get(ctx.by_number, number),
+         {:ok, at, _offset} <- DateTime.from_iso8601(at) do
+      {version(step), at}
+    else
+      _none -> {nil, nil}
+    end
+  end
+
+  defp done(_comment, _ctx), do: {nil, nil}
 
   defp adapter_failure(%{adapter_failure: nil}), do: nil
 
