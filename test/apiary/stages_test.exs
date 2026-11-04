@@ -34,6 +34,19 @@ defmodule Apiary.StagesTest do
 
   defp reload(work_item), do: Repo.get!(WorkItem, work_item.id)
 
+  # Turns the workflow model on or off for this test.
+  defp workflow_model(on?) do
+    previous = Application.get_env(:apiary, :features)
+
+    features =
+      if on?,
+        do: Enum.uniq([:workflow_model | previous]),
+        else: List.delete(previous, :workflow_model)
+
+    Application.put_env(:apiary, :features, features)
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+  end
+
   defp runs(work_item),
     do:
       Repo.all(
@@ -715,6 +728,99 @@ defmodule Apiary.StagesTest do
         assert %Escalation{cause: :run_stopped} =
                  escalation(Repo.get!(WorkItem, run.work_item_id))
       end
+    end
+
+    test "the stage sweep skips the ends the runner does not act on", %{scope: scope} do
+      ended! = fn changes ->
+        work_item = take_in!(scope)
+        run = newest_run(work_item)
+
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [state: :ended] ++ changes
+        )
+
+        {work_item, run}
+      end
+
+      # An end the runner ignores, one of each.
+      ignored =
+        for cause <- [:closed, :undone, :released, :superseded],
+            do: ended!.(end_cause: cause, result_outcome: nil)
+
+      # An exit with no outcome yet, which Settle stores first.
+      unsettled = ended!.(end_cause: :run_ended, result_outcome: nil)
+
+      # An older attempt: a newer one is queued.
+      {older, run} = ended!.(end_cause: :key_gone, result_outcome: :error)
+
+      %DispatchRun{}
+      |> Ecto.Changeset.change(
+        run
+        |> Map.take(
+          DispatchRun.__schema__(:fields) -- [:id, :public_id, :inserted_at, :updated_at]
+        )
+        |> Map.merge(%{
+          attempt: run.attempt + 1,
+          run_id: Ecto.UUID.generate(),
+          state: :waiting,
+          end_cause: nil,
+          result_outcome: nil
+        })
+      )
+      |> Apiary.PublicId.Insert.insert!()
+
+      # A stage that is not running.
+      {waiting, _run} = ended!.(end_cause: :key_gone, result_outcome: :error)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^waiting.id),
+          set: [stage_state: :waiting_answers]
+        )
+
+      skipped = Enum.map(ignored ++ [unsettled, {older, run}], &elem(&1, 0)) ++ [waiting]
+      before = Enum.map(skipped, &reload/1)
+
+      assert Stages.sweep(DateTime.utc_now(), nil) == {[], nil}
+      assert Enum.map(skipped, &reload/1) == before
+      assert Enum.all?(skipped, &is_nil(escalation(&1)))
+    end
+
+    test "the stage sweep finds nothing with the workflow model off", %{scope: scope} do
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+        set: [state: :ended, end_cause: :key_gone, result_outcome: :error]
+      )
+
+      workflow_model(false)
+      assert Stages.sweep(DateTime.utc_now(), nil) == {[], nil}
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+    end
+
+    test "a tick of the lost-run check keeps where the stage sweep stopped", %{scope: scope} do
+      [first, second] =
+        for _n <- 1..2 do
+          work_item = take_in!(scope)
+          run = newest_run(work_item)
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [state: :ended, end_cause: :key_gone, result_outcome: :error]
+          )
+
+          run
+        end
+        |> Enum.sort_by(& &1.id)
+
+      # The tick reads after the stage cursor it was given: the second alone, and fewer
+      # than a batch, so the next tick starts from the first id again.
+      state = %{interval: :timer.hours(1), cursors: %{stage: first.id}}
+
+      assert {:noreply, %{cursors: %{stage: nil}}} =
+               Apiary.Runs.Liveness.handle_info(:tick, state)
+
+      assert %WorkItem{stage_state: :running} = Repo.get!(WorkItem, first.work_item_id)
+      assert %Escalation{} = escalation(Repo.get!(WorkItem, second.work_item_id))
     end
 
     test "a run queued before its work item was placed counts for the stage it is in", %{
