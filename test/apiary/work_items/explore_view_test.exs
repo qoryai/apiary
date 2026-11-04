@@ -422,7 +422,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert taken_in.first_instruction == first_instruction
     end
 
-    test "a run that wrote a proposal while an earlier run's question stays open: a proposal, not 0 questions",
+    test "a run that wrote a proposal while an earlier run's question stays open: a proposal with no owner",
          ctx do
       now = DateTime.utc_now()
       item = ctx.work_item
@@ -447,6 +447,63 @@ defmodule Apiary.WorkItems.ExploreViewTest do
             do: Map.take(entry, [:kind, :owner_id])
 
       assert entries == [%{kind: :started}, %{kind: :proposed, owner_id: nil}]
+    end
+
+    test "a run that wrote neither a proposal nor a question while an earlier run's question stays open: no result",
+         ctx do
+      now = DateTime.utc_now()
+      item = ctx.work_item
+
+      explore_run_fixture(item,
+        result: questions_result(["Which basket?", "Which sale?"]),
+        run: timed(now, 9, 8)
+      )
+
+      {:ok, _} = WorkItems.answer(ctx.scope, item, 1, %{"1" => "At checkout."})
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^item.id and r.attempt == 2)
+      %{run: second} = explore_run_fixture(item, attempt: 2, run: timed(now, 6, 5))
+
+      # The second question, which the first run asked, is still open, so the run waits.
+      assert %{status: :questions} = WorkItems.explore(ctx.scope, item)
+
+      entries =
+        for %{run: %{id: id}} = entry <- WorkItems.explore_thread(ctx.scope, item, now),
+            id == second.public_id,
+            do: Map.take(entry, [:kind, :outcome, :wrote])
+
+      assert entries == [%{kind: :started}, %{kind: :no_result, outcome: :none, wrote: nil}]
+    end
+
+    test "a waiting run that wrote a question while an earlier run's question stays open: only its question",
+         ctx do
+      now = DateTime.utc_now()
+      item = ctx.work_item
+
+      explore_run_fixture(item,
+        result: questions_result(["Which basket?", "Which sale?"]),
+        run: timed(now, 9, 8)
+      )
+
+      {:ok, _} = WorkItems.answer(ctx.scope, item, 1, %{"1" => "At checkout."})
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^item.id and r.attempt == 2)
+
+      %{run: second} =
+        explore_run_fixture(item,
+          attempt: 2,
+          result: questions_result(["Which price?"]),
+          run: timed(now, 6, 5)
+        )
+
+      # The first run's second question and the second run's question are open.
+      assert %{status: :questions} = WorkItems.explore(ctx.scope, item)
+
+      asked =
+        for %{kind: :asked, run: %{id: id}} = entry <-
+              WorkItems.explore_thread(ctx.scope, item, now),
+            id == second.public_id,
+            do: Enum.map(entry.questions, &{&1.public_id, &1.text, &1.answer})
+
+      assert asked == [[{"1", "Which price?", nil}]]
     end
 
     test "a question reopened twice: each run that reopened it lists it, with the answer given at that run",
