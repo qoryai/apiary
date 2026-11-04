@@ -96,9 +96,9 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * the events of the work item: `:taken_in` (`actor_id`, `take_in`, `again`,
   #     `owner_id`, who owned the work item in that take in, and `first_instruction` for
   #     the current take in, nil for an earlier one),
-  #     `:answered` (`actor_id`, `run`, `questions` with their answers, and `comment`, the
-  #     text of a review comment or a reply, nil for answers; a send of the review comments
-  #     has no entry), `:explore_again`
+  #     `:answered` (`actor_id`, `run`, `questions` with their answers, `comment`, the
+  #     text of a review comment or a reply, nil for answers, and `reply`, true for a
+  #     reply; a send of the review comments has no entry), `:explore_again`
   #     (`actor_id`, `run`, the run it started), `:confirmed` (`actor_id`, `changed`),
   #     `:closed` (`actor_id`, nil for the instance, `stage`, nil where none was recorded,
   #     and the instance's `reason`, nil for a person),
@@ -837,7 +837,8 @@ defmodule Apiary.WorkItems.ExploreView do
             custom: answer.custom
           }
         end,
-      comment: Enum.find_value(given, &if(&1.kind != :answer, do: &1.text))
+      comment: Enum.find_value(given, &if(&1.kind != :answer, do: &1.text)),
+      reply: is_integer(event.data["reply"])
     }
   end
 

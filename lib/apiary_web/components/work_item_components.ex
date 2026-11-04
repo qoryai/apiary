@@ -3973,7 +3973,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:asked` - how many questions Qory wrote and after how long (`questions`,
       `duration`), the questions quoted under it;
     * `:answered` - who answered Qory's questions, each question and its answer quoted;
-      or who commented on Qory's proposal (`comment`), the comment quoted;
+      or who wrote a review comment on Qory's proposal (`comment`), or a reply to one
+      (`comment`, with `reply` true), the text quoted;
     * `:proposed` - Qory wrote a proposal, after how long, and whose turn it is
       (`owner`), or only after how long where it has no owner;
     * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
@@ -4030,6 +4031,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :run, :map, default: nil, doc: "the run, as above"
   attr :questions, :list, default: [], doc: "`:asked`, `:answered`: the questions, as above"
   attr :comment, :string, default: nil, doc: "`:answered`: a comment on Qory's proposal"
+  attr :reply, :boolean, default: false, doc: "`:answered`: whether `comment` is a reply"
   attr :duration, :string, default: nil, doc: "`:asked`, `:proposed`: how long the run took"
 
   attr :outcome, :atom,
@@ -4215,6 +4217,13 @@ defmodule ApiaryWeb.WorkItemComponents do
       number: Format.number(n),
       duration: duration
     )
+  end
+
+  defp event_line(%{kind: :answered, actor: actor, comment: comment, reply: true})
+       when is_binary(comment) do
+    if you?(actor),
+      do: gettext("You replied to a review comment"),
+      else: rich_gettext("%{name} replied to a review comment", name: {:b, actor.name})
   end
 
   defp event_line(%{kind: :answered, actor: actor, comment: comment})

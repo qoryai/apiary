@@ -2405,6 +2405,20 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(other, "li > div > p:first-child b") == "Priya"
     end
 
+    test "a reply to a review comment: who, and the reply quoted" do
+      html =
+        event(kind: :answered, actor: @dana, questions: [], comment: "Ship it.", reply: true)
+
+      assert line(html) == "You replied to a review comment 14 Oct, 11:25"
+      assert text(html, "#ev-1-answers .q-wi-qa-a") == "Ship it."
+
+      other =
+        event(kind: :answered, actor: @priya, questions: [], comment: "Ship it.", reply: true)
+
+      assert line(other) == "Priya replied to a review comment 14 Oct, 11:25"
+      assert text(other, "li > div > p:first-child b") == "Priya"
+    end
+
     test "answered: who, each question and its answer quoted" do
       qs = questions(@answers)
 

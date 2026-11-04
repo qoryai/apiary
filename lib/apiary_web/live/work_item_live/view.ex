@@ -462,7 +462,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
     do: %{
       run: run_ref(entry.run, ctx),
       questions: rendered_questions(entry.questions),
-      comment: entry[:comment]
+      comment: entry[:comment],
+      reply: entry[:reply] == true
     }
 
   defp event_fields(%{kind: :confirmed} = entry, _row, _names, _ctx),

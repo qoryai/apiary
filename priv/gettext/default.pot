@@ -1303,6 +1303,11 @@ msgstr ""
 msgid "%{name} ran Explore again"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} replied to a review comment"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} requires enforce in every workspace and target."
@@ -15702,6 +15707,11 @@ msgstr ""
 msgid "Replaces this target's allow rule."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Replied to a review comment on a work item's proposal"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
@@ -16743,6 +16753,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Sent"
 msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sent 1 review comment on a work item's proposal"
+msgid_plural "Sent %{count} review comments on a work item's proposal"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
@@ -22105,6 +22122,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "You ran Explore again"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You replied to a review comment"
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex

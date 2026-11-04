@@ -616,9 +616,24 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
 
-  # A review comment or a reply: an entry of `work_item.answer` with `"comment"` set.
+  # A reply to a review comment: an entry of `work_item.answer` with `"comment"` set and
+  # the reply's position (`"reply"`).
+  defp said(:"work_item.answer", %{"comment" => true, "reply" => _position}, _actor),
+    do: gettext("Replied to a review comment on a work item's proposal")
+
+  # A review comment: an entry of `work_item.answer` with `"comment"` set.
   defp said(:"work_item.answer", %{"comment" => true}, _actor),
     do: gettext("Wrote a review comment on a work item's proposal")
+
+  # Run with comments: an entry of `work_item.answer` with the ids of the open review
+  # comments that went to the next run (`"review_comments"`).
+  defp said(:"work_item.answer", %{"review_comments" => [_ | _] = ids}, _actor),
+    do:
+      ngettext(
+        "Sent 1 review comment on a work item's proposal",
+        "Sent %{count} review comments on a work item's proposal",
+        length(ids)
+      )
 
   # The count of questions answered, one where the entry says none.
   defp said(:"work_item.answer", details, _actor) do

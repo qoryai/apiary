@@ -726,6 +726,23 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       refute html =~ "<strong>a refund</strong>"
     end
 
+    test "a reply in the Thread, apart from the review comment it replies to", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = proposed(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
+      {:ok, _} = WorkItems.reply(scope, work_item, 1, "c1", "Keep the old PDFs.")
+
+      {:ok, thread, _html} = live(conn, page(scope, work_item.number, "/thread"))
+      html = render(thread)
+      assert html =~ "You wrote a review comment on the proposal"
+      assert html =~ "Show the order&#39;s currency."
+      assert html =~ "You replied to a review comment"
+      assert html =~ "Keep the old PDFs."
+      assert length(String.split(html, "You wrote a review comment on the proposal")) == 2
+    end
+
     test "a blank, long or hidden-character review comment is refused under the field, and the text stays",
          %{conn: conn, scope: scope} do
       {work_item, _run} = proposed(scope)
