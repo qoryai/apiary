@@ -730,9 +730,9 @@ defmodule Apiary.Access do
   @authored %{"work_item.comment_delete": :"work_item.comment"}
 
   # What only the approvers of the stage a work item is in take on it, where the stage
-  # lists them (`check_approver/3`): approving its gate, and the review comments on
-  # Explore's proposal.
-  @approver_actions [:"gate.approve", :"work_item.review_comment"]
+  # lists them (`check_approver/3`): approving its gate, confirming Explore's proposal,
+  # which approves Explore's gate, and the review comments on that proposal.
+  @approver_actions [:"gate.approve", :"work_item.confirm", :"work_item.review_comment"]
 
   # What may still be done to an organisation or a workspace marked for deletion: cancel
   # the deletion, and purge it once its grace period is over. Nothing else is.
@@ -812,9 +812,9 @@ defmodule Apiary.Access do
      workspace or the organisation, as a page asks whether to show the button at all, the
      role alone answers. A level other than the role allows is `{:error, :forbidden}`. An
      invitation is the organisation's, whichever workspace it grants.
-  9. **The stage's approvers**, for approving a stage's gate and the review comments on
-     Explore's proposal (`gate.approve`, `work_item.review_comment`), asked of a work
-     item. Where the stage the work item is
+  9. **The stage's approvers**, for approving a stage's gate, confirming Explore's
+     proposal and the review comments on it (`gate.approve`, `work_item.confirm`,
+     `work_item.review_comment`), asked of a work item. Where the stage the work item is
      in lists approvers, a person who is not among them is `{:error, :not_approver}`.
      Every person the role allows may with the workflow model off, on a work item the
      runner did not place, and at a stage that lists none. An answer to the questions

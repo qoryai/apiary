@@ -22,7 +22,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Artifacts, Processes, Repo, Stages, WorkItems}
+  alias Apiary.{Access, Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Artifacts.Artifact
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Runs.Run
@@ -1293,54 +1293,32 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert open_review_comments(work_item) == ["c1"]
     end
 
-    test "Run with comments from a member Explore's gate does not list: the line under the gate",
+    test "Explore's gate shows to a member the gate lists, and not to one it does not list",
          %{conn: conn, scope: scope} do
       listed = explore_gate_listing(scope)
       work_item = explore_gate_fixture(scope)
       {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
+      explore = page(scope, work_item.number) <> "/explore"
 
-      runs =
-        Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+      {:ok, view, _html} = live(log_in_user(build_conn(), listed.user), explore)
+      assert has_element?(view, "#work-item-explore-gate")
 
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
-      refute has_element?(view, "#work-item-explore-gate-error")
-
-      view
-      |> element("#work-item-explore-gate")
-      |> render_submit(%{"number" => "#{work_item.number}"})
-
-      assert has_element?(
-               view,
-               "#work-item-explore-gate-error[role=alert]",
-               "Ask an approver of Explore to act on it."
-             )
-
-      assert Repo.aggregate(
-               from(d in DispatchRun, where: d.work_item_id == ^work_item.id),
-               :count
-             ) ==
-               runs
-
-      # The next move clears the line.
-      view
-      |> element("#work-item-explore-gate-go")
-      |> render_click()
-
-      refute has_element?(view, "#work-item-explore-gate-error")
+      # The owner is not among the approvers Explore's gate lists: no Confirm and no Run
+      # with comments, as either would be refused (`work_item.confirm`, `Apiary.Access`).
+      {:ok, view, _html} = live(conn, explore)
+      refute has_element?(view, "#work-item-explore-gate")
+      refute Access.can?(scope, :"work_item.confirm", Repo.get!(WorkItem, work_item.id))
     end
 
-    test "the line from Run with comments, and the blank-answer error, of a member the gate does not list are gone once the page reads the work item again",
+    test "the blank-answer error of a member the gate does not list is gone once the page reads the work item again",
          %{conn: conn, scope: scope} do
       listed = explore_gate_listing(scope)
       work_item = explore_gate_fixture(scope)
       {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
 
-      view
-      |> element("#work-item-explore-gate")
-      |> render_submit(%{"number" => "#{work_item.number}"})
-
-      assert has_element?(view, "#work-item-explore-gate-error")
+      # The owner is not among the approvers: no gate to send the review comments from.
+      refute has_element?(view, "#work-item-explore-gate")
 
       # The approver sends the review comments, and the run ends with a question.
       {:ok, _} = WorkItems.send_review_comments(listed, work_item, 1)
@@ -1349,7 +1327,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-item-explore-questions-form")
       refute has_element?(view, "#work-item-explore-questions-error")
-      refute render(view) =~ "Ask an approver of Explore to act on it."
 
       # With the review comment still open, the member sends every answer blank and sees
       # the blank-answer error. The approver sends the review comments again, and the run
@@ -1375,19 +1352,44 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute render(view) =~ "Choose an option or write an answer."
     end
 
-    test "the line from Run with comments of a member the gate does not list is gone after Add review comment and back",
-         %{conn: conn, scope: scope} do
+    test "Run with comments of an approver at Explore's gate: the next run, and no line", %{
+      scope: scope
+    } do
       listed = explore_gate_listing(scope)
       work_item = explore_gate_fixture(scope)
       {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
-      explore = page(scope, work_item.number) <> "/explore"
-      {:ok, view, _html} = live(conn, explore)
+
+      runs =
+        Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+
+      {:ok, view, _html} =
+        live(
+          log_in_user(build_conn(), listed.user),
+          page(scope, work_item.number) <> "/explore"
+        )
 
       view
       |> element("#work-item-explore-gate")
       |> render_submit(%{"number" => "#{work_item.number}"})
 
-      assert has_element?(view, "#work-item-explore-gate-error")
+      refute has_element?(view, "#work-item-explore-gate-error")
+      refute render(view) =~ "Ask an approver of Explore to act on it."
+
+      assert Repo.aggregate(
+               from(d in DispatchRun, where: d.work_item_id == ^work_item.id),
+               :count
+             ) == runs + 1
+    end
+
+    test "Explore's gate of an approver is back, with no line, after Add review comment and back",
+         %{scope: scope} do
+      listed = explore_gate_listing(scope)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
+      explore = page(scope, work_item.number) <> "/explore"
+      {:ok, view, _html} = live(log_in_user(build_conn(), listed.user), explore)
+
+      assert has_element?(view, "#work-item-explore-gate")
 
       render_patch(view, explore <> "?review=new")
       assert has_element?(view, "#work-item-review-page-form")

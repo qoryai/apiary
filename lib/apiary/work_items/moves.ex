@@ -201,7 +201,9 @@ defmodule Apiary.WorkItems.Moves do
   #     comments, in one move: one event, as a review comment's, and the next run queued.
   #     It asks `work_item.answer`, then `work_item.review_comment` once it finds the
   #     proposal waiting.
-  #   * A confirmation (`confirm/3`) works where the latest run's proposal waits. It keeps
+  #   * A confirmation (`confirm/3`) works where the latest run's proposal waits, for a
+  #     member among the approvers of the stage the work item is in, where the stage lists
+  #     them (`work_item.confirm`, `Apiary.Access`, else `:not_approver`). It keeps
   #     the proposal's version (`Apiary.WorkItems.Confirmation`); the work item is then ready
   #     for Shape. Its event, `:confirmed`, has the take in and the attempt.
   #   * A run of Explore again (`explore_again/3`) works after a run that gave no result,
