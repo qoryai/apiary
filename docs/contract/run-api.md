@@ -220,7 +220,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
   comes from the file's bytes, and the index returns it. `content_base64` is the content
   in standard base64 with padding.
 
-The version is stored for the run's work item, by the run, in the run's stage. Returns
+The version is stored for the run's work item, by the run, in the run's stage; for a
+run of Explore with no stage, one queued before the instance had `workflow_model`, in
+the stage of the work item's process that runs Explore. Returns
 `201`:
 
 ```json

@@ -399,6 +399,19 @@ defmodule Apiary.Stages do
     ) || explore_stage_id(work_item)
   end
 
+  # run_stage_id/2 is the stage a version that the run of the queue `run` pushes for
+  # `work_item` is made in: the run's stage, or, for a run of Explore with no stage, one
+  # queued before the workflow model was on, the stage that runs `explore_workflow/0`
+  # (`explore_stage_id/1`), as `confirmed_stage_id/2` reads it. So the Exists check of
+  # that stage finds the proposal the run pushed. nil for another run with no stage.
+  @doc false
+  @spec run_stage_id(DispatchRun.t(), WorkItem.t()) :: String.t() | nil
+  def run_stage_id(%DispatchRun{stage_id: stage_id}, %WorkItem{}) when is_binary(stage_id),
+    do: stage_id
+
+  def run_stage_id(%DispatchRun{} = run, %WorkItem{} = work_item),
+    do: if(explore_run?(run), do: explore_stage_id(work_item))
+
   # explore_stage_id/1 is the id of the stage of the work item's process version that runs
   # `explore_workflow/0`; nil for none.
   @doc false

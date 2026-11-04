@@ -1161,6 +1161,38 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert json_response(write(ctx, "/verdict", %{"verdict" => "passed"}), 409)["error"] ==
                "run_ended"
     end
+
+    test "a run of Explore with no stage pushes into Explore's stage, so Exists passes",
+         ctx do
+      # Queued before the workflow model was on: the run and its work item have no stage.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [stage_id: nil, workflow: nil, step: "explore"]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [stage_id: nil, stage_state: nil, stage_round: nil, stage_entry: nil]
+        )
+
+      refute Apiary.Artifacts.exists?(ctx.work_item, @explore, "proposal")
+
+      body = push_body("proposal", [{"proposal.md", "text/markdown", "# Proposal\n"}])
+      assert write(ctx, "/artifacts", body).status == 201
+
+      assert [%{stage_id: @explore, opts: opts}] = RunApiStubs.pushed()
+      assert opts[:stage_id] == @explore
+      assert Apiary.Artifacts.exists?(ctx.work_item, @explore, "proposal")
+
+      # A run of another workflow with no stage has none; a run with a stage keeps it.
+      dispatch_run = Repo.get!(DispatchRun, ctx.dispatch_run.id)
+
+      assert Apiary.Stages.run_stage_id(%{dispatch_run | workflow: "build"}, ctx.work_item) ==
+               nil
+
+      assert Apiary.Stages.run_stage_id(%{dispatch_run | stage_id: "st_other"}, ctx.work_item) ==
+               "st_other"
+    end
   end
 
   describe "the types a run pushes" do

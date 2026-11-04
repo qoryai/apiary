@@ -118,7 +118,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
          {:ok, version} <-
            Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
              name: push.name,
-             stage_id: Boundary.stage_id(run.dispatch_run),
+             stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
              note: push.note
            )
            |> pushed(%{
@@ -143,7 +143,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
          {:ok, version} <-
            Boundary.push({:run, run.dispatch_run}, run.work_item, "verdict", [file],
              name: "main",
-             stage_id: Boundary.stage_id(run.dispatch_run),
+             stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
              note: nil
            )
            |> pushed(%{
