@@ -44,8 +44,8 @@ defmodule Apiary.Stages do
   # the stage wait for answers, whatever else the run did
   # (`Apiary.Explore.Questions.open_in_take_in/2`; one left open in an earlier take in
   # does not count); otherwise a run that stopped escalates, `run_stopped`, with the
-  # cause, and any other counts as a run with no verdict. Newest questions whose file cannot be read raise
-  # `Apiary.Stages.QuestionsUnreadable`. A refusal or a lost run
+  # cause, and any other counts as a run with no verdict. Newest questions whose file
+  # cannot be read raise `Apiary.Stages.QuestionsUnreadable`. A refusal or a lost run
   # (`Apiary.Dispatches.RunEnd`) rolls back and stores nothing, as the run of the queue is
   # still handed over: the lost-run check ends it again at a later tick
   # (`Apiary.Dispatches.RunEnd.lose/3`). An exit is stored with no outcome
