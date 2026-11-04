@@ -58,6 +58,20 @@ defmodule Apiary.AuditTest do
   # entry of it, and none when it is refused: an audited action none of its modules makes
   # fails there.
 
+  # "each change" makes `work_item.answer` as an answer to questions. A member records it
+  # in other moves too, each made by `Apiary.AuditChanges` and checked the same way.
+  describe "each other move that records a member's answer" do
+    setup do: owner()
+
+    for answer <- Apiary.AuditChanges.member_answers() do
+      @tag action: :"work_item.answer", member_answer: answer
+      test "#{answer} leaves one work_item.answer entry, with no personal data or secret",
+           ctx do
+        Apiary.AuditCase.assert_one_entry(ctx, [Apiary.AuditChanges])
+      end
+    end
+  end
+
   test "the application has no way to change or delete an entry but the prune" do
     functions = Keyword.keys(Audit.__info__(:functions))
 
