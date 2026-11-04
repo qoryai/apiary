@@ -149,7 +149,10 @@ defmodule Apiary.WorkItems.Moves do
   #   * An answer (`answer/4`) works where the latest run's questions wait: one or more
   #     of the open questions of the work item's newest questions answered
   #     (`Apiary.WorkItems.Proposal.check_answers/2`, else `{:invalid, errors}`, by
-  #     position, or `{:invalid, :form}`). It writes a new version of the questions, by
+  #     position, or `{:invalid, :form}`). A form may give the answers by question id
+  #     instead, a list (`Apiary.WorkItems.Proposal.check_answers_by_id/2`, else
+  #     `{:invalid, errors}`, by id, or `{:invalid, :form}`), where an answer may have an
+  #     option and a note together. It writes a new version of the questions, by
   #     the member, with those answers (`Apiary.Explore.Questions.answer/4`): an option's
   #     title as the answer's `option`, the member's text as its `note` with `option`
   #     null; the others
@@ -812,13 +815,16 @@ defmodule Apiary.WorkItems.Moves do
           | {:invalid, map | :form}
           | Ecto.Changeset.t()
 
+  @typedoc "An answer by question id (`Apiary.WorkItems.Proposal.check_answers_by_id/2`)."
+  @type answer_by_id :: %{required(String.t()) => String.t() | nil}
+
   # The places where no run is running, so a member may write review comments.
   @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
 
   # answer/4 gives the answers to the open questions, or, with a text where the latest
   # run's proposal waits, a review comment sent at once (the moduledoc).
   @doc false
-  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t()) ::
+  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t() | [answer_by_id]) ::
           {:ok, WorkItem.t()} | {:error, step_refusal}
   def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers) do
     step(scope, work_item, fn held, current, now ->
@@ -914,6 +920,17 @@ defmodule Apiary.WorkItems.Moves do
   # What the member gave, kept: the answers to the open questions, or a review comment on
   # the proposal. `{:ok, count, data}`, `data` what the event adds: the ids of the
   # questions answered, or the review comment's id and `"comment"` true.
+  defp keep_given(held, scope, %{status: :questions}, answers, now) when is_list(answers) do
+    with {:ok, document} <- questions(held),
+         {:ok, given} <-
+           invalid(Proposal.check_answers_by_id(document["questions"], answers)),
+         {:ok, document} <-
+           noted_by_id(Questions.answer(document, given, person_name(scope), now)),
+         {:ok, _version} <- push(held, scope, Questions.type_name(), Questions.file(document)) do
+      {:ok, length(given), %{"questions" => Enum.map(given, &elem(&1, 0))}}
+    end
+  end
+
   defp keep_given(held, scope, %{status: :questions}, answers, now) do
     with {:ok, document} <- questions(held),
          open = Questions.open(document),
@@ -965,6 +982,11 @@ defmodule Apiary.WorkItems.Moves do
     position = Enum.find_index(open, &(&1["id"] == id)) + 1
     {:error, {:invalid, %{Integer.to_string(position) => :blank}}}
   end
+
+  defp noted_by_id({:ok, document}), do: {:ok, document}
+
+  defp noted_by_id({:error, {:note_required, id}}),
+    do: {:error, {:invalid, %{id => :note_required}}}
 
   defp questions(held) do
     case Questions.newest(held) do

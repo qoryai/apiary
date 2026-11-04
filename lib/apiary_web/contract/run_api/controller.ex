@@ -358,7 +358,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :unreadable] and is_integer(index),
+       when check in [:format, :extension, :unreadable, :document_size, :svg_content] and
+              is_integer(index),
        do:
          {:error,
           {:invalid_artifact, "files[#{index}]",
@@ -381,6 +382,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     filename = Enum.at(push.filenames, index) || "files[#{index}]"
     {:error, {:invalid_artifact, "files[#{index}]", kept(push.name, reason, filename)}}
   end
+
+  defp refused({:invalid, :one_markdown}, push),
+    do:
+      {:error,
+       {:invalid_artifact, "files",
+        "Push one Markdown file (.md) in each version of #{push.name}."}}
 
   defp refused({:invalid, :no_video}, push),
     do:
@@ -466,12 +473,31 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp mismatch(:unreadable, filename, _push),
     do: "Push #{filename} again: Qory Apiary could not read it after it was received."
 
+  # A proposal's Markdown file over 256 KiB (`Apiary.Artifacts.Format`).
+  defp mismatch(:document_size, filename, _push),
+    do: "Shrink #{filename} to at most 262144 bytes."
+
   defp mismatch(check, filename, push),
-    do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, push)}."
+    do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, filename, push)}."
 
-  defp takes(:extension, _push), do: "the filename of a document ends in .md"
+  defp takes(:extension, _filename, _push), do: "the filename of a document ends in .md"
 
-  defp takes(:format, push) do
+  defp takes(:svg_content, _filename, _push),
+    do:
+      "an SVG has no script, no foreignObject, no image element and no reference outside " <>
+        "the file"
+
+  # A proposal's file that is neither Markdown, its sources nor an image gets the
+  # proposal's line; its Markdown file that is not UTF-8 text, a document's.
+  defp takes(:format, filename, %{name: "proposal"}) do
+    if String.downcase(Path.extname(filename)) == ".md",
+      do: "a document is a Markdown file of UTF-8 text",
+      else:
+        "a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images " <>
+          "and an optional sources.json"
+  end
+
+  defp takes(:format, _filename, push) do
     case field(push.type, :base_view) do
       :document -> "a document is a Markdown file of UTF-8 text"
       :image -> "an image is a PNG, JPEG, GIF, WebP or SVG file"

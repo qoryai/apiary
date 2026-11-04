@@ -43,7 +43,7 @@ defmodule Apiary.WorkItems.Explore do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.Artifacts.{Artifact, Version}
+  alias Apiary.Artifacts.{Artifact, ArtifactFile, Version}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.{RunHarness, WorkflowGap}
   alias Apiary.Repo
@@ -386,13 +386,27 @@ defmodule Apiary.WorkItems.Explore do
   end
 
   # proposal_text/2 is the Markdown of version `number` of the work item `id`'s proposal,
-  # the version's first file; nil for no such version, or a file that cannot be read as
-  # UTF-8 text.
+  # the text of `proposal/2`; nil where that is nil.
   @doc false
   @spec proposal_text(Ecto.UUID.t(), pos_integer | nil) :: String.t() | nil
-  def proposal_text(_id, nil), do: nil
+  def proposal_text(id, number) do
+    case proposal(id, number) do
+      %{text: text} -> text
+      nil -> nil
+    end
+  end
 
-  def proposal_text(id, number) when is_integer(number) do
+  # proposal/2 is version `number` of the work item `id`'s proposal, as a page shows it:
+  # `text`, the Markdown of its `text/markdown` file; `version_id`, the version's public
+  # id (`av_…`); and `images`, the filenames of its image files, in filename order. The
+  # version's `sources.json` is in none of them. Nil for no such version, a version with
+  # no Markdown file, or one that cannot be read as UTF-8 text.
+  @doc false
+  @spec proposal(Ecto.UUID.t(), pos_integer | nil) ::
+          %{text: String.t(), version_id: String.t(), images: [String.t()]} | nil
+  def proposal(_id, nil), do: nil
+
+  def proposal(id, number) when is_integer(number) do
     version =
       Repo.one(
         from v in Version,
@@ -401,18 +415,26 @@ defmodule Apiary.WorkItems.Explore do
           where: a.work_item_id == ^id and a.type == "proposal" and v.number == ^number,
           order_by: [asc: a.name],
           limit: 1,
-          preload: :files
+          preload: [files: ^from(f in ArtifactFile, order_by: f.filename)]
       )
 
-    with %Version{files: [file | _rest]} <- version,
+    with %Version{files: files} <- version,
+         %{} = file <- Enum.find(files, &markdown?/1),
          {:ok, source} <- Apiary.Artifacts.open_file(file),
          {:ok, text} <- bytes(source),
          true <- String.valid?(text) do
-      text
+      %{
+        text: text,
+        version_id: version.public_id,
+        images: for(%{content_type: "image/" <> _subtype} = image <- files, do: image.filename)
+      }
     else
       _none -> nil
     end
   end
+
+  defp markdown?(%{content_type: content_type}),
+    do: String.starts_with?(content_type, "text/markdown")
 
   defp bytes(path) when is_binary(path), do: File.read(path)
   defp bytes(stream), do: {:ok, stream |> Enum.to_list() |> IO.iodata_to_binary()}
