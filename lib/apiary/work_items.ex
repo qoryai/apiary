@@ -194,7 +194,7 @@ defmodule Apiary.WorkItems do
   # answer/4 answers open questions at the latest run, `attempt`, of `work_item`'s take
   # in, or writes a review comment on its proposal and sends it, and queues its next run
   # (`Apiary.WorkItems.Moves`).
-  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t()) ::
+  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t() | [Moves.answer_by_id()]) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
   defdelegate answer(scope, work_item, attempt, answers), to: Moves
 

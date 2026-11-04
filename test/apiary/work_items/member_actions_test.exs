@@ -373,6 +373,148 @@ defmodule Apiary.WorkItems.MemberActionsTest do
     end
   end
 
+  describe "answer by question id" do
+    defp asked_with_options!(work_item),
+      do:
+        asked!(work_item, [
+          %{
+            "question" => "Which basket?",
+            "options" => [
+              %{"title" => "The small one", "explanation" => "The checkout page shows it."},
+              %{"title" => "The large one", "explanation" => "The shop page shows it."}
+            ]
+          },
+          "Which sale?",
+          "Which shop?"
+        ])
+
+    test "an option and a note together, a note alone, and the rest left open", ctx do
+      asked_with_options!(ctx.work_item)
+
+      answers = [
+        %{"id" => "q1", "option" => " The large one ", "note" => "With the gift card field."},
+        %{"id" => "q3", "option" => nil, "note" => " The spring sale. \r\n"}
+      ]
+
+      assert {:ok, %WorkItem{}} = WorkItems.answer(ctx.scope, ctx.work_item, 1, answers)
+
+      assert [
+               %{"id" => "q1", "state" => "answered", "answer" => first},
+               %{"id" => "q2", "state" => "open"} = second,
+               %{"id" => "q3", "state" => "answered", "answer" => third}
+             ] = questions(ctx.work_item)
+
+      assert %{"option" => "The large one", "note" => "With the gift card field."} = first
+      assert %{"option" => nil, "note" => "The spring sale."} = third
+      refute Map.has_key?(second, "answer")
+
+      data = %{"take_in" => 1, "attempt" => 1, "count" => 2, "questions" => ["q1", "q3"]}
+      assert [{:taken_in, _}, {:answered, ^data}] = kinds(ctx.work_item)
+      assert entry("work_item.answer", ctx.work_item).details == data
+      assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
+    end
+
+    test "an option with an empty note, or none, has no note", ctx do
+      asked_with_options!(ctx.work_item)
+
+      answers = [
+        %{"id" => "q1", "option" => "The small one", "note" => " "},
+        %{"id" => "q2", "note" => "The spring one."}
+      ]
+
+      assert {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, answers)
+      assert [%{"answer" => first}, %{"answer" => second}, _open] = questions(ctx.work_item)
+      assert first["option"] == "The small one"
+      refute Map.has_key?(first, "note")
+      assert %{"option" => nil, "note" => "The spring one."} = second
+    end
+
+    test "each answer that does not hold, refused by its id, nothing written", ctx do
+      asked_with_options!(ctx.work_item)
+      before = written(ctx.work_item)
+
+      answers = [
+        %{"id" => "q9", "note" => "Yes."},
+        %{"id" => "q1", "option" => "Another one"},
+        %{"id" => "q2", "option" => nil, "note" => " \n "},
+        %{"id" => "q3", "note" => String.duplicate("a", 2001)}
+      ]
+
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, answers) ==
+               {:error,
+                {:invalid,
+                 %{
+                   "q9" => :unknown_id,
+                   "q1" => :unknown_option,
+                   "q2" => :note_required,
+                   "q3" => {:too_long, 2000}
+                 }}}
+
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, [
+               %{"id" => "q1", "option" => "The small one", "note" => "a\u200Bb"}
+             ]) == {:error, {:invalid, %{"q1" => :characters}}}
+
+      # 2,000 code points is the note's most.
+      assert {:error, {:invalid, %{"q9" => :unknown_id}}} =
+               WorkItems.answer(ctx.scope, ctx.work_item, 1, [
+                 %{"id" => "q3", "note" => String.duplicate("é", 2000)},
+                 %{"id" => "q9", "note" => "Yes."}
+               ])
+
+      assert written(ctx.work_item) == before
+    end
+
+    test "a question that is no longer open is refused by its id", ctx do
+      asked_with_options!(ctx.work_item)
+      {_version, document} = Questions.newest(Repo.get!(WorkItem, ctx.work_item.id))
+
+      {:ok, document} =
+        Questions.answer(document, [{"q2", nil, "Earlier."}], "Someone", DateTime.utc_now())
+
+      {:ok, _version} =
+        Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "questions", [
+          Questions.file(document)
+        ])
+
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, [
+               %{"id" => "q2", "note" => "Again."},
+               %{"id" => "q3", "note" => "The shop page."}
+             ]) == {:error, {:invalid, %{"q2" => :not_open}}}
+
+      assert [_q1, %{"answer" => %{"note" => "Earlier."}}, %{"state" => "open"}] =
+               questions(ctx.work_item)
+    end
+
+    test "a list of another shape is no form", ctx do
+      asked_with_options!(ctx.work_item)
+      before = written(ctx.work_item)
+
+      for answers <- [
+            [],
+            ["q1"],
+            [%{"id" => 1, "note" => "Yes."}],
+            [%{"note" => "Yes."}],
+            [%{"id" => "q1", "custom" => "Yes."}],
+            [%{"id" => "q1", "option" => 1}],
+            [%{"id" => "q1", "note" => %{}}],
+            [%{"id" => "q2", "note" => "Yes."}, %{"id" => "q2", "note" => "No."}]
+          ] do
+        assert WorkItems.answer(ctx.scope, ctx.work_item, 1, answers) ==
+                 {:error, {:invalid, :form}},
+               inspect(answers)
+      end
+
+      assert written(ctx.work_item) == before
+    end
+
+    test "where a proposal waits, a list is no review comment", ctx do
+      proposed!(ctx.work_item)
+
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, [%{"id" => "q1", "note" => "Yes."}]) ==
+               {:error, {:invalid, :form}}
+    end
+  end
+
   describe "confirm" do
     test "the proposal's version kept, ready for Shape", ctx do
       proposed!(ctx.work_item)

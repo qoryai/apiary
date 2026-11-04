@@ -12,7 +12,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
   alias Apiary.{Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.RunHarness
-  alias Apiary.WorkItems.WorkItemEvent
+  alias Apiary.WorkItems.{Explore, WorkItemEvent}
 
   @moduletag needs: :factory
 
@@ -468,6 +468,44 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
       assert [%{kind: :taken_in}, %{kind: :started, start: nil}] =
                WorkItems.explore_thread(ctx.scope, ctx.work_item)
+    end
+  end
+
+  describe "a version of the proposal (Explore.proposal/2)" do
+    @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0>>
+    @svg ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>)
+
+    test "is its Markdown file's text, its id and its images, never sources.json", ctx do
+      %{dispatch_run: dispatch_run} =
+        explore_run_fixture(ctx.work_item, result: understood_result())
+
+      files = [
+        %{filename: "a-cart.png", content_type: "image/png", binary: @png},
+        %{filename: "proposal.md", content_type: "text/markdown", binary: "# Gift cards\n"},
+        %{filename: "checkout.svg", content_type: "image/svg+xml", binary: @svg},
+        %{filename: "sources.json", content_type: "application/json", binary: ~s({"sources":[]})}
+      ]
+
+      {:ok, version} =
+        Apiary.Artifacts.push({:run, dispatch_run}, ctx.work_item, "proposal", files,
+          stage_id: dispatch_run.stage_id
+        )
+
+      assert version.number == 2
+      version_id = version.public_id
+
+      assert %{text: "# Gift cards\n", version_id: ^version_id, images: images} =
+               Explore.proposal(ctx.work_item.id, 2)
+
+      assert images == ["a-cart.png", "checkout.svg"]
+      assert Explore.proposal_text(ctx.work_item.id, 2) == "# Gift cards\n"
+
+      assert %{text: text, images: []} = Explore.proposal(ctx.work_item.id, 1)
+      assert Explore.proposal_text(ctx.work_item.id, 1) == text
+
+      assert Explore.proposal(ctx.work_item.id, 3) == nil
+      assert Explore.proposal(ctx.work_item.id, nil) == nil
+      assert Explore.proposal_text(ctx.work_item.id, nil) == nil
     end
   end
 
