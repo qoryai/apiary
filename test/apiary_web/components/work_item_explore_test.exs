@@ -191,6 +191,32 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a failed run that wrote a proposal: Explore's run failed, at the header too" do
+      failed = run(%{attempt: 2, state: :failed, outcome: :error, wrote: 2})
+      w = work_item(%{status: :no_result, run: failed})
+      assert C.status_words(w) == "Explore's run failed"
+      assert C.mark(w) == :err
+
+      html =
+        render_component(&C.work_item_header/1,
+          work_item: w,
+          integration: "GitHub",
+          link: "https://apiary.example.com/8wonders/main/work/88"
+        )
+
+      assert text(html, ".q-wi-meta .q-wi-st") == "Explore's run failed"
+
+      # A failed run that wrote nothing, and a run that wrote a proposal and was lost.
+      assert C.status_words(%{w | run: %{failed | wrote: nil}}) ==
+               "Explore ended without a result"
+
+      assert C.status_words(%{w | status: :lost, run: %{failed | state: :lost}}) ==
+               "Explore's run was lost"
+
+      # At the take in's last run, the run limit's words.
+      assert C.status_words(%{w | run: %{failed | attempt: 3}}) == "Explore used its 3 runs"
+    end
+
     test "a run limit of one says run, not runs" do
       w = work_item(%{status: :used_up, run: run(%{attempt: 1, of: 1})})
       assert C.status_words(w) == "Explore used its 1 run"

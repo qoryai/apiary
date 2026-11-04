@@ -206,6 +206,12 @@ defmodule ApiaryWeb.WorkItemComponents do
         of: Format.number(of)
       )
 
+  # A failed run that wrote a proposal, which the tab shows: the run failed, and Explore
+  # did not end without a result.
+  defp words_of(%{status: :no_result, run: %{state: :failed, wrote: version}})
+       when is_integer(version),
+       do: gettext("Explore's run failed")
+
   defp words_of(%{status: :no_result}), do: gettext("Explore ended without a result")
   defp words_of(%{status: :lost}), do: gettext("Explore's run was lost")
   defp words_of(%{status: :cancelled}), do: gettext("Explore's run was cancelled")
