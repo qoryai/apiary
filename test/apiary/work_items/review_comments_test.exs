@@ -420,6 +420,25 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert {_version, %{"questions" => [%{"answer" => %{"by" => %{"name" => ^name}}}]}} =
                Apiary.Explore.Questions.newest(reload(work_item))
     end
+
+    test "is unnamed member when nothing of it is left for one line", %{scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result(["Which basket?"]))
+
+      {1, _rows} =
+        Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^scope.user.id),
+          set: [email: " \t\u2028\u200B @example.com"]
+        )
+
+      assert {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The small one."})
+
+      assert {_version,
+              %{"questions" => [%{"answer" => %{"by" => %{"name" => "unnamed member"}}}]}} =
+               Apiary.Explore.Questions.newest(reload(work_item))
+
+      proposed = proposed!(scope)
+      assert {:ok, _} = WorkItems.review_comment(scope, proposed, 1, @comment)
+      assert [%{"by" => %{"name" => "unnamed member"}}] = review_comments(proposed)
+    end
   end
 
   describe "a newest version that cannot be read" do

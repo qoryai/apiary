@@ -823,6 +823,9 @@ defmodule Apiary.WorkItems.Moves do
   # with none of the white space and the characters `$defs/line` refuses
   # (`priv/schemas/artifacts/questions.schema.json`), each run of them made one space.
   @member_name 160
+  # A member's name in the questions and the review comments when nothing of it is left
+  # for one line (`person_name/1`).
+  @unnamed_member "unnamed member"
   @not_in_line ~r/[\s\x{0}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]+/u
 
   # answer/4 gives the answers to the open questions, or, with a text where the latest
@@ -1041,8 +1044,8 @@ defmodule Apiary.WorkItems.Moves do
   # questions and the review comments formats take a member's name: one line of 1 to 160
   # characters (`member.name`). Each run of white space, and of the characters a line
   # refuses, is one space; the ends are trimmed; the name is cut to 160 characters (code
-  # points). An empty name is the input's words for a former member. So a member's write
-  # never fails the format check for the name.
+  # points). A name that is then empty is `unnamed member`. So a member's write never
+  # fails the format check for the name.
   defp person_name(%Scope{user: %{id: id}}) do
     name =
       id
@@ -1054,7 +1057,7 @@ defmodule Apiary.WorkItems.Moves do
       |> Enum.join()
       |> String.trim()
 
-    if name == "", do: Apiary.Dispatches.Inputs.former_member(), else: name
+    if name == "", do: @unnamed_member, else: name
   end
 
   defp comment_text(text) do
