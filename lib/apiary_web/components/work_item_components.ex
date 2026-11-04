@@ -2799,16 +2799,20 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :comment, :map, required: true
   attr :reply_path, :any, default: nil
   attr :reading, :any, default: nil
+  attr :expanded, :boolean, default: false, doc: "opened, also where it is closed"
 
+  # A review comment's card: an open one opened, a closed one folded (`review_comments/1`).
   defp review_card(assigns) do
     comment = assigns.comment
     closed = comment.state == :closed
     last = comment.replies |> Enum.filter(&is_integer(&1.run)) |> List.last()
+    folded = closed and not assigns.expanded
 
     assigns =
       assign(assigns,
         closed: closed,
-        expanded: if(closed, do: "false", else: "true"),
+        folded: folded,
+        expanded: if(folded, do: "false", else: "true"),
         show: gettext("Show the review comment"),
         hide: gettext("Hide the review comment"),
         outcome: closed && last && outcome_words(last)
@@ -2821,7 +2825,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         type="button"
         class="q-rc-head"
         aria-expanded={@expanded}
-        aria-label={if(@closed, do: @show, else: @hide)}
+        aria-label={if(@folded, do: @show, else: @hide)}
         phx-click={
           JS.toggle_attribute({"aria-expanded", "true", "false"})
           |> JS.toggle_attribute({"aria-label", @hide, @show})
@@ -2954,11 +2958,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <.page_form id={@id} title={@title}>
-      <.review_card
-        :if={@comment}
-        id={"#{@id}-comment"}
-        comment={%{@comment | state: :open, reopened: false}}
-      />
+      <.review_card :if={@comment} id={"#{@id}-comment"} comment={@comment} expanded />
       <form id={"#{@id}-form"} class="q-form" phx-submit={@event} novalidate>
         <input type="hidden" name="number" value={@number} />
         <input :if={@comment} type="hidden" name="comment" value={@comment.id} />
