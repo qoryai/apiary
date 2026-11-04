@@ -566,7 +566,7 @@ defmodule Apiary.Stages do
     end
   end
 
-  # approver/2 says whether the scope's person is among the approvers of the stage of
+  # approver/2 is whether the scope's person is among the approvers of the stage of
   # the work item `work_item`: `:ok` with the workflow model off, for a work item the
   # runner did not place, and for a person among the approvers of its stage, or a stage
   # that lists none; `{:error, :not_approver}` otherwise. The approver rule alone, with

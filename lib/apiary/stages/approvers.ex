@@ -3,9 +3,10 @@ defmodule Apiary.Stages.Approvers do
   # member (`"members"`, or no list), or the members whose account ids the list has
   # (`%{"members" => ids}`). `Apiary.Access` asks `allows?/2` for the actions only a
   # stage's approvers take on a work item at that stage; `Apiary.Stages` asks `listed/1`
-  # and `listed?/2` for the gate it shows. This module reads the process version and
-  # nothing else, and calls neither `Apiary.Access` nor `Apiary.Stages`, so both may call
-  # it.
+  # and `listed?/2` for the gate it shows. This module reads the workflow model setting
+  # and the work item's process version (`Apiary.Processes.version_for/1`, which reads the
+  # workspace's current version for a work item with none), and calls neither
+  # `Apiary.Access` nor `Apiary.Stages`, so both may call it.
   @moduledoc false
 
   alias Apiary.Accounts.Scope

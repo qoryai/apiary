@@ -479,7 +479,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"work_item.review_comment",
-      "write a review comment on Qory's proposal for a work item, reply to one, and send the open ones to Explore's next run. When the work item's stage lists approvers, only those people take it.",
+      "write a review comment on the proposal for a work item, reply to one, and send the open ones to Explore's next run. When the work item's stage lists approvers, only those people take it.",
       feature: :factory,
       roles: @members,
       audited:
@@ -828,7 +828,9 @@ defmodule Apiary.Access do
   the edition put on the scope, because what a scope carries may be as old as the
   LiveView that holds it. A page asks `can?/3`, with the same action, for what it shows:
   a button for an action the reader may not take is not rendered. `can?/3` answers from
-  the scope as it was loaded, without a read, so a page may ask it on every render. A
+  the scope as it was loaded, without a read, so a page may ask it on every render; the
+  one read is step 9's, of a work item's process version when the work item does not
+  have it loaded. A
   context function that asks several questions in one change reads once with `reload/2`
   and asks each with `check/3`.
 
@@ -1266,8 +1268,9 @@ defmodule Apiary.Access do
   ## The answer
 
   @doc """
-  Whether `scope` may take `action` on `subject`, from the scope as it was loaded. For what
-  a page shows; a context function that acts asks `authorize/3`.
+  Whether `scope` may take `action` on `subject`, from the scope as it was loaded, as
+  `check/3` answers it. For what a page shows; a context function that acts asks
+  `authorize/3`.
   """
   @spec can?(Scope.t() | nil, action, subject | nil) :: boolean
   def can?(scope, action, subject), do: check(scope, action, subject) == :ok
@@ -1291,8 +1294,9 @@ defmodule Apiary.Access do
   end
 
   @doc """
-  The answer of `authorize/3`, with its reason, from the scope as it is, without a read.
-  For a context function that asks more than one question in one change: it reads once
+  The answer of `authorize/3`, with its reason, from the scope as it is, without a read of
+  the scope. Step 9 of the moduledoc reads a work item's process version when the work
+  item does not have it loaded. For a context function that asks more than one question in one change: it reads once
   with `reload/2` and asks each question of that scope.
   """
   @spec check(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
