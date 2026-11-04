@@ -1202,7 +1202,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         ]
       },
       %{
-        "question" => "Where should Qory test the change first?",
+        "question" => "Where should the change be tested first?",
         "options" => [
           %{
             "title" => "Phones",
