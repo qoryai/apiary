@@ -198,14 +198,14 @@ defmodule Apiary.Explore.Questions do
 
   def open(_document), do: []
 
-  @doc """
-  The open questions of `document` that belong to the current take in, in its order;
-  none for nil. A question belongs to the current take in when it is open and its
-  `asked.run`, or the `reopened.run` of the last entry of its `history` that has one, is
-  in `runs`: the numbers of the registered runs of the current take in's runs of the
-  queue (`take_in_runs/2`). A work item has one questions document across its take ins,
-  so a question left open in an earlier take in stays open in it, and does not count.
-  """
+  # open_in_take_in/2 is the open questions of `document` that belong to the current take
+  # in, in its order; none for nil. A question belongs to the current take in when it is
+  # open and its `asked.run`, or the `reopened.run` of the last entry of its `history`
+  # that has one, is in `runs`: the numbers of the registered runs of the current take
+  # in's runs of the queue (`take_in_runs/2`). A work item has one questions document
+  # across its take ins, so a question left open in an earlier take in stays open in it,
+  # and does not count.
+  @doc false
   @spec open_in_take_in(document | nil, MapSet.t(pos_integer)) :: [map]
   def open_in_take_in(document, %MapSet{} = runs) do
     Enum.filter(open(document), fn question ->
@@ -214,12 +214,11 @@ defmodule Apiary.Explore.Questions do
     end)
   end
 
-  @doc """
-  The numbers of the registered runs of the runs of the queue of take in `take_in` of the
-  work item `work_item_id`, the runs `open_in_take_in/2` counts. `asked.run` and
-  `reopened.run` are a registered run's number (`Apiary.Runs.Run`, `number`), and its
-  run of the queue has the take in.
-  """
+  # take_in_runs/2 is the numbers of the registered runs of the runs of the queue of take
+  # in `take_in` of the work item `work_item_id`, the runs `open_in_take_in/2` counts.
+  # `asked.run` and `reopened.run` are a registered run's number (`Apiary.Runs.Run`,
+  # `number`), and its run of the queue has the take in.
+  @doc false
   @spec take_in_runs(Ecto.UUID.t(), pos_integer) :: MapSet.t(pos_integer)
   def take_in_runs(work_item_id, take_in) when is_integer(take_in) do
     Repo.all(
