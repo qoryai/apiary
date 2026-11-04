@@ -982,6 +982,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "This diagram has an error, so it is shown as written."
              ]
 
+      assert attr(html, hook, "data-not-drawn") == [
+               "Qory Apiary does not draw this diagram, so it is shown as written."
+             ]
+
       assert text(html, "#{hook} #{p}-text pre.q-mermaid-source code") =~ "Cart --> Invoice"
 
       # A new version is another block, so the hook draws it again.

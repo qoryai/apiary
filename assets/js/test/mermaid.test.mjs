@@ -1,14 +1,27 @@
 // What the Mermaid hook draws of a block (assets/js/hooks/mermaid.js, `source`): without
 // its directive lines, its front matter, and its click, link, links and callback lines;
 // the settings it passes to mermaid.initialize (`settings`), with the secure list that
-// the vendored Mermaid applies to a document's front matter; the blocks it does not draw,
-// as drawing them would load an address (`loads`); the redraw on a theme change
-// (`watchTheme`); and the width it gives the <img> (`width`). `node --test 'assets/js/test/*.test.mjs'` (no npm).
+// the vendored Mermaid applies to a document's front matter; the five diagram types it
+// draws (`types`, `type`) and what it shows for a block (`drawing`); the blocks it does
+// not draw, as drawing them would load an address (`loads`); the redraw on a theme
+// change (`watchTheme`); and the width it gives the <img> (`width`).
+// `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
 import assert from "node:assert/strict"
 
-import {loads, secure, settings, source, watchTheme, width} from "../hooks/mermaid.js"
+import {
+  dompurifyConfig,
+  drawing,
+  loads,
+  secure,
+  settings,
+  source,
+  type,
+  types,
+  watchTheme,
+  width,
+} from "../hooks/mermaid.js"
 
 // The front matter of the security round's finding: it turns HTML labels back on.
 const FRONT_MATTER = [
@@ -86,17 +99,49 @@ test("keeps a --- line after the diagram's first line", () => {
   assert.equal(source(text), text)
 })
 
-test("drops each link, links and callback line, and keeps linkStyle", () => {
+test("drops a class diagram's link and callback statements, and keeps linkStyle", () => {
   const text = [
     "classDiagram",
     '  link Invoice "https://example.com/invoice" "Open"',
+    '  link `Big Invoice` "https://example.com"',
+    '  callback`Big Invoice`"pay"',
+    '  link Order"https://example.com/order"',
     '  callback Invoice "pay" "Pay"',
-    '  class Invoice; LINKS Invoice: {"Docs": "https://example.com"}',
+    '  class Order; LINK Order "https://example.com/order"',
+    '  click Invoice href "https://example.com"',
     "  Invoice --> Order",
     "  linkStyle 0 stroke:#888",
   ].join("\n")
 
   assert.equal(source(text), "classDiagram\n  Invoice --> Order\n  linkStyle 0 stroke:#888")
+})
+
+test("drops a sequence diagram's link and links statements", () => {
+  const text = [
+    "sequenceDiagram",
+    "  participant Alice",
+    "  link Alice: Dashboard @ https://example.com/dashboard",
+    '  links Alice: {"Docs": "https://example.com/docs"}',
+    "  Alice->>Bob: Send the invoice",
+  ].join("\n")
+
+  assert.equal(
+    source(text),
+    "sequenceDiagram\n  participant Alice\n  Alice->>Bob: Send the invoice",
+  )
+})
+
+test("keeps a flowchart node called link, links or callback", () => {
+  const text = [
+    "flowchart LR",
+    "  link --> B",
+    "  links --> callback",
+    "  callback -->|pay: now| link",
+    "  link-->C",
+    '  link --> D["Invoice"]',
+  ].join("\n")
+
+  assert.equal(source(text), text)
 })
 
 test("passes the secure list, with every HTML, CSS and link setting, to initialize", () => {
@@ -148,7 +193,7 @@ test("the vendored Mermaid keeps htmlLabels off against a front matter config", 
   assert.equal(config.htmlLabels, false)
   assert.equal(config.flowchart?.htmlLabels, undefined)
   assert.equal(config.themeCSS, undefined)
-  assert.equal(config.dompurifyConfig, undefined)
+  assert.deepEqual(config.dompurifyConfig, dompurifyConfig)
   assert.equal(config.securityLevel, "strict")
   assert.equal(config.theme, "base")
 })
@@ -160,10 +205,53 @@ test("does not draw a flowchart node's image, written in any way YAML reads", ()
   assert.equal(loads("flowchart LR\n  A@{ shape: rect, label: \"Invoice\" }\n  A --> B"), false)
 })
 
+test("draws imgur, and img outside a node data block", () => {
+  const text = [
+    "flowchart LR",
+    "  A[Upload to imgur] --> B@{ shape: rect, label: \"imgur: the host\" }",
+    "  B --> C[img: the tag]",
+  ].join("\n")
+  assert.equal(loads(text), false)
+})
+
+test("does not draw a node data block with the word img in it, even in a label", () => {
+  assert.equal(loads("flowchart LR\n  A@{ label: it's, img: \"/x\", other: 'y' }"), true)
+  assert.equal(loads("flowchart LR\n  A@{ label: it's, img: \"/acme/q1\", other: 'y' }"), true)
+  assert.equal(loads("flowchart LR\n  C@{ shape: circle, label: 'img: the tag' }"), true)
+})
+
+test("finds an img key after a quoted closing brace and in a later block", () => {
+  assert.equal(loads('flowchart LR\n  A@{ label: "a } b", img: "/a.png" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ label: "x", "img": "/q.png" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ shape: rect }\n  B@{ shape: rect, img: "/b.png" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ shape: rect, label: {img: "/c.png"} }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ shape: rect, &k img: "/d.png" }'), true)
+  assert.equal(loads('flowchart LR\n  A@{ shape: rect, img: "/e.png"'), true)
+})
+
 test("does not draw a sequence diagram's properties line, whose icon is an image", () => {
   const text = 'sequenceDiagram\n  participant Alice\n  properties Alice: {"icon": "/acme/a.png"}'
   assert.equal(loads(text), true)
   assert.equal(loads("sequenceDiagram\n  Alice->>Bob: properties of the invoice"), false)
+})
+
+test("does not draw a sequence diagram's details line, which reads a page element", async () => {
+  assert.equal(loads("sequenceDiagram\n  details A: x"), true)
+  assert.equal(loads("sequenceDiagram\n  participant A; details A: acme-props"), true)
+  const mermaid = library(true)
+  assert.deepEqual(await drawing(mermaid, "sequenceDiagram\n  details A: x"), {line: "notDrawn"})
+  assert.deepEqual(mermaid.rendered, [])
+
+  const text = "sequenceDiagram\n  Alice->>Bob: details of the invoice\n  Bob-->>Alice: Thanks"
+  assert.equal(loads(text), false)
+  assert.ok((await drawing(library(true), text)).svg)
+})
+
+test("does not draw an eventmodeling diagram with markup in it", () => {
+  assert.equal(loads("eventmodeling\ntf 01 cmd A {<b>x</b> }"), true)
+  assert.equal(loads("%% Invoices\n\n  eventmodeling\ntf 01 cmd A {<b>x</b> }"), true)
+  assert.equal(loads("eventmodeling\ntf 01 cmd A { x }"), false)
+  assert.equal(loads("flowchart LR\n  A[\"a < b\"] --> B"), false)
 })
 
 test("does not draw CSS that loads an address, escaped or not", () => {
@@ -244,4 +332,116 @@ test("watches nothing where there is no MutationObserver", () => {
   const stop = watchTheme(html, () => assert.fail("no redraw"), undefined)
   assert.equal(typeof stop, "function")
   stop()
+})
+
+test("Mermaid's sanitizer drops what loads, links or styles, in every text it sanitizes", () => {
+  const config = settings({})
+  assert.equal(config.dompurifyConfig, dompurifyConfig)
+  assert.ok(config.secure.includes("dompurifyConfig"))
+
+  for (const tag of ["img", "image", "picture", "source", "video", "audio", "iframe"])
+    assert.ok(dompurifyConfig.FORBID_TAGS.includes(tag), tag)
+  for (const tag of ["object", "embed", "form", "input", "a", "svg", "use", "style"])
+    assert.ok(dompurifyConfig.FORBID_TAGS.includes(tag), tag)
+  for (const attr of ["style", "class", "id", "src", "srcset", "href", "xlink:href"])
+    assert.ok(dompurifyConfig.FORBID_ATTR.includes(attr), attr)
+  for (const attr of ["background", "poster"]) assert.ok(dompurifyConfig.FORBID_ATTR.includes(attr))
+})
+
+test("the vendored Mermaid sanitizes with the site's dompurifyConfig", async () => {
+  // Mermaid's sanitizeText uses the dompurifyConfig of the config it is given, Mermaid's
+  // current config, where there is one. DOMPurify needs a window, so in Node this shows
+  // that the setting reaches that config, and that a directive cannot replace it.
+  const {default: mermaid} = await import("../../vendor/mermaid/mermaid.esm.min.mjs")
+  mermaid.initialize(settings({}))
+  await mermaid.parse('%%{init: {"dompurifyConfig": {"ADD_TAGS": ["img"]}}}%%\nflowchart LR\n  A').catch(() => null)
+  assert.deepEqual(mermaid.mermaidAPI.getConfig().dompurifyConfig, dompurifyConfig)
+})
+
+// One diagram of each type the hook draws, with Acme's invoice steps.
+const DRAWN = {
+  flowchart: "flowchart LR\n  Cart --> Invoice",
+  graph: "graph TD;\n  Cart-->Invoice",
+  sequenceDiagram: "sequenceDiagram\n  Alice->>Acme: Send the invoice",
+  stateDiagram: "stateDiagram\n  [*] --> Draft\n  Draft --> Sent",
+  "stateDiagram-v2": "stateDiagram-v2\n  [*] --> Draft\n  Draft --> Paid",
+  classDiagram: "classDiagram\n  Invoice <|-- CreditNote",
+  erDiagram: "erDiagram\n  CUSTOMER ||--o{ INVOICE : receives",
+}
+
+// One diagram of other types Mermaid draws, which the hook leaves as text.
+const NOT_DRAWN = {
+  eventmodeling: "eventmodeling\ntf 01 cmd SendInvoice",
+  gantt: "gantt\n  title Invoices\n  Send :a1, 2026-11-01, 3d",
+  pie: 'pie\n  "Paid" : 3\n  "Open" : 1',
+  mindmap: "mindmap\n  Invoices\n    Paid",
+  C4Context: 'C4Context\n  Person(a, "Accountant")',
+  kanban: "kanban\n  Open\n    [Invoice 1]",
+  "architecture-beta": "architecture-beta\n  service api(server)[Invoices]",
+}
+
+// A Mermaid stand-in whose render returns an SVG, or fails as on a syntax error.
+const library = parses => ({
+  rendered: [],
+  async render(id, text) {
+    this.rendered.push(text)
+    if (!parses) throw new Error("Parse error on line 2")
+    return {svg: `<svg id="${id}"></svg>`}
+  },
+})
+
+test("draws each of the five types, after blank and comment lines too", async () => {
+  assert.deepEqual(Object.keys(DRAWN), types)
+  for (const [name, text] of Object.entries(DRAWN)) {
+    assert.equal(type(text), name)
+    const mermaid = library(true)
+    assert.ok((await drawing(mermaid, text)).svg, name)
+    assert.deepEqual(mermaid.rendered, [text])
+    assert.ok((await drawing(library(true), `\n%% Acme\n  \n${text}`)).svg, name)
+  }
+})
+
+test("shows the not-drawn line for each other type, and draws nothing", async () => {
+  for (const [name, text] of Object.entries(NOT_DRAWN)) {
+    assert.equal(type(text), name)
+    const mermaid = library(true)
+    assert.deepEqual(await drawing(mermaid, text), {line: "notDrawn"}, name)
+    assert.deepEqual(mermaid.rendered, [])
+  }
+  for (const text of ["flowchart-elk LR\n  A --> B", "classDiagram-v2\n  A <|-- B", "Flowchart LR"])
+    assert.deepEqual(await drawing(library(true), text), {line: "notDrawn"})
+  assert.deepEqual(await drawing(library(true), ""), {line: "notDrawn"})
+  // A byte order mark, or front matter that reaches drawing, leaves gantt not drawn.
+  const gantt = "gantt\n  title Invoices\n  Send :a1, 2026-11-01, 3d"
+  assert.deepEqual(await drawing(library(true), `\ufeff${gantt}`), {line: "notDrawn"})
+  assert.deepEqual(await drawing(library(true), `---\ntitle: x\n---\n${gantt}`), {line: "notDrawn"})
+  assert.deepEqual(await drawing(library(true), source(`---\ntitle: x\n---\n${gantt}`)), {
+    line: "notDrawn",
+  })
+})
+
+test("shows the not-drawn line for a flowchart with a node image", async () => {
+  const text = 'flowchart LR\n  A@{ img: "/acme/logo.png", label: "Logo" } --> B'
+  const mermaid = library(true)
+  assert.deepEqual(await drawing(mermaid, text), {line: "notDrawn"})
+  assert.deepEqual(mermaid.rendered, [])
+})
+
+test("shows the error line for a flowchart with a syntax error", async () => {
+  const text = "flowchart LR\n  Cart -->"
+  assert.deepEqual(await drawing(library(false), text), {line: "failed"})
+
+  const {default: mermaid} = await import("../../vendor/mermaid/mermaid.esm.min.mjs")
+  mermaid.initialize(settings({}))
+  await assert.rejects(mermaid.parse(text), /Parse error/)
+})
+
+test("each type the hook draws is one of the five to the vendored Mermaid", async () => {
+  const {default: mermaid} = await import("../../vendor/mermaid/mermaid.esm.min.mjs")
+  mermaid.initialize(settings({}))
+  await mermaid.parse(DRAWN.flowchart)
+  const five = ["flowchart-v2", "flowchart", "sequence", "state", "stateDiagram", "class", "er"]
+  for (const text of Object.values(DRAWN)) assert.ok(five.includes(mermaid.detectType(text)), text)
+  for (const text of Object.values(NOT_DRAWN))
+    assert.ok(!five.includes(mermaid.detectType(text)), text)
 })

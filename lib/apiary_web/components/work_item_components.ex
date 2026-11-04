@@ -2358,6 +2358,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         data-script={~p"/assets/js/mermaid.js"}
         data-alt={gettext("Diagram")}
         data-source={gettext("Diagram source")}
+        data-not-drawn={gettext("Qory Apiary does not draw this diagram, so it is shown as written.")}
         data-failed={gettext("This diagram has an error, so it is shown as written.")}
       >
         <.run_text id={"#{@id}-text"} value={@body} key={:message} />

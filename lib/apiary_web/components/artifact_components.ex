@@ -376,6 +376,7 @@ defmodule ApiaryWeb.ArtifactComponents do
         data-script={@script}
         data-alt={gettext("Diagram")}
         data-source={gettext("Diagram source")}
+        data-not-drawn={gettext("Qory Apiary does not draw this diagram, so it is shown as written.")}
         data-failed={gettext("This diagram has an error, so it is shown as written.")}
       >
         <section class="grid gap-2" aria-label={@file.filename}>
