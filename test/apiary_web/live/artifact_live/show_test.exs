@@ -556,35 +556,68 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"chart.png", "Gift cards"}])
 
       assert html =~ "Replace chart.png with an image of the type its name ends in."
-      refute html =~ "Markdown file of UTF-8 text"
+      refute html =~ "Upload chart.png again."
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "maps :format and :image_type on an image to the image line" do
-      for reason <- [:image_type, :format] do
-        assert ApiaryWeb.ArtifactLive.New.proposal_format_line(reason, "chart.png") ==
-                 "Replace chart.png with an image of the type its name ends in."
+    test "maps each reason for a proposal's file to its line" do
+      for {reason, filename, line} <- [
+            {:image_type, "chart.png",
+             "Replace chart.png with an image of the type its name ends in."},
+            {:svg_format, "diagram.svg",
+             "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."},
+            {:format, "proposal.md", "Replace proposal.md with a Markdown file of UTF-8 text."},
+            {:format, "sources.json",
+             "Make sources.json valid JSON. The file does not parse as JSON."}
+          ] do
+        assert ApiaryWeb.ArtifactLive.New.proposal_format_line(reason, filename) == line
       end
-
-      for reason <- [:svg_format, :format] do
-        assert ApiaryWeb.ArtifactLive.New.proposal_format_line(reason, "diagram.svg") ==
-                 "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."
-      end
-
-      assert ApiaryWeb.ArtifactLive.New.proposal_format_line(:format, "sources.json") ==
-               "Make sources.json valid JSON. The file does not parse as JSON."
     end
 
-    test "says to make a proposal's SVG that does not parse a well-formed SVG file", ctx do
-      svg = ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect></svg>)
+    test "says to make a proposal's SVG a well-formed SVG file", ctx do
+      for svg <- [
+            ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect></svg>),
+            <<"<svg xmlns=\"http://www.w3.org/2000/svg\"><text>", 0xFF, "</text></svg>">>
+          ] do
+        html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+        assert html =~
+                 "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."
+
+        refute html =~ "Upload diagram.svg again."
+        assert Artifacts.list(ctx.work_item) == []
+      end
+    end
+
+    test "says to shrink a proposal's SVG past 512 KiB", ctx do
+      svg =
+        ~s(<svg xmlns="http://www.w3.org/2000/svg"><!--) <>
+          String.duplicate("a", 524_288) <> "--></svg>"
 
       html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
 
-      assert html =~
-               "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."
-
-      refute html =~ "an image of the type its name ends in"
+      assert html =~ "Shrink diagram.svg to at most 512 KiB."
+      refute html =~ "Upload diagram.svg again."
       assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "says to remove a DOCTYPE or too many attributes from a proposal's SVG", ctx do
+      attributes = Enum.map_join(1..257, " ", &~s(data-a#{&1}="1"))
+
+      for {svg, part} <- [
+            {~s(<!DOCTYPE svg><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>),
+             "the DOCTYPE"},
+            {~s(<svg xmlns="http://www.w3.org/2000/svg"><rect #{attributes}/></svg>),
+             "the attributes past the 256th on the rect element"}
+          ] do
+        html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+        assert html =~
+                 "Remove #{part} from diagram.svg. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file."
+
+        refute html =~ "Upload diagram.svg again."
+        assert Artifacts.list(ctx.work_item) == []
+      end
     end
 
     test "says to replace a proposal's Markdown file that is not UTF-8 text", ctx do
