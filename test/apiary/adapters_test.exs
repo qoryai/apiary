@@ -235,8 +235,8 @@ defmodule Apiary.AdaptersTest do
 
       before = created.()
 
-      assert Adapters.create_adapter(scope, %{name: "Acme tracker"}) == {:error, :forbidden}
-      assert Adapters.create_adapter(member, %{name: "Acme tracker"}) == {:error, :forbidden}
+      assert Adapters.create_adapter(scope, %{name: "Acme tracker"}) == {:error, :not_found}
+      assert Adapters.create_adapter(member, %{name: "Acme tracker"}) == {:error, :not_found}
 
       for stale <- [signed_in(admin, 21), put_in(admin.user.authenticated_at, nil)] do
         assert Adapters.create_adapter(stale, %{name: "Acme tracker"}) == {:error, :sudo}
@@ -299,7 +299,7 @@ defmodule Apiary.AdaptersTest do
       adapter = adapter_fixture(name: name)
 
       assert Adapters.rename_adapter(scope, adapter, %{name: renamed}) ==
-               {:error, :forbidden}
+               {:error, :not_found}
 
       assert {:ok, %Node{name: ^renamed}} =
                Adapters.rename_adapter(admin, adapter, %{name: renamed})
@@ -397,8 +397,8 @@ defmodule Apiary.AdaptersTest do
       adapter = adapter_fixture()
       %{scope: member} = member_fixture(scope, :member)
 
-      assert AccessKeys.create_enrolment_code(scope, adapter, %{}) == {:error, :forbidden}
-      assert AccessKeys.create_enrolment_code(member, adapter, %{}) == {:error, :forbidden}
+      assert AccessKeys.create_enrolment_code(scope, adapter, %{}) == {:error, :not_found}
+      assert AccessKeys.create_enrolment_code(member, adapter, %{}) == {:error, :not_found}
 
       assert AccessKeys.create_enrolment_code(signed_in(admin, 21), adapter, %{}) ==
                {:error, :sudo}
@@ -484,7 +484,7 @@ defmodule Apiary.AdaptersTest do
          %{scope: scope, admin: admin} do
       adapter = adapter_fixture()
       %{key: revoked} = keyed(admin, adapter)
-      assert AccessKeys.revoke_access_key(scope, revoked) == {:error, :forbidden}
+      assert AccessKeys.revoke_access_key(scope, revoked) == {:error, :not_found}
       {:ok, _} = AccessKeys.revoke_access_key(admin, revoked)
       assert AccessKeys.fetch_for_verification(revoked.key_id) == :error
 
@@ -575,7 +575,7 @@ defmodule Apiary.AdaptersTest do
       %{scope: member} = member_fixture(scope, :member)
 
       for asker <- [scope, member] do
-        assert AccessKeys.subscribe(asker, adapter) == {:error, :forbidden}
+        assert AccessKeys.subscribe(asker, adapter) == {:error, :not_found}
       end
     end
   end
@@ -595,7 +595,7 @@ defmodule Apiary.AdaptersTest do
       assert id == row.id
 
       # Refused, or a name taken: neither the adapter nor a code is made.
-      assert Adapters.create_adapter_with_code(scope, %{name: "Other"}) == {:error, :forbidden}
+      assert Adapters.create_adapter_with_code(scope, %{name: "Other"}) == {:error, :not_found}
 
       assert Adapters.create_adapter_with_code(signed_in(admin, 21), %{name: "Other"}) ==
                {:error, :sudo}
@@ -621,8 +621,8 @@ defmodule Apiary.AdaptersTest do
       assert row_id == row.id
       assert Adapters.list_keys(scope, adapter) == []
       assert Adapters.list_codes(scope, adapter) == []
-      assert Adapters.create_code(scope, adapter) == {:error, :forbidden}
-      assert Adapters.subscribe_keys(scope, adapter) == {:error, :forbidden}
+      assert Adapters.create_code(scope, adapter) == {:error, :not_found}
+      assert Adapters.subscribe_keys(scope, adapter) == {:error, :not_found}
 
       assert Adapters.subscribe_keys(admin, adapter) == :ok
       assert {:ok, %EnrolmentCode{cancelled_at: %DateTime{}}} = Adapters.cancel_code(admin, row)
@@ -695,7 +695,7 @@ defmodule Apiary.AdaptersTest do
         assert Adapters.for_key(key_scope, action) == {:ok, reload(adapter)}
       end
 
-      assert Access.authorize(key_scope, :"adapter.edit", adapter) == {:error, :forbidden}
+      assert Access.authorize(key_scope, :"adapter.edit", adapter) == {:error, :not_found}
 
       assert Access.authorize(key_scope, :"run.post_events", scope.workspace) ==
                {:error, :not_found}
@@ -706,7 +706,7 @@ defmodule Apiary.AdaptersTest do
       assert Access.authorize(key_scope, :"run_configuration.fetch", scope.workspace) ==
                {:error, :not_found}
 
-      assert Adapters.for_key(key_scope, :"adapter.edit") == {:error, :forbidden}
+      assert Adapters.for_key(key_scope, :"adapter.edit") == {:error, :not_found}
 
       # A node's key, a person, and the instance take none of the adapter's actions: the
       # adapter is no place of theirs.
@@ -749,7 +749,7 @@ defmodule Apiary.AdaptersTest do
             :"adapter.delete",
             :"adapter.setup"
           ] do
-        assert Access.action(action).roles == []
+        assert %{roles: [:owner], instance: true} = Access.action(action)
       end
     end
 
@@ -803,9 +803,9 @@ defmodule Apiary.AdaptersTest do
       adapter = adapter_fixture()
       %{scope: member} = member_fixture(scope, :member)
 
-      assert Adapters.delete_adapter(scope, adapter) == {:error, :forbidden}
-      assert Adapters.delete_adapter(member, adapter) == {:error, :forbidden}
-      assert AccessKeys.revoke_node_keys(scope, adapter, :node_deleted) == {:error, :forbidden}
+      assert Adapters.delete_adapter(scope, adapter) == {:error, :not_found}
+      assert Adapters.delete_adapter(member, adapter) == {:error, :not_found}
+      assert AccessKeys.revoke_node_keys(scope, adapter, :node_deleted) == {:error, :not_found}
       assert reload(adapter).deleted_at == nil
     end
   end
@@ -1428,8 +1428,8 @@ defmodule Apiary.AdaptersTest do
       refute Apiary.Features.visible?(hidden_admin, :factory)
       assert Apiary.Features.on?(:factory)
 
-      assert Adapters.authorize_instance(admin) == :ok
-      assert Adapters.authorize_instance(admin, sudo: true) == :ok
+      assert ApiaryWeb.Access.instance_can?(admin, :"instance.read_factory")
+      assert ApiaryWeb.Access.instance_can?(admin, :"adapter.create")
 
       # The reads: the adapter, and its keys and codes at the instance (`read_place/2`).
       assert adapter.id in Enum.map(Adapters.list_adapters(hidden_admin), & &1.id)
@@ -1492,19 +1492,19 @@ defmodule Apiary.AdaptersTest do
 
       before = entries.()
 
-      assert Adapters.authorize_instance(scope) == {:error, :forbidden}
-      assert AccessKeys.revoke_access_key(scope, key) == {:error, :forbidden}
-      assert AccessKeys.cancel_code(scope, code) == {:error, :forbidden}
-      assert AccessKeys.create_enrolment_code(scope, adapter, %{}) == {:error, :forbidden}
+      refute ApiaryWeb.Access.instance_can?(scope, :"instance.read_factory")
+      assert AccessKeys.revoke_access_key(scope, key) == {:error, :not_found}
+      assert AccessKeys.cancel_code(scope, code) == {:error, :not_found}
+      assert AccessKeys.create_enrolment_code(scope, adapter, %{}) == {:error, :not_found}
 
       assert Repo.transact(fn ->
                AccessKeys.revoke_node_keys(Access.reload(scope), adapter, :node_deleted)
-             end) == {:error, :forbidden}
+             end) == {:error, :not_found}
 
-      assert Adapters.create_adapter(scope, %{name: "Acme hidden"}) == {:error, :forbidden}
-      assert AccessKeys.subscribe(scope, adapter) == {:error, :forbidden}
-      assert Adapters.rename_adapter(scope, adapter, %{name: "renamed"}) == {:error, :forbidden}
-      assert Adapters.delete_adapter(scope, adapter) == {:error, :forbidden}
+      assert Adapters.create_adapter(scope, %{name: "Acme hidden"}) == {:error, :not_found}
+      assert AccessKeys.subscribe(scope, adapter) == {:error, :not_found}
+      assert Adapters.rename_adapter(scope, adapter, %{name: "renamed"}) == {:error, :not_found}
+      assert Adapters.delete_adapter(scope, adapter) == {:error, :not_found}
       # A page's scope is read with what the person is shown as it is now.
       assert Adapters.list_adapters(Access.reload(scope)) == []
       assert Adapters.get_adapter(Access.reload(scope), adapter.public_id) == nil

@@ -282,8 +282,9 @@ defmodule ApiaryWeb.Edition do
   The parts the edition adds to Instance settings › Configuration
   (`ApiaryWeb.InstanceLive.Configuration`), after the core's, in order, for the scope's
   instance admin: each a `Phoenix.LiveComponent`, which the page renders with an `id`,
-  `config-part-1` for the first, and the page's `current_scope`. Each holds its form, its
-  save and what it saves, and is built from `ApiaryWeb.InstanceLive.ConfigurationComponents`.
+  `config-part-1` for the first, the page's `current_scope`, and `scope`, the instance
+  scope the part asks its instance actions in (`Apiary.Access.instance_scope/1`). Each
+  holds its form, its save and what it saves, and is built from `ApiaryWeb.InstanceLive.ConfigurationComponents`.
   """
   @callback configuration_parts(Scope.t()) :: [module]
 

@@ -206,8 +206,14 @@ defmodule Apiary.PasswordLinkTest do
       %{scope: member} = with_mail(fn -> member_fixture(in_instance(admin)) end)
       Apiary.Mail.put_test_source(:none)
 
-      for scope <- [owner, member, %Scope{}, %Scope{access_key: %Apiary.AccessKeys.AccessKey{}}] do
-        assert {:error, :forbidden} = Accounts.build_password_link(scope, user, &url_fun/1)
+      # The member is in the instance's organisation without the role; the rest are not there.
+      for {scope, reason} <- [
+            {owner, :not_found},
+            {member, :forbidden},
+            {%Scope{}, :not_found},
+            {%Scope{access_key: %Apiary.AccessKeys.AccessKey{}}, :not_found}
+          ] do
+        assert {:error, ^reason} = Accounts.build_password_link(scope, user, &url_fun/1)
       end
 
       assert password_tokens(user) == []

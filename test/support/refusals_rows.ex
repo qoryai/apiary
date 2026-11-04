@@ -464,7 +464,11 @@ defmodule ApiaryWeb.RefusalsRows do
   # adapter reports, whose pages are not built. A workspace type's default process is
   # saved on a page that opens for instance admins alone
   # (`test/apiary/processes/type_templates_test.exs`,
-  # `test/apiary_web/live/instance_live/workspace_types_test.exs`).
+  # `test/apiary_web/live/instance_live/workspace_types_test.exs`). So are the instance's
+  # set-up review, its pool's machine limit and its diagnostics keys, whose context tests
+  # refuse them to anyone but an instance admin (`test/apiary/setup_test.exs`,
+  # `test/apiary/nodes/installed_test.exs`,
+  # `test/apiary_web/contract/diagnostics_controller_test.exs`).
   # Turning the instance's mail on is following the test link a save sent, a controller's
   # redirect, not a page's event: the link's tests refuse it to anyone but the instance
   # admin it was sent to (`test/apiary/mail_settings_test.exs`,
@@ -483,7 +487,10 @@ defmodule ApiaryWeb.RefusalsRows do
         :"secret.read",
         :"variable.read",
         :"adapter.read",
-        :"work_item.read"
+        :"work_item.read",
+        :"instance.read",
+        :"instance.read_factory",
+        :"instance.read_observability"
       ],
       jobs: [
         :"organisation.purge",
@@ -548,7 +555,11 @@ defmodule ApiaryWeb.RefusalsRows do
         :"gate.approve",
         :"artifact.write",
         :"artifact_type.edit",
-        :"workspace_type.edit"
+        :"workspace_type.edit",
+        :"instance.review_connections",
+        :"node.set_instance_limit",
+        :"diagnostics_key.create",
+        :"diagnostics_key.revoke"
       ]
     }
   end

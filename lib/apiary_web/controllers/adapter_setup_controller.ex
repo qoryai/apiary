@@ -7,7 +7,8 @@ defmodule ApiaryWeb.AdapterSetupController do
   #
   # In order:
   #
-  #   1. anyone but an instance admin (`Apiary.Adapters.authorize_instance/2`) is answered
+  #   1. anyone who may not set an adapter up (`adapter.setup`, an instance action, asked
+  #      in their instance scope, `ApiaryWeb.Access.instance_can?/2`) is answered
   #      as a path that does not exist, as on the Instance's pages, before anything is
   #      looked up; so is an adapter the instance admin does not find (deleted, of
   #      another kind, or none);
@@ -36,7 +37,7 @@ defmodule ApiaryWeb.AdapterSetupController do
   def create(conn, %{"adapter_id" => adapter_id} = params) do
     scope = conn.assigns.current_scope
 
-    with :ok <- Adapters.authorize_instance(scope),
+    with true <- ApiaryWeb.Access.instance_can?(scope, :"adapter.setup") || {:error, :not_found},
          %Node{} = adapter <- Adapters.get_adapter(scope, adapter_id) || {:error, :not_found},
          {:ok, url} <- Adapters.setup(scope, adapter) do
       SendOn.send_on(conn, url)

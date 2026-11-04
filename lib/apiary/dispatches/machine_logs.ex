@@ -37,9 +37,10 @@ defmodule Apiary.Dispatches.MachineLogs do
   #
   # ## The read: `machine_log/2`
   #
-  # An instance admin's alone (`Apiary.Access.instance_admin?/1`), for a dispatch of any
-  # organisation: the text and its record. Anyone else is `{:error, :forbidden}`, before
-  # anything is looked up.
+  # An instance admin's alone (`instance.read`, asked in the instance's organisation,
+  # `Apiary.Access.in_instance/1`), for a dispatch of any organisation: the text and its
+  # record. Anyone else is refused as `Apiary.Access.authorize/3` answers, before anything
+  # is looked up.
   #
   # ## Retention: `retention_days/0` and `prune/1`
   #
@@ -184,17 +185,21 @@ defmodule Apiary.Dispatches.MachineLogs do
   ## The read
 
   # machine_log/2 is the machine log of the dispatch `dispatch_id` for an instance admin:
-  # `{:ok, machine_log}`; `{:error, :forbidden}` for anyone else; `{:error, :not_found}`
-  # for a dispatch with no machine log, or no dispatch; `{:error, :unreadable}` for a
+  # `{:ok, machine_log}`; `{:error, :not_found}` for anyone outside the instance's
+  # organisation, for a dispatch with no machine log, or no dispatch;
+  # `{:error, :forbidden}` for anyone else there; `{:error, :unreadable}` for a
   # record whose file cannot be read, with one log line that names the cause.
   @doc false
   @spec machine_log(Scope.t() | nil, term) ::
           {:ok, machine_log} | {:error, :forbidden | :not_found | :unreadable}
   def machine_log(scope, dispatch_id) do
-    cond do
-      not Access.instance_admin?(scope) -> {:error, :forbidden}
-      not Dispatch.public_id?(dispatch_id) -> {:error, :not_found}
-      true -> read(dispatch_id)
+    with :ok <-
+           Access.authorize(
+             Access.in_instance(scope),
+             :"instance.read",
+             Access.instance_organisation()
+           ) do
+      if Dispatch.public_id?(dispatch_id), do: read(dispatch_id), else: {:error, :not_found}
     end
   end
 

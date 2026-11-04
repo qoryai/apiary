@@ -122,12 +122,12 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       %{scope: owner} = sign_up_fixture()
       refute Apiary.Access.instance_admin?(owner)
 
-      assert AccessKeys.create_diagnostics_code(owner) == {:error, :forbidden}
+      assert AccessKeys.create_diagnostics_code(owner) == {:error, :not_found}
       assert AccessKeys.list_diagnostics_keys(owner) == []
       assert AccessKeys.diagnostics_node(owner) == nil
 
       %{key: key} = diagnostics_key!(admin)
-      assert AccessKeys.revoke_diagnostics_key(owner, key) == {:error, :forbidden}
+      assert AccessKeys.revoke_diagnostics_key(owner, key) == {:error, :not_found}
       assert [%AccessKey{}] = AccessKeys.list_diagnostics_keys(admin)
     end
 

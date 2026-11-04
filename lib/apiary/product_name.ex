@@ -26,7 +26,8 @@ defmodule Apiary.ProductName do
   **"Powered by Qory Apiary"** (`powered_by?/0`) shows beside a name set that is not "Qory
   Apiary", where the edition carries it (`c:Apiary.Edition.attribution?/0`).
 
-  **Renaming** (`rename/2`) is an instance admin's (`Apiary.Access.instance_admin?/1`), an
+  **Renaming** (`rename/2`) is an instance admin's (`instance.rename`, asked in the
+  instance's organisation, `Apiary.Access.in_instance/1`), an
   `instance.rename` entry in the trail of the instance's organisation, with the name
   before and after, nil for none.
 
@@ -138,14 +139,19 @@ defmodule Apiary.ProductName do
   defaults show. A change is an `instance.rename` entry in the trail of the instance's
   organisation, by the admin, about the organisation, with the name before and after, nil
   for none; once committed, every node's cache reads it again. `{:ok, name}`, nil for
-  none; `{:error, changeset}`; or `{:error, :forbidden}` for anyone but an instance admin.
+  none; `{:error, changeset}`; `{:error, :not_found}` for anyone outside the instance's organisation, or
+  `{:error, :forbidden}` for anyone else there but an instance admin.
   """
   @spec rename(Scope.t() | nil, map) ::
-          {:ok, String.t() | nil} | {:error, Ecto.Changeset.t() | :forbidden}
+          {:ok, String.t() | nil} | {:error, Ecto.Changeset.t() | :not_found | :forbidden}
   def rename(scope, attrs) when is_map(attrs) do
-    if Access.instance_admin?(scope),
-      do: save(scope, attrs),
-      else: {:error, :forbidden}
+    with :ok <-
+           Access.authorize(
+             Access.in_instance(scope),
+             :"instance.rename",
+             Access.instance_organisation()
+           ),
+         do: save(scope, attrs)
   end
 
   defp save(%Scope{user: user} = scope, attrs) do

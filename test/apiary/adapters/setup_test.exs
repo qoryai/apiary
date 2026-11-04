@@ -107,7 +107,7 @@ defmodule Apiary.Adapters.SetupTest do
   test "anyone but an instance admin is refused, and a deleted adapter is not found",
        %{admin: admin, adapter: adapter} do
     %{scope: owner} = sign_up_fixture()
-    assert Adapters.setup(owner, adapter) == {:error, :forbidden}
+    assert Adapters.setup(owner, adapter) == {:error, :not_found}
 
     {:ok, _} = Adapters.delete_adapter(admin, adapter)
     assert Adapters.setup(admin, adapter) == {:error, :not_found}

@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.InstanceLive.SetUp do
-  # The instance's connections, `/instance/set-up`, for the instance's admins
-  # (`Apiary.Access.instance_admin?/1`); anyone else is answered as a path that does not
+  # The instance's connections, `/instance/set-up`, for the instance's admins, who may
+  # review them (`instance.review_connections`, asked in the instance scope,
+  # `ApiaryWeb.Access`'s `:instance`); anyone else is answered as a path that does not
   # exist. An instance admin is sent here after the instance's set-up, and at every sign-in
   # until they finish or skip the last step (`Apiary.Setup.connections_reviewed?/0`,
   # `ApiaryWeb.UserAuth.signed_in_path/1`).
@@ -61,6 +62,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   use ApiaryWeb, :live_view
 
   on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
+  on_mount {ApiaryWeb.Access, :instance}
 
   alias Apiary.{Access, AccessKeys, Adapters, Mail, Setup}
   alias ApiaryWeb.{AdapterComponents, SetUpComponents}
@@ -68,13 +70,15 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
   @impl true
   def mount(_params, _session, socket) do
-    scope = socket.assigns.current_scope
-    unless Access.instance_admin?(scope), do: raise(ApiaryWeb.NotFound)
+    %{current_scope: scope, scope: instance} = socket.assigns
+
+    unless Access.can?(instance, :"instance.review_connections", instance.organisation),
+      do: raise(ApiaryWeb.NotFound)
 
     # Subscribed before the adapters are read, so a row the installer commits in between
     # still reaches the page.
     if connected?(socket), do: Adapters.subscribe_installs(scope)
-    adapters = adapters(scope)
+    adapters = adapters(scope, instance)
 
     mail = Mail.source() != :env
 
@@ -97,8 +101,8 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # The instance's adapters, with the `factory` feature, each with its step's key, whether
   # it is configured, whether it can be set up now, and, where neither, why not
   # (`blocked/4`). An adapter listed that the installer has not made yet has no adapter.
-  defp adapters(scope) do
-    if Adapters.authorize_instance(scope) == :ok do
+  defp adapters(scope, instance) do
+    if Access.can?(instance, :"instance.read_factory", instance.organisation) do
       scope |> Adapters.list_adapters() |> Adapters.set_up_list() |> Enum.map(&row/1)
     else
       []
@@ -197,8 +201,10 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
   # place, at most the last; with no step left, on through `/`. An adapter added since is
   # listened to as the others are.
   defp reload_adapters(socket) do
-    %{adapters: before, step: step, current_scope: scope, mail: mail} = socket.assigns
-    adapters = adapters(scope)
+    %{adapters: before, step: step, current_scope: scope, scope: instance, mail: mail} =
+      socket.assigns
+
+    adapters = adapters(scope, instance)
     known = for %{adapter: %{id: id}} <- before, into: MapSet.new(), do: id
 
     for %{adapter: %{} = adapter} <- adapters,
@@ -294,7 +300,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
 
         redirect(socket, to: (to && to.path) || ~p"/")
 
-      {:error, :forbidden} ->
+      {:error, _refused} ->
         push_navigate(socket, to: ~p"/instance/set-up")
     end
   end

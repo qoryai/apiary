@@ -73,7 +73,7 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   def mount(%{"adapter_id" => public_id}, _session, socket) do
     scope = socket.assigns.current_scope
 
-    with :ok <- Adapters.authorize_instance(scope),
+    with true <- ApiaryWeb.Access.instance_can?(scope, :"instance.read_factory"),
          %Node{} = adapter <- Adapters.get_adapter(scope, public_id) do
       if connected?(socket), do: Adapters.subscribe_keys(scope, adapter)
 

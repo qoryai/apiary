@@ -141,8 +141,8 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
       :ok = Apiary.EditionStubs.HidesNamed.put(hides)
 
       for asker <- [admin, scope] do
-        assert Adapters.authorize_instance(asker) == {:error, :not_found}
-        assert Adapters.authorize_instance(asker, sudo: true) == {:error, :not_found}
+        refute ApiaryWeb.Access.instance_can?(asker, :"instance.read_factory")
+        refute ApiaryWeb.Access.instance_can?(asker, :"adapter.create")
         assert AccessKeys.subscribe(asker, adapter) == {:error, :not_found}
         assert AccessKeys.list_for_node(Access.reload(asker), adapter) == []
         assert AccessKeys.list_enrolment_codes(Access.reload(asker), adapter) == []

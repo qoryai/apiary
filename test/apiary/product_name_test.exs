@@ -180,9 +180,9 @@ defmodule Apiary.ProductNameTest do
 
       %{scope: other} = sign_up_fixture()
       refute Apiary.Access.instance_admin?(other)
-      assert {:error, :forbidden} = rename(other, "Acme Agents")
+      assert {:error, :not_found} = rename(other, "Acme Agents")
 
-      assert {:error, :forbidden} = rename(nil, "Acme Agents")
+      assert {:error, :not_found} = rename(nil, "Acme Agents")
 
       assert ProductName.get() == nil
       assert entries() == []

@@ -30,16 +30,18 @@ defmodule ApiaryWeb.InstanceLive.Node do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :factory
 
-  alias Apiary.{AccessKeys, Accounts, Adapters, Repo}
+  on_mount {ApiaryWeb.Access, :instance}
+
+  alias Apiary.{Access, AccessKeys, Accounts, Adapters, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Nodes.{Installed, Node}
   alias ApiaryWeb.{NodeComponents, SettingsComponents}
 
   @impl true
   def mount(%{"node_id" => public_id}, _session, socket) do
-    scope = socket.assigns.current_scope
+    %{current_scope: scope, scope: instance} = socket.assigns
 
-    with :ok <- Adapters.authorize_instance(scope),
+    with true <- Access.can?(instance, :"instance.read_factory", instance.organisation),
          %Node{} = node <- Installed.get(scope, public_id) do
       node = Repo.preload(node, :created_by)
 

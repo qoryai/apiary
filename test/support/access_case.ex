@@ -223,13 +223,15 @@ defmodule Apiary.AccessCase do
   end
 
   # The scope that asks and what it asks about. `feature_off` and `hidden` ask as whoever
-  # the action is for, an owner, an adapter's key, an access key, a pool's key or the
-  # instance; everyone else as themselves, in the place their module says, of what the
-  # action is asked of there: the organisation, the workspace, a new organisation, or the
-  # member's account, another than the asker's.
+  # the action is for, an instance admin for an instance action, else an owner, an
+  # adapter's key, an access key, a pool's key or the instance, in that one's place;
+  # everyone else as themselves, in the place their module says, of what the action is
+  # asked of there: the organisation, the workspace, a new organisation, or the member's
+  # account, another than the asker's.
   defp asked(ctx, modules, action, actor) when actor in [:feature_off, :hidden] do
     actor =
       cond do
+        Access.action(action).instance -> :instance_admin
         :adapter_key in Access.action(action).roles -> :adapter_key
         :access_key in Access.action(action).roles -> :access_key
         :pool_key in Access.action(action).roles -> :pool_key
@@ -237,7 +239,7 @@ defmodule Apiary.AccessCase do
         true -> :owner
       end
 
-    {ctx.scopes[actor], subject(ctx, modules, action, ctx.places.home)}
+    asked(ctx, modules, action, actor)
   end
 
   defp asked(ctx, modules, action, actor) do

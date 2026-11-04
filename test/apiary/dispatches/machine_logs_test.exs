@@ -297,21 +297,21 @@ defmodule Apiary.Dispatches.MachineLogsTest do
       assert %DateTime{} = read.uploaded_at
     end
 
-    test "is forbidden to anyone else, the dispatch's organisation's owner among them", ctx do
+    test "is not found by anyone else, the dispatch's organisation's owner among them", ctx do
       dispatch = dispatch!(ctx)
       :ok = upload(ctx, dispatch)
       refute Apiary.Access.instance_admin?(ctx.scope)
-      assert Dispatches.machine_log(ctx.scope, dispatch.public_id) == {:error, :forbidden}
+      assert Dispatches.machine_log(ctx.scope, dispatch.public_id) == {:error, :not_found}
 
       assert Dispatches.machine_log(member_fixture(ctx.scope).scope, dispatch.public_id) ==
-               {:error, :forbidden}
+               {:error, :not_found}
 
-      assert Dispatches.machine_log(nil, dispatch.public_id) == {:error, :forbidden}
+      assert Dispatches.machine_log(nil, dispatch.public_id) == {:error, :not_found}
 
       {:ok, key} = Apiary.AccessKeys.fetch_for_verification(ctx.key.key_id)
 
       assert Dispatches.machine_log(Scope.for_access_key(key), dispatch.public_id) ==
-               {:error, :forbidden}
+               {:error, :not_found}
     end
 
     test "is not_found for a dispatch with none, or no dispatch; unreadable for a lost file",
@@ -375,7 +375,7 @@ defmodule Apiary.Dispatches.MachineLogsTest do
 
       assert InstanceConfig.save(signed_in(member), :machine_logs, %{
                "machine_log_retention_days" => "7"
-             }) == {:error, :forbidden}
+             }) == {:error, :not_found}
     end
 
     test "the job deletes a machine log older than the setting, file then record, and keeps a newer one",

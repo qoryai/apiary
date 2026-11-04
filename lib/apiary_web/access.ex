@@ -91,7 +91,8 @@ defmodule ApiaryWeb.Access do
 
   @doc """
   view_action/1 is the action a LiveView mounts on (`on_mount({ApiaryWeb.Access, action})`),
-  or nil for one that asks none, read from its mount hooks: for an answer about a page that
+  or nil for one that asks none, an instance admins' page that mounts on `:instance`
+  among them, read from its mount hooks: for an answer about a page that
   is not open, as where a switch of workspace lands (`ApiaryWeb.SwitchController`).
   """
   @spec view_action(module) :: atom | nil
@@ -99,6 +100,7 @@ defmodule ApiaryWeb.Access do
     with true <- Code.ensure_loaded?(view) and function_exported?(view, :__live__, 0),
          %{lifecycle: %{mount: hooks}} <- view.__live__() do
       Enum.find_value(hooks, fn
+        %{id: {__MODULE__, :instance}} -> nil
         %{id: {__MODULE__, action}} when is_atom(action) -> action
         _hook -> nil
       end)
@@ -107,15 +109,65 @@ defmodule ApiaryWeb.Access do
     end
   end
 
-  @doc false
-  # The action is kept with the page, so that an open page whose action's feature or part
-  # is hidden from the reader meanwhile leaves (`ApiaryWeb.UserAuth.reload_scope/1`).
+  @doc """
+  on_mount/4 with `:instance`, `on_mount({ApiaryWeb.Access, :instance})`, is for a page
+  only the instance's admins open: it puts the reader's instance scope
+  (`Apiary.Access.instance_scope/1`) into the socket as `:scope`, and answers as a path
+  that does not exist (`ApiaryWeb.NotFound`) for anyone else. The page asks
+  `Apiary.Access.can?/3` of `@scope` and the instance organisation, `@scope.organisation`,
+  for its instance actions. On a change of the reader's memberships
+  (`ApiaryWeb.UserAuth.on_membership_change/2`) it computes `:scope` again from the
+  reloaded `current_scope`, and sends a reader who is no longer an instance admin to `/`,
+  as a page sends one whose membership is gone. A page that sets its own
+  `on_membership_change/2` replaces this one, and computes `:scope` again itself.
+
+  With an action, `on_mount({ApiaryWeb.Access, action})`, it lets the page mount only for a
+  reader who may take `action` (the moduledoc). The action is kept with the page, so that
+  an open page whose action's feature or part is hidden from the reader meanwhile leaves
+  (`ApiaryWeb.UserAuth.reload_scope/1`).
+  """
+  def on_mount(:instance, _params, _session, socket) do
+    case Apiary.Access.instance_scope(socket.assigns.current_scope) do
+      {:ok, scope} ->
+        {:cont,
+         socket
+         |> Phoenix.Component.assign(:scope, scope)
+         |> ApiaryWeb.UserAuth.on_membership_change(&instance_scope_again/1)}
+
+      :error ->
+        raise ApiaryWeb.NotFound
+    end
+  end
+
   def on_mount(action, _params, _session, socket) do
     scope = socket.assigns.current_scope
 
     if Apiary.Access.can?(scope, action, scope.workspace || scope.organisation),
       do: {:cont, Phoenix.LiveView.put_private(socket, :access_action, action)},
       else: raise(ApiaryWeb.NotFound)
+  end
+
+  @doc """
+  instance_can?/2 is `Apiary.Access.can?/3` of an instance action, asked in the reader's
+  instance scope (`Apiary.Access.instance_scope/1`) of the instance organisation: for a
+  page outside Instance settings, which has no `@scope` from `on_mount/4`'s `:instance`.
+  False for anyone who is no instance admin.
+  """
+  @spec instance_can?(Apiary.Accounts.Scope.t() | nil, Apiary.Access.action()) :: boolean
+  def instance_can?(scope, action) do
+    case Apiary.Access.instance_scope(scope) do
+      {:ok, instance} -> Apiary.Access.can?(instance, action, instance.organisation)
+      :error -> false
+    end
+  end
+
+  # The instance scope, computed again from the reloaded `current_scope` after a change of
+  # the reader's memberships; a reader who is no longer an instance admin goes to `/`.
+  defp instance_scope_again(socket) do
+    case Apiary.Access.instance_scope(socket.assigns.current_scope) do
+      {:ok, scope} -> Phoenix.Component.assign(socket, :scope, scope)
+      :error -> Phoenix.LiveView.redirect(socket, to: "/")
+    end
   end
 
   @doc """

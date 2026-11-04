@@ -312,7 +312,10 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       assert text(view, "#instance-support-address-source") == "Set by SUPPORT_ADDRESS"
     end
 
-    test "one who is no longer an instance admin, on the page, is answered not found",
+    # The page computes its instance scope again on the membership's change
+    # (`ApiaryWeb.Access`'s `:instance`), and leaves; the context refuses a save all the
+    # same.
+    test "one who is no longer an instance admin, on the page, leaves it, and saves nothing",
          %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/instance/general")
       # Another admin first: the instance keeps one.
@@ -320,7 +323,8 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       {:ok, _} = Apiary.Organisations.revoke_instance_admin(scope.user)
       refute Apiary.Access.instance_admin?(Apiary.Accounts.Scope.for_user(scope.user))
 
-      assert {:error, {:live_redirect, %{to: "/instance/general"}}} = save(view, "Acme Agents")
+      assert_redirect(view, "/")
+      assert {:error, :forbidden} = ProductName.rename(scope, %{"product_name" => "Acme Agents"})
       assert ProductName.get() == nil
     end
   end

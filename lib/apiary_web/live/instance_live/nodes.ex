@@ -18,14 +18,19 @@ defmodule ApiaryWeb.InstanceLive.Nodes do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :factory
 
-  alias Apiary.Adapters
+  on_mount {ApiaryWeb.Access, :instance}
+
+  alias Apiary.Access
   alias Apiary.Nodes.Installed
   alias ApiaryWeb.{NodeComponents, SettingsComponents}
 
   @impl true
   def mount(_params, _session, socket) do
-    scope = socket.assigns.current_scope
-    if Adapters.authorize_instance(scope) != :ok, do: raise(ApiaryWeb.NotFound)
+    %{current_scope: scope, scope: instance} = socket.assigns
+
+    unless Access.can?(instance, :"instance.read_factory", instance.organisation),
+      do: raise(ApiaryWeb.NotFound)
+
     if connected?(socket), do: Installed.subscribe(scope)
 
     {:ok,

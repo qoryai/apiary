@@ -14,6 +14,13 @@ defmodule Apiary.AccessRows do
       adapter_key   an adapter of the instance, with an access key enrolled on it,
                     asked of that adapter
       instance      the instance itself, in a job no person enqueued
+      instance_admin
+                    an instance admin: an owner of the instance's organisation
+                    (`Apiary.Edition.instance_organisation_id/0`), asking in that
+                    organisation's scope, the place `instance`
+      instance_org_admin
+                    an admin of the instance's organisation, asking there: no instance
+                    admin
       feature_off   whoever the action is for, an owner, a key or the instance, on
                     an instance without the action's feature
       hidden        whoever the action is for, as feature_off, where the edition hides the
@@ -24,17 +31,16 @@ defmodule Apiary.AccessRows do
 
   Accepting an invitation is taken on the strength of the token, which no role is, and
   granting and revoking an instance admin on the strength of a release command run on the
-  instance's machine: nobody's row says yes. Nor for a password link, which an instance
-  admin makes, as `Apiary.Accounts.build_password_link/3` asks, or a release command, nor
-  for saving the instance's mail settings and turning them on, an instance admin's, as
-  `Apiary.Mail.save_settings/3` and `turn_on/2` ask, nor for setting the product's name,
-  an instance admin's too, as `Apiary.ProductName.rename/2` asks, nor for changing the
-  instance's settings, an instance admin's after a recent sign-in, as
-  `Apiary.InstanceConfig.save/3` asks, nor for making, renaming and deleting an adapter of
-  the instance and starting its set-up, an instance admin's, as `Apiary.Adapters` asks,
-  nor for creating and deleting an instance assignment of a harness source, an instance
-  admin's, as `Apiary.Harnesses` asks, nor for saving a workspace type's default process,
-  an instance admin's, as `Apiary.Processes.TypeTemplates.save/4` asks.
+  instance's machine: nobody's row says yes.
+
+  The instance actions (`Apiary.Access.Action`'s `instance: true`) are the instance
+  admin's: the instance step refuses anyone outside the instance's organisation, not
+  found, the owner of `home` among them, and the role anyone else there, forbidden, as the
+  admin of the instance's organisation. Their feature is asked of the instance, so the
+  `hidden` actor, which hides it from people, may. A password link is the instance's too,
+  asked of the member's account, as a release command makes one. On every other action
+  the instance admin answers as an owner, and the admin of the instance's organisation as
+  an admin, in the place `instance` (`rows/0`).
   Creating an organisation is a sign-up's, which asks nothing, in the core; an edition may
   let a signed-in person create one. Creating, deleting and restoring a workspace are
   asked of the organisation: an owner creates one, an owner or an admin deletes any
@@ -48,6 +54,10 @@ defmodule Apiary.AccessRows do
   alias Apiary.Accounts.Scope
 
   @owners [:owner]
+  # An instance action of no feature, and one of a feature, which is asked of the instance:
+  # the `hidden` actor, which hides it from people, may all the same.
+  @instance_admins [:instance_admin, :feature_off, :hidden]
+  @instance_admins_of_feature [:instance_admin, :hidden]
 
   @doc "actors/0 is the core's actors."
   @spec actors() :: [atom]
@@ -62,12 +72,32 @@ defmodule Apiary.AccessRows do
       :adapter_key,
       :instance,
       :feature_off,
-      :hidden
+      :hidden,
+      :instance_admin,
+      :instance_org_admin
     ]
 
-  @doc "rows/0 is the core's rows: every action of the core, with the actors that may."
+  @doc """
+  rows/0 is the core's rows: every action of the core, with the actors that may. On an
+  action that is no instance action, the instance admin may what an owner may, and the
+  admin of the instance's organisation what an admin may.
+  """
   @spec rows() :: [{atom, keyword}]
   def rows do
+    Enum.map(table(), fn {action, row} ->
+      if Apiary.Access.action(action).instance,
+        do: {action, row},
+        else: {action, Keyword.update!(row, :yes, &in_instance_organisation/1)}
+    end)
+  end
+
+  defp in_instance_organisation(yes) do
+    yes ++
+      if(:owner in yes, do: [:instance_admin], else: []) ++
+      if :admin in yes, do: [:instance_org_admin], else: []
+  end
+
+  defp table do
     [
       {:"organisation.create", yes: []},
       {:"organisation.rename", yes: @owners ++ [:admin, :feature_off, :hidden]},
@@ -84,13 +114,15 @@ defmodule Apiary.AccessRows do
       {:"member.activate", yes: @owners ++ [:admin, :feature_off, :hidden], on: :workspace},
       {:"instance_admin.grant", yes: []},
       {:"instance_admin.revoke", yes: []},
-      {:"account.password_link", yes: []},
-      {:"instance.mail_save", yes: []},
-      {:"instance.mail_resend", yes: []},
-      {:"instance.mail_on", yes: []},
-      {:"instance.rename", yes: []},
-      {:"instance.configure", yes: []},
-      {:"instance.support_save", yes: []},
+      {:"account.password_link", yes: [:instance_admin, :instance, :feature_off, :hidden]},
+      {:"instance.mail_save", yes: @instance_admins},
+      {:"instance.mail_resend", yes: @instance_admins},
+      {:"instance.mail_on", yes: @instance_admins},
+      {:"instance.rename", yes: @instance_admins},
+      {:"instance.configure", yes: @instance_admins},
+      {:"instance.support_save", yes: @instance_admins},
+      {:"instance.read", yes: @instance_admins},
+      {:"instance.review_connections", yes: @instance_admins},
       {:"audit.read", yes: @owners ++ [:admin, :feature_off, :hidden]},
       {:"audit.prune", yes: [:instance, :feature_off, :hidden]},
       {:"workspace.create", yes: @owners ++ [:feature_off, :hidden]},
@@ -102,6 +134,9 @@ defmodule Apiary.AccessRows do
       {:"access_key.cancel_code", yes: @owners ++ [:admin, :feature_off]},
       {:"access_key.add", yes: @owners ++ [:admin, :feature_off]},
       {:"access_key.revoke", yes: @owners ++ [:admin, :feature_off]},
+      {:"instance.read_observability", yes: @instance_admins_of_feature},
+      {:"diagnostics_key.create", yes: @instance_admins_of_feature},
+      {:"diagnostics_key.revoke", yes: @instance_admins_of_feature},
       {:"node.read", yes: @owners ++ [:member, :admin, :feature_off]},
       {:"node.create", yes: @owners ++ [:admin, :feature_off]},
       {:"node.edit", yes: @owners ++ [:admin, :feature_off]},
@@ -131,13 +166,15 @@ defmodule Apiary.AccessRows do
       {:"secret.seal", yes: [:access_key, :hidden]},
       {:"run_credential.issue", yes: [:access_key, :hidden]},
       {:"adapter.read", yes: @owners ++ [:member, :admin]},
-      {:"adapter.create", yes: []},
-      {:"adapter.edit", yes: []},
-      {:"adapter.set_interval", yes: []},
-      {:"adapter.delete", yes: []},
+      {:"instance.read_factory", yes: @instance_admins_of_feature},
+      {:"adapter.create", yes: @instance_admins_of_feature},
+      {:"adapter.edit", yes: @instance_admins_of_feature},
+      {:"adapter.set_interval", yes: @instance_admins_of_feature},
+      {:"adapter.delete", yes: @instance_admins_of_feature},
       {:"adapter.install", yes: [:instance, :hidden]},
       {:"node.install", yes: [:instance, :hidden]},
-      {:"adapter.setup", yes: []},
+      {:"adapter.setup", yes: @instance_admins_of_feature},
+      {:"node.set_instance_limit", yes: @instance_admins_of_feature},
       {:"adapter.connect", yes: @owners ++ [:admin]},
       {:"collection.assign", yes: @owners ++ [:admin]},
       {:"collection.set_backlog", yes: @owners ++ [:admin]},
@@ -158,7 +195,7 @@ defmodule Apiary.AccessRows do
       {:"gate.approve", yes: @owners ++ [:member, :admin]},
       {:"artifact.write", yes: @owners ++ [:member, :admin]},
       {:"artifact_type.edit", yes: @owners ++ [:admin]},
-      {:"workspace_type.edit", yes: []},
+      {:"workspace_type.edit", yes: @instance_admins_of_feature},
       {:"adapter.declare", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_set", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_seal", yes: [:adapter_key, :hidden], on: :adapter},
@@ -169,8 +206,8 @@ defmodule Apiary.AccessRows do
       {:"adapter.end_grant", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.read_grants", yes: [:adapter_key, :hidden], on: :adapter},
       {:"harness.save", yes: @owners ++ [:admin]},
-      {:"harness.assigned", yes: []},
-      {:"harness.unassigned", yes: []},
+      {:"harness.assigned", yes: @instance_admins_of_feature},
+      {:"harness.unassigned", yes: @instance_admins_of_feature},
       {:"dispatch.claim", yes: [:pool_key, :hidden]},
       {:"dispatch.dispatched", yes: [:pool_key, :hidden]},
       {:"dispatch.release", yes: [:pool_key, :hidden]},
@@ -196,10 +233,17 @@ defmodule Apiary.AccessRows do
     pool = Apiary.NodesFixtures.pool_fixture(owner)
     %{access_key: pool_key} = access_key_fixture(owner, node: pool)
     adapter = Apiary.NodesFixtures.adapter_fixture()
-    %{access_key: adapter_key} = enrolled_key_fixture(instance_admin_scope(), adapter)
+    instance_admin = instance_admin_scope()
+    %{access_key: adapter_key} = enrolled_key_fixture(instance_admin, adapter)
+
+    instance = %{
+      organisation: instance_admin.organisation,
+      workspace: instance_admin.workspace,
+      adapter: adapter
+    }
 
     %{
-      places: %{home: Map.put(home, :adapter, adapter)},
+      places: %{home: Map.put(home, :adapter, adapter), instance: instance},
       scopes: %{
         member: member_fixture(owner, :member).scope,
         admin: member_fixture(owner, :admin).scope,
@@ -208,26 +252,41 @@ defmodule Apiary.AccessRows do
         access_key: Scope.for_access_key(key),
         pool_key: Scope.for_access_key(pool_key),
         adapter_key: Scope.for_access_key(adapter_key),
-        instance: Scope.for_instance(home.organisation, home.workspace)
+        instance: Scope.for_instance(home.organisation, home.workspace),
+        instance_admin: instance_admin,
+        instance_org_admin: member_fixture(instance_admin, :admin).scope
       }
     }
   end
 
-  @doc "place/2 is where the core's actors ask: at home."
+  @doc """
+  place/2 is where the core's actors ask: the instance admin and the admin of the
+  instance's organisation in the instance's organisation, the place `instance`; the
+  others at home.
+  """
   @spec place(atom, atom) :: atom | nil
+  def place(_action, actor) when actor in [:instance_admin, :instance_org_admin], do: :instance
   def place(_action, actor), do: if(actor in actors(), do: :home)
 
   @doc """
-  refusal/3 is why the core's answer is no where it is not the role: a feature that is off
-  or hidden is not found, and so is a hidden part, anything of another organisation, an
+  refusal/3 is why the core's answer is no where it is not the role: an instance action is
+  not found outside the instance's organisation, and forbidden to anyone there but an
+  instance admin; a feature that is off or hidden is not found, and so is a hidden part, anything of another organisation, an
   organisation that does not exist yet, which is no place, an adapter, which is the
   instance's, to anyone but its key, to an adapter's key, anything but that adapter, and,
   to a node pool's key, anything but its workspace: it is asked of no node here, and the
   organisation is beyond its workspace.
   """
-  @spec refusal(atom, atom, term) :: :not_found | nil
+  @spec refusal(atom, atom, term) :: :not_found | :forbidden | nil
   def refusal(action, actor, subject) do
     cond do
+      # An instance action: its feature, then the instance step, then the role.
+      Apiary.Access.action(action).instance and actor == :feature_off ->
+        :not_found
+
+      Apiary.Access.action(action).instance ->
+        if actor == :instance_org_admin, do: :forbidden, else: :not_found
+
       actor == :feature_off and Apiary.Access.feature(action) != nil ->
         :not_found
 

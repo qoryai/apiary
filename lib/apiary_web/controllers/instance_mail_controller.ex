@@ -18,7 +18,7 @@ defmodule ApiaryWeb.InstanceMailController do
   """
   use ApiaryWeb, :controller
 
-  alias Apiary.{Access, Mail}
+  alias Apiary.Mail
 
   def turn_on(conn, %{"token" => token}) do
     scope = conn.assigns.current_scope
@@ -36,7 +36,7 @@ defmodule ApiaryWeb.InstanceMailController do
         |> redirect(to: ~p"/users/log-in")
 
       :error ->
-        if Access.instance_admin?(scope) do
+        if ApiaryWeb.Access.instance_can?(scope, :"instance.mail_on") do
           conn
           |> put_flash(:error, gettext("This link no longer turns mail on."))
           |> redirect(to: ~p"/instance/mail")

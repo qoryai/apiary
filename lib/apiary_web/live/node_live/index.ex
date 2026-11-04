@@ -54,7 +54,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
 
-  alias Apiary.{Access, Adapters, Features, Gateways, Nodes, Repo, Runs}
+  alias Apiary.{Access, Features, Gateways, Nodes, Repo, Runs}
   alias Apiary.Nodes.{Installed, Node}
   alias Apiary.Runs.Run
   alias ApiaryWeb.NodeComponents
@@ -83,7 +83,7 @@ defmodule ApiaryWeb.NodeLive.Index do
        may_create: Access.can?(scope, :"node.create", scope.workspace),
        may_set_limit: Access.can?(scope, :"node.set_limit", scope.workspace),
        may_runs: may_runs,
-       instance_admin: Adapters.authorize_instance(scope) == :ok,
+       instance_admin: ApiaryWeb.Access.instance_can?(scope, :"instance.read_factory"),
        reload_scheduled: false,
        form: nil,
        kind: nil,

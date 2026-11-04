@@ -28,9 +28,9 @@ defmodule Apiary.Processes.TypeTemplates do
   ## Who
 
   Reading asks nothing: every person who creates a workspace sees its type's newest
-  version. A save asks `workspace_type.edit`: an instance admin
-  (`Apiary.Access.instance_admin?/1`), on an instance with the feature `workflow_model`,
-  which no role takes (`may_edit?/1`). It leaves one entry in the trail of the instance's
+  version. A save asks `workspace_type.edit`, an instance action: an instance admin, asked
+  in the instance's organisation (`Apiary.Access.in_instance/1`), on an instance with the
+  feature `workflow_model`. It leaves one entry in the trail of the instance's
   organisation, about that organisation, as `instance.rename` does.
 
   ## Locks
@@ -43,7 +43,7 @@ defmodule Apiary.Processes.TypeTemplates do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, Features, Processes, Repo}
+  alias Apiary.{Access, Audit, Processes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Artifacts.Type
   alias Apiary.Harnesses.QoryCopy
@@ -73,8 +73,9 @@ defmodule Apiary.Processes.TypeTemplates do
   @type entry :: %{type: String.t(), name: String.t(), newest: TypeTemplate.t()}
 
   @typedoc """
-  Why a save is refused: `:forbidden`, for anyone but an instance admin or where the
-  feature `workflow_model` is off; `:stale`, when a version newer than `based_on` exists;
+  Why a save is refused: `:not_found`, where the feature `workflow_model` is off, and for
+  anyone outside the instance's organisation; `:forbidden`, for anyone else there but an
+  instance admin; `:stale`, when a version newer than `based_on` exists;
   `:unknown_type`, for a key no type has; `{:too_long, text, limit}`, for a text over its
   limit of characters (`Apiary.Processes.TypeTemplate.limits/0`);
   `{:too_many_words, :description, limit}`, for a description over its limit of words
@@ -83,7 +84,8 @@ defmodule Apiary.Processes.TypeTemplates do
   and `:unchanged` for the document and the texts of the newest version.
   """
   @type reason ::
-          :forbidden
+          :not_found
+          | :forbidden
           | :stale
           | :unknown_type
           | {:too_long, TypeTemplate.text(), pos_integer}
@@ -212,14 +214,6 @@ defmodule Apiary.Processes.TypeTemplates do
       else: artifact_types()
   end
 
-  @doc """
-  may_edit?/1 says whether the person of `scope` may save a version of a type's default
-  process (`workspace_type.edit`): an instance admin, on an instance with the feature
-  `workflow_model`.
-  """
-  @spec may_edit?(Scope.t() | nil) :: boolean
-  def may_edit?(scope), do: authorize(scope) == :ok
-
   ## Saving
 
   @doc """
@@ -249,7 +243,12 @@ defmodule Apiary.Processes.TypeTemplates do
     texts = Keyword.get(opts, :texts)
 
     Repo.transact(fn ->
-      with :ok <- authorize(scope),
+      with :ok <-
+             Access.authorize(
+               Access.in_instance(scope),
+               :"workspace_type.edit",
+               Access.instance_organisation()
+             ),
            {:ok, domain} <- known(type),
            :ok <- lock(type),
            %TypeTemplate{} = newest <- ensure(type, domain, nil),
@@ -287,14 +286,6 @@ defmodule Apiary.Processes.TypeTemplates do
 
   defp based_on(%TypeTemplate{number: number}), do: number
   defp based_on(number) when is_integer(number) or is_nil(number), do: number
-
-  defp authorize(scope) do
-    cond do
-      not Features.on?(:workflow_model) -> {:error, :forbidden}
-      not Access.instance_admin?(scope) -> {:error, :forbidden}
-      true -> :ok
-    end
-  end
 
   defp known(type) do
     case domain(type) do

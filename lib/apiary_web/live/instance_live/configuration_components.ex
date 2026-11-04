@@ -6,13 +6,15 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationComponents do
   only or with its field; the line that names the variable of the server's environment
   that sets a value (`env_line/1`); and the toast of a save (`saved/2`).
 
-  An edition's part is a `Phoenix.LiveComponent`, rendered with its `id` and the page's
-  `current_scope`, which holds its form, its save, its copy of what it saved and its
-  trail's entry. Saving is an instance admin's after a recent sign-in, as
-  `Apiary.InstanceConfig.authorize_save/1` asks. Where that answers `{:error, :sudo}`, the
-  part sends the page `{:configuration, :sudo}` (`send(self(), {:configuration, :sudo})`),
-  and the page leads to the log-in page with the flash it gives for its parts. Once
-  saved, the part calls `saved/2`, and the page shows its toast.
+  An edition's part is a `Phoenix.LiveComponent`, rendered with its `id`, the page's
+  `current_scope` and `scope`, the instance scope (`Apiary.Access.instance_scope/1`). It
+  holds its form, its save, its copy of what it saved and its trail's entry. Saving is an
+  instance admin's after a recent sign-in: the part asks its action of `scope`
+  (`Apiary.Access.authorize/3`), then `Apiary.Accounts.sudo_mode?/2`. Where the sign-in
+  is not recent, the part sends the page `{:configuration, :sudo}`
+  (`send(self(), {:configuration, :sudo})`), and the page leads to the log-in page with
+  the flash it gives for its parts. Once saved, the part calls `saved/2`, and the page
+  shows its toast.
   """
   use ApiaryWeb, :html
 

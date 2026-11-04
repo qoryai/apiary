@@ -139,7 +139,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       assert TypeTemplates.newest(@type_key).id == version.id
       assert [2, 1] = Enum.map(TypeTemplates.versions(@type_key), & &1.number)
       assert TypeTemplates.version(@type_key, 2).id == version.id
-      assert TypeTemplates.may_edit?(admin)
+      assert ApiaryWeb.Access.instance_can?(admin, :"workspace_type.edit")
 
       instance = Apiary.Edition.instance_organisation_id()
 
@@ -167,16 +167,16 @@ defmodule Apiary.Processes.TypeTemplatesTest do
                TypeTemplates.save(admin, @type_key, renamed("Learn"))
     end
 
-    test "is forbidden to anyone but an instance admin, and writes nothing" do
+    test "is not found to anyone outside the instance's organisation, and writes nothing" do
       %{scope: owner} = sign_up_fixture()
       before = rows(@type_key)
 
-      assert {:error, :forbidden} =
+      assert {:error, :not_found} =
                TypeTemplates.save(owner, @type_key, renamed("Understand"), based_on: 1)
 
-      assert {:error, :forbidden} = TypeTemplates.save(nil, @type_key, renamed("Understand"))
-      refute TypeTemplates.may_edit?(owner)
-      refute TypeTemplates.may_edit?(nil)
+      assert {:error, :not_found} = TypeTemplates.save(nil, @type_key, renamed("Understand"))
+      refute ApiaryWeb.Access.instance_can?(owner, :"workspace_type.edit")
+      refute ApiaryWeb.Access.instance_can?(nil, :"workspace_type.edit")
       assert rows(@type_key) == before
       refute Repo.exists?(from e in Entry, where: e.action == "workspace_type.edit")
     end
@@ -452,13 +452,13 @@ defmodule Apiary.Processes.TypeTemplatesFeatureOffTest do
   alias Apiary.Processes.TypeTemplates
 
   @tag with_features: [:observability]
-  test "an instance admin's save is forbidden" do
+  test "an instance admin's save is not found" do
     %{scope: scope, user: user} = sign_up_fixture()
     {:ok, _} = Organisations.grant_instance_admin(user)
 
-    refute TypeTemplates.may_edit?(scope)
+    refute ApiaryWeb.Access.instance_can?(scope, :"workspace_type.edit")
 
-    assert {:error, :forbidden} =
+    assert {:error, :not_found} =
              TypeTemplates.save(scope, "qory.software", Processes.default_document("software"))
   end
 end

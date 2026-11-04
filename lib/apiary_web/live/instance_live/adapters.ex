@@ -23,13 +23,17 @@ defmodule ApiaryWeb.InstanceLive.Adapters do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :factory
 
-  alias Apiary.{AccessKeys, Adapters}
+  on_mount {ApiaryWeb.Access, :instance}
+
+  alias Apiary.{Access, AccessKeys, Adapters}
   alias ApiaryWeb.AdapterComponents
 
   @impl true
   def mount(_params, _session, socket) do
-    scope = socket.assigns.current_scope
-    if Adapters.authorize_instance(scope) != :ok, do: raise(ApiaryWeb.NotFound)
+    %{current_scope: scope, scope: instance} = socket.assigns
+
+    unless Access.can?(instance, :"instance.read_factory", instance.organisation),
+      do: raise(ApiaryWeb.NotFound)
 
     list = Adapters.list_adapters(scope)
     {:ok, seen} = Adapters.last_seen(scope, list)

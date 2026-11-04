@@ -202,11 +202,11 @@ defmodule ApiaryWeb.IntegrationComponents do
 
   @doc false
   # The adapters of `adapters` a page lists for the person of `scope`: every one for an
-  # instance admin; for anyone else those that can be installed (`ready?/1`) and those
+  # instance admin, who reads them all (`instance.read_factory`); for anyone else those that can be installed (`ready?/1`) and those
   # with an id in `connected`, so that a connection stays in reach.
   @spec offered(Apiary.Accounts.Scope.t(), [Node.t()], Enumerable.t()) :: [Node.t()]
   def offered(scope, adapters, connected) do
-    if Apiary.Access.instance_admin?(scope),
+    if ApiaryWeb.Access.instance_can?(scope, :"instance.read_factory"),
       do: adapters,
       else: Enum.filter(adapters, &(ready?(&1) or &1.id in connected))
   end

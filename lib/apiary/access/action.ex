@@ -20,6 +20,10 @@ defmodule Apiary.Access.Action do
     name, its people, its trail; `:workspace`, what a workspace holds; `:account`, a
     person's account, which is no organisation's; or `:new_organisation`, an organisation
     before it exists.
+  - `instance`: `true` for an instance action, one of the instance's, which the instance
+    organisation's owners, the instance admins, take: `Apiary.Access` answers it only in
+    the instance organisation (`c:Apiary.Edition.instance_organisation_id/0`), and asks
+    its feature of the instance, not of the person. `false` for any other.
 
   The core's actions are `Apiary.Access`'s; an edition adds more through
   `c:Apiary.Edition.actions/0`, each an `Action` too. `Apiary.Access.action/1` finds one by
@@ -33,7 +37,8 @@ defmodule Apiary.Access.Action do
             what: nil,
             roles: [],
             audited: true,
-            asked_of: :workspace
+            asked_of: :workspace,
+            instance: false
 
   @typedoc "What an action is asked of."
   @type asked_of :: :organisation | :workspace | :account | :new_organisation
@@ -46,16 +51,18 @@ defmodule Apiary.Access.Action do
           what: String.t(),
           roles: [atom],
           audited: true | {:not, String.t()},
-          asked_of: asked_of
+          asked_of: asked_of,
+          instance: boolean
         }
 
   @asked_of [:organisation, :workspace, :account, :new_organisation]
 
   @doc """
   new/3 is the action `name`, which is `what`, with the rest from `opts`: `feature:`
-  (nil), `part:` (nil), `roles:` (none), `audited:` (`true`) and `asked_of:`
-  (`:workspace`). Raises `ArgumentError` for a name that is not an atom, a description
-  that is not a string, a part that is not an atom, or an option it does not know.
+  (nil), `part:` (nil), `roles:` (none), `audited:` (`true`), `asked_of:`
+  (`:workspace`) and `instance:` (`false`). Raises `ArgumentError` for a name that is not
+  an atom, a description that is not a string, a part that is not an atom, an `instance`
+  that is not a boolean, or an option it does not know.
   Whether the part is one of its feature's, or of none for an action of none, is checked
   by `Apiary.Access`'s registry.
   """
@@ -68,6 +75,9 @@ defmodule Apiary.Access.Action do
 
     unless action.asked_of in @asked_of,
       do: raise(ArgumentError, "#{name} is asked of #{inspect(action.asked_of)}")
+
+    unless is_boolean(action.instance),
+      do: raise(ArgumentError, "#{name}'s instance is #{inspect(action.instance)}")
 
     unless action.audited == true or match?({:not, reason} when is_binary(reason), action.audited),
       do: raise(ArgumentError, "#{name} is audited #{inspect(action.audited)}")

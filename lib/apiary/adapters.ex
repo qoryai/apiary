@@ -6,9 +6,10 @@ defmodule Apiary.Adapters do
   # `Apiary.Nodes` refuses one.
   #
   # An instance admin makes, renames and deletes one (`adapter.create`, `adapter.edit`,
-  # `adapter.delete`, which no role takes): each change asks `authorize_instance/2`, an
-  # instance admin (`Apiary.Access.instance_admin?/1`) on an instance with the feature
-  # `factory`, and, to make one, a recent sign-in, as `Apiary.InstanceConfig.save/3` asks.
+  # `adapter.delete`, instance actions): each change asks its action of the person in the
+  # instance's organisation (`Apiary.Access.in_instance/1`, `Apiary.Access.authorize/3`),
+  # on an instance with the feature `factory`, and, to make one, a recent sign-in after
+  # it, as `Apiary.InstanceConfig.save/3` asks.
   # Each leaves its entry, in its transaction, in the trail of the instance's organisation
   # (`instance_scope/1`). Its access keys are `Apiary.AccessKeys`'s: enrolled with a code
   # an instance admin makes, never made in a browser, never with stored secrets.
@@ -100,27 +101,19 @@ defmodule Apiary.Adapters do
 
   ## Who may
 
-  @doc false
-  # Whether the person of `scope` may change the instance's adapters, their keys and their
-  # codes: `:ok` for an instance admin (`Apiary.Access.instance_admin?/1`) on an instance
-  # with the feature `factory` (`Apiary.Features.on?/1`), whatever organisation the scope
-  # carries and whatever that organisation shows them: an adapter is the instance's, and
-  # no organisation's view of the feature says anything of it. `{:error, :not_found}`
-  # where the instance does not have the feature, whoever asks; `{:error, :forbidden}` for
-  # anyone else. With `sudo: true`, an instance admin who did not sign in recently
-  # (`Apiary.Accounts.sudo_mode?/2`) is `{:error, :sudo}`, and signs in again first.
-  @spec authorize_instance(Scope.t() | nil, keyword) ::
-          :ok | {:error, :not_found | :forbidden | :sudo}
-  def authorize_instance(scope, opts \\ []) do
-    cond do
-      not Features.on?(:factory) -> {:error, :not_found}
-      not Access.instance_admin?(scope) -> {:error, :forbidden}
-      Keyword.get(opts, :sudo, false) and not signed_in_recently?(scope) -> {:error, :sudo}
-      true -> :ok
-    end
-  end
+  # Whether the person of `scope` may take `action`, an instance action, asked in the
+  # instance's organisation, whatever organisation the scope carries and whatever that
+  # organisation shows them (`Apiary.Access.in_instance/1`): an adapter is the instance's,
+  # and no organisation's view of the feature says anything of it. `:ok`;
+  # `{:error, :not_found}` where the instance does not have the action's feature, and for
+  # anyone outside the instance's organisation; `{:error, :forbidden}` for anyone else.
+  defp ask_instance(scope, action),
+    do: Access.authorize(Access.in_instance(scope), action, Access.instance_organisation())
 
-  defp signed_in_recently?(%Scope{user: user}), do: Accounts.sudo_mode?(user)
+  # An instance admin who did not sign in recently (`Apiary.Accounts.sudo_mode?/2`) is
+  # `{:error, :sudo}`, and signs in again first.
+  defp signed_in_recently(%Scope{user: user}),
+    do: if(Accounts.sudo_mode?(user), do: :ok, else: {:error, :sudo})
 
   @doc false
   # Whether `scope` may install the adapters listed in `QORY_INSTALLED_ADAPTERS` and give
@@ -272,11 +265,11 @@ defmodule Apiary.Adapters do
 
   # The instance's adapters are read by a person of an organisation who may read them
   # there (`adapter.read`, where they are shown the feature), and by an instance admin
-  # where the instance has it (`authorize_instance/2`).
+  # where the instance has it (`instance.read_factory`).
   defp readable?(scope),
     do:
       Access.can?(scope, :"adapter.read", scope.organisation) or
-        authorize_instance(scope) == :ok
+        ask_instance(scope, :"instance.read_factory") == :ok
 
   # The instance's adapters in use: of no organisation and no workspace.
   defp live_query do
@@ -540,7 +533,7 @@ defmodule Apiary.Adapters do
 
   @doc false
   # Makes an adapter of the instance (`adapter.create`, an instance admin after a recent
-  # sign-in, `authorize_instance/2`), from `attrs`, its `name`, unique among the
+  # sign-in), from `attrs`, its `name`, unique among the
   # instance's adapters in use. `{:ok, adapter}`, `{:error, changeset}`,
   # `{:error, :forbidden}`, `{:error, :sudo}`, or `{:error, :not_found}` where the feature
   # is off.
@@ -548,7 +541,8 @@ defmodule Apiary.Adapters do
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason() | :sudo}
   def create_adapter(%Scope{} = scope, attrs) do
     Repo.transact(fn ->
-      with :ok <- authorize_instance(scope, sudo: true),
+      with :ok <- ask_instance(scope, :"adapter.create"),
+           :ok <- signed_in_recently(scope),
            {:ok, recorder} <- instance_scope(scope),
            changeset =
              Node.adapter_changeset(
@@ -630,11 +624,11 @@ defmodule Apiary.Adapters do
   @installs_topic "adapters:installs"
 
   @doc false
-  # Subscribes an instance admin (`authorize_instance/2`) to the adapters the installer
+  # Subscribes an instance admin (`instance.read_factory`) to the adapters the installer
   # makes (`install/2`): `{:adapter_installed, %{node_id: id}}` once each new one commits.
   @spec subscribe_installs(Scope.t()) :: :ok | {:error, term}
   def subscribe_installs(%Scope{} = scope) do
-    with :ok <- authorize_instance(scope),
+    with :ok <- ask_instance(scope, :"instance.read_factory"),
          do: Phoenix.PubSub.subscribe(Apiary.PubSub, @installs_topic)
   end
 
@@ -711,7 +705,7 @@ defmodule Apiary.Adapters do
   @spec rename_adapter(Scope.t(), Node.t(), map) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
   def rename_adapter(%Scope{} = scope, %Node{} = adapter, attrs) do
-    mutate(scope, adapter, fn recorder, current ->
+    mutate(scope, :"adapter.edit", adapter, fn recorder, current ->
       with {:ok, renamed} <- current |> Node.adapter_changeset(attrs) |> Repo.update(),
            :ok <- record_rename(recorder, current, renamed) do
         {:ok, renamed}
@@ -830,7 +824,7 @@ defmodule Apiary.Adapters do
 
   @doc false
   # Starts the set-up of `adapter` at the system it reads from (`adapter.setup`, an
-  # instance admin, `authorize_instance/2`, with no recent sign-in asked: the pass grants
+  # instance admin, with no recent sign-in asked: the pass grants
   # nothing in Qory Apiary), with `adapter` as it is now, in use and held `FOR SHARE`: a
   # new setup pass for it (`Apiary.Adapters.SetupPass`), whose nonce nothing here keeps.
   # Each pass has the slug of the instance's organisation (`instance_scope/1`) as its
@@ -852,7 +846,7 @@ defmodule Apiary.Adapters do
           | {:error, :unlisted | :no_setup_url | :no_key | :invalid | Access.reason()}
   def setup(%Scope{} = scope, %Node{id: id}) do
     Repo.transact(fn ->
-      with :ok <- authorize_instance(scope),
+      with :ok <- ask_instance(scope, :"adapter.setup"),
            {:ok, %Scope{organisation: organisation} = recorder} <- instance_scope(scope),
            %Node{} = current <-
              live_query() |> where([n], n.id == ^id) |> lock("FOR SHARE") |> Repo.one() ||
@@ -880,7 +874,7 @@ defmodule Apiary.Adapters do
   @doc false
   # Deletes `adapter` (`adapter.delete`, an instance admin): it leaves every page, its name
   # is free again, and its row stays for what names it. In the same transaction, under its
-  # row held `FOR NO KEY UPDATE` (`mutate/3`), its keys in use are revoked and its
+  # row held `FOR NO KEY UPDATE` (`mutate/4`), its keys in use are revoked and its
   # outstanding codes cancelled (`Apiary.AccessKeys.revoke_node_keys/3`, each key with
   # its entry of `access_key.revoke`), and every connection to it that has not ended ends
   # (`integration_deleted`), which the entry records (`ended_connection_ids`, their public
@@ -902,7 +896,7 @@ defmodule Apiary.Adapters do
           {:ok, Node.t()}
           | {:error, Ecto.Changeset.t() | Access.reason() | :not_live | :installed}
   def delete_adapter(%Scope{} = scope, %Node{} = adapter) do
-    mutate(scope, adapter, fn recorder, current ->
+    mutate(scope, :"adapter.delete", adapter, fn recorder, current ->
       now = DateTime.utc_now()
 
       with :ok <- removable(current),
@@ -959,7 +953,7 @@ defmodule Apiary.Adapters do
   @spec installed?(Node.t()) :: boolean
   def installed?(%Node{kind: :adapter, installed_as: name}), do: is_binary(name)
 
-  # Asks `authorize_instance/2` of the person as they are now, then hands `fun` the scope
+  # Asks `action` of the person as they are now (`ask_instance/2`), then hands `fun` the scope
   # the change is recorded with (`instance_scope/1`) and the adapter as it is now, in use,
   # locked for the rest of the transaction.
   #
@@ -969,9 +963,9 @@ defmodule Apiary.Adapters do
   # to check a reference to it. It still keeps out a connect, which holds the row
   # `FOR SHARE`, and a change of the adapter's keys (`Apiary.AccessKeys`), which holds it
   # `FOR UPDATE`.
-  defp mutate(scope, %Node{id: id}, fun) do
+  defp mutate(scope, action, %Node{id: id}, fun) do
     Repo.transact(fn ->
-      with :ok <- authorize_instance(scope),
+      with :ok <- ask_instance(scope, action),
            {:ok, recorder} <- instance_scope(scope),
            %Node{} = current <-
              live_query()
@@ -1007,14 +1001,14 @@ defmodule Apiary.Adapters do
         }
 
   @doc false
-  # How often `adapter` pulls, to an instance admin (`authorize_instance/2`), read from the
+  # How often `adapter` pulls, to an instance admin (`instance.read_factory`), read from the
   # adapter in use now: `{:ok, sync}`, with `interval` as stored even when a later
   # declaration leaves it out of `choices` (below the minimum; the adapter raises such an
   # interval to its minimum, as the contract has it). `{:error, :forbidden}` for anyone
   # else, `{:error, :not_found}` where the feature is off or the adapter is deleted.
   @spec sync_settings(Scope.t(), Node.t()) :: {:ok, sync} | {:error, Access.reason()}
   def sync_settings(%Scope{} = scope, %Node{kind: :adapter, id: id}) do
-    with :ok <- authorize_instance(scope),
+    with :ok <- ask_instance(scope, :"instance.read_factory"),
          %Node{} = current <-
            live_query() |> where([n], n.id == ^id) |> Repo.one() || {:error, :not_found} do
       {:ok, sync(current)}
@@ -1044,11 +1038,10 @@ defmodule Apiary.Adapters do
   defp sync_choices(%Node{}), do: []
 
   @doc false
-  # Sets how often `adapter` pulls (`adapter.set_interval`, an instance admin,
-  # `authorize_instance/2`) from `attrs`'s `sync_interval`, in seconds: one of
+  # Sets how often `adapter` pulls (`adapter.set_interval`, an instance admin) from `attrs`'s `sync_interval`, in seconds: one of
   # `sync_settings/2`'s `choices`, an integer or its decimal string, or nil or `""` for
   # the adapter's declared default. In one transaction, under the adapter's row held
-  # `FOR NO KEY UPDATE` (`mutate/3`): a change leaves its entry in the instance's trail
+  # `FOR NO KEY UPDATE` (`mutate/4`): a change leaves its entry in the instance's trail
   # and appends `{kind: "sync", interval}` to the adapter's change feed
   # (`Apiary.Adapters.Feed`, nil for the default), which is how the adapter learns of it;
   # the same interval changes nothing and leaves neither.
@@ -1059,7 +1052,7 @@ defmodule Apiary.Adapters do
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason() | :not_declared}
   def update_sync_interval(%Scope{} = scope, %Node{kind: :adapter} = adapter, attrs)
       when is_map(attrs) do
-    mutate(scope, adapter, fn recorder, current ->
+    mutate(scope, :"adapter.set_interval", adapter, fn recorder, current ->
       with :ok <- declared(current),
            {:ok, updated} <-
              current
@@ -1294,7 +1287,7 @@ defmodule Apiary.Adapters do
   # revoked ones included (`last_used_at`, which every accepted request of an adapter's key
   # records, `ApiaryWeb.Contract.AdapterRequest`), or nil when none was ever used. Given a
   # list of adapters, a map of each one's id to its time, one query, without the adapters
-  # never seen. To an instance admin (`authorize_instance/2`), `{:ok, time}` or
+  # never seen. To an instance admin (`instance.read_factory`), `{:ok, time}` or
   # `{:ok, map}`; `{:error, :forbidden}` for anyone else, `{:error, :not_found}` where the
   # feature is off.
   @spec last_seen(Scope.t(), Node.t()) :: {:ok, DateTime.t() | nil} | {:error, Access.reason()}
@@ -1305,7 +1298,7 @@ defmodule Apiary.Adapters do
   end
 
   def last_seen(%Scope{} = scope, adapters) when is_list(adapters) do
-    with :ok <- authorize_instance(scope) do
+    with :ok <- ask_instance(scope, :"instance.read_factory") do
       {:ok, last_used(for %Node{kind: :adapter, id: id} <- adapters, do: id)}
     end
   end

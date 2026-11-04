@@ -2,8 +2,9 @@ defmodule ApiaryWeb.InstanceLive.General do
   @moduledoc """
   Instance settings › General, `/instance/general`: the product's name on this instance
   (`Apiary.ProductName`) and the support address (`Apiary.SupportAddress`), for the
-  instance's admins (`Apiary.Access.instance_admin?/1`); anyone else is answered as a
-  path that does not exist (`ApiaryWeb.NotFound`). It is the Instance level's first
+  instance's admins, who may set the name or save the address (`instance.rename`,
+  `instance.support_save`, asked in the instance scope, `ApiaryWeb.Access`'s `:instance`);
+  anyone else is answered as a path that does not exist (`ApiaryWeb.NotFound`). It is the Instance level's first
   section, before an edition's and the core's Mail and Configuration
   (`ApiaryWeb.Layouts.instance_sections/1`).
 
@@ -23,6 +24,8 @@ defmodule ApiaryWeb.InstanceLive.General do
   the form. Saving it shows a toast and keeps the page.
   """
   use ApiaryWeb, :live_view
+
+  on_mount {ApiaryWeb.Access, :instance}
 
   alias Apiary.{Access, ProductName, SupportAddress}
   alias ApiaryWeb.InstanceLive.ConfigurationComponents
@@ -121,7 +124,10 @@ defmodule ApiaryWeb.InstanceLive.General do
 
   @impl true
   def mount(_params, _session, socket) do
-    if Access.instance_admin?(socket.assigns.current_scope) do
+    instance = socket.assigns.scope
+
+    if Access.can?(instance, :"instance.rename", instance.organisation) or
+         Access.can?(instance, :"instance.support_save", instance.organisation) do
       {:ok,
        assign(socket,
          page_title:

@@ -575,7 +575,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     %{current_scope: scope, flow: %{workspace: workspace}} = socket.assigns
     instance_line = WorkspaceSetup.instance_line()
     qory_pool_ready = ready?(instance_line)
-    qory_pool_hidden = not (qory_pool_ready or Access.instance_admin?(scope))
+
+    qory_pool_hidden =
+      not (qory_pool_ready or ApiaryWeb.Access.instance_can?(scope, :"instance.read_factory"))
+
     pools = shown_pools(WorkspaceSetup.pools(workspace), qory_pool_hidden)
     workspace_pools = for %{instance: false, pool: pool} <- pools, do: pool
     socket = listen_to_pools(socket, workspace_pools)

@@ -324,11 +324,13 @@ defmodule Apiary.AccessTest do
       assert Access.authorize(ctx.admin, :"invitation.revoke", invitation) == :ok
     end
 
+    # The instance actions are left out: they are the instance admins', owners of the
+    # instance's organisation, which the rows ask (`Apiary.AccessRows`).
     test "an admin reaches none of the core's owner-only actions", ctx do
       owner_only =
         Enum.filter(
           Access.roles().owner -- Access.roles().admin,
-          &(&1 in Apiary.AccessCase.actions(:core))
+          &(&1 in Apiary.AccessCase.actions(:core) and not Access.action(&1).instance)
         )
 
       assert Enum.sort(owner_only) ==
@@ -427,6 +429,107 @@ defmodule Apiary.AccessTest do
         refute Access.can?(nil, action, nil)
         assert {:error, _reason} = Access.authorize(nil, action, nil)
       end
+    end
+  end
+
+  describe "the instance's admins" do
+    # The instance actions, answered in their order: the feature, asked of the instance;
+    # the instance step; the edition; the place; the role.
+    setup do
+      admin = instance_admin_scope()
+      %{scope: owner} = sign_up_fixture()
+
+      %{
+        admin: admin,
+        instance: admin.organisation,
+        owner: owner,
+        inner_admin: member_fixture(admin, :admin).scope,
+        # The instance admin, asking from an organisation they joined.
+        elsewhere: join_fixture(owner, admin.user).scope
+      }
+    end
+
+    test "outside the instance's organisation, not found; inside it without the role, forbidden",
+         ctx do
+      action = :"instance.rename"
+
+      assert Access.authorize(ctx.owner, action, ctx.owner.organisation) == {:error, :not_found}
+      assert Access.authorize(ctx.owner, action, ctx.instance) == {:error, :not_found}
+      assert Access.authorize(ctx.elsewhere, action, ctx.instance) == {:error, :not_found}
+      assert Access.authorize(ctx.inner_admin, action, ctx.instance) == {:error, :forbidden}
+      assert Access.authorize(ctx.admin, action, ctx.instance) == :ok
+
+      # Asked of anything but the instance's organisation, not found.
+      assert Access.authorize(ctx.admin, action, ctx.admin.workspace) == {:error, :not_found}
+      assert Access.authorize(ctx.admin, action, ctx.owner.organisation) == {:error, :not_found}
+    end
+
+    test "the instance's organisation marked for deletion is not found", ctx do
+      organisation = %{ctx.instance | deletion_marked_at: DateTime.utc_now(:second)}
+      marked = %{ctx.admin | organisation: organisation}
+      assert Access.check(marked, :"instance.rename", marked.organisation) == {:error, :not_found}
+    end
+
+    test "the feature is asked of the instance, never what is hidden from the person", ctx do
+      hidden = %{ctx.admin | hidden: [:factory, :observability]}
+      assert Access.check(hidden, :"instance.read_factory", ctx.instance) == :ok
+      assert Access.check(hidden, :"instance.read_observability", ctx.instance) == :ok
+    end
+
+    test "the instance's scope makes a password link of an account in use, and nothing else",
+         ctx do
+      instance = Scope.for_instance(ctx.instance)
+      account = ctx.owner.user
+
+      assert Access.authorize(instance, :"account.password_link", account) == :ok
+      assert Access.authorize(ctx.admin, :"account.password_link", account) == :ok
+
+      deleted = %{account | deleted_at: DateTime.utc_now(:second)}
+
+      assert Access.authorize(instance, :"account.password_link", deleted) ==
+               {:error, :not_found}
+
+      assert Access.authorize(instance, :"instance.rename", ctx.instance) == {:error, :forbidden}
+    end
+
+    test "in_instance/1 and instance_scope/1 move a person into the instance's organisation",
+         ctx do
+      moved = Access.in_instance(ctx.elsewhere)
+      assert moved.organisation.id == ctx.instance.id
+      assert moved.workspace == nil
+      assert Access.authorize(moved, :"instance.rename", ctx.instance) == :ok
+
+      assert {:ok, %Scope{organisation: %Organisation{id: id}}} =
+               Access.instance_scope(ctx.elsewhere)
+
+      assert id == ctx.instance.id
+
+      # Someone who does not reach the instance's organisation is moved nowhere.
+      assert %Scope{organisation: nil, membership: nil} = Access.in_instance(ctx.owner)
+      assert Access.instance_scope(ctx.owner) == :error
+      assert Access.instance_scope(ctx.inner_admin) == :error
+      assert Access.instance_scope(nil) == :error
+      assert Access.in_instance(nil) == nil
+    end
+
+    test "instance_admin?/1 answers as instance.read in the instance's organisation, now",
+         ctx do
+      assert Access.instance_admin?(ctx.admin)
+      assert Access.instance_admin?(ctx.elsewhere)
+      refute Access.instance_admin?(ctx.inner_admin)
+      refute Access.instance_admin?(ctx.owner)
+      refute Access.instance_admin?(Scope.for_instance(ctx.instance))
+      refute Access.instance_admin?(nil)
+
+      # A second owner, an instance admin until made a member.
+      %{scope: second, membership: membership} = member_fixture(ctx.admin, :owner)
+      assert Access.instance_admin?(second)
+
+      {:ok, _} = Apiary.Organisations.set_member_level(ctx.admin, membership.id, :member)
+      refute Access.instance_admin?(second)
+      # The scope as loaded still carries owner: a page follows by the broadcast.
+      assert Access.can?(second, :"instance.rename", ctx.instance)
+      assert Access.authorize(second, :"instance.rename", ctx.instance) == {:error, :forbidden}
     end
   end
 

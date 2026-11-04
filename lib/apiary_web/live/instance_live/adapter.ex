@@ -46,16 +46,18 @@ defmodule ApiaryWeb.InstanceLive.Adapter do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :factory
 
-  alias Apiary.{AccessKeys, Adapters}
+  on_mount {ApiaryWeb.Access, :instance}
+
+  alias Apiary.{Access, AccessKeys, Adapters}
   alias Apiary.Adapters.CallAddress
   alias Apiary.Nodes.Node
   alias ApiaryWeb.{AdapterComponents, SettingsComponents, SourceComponents}
 
   @impl true
   def mount(%{"adapter_id" => public_id}, _session, socket) do
-    scope = socket.assigns.current_scope
+    %{current_scope: scope, scope: instance} = socket.assigns
 
-    with :ok <- Adapters.authorize_instance(scope),
+    with true <- Access.can?(instance, :"instance.read_factory", instance.organisation),
          %Node{} = adapter <- Adapters.get_adapter(scope, public_id),
          {:ok, sync} <- Adapters.sync_settings(scope, adapter) do
       if connected?(socket), do: Adapters.subscribe_keys(scope, adapter)

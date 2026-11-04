@@ -359,7 +359,7 @@ defmodule Apiary.Nodes.InstalledTest do
       %{scope: member} = sign_up_fixture()
 
       assert NodesInstalled.set_instance_limit(member, pool, %{"instance_limit" => "3"}) ==
-               {:error, :forbidden}
+               {:error, :not_found}
 
       assert Repo.reload!(pool).instance_limit == nil
     end

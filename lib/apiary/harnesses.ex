@@ -27,13 +27,15 @@ defmodule Apiary.Harnesses do
   #
   # ## Writes
   #
-  # An instance admin (`Apiary.Access.instance_admin?/1`) who signed in recently
-  # (`Apiary.Accounts.sudo_mode?/2`), on an instance with the feature `factory`, creates
-  # one (`assign/3`, `harness.assigned`) and deletes one (`unassign/2`,
-  # `harness.unassigned`), whatever organisation the scope carries; no role takes either
-  # action. Both call `Apiary.Adapters.authorize_instance/2` with `sudo: true`. Where the
-  # feature is off, both are `{:error, :not_found}`; for an instance admin who did not
-  # sign in recently, `{:error, :sudo}`; for anyone else, `{:error, :forbidden}`. Each
+  # An instance admin who signed in recently (`Apiary.Accounts.sudo_mode?/2`), on an
+  # instance with the feature `factory`, creates one (`assign/3`, `harness.assigned`) and
+  # deletes one (`unassign/2`, `harness.unassigned`), whatever organisation the scope
+  # carries: instance actions, which both ask in the instance's organisation
+  # (`Apiary.Access.in_instance/1`, `Apiary.Access.authorize/3`), then the recent sign-in.
+  # Where the feature is off, both are `{:error, :not_found}`, and so for anyone outside
+  # the instance's organisation; for anyone else there who is no instance admin,
+  # `{:error, :forbidden}`; for an instance admin who did not sign in recently,
+  # `{:error, :sudo}`. Each
   # change writes its entry, in its transaction, in the trail of the instance's
   # organisation, with the source and the organisation it covers. No route or page calls
   # either.
@@ -53,7 +55,7 @@ defmodule Apiary.Harnesses do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias Apiary.{Adapters, Audit, Edition, Repo}
+  alias Apiary.{Access, Accounts, Adapters, Audit, Edition, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.{Assignment, RunHarness}
@@ -165,7 +167,7 @@ defmodule Apiary.Harnesses do
       end
 
     Repo.transact(fn ->
-      with :ok <- Adapters.authorize_instance(scope, sudo: true),
+      with :ok <- ask_instance(scope, :"harness.assigned"),
            {:ok, recorder} <- Adapters.instance_scope(scope),
            {:ok, assignment} <-
              %Assignment{
@@ -193,7 +195,7 @@ defmodule Apiary.Harnesses do
           {:ok, Assignment.t()} | {:error, :forbidden | :sudo | :not_found}
   def unassign(scope, %Assignment{id: id}) do
     Repo.transact(fn ->
-      with :ok <- Adapters.authorize_instance(scope, sudo: true),
+      with :ok <- ask_instance(scope, :"harness.unassigned"),
            {:ok, recorder} <- Adapters.instance_scope(scope),
            %Assignment{} = current <-
              Repo.one(from a in Assignment, where: a.id == ^id, lock: "FOR UPDATE") ||
@@ -206,6 +208,15 @@ defmodule Apiary.Harnesses do
         {:ok, deleted}
       end
     end)
+  end
+
+  # `action` asked of the person of `scope` in the instance's organisation, then a recent
+  # sign-in.
+  defp ask_instance(scope, action) do
+    with :ok <-
+           Access.authorize(Access.in_instance(scope), action, Access.instance_organisation()) do
+      if Accounts.sudo_mode?(scope.user), do: :ok, else: {:error, :sudo}
+    end
   end
 
   # What an assignment's entry has: the source, and the organisation it covers.
