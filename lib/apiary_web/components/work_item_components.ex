@@ -1829,10 +1829,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   The questions form's draft is `answers` (by question id, each `%{"option" => choice,
   "note" => text}`, the choice an option's place from 1, or `"own"` for Give your own
   option), and `errors` its errors by question id, as `answer_error/1` words them; and
-  `form_error`, `:blank` where the form gave no answer and no review comment is open,
-  `:stale` where the questions changed after the page showed them and no answer was
-  sent. The focus goes to the first
-  question at fault, again after each send (`submits`, counted by the page).
+  `form_error`, `:blank` where the form gave no answer and no review comment was sent:
+  none is open, or the reader is not an approver of the stage; `:stale` where the
+  questions changed after the page showed them and no answer was sent. The focus goes
+  to the first question at fault, again after each send (`submits`, counted by the
+  page).
   """
   attr :id, :string, default: "work-item-explore"
   attr :work_item, :map, required: true, doc: "the work item, with its latest run as `:run`"
@@ -1867,7 +1868,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :form_error, :atom,
     default: nil,
     doc:
-      "`:blank` where the form gave no answer and no review comment is open, `:stale` where the questions changed after the page showed them"
+      "`:blank` where the form gave no answer and no review comment was sent: none is open, or the reader is not an approver of the stage; `:stale` where the questions changed after the page showed them"
 
   attr :submits, :integer,
     default: 0,

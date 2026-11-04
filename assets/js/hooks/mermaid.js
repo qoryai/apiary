@@ -145,7 +145,7 @@ export const labelCSS = ".edgeLabel rect, .edgeLabel .label rect { opacity: 1; }
 // What the hook passes to mermaid.initialize, with the theme's colours `themeVariables`.
 // look "handDrawn" draws the shapes and lines of flowchart, state, class and ER diagrams
 // as sketched lines; Mermaid 11.17.2 draws a sequence diagram in the classic look,
-// whatever `look` is set to. The text keeps the font below. handDrawnSeed fixes the
+// whatever `look` is set to. The text uses the font below. handDrawnSeed fixes the
 // sketch's random strokes, so a diagram looks the same on every draw.
 export const settings = themeVariables => ({
   startOnLoad: false,
