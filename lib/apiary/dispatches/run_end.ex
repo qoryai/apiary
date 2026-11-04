@@ -551,40 +551,57 @@ defmodule Apiary.Dispatches.RunEnd do
   # or that is silent (`lost`), or whose exit came and whose end was not written
   # (`run_ended`), or whose refusal was folded and whose end was not written
   # (`run_refused`): at most `@batch`, each in a separate transaction. One that
-  # raises is logged by its id and the exception's module, and the rest are still ended.
-  # The ids of the workspaces whose slots changed, and the work items whose run settled,
-  # for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  # raises is logged by its id and the exception's module, in one line, and the rest are
+  # still ended. The ids of the workspaces whose slots changed, and the work items whose
+  # run settled, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
   @doc false
   @spec lose(DateTime.t()) :: [Ecto.UUID.t() | Settle.told()]
-  def lose(%DateTime{} = now) do
-    from(d in DispatchRun,
-      join: r in Run,
-      on: r.dispatch_run_id == d.id,
-      where: fragment("? = 'handed_over'", d.state),
-      where:
-        (d.step != ^@prebuild and
-           (not is_nil(r.outcome_state) or not is_nil(r.exited_at) or not is_nil(r.exit_state) or
-              not is_nil(r.refused_at))) or
-          (d.step == ^@prebuild and (not is_nil(r.exited_at) or not is_nil(r.exit_state))) or
-          not is_nil(r.released_at) or not is_nil(r.start_failure) or
-          (is_nil(r.attached_at) and r.attach_by < ^now) or
-          r.backstop_at < ^now or
-          (not is_nil(r.attached_at) and is_nil(r.exited_at) and is_nil(r.exit_state) and
-             fragment(
-               "GREATEST(?, ?) + make_interval(secs => ?) < ?",
-               r.last_heartbeat_at,
-               r.attached_at,
-               @silence,
-               ^now
-             )),
-      order_by: d.id,
-      limit: @batch,
-      select: d.id
-    )
-    |> Repo.all()
-    |> Enum.flat_map(&lose_guarded(&1, now))
-    |> Enum.uniq()
+  def lose(%DateTime{} = now), do: now |> lose(nil) |> elem(0)
+
+  # lose/3 is `lose/1` for the runs whose id comes after `after_id`, or from the first
+  # for nil, at most `limit`, in the order of their ids: `{changed, next}`, `next` the
+  # `after_id` of the next call, the last id read when it read `limit`, nil when it read
+  # fewer. So runs whose end raises at every tick, such as one whose newest questions
+  # cannot be read (`Apiary.Stages`), do not keep the runs after them from their end:
+  # the lost-run check keeps `next` between its ticks (`Apiary.Runs.Liveness`).
+  @doc false
+  @spec lose(DateTime.t(), Ecto.UUID.t() | nil, pos_integer) ::
+          {[Ecto.UUID.t() | Settle.told()], Ecto.UUID.t() | nil}
+  def lose(%DateTime{} = now, after_id, limit \\ @batch) do
+    ids =
+      from(d in DispatchRun,
+        join: r in Run,
+        on: r.dispatch_run_id == d.id,
+        where: fragment("? = 'handed_over'", d.state),
+        where:
+          (d.step != ^@prebuild and
+             (not is_nil(r.outcome_state) or not is_nil(r.exited_at) or not is_nil(r.exit_state) or
+                not is_nil(r.refused_at))) or
+            (d.step == ^@prebuild and (not is_nil(r.exited_at) or not is_nil(r.exit_state))) or
+            not is_nil(r.released_at) or not is_nil(r.start_failure) or
+            (is_nil(r.attached_at) and r.attach_by < ^now) or
+            r.backstop_at < ^now or
+            (not is_nil(r.attached_at) and is_nil(r.exited_at) and is_nil(r.exit_state) and
+               fragment(
+                 "GREATEST(?, ?) + make_interval(secs => ?) < ?",
+                 r.last_heartbeat_at,
+                 r.attached_at,
+                 @silence,
+                 ^now
+               )),
+        order_by: d.id,
+        limit: ^limit,
+        select: d.id
+      )
+      |> after_id(after_id)
+      |> Repo.all()
+
+    next = if length(ids) == limit, do: List.last(ids)
+    {ids |> Enum.flat_map(&lose_guarded(&1, now)) |> Enum.uniq(), next}
   end
+
+  defp after_id(query, nil), do: query
+  defp after_id(query, id), do: from(d in query, where: d.id > ^id)
 
   # A silent run lost for good is broadcast as changed once its end commits.
   defp lose_guarded(id, now) do

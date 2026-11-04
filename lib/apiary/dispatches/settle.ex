@@ -94,7 +94,9 @@ defmodule Apiary.Dispatches.Settle do
 
     case Outcome.at_end(dispatch_run) do
       :questions -> write(dispatch_run, :questions)
-      nil -> unread(dispatch_run)
+      # With the workflow model on, the stage runner reads the questions next and raises,
+      # and the end's caller logs that line (`Apiary.Dispatches.RunEnd.lose/3`).
+      nil -> if Apiary.Stages.on?(), do: [], else: unread(dispatch_run)
       _other -> []
     end
   end

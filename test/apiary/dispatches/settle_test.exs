@@ -346,8 +346,8 @@ defmodule Apiary.Dispatches.SettleTest do
         set: [result_outcome: nil]
       )
 
-      state = %{interval: :timer.hours(1), settle_after: first.dispatch_run.id}
-      assert {:noreply, %{settle_after: nil}} = Liveness.handle_info(:tick, state)
+      state = %{interval: :timer.hours(1), cursors: %{settle: first.dispatch_run.id}}
+      assert {:noreply, %{cursors: %{settle: nil}}} = Liveness.handle_info(:tick, state)
       assert stored(second) == {:questions, nil}
       assert stored(first) == {nil, nil}
     end
@@ -399,6 +399,58 @@ defmodule Apiary.Dispatches.SettleTest do
                queue_run!(handed)
 
       assert %WorkItem{stage_state: :waiting_answers} = work_item!(handed)
+    end
+
+    # Runs whose end raises at every tick, more than one batch of them, keep no run after
+    # them from its end: each call reads after where the call before stopped, and logs one
+    # line per run it read.
+    @tag needs: [:factory, :workflow_model]
+    test "runs whose questions stay unreadable keep no later run from its end", ctx do
+      runs =
+        for _n <- 1..4 do
+          handed = handed_over!(ctx)
+          questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+          handed
+        end
+        |> Enum.sort_by(& &1.dispatch_run.id)
+
+      # The first three by id are stuck; the last can be ended.
+      [one, two, three, last] = runs
+      Enum.each([one, two, three], &unreadable!/1)
+      # Past every run's deadline for its exit, so each is lost.
+      lost_at =
+        runs |> Enum.map(& &1.run.backstop_at) |> Enum.max(DateTime) |> DateTime.add(1, :second)
+
+      lines = fn log, handed ->
+        log |> String.split("dispatch_run=#{handed.dispatch_run.id}") |> length() |> Kernel.-(1)
+      end
+
+      # A batch of two: the first two, both stuck.
+      {{[], next}, log} = ExUnit.CaptureLog.with_log(fn -> RunEnd.lose(lost_at, nil, 2) end)
+      assert next == two.dispatch_run.id
+      assert {lines.(log, one), lines.(log, two), lines.(log, three)} == {1, 1, 0}
+      assert queue_run!(last).state == :handed_over
+
+      # After them: the third, stuck, and the last, which ends.
+      {{[_ | _], next_after}, log} =
+        ExUnit.CaptureLog.with_log(fn -> RunEnd.lose(lost_at, next, 2) end)
+
+      assert next_after == last.dispatch_run.id
+      assert {lines.(log, three), lines.(log, last)} == {1, 0}
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: :questions} =
+               queue_run!(last)
+
+      # Fewer than two after the last: the next call starts from the first id again.
+      assert {[], nil} = RunEnd.lose(lost_at, next_after, 2)
+      assert Enum.all?([one, two, three], &(queue_run!(&1).state == :handed_over))
+
+      # The process's tick keeps the id the call stopped at.
+      state = %{interval: :timer.hours(1), cursors: %{lose: two.dispatch_run.id}}
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:noreply, %{cursors: %{lose: nil}}} = Liveness.handle_info(:tick, state)
+      end)
     end
 
     test "with a proposal and no open question: nothing stored", ctx do
