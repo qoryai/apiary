@@ -1523,6 +1523,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
 
       assert attr(html, "#{r} .q-rc-head", "aria-expanded") == ["true", "false", "true"]
+      # The avatar in a header button is no tab stop; the button is one.
+      assert count(html, "#{r} .q-rc-head abbr") == 2
+      assert count(html, "#{r} .q-rc-head [tabindex]") == 0
 
       assert attr(html, "#{r} .q-rc-head", "aria-label") == [
                "Hide the review comment",

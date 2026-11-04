@@ -2934,7 +2934,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         phx-mounted={JS.ignore_attributes(["aria-expanded", "aria-label"])}
       >
         <.icon :if={@closed} name="hero-check-micro" class="q-rc-tick size-3.5" />
-        <.avatar :if={!@closed} email={@comment.by.email} kind={kind(@comment.by)} size="xs" />
+        <.avatar
+          :if={!@closed}
+          email={@comment.by.email}
+          kind={kind(@comment.by)}
+          size="xs"
+          in_link
+        />
         <span class="q-rc-by q-rc-m">{comment_by(@comment)}</span>
         <span class="q-rc-snip" phx-no-format>{@comment.text}</span>
         <.badge :if={@comment.state == :open} color="warning">
