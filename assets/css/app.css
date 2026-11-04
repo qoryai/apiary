@@ -14123,6 +14123,7 @@
   }
   .q-xp-wrap {
     white-space: normal;
+    overflow-wrap: anywhere;
   }
   /* A closed question's summary: the question is at most the line less the chevron
      (0.875rem and its 8px margin), so a long question wraps beside the chevron; a wider

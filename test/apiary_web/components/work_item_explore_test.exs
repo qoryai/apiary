@@ -1379,6 +1379,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                ~r/\n  \.q-xp-closed > details > summary > \.q-xp-chev \{\s*align-self: flex-start;\s*margin-top: calc\(\(1lh - 0\.875rem\) \/ 2\);\s*\}/
 
       assert css =~ ~r/\n  \.q-xp-closed > details > summary \{\s*align-content: center;\s*\}/
+
+      # A word longer than the line breaks inside the frame, in the question and the answer.
+      assert css =~
+               ~r/\n  \.q-xp-wrap \{\s*white-space: normal;\s*overflow-wrap: anywhere;\s*\}/
     end
 
     test "each open question: its options, then Give your own option, then one field" do
