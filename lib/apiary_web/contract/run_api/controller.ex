@@ -514,10 +514,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp mismatch(:svg_format, filename, _push),
     do: "Make #{filename} a well-formed SVG file in UTF-8 with an svg root element."
 
-  # A proposal's SVG whose root svg is outside the SVG namespace, such as an SVG copied
-  # from an HTML page with no xmlns.
+  # A proposal's SVG whose root svg is outside the SVG namespace: with no xmlns, such as an
+  # SVG copied from an HTML page, or with another address.
   defp mismatch(:svg_root, filename, _push),
-    do: ~s(Add xmlns="http://www.w3.org/2000/svg" to the svg root element of #{filename}.)
+    do: ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of #{filename}.)
 
   # A proposal's sources.json that is not one JSON document.
   defp mismatch(:format, "sources.json" = filename, %{name: "proposal"}),

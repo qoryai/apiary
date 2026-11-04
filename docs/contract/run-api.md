@@ -322,8 +322,8 @@ Checks, in order, after the checks of every request:
    An SVG is also at most 512 KiB (524288 bytes), else "Shrink checkout.svg to at most
    524288 bytes."; UTF-8 text an XML parser reads to its end, with a root element `svg`,
    else "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element.";
-   and that root, written with no prefix, in the SVG namespace, else "Add
-   xmlns="http://www.w3.org/2000/svg" to the svg root element of checkout.svg." Before
+   and that root, written with no prefix, in the SVG namespace, else "Set
+   xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg." Before
    the parse, a document type declaration
    (`<!DOCTYPE` or `<!ENTITY`, any case, outside a comment, a CDATA section and a
    processing instruction) is refused as "the DOCTYPE", and an element with more than 256
@@ -414,7 +414,7 @@ The messages:
     - "Replace cart.png with an image of the type its name ends in."
     - "Shrink checkout.svg to at most 524288 bytes."
     - "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."
-    - "Add xmlns="http://www.w3.org/2000/svg" to the svg root element of checkout.svg."
+    - "Set xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg."
     - "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the
       elements and attributes the run API document lists, with no script, HTML or
       reference outside the file." The part after "Remove" names the first part
