@@ -639,6 +639,36 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert [%{"state" => "open"} = comment] = review_comments(work_item)
       refute Map.has_key?(comment, "replies")
     end
+
+    test "to a review comment of an earlier take in is not_found, and changes nothing", %{
+      scope: scope
+    } do
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      work_item =
+        work_item |> reload() |> end_run!(understood_result(%{"message" => "## Take in 1"}))
+
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {:ok, closed} = WorkItems.close(scope, work_item)
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      # Take in 2's first run gives a proposal; c1 is on take in 1's proposal.
+      work_item =
+        closed |> reload() |> end_run!(understood_result(%{"message" => "## Take in 2"}))
+
+      assert %{take_in: 2, status: :confirm} = WorkItems.explore(scope, work_item)
+      before = review_comments(work_item)
+      events = answered_events(work_item)
+
+      assert WorkItems.reply(scope, work_item, 1, "c1", "Not yet.") == {:error, :not_found}
+      assert review_comments(work_item) == before
+      assert [%{"id" => "c1", "state" => "open"} = comment] = before
+      refute Map.has_key?(comment, "replies")
+      assert answered_events(work_item) == events
+    end
   end
 
   describe "a member's name" do

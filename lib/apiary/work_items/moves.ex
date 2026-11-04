@@ -179,8 +179,9 @@ defmodule Apiary.WorkItems.Moves do
   #     count, 1, `"comment"` true and the review comment's id (`"review_comment"`).
   #   * A reply to a review comment (`reply/5`) works under the same rule: it adds the
   #     member's reply to the review comment, which opens it again
-  #     (`Apiary.Explore.ReviewComments.reply/5`; an id the review comments do not have is
-  #     `:not_found`). It queues no run. Its event, `:answered`, has what a review
+  #     (`Apiary.Explore.ReviewComments.reply/5`). An id the review comments do not have,
+  #     or the id of a review comment on a proposal of an earlier take in, is `:not_found`
+  #     (`Apiary.WorkItems.Explore.proposal_versions/2`). It queues no run. Its event, `:answered`, has what a review
   #     comment's has, and `"reply"`, the reply's position among the review comment's
   #     replies, from 1.
   #   * The open review comments go to the next run with the answers (`answer/4`), which
@@ -1042,12 +1043,28 @@ defmodule Apiary.WorkItems.Moves do
   # reply's position among the review comment's replies.
   defp keep_reply(held, scope, id, text, now) do
     with {:ok, earlier} <- review_comments(held),
+         :ok <- of_take_in(held, earlier, id),
          {:ok, document} <-
            found(ReviewComments.reply(earlier, id, text, person_name(scope), now)),
          {:ok, _version} <-
            push(held, scope, ReviewComments.type_name(), ReviewComments.file(document)) do
       entry = Enum.find(ReviewComments.entries(document), &(&1["id"] == id))
       {:ok, length(entry["replies"])}
+    end
+  end
+
+  # `:ok` where the review comment `id` is on a proposal of the work item's take in, the
+  # rule of `open_review_comments/1`; else `:not_found`, as for an id the review comments
+  # do not have.
+  defp of_take_in(held, document, id) do
+    case Enum.find(ReviewComments.entries(document), &(&1["id"] == id)) do
+      %{"on" => %{"artifact" => "proposal", "version" => version}} ->
+        if version in Explore.proposal_versions(held.id, held.take_in),
+          do: :ok,
+          else: {:error, :not_found}
+
+      _none ->
+        {:error, :not_found}
     end
   end
 
