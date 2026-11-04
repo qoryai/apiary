@@ -228,6 +228,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             comments={@review_comments}
             reply_path={!running?(@item) && @can_review && (&reply_path(@current_scope, @number, &1))}
             reading={running?(@item) && @item.run[:attempt]}
+            explore_path={tab_path(@current_scope, @number, :explore)}
           />
         </:rail>
         <:body>

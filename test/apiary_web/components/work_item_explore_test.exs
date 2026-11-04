@@ -1571,6 +1571,18 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "#work-item-explore-questions-question-2"
              ]
 
+      # In the right column of the Ticket and Thread tabs: the Explore tab's question.
+      rail =
+        render_component(&C.review_comments/1,
+          id: "work-item-review",
+          comments: invoice_comments(),
+          explore_path: "/acme/main/work/41/explore"
+        )
+
+      assert attr(rail, "#work-item-review-rc2-reply-1 .q-rc-m a", "href") == [
+               "/acme/main/work/41/explore#work-item-explore-questions-question-2"
+             ]
+
       assert attr(html, "#{r}-reply-1 .hero-play-circle", "class") != []
       assert text(html, "#{r}-reply-2 .q-rc-m > span") == "Dana"
       assert text(html, "#{r}-reply-2 .q-rc-text") == "Only invoices."

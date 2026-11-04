@@ -2851,7 +2851,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   replied to), its text, each reply, and Reply (`reply_path`). A run's reply shows its
   outcome with the version of the proposal that run stood at: `Changed`, `Answered` or
   `Declined in version %{version}`, or `Asked as question %{number}`, linked to that
-  question. A closed card is muted, with a tick, and folded shows its outcome under its
+  question on the Explore tab (`explore_path`, its address; nil on that tab). A closed card is muted, with a tick, and folded shows its outcome under its
   first line; a click on the header of a card folds or opens it, in the browser. While a run
   reads the open review comments (`reading`, its attempt), an open card says so, and no
   card has Reply.
@@ -2868,6 +2868,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc: "a function of a review comment's id: Reply's page; nil or false for no Reply"
 
   attr :reading, :any, default: nil, doc: "the attempt of the run that reads them now, or nil"
+
+  attr :explore_path, :string,
+    default: nil,
+    doc: "the Explore tab's address, which Asked as question links to; nil on that tab"
+
   attr :class, :any, default: nil
 
   def review_comments(assigns) do
@@ -2883,6 +2888,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         comment={comment}
         reply_path={@reply_path && @reply_path.(comment.id)}
         reading={@reading}
+        explore_path={@explore_path}
         expanded={place == 0}
       />
     </section>
@@ -2893,6 +2899,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :comment, :map, required: true
   attr :reply_path, :any, default: nil
   attr :reading, :any, default: nil
+  attr :explore_path, :string, default: nil
   attr :expanded, :boolean, default: false, doc: "opened; else folded to its first line"
 
   # A review comment's card, opened or folded (`review_comments/1`).
@@ -2940,7 +2947,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <div :if={reply.run} id={"#{@id}-reply-#{i}"} class="q-rc-reply">
           <p class="q-rc-m">
             <.icon name="hero-play-circle" class="q-xp-frame-i size-4" />
-            <span><.reply_outcome reply={reply} /></span>
+            <span><.reply_outcome reply={reply} explore_path={@explore_path} /></span>
           </p>
           <p class="q-rc-text" phx-no-format>{reply.text}</p>
         </div>
@@ -2968,13 +2975,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   attr :reply, :map, required: true
+  attr :explore_path, :string, default: nil
 
-  # A run's reply's outcome; Asked links to the question the run added.
+  # A run's reply's outcome; Asked links to the question the run added, on the Explore
+  # tab at `explore_path`, or on this page where it is nil.
   defp reply_outcome(%{reply: %{outcome: :asked, question_number: n}} = assigns)
        when is_integer(n) do
     ~H"""
     <.link
-      href={"#work-item-explore-questions-question-#{@reply.question_number}"}
+      href={"#{@explore_path}#work-item-explore-questions-question-#{@reply.question_number}"}
       class="text-accent"
     >
       {gettext("Asked as question %{number}", number: Format.number(@reply.question_number))}
