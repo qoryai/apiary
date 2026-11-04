@@ -1527,11 +1527,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "#{r} .q-rc-head abbr") == 2
       assert count(html, "#{r} .q-rc-head [tabindex]") == 0
 
-      assert attr(html, "#{r} .q-rc-head", "aria-label") == [
-               "Hide the review comment",
-               "Show the review comment",
-               "Hide the review comment"
-             ]
+      # No label in place of the content: a screen reader reads each card's writer and text.
+      assert attr(html, "#{r} .q-rc-head", "aria-label") == []
 
       # A second closed card folds too.
       closed = comment("rc4", %{state: :closed, replies: [run_reply(:answered, 2)]})

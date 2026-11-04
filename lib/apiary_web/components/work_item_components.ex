@@ -2851,7 +2851,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   replied to), its text, each reply, and Reply (`reply_path`). A run's reply shows its
   outcome with the version of the proposal that run stood at: `Changed`, `Answered` or
   `Declined in version %{version}`, or `Asked as question %{number}`, linked to that
-  question on the Explore tab (`explore_path`, its address; nil on that tab). A closed card is muted, with a tick, and folded shows its outcome under its
+  question on the Explore tab (`explore_path`, its address; nil on that tab). A closed
+  card is muted, with a tick, and folded shows its outcome under its
   first line; a click on the header of a card folds or opens it, in the browser. While a run
   reads the open review comments (`reading`, its attempt), an open card says so, and no
   card has Reply.
@@ -2912,10 +2913,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     assigns =
       assign(assigns,
         closed: closed,
-        folded: folded,
         expanded: if(folded, do: "false", else: "true"),
-        show: gettext("Show the review comment"),
-        hide: gettext("Hide the review comment"),
         outcome: closed && last && outcome_words(last)
       )
 
@@ -2926,12 +2924,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         type="button"
         class="q-rc-head"
         aria-expanded={@expanded}
-        aria-label={if(@folded, do: @show, else: @hide)}
-        phx-click={
-          JS.toggle_attribute({"aria-expanded", "true", "false"})
-          |> JS.toggle_attribute({"aria-label", @hide, @show})
-        }
-        phx-mounted={JS.ignore_attributes(["aria-expanded", "aria-label"])}
+        phx-click={JS.toggle_attribute({"aria-expanded", "true", "false"})}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.icon :if={@closed} name="hero-check-micro" class="q-rc-tick size-3.5" />
         <.avatar

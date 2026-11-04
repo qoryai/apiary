@@ -9714,11 +9714,6 @@ msgstr ""
 msgid "Hi! Where are you running?"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Hide the review comment"
-msgstr ""
-
 #: lib/apiary_web/live/artifact_live/show.ex
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/policy_live/show.ex
@@ -17203,11 +17198,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Show the locked rule"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Show the review comment"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
