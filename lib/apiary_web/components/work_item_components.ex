@@ -2851,11 +2851,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   replied to), its text, each reply, and Reply (`reply_path`). A run's reply shows its
   outcome with the version of the proposal that run stood at: `Changed`, `Answered` or
   `Declined in version %{version}`, or `Asked as question %{number}`, linked to that
-  question on the Explore tab (`explore_path`, its address; nil on that tab). A closed
-  card is muted, with a tick, and folded shows its outcome under its
-  first line; a click on the header of a card folds or opens it, in the browser. While a run
-  reads the open review comments (`reading`, its attempt), an open card shows that, and no
-  card has Reply.
+  question on the Explore tab (`explore_path`, its address; nil links to the question
+  on this page). A closed card is muted, with a tick, and folded shows its outcome under
+  its first line; a click on the header of a card folds or opens it, in the browser.
+  While a run reads the open review comments (`reading`, its attempt), an open card
+  shows that, and no card has Reply.
 
   A review comment is `%{id:, text:, by:, version:, state:, reopened:, replies:}`, `state`
   `:open` or `:closed`, each reply `%{run:, by:, text:, outcome:, question_number:,
@@ -2872,7 +2872,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :explore_path, :string,
     default: nil,
-    doc: "the Explore tab's address, which Asked as question links to; nil on that tab"
+    doc: "the Explore tab's address, for Asked as question; nil links to the question here"
 
   attr :level, :string,
     default: "h3",
