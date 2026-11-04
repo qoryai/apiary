@@ -270,18 +270,18 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           runs: nil
         })
 
-    test "taken in by the reader: the bee, the Undo line and Undo" do
+    test "taken in by the reader: the run's icon, the Undo line and Undo" do
       html = card(queued(@dana, ago(5)))
 
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Queued"
-      assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
+      assert count(html, ".q-wi-icon-line .q-wi-play.hero-play-circle") == 1
 
-      assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory explores the ticket and writes a proposal for the work."
+      assert text(html, ".q-wi-icon-line") ==
+               "When the run starts, Explore reads the ticket and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."
+               "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket and leaves its comment."
 
       assert text(html, "#work-item-step-undo button") == "Undo"
       assert attr(html, "#work-item-step-undo button", "phx-click") == ["undo"]
@@ -292,24 +292,24 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = card(queued(@priya, ago(20 * 60)))
 
       assert text(html, "#work-item-step-undo-line") ==
-               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in: Qory removes its label from the ticket and leaves its comment."
+               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket and leaves its comment."
     end
 
     test "after the uninstall: the reader's line says nothing changes on the ticket" do
       html = card(queued(@dana, ago(20 * 60)), uninstalled: true)
 
-      assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory explores the ticket and writes a proposal for the work."
+      assert text(html, ".q-wi-icon-line") ==
+               "When the run starts, Explore reads the ticket and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+               "You took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps the label and comment of Qory Apiary."
     end
 
     test "after the uninstall, another's take in: who and when, nothing changes, and Undo" do
       html = card(queued(@priya, ago(20 * 60)), uninstalled: true)
 
       assert text(html, "#work-item-step-undo-line") ==
-               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."
+               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in. GitHub is no longer connected, so nothing changes on the ticket: it keeps the label and comment of Qory Apiary."
 
       assert text(html, "#work-item-step-undo button") == "Undo"
     end
@@ -319,9 +319,9 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
             {@dana, false, "You took this in just now."},
             {@priya, false, "Priya took this in just now."},
             {@dana, true,
-             "You took this in just now. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."},
+             "You took this in just now. GitHub is no longer connected, so nothing changes on the ticket: it keeps the label and comment of Qory Apiary."},
             {@priya, true,
-             "Priya took this in just now. GitHub is no longer connected, so nothing changes on the ticket: it keeps Qory's label and comment."}
+             "Priya took this in just now. GitHub is no longer connected, so nothing changes on the ticket: it keeps the label and comment of Qory Apiary."}
           ] do
         html = card(queued(by, ago(5)), can_undo: false, uninstalled: uninstalled)
         assert text(html, "#work-item-step-undo-line") == line
@@ -337,7 +337,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   end
 
   describe "step_card/1, Explore running" do
-    test "a first run, and when it started; its attempt links the run's page" do
+    test "a first run: what Explore reads, one line, no button" do
       run = %{
         id: "01a9e3c7",
         number: 15,
@@ -351,15 +351,28 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Running"
 
-      assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket and writes a proposal."
+      # Orange while Explore runs, as concept A draws the card, also for a reader who
+      # may not act.
+      assert count(html, ".q-wi-step-ask") == 1
 
-      assert text(html, "#work-item-step-run") == "Attempt 1 started 6 minutes ago."
-      assert attr(html, "#work-item-step-run a", "href") == ["/8wonders/main/runs/15"]
+      assert count(
+               card(work_item(%{status: :running, run: run}), can_act: false),
+               ".q-wi-step-ask"
+             ) == 1
+
+      assert count(card(work_item(%{status: :queued, run: nil})), ".q-wi-step-ask") == 1
+
+      assert text(html, "#work-item-step-line") ==
+               "Explore reads the ticket and writes a proposal."
+
+      # One line only: no start time, no run link, no run icon.
+      assert count(html, "#work-item-step-run") == 0
+      refute html =~ "started"
+      assert count(html, ".q-wi-play") == 0
       assert count(html, "button") == 0
     end
 
-    test "again, with a member's answers; a run without a page is its attempt, as text" do
+    test "again, with a member's answers" do
       run = %{
         id: "rn_01a9e3c7",
         number: 15,
@@ -371,34 +384,35 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       html = card(work_item(%{status: :running, run: run}))
 
-      assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket and the answers of Priya, and writes a proposal."
+      assert text(html, "#work-item-step-line") ==
+               "Explore reads the ticket and the answers of Priya, and writes a proposal."
 
-      assert count(html, "#work-item-step-run a") == 0
-      assert text(html, "#work-item-step-run") == "Attempt 2 started 6 minutes ago."
+      assert count(html, "#work-item-step-run") == 0
     end
 
-    test "a run with no number on the server still reads its attempt" do
+    test "a run with no number on the server: the same line" do
       run = %{id: "rn_01a9e3c7", number: nil, attempt: 1, path: nil, started_at: ago(6 * 60)}
       html = card(work_item(%{status: :running, run: run}))
 
-      assert text(html, "#work-item-step-run") == "Attempt 1 started 6 minutes ago."
+      assert text(html, "#work-item-step-line") ==
+               "Explore reads the ticket and writes a proposal."
     end
   end
 
   describe "step_card/1, Confirm" do
-    test "the reader's: Your turn, the line, and Read Qory's proposal, no buttons" do
+    test "the reader's: Your turn, the line, and Read the proposal, no buttons" do
       html = card(work_item(), explore_path: "/acme/main/work/88/explore")
 
       assert text(html, "h2") == "Confirm"
       assert text(html, ".q-wi-badge") == "Your turn"
       assert count(html, ".q-wi-step-ask") == 1
 
-      assert text(html, ".q-wi-bee-line") ==
-               "Confirm Qory's proposal, or write what to change."
+      assert text(html, "#work-item-step-line") ==
+               "Confirm the proposal, or add review comments and send them."
 
       refute html =~ "Mock-up"
-      assert text(html, "#work-item-step-explore") == "Read Qory's proposal"
+      assert count(html, ".q-wi-play") == 0
+      assert text(html, "#work-item-step-explore") == "Read the proposal"
       assert attr(html, "#work-item-step-explore", "href") == ["/acme/main/work/88/explore"]
       assert count(html, "button") == 0
       assert count(html, "#work-item-step-confirm") == 0
@@ -416,10 +430,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "without the right to act: whose turn it is, no link" do
       html = card(work_item(%{owner: @priya}), can_act: false)
 
-      assert text(html, ".q-wi-bee-line") == "Priya confirms next"
+      assert text(html, "#work-item-step-line") == "Priya confirms next"
 
-      assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
-      refute html =~ "Confirm Qory&#39;s proposal"
+      assert count(html, ".q-wi-play") == 0
+      refute html =~ "Confirm the proposal"
       assert count(html, "button") == 0
       assert count(html, "[role=group]") == 0
 
@@ -431,8 +445,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           explore_path: "/acme/main/work/88/explore"
         )
 
-      assert text(acts, ".q-wi-bee-line") ==
-               "Confirm Qory's proposal, or write what to change."
+      assert text(acts, "#work-item-step-line") ==
+               "Confirm the proposal, or add review comments and send them."
 
       assert count(acts, "#work-item-step-explore") == 1
     end
@@ -440,7 +454,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "without the right to act: the reader as you, another owner by name, escaped" do
       mine = card(work_item(), can_act: false)
 
-      assert text(mine, ".q-wi-bee-line") == "You confirm next"
+      assert text(mine, "#work-item-step-line") == "You confirm next"
 
       html =
         card(
@@ -451,13 +465,13 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert html =~ "&lt;b&gt;Ana&lt;/b&gt; confirms next"
-      assert count(html, ".q-wi-bee-line b") == 0
+      assert count(html, "#work-item-step-line b") == 0
     end
 
     test "without the right to act and without an owner: no line, and no buttons" do
       html = card(work_item(%{owner: nil}), can_act: false)
       assert text(html, "h2") == "Confirm"
-      assert count(html, ".q-wi-bee-line") == 0
+      assert count(html, "#work-item-step-line") == 0
       assert count(html, "button") == 0
     end
   end
@@ -1315,11 +1329,11 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "the step card and its Undo line" do
       html = card(queued(@dana, ago(5)), item_noun: @bug)
 
-      assert text(html, ".q-wi-bee-line") ==
-               "When the run starts, Qory explores the bug and writes a proposal for the work."
+      assert text(html, ".q-wi-icon-line") ==
+               "When the run starts, Explore reads the bug and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo the take in: Qory removes its label from the bug and leaves its comment."
+               "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the bug and leaves its comment."
     end
 
     test "the notices, the close question and the end notice" do

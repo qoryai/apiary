@@ -54,6 +54,123 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     refute out =~ "javascript:"
   end
 
+  @images %{
+    "checkout.svg" => "/acme/main/work/7/artifacts/av_1/files/checkout.svg",
+    "invoice.png" => "/acme/main/work/7/artifacts/av_1/files/invoice.png"
+  }
+
+  defp html(text, images) do
+    assert {:html, safe} = Markdown.render(text, images)
+    Phoenix.HTML.safe_to_string(safe)
+  end
+
+  defp imgs(out), do: ~r/<img[^>]*>/ |> Regex.scan(out) |> List.flatten()
+
+  describe "render/2, with the version's images" do
+    test "shows an image of the version as <img> from its address" do
+      out = html("Before ![Checkout form](checkout.svg) after", @images)
+
+      assert imgs(out) == [
+               ~s(<img src="/acme/main/work/7/artifacts/av_1/files/checkout.svg" alt="Checkout form">)
+             ]
+
+      refute out =~ "Image"
+      refute out =~ "QIMG"
+    end
+
+    test "takes a list of pairs as a map, and the filename as alt where none is given" do
+      out = html("![](invoice.png)", Map.to_list(@images))
+
+      assert imgs(out) == [
+               ~s(<img src="/acme/main/work/7/artifacts/av_1/files/invoice.png" alt="invoice.png">)
+             ]
+    end
+
+    test "strips one leading ./ only, and matches no path" do
+      out = html("![a](./checkout.svg) ![b](././checkout.svg) ![c](files/checkout.svg)", @images)
+
+      assert imgs(out) == [
+               ~s(<img src="/acme/main/work/7/artifacts/av_1/files/checkout.svg" alt="a">)
+             ]
+
+      assert out =~ "Image: b"
+      assert out =~ "Image: c"
+    end
+
+    test "compares the filename byte for byte" do
+      out = html("![a](Checkout.svg) ![b](checkout.svg%20)", @images)
+
+      assert imgs(out) == []
+      assert out =~ "Image not in this version: a"
+      assert out =~ "Image not in this version: b"
+    end
+
+    test "loads no outside image: it stays a link with its words" do
+      out =
+        html("![Form](https://example.com/checkout.svg) ![x](data:image/png;base64,AA)", @images)
+
+      assert imgs(out) == []
+      assert out =~ ~s(<a href="https://example.com/checkout.svg")
+      assert out =~ "Image: Form"
+      refute out =~ "data:"
+    end
+
+    test "shows a filename of no image of the version as words, with its alt or name" do
+      out = html("![Old wireframe](header.svg) ![](footer.svg)", @images)
+
+      assert imgs(out) == []
+      assert out =~ "Image not in this version: Old wireframe"
+      assert out =~ "Image not in this version: footer.svg"
+    end
+
+    test "a proposal version with no images: a filename is not in this version" do
+      out = html("![Form](checkout.svg) ![](footer.svg)", [])
+
+      assert imgs(out) == []
+      assert out =~ "Image not in this version: Form"
+      assert out =~ "Image not in this version: footer.svg"
+    end
+
+    test "a text of no proposal version (nil, and render/1): a filename stays its words" do
+      for out <- [html("![Form](checkout.svg)", nil), html("![Form](checkout.svg)")] do
+        assert imgs(out) == []
+        assert out =~ "Image: Form"
+        refute out =~ "not in this version"
+      end
+    end
+
+    test "shows an image of the version inside a link, and the link once" do
+      out = html("[![Form](checkout.svg)](https://example.com/form)", @images)
+
+      assert out =~ ~s(<a href="https://example.com/form")
+
+      assert imgs(out) == [
+               ~s(<img src="/acme/main/work/7/artifacts/av_1/files/checkout.svg" alt="Form">)
+             ]
+
+      assert [_one] = Regex.scan(~r/<a /, out)
+    end
+
+    test "a placeholder written in the document stays text" do
+      name = Base.encode16("checkout.svg", case: :lower)
+      written = "QIMG#{String.duplicate("0", 32)}#{name}X#{Base.encode16("a", case: :lower)}Z"
+      out = html("#{written} and `#{written}`", @images)
+
+      assert imgs(out) == []
+      assert out =~ written
+    end
+
+    test "escapes the address and the alt" do
+      images = %{"a.svg" => ~s(/acme/files/a.svg?x="1"&y=<2>)}
+      out = html(~s|![Say "hi" <b>&</b>](a.svg)|, images)
+
+      assert [img] = imgs(out)
+      assert img =~ ~s(src="/acme/files/a.svg?x=&quot;1&quot;&amp;y=&lt;2&gt;")
+      refute img =~ "<b>"
+      assert img =~ ~s(alt="Say &quot;hi&quot;)
+    end
+  end
+
   test "marks a Mermaid block for the hook, its text escaped" do
     out =
       html("```mermaid\nflowchart LR\n  A[<b>Cart</b>] --> B\n```\n\n```elixir\nIO.puts(1)\n```")

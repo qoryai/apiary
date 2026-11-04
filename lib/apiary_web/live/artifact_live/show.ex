@@ -183,14 +183,16 @@ defmodule ApiaryWeb.ArtifactLive.Show do
     do: assign(socket, :history, Artifacts.versions(socket.assigns.version.artifact))
 
   # Another file of a document version: rendered as the reader opens it, in place of the
-  # one shown (`Load.content/3`). The file already shown is not rendered again.
+  # one shown (`Load.content/3`). The file already shown is not rendered again. Only a
+  # document of the version (`ArtifactComponents.documents/2`) is rendered.
   @impl true
   def handle_event("show-document", %{"file" => filename}, socket) do
     %{type: type, version: version, shown: shown} = socket.assigns
-    shown = shown || Enum.at(Enum.map(version.files, & &1.filename), 0)
+    documents = ArtifactComponents.documents(type, version)
+    shown = shown || Enum.at(Enum.map(documents, & &1.filename), 0)
 
     if type.base_view == :document and filename != shown and
-         Enum.any?(version.files, &(&1.filename == filename)),
+         Enum.any?(documents, &(&1.filename == filename)),
        do:
          {:noreply,
           assign(socket, shown: filename, content: Load.content(type, version, filename))},

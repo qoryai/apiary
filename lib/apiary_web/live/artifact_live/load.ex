@@ -78,7 +78,9 @@ defmodule ApiaryWeb.ArtifactLive.Load do
   end
 
   # content/3 is what a view shows of the version's files, by filename: for a document,
-  # the file `shown` only, the first file where it is nil or no file's name, as
+  # the file `shown` only, of the version's documents
+  # (`ApiaryWeb.ArtifactComponents.documents/2`), the first where it is nil or no
+  # document's name, as
   # `{:markdown, rendered}`, the file's text as `Markdown.render/1` returns it, for a file
   # of at most `Markdown.max_bytes/0` bytes whose render stays within the budget, else
   # `:too_large`; for a structured type,
@@ -90,7 +92,9 @@ defmodule ApiaryWeb.ArtifactLive.Load do
   @spec content(Type.t(), Version.t(), String.t() | nil) :: map
   def content(type, version, shown \\ nil)
 
-  def content(%Type{base_view: :document}, %Version{files: files}, shown) do
+  def content(%Type{base_view: :document} = type, %Version{} = version, shown) do
+    files = ApiaryWeb.ArtifactComponents.documents(type, version)
+
     case Enum.find(files, &(&1.filename == shown)) || List.first(files) do
       nil ->
         %{}

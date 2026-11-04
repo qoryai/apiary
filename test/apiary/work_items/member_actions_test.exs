@@ -536,7 +536,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       explore = WorkItems.explore(ctx.scope, ctx.work_item)
       assert explore.status == :shape
       assert explore.confirmed_by_id == ctx.scope.user.id
-      assert explore.comments == []
+      assert explore.review_comments == []
 
       assert WorkItems.confirm(ctx.scope, ctx.work_item, 1) == {:error, :not_waiting}
       assert Repo.aggregate(Confirmation, :count) == 1

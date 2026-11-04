@@ -11,6 +11,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
   alias Apiary.{Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Explore.Questions
   alias Apiary.Harnesses.RunHarness
   alias Apiary.WorkItems.{Explore, WorkItemEvent}
 
@@ -83,7 +84,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                earlier_take_ins: [],
                answers_by_ids: [],
                confirmed_by_id: nil,
-               comments: []
+               review_comments: []
              } = WorkItems.explore(ctx.scope, ctx.work_item)
 
       {:ok, answered} =
@@ -133,7 +134,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                run: %{place: :proposal, outcome: :proposal, proposal: %{message: ^message}},
                confirmed_by_id: ^user_id,
                confirmed_at: %DateTime{},
-               comments: []
+               review_comments: []
              } = WorkItems.explore(ctx.scope, confirmed)
     end
 
@@ -343,6 +344,18 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
       assert %{run: %{workflow_gap: nil}} = WorkItems.explore(ctx.scope, ctx.work_item)
     end
+
+    test "a question reopened twice: the run map of each run that wrote or reopened it counts it in `asked` and lists it in `questions`, with the answer given at that run",
+         ctx do
+      item = reopened_twice!(ctx.scope, ctx.work_item)
+      %{earlier_runs: earlier, run: latest} = WorkItems.explore(ctx.scope, item)
+
+      assert for(run <- earlier ++ [latest], do: {run.attempt, run.asked, frame(run)}) == [
+               {1, 1, [{"Which basket?", "The main one"}]},
+               {2, 1, [{"Which basket?", "The other one"}]},
+               {3, 1, [{"Which basket?", nil}]}
+             ]
+    end
   end
 
   describe "explore_thread/3" do
@@ -419,6 +432,109 @@ defmodule Apiary.WorkItems.ExploreViewTest do
              ] = WorkItems.explore_thread(ctx.scope, item, now)
 
       assert taken_in.first_instruction == first_instruction
+    end
+
+    test "a run that wrote a proposal while an earlier run's question stays open: a proposal with no owner",
+         ctx do
+      now = DateTime.utc_now()
+      item = ctx.work_item
+
+      explore_run_fixture(item,
+        result: questions_result(["Which basket?", "Which sale?"]),
+        run: timed(now, 9, 8)
+      )
+
+      {:ok, _} = WorkItems.answer(ctx.scope, item, 1, %{"1" => "At checkout."})
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^item.id and r.attempt == 2)
+
+      %{run: second} =
+        explore_run_fixture(item, attempt: 2, result: understood_result(), run: timed(now, 6, 5))
+
+      # The second question, which the first run asked, is still open.
+      assert %{status: :questions} = WorkItems.explore(ctx.scope, item)
+
+      entries =
+        for %{run: %{id: id}} = entry <- WorkItems.explore_thread(ctx.scope, item, now),
+            id == second.public_id,
+            do: Map.take(entry, [:kind, :owner_id])
+
+      assert entries == [%{kind: :started}, %{kind: :proposed, owner_id: nil}]
+    end
+
+    test "a run that wrote neither a proposal nor a question while an earlier run's question stays open: no result",
+         ctx do
+      now = DateTime.utc_now()
+      item = ctx.work_item
+
+      explore_run_fixture(item,
+        result: questions_result(["Which basket?", "Which sale?"]),
+        run: timed(now, 9, 8)
+      )
+
+      {:ok, _} = WorkItems.answer(ctx.scope, item, 1, %{"1" => "At checkout."})
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^item.id and r.attempt == 2)
+      %{run: second} = explore_run_fixture(item, attempt: 2, run: timed(now, 6, 5))
+
+      # The second question, which the first run asked, is still open, so the run waits.
+      assert %{status: :questions} = WorkItems.explore(ctx.scope, item)
+
+      entries =
+        for %{run: %{id: id}} = entry <- WorkItems.explore_thread(ctx.scope, item, now),
+            id == second.public_id,
+            do: Map.take(entry, [:kind, :outcome, :wrote])
+
+      assert entries == [%{kind: :started}, %{kind: :no_result, outcome: :none, wrote: nil}]
+    end
+
+    test "a waiting run that wrote a question while an earlier run's question stays open: only its question",
+         ctx do
+      now = DateTime.utc_now()
+      item = ctx.work_item
+
+      explore_run_fixture(item,
+        result: questions_result(["Which basket?", "Which sale?"]),
+        run: timed(now, 9, 8)
+      )
+
+      {:ok, _} = WorkItems.answer(ctx.scope, item, 1, %{"1" => "At checkout."})
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^item.id and r.attempt == 2)
+
+      %{run: second} =
+        explore_run_fixture(item,
+          attempt: 2,
+          result: questions_result(["Which price?"]),
+          run: timed(now, 6, 5)
+        )
+
+      # The first run's second question and the second run's question are open.
+      assert %{status: :questions} = WorkItems.explore(ctx.scope, item)
+
+      asked =
+        for %{kind: :asked, run: %{id: id}} = entry <-
+              WorkItems.explore_thread(ctx.scope, item, now),
+            id == second.public_id,
+            do: Enum.map(entry.questions, &{&1.public_id, &1.text, &1.answer})
+
+      assert asked == [[{"1", "Which price?", nil}]]
+    end
+
+    test "a question reopened twice: the Thread line of each run that reopened it lists it, with the answer given at that run",
+         ctx do
+      item = reopened_twice!(ctx.scope, ctx.work_item)
+
+      ends =
+        for %{kind: kind, run: %{attempt: attempt}} = entry <-
+              WorkItems.explore_thread(ctx.scope, item),
+            kind in [:asked, :proposed, :no_result],
+            do:
+              {attempt, kind,
+               entry[:questions] && Enum.map(entry.questions, &{&1.text, &1.answer})}
+
+      assert Enum.sort(ends) == [
+               {1, :asked, [{"Which basket?", "The main one"}]},
+               {2, :asked, [{"Which basket?", "The other one"}]},
+               {3, :asked, [{"Which basket?", nil}]}
+             ]
     end
 
     test "a run asked to run again, one without a result, and the stage a close recorded",
@@ -612,6 +728,35 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                )
     end
 
+    test "a take in again: the questions and the waiting run's questions are those its runs wrote; the earlier take in's run has its question" do
+      %{scope: scope} = sign_up_fixture()
+      ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      explore_run_fixture(work_item, result: questions_result(["Which basket?"]))
+      {:ok, _closed} = WorkItems.close(scope, work_item)
+
+      {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      Repo.delete_all(
+        from r in DispatchRun, where: r.work_item_id == ^again.id and r.take_in == 2
+      )
+
+      %{run: %{number: asked_2}} =
+        explore_run_fixture(again, take_in: 2, result: questions_result(["Which sale?"]))
+
+      assert %{
+               status: :questions,
+               questions: [
+                 %{id: "q2", number: 2, text: "Which sale?", state: :open, asked_run: ^asked_2}
+               ],
+               run: %{questions: [%{public_id: "1", text: "Which sale?"}]},
+               earlier_take_ins: [
+                 %{take_in: 1, runs: [%{questions: [%{text: "Which basket?"}], asked: 1}]}
+               ]
+             } = WorkItems.explore(scope, again)
+    end
+
     test "a take in again undone gave its owner back, and no record keeps the one it had" do
       %{scope: scope} = sign_up_fixture()
       %{user: member} = member_fixture(scope)
@@ -634,6 +779,50 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                  %{kind: :taken_in} = entry <- WorkItems.explore_thread(scope, undone),
                  do: entry
                )
+    end
+
+    test "a question reopened in take in 2 and again in take in 3: the fold of each take in lists it at each run that wrote or reopened it, and at the run it was answered at",
+         ctx do
+      scope = ctx.scope
+      ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
+      {:ok, item} = WorkItems.take_in(scope, ticket.public_id)
+      Repo.delete_all(from r in DispatchRun, where: r.work_item_id == ^item.id)
+      explore_run_fixture(item, result: questions_result(["Which basket?"]))
+      {:ok, _} = WorkItems.answer(scope, item, 1, %{"1" => "The main one"})
+      {:ok, _closed} = WorkItems.close(scope, reload(item))
+
+      # Take in 2's run 1 reopens q1 and writes q2, and only q2 is answered at it; its
+      # run 2 pushes nothing, and q1 is answered at it.
+      {:ok, item} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+      item = Apiary.StagesFixtures.end_run!(reload(item), &reopen!(&1, &2, "q1", ["Which sale?"]))
+      {:ok, _} = WorkItems.answer(scope, item, 1, %{"2" => "The spring sale"})
+      item = Apiary.StagesFixtures.end_run!(reload(item), nil)
+      # An answer's time is recorded to the second (`Apiary.Explore.Given`).
+      Process.sleep(1_000)
+      {:ok, _} = WorkItems.answer(scope, item, 2, %{"1" => "The other one"})
+      {:ok, _closed} = WorkItems.close(scope, reload(item))
+
+      # Take in 3's run reopens q1 again; take in 4 follows.
+      {:ok, item} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+      item = Apiary.StagesFixtures.end_run!(reload(item), &reopen!(&1, &2, "q1"))
+      {:ok, _closed} = WorkItems.close(scope, item)
+      {:ok, item} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      folds =
+        for %{take_in: take_in, runs: runs} <- WorkItems.explore(scope, item).earlier_take_ins,
+            do: {take_in, for(run <- runs, do: {run.attempt, run.outcome, run.asked, frame(run)})}
+
+      assert folds == [
+               {1, [{1, :questions, 1, [{"Which basket?", "The main one"}]}, {2, nil, 0, []}]},
+               {2,
+                [
+                  {1, :questions, 2,
+                   [{"Which basket?", nil}, {"Which sale?", "The spring sale"}]},
+                  {2, :questions, 0, [{"Which basket?", "The other one"}]},
+                  {3, nil, 0, []}
+                ]},
+               {3, [{1, :questions, 1, [{"Which basket?", nil}]}]}
+             ]
     end
 
     test "a close by the instance names its reason; a person's close names none", ctx do
@@ -672,6 +861,68 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert %{kind: :closed, reason: nil} =
                List.last(WorkItems.explore_thread(ctx.scope, by_person))
     end
+  end
+
+  defp reload(work_item), do: Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
+
+  # A run map's questions, each with the answer given at the run.
+  defp frame(run), do: Enum.map(run.questions, &{&1.text, &1.answer})
+
+  # `work_item` after run 1 asked q1, answered at it; run 2, queued by the answer,
+  # reopened q1, answered at it; and run 3, queued by that answer, reopened q1 again.
+  defp reopened_twice!(scope, work_item) do
+    explore_run_fixture(work_item, result: questions_result(["Which basket?"]))
+    {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The main one"})
+    work_item = Apiary.StagesFixtures.end_run!(reload(work_item), &reopen!(&1, &2, "q1"))
+    # An answer's time is recorded to the second, and the Thread finds an answer by its
+    # time (`Apiary.Explore.Given`): the second answer comes a second later.
+    Process.sleep(1_000)
+    {:ok, _} = WorkItems.answer(scope, work_item, 2, %{"1" => "The other one"})
+    Apiary.StagesFixtures.end_run!(reload(work_item), &reopen!(&1, &2, "q1"))
+  end
+
+  # Pushes, as the run `registered` of the run of the queue `run`, the newest questions
+  # with the answered question `id` reopened by the run: its answer moved to the end of
+  # its history; and the questions `added`, by their texts, which the run wrote.
+  defp reopen!(run, registered, id, added \\ []) do
+    work_item = reload(%{id: run.work_item_id})
+    {_version, document} = Questions.newest(work_item)
+    at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+    questions =
+      Enum.map(document["questions"], fn
+        %{"id" => ^id, "answer" => answer} = question ->
+          reopened = Map.put(answer, "reopened", %{"run" => registered.number, "at" => at})
+
+          question
+          |> Map.delete("answer")
+          |> Map.put("state", "open")
+          |> Map.put("history", (question["history"] || []) ++ [reopened])
+
+        question ->
+          question
+      end)
+
+    added =
+      for {text, n} <- Enum.with_index(added, length(questions) + 1) do
+        %{
+          "id" => "q#{n}",
+          "question" => text,
+          "options" => [],
+          "state" => "open",
+          "asked" => %{"run" => registered.number, "at" => at}
+        }
+      end
+
+    {:ok, _version} =
+      Apiary.Artifacts.push(
+        {:run, run},
+        work_item,
+        "questions",
+        [Questions.file(%{"questions" => questions ++ added})],
+        name: "main",
+        stage_id: run.stage_id
+      )
   end
 
   # `work_item` closed by the instance, for `reason`, as the removal of an adapter closes

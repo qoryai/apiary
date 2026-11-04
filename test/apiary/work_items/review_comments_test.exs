@@ -168,8 +168,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert answered_events(work_item) == [data]
       assert entries(work_item) == [data]
 
-      assert [%{text: @comment, attempt: 1, version: 1, done_version: nil}] =
-               WorkItems.explore(scope, reload(work_item)).comments
+      assert [%{text: @comment, version: 1, state: :open, replies: []}] =
+               WorkItems.explore(scope, reload(work_item)).review_comments
 
       # The version a member writes is the member's.
       assert [%{writer: :person}] =
@@ -301,8 +301,10 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
                %{"state" => "closed"}
              ] = review_comments(work_item)
 
-      assert [%{version: 1, done_version: 2, done_at: %DateTime{}}, %{done_version: 2}] =
-               explore.comments
+      assert [
+               %{version: 1, state: :closed, replies: [%{version: 2, at: %DateTime{}}]},
+               %{state: :closed, replies: [%{version: 2}]}
+             ] = explore.review_comments
     end
 
     test "is refused with no review comment open, and where no proposal waits", %{
@@ -371,8 +373,10 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       work_item = revised!(work_item)
       assert [%{"state" => "closed"}] = review_comments(work_item)
 
-      assert %{status: :questions, comments: [%{version: 1, done_version: 2}]} =
-               WorkItems.explore(scope, work_item)
+      assert %{
+               status: :questions,
+               review_comments: [%{version: 1, state: :closed, replies: [%{version: 2}]}]
+             } = WorkItems.explore(scope, work_item)
     end
 
     test "while questions wait is refused with none open, for a non-approver, and stale", %{
@@ -441,7 +445,7 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
 
       work_item = closed |> reload() |> end_run!(questions_result(["Which refund?"]))
 
-      assert %{take_in: 2, status: :questions, comments: []} =
+      assert %{take_in: 2, status: :questions, review_comments: []} =
                WorkItems.explore(scope, work_item)
 
       # Take in 1's review comment is still open, on take in 1's proposal.
@@ -516,8 +520,10 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       work_item = revised!(work_item)
       assert [%{"state" => "closed"}, %{"state" => "closed"}] = review_comments(work_item)
 
-      assert [%{done_version: 2}, %{done_version: 2}] =
-               WorkItems.explore(scope, work_item).comments
+      assert [
+               %{state: :closed, replies: [%{version: 2}]},
+               %{state: :closed, replies: [%{version: 2}]}
+             ] = WorkItems.explore(scope, work_item).review_comments
     end
   end
 
@@ -549,6 +555,74 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
 
       assert {:ok, _} = WorkItems.send_review_comments(scope, work_item, 2)
       assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
+    end
+
+    test "two members' replies in the same second are each by the member who wrote it", %{
+      scope: scope
+    } do
+      member = member_fixture(scope)
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
+      work_item = revised!(work_item)
+
+      assert {:ok, _} = WorkItems.reply(scope, work_item, 2, "c1", "Not yet: name the rule.")
+      assert {:ok, _} = WorkItems.reply(member.scope, work_item, 2, "c1", "And the refund.")
+
+      # Both replies in one second, as the documents store the time to the second: the
+      # second reply's `at` and the time of its move set to the first reply's second.
+      [%{"replies" => [_run, %{"at" => at}, _second]}] = review_comments(work_item)
+      same_second!(member.scope, work_item, at)
+
+      assert [%{"replies" => [_run, %{"at" => ^at}, %{"at" => ^at}]}] =
+               review_comments(work_item)
+
+      assert [%{replies: [%{run: run}, first, second]}] =
+               WorkItems.explore(scope, reload(work_item)).review_comments
+
+      assert is_integer(run)
+      assert {first.text, first.by_id} == {"Not yet: name the rule.", scope.user.id}
+      assert {second.text, second.by_id} == {"And the refund.", member.scope.user.id}
+    end
+
+    # A new version of the review comments, pushed as the member of `scope`, with the
+    # third reply of c1 at `at`, and the moves of its second and third replies within the
+    # second of `at`, the third after the second.
+    defp same_second!(scope, work_item, at) do
+      work_item = reload(work_item)
+      {_version, document} = ReviewComments.newest(work_item)
+
+      comments =
+        Enum.map(document["review_comments"], fn
+          %{"id" => "c1", "replies" => [run, first, second]} = comment ->
+            %{comment | "replies" => [run, first, %{second | "at" => at}]}
+
+          comment ->
+            comment
+        end)
+
+      {:ok, _version} =
+        Apiary.Artifacts.push(
+          {:member_action, scope},
+          work_item,
+          "review-comments",
+          [ReviewComments.file(%{document | "review_comments" => comments})],
+          stage_id: work_item.stage_id
+        )
+
+      {:ok, second, _offset} = DateTime.from_iso8601(at)
+      second = DateTime.add(second, 0, :microsecond)
+
+      for {position, micro} <- [{2, 100}, {3, 200}] do
+        {1, _rows} =
+          Repo.update_all(
+            from(e in WorkItemEvent,
+              where:
+                e.work_item_id == ^work_item.id and e.kind == :answered and
+                  fragment("(?->>'reply')::int", e.data) == ^position
+            ),
+            set: [at: DateTime.add(second, micro, :microsecond)]
+          )
+      end
     end
 
     test "to a review comment the document does not have, or with no text, is refused", %{

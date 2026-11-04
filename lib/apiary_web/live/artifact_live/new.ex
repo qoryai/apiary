@@ -424,6 +424,11 @@ defmodule ApiaryWeb.ArtifactLive.New do
       {:invalid, {reason, index}} ->
         assign(socket, :file_errors, [file_line(reason, filename.(index), type)])
 
+      {:invalid, :one_markdown} ->
+        assign(socket, :file_errors, [
+          gettext("Add exactly one Markdown file (.md) to the version.")
+        ])
+
       :store_unavailable ->
         Artifacts.log_refusal(socket.assigns.work_item, params["type"], refusal)
 
@@ -526,11 +531,41 @@ defmodule ApiaryWeb.ArtifactLive.New do
         filename: filename
       )
 
+  defp file_line(:extension, filename, %Type{standard: true, name: "proposal"}),
+    do:
+      gettext(
+        "Remove %{filename}: a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json.",
+        filename: filename
+      )
+
   defp file_line(:extension, filename, _type),
     do:
       gettext("Rename %{filename} to end in .md: a document is a Markdown file.",
         filename: filename
       )
+
+  # A proposal's files, each checked by its filename (`Apiary.Artifacts.Format`):
+  # `sources.json`, a Markdown file (`.md`), or an image.
+  defp file_line({:svg_content, part}, filename, _type),
+    do:
+      gettext(
+        "Remove %{part} from %{filename}. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file.",
+        part: part,
+        filename: filename
+      )
+
+  defp file_line(:document_size, filename, _type),
+    do:
+      gettext("Shrink %{filename} to at most %{size}.",
+        filename: filename,
+        size: ArtifactComponents.size(Apiary.Artifacts.Format.proposal_bytes(filename))
+      )
+
+  defp file_line(:format, filename, %Type{standard: true, name: "proposal"}),
+    do: proposal_format_line(:format, filename)
+
+  defp file_line(reason, filename, _type) when reason in [:image_type, :svg_format, :svg_root],
+    do: proposal_format_line(reason, filename)
 
   defp file_line(:format, filename, %Type{base_view: base_view}),
     do: format_line(base_view, filename)
@@ -538,10 +573,61 @@ defmodule ApiaryWeb.ArtifactLive.New do
   defp file_line(_unreadable, filename, _type),
     do: gettext("Upload %{filename} again.", filename: filename)
 
-  # `path` and `error` come from the file; the page shows them as text.
-  defp schema_line(filename, type, %{path: path, error: error}),
+  # proposal_format_line/2 is the line for a proposal's file `filename` when the push
+  # returns `reason` for it: for `:format`, the JSON line for `sources.json`, else the
+  # Markdown line, since the push returns `:format` for a proposal's `sources.json` and
+  # Markdown file only; for `:svg_format`, the SVG line; for `:svg_root`, the line to
+  # set the SVG namespace on the svg root element; for `:image_type`, the image line.
+  @doc false
+  @spec proposal_format_line(:format | :image_type | :svg_format | :svg_root, String.t()) ::
+          String.t()
+  def proposal_format_line(:format, "sources.json"),
+    do: gettext("Make sources.json valid JSON. The file does not parse as JSON.")
+
+  def proposal_format_line(:format, filename), do: format_line(:document, filename)
+
+  def proposal_format_line(:svg_format, filename),
     do:
-      gettext("Fix %{filename} to match the JSON Schema of %{type}: at %{path}, %{error}.",
+      gettext("Make %{filename} a well-formed SVG file in UTF-8 with an svg root element.",
+        filename: filename
+      )
+
+  def proposal_format_line(:svg_root, filename),
+    do:
+      gettext(
+        ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of %{filename}.),
+        filename: filename
+      )
+
+  def proposal_format_line(:image_type, filename),
+    do:
+      gettext("Replace %{filename} with an image of the type its name ends in.",
+        filename: filename
+      )
+
+  # schema_line/3 is the line for the file `filename` of a version of `type` that fails
+  # the push's check at `path` with `error`: for a proposal's `sources.json`, the line of
+  # the proposal sources format; else the line of the type's format. Both use the word
+  # format, since the check finds more errors than the JSON Schema does
+  # (`Apiary.Artifacts.Format`). `path` and `error` come from the file; the page shows
+  # them as text.
+  @doc false
+  @spec schema_line(String.t(), Type.t(), %{path: String.t(), error: String.t()}) ::
+          String.t()
+  def schema_line("sources.json", %Type{standard: true, name: "proposal"}, %{
+        path: path,
+        error: error
+      }),
+      do:
+        gettext(
+          "Fix sources.json to match the format of proposal sources: at %{path}, %{error}.",
+          path: path,
+          error: error
+        )
+
+  def schema_line(filename, type, %{path: path, error: error}),
+    do:
+      gettext("Fix %{filename} to match the format of %{type}: at %{path}, %{error}.",
         filename: filename,
         type: type.name,
         path: path,

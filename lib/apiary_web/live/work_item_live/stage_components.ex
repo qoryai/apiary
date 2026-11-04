@@ -113,14 +113,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <h2 id={"#{@id}-h"}>{@page.stage.name}</h2>
         <span id={"#{@id}-state"}><.state_badge state={shown_state(@page)} /></span>
       </div>
-      <p :if={@page.rounds} id={"#{@id}-round"} class="q-wi-bee-line">
+      <p :if={@page.rounds && !@page.at_explore} id={"#{@id}-round"}>
         {gettext("Round %{round} of %{rounds}",
           round: Format.number(@page.round || 1),
           rounds: Format.number(@page.rounds)
         )}
-      </p>
-      <p :if={@page.version} id={"#{@id}-version"} class="text-xs opacity-70">
-        {gettext("Process version %{number}", number: Format.number(@page.version))}
       </p>
       <p :if={@notice} id={"#{@id}-notice"} class="q-xp-err" role="alert">{@notice}</p>
       <.stage_body
@@ -134,6 +131,19 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         check={@check}
       />
     </section>
+    """
+  end
+
+  @doc """
+  The stage's state as the stage card shows it, as a badge: on the step card, where it is
+  the one card of the stage at Explore.
+  """
+  attr :id, :string, default: "work-item-step-state"
+  attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
+
+  def stage_badge(assigns) do
+    ~H"""
+    <span id={@id}><.state_badge state={shown_state(@page)} /></span>
     """
   end
 

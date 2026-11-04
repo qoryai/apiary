@@ -850,10 +850,11 @@
     opacity: 1;
     transition-delay: 0ms;
   }
-  /* A tip inside a link or a row that opens has no tab stop, since a control may not hold
-     another (`avatar/1`'s `in_link`): it opens when that link or row has keyboard focus.
-     A tip there that has a tab stop opens only on that stop. */
-  :where(:is(a, summary):focus-visible .tooltip:not([tabindex]))[data-tip]::before {
+  /* A tip inside a link, a row that opens or a review card's header button has no tab
+     stop, since a control may not hold another (`avatar/1`'s `in_link`): it opens when
+     that link, row or button has keyboard focus. A tip there that has a tab stop opens
+     only on that stop. */
+  :where(:is(a, summary, .q-rc-head):focus-visible .tooltip:not([tabindex]))[data-tip]::before {
     display: block;
     opacity: 1;
     transition-delay: 0ms;
@@ -11655,6 +11656,30 @@
   .q-ticket-formatted :where(th, td)[align="right"] {
     text-align: right;
   }
+  /* A Mermaid diagram (`assets/js/hooks/mermaid.js`): at its width, at least 40rem where
+     the column is narrower, so its labels stay readable and it scrolls sideways. An image
+     of a proposal version fits the column. */
+  .q-mermaid {
+    margin: 12px 0;
+    overflow-x: auto;
+  }
+  .q-mermaid-diagram {
+    display: block;
+    max-width: max(100%, 40rem);
+    height: auto;
+  }
+  .q-mermaid-details {
+    margin-top: 6px;
+  }
+  .q-mermaid-details > summary {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+  .q-ticket-formatted img:not(.q-mermaid-diagram) {
+    max-width: 100%;
+    height: auto;
+  }
 }
 
 /* ==== Backlog: a workspace's tickets, and one ticket (`BacklogComponents`) ==================
@@ -11794,29 +11819,6 @@
     font-size: 9.5px;
     line-height: 1;
     font-weight: 600;
-  }
-  /* Qory: the bee in a round honey avatar, 16 px on a row and 24 px beside its words. */
-  .q-bl-bee {
-    display: inline-grid;
-    width: 16px;
-    height: 16px;
-    flex: none;
-    place-items: center;
-    border-radius: 9999px;
-    background-color: var(--q-primary-soft);
-    color: var(--q-primary-soft-content);
-  }
-  .q-bl-bee > * {
-    width: 12px;
-    height: 12px;
-  }
-  .q-bl-bee.q-bl-bee-lg {
-    width: 24px;
-    height: 24px;
-  }
-  .q-bl-bee.q-bl-bee-lg > * {
-    width: 18px;
-    height: 18px;
   }
 
   /* ---- The integration's tile: a neutral outlined square with its initial, never a state
@@ -12564,50 +12566,6 @@
   }
 }
 
-/* ==== Qory's bee: two mask icons, drawn in the text colour =================================
-   The design's two symbols, as data: `q-icon-bee` (24 px, the head, two wings and a striped
-   body) and `q-icon-bee-sm` (16 px and below: no head, round wings behind the body, a heavier
-   line). In the small one the body hides the wings behind it; a mask has no fill colour, so
-   the wings are cut out inside the body and the fill under the icon shows there. A Backlog
-   bee avatar (`.q-bl-bee`, `.q-bl-bee-lg`) left empty draws the bee in its place. ==== */
-@layer qory {
-  :root {
-    --q-icon-bee: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cellipse cx='6.9' cy='9.2' rx='3.7' ry='2.4' transform='rotate(-28 6.9 9.2)'/%3E%3Cellipse cx='17.1' cy='9.2' rx='3.7' ry='2.4' transform='rotate(28 17.1 9.2)'/%3E%3Ccircle cx='12' cy='5.4' r='1.9'/%3E%3Cellipse cx='12' cy='14.8' rx='4.1' ry='5.8'/%3E%3Cpath d='M8.3 13h7.4M8.4 16.6h7.2'/%3E%3C/svg%3E");
-    --q-icon-bee-sm: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cdefs%3E%3Cmask id='b'%3E%3Crect width='24' height='24' fill='white' stroke='none'/%3E%3Cellipse cx='12' cy='14.5' rx='4.6' ry='6.6' fill='black' stroke='none'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23b)'%3E%3Ccircle cx='7' cy='8' r='4'/%3E%3Ccircle cx='17' cy='8' r='4'/%3E%3C/g%3E%3Cellipse cx='12' cy='14.5' rx='4.6' ry='6.6'/%3E%3Cpath d='M7.8 12.6h8.4M7.8 16.4h8.4'/%3E%3C/svg%3E");
-  }
-  .q-icon-bee,
-  .q-icon-bee-sm,
-  .q-bl-bee:empty::before {
-    display: inline-block;
-    flex: none;
-    background-color: currentColor;
-    vertical-align: middle;
-    -webkit-mask: var(--q-icon) center / contain no-repeat;
-    mask: var(--q-icon) center / contain no-repeat;
-  }
-  .q-icon-bee {
-    --q-icon: var(--q-icon-bee);
-    width: 24px;
-    height: 24px;
-  }
-  .q-icon-bee-sm {
-    --q-icon: var(--q-icon-bee-sm);
-    width: 16px;
-    height: 16px;
-  }
-  .q-bl-bee:empty::before {
-    --q-icon: var(--q-icon-bee-sm);
-    content: "";
-    width: 12px;
-    height: 12px;
-  }
-  .q-bl-bee.q-bl-bee-lg:empty::before {
-    --q-icon: var(--q-icon-bee);
-    width: 18px;
-    height: 18px;
-  }
-}
-
 /* ==== Work items: the list (`WorkItemListComponents`) and a work item (`WorkItemComponents`)
    The list: the stages strip or the board's boxes (`.q-wl-flow`), the bar, then a `.q-blk`
    of stage bands, or of stage groups (`.q-wl-grp`), each a `.q-band` over its rows (`.q-wl-row`, one line, the title the only
@@ -12976,6 +12934,16 @@
     margin-inline: 0;
     padding-inline: 0;
   }
+  /* The runs, notes and artifacts above the tabs: the gap between them and the tabs is the
+     gap between the tabs and Explore's run line (`.q-xp`). */
+  .q-wi-flow {
+    padding-bottom: 16px;
+  }
+  @media (max-width: 767.98px) {
+    .q-wi-flow {
+      padding-bottom: 12px;
+    }
+  }
   @media (min-width: 1440px) {
     .q-wi {
       grid-template-columns: minmax(0, 1fr) 320px;
@@ -12983,10 +12951,18 @@
       grid-template-rows: auto 1fr;
       grid-template-areas: "h r" "b r";
     }
+    /* The rail stays in place while the page scrolls the main column; a rail taller
+       than the window scrolls within itself. The top offset is 2 px less to match the
+       -2 px margin, so the content starts at the height of the main column. */
     .q-wi-r {
       position: sticky;
-      top: calc(var(--q-bar) + 1.5rem);
+      top: calc(var(--q-bar) + 1.5rem - 2px);
       grid-row: 1 / span 2;
+      max-height: calc(100dvh - var(--q-bar) - 3rem);
+      margin: -2px;
+      padding: 2px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
   }
   .q-wi-grow {
@@ -13110,6 +13086,8 @@
     border-radius: 9999px;
     font-size: 0.6875rem;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
   }
   .q-wi-stage-done {
     color: var(--color-base-content);
@@ -13243,12 +13221,13 @@
   .q-wi-step > p {
     color: var(--q-muted);
   }
-  .q-wi-bee-line {
+  .q-wi-icon-line {
     display: flex;
     align-items: flex-start;
     gap: 10px;
   }
-  .q-wi-bee-line > .q-bl-bee {
+  .q-wi-icon-line > .q-wi-play {
+    flex: none;
     margin-top: -2px;
   }
   .q-wi-acts {
@@ -13329,6 +13308,21 @@
     }
     .q-wi-dtoggle[aria-expanded="true"] + .q-wi-det > .q-wi-det-h {
       display: block;
+    }
+    /* While review comments take the rail, Details stays folded behind its button. */
+    .q-wi-dtoggle.q-wi-dfold {
+      display: flex;
+    }
+    .q-wi-dfold + .q-wi-det {
+      display: none;
+    }
+    .q-wi-dfold[aria-expanded="true"] + .q-wi-det {
+      display: block;
+      margin-top: -12px;
+      padding: 4px 12px 14px;
+    }
+    .q-wi-dfold[aria-expanded="true"] + .q-wi-det > .q-wi-det-h {
+      display: none;
     }
   }
   .q-wi-det dd {
@@ -13495,7 +13489,7 @@
     height: 24px;
     place-items: center;
   }
-  .q-wi-ev-ic > span {
+  .q-wi-ev-ic > span:where(:not(.q-wi-play)) {
     display: grid;
     width: 22px;
     height: 22px;
@@ -13641,7 +13635,9 @@
   .q-xp > * {
     min-width: 0;
   }
-  /* The run line's "·" ends the item before it, so a wrapped line never starts with it. */
+  /* The run line's "·" opens the item after it, so a line that wraps never ends in one.
+     Its second `content` has no text for screen readers; a browser without that form
+     uses the first. */
   .q-xp-run {
     display: flex;
     flex-wrap: wrap;
@@ -13654,8 +13650,9 @@
   .q-xp-run > * {
     white-space: nowrap;
   }
-  .q-xp-run > :not(:last-child)::after {
+  .q-xp-run > * + *::before {
     content: "·";
+    content: "·" / "";
     margin: 0 8px;
     color: var(--q-faint);
   }
@@ -13670,7 +13667,7 @@
     color: var(--color-error);
   }
 
-  /* Waiting, and a run without a result: Qory's bee or the mark, and what comes next. */
+  /* Waiting, and a run without a result: the arrow icon or the mark, and what comes next. */
   .q-xp-wait {
     display: flex;
     align-items: flex-start;
@@ -13717,8 +13714,10 @@
     border-radius: var(--radius-box) var(--radius-box) 0 0;
     background-color: var(--color-base-200);
   }
-  .q-xp-frame-h > h2 {
+  /* A frame's heading: an h2, or lower inside a fold, at one size. */
+  .q-xp-frame-t {
     flex: 1 1 0%;
+    text-wrap: balance;
     font-size: 0.875rem;
     line-height: 1.25rem;
     font-weight: 600;
@@ -13747,7 +13746,8 @@
     margin-top: 14px;
     border-top: 1px solid var(--q-border-subtle);
   }
-  .q-xp-sec > h3 {
+  .q-xp-sec > h3,
+  .q-xp-sec > .q-xp-sec-t {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -14015,22 +14015,28 @@
     line-height: 1.125rem;
   }
 
-  /* The take in's earlier runs, and earlier take ins: folded. */
-  .q-xp-earlier > h3 {
+  /* The take in's earlier runs, and earlier take ins: folded. The rules reach the folds
+     and the run folds inside them, not the folds of a proposal inside those. */
+  .q-xp-earlier > .q-xp-earlier-t {
     margin: 0 0 8px;
     color: var(--q-muted);
     font-size: 0.78125rem;
     font-weight: 500;
   }
-  .q-xp-earlier details {
+  .q-xp-earlier > details,
+  .q-xp-earlier > details > .q-xp-inner > details {
     border: 1px solid var(--q-border-subtle);
     border-radius: var(--radius-box);
     background-color: var(--color-base-100);
   }
-  .q-xp-earlier details + details {
+  .q-xp-earlier > details + details {
     margin-top: 8px;
   }
-  .q-xp-earlier summary {
+  .q-xp-earlier > details > .q-xp-inner > details:not(:first-child) {
+    margin-top: 8px;
+  }
+  .q-xp-earlier > details > summary,
+  .q-xp-earlier > details > .q-xp-inner > details > summary {
     display: flex;
     min-height: 40px;
     flex-wrap: wrap;
@@ -14042,7 +14048,8 @@
     list-style: none;
     cursor: pointer;
   }
-  .q-xp-earlier summary::-webkit-details-marker {
+  .q-xp-earlier > details > summary::-webkit-details-marker,
+  .q-xp-earlier > details > .q-xp-inner > details > summary::-webkit-details-marker {
     display: none;
   }
   .q-xp-chev {
@@ -14050,16 +14057,30 @@
     color: var(--q-faint);
     transition: rotate 120ms var(--q-ease-out);
   }
-  .q-xp-earlier details[open] > summary > .q-xp-chev {
+  .q-xp-earlier > details[open] > summary > .q-xp-chev,
+  .q-xp-earlier > details > .q-xp-inner > details[open] > summary > .q-xp-chev {
     rotate: 90deg;
   }
   .q-xp-it {
     white-space: nowrap;
   }
-  .q-xp-it:not(:last-child)::after {
+  /* The separator opens the piece after it, so a line that wraps never ends in one.
+     Its second `content` has no text for screen readers; a browser without that form
+     uses the first. The second selector covers a piece after a <wbr>. */
+  .q-xp-it + .q-xp-it::before,
+  .q-xp-it + wbr + .q-xp-it::before {
     content: "·";
+    content: "·" / "";
     margin: 0 8px;
     color: var(--q-faint);
+  }
+  /* An answer's who and when is one box: a line too narrow for it breaks first before
+     its "·", and text in the box that is wider than the column wraps. */
+  .q-xp-it.q-xp-by {
+    display: inline-block;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .q-xp-it b {
     color: var(--color-base-content);
@@ -14073,6 +14094,254 @@
   .q-xp-inner > p:not(.q-xp-run) {
     color: var(--q-muted);
     font-size: 0.78125rem;
+  }
+
+  /* Explore's tab as concept A: neutral icons on the frames, the questions' folds, the
+     gate under the proposal, the fold of the runs, the Sources fold. */
+  .q-xp-frame-i,
+  .q-xp-wait-i {
+    flex: none;
+    color: var(--q-muted);
+  }
+  .q-xp-wait-i {
+    margin-top: 1px;
+  }
+  .q-xp-frame-act {
+    margin-left: auto;
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+  .q-xp-opts + textarea {
+    margin-top: 10px;
+  }
+  .q-xp-body.q-xp-qbody {
+    padding-top: 14px;
+  }
+  .q-xp-closed {
+    display: grid;
+    gap: 8px;
+  }
+  .q-xp-wrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  /* A closed question's summary: the question is at most the line less the chevron
+     (0.875rem and its 8px margin), so a long question wraps beside the chevron; a wider
+     flex item moves to the next line and leaves the chevron alone above it. The chevron
+     is centred on the question's first line, not on its whole box. With one flex line,
+     `align-content: center` puts that line where `stretch` centred its items. */
+  .q-xp-closed > details > summary {
+    align-content: center;
+  }
+  .q-xp-closed > details > summary > .q-xp-chev {
+    align-self: flex-start;
+    margin-top: calc((1lh - 0.875rem) / 2);
+  }
+  .q-xp-closed > details > summary > .q-xp-chev + .q-xp-wrap {
+    max-width: calc(100% - 0.875rem - 8px);
+  }
+  .q-xp-said {
+    color: var(--color-base-content);
+  }
+  .q-xp-qt {
+    margin: 0;
+    line-height: 1.375rem;
+  }
+  .q-xp-ans-old {
+    color: var(--q-muted);
+  }
+  .q-xp-runrow {
+    display: flex;
+    min-height: 40px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 8px;
+    padding: 8px 12px 8px 34px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-xp-runrow:first-child {
+    margin-top: 0;
+  }
+  .q-xp-arts {
+    margin-top: 16px;
+  }
+  .q-xp-cap.q-xp-gate-cap {
+    padding: 0;
+    border: 0;
+  }
+  .q-xp-gate-go {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .q-xp-gate-go p {
+    margin: 0;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-xp-gate-b {
+    display: flex;
+    gap: 8px;
+  }
+  .q-xp-sources {
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-xp-sources > summary {
+    display: flex;
+    min-height: 40px;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 2px;
+    padding: 8px 14px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    list-style: none;
+    cursor: pointer;
+  }
+  .q-xp-sources > summary::-webkit-details-marker {
+    display: none;
+  }
+  .q-xp-sources[open] > summary > .q-xp-chev {
+    rotate: 90deg;
+  }
+  .q-xp-sources > .q-xp-inner {
+    padding: 0 14px 14px 36px;
+  }
+  @media (max-width: 767.98px) {
+    .q-xp-sources > summary {
+      padding: 8px 12px;
+    }
+    .q-xp-sources > .q-xp-inner {
+      padding: 0 12px 14px;
+    }
+  }
+
+  /* Review comments: cards in the rail from 1440 px, at the top of the proposal's text
+     below it. A card folds to its header with a click on it. */
+  .q-rc-list {
+    display: grid;
+    gap: 8px;
+  }
+  .q-rc-h {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .q-xp-body.q-xp-rc-inline {
+    padding-top: 10px;
+    padding-bottom: 6px;
+  }
+  .q-xp-rc-inline .q-rc-list {
+    gap: 6px;
+  }
+  @media (max-width: 767.98px) {
+    .q-xp-body.q-xp-rc-inline {
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+  }
+  @media (min-width: 1440px) {
+    .q-xp-rc-inline {
+      display: none;
+    }
+  }
+  @media (max-width: 1439.98px) {
+    .q-rc-rail {
+      display: none;
+    }
+  }
+  .q-rc {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-xs);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-rc:has(> .q-rc-head[aria-expanded="true"]) {
+    border-color: var(--color-primary);
+  }
+  .q-rc:has(> .q-rc-head[aria-expanded="false"]) > :not(.q-rc-head, .q-rc-out),
+  .q-rc:has(> .q-rc-head[aria-expanded="true"]) > .q-rc-out,
+  .q-rc-head[aria-expanded="true"] > .q-rc-snip,
+  .q-rc-head[aria-expanded="false"] > .q-rc-by {
+    display: none;
+  }
+  .q-rc-head {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .q-rc-by {
+    flex: 1;
+  }
+  .q-rc-snip {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--q-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rc-chev {
+    flex: none;
+    margin-left: auto;
+    color: var(--q-faint);
+    transition: rotate 120ms var(--q-ease-out);
+  }
+  .q-rc-head[aria-expanded="true"] > .q-rc-chev {
+    rotate: 180deg;
+  }
+  .q-rc-tick {
+    flex: none;
+    color: var(--color-success);
+  }
+  .q-rc-m {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+  }
+  .q-rc-text {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+  .q-rc-done .q-rc-snip,
+  .q-rc-done .q-rc-text {
+    color: var(--q-muted);
+  }
+  .q-rc-reply {
+    display: grid;
+    gap: 4px;
+    padding: 8px;
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-200);
+  }
+  .q-rc-member {
+    display: grid;
+    gap: 4px;
+    padding: 0 8px;
+  }
+  .q-rc-acts {
+    margin: 0;
+    font-size: 0.8125rem;
   }
 
   /* The run limit's note. */
@@ -14117,9 +14386,12 @@
     line-height: 1.125rem;
     list-style: decimal;
   }
+  /* Each question is a block (`.q-xp-md`, with a text shown as written in
+     `.q-ticket-written`, `white-space: pre-wrap`), so the white space around it in the
+     item is not drawn. */
   .q-wi-qs > li {
     overflow-wrap: anywhere;
-    white-space: pre-wrap;
+    white-space: normal;
   }
   .q-wi-qs > li + li {
     margin-top: 2px;
@@ -14136,13 +14408,16 @@
   .q-wi-qa-a {
     padding-left: 8px;
     overflow-wrap: anywhere;
-    white-space: pre-wrap;
   }
+  /* The question is a block, as in `.q-wi-qs`, so the white space of the template
+     around it is not drawn; the answer is plain text, drawn with its line breaks. */
   .q-wi-qa-q {
     border-left: 2px solid var(--q-border-strong);
     color: var(--q-faint);
+    white-space: normal;
   }
   .q-wi-qa-a {
+    white-space: pre-wrap;
     margin-top: 2px;
     border-left: 2px solid var(--color-accent);
     color: var(--color-base-content);
