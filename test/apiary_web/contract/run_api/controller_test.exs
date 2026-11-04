@@ -1037,6 +1037,78 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
     end
 
+    test "a proposal is one Markdown file with images and sources.json, and each refusal says why",
+         ctx do
+      md = {"proposal.md", "text/markdown", "# Gift cards\n\n![Checkout](checkout.svg)\n"}
+      sources = {"sources.json", "application/json", ~s({"sources": []})}
+      svg = {"checkout.svg", "image/svg+xml", @svg}
+      png = {"cart.png", "image/png", @png}
+
+      conn = write(ctx, "/artifacts", push_body("proposal", [md, svg, png, sources]))
+      assert %{"artifact" => %{"type" => "proposal"}} = json_response(conn, 201)
+
+      unsafe = ~s(<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com/"/></svg>)
+
+      cases = [
+        {[md, {"notes.txt", "text/plain", "Gift cards."}], ["files[1]"],
+         "Fix notes.txt to match the format of proposal: a proposal is one Markdown file " <>
+           "(.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."},
+        {[{"proposal.md", "text/markdown", <<0xFF>>}], ["files[0]"],
+         "Fix proposal.md to match the format of proposal: " <>
+           "a document is a Markdown file of UTF-8 text."},
+        {[md, {"other.md", "text/markdown", "# Other"}], ["files"],
+         "Push one Markdown file (.md) in each version of proposal."},
+        {[png], ["files"], "Push one Markdown file (.md) in each version of proposal."},
+        {[{"proposal.md", "text/markdown", String.duplicate("a", 262_145)}], ["files[0]"],
+         "Shrink proposal.md to at most 262144 bytes."},
+        {[md, {"checkout.svg", "image/svg+xml", unsafe}], ["files[1]"],
+         "Fix checkout.svg to match the format of proposal: an SVG has no script, " <>
+           "no foreignObject, no image element and no reference outside the file."},
+        {[md, {"sources.json", "application/json", ~s({"items": []})}], ["files[1]"],
+         "Fix sources.json to match the format of proposal: " <>
+           "at #, additional properties are not allowed but found property 'items'."}
+      ]
+
+      for {files, names, message} <- cases do
+        conn = write(ctx, "/artifacts", push_body("proposal", files))
+
+        assert json_response(conn, 422) == %{
+                 "error" => "invalid_artifact",
+                 "names" => names,
+                 "message" => message
+               },
+               message
+      end
+
+      assert [_one] = RunApiStubs.pushed()
+    end
+
+    test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
+      md = {"proposal.md", "text/markdown", "# Gift cards"}
+      images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}
+      conn = write(ctx, "/artifacts", push_body("proposal", [md | images]))
+
+      assert json_response(conn, 422) == %{
+               "error" => "too_many_files",
+               "type" => "proposal",
+               "limit" => 10,
+               "message" => "Push at most 10 files in one version of proposal."
+             }
+
+      large = @png <> :binary.copy("a", 5_242_880)
+      conn = write(ctx, "/artifacts", push_body("proposal", [md, {"a.png", "image/png", large}]))
+
+      assert json_response(conn, 422) == %{
+               "error" => "too_large",
+               "type" => "proposal",
+               "limit" => 5_242_880,
+               "message" =>
+                 "Shrink the files of one version of proposal to at most 5242880 bytes together."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a run's version of questions or review comments that changes what members wrote is 422",
          ctx do
       cases = [

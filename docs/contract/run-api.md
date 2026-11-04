@@ -237,8 +237,23 @@ Checks, in order, after the checks of every request:
 5. A content that is not strict base64: `400` `invalid_request`.
 6. Files that do not match the type's format: `422` `invalid_artifact`, with the file
    in `names`, such as `files[0]`, or `files` for a video type's version without a video
-   file. A version of the type `verdict` is checked against the type's JSON Schema, so
-   its `verdict` is `passed`, `changes-requested` or `escalate`.
+   file and a `proposal` version without exactly one Markdown file. A version of the type
+   `verdict` is checked against the type's JSON Schema, so its `verdict` is `passed`,
+   `changes-requested` or `escalate`.
+
+   A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
+
+   - exactly one Markdown file, whose filename ends in `.md`, of at most 262144 bytes;
+   - at most one `sources.json`, of at most 1 MiB, valid against qory's proposal sources
+     format (`contracts/harness/v1/proposal-sources.schema.json`, copied to
+     `priv/schemas/artifacts/proposal-sources.schema.json`). Qory Apiary checks the file
+     against the schema and reads none of its members;
+   - the rest PNG, JPEG, GIF, WebP or SVG images. An SVG of a proposal has no element
+     `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, and no element
+     in the HTML namespace; no attribute
+     whose name starts with `on`; no `href` or CSS `url(` to anything but a place in the
+     file (`#…`); no `@import`; no backslash in a `style` element or attribute; and no
+     `<?xml-stylesheet ?>`.
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id`, adds no
@@ -287,7 +302,7 @@ is `400` `invalid_request`.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, or a run's version of `questions` or `review-comments` changes what members wrote |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, or a run's version of `questions` or `review-comments` changes what members wrote |
 | `503` | `unavailable` | | The request could not be completed; try again |
 
 The messages:
@@ -315,6 +330,16 @@ The messages:
   - "Push checkout.png again: Qory Apiary could not read it after it was received."
   - "Add an MP4 or WebM video to the version of demo-video: a WebVTT file goes with a
     video."
+  - For a version of `proposal`:
+    - "Fix notes.txt to match the format of proposal: a proposal is one Markdown file
+      (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."
+    - "Push one Markdown file (.md) in each version of proposal."
+    - "Shrink proposal.md to at most 262144 bytes."
+    - "Fix checkout.svg to match the format of proposal: an SVG has no script, no
+      foreignObject, no image element and no reference outside the file."
+    - A `sources.json` the schema refuses gets the structured type's message, such as
+      "Fix sources.json to match the format of proposal: at #, additional properties
+      are not allowed but found property 'items'."
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review
