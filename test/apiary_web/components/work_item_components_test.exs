@@ -337,7 +337,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
   end
 
   describe "step_card/1, Explore running" do
-    test "a first run, and when it started; its attempt links the run's page" do
+    test "a first run: what Explore reads, one line, no button" do
       run = %{
         id: "01a9e3c7",
         number: 15,
@@ -351,15 +351,17 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Running"
 
-      assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket and writes a proposal."
+      assert text(html, "#work-item-step-line") ==
+               "Explore reads the ticket and writes a proposal."
 
-      assert text(html, "#work-item-step-run") == "Attempt 1 started 6 minutes ago."
-      assert attr(html, "#work-item-step-run a", "href") == ["/8wonders/main/runs/15"]
+      # One line only: no start time, no run link, no bee.
+      assert count(html, "#work-item-step-run") == 0
+      refute html =~ "started"
+      assert count(html, ".q-bl-bee") == 0
       assert count(html, "button") == 0
     end
 
-    test "again, with a member's answers; a run without a page is its attempt, as text" do
+    test "again, with a member's answers" do
       run = %{
         id: "rn_01a9e3c7",
         number: 15,
@@ -371,34 +373,35 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       html = card(work_item(%{status: :running, run: run}))
 
-      assert text(html, ".q-wi-bee-line") ==
-               "Qory reads the ticket and the answers of Priya, and writes a proposal."
+      assert text(html, "#work-item-step-line") ==
+               "Explore reads the ticket and the answers of Priya, and writes a proposal."
 
-      assert count(html, "#work-item-step-run a") == 0
-      assert text(html, "#work-item-step-run") == "Attempt 2 started 6 minutes ago."
+      assert count(html, "#work-item-step-run") == 0
     end
 
-    test "a run with no number on the server still reads its attempt" do
+    test "a run with no number on the server: the same line" do
       run = %{id: "rn_01a9e3c7", number: nil, attempt: 1, path: nil, started_at: ago(6 * 60)}
       html = card(work_item(%{status: :running, run: run}))
 
-      assert text(html, "#work-item-step-run") == "Attempt 1 started 6 minutes ago."
+      assert text(html, "#work-item-step-line") ==
+               "Explore reads the ticket and writes a proposal."
     end
   end
 
   describe "step_card/1, Confirm" do
-    test "the reader's: Your turn, the line, and Read Qory's proposal, no buttons" do
+    test "the reader's: Your turn, the line, and Read the proposal, no buttons" do
       html = card(work_item(), explore_path: "/acme/main/work/88/explore")
 
       assert text(html, "h2") == "Confirm"
       assert text(html, ".q-wi-badge") == "Your turn"
       assert count(html, ".q-wi-step-ask") == 1
 
-      assert text(html, ".q-wi-bee-line") ==
-               "Confirm Qory's proposal, or write what to change."
+      assert text(html, "#work-item-step-line") ==
+               "Confirm the proposal, or add review comments and send them."
 
       refute html =~ "Mock-up"
-      assert text(html, "#work-item-step-explore") == "Read Qory's proposal"
+      assert count(html, ".q-bl-bee") == 0
+      assert text(html, "#work-item-step-explore") == "Read the proposal"
       assert attr(html, "#work-item-step-explore", "href") == ["/acme/main/work/88/explore"]
       assert count(html, "button") == 0
       assert count(html, "#work-item-step-confirm") == 0
@@ -416,10 +419,10 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "without the right to act: whose turn it is, no link" do
       html = card(work_item(%{owner: @priya}), can_act: false)
 
-      assert text(html, ".q-wi-bee-line") == "Priya confirms next"
+      assert text(html, "#work-item-step-line") == "Priya confirms next"
 
-      assert count(html, ".q-wi-bee-line .q-bl-bee") == 1
-      refute html =~ "Confirm Qory&#39;s proposal"
+      assert count(html, ".q-bl-bee") == 0
+      refute html =~ "Confirm the proposal"
       assert count(html, "button") == 0
       assert count(html, "[role=group]") == 0
 
@@ -431,8 +434,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           explore_path: "/acme/main/work/88/explore"
         )
 
-      assert text(acts, ".q-wi-bee-line") ==
-               "Confirm Qory's proposal, or write what to change."
+      assert text(acts, "#work-item-step-line") ==
+               "Confirm the proposal, or add review comments and send them."
 
       assert count(acts, "#work-item-step-explore") == 1
     end
@@ -440,7 +443,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "without the right to act: the reader as you, another owner by name, escaped" do
       mine = card(work_item(), can_act: false)
 
-      assert text(mine, ".q-wi-bee-line") == "You confirm next"
+      assert text(mine, "#work-item-step-line") == "You confirm next"
 
       html =
         card(
@@ -451,13 +454,13 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert html =~ "&lt;b&gt;Ana&lt;/b&gt; confirms next"
-      assert count(html, ".q-wi-bee-line b") == 0
+      assert count(html, "#work-item-step-line b") == 0
     end
 
     test "without the right to act and without an owner: no line, and no buttons" do
       html = card(work_item(%{owner: nil}), can_act: false)
       assert text(html, "h2") == "Confirm"
-      assert count(html, ".q-wi-bee-line") == 0
+      assert count(html, "#work-item-step-line") == 0
       assert count(html, "button") == 0
     end
   end

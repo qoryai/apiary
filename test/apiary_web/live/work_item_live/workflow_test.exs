@@ -355,8 +355,22 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  # Answers to `questions_result/0`'s two questions, by question id.
+  @answers [%{"id" => "q1", "note" => "a"}, %{"id" => "q2", "note" => "b"}]
+
+  # An answer to each open question of the work item's newest questions, by question id.
+  defp open_answers(work_item) do
+    {_version, document} = Apiary.Explore.Questions.newest(Repo.get!(WorkItem, work_item.id))
+
+    for %{"id" => id, "state" => "open"} <- document["questions"],
+        do: %{"id" => id, "note" => "a"}
+  end
+
   describe "Explore" do
-    test "running: the track, the round and the run", %{conn: conn, scope: scope} do
+    test "running: the track, one card with the stage's state, and the run", %{
+      conn: conn,
+      scope: scope
+    } do
       work_item = taken_in_fixture(scope)
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
@@ -364,21 +378,22 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-head-stages-#{@release}.q-wi-stage-todo")
       refute has_element?(view, "#work-item-head-stages-explore")
 
-      # Explore runs as before the model: today's step card stays beside the stage card.
+      # One card: the step card, with the stage's state as its badge; no stage card.
       assert has_element?(view, "#work-item-step")
+      refute has_element?(view, "#work-item-stage")
 
-      # The run waits for a machine: the stage card reads queued, as the head and the step
-      # card do, and says nothing runs.
-      assert has_element?(view, "#work-item-stage-state", "Queued")
-      refute has_element?(view, "#work-item-stage-state", "Running")
-      refute has_element?(view, "#work-item-stage-line")
+      # The run waits for a machine: the card reads queued, as the head does, and says
+      # nothing runs.
+      assert has_element?(view, "#work-item-step-state", "Queued")
+      refute has_element?(view, "#work-item-step-state", "Running")
       refute render(view) =~ "Explore is running."
       assert has_element?(view, "#work-item-head-meta", "Explore is queued")
-      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
-      # Explore has no loop, so the card counts no rounds.
-      refute has_element?(view, "#work-item-stage-round")
-      assert has_element?(view, "#work-item-stage-version", "Process version 1")
-      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · queued"
+      # No round, and the process version in Details; no runs list above the tabs.
+      refute render(view) =~ "Round "
+      refute render(view) =~ "Process version"
+      assert has_element?(view, "#work-item-details-process", "Version 1")
+      refute has_element?(view, "#work-item-runs-0")
+      refute html =~ "explore-a-ticket · round"
 
       # Details names the queued run, as the run list does, and not None yet.
       assert has_element?(view, "#work-item-details-runs", "Attempt 1 of 3 is queued.")
@@ -397,8 +412,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       # The runner stops after round 2 of the version the work item is on, whatever the
-      # stored run says.
-      assert has_element?(view, "#work-item-stage-round", "Round 1 of 2")
+      # stored run says. Explore's card shows no round.
+      refute has_element?(view, "#work-item-stage-round")
       assert has_element?(view, "#work-item-details-runs", "Attempt 1 of 2 is queued.")
       refute render(view) =~ "Attempt 1 of 3 is queued."
     end
@@ -407,13 +422,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
          %{conn: conn, scope: scope} do
       explore_loop!(scope)
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
-      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @answers)
       assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
 
       two_rounds!(scope, work_item)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-round", "Round 2 of 2")
+      refute has_element?(view, "#work-item-stage-round")
       assert has_element?(view, "#work-item-step-run", "Attempt 2 of 2 is queued.")
       refute render(view) =~ "Attempt 2 of 3 is queued."
     end
@@ -433,7 +448,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item =
         Enum.reduce(1..2, taken_in_fixture(scope), fn attempt, work_item ->
           work_item = end_run!(work_item, questions_result())
-          {:ok, _} = WorkItems.answer(scope, work_item, attempt, %{"1" => "a", "2" => "b"})
+          {:ok, _} = WorkItems.answer(scope, work_item, attempt, open_answers(work_item))
           Repo.get!(WorkItem, work_item.id)
         end)
 
@@ -447,33 +462,35 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute render(view) =~ "Attempt 4 of 4 is queued."
     end
 
-    test "a second take in: the stage card counts its attempts as the step card does", %{
+    test "a second take in: the step card and the fold of the runs count its attempts", %{
       conn: conn,
       scope: scope
     } do
-      answers = %{"1" => "a", "2" => "b"}
       ticket = backlog_ticket_fixture(scope)
       {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
 
       # Take in 1: two runs, then the work item is closed and taken in again.
       work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
-      {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, open_answers(work_item))
       work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
       {:ok, _} = WorkItems.close(scope, work_item)
       {:ok, _} = WorkItems.take_in_again(scope, ticket.public_id)
 
       # Take in 2: run 1 asks, the answer queues attempt 2.
       work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result())
-      {:ok, _} = WorkItems.answer(scope, work_item, 1, answers)
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, open_answers(work_item))
       assert %DispatchRun{take_in: 2, attempt: 2, of: 3} = newest_run(work_item)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-runs-0", "Attempt 2 · explore-a-ticket")
-      assert has_element?(view, "#work-item-runs-0", "queued")
-      assert has_element?(view, "#work-item-runs-1", "Attempt 1 · explore-a-ticket")
-      refute has_element?(view, "#work-item-runs-2")
+      refute has_element?(view, "#work-item-runs-0")
       assert has_element?(view, "#work-item-step-run", "Attempt 2 of 3 is queued.")
+      refute render(view) =~ "Attempt 4"
+
+      # The fold of the runs on Explore's tab has this take in's two runs.
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      assert line(view, "#work-item-record-fold > summary") =~ "2 runs"
+      refute render(view) =~ "Attempt 3"
       refute render(view) =~ "Attempt 4"
     end
 
@@ -488,7 +505,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              } = details_of_a_second_take_in(conn, scope)
     end
 
-    test "a run before the work item was placed: the stage card counts as the step card does",
+    test "a run before the work item was placed: the step card counts the placed runs",
          %{conn: conn, scope: scope} do
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
 
@@ -498,16 +515,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           set: [stage_id: nil]
         )
 
-      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @answers)
       # The runs of Explore's entry count only the runs placed in it: the first is not.
       assert %DispatchRun{attempt: 2, of: 4} = newest_run(work_item)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-runs-0", "Attempt 2 · explore-a-ticket")
-      refute has_element?(view, "#work-item-runs-1")
+      refute has_element?(view, "#work-item-runs-0")
       assert has_element?(view, "#work-item-step-run", "Attempt 2 of 4 is queued.")
-      refute render(view) =~ "Attempt 1 · explore-a-ticket"
     end
 
     test "a claimed run reads queued, as the step card does", %{conn: conn, scope: scope} do
@@ -520,9 +535,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
-      assert has_element?(view, "#work-item-stage-state", "Queued")
-      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · queued"
+      assert has_element?(view, "#work-item-step-state", "Queued")
+      refute has_element?(view, "#work-item-stage")
+      refute html =~ "explore-a-ticket · round"
     end
 
     test "a run handed over to a machine reads running", %{conn: conn, scope: scope} do
@@ -549,19 +564,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result())
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-state", "Needs answers")
-
-      assert has_element?(
-               view,
-               "#work-item-stage-line",
-               "Explore waits for answers to the agent's questions."
-             )
-
-      # The step card beside it has the link to the answers: the stage card has none.
+      # One card: the step card, with the stage's state, and the link to the answers.
+      assert has_element?(view, "#work-item-step-state", "Needs answers")
+      refute has_element?(view, "#work-item-stage")
+      refute html =~ "Explore waits for answers to the agent's questions."
       refute has_element?(view, "#work-item-stage-answers")
       assert length(String.split(html, "Answer the questions")) == 2
       assert has_element?(view, ~s|#work-item-step a[href$="/explore"]|, "Answer the questions")
-      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · questions"
+      refute html =~ "explore-a-ticket · round"
     end
 
     test "waiting for answers past Explore: the stage card has the link", %{
@@ -588,16 +598,21 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = explore_gate_fixture(scope)
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-state", "At the gate")
-      assert has_element?(view, "#work-item-stage-gate-output-proposal", "proposal v1")
-      assert has_element?(view, "#work-item-stage-gate-check-proposal", "Passed")
-      assert has_element?(view, "#work-item-step-explore", "Read Qory's proposal")
+      # One card: the step card with the stage's state; no Outputs, no stage card.
+      assert has_element?(view, "#work-item-step-state", "At the gate")
+      refute has_element?(view, "#work-item-stage")
+      refute has_element?(view, "#work-item-stage-gate-output-proposal")
+      assert has_element?(view, "#work-item-step-explore", "Read the proposal")
       refute has_element?(view, "#work-item-stage-gate-approve")
       refute has_element?(view, "#work-item-stage-gate-ask-changes")
       # The decision is Confirm's: the gate card says nothing of who approves.
       refute has_element?(view, "#work-item-stage-gate-approvers")
       refute render(view) =~ "Any member approves."
-      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · passed"
+      refute html =~ "explore-a-ticket · round"
+      # Artifacts are in the fold of the runs, on Explore's tab.
+      refute has_element?(view, "#work-item-artifact-list")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      assert line(view, "#work-item-record-fold > summary") =~ "proposal v1"
       assert has_element?(view, "#work-item-artifact-list", "proposal v1")
 
       # Inside the work item, runs count by attempt; only Artifacts names the run by its
@@ -609,10 +624,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             select: r.number
         )
 
-      assert has_element?(view, "#work-item-artifact-list", "Run #{number} · round 1")
+      assert has_element?(view, "#work-item-artifact-list", "Run #{number}")
+      refute has_element?(view, "#work-item-artifact-list", "round")
       assert line(view, "#work-item-details-runs") == "Attempt 1 · 1 run, ended"
-      refute html =~ "Run 1 · explore-a-ticket"
-      refute html =~ "rn_"
+      refute render(view) =~ "Run 1 · explore-a-ticket"
+      refute render(view) =~ "rn_"
 
       render_hook(view, "stage_approve", %{
         "number" => "#{work_item.number}",
@@ -622,8 +638,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert decisions(work_item, :approve) == []
 
-      view |> element("#work-item-step-explore") |> render_click()
-      view |> element("#work-item-explore-reply") |> render_submit(%{"change" => ""})
+      view |> element("#work-item-explore-gate-go", "Confirm") |> render_click()
       assert [%GateDecision{stage_id: @explore}] = decisions(work_item, :approve)
       assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
     end
@@ -690,7 +705,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              )
 
       refute has_element?(view, "#work-item-stage-escalation-move")
-      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
+      # No runs list above the tabs: the fold of the runs on Explore's tab has the run.
+      refute html =~ "explore-a-ticket · round"
 
       # The escalation card's Run another round runs Explore again: the step card offers no
       # Run Explore again, and the event does nothing.
@@ -711,9 +727,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       |> form("#work-item-stage-escalation-form", %{"note" => ""})
       |> render_submit(%{"how" => "another_round"})
 
-      html = render(view)
-      assert html =~ "Attempt 2 · explore-a-ticket · round 1"
-      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
+      assert %DispatchRun{attempt: 2} = newest_run(work_item)
+      assert has_element?(view, "#work-item-step-state", "Queued")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      assert line(view, "#work-item-record-fold > summary") =~ "2 runs"
+      assert has_element?(view, "#work-item-record-fold", "Attempt 1")
+      assert has_element?(view, "#work-item-record-fold", "Attempt 2")
     end
 
     test "a run that ended at its claim keeps its line after another round", %{
@@ -739,15 +759,20 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute Repo.exists?(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run.id)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
-      assert render(view) =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
+      assert has_element?(view, "#work-item-stage-escalation-form")
 
       view
       |> form("#work-item-stage-escalation-form", %{"note" => ""})
       |> render_submit(%{"how" => "another_round"})
 
-      html = render(view)
-      assert html =~ "Attempt 2 · explore-a-ticket · round 1 · queued"
-      assert html =~ "Attempt 1 · explore-a-ticket · round 1 · ended without a verdict"
+      assert %DispatchRun{attempt: 2} = newest_run(work_item)
+      assert has_element?(view, "#work-item-step-state", "Queued")
+
+      # The run that ended at its claim keeps its line in the fold of the runs.
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      assert line(view, "#work-item-record-fold > summary") =~ "2 runs"
+      assert has_element?(view, "#work-item-record-fold", "Attempt 1")
+      assert has_element?(view, "#work-item-record-fold", "Attempt 2")
     end
   end
 
@@ -994,10 +1019,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
     end
 
-    test "a comment from a member Explore's gate does not list: the line under the field", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "a review comment from a member Explore's gate does not list: the line under the field",
+         %{
+           conn: conn,
+           scope: scope
+         } do
       default = Processes.default_document("software")
       listed = member_fixture(scope, :member)
 
@@ -1013,20 +1039,22 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       save!(scope, %{default | "stages" => stages})
       work_item = explore_gate_fixture(scope)
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      {:ok, view, _html} =
+        live(conn, page(scope, work_item.number) <> "/explore?review=new")
 
       view
-      |> element("#work-item-explore-reply")
-      |> render_submit(%{"change" => "Offer a refund first."})
+      |> element("#work-item-review-page-form")
+      |> render_submit(%{"number" => "#{work_item.number}", "text" => "Offer a refund first."})
 
       assert has_element?(
                view,
-               "#work-item-explore-reply-error",
+               "#work-item-review-page-error",
                "Ask one of this stage's approvers to comment. Only they can comment on its proposal."
              )
 
-      assert has_element?(view, "#work-item-explore-reply-text", "Offer a refund first.")
-      assert has_element?(view, "#work-item-explore-reply-text[aria-describedby]")
+      assert has_element?(view, "#work-item-review-page-text", "Offer a refund first.")
+      assert has_element?(view, "#work-item-review-page-text[aria-describedby]")
 
       assert Apiary.Explore.ReviewComments.newest(work_item) == nil
     end
@@ -1042,7 +1070,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-step-explore", "Read Qory's proposal")
+      assert has_element?(view, "#work-item-step-explore", "Read the proposal")
       refute has_element?(view, "#work-item-stage-gate-line")
       refute has_element?(view, "#work-item-stage-gate-add-proposal")
       refute has_element?(view, "#work-item-stage-gate-output-proposal")
@@ -1563,12 +1591,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       |> render_submit(%{"how" => "another_round"})
 
       assert %DispatchRun{attempt: 4, of: 4} = newest_run(work_item)
-      assert render(view) =~ "Attempt 4 · explore-a-ticket · round 4 · queued"
 
       # The round past the limit is the last before the stage escalates again: the count
-      # is never under the round.
-      assert has_element?(view, "#work-item-stage-round", "Round 4 of 4")
-      refute render(view) =~ "Round 4 of 3"
+      # is never under the attempt.
+      assert has_element?(view, "#work-item-step-run", "Attempt 4 of 4 is queued.")
+      refute render(view) =~ "4 of 3"
     end
 
     test "a move back to a later stage, or an action it does not know, is refused", %{
@@ -2023,26 +2050,38 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-notes-1", "The plan has no test step.")
     end
 
-    test "a comment on the proposal is a Comment, for the next run", %{
+    test "a review comment on the proposal is a card at Explore, for the next run", %{
       conn: conn,
       scope: scope
     } do
       work_item = explore_gate_fixture(scope)
 
       {:ok, _} =
-        WorkItems.answer(scope, work_item, 1, "Also check the total after a basket change.")
+        WorkItems.review_comment(
+          scope,
+          work_item,
+          1,
+          "Also check the total after a basket change."
+        )
+
+      {:ok, _} = WorkItems.send_review_comments(scope, work_item, 1)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-notes-0", "Comment · Explore")
+      # At Explore the review comment is a card in the right column, not a stage note.
+      refute has_element?(view, "#work-item-notes-0")
 
       assert has_element?(
                view,
-               "#work-item-notes-0",
+               "#work-item-review-c1",
                "Also check the total after a basket change."
              )
 
-      refute has_element?(view, "#work-item-notes-0", "Answer")
+      assert has_element?(
+               view,
+               "#work-item-review-c1-reading",
+               "Attempt 2 reads this review comment."
+             )
     end
 
     test "a move with no note has no note line", %{conn: conn, scope: scope} do
@@ -2137,7 +2176,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, explore.number))
       assert has_element?(view, ~s|#work-item-head-stages-#{@explore}[aria-current="step"]|)
-      assert has_element?(view, "#work-item-stage-state", "Running")
+      assert has_element?(view, "#work-item-step-state", "Running")
 
       {:ok, view, _html} = live(conn, page(scope, shape.number))
       assert has_element?(view, "#work-item-head-stages-#{@explore}.q-wi-stage-done")

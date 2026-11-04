@@ -260,7 +260,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert shown.(%{"a" => List.duplicate(1, 5000)}) =~ "Shown: the first 5,000 values."
     end
 
-    test "names the run that made a version, with its round, or a run it cannot name", ctx do
+    test "names the run that made a version, without its round, or a run it cannot name", ctx do
       import Ecto.Query
 
       Apiary.Repo.update_all(from(d in Apiary.Dispatches.DispatchRun, where: d.id == ^ctx.run.id),
@@ -270,8 +270,9 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
       short = "Run #{ctx.claimed.number}"
-      assert has_element?(view, "#artifact-writer a", "#{short} · round 2")
-      assert has_element?(view, "#artifact-history a", "#{short} · round 2")
+      assert has_element?(view, "#artifact-writer a", short)
+      assert has_element?(view, "#artifact-history a", short)
+      refute render(view) =~ "round 2"
 
       %{dispatch_run: unclaimed} =
         explore_run_fixture(ctx.work_item, state: :waiting, registered: false)
