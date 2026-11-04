@@ -19,6 +19,32 @@ defmodule Apiary.StagesFixtures do
     Repo.get!(WorkItem, work_item.id)
   end
 
+  @doc """
+  Gives the work item a version of its questions with one open question no other test
+  asks, written as a member's action, then moves the stored copy of its file away until
+  the test ends, as a store that cannot read it. Returns the stored copy's path.
+  """
+  def unreadable_questions!(%Scope{} = scope, %WorkItem{} = work_item) do
+    question = %{
+      "id" => "q1",
+      "question" => "Which basket #{System.unique_integer([:positive])}?",
+      "options" => [],
+      "state" => "open",
+      "asked" => %{"run" => 1, "at" => "2026-11-04T10:00:00Z"}
+    }
+
+    {:ok, version} =
+      Apiary.Artifacts.push({:member_action, scope}, work_item, "questions", [
+        Apiary.Explore.Questions.file(%{"questions" => [question]})
+      ])
+
+    [file] = version.files
+    {:ok, path} = Apiary.Artifacts.open_file(file)
+    File.rename!(path, path <> ".away")
+    ExUnit.Callbacks.on_exit(fn -> File.rename(path <> ".away", path) end)
+    path
+  end
+
   @doc "A work item at Explore's gate: taken in, its run ended with a proposal."
   def explore_gate_fixture(%Scope{} = scope),
     do: scope |> taken_in_fixture() |> end_run!(Apiary.WorkItemsFixtures.understood_result())

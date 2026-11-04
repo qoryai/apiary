@@ -75,6 +75,11 @@ defmodule Apiary.Stages do
 
   require Logger
 
+  # The ends of a run the stage runner ignores (`run_result/3`).
+  @ignored_ends [:closed, :undone, :released, :superseded]
+  # The ends one stage sweep reads at most (`sweep/3`).
+  @stage_batch 100
+
   alias Apiary.{Access, Audit, Dispatches, Features, Processes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
@@ -238,10 +243,95 @@ defmodule Apiary.Stages do
     end
   end
 
+  # run_ended_or_later/2 is `run_ended/2` for an end that is stored whatever the stage
+  # does: a claim's, a harness walk's that failed, and a held run's whose build failed.
+  # Where the newest questions of the run's work item cannot be read, it writes nothing,
+  # logs one warning with the run's id and gives none: the stage sweep acts on the end
+  # later (`sweep/3`). Nothing is written before that read, so the caller's transaction
+  # goes on.
+  @doc false
+  @spec run_ended_or_later(Ecto.UUID.t(), StopCause.context()) ::
+          [Apiary.Dispatches.Settle.told()]
+  def run_ended_or_later(id, context \\ %{}) when is_binary(id) do
+    run_ended(id, context)
+  rescue
+    Apiary.Stages.QuestionsUnreadable ->
+      Logger.warning("stage end left for later, newest questions unreadable dispatch_run=#{id}")
+      []
+  end
+
+  # sweep/3 acts on the ends the stage runner has not read: each run of Explore that is
+  # the newest of its work item's take in, ended, with its work item exploring and the
+  # stage running, but a run ended `run_ended` with no outcome stored, which Settle stores
+  # first (`Apiary.Dispatches.Settle`), and a run whose end the runner ignores. Such an
+  # end is one that `run_ended_or_later/2` left, or whose act failed after the end was
+  # stored. Every act of the runner on a run's end moves the stage or queues a newer run,
+  # so an end acted on is not read again. At most `limit`, `@stage_batch` by default, by
+  # id after `after_id`, or from the first for nil, each in a transaction that locks the
+  # work item, then the run; one that raises is logged in one line by its id and the
+  # exception's module. `{told, next}`: the work items to tell, and the `after_id` of the
+  # next sweep, the last id read when it read `limit`, nil when it read fewer. With the
+  # workflow model off, none.
+  @doc false
+  @spec sweep(DateTime.t(), Ecto.UUID.t() | nil, pos_integer) ::
+          {[Apiary.Dispatches.Settle.told()], Ecto.UUID.t() | nil}
+  def sweep(%DateTime{} = _now, after_id, limit \\ @stage_batch) do
+    if on?() do
+      newest =
+        from r in DispatchRun,
+          where:
+            r.work_item_id == parent_as(:run).work_item_id and
+              r.take_in == parent_as(:run).take_in,
+          select: max(r.attempt)
+
+      ids =
+        from(r in DispatchRun,
+          as: :run,
+          join: w in WorkItem,
+          on: w.id == r.work_item_id,
+          where: r.state == :ended and r.step == "explore",
+          where: r.end_cause not in ^@ignored_ends,
+          where: not (r.end_cause == :run_ended and is_nil(r.result_outcome)),
+          where: w.state == :exploring and w.stage_state == :running,
+          where: w.take_in == r.take_in and (is_nil(r.stage_id) or r.stage_id == w.stage_id),
+          where: r.attempt == subquery(newest),
+          order_by: r.id,
+          limit: ^limit,
+          select: r.id
+        )
+        |> stage_after(after_id)
+        |> Repo.all()
+
+      next = if length(ids) == limit, do: List.last(ids)
+      {Enum.flat_map(ids, &sweep_one/1), next}
+    else
+      {[], nil}
+    end
+  end
+
+  defp stage_after(query, nil), do: query
+  defp stage_after(query, id), do: from(r in query, where: r.id > ^id)
+
+  defp sweep_one(id) do
+    {:ok, told} =
+      Repo.transact(fn ->
+        :ok = hold_work_item(id)
+        {:ok, run_ended(id)}
+      end)
+
+    told
+  rescue
+    exception ->
+      Logger.error("stage end failed dispatch_run=#{id} error=#{inspect(exception.__struct__)}")
+
+      []
+  end
+
   # claim_ended/1 acts on the end of each run of the queue in `dispatch_run_ids`, which a
   # claim ended before they started, once the claim committed: each in a transaction that
-  # locks its work item, then the run (`run_ended/1`). A failure is logged, and the run's
-  # work item stays as it was. The work items to tell (`Apiary.Dispatches.broadcast/1`).
+  # locks its work item, then the run (`run_ended_or_later/2`). A failure is logged, and
+  # the run's work item stays as it was until the stage sweep acts on the run's end
+  # (`sweep/3`). The work items to tell (`Apiary.Dispatches.broadcast/1`).
   @doc false
   @spec claim_ended([Ecto.UUID.t()], StopCause.context()) :: [Apiary.Dispatches.Settle.told()]
   def claim_ended(dispatch_run_ids, context \\ %{}) when is_list(dispatch_run_ids),
@@ -251,7 +341,7 @@ defmodule Apiary.Stages do
     {:ok, told} =
       Repo.transact(fn ->
         :ok = hold_work_item(id)
-        {:ok, run_ended(id, context)}
+        {:ok, run_ended_or_later(id, context)}
       end)
 
     told
@@ -1273,7 +1363,7 @@ defmodule Apiary.Stages do
     do: :unsettled
 
   defp run_result(_work_item, %DispatchRun{end_cause: cause}, _context)
-       when cause in [:closed, :undone, :released, :superseded],
+       when cause in @ignored_ends,
        do: :ignored
 
   defp run_result(work_item, %DispatchRun{} = run, context) do

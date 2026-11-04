@@ -585,6 +585,85 @@ defmodule Apiary.StagesTest do
       refute escalation(work_item)
     end
 
+    test "a claim's end with unreadable questions is left, then read by the stage sweep",
+         %{scope: scope} do
+      text = "Which basket #{System.unique_integer([:positive])}?"
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+
+      # The run pushed its questions while it was live; then a claim ended it before it
+      # started, as the claim's end stores it, and the questions file cannot be read.
+      work_item =
+        end_run!(work_item, fn run, registered ->
+          push_result!(run, registered, questions_result([text]))
+        end)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :running]
+        )
+
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+        set: [end_cause: :key_gone, result_outcome: :error]
+      )
+
+      {version, _document} = Apiary.Explore.Questions.newest(work_item)
+      [file] = version.files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The claim's act is left, with one warning: the end stays stored.
+      {told, log} = ExUnit.CaptureLog.with_log(fn -> Stages.claim_ended([run.id]) end)
+      assert told == []
+      assert log =~ "stage end left for later, newest questions unreadable dispatch_run=#{run.id}"
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      assert %DispatchRun{state: :ended, end_cause: :key_gone} = Repo.get!(DispatchRun, run.id)
+
+      # The stage sweep reads it at each tick, one line each, until the file can be read.
+      {{[], nil}, log} =
+        ExUnit.CaptureLog.with_log(fn -> Stages.sweep(DateTime.utc_now(), nil) end)
+
+      assert log =~
+               "stage end failed dispatch_run=#{run.id} error=Apiary.Stages.QuestionsUnreadable"
+
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+
+      File.rename!(path <> ".away", path)
+      assert {[_], nil} = Stages.sweep(DateTime.utc_now(), nil)
+      assert %WorkItem{stage_state: :waiting_answers} = reload(work_item)
+
+      # An end the stage acted on is not read again.
+      assert Stages.sweep(DateTime.utc_now(), nil) == {[], nil}
+    end
+
+    test "the stage sweep reads after where the sweep before stopped", %{scope: scope} do
+      # Two runs ended by a claim whose stage did not act.
+      [first, second] =
+        for _n <- 1..2 do
+          work_item = take_in!(scope)
+          run = newest_run(work_item)
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [state: :ended, end_cause: :key_gone, result_outcome: :error]
+          )
+
+          run
+        end
+        |> Enum.sort_by(& &1.id)
+
+      assert {[_], next} = Stages.sweep(DateTime.utc_now(), nil, 1)
+      assert next == first.id
+      assert {[_], next} = Stages.sweep(DateTime.utc_now(), first.id, 1)
+      assert next == second.id
+      assert Stages.sweep(DateTime.utc_now(), second.id, 1) == {[], nil}
+
+      for run <- [first, second] do
+        assert %Escalation{cause: :run_stopped} =
+                 escalation(Repo.get!(WorkItem, run.work_item_id))
+      end
+    end
+
     test "a run queued before its work item was placed counts for the stage it is in", %{
       scope: scope
     } do

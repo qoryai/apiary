@@ -99,9 +99,9 @@ defmodule Apiary.Runs.Liveness do
 
   # The check, with each batch read after the id in `cursors`, the one the tick before
   # stopped at, or from the first: `:lose` for the ends of the runs handed over
-  # (`Apiary.Dispatches.RunEnd.lose/3`) and `:settle` for the runs left to settle
-  # (`Apiary.Dispatches.Settle.sweep/3`). The runs lost, and the `cursors` of the next
-  # tick.
+  # (`Apiary.Dispatches.RunEnd.lose/3`), `:settle` for the runs left to settle
+  # (`Apiary.Dispatches.Settle.sweep/3`) and `:stage` for the ends the stage runner has
+  # not read (`Apiary.Stages.sweep/3`). The runs lost, and the `cursors` of the next tick.
   defp check(now, cursors) do
     sweep(now)
     lost = mark(running_silent(now), now) ++ mark(pending_silent(now), now)
@@ -115,7 +115,11 @@ defmodule Apiary.Runs.Liveness do
     # as one whose settle failed: what each gave is stored (`Apiary.Dispatches.Settle`).
     {told, settle_after} = Settle.sweep(now, cursors[:settle])
     Apiary.Dispatches.broadcast(told)
-    {lost, %{lose: lose_after, settle: settle_after}}
+    # Then the ends the stage runner has not read, such as one it left while the
+    # questions could not be read (`Apiary.Stages`).
+    {staged, stage_after} = Apiary.Stages.sweep(now, cursors[:stage])
+    Apiary.Dispatches.broadcast(staged)
+    {lost, %{lose: lose_after, settle: settle_after, stage: stage_after}}
   end
 
   @doc """
