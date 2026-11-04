@@ -581,6 +581,78 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert registered(work_item).number > 0
     end
 
+    test "numbers in a run's questions: 1e300 is refused, and the stored file stays within the limit",
+         %{scope: scope} do
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, @comment)
+      at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+      # `n` open questions asked by run 1000, written `1e3`, each with `context` of
+      # `pad` characters, as the raw bytes of a questions file.
+      raw = fn n, pad ->
+        questions =
+          for i <- 1..n do
+            %{
+              "id" => "q#{i}",
+              "question" => "Which basket #{i}?",
+              "context" => String.duplicate("a", pad),
+              "options" => [],
+              "state" => "open",
+              "asked" => %{"run" => 1000, "at" => at}
+            }
+          end
+
+        %{"questions" => questions}
+        |> Jason.encode!()
+        |> String.replace(~s("run":1000), ~s("run":1e3))
+      end
+
+      push = fn run, bytes ->
+        Apiary.Artifacts.push(
+          {:run, run},
+          reload(work_item),
+          "questions",
+          [%{filename: "questions.json", content_type: "application/json", binary: bytes}],
+          stage_id: run.stage_id
+        )
+      end
+
+      end_run!(work_item, fn run, registered ->
+        # A number past every run number, which the format takes as an integer: refused
+        # by the check, never written out in 301 digits.
+        huge = String.replace(raw.(1, 10), ~s("run":1e3), ~s("run":1e300))
+
+        assert push.(run, huge) == {:error, {:invalid, {:kept, 0, :asked_run}}}
+        assert Apiary.Explore.Questions.newest(reload(work_item)) == nil
+
+        {1, _rows} =
+          Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
+            set: [number: 1000]
+          )
+
+        # 100 questions whose file is 50 bytes within the limit as it came, and 50 over
+        # once each 1e3 is 1000.
+        limit = 1_048_576
+        target = limit - 50
+        pad = div(target - byte_size(raw.(100, 0)), 100)
+        bytes = raw.(100, pad)
+        extra = String.duplicate("a", target - byte_size(bytes))
+        bytes = String.replace(bytes, ~s("context":"), ~s("context":"#{extra}), global: false)
+        assert byte_size(bytes) == target
+
+        assert push.(run, bytes) == {:error, {:too_large, limit}}
+        assert Apiary.Explore.Questions.newest(reload(work_item)) == nil
+
+        # A small one is stored with 1000.
+        assert {:ok, version} = push.(run, raw.(1, 10))
+        [file] = version.files
+        {:ok, path} = Apiary.Artifacts.open_file(file)
+        stored = File.read!(path)
+        assert stored =~ ~s("run":1000)
+        assert byte_size(stored) == file.size
+      end)
+    end
+
     test "a version of the questions that changes a member's answer is refused", %{
       scope: scope
     } do
