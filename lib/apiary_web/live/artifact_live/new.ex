@@ -1,7 +1,9 @@
 defmodule ApiaryWeb.ArtifactLive.New do
   # Add a version by hand, `/:org/:workspace/work/:number/artifacts/new`, under the
   # feature `workflow_model`, for a member who may `artifact.write` the work item: a type
-  # of the workspace's (`Apiary.Artifacts.types/1`), a name, `main` unless changed, the
+  # of the workspace's that a person adds by hand (`Apiary.Artifacts.person_types/1`: not
+  # the questions or the review comments, which members write through Explore's
+  # actions), a name, `main` unless changed, the
   # files, uploaded with LiveView's uploads, and an optional note. `?type=` and `?name=`
   # fill the type and the name, as Add a version on a version's page does.
   #
@@ -179,7 +181,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
 
     with %{} = work_item <- Load.work_item(scope, number),
          true <- Access.can?(scope, :"artifact.write", work_item) do
-      types = Artifacts.types(scope.workspace)
+      types = Artifacts.person_types(scope.workspace)
       type = Enum.find(types, &(&1.name == params["type"])) || hd(types)
       name = if Type.name?(params["name"]), do: params["name"], else: "main"
 

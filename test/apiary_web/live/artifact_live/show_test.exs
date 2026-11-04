@@ -422,11 +422,32 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
 
-      for name <- ~w(mockup proposal questions verdict),
+      for name <- ~w(mockup proposal verdict),
           do: assert(has_element?(view, ~s(#artifact-form option[value="#{name}"])), name)
 
-      for name <- ~w(explainer screenshot change),
+      for name <- ~w(explainer screenshot change questions review-comments),
           do: refute(has_element?(view, ~s(#artifact-form option[value="#{name}"])), name)
+    end
+
+    test "leaves out the questions and the review comments, and refuses a push of them", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "questions"))
+
+      for name <- ~w(questions review-comments),
+          do: refute(has_element?(view, ~s(#artifact-form option[value="#{name}"])), name)
+
+      view
+      |> file_input("#artifact-form", :files, [
+        %{name: "questions.json", content: ~s({"questions": []}), type: "application/json"}
+      ])
+      |> render_upload("questions.json")
+
+      html =
+        view
+        |> element("#artifact-form")
+        |> render_submit(%{artifact: %{type: "questions", name: "main", note: ""}})
+
+      assert html =~ "Choose a type from the list."
+      assert Artifacts.list(ctx.work_item) == []
     end
 
     test "says to choose another type when the type is hidden after the page opened", ctx do

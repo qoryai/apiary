@@ -1004,9 +1004,13 @@ defmodule Apiary.WorkItems.Moves do
       )
 
   # A new version of the work item's artifact of `type`, written by the member in the
-  # work item's stage, inside the move's transaction.
+  # work item's stage, inside the move's transaction: a member action
+  # (`Apiary.Artifacts.push/5`), the one way a person writes the questions or the review
+  # comments.
   defp push(held, scope, type, file) do
-    case Apiary.Artifacts.push({:person, scope}, held, type, [file], stage_id: held.stage_id) do
+    case Apiary.Artifacts.push({:member_action, scope}, held, type, [file],
+           stage_id: held.stage_id
+         ) do
       {:ok, version} -> {:ok, version}
       {:error, :not_found} -> {:error, :not_found}
       {:error, :forbidden} -> {:error, :forbidden}

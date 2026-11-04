@@ -1282,6 +1282,90 @@ defmodule Apiary.ArtifactsTest do
 
       assert Artifacts.list(context.work_item) == []
     end
+
+    test "refuses the questions and the review comments, which only member actions write",
+         %{scope: scope} = context do
+      member = member_fixture(scope)
+      at = "2026-11-04T10:00:00Z"
+
+      forged_answer = %{
+        "questions" => [
+          %{
+            "id" => "q1",
+            "question" => "Which basket?",
+            "options" => [%{"title" => "Yes", "explanation" => "Keep it."}],
+            "state" => "answered",
+            "asked" => %{"run" => 1, "at" => at},
+            "answer" => %{"option" => "Yes", "by" => %{"name" => "alice"}, "at" => at}
+          }
+        ]
+      }
+
+      forged_reply = %{
+        "review_comments" => [
+          %{
+            "id" => "c1",
+            "on" => %{"artifact" => "proposal", "version" => 1},
+            "text" => "Refund at once.",
+            "by" => %{"name" => "alice"},
+            "at" => at,
+            "state" => "closed",
+            "replies" => [
+              %{"text" => "Done.", "by" => %{"run" => 7}, "at" => at, "outcome" => "changed"}
+            ]
+          }
+        ]
+      }
+
+      for {type, document} <- [{"questions", forged_answer}, {"review-comments", forged_reply}],
+          actor_scope <- [scope, member.scope] do
+        file = json("#{type}.json", document)
+
+        assert Artifacts.push({:person, actor_scope}, context.work_item, type, [file]) ==
+                 {:error, {:unknown_type, type}}
+
+        assert Apiary.Stages.add_version(actor_scope, context.work_item, type, [file]) ==
+                 {:error, {:unknown_type, type}}
+      end
+
+      assert Artifacts.list(context.work_item) == []
+      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
+    end
+  end
+
+  describe "push/5 by a member action" do
+    test "writes the questions and the review comments as the person, with an audit entry",
+         %{scope: scope, run: run} = context do
+      member = member_fixture(scope)
+
+      for {type, document} <- [
+            {"questions", %{"questions" => [asked(run, "q1", "Which basket?")]}},
+            {"review-comments", %{"review_comments" => []}}
+          ] do
+        assert {:ok, %Version{writer: :person, user_id: user_id, run_id: nil}} =
+                 Artifacts.push({:member_action, member.scope}, context.work_item, type, [
+                   json("#{type}.json", document)
+                 ])
+
+        assert user_id == member.user.id
+      end
+
+      assert Repo.aggregate(from(e in Entry, where: e.action == "artifact.write"), :count) == 2
+    end
+
+    test "is forbidden for any other type", %{scope: scope} = context do
+      assert Artifacts.push({:member_action, scope}, context.work_item, "explainer", [doc()]) ==
+               {:error, :forbidden}
+
+      assert Artifacts.list(context.work_item) == []
+    end
+
+    test "is not found for a person of another organisation", context do
+      assert {:error, :not_found} =
+               Artifacts.push({:member_action, scope_fixture()}, context.work_item, "questions", [
+                 json("questions.json", %{"questions" => []})
+               ])
+    end
   end
 
   describe "push/5 with expect_stage" do

@@ -484,7 +484,8 @@ defmodule Apiary.Stages do
   end
 
   # add_version/5 stores a version a person adds on the work item, as the scope's person
-  # (`Apiary.Artifacts.push/5`, `{:person, scope}`), with the `stage_id` of the stage the
+  # (`Apiary.Artifacts.push/5`, `{:person, scope}`, which refuses the questions and the
+  # review comments as `{:unknown_type, name}`), with the `stage_id` of the stage the
   # work item is in, whatever `opts` gives, then acts on that stage (`version_added/1`):
   # `{:ok, version}`, or the push's refusal, with no action on the stage. The stage is read
   # before the push takes the work item's lock, so the push checks it again under the lock

@@ -215,6 +215,34 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert WorkItems.answer(member.scope, work_item, 1, @comment) == {:error, :not_approver}
       assert review_comments(work_item) == nil
       assert {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      [comment] = review_comments(work_item)
+
+      # A push of the files is no way around the member actions: the member who is not an
+      # approver cannot close the review comment with a reply in a run's name.
+      forged = %{
+        "review_comments" => [
+          comment
+          |> Map.put("state", "closed")
+          |> Map.put("replies", [
+            %{
+              "text" => "Done.",
+              "by" => %{"run" => 7},
+              "at" => comment["at"],
+              "outcome" => "changed"
+            }
+          ])
+        ]
+      }
+
+      for push <- [
+            &Apiary.Artifacts.push({:person, member.scope}, reload(work_item), &1, &2),
+            &Apiary.Stages.add_version(member.scope, reload(work_item), &1, &2)
+          ] do
+        assert push.("review-comments", [ReviewComments.file(forged)]) ==
+                 {:error, {:unknown_type, "review-comments"}}
+      end
+
+      assert [^comment] = review_comments(work_item)
     end
   end
 

@@ -56,9 +56,15 @@ defmodule Apiary.Artifacts do
   # artifact of `type` and `opts[:name]`, `main` unless given, made in the stage
   # `opts[:stage_id]`, with the writer's `opts[:note]`. `opts[:expect_stage]`, where given,
   # is the stage the caller read, nil for no stage. `actor` is `{:run, run}`, a run of
-  # the queue (`Apiary.Dispatches.DispatchRun`) of that work item, or `{:person, scope}`,
-  # a person who may `artifact.write` the work item (`Apiary.Access`), whose push writes
-  # its entry in the audit trail.
+  # the queue (`Apiary.Dispatches.DispatchRun`) of that work item; `{:person, scope}`,
+  # a person who may `artifact.write` the work item (`Apiary.Access`); or
+  # `{:member_action, scope}`, a member's answer, review comment or reply, which only
+  # `Apiary.WorkItems.Moves` passes, for a person who may `work_item.answer` the work
+  # item. A person's push and a member action's push write their entry in the audit
+  # trail. The questions and the review comments (`member_types/0`) take a person's
+  # version only as a member action: Moves writes them from the newest version, with the
+  # checks of each member action. A person's push of either type is
+  # `{:unknown_type, name}`, and a member action's push of any other type `:forbidden`.
   #
   # `files` is a list of `%{filename: name, content_type: text, path: path}` or
   # `%{filename: name, content_type: text, binary: bytes}`; `content_type` is read by
@@ -66,10 +72,12 @@ defmodule Apiary.Artifacts do
   # each refusal `{:error, {code, detail}}`:
   #
   #   1. the actor: a person whom `Apiary.Access` refuses `artifact.write` on the work
-  #      item, `{:error, :not_found}` or `{:error, :forbidden}`; a run of another work
-  #      item, `{:error, :not_found}`;
+  #      item, or a member action whose person it refuses `work_item.answer`,
+  #      `{:error, :not_found}` or `{:error, :forbidden}`; a run of another work item,
+  #      `{:error, :not_found}`;
   #   2. the type: a name of no type, or of a standard type the workspace hides,
-  #      `{:unknown_type, name}`; a name of the wrong form, `{:invalid, :type}`;
+  #      `{:unknown_type, name}`; a name of the wrong form, `{:invalid, :type}`; a type
+  #      the actor does not write, as the actor rule says;
   #   3. the options: `{:invalid, :name | :stage_id | :note}`;
   #   4. the files: none, `{:invalid, :no_files}`; more than the type's most,
   #      `{:too_many_files, max_files}`; an entry of the wrong shape, a filename
@@ -167,8 +175,11 @@ defmodule Apiary.Artifacts do
   @max_note 4000
   @refused_in_note ~r/(?![\x{9}\x{A}\x{200C}\x{200D}])[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u
 
-  @typedoc "Who pushes a version: a run of the queue, or a person."
-  @type actor :: {:run, DispatchRun.t()} | {:person, Scope.t()}
+  # The types only the member actions write for a person (`Apiary.WorkItems.Moves`).
+  @member_types ~w(questions review-comments)
+
+  @typedoc "Who pushes a version: a run of the queue, a person, or a member action."
+  @type actor :: {:run, DispatchRun.t()} | {:person, Scope.t()} | {:member_action, Scope.t()}
 
   @typedoc "A file of a push."
   @type file ::
@@ -195,6 +206,19 @@ defmodule Apiary.Artifacts do
 
     Enum.filter(Type.standard(), &shown?(&1.name, shown)) ++ custom_types(workspace_id)
   end
+
+  # member_types/0 is the names of the types a person writes only through a member
+  # action (`Apiary.WorkItems.Moves`), never by a push of their files.
+  @doc false
+  @spec member_types() :: [String.t()]
+  def member_types, do: @member_types
+
+  # person_types/1 is the types of `types/1` a person adds a version of by hand: all but
+  # `member_types/0`.
+  @doc false
+  @spec person_types(Workspace.t()) :: [Type.t()]
+  def person_types(%Workspace{} = workspace),
+    do: Enum.reject(types(workspace), &(&1.name in @member_types))
 
   @doc false
   @spec all_types(Workspace.t()) :: [Type.t()]
@@ -502,6 +526,7 @@ defmodule Apiary.Artifacts do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item),
          {:ok, type} <- push_type(work_item, type_name),
+         :ok <- actor_type(writer, type),
          {:ok, fields} <- fields(opts),
          {:ok, files} <- files(type, files),
          {:ok, staged} <- stage_all(type, files),
@@ -597,17 +622,45 @@ defmodule Apiary.Artifacts do
   defp writer({:person, %Scope{user: %{id: user_id}} = scope}, work_item)
        when is_binary(user_id) do
     with :ok <- authorize(scope, @write, work_item),
-         do: {:ok, %{writer: :person, user_id: user_id, run_id: nil, scope: scope}}
+         do:
+           {:ok, %{actor: :person, writer: :person, user_id: user_id, run_id: nil, scope: scope}}
+  end
+
+  # A member action: Moves checked the member's action, under the work item's lock, before
+  # it pushes; `artifact.write` is not needed.
+  defp writer({:member_action, %Scope{user: %{id: user_id}} = scope}, work_item)
+       when is_binary(user_id) do
+    with :ok <- authorize(scope, :"work_item.answer", work_item),
+         do:
+           {:ok,
+            %{
+              actor: :member_action,
+              writer: :person,
+              user_id: user_id,
+              run_id: nil,
+              scope: scope
+            }}
   end
 
   defp writer({:run, %DispatchRun{id: run_id} = run}, %WorkItem{} = work_item)
        when is_binary(run_id) do
     if run.work_item_id == work_item.id and run.organisation_id == work_item.organisation_id,
-      do: {:ok, %{writer: :run, user_id: nil, run_id: run_id, scope: nil}},
+      do: {:ok, %{actor: :run, writer: :run, user_id: nil, run_id: run_id, scope: nil}},
       else: {:error, :not_found}
   end
 
   defp writer(_actor, _work_item), do: {:error, :not_found}
+
+  # The types each actor writes: a person never the member types, a member action only
+  # those, a run any.
+  defp actor_type(%{actor: :person}, %Type{name: name}) when name in @member_types,
+    do: {:error, {:unknown_type, name}}
+
+  defp actor_type(%{actor: :member_action}, %Type{name: name}) when name in @member_types,
+    do: :ok
+
+  defp actor_type(%{actor: :member_action}, %Type{}), do: {:error, :forbidden}
+  defp actor_type(_writer, %Type{}), do: :ok
 
   # The one call site of `Apiary.Access.authorize/3` for this module's actions.
   defp authorize(scope, action, subject), do: Access.authorize(scope, action, subject)
