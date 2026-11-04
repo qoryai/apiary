@@ -359,7 +359,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :unreadable, :document_size] and
+       when check in [:format, :extension, :unreadable, :document_size, :image_type] and
               is_integer(index),
        do:
          {:error,
@@ -373,8 +373,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
     {:error,
      {:invalid_artifact, "files[#{index}]",
-      "Remove #{part} from #{filename}. An SVG in a proposal has no script, animation, " <>
-        "HTML, processing instruction, backslash or reference outside the file."}}
+      "Remove #{part} from #{filename}. An SVG in a proposal uses only the elements and " <>
+        "attributes the run API document lists, with no script, HTML or reference outside " <>
+        "the file."}}
   end
 
   # A failed schema check, with the JSON pointer of the first failing value and JSV's message
@@ -489,6 +490,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # (`Apiary.Artifacts.Format`).
   defp mismatch(:document_size, filename, _push),
     do: "Shrink #{filename} to at most #{Format.proposal_bytes(filename)} bytes."
+
+  # A proposal's image whose bytes are not the type its extension names, such as cart.png
+  # with the bytes of a GIF (`Apiary.Artifacts.Format`).
+  defp mismatch(:image_type, filename, _push),
+    do: "Replace #{filename} with an image of the type its name ends in."
 
   # A proposal's sources.json that is not one JSON document.
   defp mismatch(:format, "sources.json" = filename, %{name: "proposal"}),

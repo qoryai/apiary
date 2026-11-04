@@ -251,24 +251,72 @@ Checks, in order, after the checks of every request:
      against the schema and reads none of its members;
    - the rest PNG, JPEG, GIF, WebP or SVG images, each with the extension of its
      format: `.png`, `.jpg` or `.jpeg`, `.gif`, `.webp` or `.svg`. A file with another
-     extension gets the proposal's format message.
+     extension gets the proposal's format message; an image whose bytes are another
+     format than its extension names, such as `cart.png` with the bytes of a GIF, gets
+     "Replace cart.png with an image of the type its name ends in."
 
-   An SVG of a proposal has none of these parts, read with character references
-   replaced; the message names the first one found:
+   An SVG of a proposal uses only the elements, attributes and structure below, so that
+   it runs no script and loads nothing from outside the file: shown in an `<img>`, opened
+   as an SVG, or opened as a page after a rename to `.html`, where an HTML parser reads
+   no namespace. Names are compared as written, case included. Values and text are read
+   with character references replaced. The message names the first part outside the
+   list.
 
-   - an element `script`, `foreignObject`, `image`, `iframe`, `animate` or `set`, in any
-     namespace and any case, or any element in the HTML namespace
-     (`http://www.w3.org/1999/xhtml`);
-   - an attribute whose name starts with `on`, any case; an `xml:base`; an `href` in any
-     namespace, such as `xlink:href`, whose value does not start with `#`;
-   - in any text or attribute, `@import`, or a CSS `url(` whose address does not start
-     with `#`;
-   - in a `style` element or any attribute, a backslash, `image-set(`
-     (also `-webkit-image-set(`) or `image(`, any case, also with spaces before the `(`;
-   - an element inside a `style` element. The text of a `style` element is checked as
-     one, joined across comments and CDATA sections;
-   - a processing instruction, such as `<?xml-stylesheet ?>`. The XML declaration
-     `<?xml version="1.0"?>` is not one.
+   - Elements, in the SVG namespace (`http://www.w3.org/2000/svg`), written with no
+     prefix:
+     - structure: `svg`, `g`, `defs`, `symbol`, `use`, `title`, `desc`
+     - shapes: `rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `path`
+     - text: `text`, `tspan`, `textPath`
+     - link: `a`
+     - paint: `linearGradient`, `radialGradient`, `stop`, `pattern`, `clipPath`, `mask`,
+       `marker`
+     - style: `style`
+     - filters: `filter`, `feGaussianBlur`, `feOffset`, `feFlood`, `feComposite`,
+       `feMerge`, `feMergeNode`, `feBlend`, `feColorMatrix`, `feDropShadow`
+   - Attributes, on any of these elements, written with no prefix unless one is shown:
+     - core: `id`, `class`, `style`, `lang`, `xml:lang`, `xml:space`, `role`,
+       `aria-label`, `aria-hidden`
+     - root: `version`, `viewBox`, `preserveAspectRatio`
+     - geometry: `x`, `y`, `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `fx`,
+       `fy`, `fr`, `width`, `height`, `d`, `points`, `pathLength`, `transform`,
+       `transform-origin`
+     - text: `dx`, `dy`, `rotate`, `textLength`, `lengthAdjust`, `startOffset`,
+       `method`, `spacing`, `side`
+     - presentation: `fill`, `fill-opacity`, `fill-rule`, `stroke`, `stroke-width`,
+       `stroke-opacity`, `stroke-dasharray`, `stroke-dashoffset`, `stroke-linecap`,
+       `stroke-linejoin`, `stroke-miterlimit`, `opacity`, `color`, `display`,
+       `visibility`, `overflow`, `clip-path`, `clip-rule`, `mask`, `filter`,
+       `marker-start`, `marker-mid`, `marker-end`, `stop-color`, `stop-opacity`,
+       `flood-color`, `flood-opacity`, `font-family`, `font-size`, `font-weight`,
+       `font-style`, `font-variant`, `text-anchor`, `dominant-baseline`,
+       `alignment-baseline`, `baseline-shift`, `letter-spacing`, `word-spacing`,
+       `text-decoration`, `writing-mode`, `white-space`, `vector-effect`,
+       `shape-rendering`, `text-rendering`, `paint-order`, `mix-blend-mode`, `isolation`
+     - paint servers and markers: `offset`, `gradientUnits`, `gradientTransform`,
+       `spreadMethod`, `patternUnits`, `patternContentUnits`, `patternTransform`,
+       `clipPathUnits`, `maskUnits`, `maskContentUnits`, `markerWidth`, `markerHeight`,
+       `markerUnits`, `refX`, `refY`, `orient`
+     - filters: `filterUnits`, `primitiveUnits`, `in`, `in2`, `result`, `stdDeviation`,
+       `mode`, `operator`, `k1`, `k2`, `k3`, `k4`, `type`, `values`
+     - links: `href` and `xlink:href`, only on `use`, `a`, `textPath`, `linearGradient`,
+       `radialGradient` and `pattern`, and only to a place in the file: `#`, then an
+       ASCII letter or `_`, then ASCII letters, digits, `_`, `-` or `.`, such as `#card`.
+
+     Namespace declarations, `xmlns` and `xmlns:…`, may appear on any element. Every
+     other attribute is refused, such as `target`, `ping`, `src`, `cursor`, `xml:base`
+     and every `on…` attribute.
+   - Structure:
+     - `title`, `desc` and `style` contain text only;
+     - a CDATA section appears only inside `style`;
+     - no comment's text starts with `>` or `->`, as in `<!-->` or `<!--->`;
+     - no processing instruction, such as `<?xml-stylesheet ?>`. The XML declaration
+       `<?xml version="1.0"?>` is not one.
+   - CSS, in a `style` element and in every attribute value: no backslash, no
+     `image-set(` (also `-webkit-image-set(`), `image(` or `src(`, any case, also with
+     spaces before the `(`. The text of a `style` element is checked as one, joined
+     across comments and CDATA sections.
+   - In any text and attribute value: no `@import`, and a CSS `url(` only to an address
+     that starts with `#`.
 
    An SVG is also UTF-8, at most 512 KiB, with no document type declaration, and its
    root is `svg` in the SVG namespace; else the file gets the proposal's format message.
@@ -353,15 +401,17 @@ The messages:
       (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."
     - "Push one Markdown file (.md) in each version of proposal."
     - "Shrink proposal.md to at most 262144 bytes."
-    - "Remove the script element from checkout.svg. An SVG in a proposal has no
-      script, animation, HTML, processing instruction, backslash or reference outside
-      the file." The part after "Remove" names the first part refused, with element
-      and attribute names as the file writes them: "the animate element", "the onload
-      attribute", "the xml:base attribute", "the href attribute", "the HTML element
-      div", "a backslash in the fill attribute", "the url() in the style element", "the
-      @import in the text of the desc element", "the image-set() in the style
-      attribute", "the g element inside the style element" or "the processing
-      instruction foo". A name past 64 characters is cut to 64 and "…".
+    - "Replace cart.png with an image of the type its name ends in."
+    - "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the
+      elements and attributes the run API document lists, with no script, HTML or
+      reference outside the file." The part after "Remove" names the first part
+      refused, with element and attribute names as the file writes them: "the iframe
+      element", "the s:rect element", "the HTML element h:div", "the ping attribute",
+      "the href attribute", "the g element inside the desc element", "the CDATA section
+      in the desc element", "the comment that starts with >", "the processing
+      instruction foo", "a backslash in the fill attribute", "the url() in the style
+      element", "the @import in the text of the desc element" or "the image-set() in
+      the style attribute". A name past 64 characters is cut to 64 and "…".
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
     - A `sources.json` the schema refuses gets the structured type's message, such as

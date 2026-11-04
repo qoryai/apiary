@@ -1049,14 +1049,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       unsafe = ~s(<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com/"/></svg>)
       escaped = ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect fill="\\0"/></svg>)
+      iframe = ~s(<svg xmlns="http://www.w3.org/2000/svg"><iframe/></svg>)
 
       cases = [
         {[md, {"notes.txt", "text/plain", "Gift cards."}], ["files[1]"],
          "Fix notes.txt to match the format of proposal: a proposal is one Markdown file " <>
            "(.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."},
         {[md, {"cart.png", "image/gif", "GIF89a" <> <<1>>}], ["files[1]"],
-         "Fix cart.png to match the format of proposal: a proposal is one Markdown file " <>
-           "(.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."},
+         "Replace cart.png with an image of the type its name ends in."},
+        {[md, {"checkout.svg", "image/svg+xml", @png}], ["files[1]"],
+         "Replace checkout.svg with an image of the type its name ends in."},
         {[{"proposal.md", "text/markdown", <<0xFF>>}], ["files[0]"],
          "Fix proposal.md to match the format of proposal: " <>
            "a document is a Markdown file of UTF-8 text."},
@@ -1066,12 +1068,17 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {[{"proposal.md", "text/markdown", String.duplicate("a", 262_145)}], ["files[0]"],
          "Shrink proposal.md to at most 262144 bytes."},
         {[md, {"checkout.svg", "image/svg+xml", unsafe}], ["files[1]"],
-         "Remove the href attribute from checkout.svg. An SVG in a proposal has no script, " <>
-           "animation, HTML, processing instruction, backslash or reference outside the file."},
+         "Remove the href attribute from checkout.svg. An SVG in a proposal uses only the " <>
+           "elements and attributes the run API document lists, with no script, HTML or " <>
+           "reference outside the file."},
         {[md, {"checkout.svg", "image/svg+xml", escaped}], ["files[1]"],
          "Remove a backslash in the fill attribute from checkout.svg. An SVG in a proposal " <>
-           "has no script, animation, HTML, processing instruction, backslash or reference " <>
-           "outside the file."},
+           "uses only the elements and attributes the run API document lists, with no " <>
+           "script, HTML or reference outside the file."},
+        {[md, {"checkout.svg", "image/svg+xml", iframe}], ["files[1]"],
+         "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the " <>
+           "elements and attributes the run API document lists, with no script, HTML or " <>
+           "reference outside the file."},
         {[md, {"sources.json", "application/json", "{"}], ["files[1]"],
          "Make sources.json valid JSON. The file does not parse as JSON."},
         {[md, {"sources.json", "application/json", String.duplicate(" ", 1_048_577)}],
