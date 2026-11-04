@@ -2615,7 +2615,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       <span class="q-xp-it">{gettext("Earlier answer")}</span>
       <span class="q-xp-it"><.rich text={answered_words(@answer, @now)} /></span>
     </p>
-    <div id={@id} class={["q-xp-ans", @earlier && "q-xp-ans-old"]} phx-no-format><b :if={@answer.option} class="block">{@answer.option}</b><span :if={@answer.note}>{@answer.note}</span></div>
+    <div id={@id} class={["q-xp-ans", @earlier && "q-xp-ans-old"]} phx-no-format><span :if={@answer.option} class="block">{@answer.option}</span><span :if={@answer.note}>{@answer.note}</span></div>
     <p :if={!@earlier} id={"#{@id}-who"} class="q-xp-cm-m">
       <span class="q-xp-it"><.rich text={answered_words(@answer, @now)} /></span>
     </p>

@@ -1308,10 +1308,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       q2 = "#work-item-explore-questions-question-2"
 
       assert text(html, "#{q2}-earlier-who") == "Earlier answer Priya answered 2 hours ago"
-      assert text(html, "#{q2}-earlier > b") == "No"
-      assert text(html, "#{q2}-earlier > span") == "Only invoices."
+      assert texts(html, "#{q2}-earlier > span") == ["No", "Only invoices."]
       # No white space of the template in the quote, whose white space is kept.
-      assert html =~ ~r{<b class="block">No</b><span>Only invoices.</span></div>}
+      assert html =~ ~r{<span class="block">No</span><span>Only invoices.</span></div>}
       assert attr(html, "#{q2}-earlier", "class") |> hd() =~ "q-xp-ans-old"
       assert text(html, "#{q2} .q-xp-cm-m a") == "Follows question 1"
 
