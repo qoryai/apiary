@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.BacklogLive.TicketTest do
-  # The full ticket (`ApiaryWeb.BacklogLive.Ticket`): its page, with Backlog back and the
-  # Take in block, for whoever may read the workspace's work items; Take in leads to the
-  # new work item, and a refusal is a flash; an id of no ticket of this Backlog, and a
-  # person outside the workspace, find no page.
+  # The full ticket (`ApiaryWeb.BacklogLive.Ticket`): its page, with Backlog back and Take
+  # in with its hint, for whoever may read the workspace's work items, and why in place of
+  # Take in to a person who may not take a ticket in; Take in leads to the new work item,
+  # and a refusal is a flash; an id of no ticket of this Backlog, and a person outside the
+  # workspace, find no page.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -44,9 +45,22 @@ defmodule ApiaryWeb.BacklogLive.TicketTest do
              ~s(#ticket-back[href="/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/backlog"])
            )
 
-    assert has_element?(view, "#ticket-take-in-help")
+    assert words(view, "#ticket-take-in") == "Take in Take in starts exploring this ticket."
     assert words(view, "#ticket-take-in-button") == "Take in"
+    assert words(view, "#ticket-take-in-hint") == "Take in starts exploring this ticket."
+    refute render(view) =~ "needs a workflow first"
     assert page_title(view) =~ "Login times out"
+  end
+
+  test "to a person who may not take a ticket in, why in place of Take in", ctx do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.TakesNothingIn)
+    {:ok, view, _html} = live(ctx.conn, ticket_path(ctx.scope, ctx.ticket.public_id))
+
+    assert words(view, "#ticket-take-in") ==
+             ApiaryWeb.BacklogComponents.take_in_who_may(ctx.scope)
+
+    refute has_element?(view, "#ticket-take-in-button")
+    refute has_element?(view, "#ticket-take-in-hint")
   end
 
   test "Take in makes the work item and leads to it", ctx do

@@ -5,7 +5,7 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
   #
   # The ticket is read with the page's scope (`Apiary.Sources.Backlog.get_ticket/2`): an
   # id of no ticket of this Backlog is a path that does not exist. An open ticket with no
-  # work item has the Take in block (`ApiaryWeb.BacklogComponents.take_in_block/1`), as
+  # work item has Take in (`ApiaryWeb.BacklogComponents.take_in_block/1`), as
   # over the list: Take in leads to the new work item's page, and a refusal is a flash in
   # the page's words (`ApiaryWeb.BacklogComponents.take_in_refused/3`), after which the
   # page reads the ticket again. The page listens on the topic of its workspace's Backlog
@@ -20,7 +20,6 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
   alias Apiary.{Access, Adapters, WorkItems}
-  alias Apiary.Lingo.Domain
   alias Apiary.Sources.Backlog
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
 
@@ -53,9 +52,6 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
           <BacklogComponents.take_in_block
             id="ticket-take-in"
             ticket_id={@ticket.id}
-            workspace={@current_scope.workspace.name}
-            harness_file={Domain.harness_file?(@current_scope.workspace)}
-            target_required={Domain.target_required?(@current_scope.workspace)}
             refused={@refused}
           />
         </:take_in>

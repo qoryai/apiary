@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.BacklogLive.TakeInTest do
   # The ticket over the Backlog's list (`?ticket=`) and Take in
-  # (`ApiaryWeb.BacklogLive.Index`): the panel, its help in the workspace's words and its
-  # Take in, Close; Take in from the panel and from a row, which leads to the new work
-  # item; and each refusal, said in a flash.
+  # (`ApiaryWeb.BacklogLive.Index`): the panel, its Take in with the hint beside it, Close;
+  # to a person who may not take a ticket in, why in place of Take in; Take in from the
+  # panel and from a row, which leads to the new work item; and each refusal, said in a
+  # flash.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -50,9 +51,8 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
   end
 
   describe "the ticket over the list" do
-    test "a row's title opens the ticket, with the help and Take in", ctx do
+    test "a row's title opens the ticket, with Take in and its hint", ctx do
       %{scope: scope, ticket: ticket} = ctx
-      workspace = scope.workspace.name
       {:ok, view, _html} = live(ctx.conn, page(scope))
 
       view |> element("#ticket-#{ticket.public_id} a.q-bl-t") |> render_click()
@@ -62,18 +62,32 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       assert words(view, "#backlog-ticket-title") == "Login times out"
       assert has_element?(view, ~s(#ticket-#{ticket.public_id} a[aria-current="true"]))
 
-      assert words(view, "#backlog-ticket-take-in-help") ==
-               "Take in makes a work item from a ticket and starts its explore run. " <>
-                 "#{workspace} needs a workflow first, set in Workspace settings › Workflow, " <>
-                 "unless the ticket's repository has a harness.yaml or qory.yaml. " <>
-                 "Open Backlog. Press a ticket's title. Its panel opens. Press Take in. " <>
-                 "In a software workspace, the ticket must be in a repository assigned to " <>
-                 "#{workspace}."
+      assert words(view, "#backlog-ticket-take-in") ==
+               "Take in Take in starts exploring this ticket."
 
-      assert has_element?(view, "#backlog-ticket-take-in-help b", "Take in")
-      assert has_element?(view, "#backlog-ticket-take-in-help code", "harness.yaml")
       assert words(view, "#backlog-ticket-take-in-button") == "Take in"
+
+      assert has_element?(
+               view,
+               ~s(#backlog-ticket-take-in-button[aria-describedby="backlog-ticket-take-in-hint"])
+             )
+
+      assert words(view, "#backlog-ticket-take-in-hint") ==
+               "Take in starts exploring this ticket."
+
+      refute has_element?(view, "#backlog-ticket-take-in-refused")
       assert has_element?(view, "#backlog-ticket-body", "The basket shows the price")
+
+      html = render(view)
+
+      for gone <- [
+            "explore run",
+            "needs a workflow first",
+            "Press a ticket's title",
+            "harness.yaml"
+          ] do
+        refute html =~ gone
+      end
     end
 
     test "Close takes the ticket away and keeps the list", ctx do
@@ -100,7 +114,7 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       end
     end
 
-    test "a ticket taken in has no Take in block", ctx do
+    test "a ticket taken in has no Take in", ctx do
       {:ok, _work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
       {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
 
@@ -108,15 +122,28 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       refute has_element?(view, "#backlog-ticket-take-in")
     end
 
-    test "in an example workspace, the help leaves out the repository's lines", ctx do
+    test "in an example workspace, the same hint", ctx do
       scope = with_domain(ctx.scope, "example")
       {:ok, view, _html} = live(ctx.conn, open(scope, ctx.ticket))
 
-      assert words(view, "#backlog-ticket-take-in-help") ==
-               "Take in makes a work item from a ticket and starts its explore run. " <>
-                 "#{scope.workspace.name} needs a workflow first, " <>
-                 "set in Workspace settings › Workflow. " <>
-                 "Open Backlog. Press a ticket's title. Its panel opens. Press Take in."
+      assert words(view, "#backlog-ticket-take-in") ==
+               "Take in Take in starts exploring this ticket."
+    end
+
+    test "to a person who may not take a ticket in, why in place of Take in", ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.TakesNothingIn)
+      {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
+
+      assert words(view, "#backlog-ticket-take-in") ==
+               ApiaryWeb.BacklogComponents.take_in_who_may(ctx.scope)
+
+      assert has_element?(
+               view,
+               ".q-bl-prev-head > #backlog-ticket-take-in > #backlog-ticket-take-in-refused"
+             )
+
+      refute has_element?(view, "#backlog-ticket-take-in-button")
+      refute has_element?(view, "#backlog-ticket-take-in-hint")
     end
   end
 
