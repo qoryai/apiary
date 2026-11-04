@@ -14027,6 +14027,9 @@
   .q-xp-earlier > details + details {
     margin-top: 8px;
   }
+  .q-xp-earlier > details > .q-xp-inner > details:not(:first-child) {
+    margin-top: 8px;
+  }
   .q-xp-earlier > details > summary,
   .q-xp-earlier > details > .q-xp-inner > details > summary {
     display: flex;
