@@ -874,6 +874,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   256 KiB, in place of structured JSON. A `questions` artifact takes up to 256 KiB, up
   from 64 KiB, and each question in it is an Explore question, with its options.
 <!-- /feature -->
+- These are instance actions: `instance.read`, `instance.review_connections`,
+  `instance.mail_save`, `instance.mail_resend`, `instance.mail_on`, `instance.rename`,
+  `instance.configure`, `instance.support_save` and `account.password_link`. Only an
+  instance admin takes them: an owner of the instance's organisation whose membership is
+  not suspended and whose account is in use. A person outside that organisation gets not
+  found, and an admin or a member inside it gets forbidden. A release command still makes a
+  password link.
+<!-- feature: observability -->
+- `instance.read_observability`, `diagnostics_key.create` and `diagnostics_key.revoke` are
+  instance actions.
+<!-- /feature -->
+<!-- feature: factory -->
+- `instance.read_factory`, `adapter.create`, `adapter.edit`, `adapter.set_interval`,
+  `adapter.delete`, `adapter.setup`, `node.set_instance_limit`, `harness.assigned` and
+  `harness.unassigned` are instance actions.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `workspace_type.edit` is an instance action.
+<!-- /feature -->
+- An instance admin who stops being one while a page of Instance settings is open moves to
+  `/`. Before, the page and its buttons stayed until it was reloaded, and each save failed.
 
 ### Fixed
 
@@ -883,6 +904,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The built-in harness uses qory's hello example at a commit that allows extending it.
   With the earlier commit, composing the built-in harness failed, so every test run
   failed.
+- A password change after a sign-in that is no longer recent leads to the log-in page with
+  “You must re-authenticate to access this page.”, and changes nothing. Before, it failed
+  with a 500 error.
+<!-- feature: factory -->
+- A person who may not connect an integration gets not found (404) at
+  `/<organisation>/settings/integrations/<adapter>/install`. Before, they got 403.
+- On a target's page with no registry, an instance admin reads “Set `QORY_REGISTRY` on the
+  server to build this target's environment image. Until then, runs start in the pool's
+  default image.” Before, the line told them to ask an instance admin.
+<!-- /feature -->
 <!-- feature: factory -->
 - A read-only run that qory closes shows a line on its run page, such as “read-only run
   with no wall”, in place of its code. Its work item shows the fix, then the cause. On an
