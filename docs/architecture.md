@@ -13,8 +13,9 @@ beside it:
   caller: the user, the organisation, the membership, how they reach it (`reach`), the
   workspace, what the edition says of their place there (`edition`), what the person is
   not shown (`hidden`) and the origin.
-- `Apiary.Access`: who may do what, the one question every context function and page
-  asks ([access.md](access.md)).
+- `Apiary.Access`: who may do what, the one way every context function and page checks
+  it. [access.md](access.md) lists what stays outside it: authentication, data rules and
+  the last-owner rule among them.
 - `Apiary.Audit`: the audit trail, one entry for every change, written by the context
   function that makes it (The audit trail, below).
 - `Apiary.Organisations`: organisations, workspaces, memberships and invitations;
@@ -246,8 +247,9 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   name (a sign-up refuses a name whose slug is taken, `taken: :refuse`), the workspace
   Main unless `workspace: false`, the owner membership, the edition's steps and the entry
   that begins its trail.
-- **The instance admins** are the owners of the instance's organisation
-  (`Apiary.Access.instance_admin?/1`, [access.md](access.md), The instance's admins). It
+- **The instance admins** are the owners of the instance's organisation. They take the
+  instance actions, an `Apiary.Access.Action` with `instance: true`, which pass only in that
+  organisation ([access.md](access.md), The instance's admins). That organisation
   is never deleted nor purged (`:instance_organisation`), so an instance never loses it:
   without one, the next sign-up would create it.
 - **Invitations, bounded.** An invitation is an address, and its email names the
@@ -402,7 +404,8 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   place the edition gives under (`switcher_entries/1`, `workspace_switcher_entries/1`,
   `place_group/1`; `place_scope/2`, which the core no longer asks); what a page says to
   a person it lets in without a membership, of a refusal the edition makes, and, where the pages
-  `who_may_sentence/2` lists ask it, of who may take an action (`reader_sentence/2`,
+  `who_may_sentence/2` lists call it, of who may take an action, which changes only the words,
+  since `Apiary.Access` decides (`reader_sentence/2`,
   `refusal_sentence/1`, `who_may_sentence/2`); settings sections (`settings_tabs/1`,
   `ApiaryWeb.SettingsComponents`); what it renders in the named places of the core's
   pages (`slot/2`, `ApiaryWeb.Extension`); the words for its actions in the audit log
