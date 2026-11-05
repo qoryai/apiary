@@ -170,6 +170,12 @@ defmodule Apiary.PasswordLinkTest do
       assert {:error, :own_account} =
                Accounts.build_password_link(admin, admin.user, &url_fun/1)
 
+      # The check of the account comes before the check of mail.
+      Apiary.Mail.put_test_source(:env)
+
+      assert {:error, :own_account} =
+               Accounts.build_password_link(admin, admin.user, &url_fun/1)
+
       assert password_tokens(admin.user) == []
       assert entries() == []
     end
