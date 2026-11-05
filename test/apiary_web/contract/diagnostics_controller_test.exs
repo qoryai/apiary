@@ -16,7 +16,7 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
   alias Apiary.{AccessKeys, DiagnosticsSchema, Repo, SigningKey}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Audit.Entry
-  alias Apiary.Contract.{Ed25519, SignedMessage}
+  alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Runs.Run
 
@@ -39,28 +39,31 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
   defp enrol(code, opts \\ []) do
     pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
     name = Keyword.get(opts, :name, "laptop")
-    timestamp = System.os_time(:second)
-    message = SignedMessage.enrolment(code, pair.encoded, name, timestamp)
-    proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519]) |> Ed25519.encode()
-
-    body =
-      Jason.encode!(%{
-        version: 1,
-        code: code,
-        name: name,
-        public_key: pair.encoded,
-        timestamp: timestamp,
-        proof: proof
-      })
 
     conn =
       build_conn()
       |> Map.put(:remote_ip, Keyword.get(opts, :remote_ip, {127, 0, 0, 1}))
       |> put_req_header("content-type", "application/json")
       |> put_req_header("x-qory-contract-version", "1")
-      |> post(@enrolment, body)
+      |> post(@enrolment, enrolment_body(code, pair, name))
 
     {conn, pair}
+  end
+
+  # The signed body of an enrolment request.
+  defp enrolment_body(code, pair, name) do
+    timestamp = System.os_time(:second)
+    message = SignedMessage.enrolment(code, pair.encoded, name, timestamp)
+    proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519]) |> Ed25519.encode()
+
+    Jason.encode!(%{
+      version: 1,
+      code: code,
+      name: name,
+      public_key: pair.encoded,
+      timestamp: timestamp,
+      proof: proof
+    })
   end
 
   # A diagnostics key, enrolled: the key as stored, and the seed that signs as it.
@@ -159,6 +162,25 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       {conn, _pair} = enrol(code <> "." <> SigningKey.fingerprint())
 
       assert conn.status == 201, conn.resp_body
+    end
+
+    # The maker's check asks `diagnostics_key.create`, whose feature went after the code was
+    # made, as across a restart.
+    @tag :feature_sets
+    @tag needs: :observability
+    test "its code made with observability on does not enrol with it off", %{admin: admin} do
+      {:ok, _row, code} = AccessKeys.create_diagnostics_code(admin)
+      pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
+
+      {:ok, request} =
+        Enrolment.decode(enrolment_body(code <> "." <> SigningKey.fingerprint(), pair, "laptop"))
+
+      previous = Application.get_env(:apiary, :features)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+      Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:observability])
+
+      assert AccessKeys.enrol(request) == {:error, :unauthorized}
+      refute Repo.get_by(AccessKey, created_by_id: admin.user.id)
     end
 
     test "is revoked by an instance admin, with an entry, and is refused from then on",

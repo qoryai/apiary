@@ -1379,7 +1379,9 @@ defmodule Apiary.AccessKeys do
   # the key it brings only while its node is in use and installed as a name the settings
   # still list (`Apiary.Adapters.Installed.listed?/1`) or declare
   # (`Apiary.Nodes.Installed.declared?/1`). The read needs no lock: the node is locked
-  # next, as for every code, and the settings are fixed while the instance runs.
+  # next, as for every code, and the settings are fixed while the instance runs. An
+  # instance without `factory` lists no adapter: `Apiary.Adapters.Installed.boot!/0`
+  # stops it.
   defp maker_may_enrol(%EnrolmentCode{
          organisation_id: nil,
          workspace_id: nil,
