@@ -426,7 +426,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
     test "without the announcement, one whose membership is gone reads no member and no invitation",
          %{conn: conn, scope: scope, founder: founder, membership: membership} do
-      invitation = invitation_fixture(founder.scope)
+      %{invitation: invitation} = invitation_fixture(founder.scope)
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
       assert html =~ founder.user.email
       assert html =~ invitation.email
