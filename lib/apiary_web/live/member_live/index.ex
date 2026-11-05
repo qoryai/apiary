@@ -1182,8 +1182,8 @@ defmodule ApiaryWeb.MemberLive.Index do
   end
 
   # The memberships the page offers a password link for: `account.password_link`, asked of
-  # each account in the instance scope, which refuses the reader's account. Read here, not
-  # in the template: each answer runs a query, and a render covers every row.
+  # each account in the instance scope, which refuses the reader's account. Computed in
+  # `load/1`, not in the template, so a render runs no check per row.
   defp password_link_rows(nil, _members), do: MapSet.new()
 
   defp password_link_rows(instance, members) do
