@@ -131,6 +131,31 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       assert [%AccessKey{}] = AccessKeys.list_diagnostics_keys(admin)
     end
 
+    test "its code enrols nothing once its maker is no longer an instance admin",
+         %{admin: admin} do
+      {:ok, _row, code} = AccessKeys.create_diagnostics_code(admin)
+      # Another admin first: the instance keeps one.
+      {:ok, _} = Apiary.Organisations.grant_instance_admin(member_fixture(admin).user)
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(admin.user)
+
+      {conn, _pair} = enrol(code <> "." <> SigningKey.fingerprint())
+
+      assert conn.status == 401
+      refute Repo.get_by(AccessKey, created_by_id: admin.user.id)
+    end
+
+    # The maker's check asks `diagnostics_key.create`, of the feature `observability`, and
+    # not `adapter.setup`: under QORY_FEATURES=observability, `factory` is off.
+    @tag :feature_sets
+    @tag needs: :observability
+    test "its code enrols with observability on, with factory on or off", %{admin: admin} do
+      {:ok, _row, code} = AccessKeys.create_diagnostics_code(admin)
+
+      {conn, _pair} = enrol(code <> "." <> SigningKey.fingerprint())
+
+      assert conn.status == 201, conn.resp_body
+    end
+
     test "is revoked by an instance admin, with an entry, and is refused from then on",
          %{admin: admin, instance: instance} do
       %{key: key, seed: seed} = diagnostics_key!(admin)
