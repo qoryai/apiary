@@ -159,7 +159,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp required_hosts(scope) do
     scope.workspace
     |> Apiary.Policy.RequiredHosts.of()
-    |> Map.put(:admin?, Apiary.Access.instance_admin?(scope))
+    |> Map.put(:admin?, ApiaryWeb.Access.instance_can?(scope, :"instance.read"))
   end
 
   defp unwrap({:ok, value}), do: value
