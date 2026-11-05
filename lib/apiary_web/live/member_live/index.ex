@@ -1122,14 +1122,7 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp load(socket) do
     scope = socket.assigns.current_scope
 
-    members = Organisations.list_members(scope)
-
-    # Asked of the organisation where there is no workspace: an invitation sent while it
-    # had none is pending there.
-    invitations =
-      if Access.can?(scope, :"member.invite", scope.workspace || scope.organisation),
-        do: Organisations.list_invitations(scope),
-        else: []
+    {members, invitations} = people(scope)
 
     grantable = Access.grantable_levels(scope)
 
@@ -1139,6 +1132,24 @@ defmodule ApiaryWeb.MemberLive.Index do
     |> find(socket.assigns[:q])
     |> assign(:sections, SettingsComponents.sections(scope, :organisation))
     |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
+  end
+
+  # The members and the invitations, for a person who may read them as the database has it
+  # now (`member.read`, with `Apiary.Access.authorize/3`): the page's scope is stale until
+  # the broadcast of a change to the membership moves the page.
+  defp people(scope) do
+    case Access.authorize(scope, :"member.read", scope.organisation) do
+      :ok -> {Organisations.list_members(scope), invitations(scope)}
+      {:error, _refused} -> {[], []}
+    end
+  end
+
+  # Asked of the organisation where there is no workspace: an invitation sent while it
+  # had none is pending there.
+  defp invitations(scope) do
+    if Access.can?(scope, :"member.invite", scope.workspace || scope.organisation),
+      do: Organisations.list_invitations(scope),
+      else: []
   end
 
   defp password_link(%{assigns: %{password_scope: %Apiary.Accounts.Scope{}}} = socket, member) do

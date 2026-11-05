@@ -424,6 +424,23 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert Apiary.Repo.get!(Organisations.Membership, third.id).level == :member
     end
 
+    test "without the announcement, one whose membership is gone reads no member and no invitation",
+         %{conn: conn, scope: scope, founder: founder, membership: membership} do
+      invitation = invitation_fixture(founder.scope)
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      assert html =~ founder.user.email
+      assert html =~ invitation.email
+
+      # Removed behind the page's back: no broadcast reaches it. An event then reads the
+      # list again, with the scope as the page loaded it.
+      Apiary.Repo.delete!(membership)
+      html = render_hook(lv, "set_level", %{})
+
+      refute html =~ founder.user.email
+      refute html =~ invitation.email
+      assert %{members: [], invitations: []} = :sys.get_state(lv.pid).socket.assigns
+    end
+
     test "a removed member's open page is sent to /", %{
       conn: conn,
       scope: scope,
