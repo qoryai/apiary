@@ -161,7 +161,7 @@ defmodule ApiaryWeb.InstanceLive.General do
         {:noreply, assign(socket, form: to_form(changeset, as: "instance"))}
 
       # No longer an instance admin: the page itself is not found now.
-      {:error, :forbidden} ->
+      {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, push_navigate(socket, to: ~p"/instance/general")}
     end
   end
@@ -181,7 +181,7 @@ defmodule ApiaryWeb.InstanceLive.General do
       {:error, :env} ->
         {:noreply, assign_support(socket)}
 
-      {:error, :forbidden} ->
+      {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, push_navigate(socket, to: ~p"/instance/general")}
     end
   end
