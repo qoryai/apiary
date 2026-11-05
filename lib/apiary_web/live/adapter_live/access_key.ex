@@ -6,8 +6,9 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   # until the catalogue exists. A page of the Instance level, with no organisation: its
   # gate asks the instance whether the feature is on (`use ApiaryWeb.Features, instance:
   # :factory`), and anyone but an instance admin is answered as a path that does not
-  # exist, as on the Instance's other pages. The keys, the codes and their topic are an
-  # instance admin's (`Apiary.Adapters.subscribe_keys/2`).
+  # exist, as on the Instance's other pages (`ApiaryWeb.Access`'s `:instance`), which also
+  # moves a reader who is no longer an instance admin to `/`. The keys, the codes and their
+  # topic are an instance admin's (`Apiary.Adapters.subscribe_keys/2`).
   #
   # An adapter's key is enrolled with a code alone, never made in a browser, so the tab
   # offers one way: Get the command makes a code at once and opens `…/keys/new-code`,
@@ -56,7 +57,9 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :factory
 
-  alias Apiary.{Accounts, AccessKeys, Adapters}
+  on_mount {ApiaryWeb.Access, :instance}
+
+  alias Apiary.{Access, Accounts, AccessKeys, Adapters}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Nodes.Node
   alias ApiaryWeb.{AdapterComponents, SettingsComponents}
@@ -72,8 +75,9 @@ defmodule ApiaryWeb.AdapterLive.AccessKey do
 
   def mount(%{"adapter_id" => public_id}, _session, socket) do
     scope = socket.assigns.current_scope
+    instance = socket.assigns.scope
 
-    with true <- ApiaryWeb.Access.instance_can?(scope, :"instance.read_factory"),
+    with true <- Access.can?(instance, :"instance.read_factory", instance.organisation),
          %Node{} = adapter <- Adapters.get_adapter(scope, public_id) do
       if connected?(socket), do: Adapters.subscribe_keys(scope, adapter)
 

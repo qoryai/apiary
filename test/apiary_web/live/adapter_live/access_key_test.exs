@@ -75,6 +75,18 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
     request
   end
 
+  describe "for one who is no longer an instance admin" do
+    test "the open tab moves to /, on the change of their membership", %{adapter: adapter} do
+      %{user: user} = sign_up_fixture()
+      {:ok, %{granted?: true}} = Apiary.Organisations.grant_instance_admin(user)
+      {:ok, lv, _html} = build_conn() |> log_in_user(user) |> live(tab_path(adapter))
+
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
+
+      assert_redirect(lv, "/")
+    end
+  end
+
   describe "with no key yet" do
     test "is a tab of the adapter's page that says how to connect it",
          %{conn: conn, adapter: adapter} do
