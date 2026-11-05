@@ -1536,33 +1536,35 @@ defmodule Apiary.Access do
 
   # An instance action, in the order of the moduledoc's "The instance's admins": its
   # feature, asked of the instance; the instance step; the edition; the place; the role.
+  # The instance organisation's id is read once here, and passed to each step that needs it.
   defp check_instance(scope, action, subject) do
     shown_as = shown_as(action)
 
-    cond do
-      not is_nil(shown_as) and not Features.visible?(nil, shown_as) ->
-        {:error, :not_found}
+    if not is_nil(shown_as) and not Features.visible?(nil, shown_as) do
+      {:error, :not_found}
+    else
+      instance_id = Edition.instance_organisation_id()
 
-      not at_instance?(scope) ->
-        {:error, :not_found}
-
-      true ->
+      if at_instance?(scope, instance_id) do
         case Edition.check(scope, action, subject) do
-          :continue -> instance_place_and_role(scope, action, subject)
+          :continue -> instance_place_and_role(scope, action, subject, instance_id)
           answer -> answer
         end
+      else
+        {:error, :not_found}
+      end
     end
   end
 
   # The instance step: the instance's scope, or a scope in the instance organisation while
   # it is not marked for deletion, as the scope carries it.
-  defp at_instance?(scope) do
+  defp at_instance?(scope, instance_id) do
     case {role(scope), scope} do
       {:instance, _scope} ->
         true
 
       {_role, %Scope{organisation: %Organisation{id: id} = organisation}} when is_binary(id) ->
-        not marked?(organisation) and id == Edition.instance_organisation_id()
+        not marked?(organisation) and id == instance_id
 
       _elsewhere ->
         false
@@ -1572,24 +1574,27 @@ defmodule Apiary.Access do
   # The place, then the role, then the one-person rules: an account's action is asked of an
   # account in use, an action of the mail settings of them, any other of the instance
   # organisation, the scope's.
-  defp instance_place_and_role(scope, action, subject) do
+  defp instance_place_and_role(scope, action, subject, instance_id) do
     cond do
-      not instance_subject?(scope, action, subject) -> {:error, :not_found}
+      not instance_subject?(scope, action, subject, instance_id) -> {:error, :not_found}
       role(scope) not in action(action).roles -> {:error, :forbidden}
       true -> one_person(scope, action, subject)
     end
   end
 
-  defp instance_subject?(_scope, action, subject) when action in @instance_on_accounts,
-    do: match?(%User{deleted_at: nil}, subject)
+  defp instance_subject?(_scope, action, subject, _instance_id)
+       when action in @instance_on_accounts,
+       do: match?(%User{deleted_at: nil}, subject)
 
-  defp instance_subject?(_scope, action, subject) when action in @instance_on_mail_settings,
-    do: match?(%Settings{}, subject)
+  defp instance_subject?(_scope, action, subject, _instance_id)
+       when action in @instance_on_mail_settings,
+       do: match?(%Settings{}, subject)
 
-  defp instance_subject?(scope, _action, %Organisation{id: id} = subject) when is_binary(id),
-    do: id == Edition.instance_organisation_id() and within?(scope, subject)
+  defp instance_subject?(scope, _action, %Organisation{id: id} = subject, instance_id)
+       when is_binary(id),
+       do: id == instance_id and within?(scope, subject)
 
-  defp instance_subject?(_scope, _action, _subject), do: false
+  defp instance_subject?(_scope, _action, _subject, _instance_id), do: false
 
   # Of the mail settings, the admin who saved them alone; of an account, anyone but its
   # person. The instance's scope has no account.

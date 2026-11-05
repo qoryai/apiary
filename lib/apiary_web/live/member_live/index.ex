@@ -312,7 +312,7 @@ defmodule ApiaryWeb.MemberLive.Index do
               <% end %>
               <ApiaryWeb.Extension.slot name={:member_actions} scope={@current_scope} member={m} />
               <.menu_item
-                :if={password_link?(@password_scope, m.user)}
+                :if={m.id in @password_link_rows}
                 id={"member-#{m.id}-password-link"}
                 phx-click="password_link"
                 phx-value-membership_id={m.id}
@@ -1126,9 +1126,12 @@ defmodule ApiaryWeb.MemberLive.Index do
 
     grantable = Access.grantable_levels(scope)
 
+    password_scope = password_scope(scope)
+
     socket
     |> assign(members: members, invitations: invitations, grantable: grantable)
-    |> assign(:password_scope, password_scope(scope))
+    |> assign(:password_scope, password_scope)
+    |> assign(:password_link_rows, password_link_rows(password_scope, members))
     |> find(socket.assigns[:q])
     |> assign(:sections, SettingsComponents.sections(scope, :organisation))
     |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
@@ -1177,12 +1180,17 @@ defmodule ApiaryWeb.MemberLive.Index do
     end
   end
 
-  # Whether the page offers a password link for `account`: `account.password_link`, asked
-  # of the account in the instance scope, which refuses the reader's account.
-  defp password_link?(nil, _account), do: false
+  # The memberships the page offers a password link for: `account.password_link`, asked of
+  # each account in the instance scope, which refuses the reader's account. Read here, not
+  # in the template: each answer runs a query, and a render covers every row.
+  defp password_link_rows(nil, _members), do: MapSet.new()
 
-  defp password_link?(instance, account),
-    do: Access.can?(instance, :"account.password_link", account)
+  defp password_link_rows(instance, members) do
+    for member <- members,
+        Access.can?(instance, :"account.password_link", member.user),
+        into: MapSet.new(),
+        do: member.id
+  end
 
   # Whether the reader invites here: an invitation's person joins as a member, a level the
   # edition does not refuse them (`Apiary.Access.grantable_levels/1`).
