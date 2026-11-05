@@ -149,6 +149,11 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
     @tag :feature_sets
     @tag needs: :observability
     test "its code enrols with observability on, with factory on or off", %{admin: admin} do
+      unless Apiary.Features.on?(:factory) do
+        assert Apiary.Access.authorize(admin, :"adapter.setup", admin.organisation) ==
+                 {:error, :not_found}
+      end
+
       {:ok, _row, code} = AccessKeys.create_diagnostics_code(admin)
 
       {conn, _pair} = enrol(code <> "." <> SigningKey.fingerprint())
