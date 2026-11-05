@@ -118,7 +118,7 @@ defmodule ApiaryWeb.Access do
   for its instance actions. On a change of the reader's memberships
   (`ApiaryWeb.UserAuth.on_membership_change/2`) it computes `:scope` again from the
   reloaded `current_scope`, and sends a reader who is no longer an instance admin to `/`,
-  as a page sends one whose membership is gone. A page that sets its own
+  as a page sends one whose membership is gone. A page that sets
   `on_membership_change/2` replaces this one, and computes `:scope` again itself.
 
   With an action, `on_mount({ApiaryWeb.Access, action})`, it lets the page mount only for a

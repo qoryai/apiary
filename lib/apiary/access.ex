@@ -1036,7 +1036,7 @@ defmodule Apiary.Access do
   an instance admin or ends it (`instance_admin.grant`, `instance_admin.revoke`), which no
   role takes.
 
-  An instance action is answered in its own order, in place of steps 1 to 9:
+  An instance action is answered in this order, in place of steps 1 to 9:
 
   1. **The feature**, asked of the instance (`Apiary.Features.visible?/2` with no scope),
      never what the edition hides from the person: off, `{:error, :not_found}`.
@@ -1807,7 +1807,7 @@ defmodule Apiary.Access do
 
   # Whether `gateway`, not deleted, may serve the workspace at this place: one of the
   # workspace's levels (`Apiary.Gateways.levels/1`). It reads no deletion mark: a run's
-  # place is held to its use apart, with a refusal of its own
+  # place is held to its use apart, with a separate refusal
   # (`Apiary.AccessKeys.place_in_use?/2`).
   defp serves?(%Node{deleted_at: nil} = gateway, {organisation_id, workspace_id}) do
     case Gateways.level(gateway) do
