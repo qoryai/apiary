@@ -9,6 +9,8 @@ defmodule Apiary.Access do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Repo
+  alias Apiary.Stages.Approvers
+  alias Apiary.WorkItems.WorkItem
 
   @owners [:owner]
   # How many times `lock_organisations/1` takes the organisation rows before it gives up.
@@ -475,6 +477,15 @@ defmodule Apiary.Access do
       feature: :factory,
       roles: @members
     ),
+    Action.new(
+      :"work_item.review_comment",
+      "write a review comment on the proposal for a work item, reply to one, and send the open ones to Explore's next run. When the work item's stage lists approvers, only those people take it.",
+      feature: :factory,
+      roles: @members,
+      audited:
+        {:not,
+         "a review comment, a reply and a send each leave the entry of work_item.answer, with the move's details (Apiary.WorkItems.Moves)"}
+    ),
     Action.new(:"work_item.confirm", "confirm Qory's proposal for a work item",
       feature: :factory,
       roles: @members
@@ -718,6 +729,11 @@ defmodule Apiary.Access do
   # role still holds that one (`author?/3`): deleting their comment on a work item.
   @authored %{"work_item.comment_delete": :"work_item.comment"}
 
+  # What only the approvers of the stage a work item is in take on it, where the stage
+  # lists them (`check_approver/3`): approving its gate, confirming Explore's proposal,
+  # which approves Explore's gate, and the review comments on that proposal.
+  @approver_actions [:"gate.approve", :"work_item.confirm", :"work_item.review_comment"]
+
   # What may still be done to an organisation or a workspace marked for deletion: cancel
   # the deletion, and purge it once its grace period is over. Nothing else is.
   @on_marked [
@@ -796,13 +812,25 @@ defmodule Apiary.Access do
      workspace or the organisation, as a page asks whether to show the button at all, the
      role alone answers. A level other than the role allows is `{:error, :forbidden}`. An
      invitation is the organisation's, whichever workspace it grants.
+  9. **The stage's approvers**, for approving a stage's gate, confirming Explore's
+     proposal and the review comments on it (`gate.approve`, `work_item.confirm`,
+     `work_item.review_comment`), asked of a work item. Where the stage the work item is
+     in lists approvers, a person who is not among them is `{:error, :not_approver}`.
+     Every person the role allows may with the workflow model off, on a work item the
+     runner did not place, and at a stage that lists none. An answer to the questions
+     (`work_item.answer`) is every member's. Asked of a workspace, as a page asks whether
+     to show the gates at all, the role alone answers; asked of any other subject, these
+     actions are `{:error, :not_approver}`. The answer reads the work item's process
+     version, unless the work item has it loaded.
 
   A context function that changes something asks `authorize/3` before it acts: that is the
   check that counts. It reads the person's membership again from the database, with what
   the edition put on the scope, because what a scope carries may be as old as the
   LiveView that holds it. A page asks `can?/3`, with the same action, for what it shows:
   a button for an action the reader may not take is not rendered. `can?/3` answers from
-  the scope as it was loaded, without a read, so a page may ask it on every render. A
+  the scope as it was loaded, without a read, so a page may ask it on every render; the
+  one read is step 9's, of a work item's process version when the work item does not
+  have it loaded. A
   context function that asks several questions in one change reads once with `reload/2`
   and asks each with `check/3`.
 
@@ -916,10 +944,10 @@ defmodule Apiary.Access do
   @type subject :: struct()
 
   @typedoc """
-  Why the answer is no: a feature that is off or hidden, or a subject out of reach, or the
-  role.
+  Why the answer is no: a feature that is off or hidden, or a subject out of reach, the
+  role, or a person who is not among the approvers of the work item's stage.
   """
-  @type reason :: :not_found | :forbidden
+  @type reason :: :not_found | :forbidden | :not_approver
 
   ## The registry
 
@@ -1240,8 +1268,9 @@ defmodule Apiary.Access do
   ## The answer
 
   @doc """
-  Whether `scope` may take `action` on `subject`, from the scope as it was loaded. For what
-  a page shows; a context function that acts asks `authorize/3`.
+  Whether `scope` may take `action` on `subject`, from the scope as it was loaded, as
+  `check/3` answers it. For what a page shows; a context function that acts asks
+  `authorize/3`.
   """
   @spec can?(Scope.t() | nil, action, subject | nil) :: boolean
   def can?(scope, action, subject), do: check(scope, action, subject) == :ok
@@ -1253,7 +1282,9 @@ defmodule Apiary.Access do
   subject is not in the scope's organisation and workspace, or the person does not reach
   its workspace;
   `{:error, :forbidden}` where the role does not allow it, a membership that is gone
-  included, or allows it over other people than the subject's.
+  included, or allows it over other people than the subject's;
+  `{:error, :not_approver}` where the role allows it and the work item's stage lists
+  approvers the person is not among (step 9 of the moduledoc).
   `check(reload(scope), action, subject)`.
   """
   @spec authorize(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
@@ -1263,8 +1294,9 @@ defmodule Apiary.Access do
   end
 
   @doc """
-  The answer of `authorize/3`, with its reason, from the scope as it is, without a read.
-  For a context function that asks more than one question in one change: it reads once
+  The answer of `authorize/3`, with its reason, from the scope as it is, without a read of
+  the scope. Step 9 of the moduledoc reads a work item's process version when the work
+  item does not have it loaded. For a context function that asks more than one question in one change: it reads once
   with `reload/2` and asks each question of that scope.
   """
   @spec check(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
@@ -1308,17 +1340,38 @@ defmodule Apiary.Access do
     role = role(scope)
 
     with :ok <- check_place(scope, action, subject),
-         :ok <- key_subject(role, scope, action, subject) do
-      cond do
-        own?(scope, action, subject) -> :ok
-        author?(scope, action, subject) -> :ok
-        not_own?(scope, action, subject) -> {:error, :forbidden}
-        role not in action(action).roles -> {:error, :forbidden}
-        not over?(role, action, subject) -> {:error, :forbidden}
-        true -> :ok
-      end
+         :ok <- key_subject(role, scope, action, subject),
+         :ok <- check_role(scope, role, action, subject) do
+      check_approver(scope, action, subject)
     end
   end
+
+  defp check_role(scope, role, action, subject) do
+    cond do
+      own?(scope, action, subject) -> :ok
+      author?(scope, action, subject) -> :ok
+      not_own?(scope, action, subject) -> {:error, :forbidden}
+      role not in action(action).roles -> {:error, :forbidden}
+      not over?(role, action, subject) -> {:error, :forbidden}
+      true -> :ok
+    end
+  end
+
+  # Once the role allows it, an action of `@approver_actions` on a work item is the stage's
+  # approvers' alone, where the stage lists them (`Apiary.Stages.Approvers.allows?/2`).
+  # Asked of a workspace, the role alone answers, as a page asks whether to show the gates
+  # at all. Asked of any other subject, it is refused: no subject skips the list.
+  defp check_approver(scope, action, %WorkItem{} = work_item)
+       when action in @approver_actions do
+    if Approvers.allows?(scope, work_item), do: :ok, else: {:error, :not_approver}
+  end
+
+  defp check_approver(_scope, action, %Workspace{}) when action in @approver_actions, do: :ok
+
+  defp check_approver(_scope, action, _subject) when action in @approver_actions,
+    do: {:error, :not_approver}
+
+  defp check_approver(_scope, _action, _subject), do: :ok
 
   # An adapter's key acts on that adapter alone, which has no organisation, as the key has
   # none: any other subject, another adapter, an organisation, or anything else, is not

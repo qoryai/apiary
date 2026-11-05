@@ -38,7 +38,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
     test "is version 1, the release's default with no author, inserted once" do
       Repo.delete_all(from t in TypeTemplate, where: t.type == ^@type_key)
 
-      assert %TypeTemplate{number: 1, release: 2, author: nil, based_on: nil} =
+      assert %TypeTemplate{number: 1, release: 3, author: nil, based_on: nil} =
                first = TypeTemplates.newest(@type_key)
 
       assert first.document == default()
@@ -53,14 +53,14 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       assert rows("qory.nothing") == []
     end
 
-    test "an instance that seeded release 1 takes the copied template as release 2, stages only" do
+    test "an instance that seeded release 1 takes the copied template as release 3, stages only" do
       Repo.delete_all(from t in TypeTemplate, where: t.type == ^@type_key)
 
       assert %{number: 1, release: 1} = TypeTemplates.newest(@type_key, 1)
 
       assert %TypeTemplate{
                number: 2,
-               release: 2,
+               release: 3,
                author: nil,
                based_on: nil,
                name: nil,
@@ -92,16 +92,16 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       bytes = QoryCopy.file("modules/software-factory/process.yaml")
 
       assert {Processes.default_version("software"), :crypto.hash(:sha256, bytes)} ==
-               {2,
-                Base.decode16!("0DD02CF172A414C21AD52F52FF70B668517BB004B6FC1FC74D7579D5C44915C4")}
+               {3,
+                Base.decode16!("31F4E5A8B6A720F43296142CDBD6C3236FCD8444CEEAE49049749630D2166F50")}
     end
 
     @tag needs: :workflow_model
     test "adds a later release's default while no instance admin has saved" do
-      assert %{number: 1, release: 2} = TypeTemplates.newest(@type_key)
+      assert %{number: 1, release: 3} = TypeTemplates.newest(@type_key)
 
-      assert %TypeTemplate{number: 2, release: 3, author: nil, document: document} =
-               TypeTemplates.newest(@type_key, 3)
+      assert %TypeTemplate{number: 2, release: 4, author: nil, document: document} =
+               TypeTemplates.newest(@type_key, 4)
 
       assert document == default()
       assert TypeTemplates.newest(@type_key).number == 2
@@ -109,7 +109,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       {:ok, saved} =
         TypeTemplates.save(instance_admin(), @type_key, renamed("Understand"), based_on: 2)
 
-      assert TypeTemplates.newest(@type_key, 4).id == saved.id
+      assert TypeTemplates.newest(@type_key, 5).id == saved.id
       assert [3, 2, 1] = Enum.map(TypeTemplates.versions(@type_key), & &1.number)
     end
   end
@@ -119,7 +119,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
       list = TypeTemplates.list()
       assert Enum.map(list, & &1.type) == ["qory.software", "qory.example"]
 
-      assert %{name: "Software factory", newest: %TypeTemplate{number: 1, release: 2}} =
+      assert %{name: "Software factory", newest: %TypeTemplate{number: 1, release: 3}} =
                Enum.find(list, &(&1.type == @type_key))
     end
   end
@@ -376,10 +376,11 @@ defmodule Apiary.Processes.TypeTemplatesTest do
   end
 
   describe "workflows/0 and artifact_types/0" do
-    test "are the Qory harness's workflows and the ten standard types" do
+    test "are the Qory harness's workflows and the eleven standard types" do
       assert TypeTemplates.workflows() == ["explore-a-ticket"]
       assert TypeTemplates.workflows() == QoryCopy.workflows("software")
-      assert length(TypeTemplates.artifact_types()) == 10
+      assert length(TypeTemplates.artifact_types()) == 11
+      assert %{name: "review-comments", base_view: :structured} in TypeTemplates.artifact_types()
       assert %{name: "proposal", base_view: :document} in TypeTemplates.artifact_types()
     end
   end

@@ -151,12 +151,13 @@ defmodule ApiaryWeb.RunLogController do
 
   defp size_header(conn, nil), do: conn
 
-  # The file name is "run-" and the run's number, digits that need no quoting.
+  # The file name is the run's `public_id`. A check in the database keeps the id to its
+  # format, so the name needs no quoting.
   defp disposition(conn, run, %{download?: true}) do
     put_resp_header(
       conn,
       "content-disposition",
-      ~s(attachment; filename="run-#{run.number}.log")
+      ~s(attachment; filename="#{run.public_id}.log")
     )
   end
 

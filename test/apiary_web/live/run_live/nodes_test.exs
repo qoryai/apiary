@@ -18,7 +18,7 @@ defmodule ApiaryWeb.RunLive.NodesTest do
     view
   end
 
-  defp row(run), do: "#run-#{run.number}"
+  defp row(run), do: "#run-#{run.public_id}"
 
   # The words of a fragment, a space between any two elements.
   defp plain(html) do

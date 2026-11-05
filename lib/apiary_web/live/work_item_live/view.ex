@@ -19,10 +19,12 @@ defmodule ApiaryWeb.WorkItemLive.View do
   # How long a run took is in the run pages' words (`ApiaryWeb.RunComponents`).
   #
   # **Markdown.** A run's proposal and its questions are Markdown, rendered here once for
-  # what the page read (`ApiaryWeb.WorkItemComponents.markdown/1`), as `:rendered` beside
-  # the text: the proposals of the latest run, of the run before it, and of the earlier
-  # take ins, and every question. The proposals of the other earlier runs of this take in
-  # are not shown, so not rendered.
+  # what the page shows (`ApiaryWeb.WorkItemComponents.markdown/1`), as `:rendered` beside
+  # the text: the newest proposal, the proposals each earlier run of this take in wrote
+  # (the newest proposal's render where a run wrote that version), the proposals of the
+  # runs of the earlier take ins, each where the page read its text, and every question.
+  # A proposal is rendered with the image files of its version, which its Markdown may
+  # show.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -31,9 +33,10 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   alias Apiary.{Access, Organisations}
   alias Apiary.Accounts.Scope
-  alias ApiaryWeb.{People, RunComponents, WorkItemComponents}
+  alias Apiary.Artifacts.ArtifactFile
+  alias ApiaryWeb.{ArtifactComponents, People, RunComponents, WorkItemComponents}
 
-  @qory [:started, :asked, :proposed, :no_result, :lost, :cancelled]
+  @qory [:started, :asked, :proposed, :replied, :no_result, :lost, :cancelled]
 
   ## People
 
@@ -66,60 +69,131 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   @doc false
   # page/5 is everything the page draws of the work item `row`: the work item map, the
-  # take in's earlier runs, the earlier take ins, the comments on this take in's
-  # proposals, and the Thread (`thread` of `Apiary.WorkItems.thread/3`, or none), with the
-  # names its ticket has (`Apiary.WorkItems.ticket_names/2`); and the people it names, for
-  # `person/2`.
+  # take in's earlier runs, the earlier take ins, the newest proposal, the questions and
+  # the review comments of this take in, and the Thread (`thread` of
+  # `Apiary.WorkItems.thread/3`, or none), with the names its ticket has
+  # (`Apiary.WorkItems.ticket_names/2`); and the people in it, for `person/2`.
   @spec page(Scope.t(), Apiary.WorkItems.WorkItem.t(), map, [map], map) :: map
   def page(%Scope{} = scope, row, explore, thread, names) do
     ctx = context(scope, row, explore, thread)
-    last = length(explore.earlier_runs)
-
-    runs =
-      explore.earlier_runs
-      |> Enum.with_index(1)
-      |> Enum.map(fn {run, i} -> run |> run(ctx) |> rendered(i == last) end)
+    newest = shown(explore[:proposal], ctx)
+    runs = Enum.map(explore.earlier_runs, &(&1 |> run(ctx) |> earlier(newest, ctx)))
 
     latest =
       if explore.run,
-        do: explore.run |> latest_run(explore, ctx) |> rendered(true),
+        do: explore.run |> latest_run(explore, ctx) |> with_questions(),
         else: no_run()
 
     %{
       work_item: work_item(row, explore, names, latest, ctx),
       earlier_runs: runs,
       earlier_take_ins: Enum.map(explore.earlier_take_ins, &take_in(&1, ctx)),
-      comments: Enum.map(explore.comments, &comment(&1, ctx)),
+      proposal: newest,
+      questions: Enum.map(explore[:questions] || [], &question(&1, ctx)),
+      questions_version: explore[:questions_version],
+      review_comments: Enum.map(explore[:review_comments] || [], &review_comment(&1, ctx)),
       thread: thread(thread, row, names, ctx),
       people: ctx.people
     }
   end
 
-  defp comment(comment, ctx) do
-    %{
-      text: comment.text,
-      by: person(ctx.people, comment.by_id),
-      version: comment.version,
-      done_version: comment.done_version
-    }
+  # A proposal as the page shows it: its Markdown rendered with the image files of its
+  # version, each a filename and the file's download address
+  # (`ApiaryWeb.ArtifactComponents.file_path/4`), for the Markdown's image references.
+  # For a reader not shown the feature `workflow_model`, whose artifact pages serve the
+  # files, the images are nil, so each image shows as “Image: <alt>”, with no link.
+  defp shown(%{} = proposal, ctx) do
+    images =
+      case proposal do
+        _any when not ctx.images? ->
+          nil
+
+        %{version_id: version_id, images: filenames} when is_binary(version_id) ->
+          for filename <- filenames,
+              do:
+                {filename,
+                 ArtifactComponents.file_path(ctx.scope, ctx.number, version_id, %ArtifactFile{
+                   filename: filename
+                 })}
+
+        _kept ->
+          nil
+      end
+
+    Map.put(
+      proposal,
+      :rendered,
+      WorkItemComponents.markdown(proposal[:message], WorkItemComponents.image_files(images))
+    )
   end
 
-  # The run's questions, and its proposal where `proposal?`, with their Markdown rendered.
-  defp rendered(run, proposal?) do
-    run = Map.update(run, :questions, [], &rendered_questions/1)
+  defp shown(_none, _ctx), do: nil
 
-    case run do
-      %{proposal: %{} = proposal} when proposal? ->
-        %{
-          run
-          | proposal:
-              Map.put(proposal, :rendered, WorkItemComponents.markdown(proposal[:message]))
-        }
+  # A question of the newest questions, with its context rendered and each answer's
+  # person.
+  defp question(question, ctx) do
+    %{
+      question
+      | answer: answer(question.answer, ctx),
+        history: Enum.map(question.history, &answer(&1, ctx))
+    }
+    |> Map.put(:rendered, WorkItemComponents.markdown(question.context))
+  end
 
-      run ->
+  defp answer(nil, _ctx), do: nil
+
+  defp answer(answer, ctx),
+    do: answer |> Map.put(:by, given_by(answer.by_id, answer.by, ctx)) |> Map.delete(:by_id)
+
+  # Who gave an answer or a reply: the person of its move, else the name in the
+  # document.
+  defp given_by(id, _name, ctx) when is_binary(id), do: person(ctx.people, id)
+
+  defp given_by(_id, name, _ctx) when is_binary(name),
+    do: %{id: nil, name: name, email: name, you: false}
+
+  defp given_by(_id, _name, _ctx), do: former(nil)
+
+  defp review_comment(comment, ctx) do
+    comment
+    |> Map.put(:by, person(ctx.people, comment.by_id))
+    |> Map.put(:replies, Enum.map(comment.replies, &reply(&1, ctx)))
+    |> Map.delete(:by_id)
+  end
+
+  defp reply(%{run: number} = reply, _ctx) when is_integer(number), do: Map.delete(reply, :by_id)
+
+  defp reply(reply, ctx),
+    do: reply |> Map.put(:by, given_by(reply.by_id, nil, ctx)) |> Map.delete(:by_id)
+
+  # An earlier run of this take in: its questions, and the proposal it wrote, which its
+  # fold in the history shows (`shown/2`); where it wrote the newest proposal's version,
+  # the newest proposal as rendered.
+  defp earlier(run, newest, ctx) do
+    run = with_questions(run)
+
+    case {run, newest} do
+      {%{wrote_proposal: %{}, wrote: version}, %{version: version}} ->
+        %{run | wrote_proposal: newest}
+
+      {%{wrote_proposal: %{} = proposal}, _newest} ->
+        %{run | wrote_proposal: shown(proposal, ctx)}
+
+      _none ->
         run
     end
   end
+
+  # A run of an earlier take in: its questions and its proposal, which its fold shows.
+  defp taken_run(run, ctx) do
+    case with_questions(run) do
+      %{proposal: %{} = proposal} = run -> %{run | proposal: shown(proposal, ctx)}
+      run -> run
+    end
+  end
+
+  # A run with its questions rendered.
+  defp with_questions(run), do: Map.update(run, :questions, [], &rendered_questions/1)
 
   defp rendered_questions(questions) when is_list(questions),
     do: Enum.map(questions, &Map.put(&1, :rendered, WorkItemComponents.markdown(&1.text)))
@@ -136,8 +210,9 @@ defmodule ApiaryWeb.WorkItemLive.View do
       [row.owner_id, row.taken_in_by_id, explore.ended_by_id, explore.confirmed_by_id] ++
         explore.answers_by_ids ++
         Enum.map(all_runs, & &1.answered_by_id) ++
+        Enum.map(all_runs, & &1[:sent_by_id]) ++
         Enum.flat_map(take_ins, &[&1.taken_in_by_id, &1.ended_by_id]) ++
-        Enum.map(explore.comments, & &1.by_id) ++
+        given_ids(explore) ++
         Enum.flat_map(thread, &[&1[:actor_id], &1[:owner_id]]) ++
         ApiaryWeb.WorkItemLive.Comments.people_ids(thread) ++
         [scope.user && scope.user.id]
@@ -148,13 +223,35 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
     %{
       scope: scope,
+      explore_stage: Apiary.Stages.explore_stage_id(row),
+      number: row.number,
+      images?: ApiaryWeb.Features.visible?(scope, :workflow_model),
       people: people(scope, ids),
       readable: readable(scope, workspace_ids)
     }
   end
 
+  # The people who answered the questions and wrote the review comments and their
+  # replies.
+  defp given_ids(explore) do
+    answers =
+      for question <- explore[:questions] || [],
+          answer <- [question.answer | question.history],
+          answer != nil,
+          do: answer.by_id
+
+    comments =
+      for comment <- explore[:review_comments] || [],
+          id <- [comment.by_id | Enum.map(comment.replies, & &1.by_id)],
+          do: id
+
+    answers ++ comments
+  end
+
   # The workspaces of `ids` whose runs the scope's person may read, by id.
-  defp readable(scope, ids) do
+  @doc false
+  # readable/2 is the workspaces of `ids` where the reader may read runs, by id.
+  def readable(scope, ids) do
     case ids |> Enum.reject(&is_nil/1) |> Enum.uniq() do
       [] ->
         %{}
@@ -168,14 +265,17 @@ defmodule ApiaryWeb.WorkItemLive.View do
     end
   end
 
-  defp run_path(ctx, %{number: number, workspace_id: workspace_id}) when is_integer(number) do
+  @doc false
+  # run_path/2 is the path of the run's page; nil where the run has no number yet, or the
+  # reader may not read runs in its workspace (`readable/2`).
+  def run_path(ctx, %{number: number, workspace_id: workspace_id}) when is_integer(number) do
     case Map.get(ctx.readable, workspace_id) do
       nil -> nil
       workspace -> ~p"/#{ctx.scope.organisation}/#{workspace}/runs/#{number}"
     end
   end
 
-  defp run_path(_ctx, _run), do: nil
+  def run_path(_ctx, _run), do: nil
 
   defp work_item(row, explore, names, latest, ctx) do
     %{
@@ -223,27 +323,28 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp reason("ticket_closed"), do: :ticket_closed
   defp reason(_other), do: nil
 
-  # Details' runs: those of the current take in handed over, the latest of them, and how
-  # many are not ended; nil before any. Attempts start at 1 in each take in, so a count
-  # across take ins would not match the attempt shown beside it.
+  # Details' runs: those of the current take in, as the fold of the runs counts them, the
+  # latest of them, how many are running, and whether the latest waits for a machine
+  # (`queued`: no state yet or `:pending`, as `run_line` shows it). Nil until one is handed
+  # over, where Details has None yet or the queued run's line. Attempts start at 1 in each
+  # take in, so a count across take ins would not match the attempt shown beside it.
   defp runs_summary(explore, ctx) do
-    case Enum.filter(explore.earlier_runs ++ List.wrap(explore.run), &is_binary(&1.id)) do
-      [] ->
-        nil
+    runs = explore.earlier_runs ++ List.wrap(explore.run)
 
-      runs ->
-        latest = List.last(runs)
+    if Enum.any?(runs, &is_binary(&1.id)) do
+      latest = List.last(runs)
 
-        %{
-          latest: %{
-            id: latest.id,
-            number: latest.number,
-            attempt: latest.attempt,
-            path: run_path(ctx, latest)
-          },
-          count: length(runs),
-          running: Enum.count(runs, &(&1.state in [:pending, :running]))
-        }
+      %{
+        latest: %{
+          id: latest.id,
+          number: latest.number,
+          attempt: latest.attempt,
+          path: run_path(ctx, latest)
+        },
+        count: length(runs),
+        running: Enum.count(runs, &(&1.state == :running)),
+        queued: latest.state in [nil, :pending]
+      }
     end
   end
 
@@ -251,6 +352,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
     run
     |> run(ctx)
     |> Map.put(:answers_by, Enum.map(explore.answers_by_ids, &person(ctx.people, &1)))
+    |> Map.put(:sent_by, if(run[:sent] == true, do: person(ctx.people, run[:sent_by_id])))
   end
 
   # The take in's first run before it exists, as Explore stands then (queued): its place,
@@ -277,18 +379,49 @@ defmodule ApiaryWeb.WorkItemLive.View do
       questions: [],
       answered_by: nil,
       answered_at: nil,
-      answers_by: []
+      answers_by: [],
+      wrote: nil,
+      wrote_proposal: nil,
+      asked: 0
     }
   end
 
   defp run(run, ctx) do
     Map.merge(run, %{
       path: run_path(ctx, run),
+      other_stage: other_stage?(run, ctx),
+      liveness: liveness_of(run[:heard]),
       duration: run.duration_ms && RunComponents.format_duration_ms(run.duration_ms),
       answered_by: run.answered_at && person(ctx.people, run.answered_by_id),
       answers_by: []
     })
   end
+
+  # The fields to follow of a registered run of Explore that is running or about to run;
+  # nil for any other run.
+  @doc false
+  def live_heard(%{heard: %{state: state} = heard, other_stage: false})
+      when state in ["pending", "running"],
+      do: heard
+
+  def live_heard(_run), do: nil
+
+  # A registered running run's state on its page, from the fields of
+  # `Apiary.WorkItems.ExploreView.heard/1`: `:quiet` by the rule of
+  # `ApiaryWeb.RunComponents.quiet_for/2`, else `:alive`. Nil for any other run.
+  @doc false
+  def liveness_of(%{state: "running"} = heard),
+    do: if(RunComponents.quiet_for(heard), do: :quiet, else: :alive)
+
+  def liveness_of(_heard), do: nil
+
+  # Whether the run ran at another stage than Explore.
+  # `Apiary.WorkItems.Explore.steps/3` reads every run of the take in, and Explore's tab
+  # shows only Explore's.
+  defp other_stage?(%{stage_id: stage_id}, %{explore_stage: explore_stage}),
+    do: is_binary(stage_id) and is_binary(explore_stage) and stage_id != explore_stage
+
+  defp other_stage?(_run, _ctx), do: false
 
   defp take_in(take_in, ctx) do
     %{
@@ -298,7 +431,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       ended_by: ended_by(take_in.ended, take_in.ended_by_id, ctx),
       ended_at: take_in.ended_at,
       ended_reason: reason(take_in.ended_reason),
-      runs: Enum.map(take_in.runs, &(&1 |> run(ctx) |> rendered(true)))
+      runs: Enum.map(take_in.runs, &(&1 |> run(ctx) |> taken_run(ctx)))
     }
   end
 
@@ -356,12 +489,20 @@ defmodule ApiaryWeb.WorkItemLive.View do
       owner: entry.owner_id && person(ctx.people, entry.owner_id)
     }
 
+  defp event_fields(%{kind: :replied} = entry, _row, _names, ctx),
+    do: %{
+      run: run_ref(entry.run, ctx),
+      replies: entry.replies,
+      duration: duration(entry.duration_ms)
+    }
+
   defp event_fields(%{kind: :no_result} = entry, _row, _names, ctx),
     do: %{
       run: run_ref(entry.run, ctx),
       outcome: entry.outcome,
       end_cause: entry.end_cause,
-      end_detail: entry.end_detail
+      end_detail: entry.end_detail,
+      wrote: entry[:wrote]
     }
 
   defp event_fields(%{kind: kind} = entry, _row, _names, ctx)
@@ -372,7 +513,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
     do: %{
       run: run_ref(entry.run, ctx),
       questions: rendered_questions(entry.questions),
-      comment: entry[:comment]
+      comment: entry[:comment],
+      reply: entry[:reply] == true
     }
 
   defp event_fields(%{kind: :confirmed} = entry, _row, _names, _ctx),

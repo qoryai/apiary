@@ -15,10 +15,7 @@ process:
       name: Explore
       inputs: []
       sequence:
-        - loop:
-            rounds: 3
-            body:
-              - workflow: explore-a-ticket
+        - workflow: explore-a-ticket
       outputs:
         - type: proposal
           required: true

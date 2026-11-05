@@ -99,10 +99,12 @@ defmodule ApiaryWeb.TargetComponents do
   @doc """
   A run's state as a dot and its word (pending, running, failed, cancelled, lost); the dot
   alone for one that completed, its word there for a screen reader. `word` forces the word,
-  as a header does.
+  as a header does. A running run that is `quiet` has the still amber dot of the run's
+  alive line (`ApiaryWeb.RunComponents.alive/1`), in place of the dot that pulses.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :word, :boolean, default: false, doc: "show the word whatever the state"
+  attr :quiet, :boolean, default: false, doc: "the run's heartbeat is late"
   attr :class, :any, default: nil
   attr :rest, :global
 
@@ -110,13 +112,16 @@ defmodule ApiaryWeb.TargetComponents do
     assigns =
       assign(
         assigns,
-        :quiet,
+        :dot_only,
         assigns.state == "completed" and !assigns.word
       )
 
     ~H"""
     <span class={["q-sdot", "q-sdot-#{@state}", @class]} {@rest}>
-      <i aria-hidden="true"></i><span class={@quiet && "sr-only"}>{state_label(@state)}</span>
+      <span :if={@quiet and @state == "running"} class="q-dot q-alive-amber" aria-hidden="true"></span>
+      <i :if={!@quiet or @state != "running"} aria-hidden="true"></i><span class={
+        @dot_only && "sr-only"
+      }>{state_label(@state)}</span>
     </span>
     """
   end

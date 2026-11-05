@@ -6,12 +6,17 @@ defmodule Apiary.Processes.MigrationTest do
   # is not async.
   use Apiary.DataCase, async: false
 
+  # The backfill reads `work_item_answers`, which a later migration drops: the table is
+  # back for each test (`Apiary.AnswersTable`), and Ecto's warning that an older
+  # migration ran after a newer one is kept from the output.
+  @moduletag :capture_log
+
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures, only: [work_item_fixture: 1, explore_run_fixture: 2]
 
   alias Apiary.Processes
   alias Apiary.Processes.Version
-  alias Apiary.WorkItems.{Answer, Confirmation, WorkItem}
+  alias Apiary.WorkItems.{Confirmation, WorkItem}
 
   @migration {20_261_031_090_500, Apiary.Repo.Migrations.KeepEachWorkspaceSProcess,
               "keep_each_workspace_s_process"}
@@ -28,6 +33,11 @@ defmodule Apiary.Processes.MigrationTest do
       |> Code.require_file()
     end
 
+    :ok
+  end
+
+  setup do
+    Apiary.AnswersTable.back!()
     :ok
   end
 
@@ -54,20 +64,30 @@ defmodule Apiary.Processes.MigrationTest do
     })
   end
 
+  # A row of the table the migration read answers from, which no code writes since
+  # answers are kept in the questions artifact.
   defp answer!(work_item, user) do
-    Repo.insert!(%Answer{
-      organisation_id: work_item.organisation_id,
-      workspace_id: work_item.workspace_id,
-      work_item_id: work_item.id,
-      take_in: work_item.take_in,
-      attempt: 1,
-      position: 1,
-      question: "Which checkout?",
-      answer: "The one at the shop.",
-      custom: true,
-      answered_by_id: user.id,
-      answered_at: DateTime.utc_now()
-    })
+    {:ok, work_item_id} = Ecto.UUID.dump(work_item.id)
+    {:ok, organisation_id} = Ecto.UUID.dump(work_item.organisation_id)
+    {:ok, workspace_id} = Ecto.UUID.dump(work_item.workspace_id)
+    {:ok, user_id} = Ecto.UUID.dump(user.id)
+
+    Repo.insert_all("work_item_answers", [
+      %{
+        id: Ecto.UUID.bingenerate(),
+        organisation_id: organisation_id,
+        workspace_id: workspace_id,
+        work_item_id: work_item_id,
+        take_in: work_item.take_in,
+        attempt: 1,
+        position: 1,
+        question: "Which checkout?",
+        answer: "The one at the shop.",
+        custom: true,
+        answered_by_id: user_id,
+        answered_at: DateTime.utc_now()
+      }
+    ])
   end
 
   defp placed(work_item) do
@@ -111,7 +131,17 @@ defmodule Apiary.Processes.MigrationTest do
     assert [version] = Processes.list_versions(scope.workspace)
 
     assert %Version{number: 1, status: :current, author_id: nil, based_on_id: nil} = version
-    assert version.document == Processes.default_document("software")
+    # The software type's default as the migration copied it: Explore then had a loop of
+    # 3 rounds, which today's default has no more.
+    loop = [%{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}]
+
+    assert version.document ==
+             update_in(
+               Processes.default_document("software"),
+               ["stages", Access.at(0), "sequence"],
+               fn _today -> loop end
+             )
+
     assert version.template == %{"type" => "qory.software", "version" => 1}
     assert version.public_id =~ ~r/\Apv_[0-9a-hjkmnp-tv-z]{16}\z/
 

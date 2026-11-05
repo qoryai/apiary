@@ -2,55 +2,50 @@ defmodule Apiary.Dispatches.Settle do
   @moduledoc false
 
   # What a run of the queue gave, kept on its row (`Apiary.Dispatches.DispatchRun`,
-  # `result_outcome` and `result`) once Qory reads it as decided, so a list reads where
-  # Explore stands without reading the runs' events (`Apiary.WorkItems.Explore`).
+  # `result_outcome`) once it ended, so a list reads where Explore stands without reading
+  # the run's artifacts (`Apiary.WorkItems.Explore`). What it gave is
+  # `Apiary.Explore.Outcome.at_end/1`, read from the artifacts the run pushed during the
+  # run: `questions`, `proposal` or `none`. No event of the run is read, and `result` is
+  # never written.
   #
-  # Only a run that is not a prebuild and ended `run_ended` is settled here. What it gave
-  # is `Apiary.Explore.Result.given/3`, from the run registered for it and its result
-  # event with the highest sequence: a proposal or questions as soon as its result says
-  # so, with the result; `none`, `error` or `refused` once the run is settled
-  # (`Apiary.Explore.Result.settled?/2`); nothing while it is not. So the row holds what
-  # Explore reads from the event: a run not settled whose latest result event gives no
-  # verdict, after one that did, has what was stored cleared again, and reads as running
-  # until it settles, when the sweep stores what that event gave. A run whose claim
-  # could not form it ends `error` in the same write as its end
-  # (`Apiary.Dispatches.Handover`), and no other run has an outcome.
+  # A run that is not a prebuild and ended `run_ended` is settled here; so is one that
+  # ended `lost` and left questions that wait for an answer, which then reads as
+  # questions: open questions come before a run that stopped. A run whose claim could not
+  # form it ends `error` in the same write as its end (`Apiary.Dispatches.Handover`).
   #
-  # Three writers, each through `settle_locked/3`, which writes the two columns only when
-  # they differ from what the row holds, and never `updated_at` (`Apiary.WorkItems.Explore`
-  # reads it as when a run ended):
+  # Three writers, each through `settle_locked/1`, which writes the column only while the
+  # row holds none, and never `updated_at` (`Apiary.WorkItems.Explore` reads it as when a
+  # run ended). Once stored, what a run gave stays: a member who answers the questions
+  # after the run ended changes the newest questions, and a later writer would read them
+  # as what the run gave.
   #
-  # - the end of the run, `run_ended` (`Apiary.Dispatches.RunEnd.finish/5`), in its
-  #   transaction: a run whose exit or result came first;
-  # - a projection that folded an exit or a result event (`settle/1`, from
-  #   `Apiary.Runs.Projector`), in a separate transaction once its passes committed: a run
-  #   whose outcome came first, and a result that comes after the run was settled, which
-  #   replaces what was stored;
-  # - the sweep (`sweep/1`, from `Apiary.Runs.Liveness`): a run with no outcome stored
-  #   that has no registered run, or whose registered run has no outcome, or is settled
-  #   since by its exit, by the 10 minutes after its outcome, by its loss or by the
-  #   pruning of its events; at most `@batch` a tick, read through the partial index
-  #   `dispatch_runs_unsettled_index`, the rest at the ticks after.
+  # - the end of the run (`Apiary.Dispatches.RunEnd.finish/5`), in its transaction: once
+  #   the run ended, it pushes no artifact (`ApiaryWeb.Contract.RunApi.Run.live?/1`, and
+  #   `Apiary.Artifacts.push/5`, which reads the run of the queue again under the work
+  #   item's lock that the end holds first), so what it gave is decided;
+  # - a projection that folded an exit (`settle/1`, from `Apiary.Runs.Projector`), in a
+  #   separate transaction once its passes committed;
+  # - the sweep (`sweep/2`, from `Apiary.Runs.Liveness`): a run ended `run_ended` with no
+  #   outcome stored, such as one that ended before outcomes were read from artifacts; at
+  #   most `@batch` a tick, read through the partial index `dispatch_runs_unsettled_index`
+  #   in the order of their ids, each tick after the last id the tick before read, and
+  #   from the first id again once a tick reads fewer than `@batch`. So runs that stay
+  #   unsettled at every tick do not keep the runs after them from the sweep.
   #
   # A projection whose settle fails clears what the row holds (`clear/1`), so the sweep
-  # stores it again once the run is settled.
-  #
-  # **Comments on a proposal.** With the workflow model off, or for a work item in no
-  # stage, a write that stores a proposal marks done the comments of the run's take in
-  # that the run read, those still open from a run before it
-  # (`Apiary.WorkItems.mark_read/5`), in the same transaction: the proposal is then saved.
-  # A run that gives questions, no result or an error marks none. For a work item in a
-  # stage, with the workflow model on, the stage runner marks them once the run's
-  # `proposal` version is stored (`Apiary.Stages`).
+  # stores it again. A run whose newest questions cannot be read at its end is left with
+  # no outcome (`Outcome.at_end/1` is nil), with a warning in the log that has the run's
+  # id, so the sweep reads it again. With the workflow model on, the stage runner raises
+  # for the end of the newest run of a running stage (`Apiary.Stages`), so the end's
+  # transaction rolls back and the lost-run check ends the run again at a later tick
+  # (`Apiary.Dispatches.RunEnd.lose/3`). Any other run ended `lost` is then not settled,
+  # since the sweep reads `run_ended` runs alone.
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
-  # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the registered
-  # run and its result event with no lock. Nothing else is locked: no counter,
-  # environment record or feed counter, and no work item with the workflow model off;
-  # the comments a proposal marks done are updated by their rows alone, which no other
-  # path updates.
-  # With it on, the work item is locked `FOR UPDATE` before the run of the queue, since
-  # the stage runner writes it (`Apiary.Stages.hold_work_item/1`, `run_ended/2`).
+  # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the work item's
+  # artifacts with no lock. With the workflow model on, the work item is locked
+  # `FOR UPDATE` before the run of the queue, since the stage runner writes it
+  # (`Apiary.Stages.hold_work_item/1`, `run_ended/2`).
   #
   # **What is told.** Each write is told once its transaction commits, on the topic of
   # the work items of the work item's workspace (`Apiary.WorkItems.topic/1`),
@@ -62,10 +57,9 @@ defmodule Apiary.Dispatches.Settle do
   require Logger
 
   alias Apiary.Dispatches.{DispatchRun, RunEnd}
-  alias Apiary.Explore.Result
+  alias Apiary.Explore.Outcome
   alias Apiary.Repo
-  alias Apiary.Runs.{Event, Run}
-  alias Apiary.WorkItems.{Explore, WorkItem}
+  alias Apiary.WorkItems.WorkItem
 
   @prebuild DispatchRun.prebuild()
   # The runs of the queue one sweep settles at most; the rest wait for the next.
@@ -74,37 +68,57 @@ defmodule Apiary.Dispatches.Settle do
   @typedoc "A work item to tell once the transaction commits."
   @type told :: {:work_item, Ecto.UUID.t(), String.t()}
 
-  # settle_locked/3 stores what `dispatch_run`, ended `run_ended` and locked by the caller
-  # in its transaction, gave, from `run`, its registered run or nil, at `now` (the
-  # moduledoc): the work item to tell once the transaction commits when it wrote, none
-  # otherwise.
+  # settle_locked/1 stores what `dispatch_run`, ended and locked by the caller in its
+  # transaction, gave (the moduledoc): the work item to tell once the transaction commits
+  # when it wrote, none otherwise.
   @doc false
-  @spec settle_locked(DispatchRun.t(), Run.t() | nil, DateTime.t()) :: [told]
-  def settle_locked(
-        %DispatchRun{state: :ended, end_cause: :run_ended, step: step} = dispatch_run,
-        run,
-        %DateTime{} = now
-      )
-      when step != @prebuild do
-    unless Repo.in_transaction?(),
-      do: raise(ArgumentError, "a run of the queue settles inside the caller's transaction")
+  @spec settle_locked(DispatchRun.t()) :: [told]
+  def settle_locked(%DispatchRun{state: :ended, result_outcome: outcome})
+      when not is_nil(outcome) do
+    in_transaction!()
+    []
+  end
 
-    case Result.given(run, run && latest_event(run.id), now) do
-      :unsettled -> write(dispatch_run, nil, nil)
-      {outcome, result} -> write(dispatch_run, outcome, result)
-      outcome -> write(dispatch_run, outcome, nil)
+  def settle_locked(%DispatchRun{state: :ended, end_cause: :run_ended, step: step} = dispatch_run)
+      when step != @prebuild do
+    in_transaction!()
+
+    case Outcome.at_end(dispatch_run) do
+      nil -> unread(dispatch_run)
+      outcome -> write(dispatch_run, outcome)
     end
   end
 
-  def settle_locked(%DispatchRun{}, _run, %DateTime{}), do: []
+  def settle_locked(%DispatchRun{state: :ended, end_cause: :lost, step: step} = dispatch_run)
+      when step != @prebuild do
+    in_transaction!()
+
+    case Outcome.at_end(dispatch_run) do
+      :questions -> write(dispatch_run, :questions)
+      # A lost end, from the lost-run check (`Apiary.Dispatches.RunEnd.lose/3`) or from a
+      # machine that stopped (`Apiary.Dispatches.RunEnd.machine_stopped/1`), logs this
+      # read. With the workflow model on, the stage runner then reads the questions of the
+      # newest run of a running stage again and raises, and the end's caller logs that
+      # read in a line of its own.
+      nil -> unread(dispatch_run)
+      _other -> []
+    end
+  end
+
+  def settle_locked(%DispatchRun{}), do: []
+
+  defp in_transaction! do
+    unless Repo.in_transaction?(),
+      do: raise(ArgumentError, "a run of the queue settles inside the caller's transaction")
+  end
 
   # settle/1 stores what the run of the queue `dispatch_run_id` gave, in a separate
-  # transaction: the run of the queue locked `FOR UPDATE`, then its registered run and its
-  # result event read with no lock. The work item to tell once it committed, when it
-  # wrote; none otherwise.
+  # transaction: the run of the queue locked `FOR UPDATE`, then its work item's artifacts
+  # read with no lock. The work item to tell once it committed, when it wrote; none
+  # otherwise. `now` is not read: it is kept for the callers that give it.
   @doc false
   @spec settle(Ecto.UUID.t(), DateTime.t()) :: [told]
-  def settle(dispatch_run_id, now \\ Apiary.Dispatches.now()) when is_binary(dispatch_run_id) do
+  def settle(dispatch_run_id, _now \\ Apiary.Dispatches.now()) when is_binary(dispatch_run_id) do
     {:ok, told} =
       Repo.transact(fn ->
         # Hand-over: with the workflow model, the stage runner acts on what the run gave
@@ -115,7 +129,7 @@ defmodule Apiary.Dispatches.Settle do
 
         case RunEnd.lock(dispatch_run_id) do
           %DispatchRun{state: :ended, end_cause: :run_ended} = dispatch_run ->
-            told = settle_locked(dispatch_run, registered(dispatch_run.id), now)
+            told = settle_locked(dispatch_run)
             staged = if stages?, do: Apiary.Stages.run_ended(dispatch_run.id), else: []
             {:ok, told ++ Enum.reject(staged, &(&1 in told))}
 
@@ -127,39 +141,45 @@ defmodule Apiary.Dispatches.Settle do
     told
   end
 
-  # sweep/1 settles, at `now`, the runs of the queue ended `run_ended` with no outcome yet
-  # whose registered run is settled, or that have none: at most `@batch`, in a
-  # transaction for each (`settle/1`). One that raises is logged by its id and the
-  # exception's module, and the rest are still settled. The work items to tell once each
-  # committed.
+  # sweep/1 is `sweep/2` from the first id, its work items alone.
   @doc false
   @spec sweep(DateTime.t()) :: [told]
-  def sweep(%DateTime{} = now) do
-    since = DateTime.add(now, -Result.settle_seconds(), :second)
+  def sweep(%DateTime{} = now), do: now |> sweep(nil) |> elem(0)
 
-    from(d in DispatchRun,
-      left_join: r in Run,
-      on: r.dispatch_run_id == d.id,
-      # The partial index's predicate, written as it is, so the planner reads through it.
-      where: fragment("? = 'run_ended'", d.end_cause),
-      where: is_nil(d.result_outcome),
-      where: fragment("? <> 'prebuild'", d.step),
-      where:
-        is_nil(r.id) or not is_nil(r.exit_state) or not is_nil(r.lost_at) or
-          r.state == "lost" or not is_nil(r.events_pruned_at) or
-          is_nil(r.outcome_received_at) or r.outcome_received_at <= ^since,
-      order_by: d.id,
-      limit: @batch,
-      select: d.id
-    )
-    |> Repo.all()
-    |> Enum.flat_map(&settle_guarded(&1, now))
+  # sweep/2 settles the runs of the queue ended `run_ended` with no outcome yet whose id
+  # comes after `after`, or from the first for nil: at most `limit`, `@batch` by default,
+  # in the order of their ids, in a transaction for each (`settle/1`). One that raises is
+  # logged by its id and the exception's module, and the rest are still settled.
+  # `{told, next}`: the work items to tell once each committed, and the `after` of the
+  # next sweep, the last id read when it read `limit`, nil when it read fewer. `now` is
+  # not read: it is kept for the callers that give it.
+  @doc false
+  @spec sweep(DateTime.t(), Ecto.UUID.t() | nil, pos_integer) :: {[told], Ecto.UUID.t() | nil}
+  def sweep(%DateTime{} = now, after_id, limit \\ @batch) do
+    ids =
+      from(d in DispatchRun,
+        # The partial index's predicate, written as it is, so the planner reads through it.
+        where: fragment("? = 'run_ended'", d.end_cause),
+        where: is_nil(d.result_outcome),
+        where: fragment("? <> 'prebuild'", d.step),
+        order_by: d.id,
+        limit: ^limit,
+        select: d.id
+      )
+      |> after_id(after_id)
+      |> Repo.all()
+
+    next = if length(ids) == limit, do: List.last(ids)
+    {Enum.flat_map(ids, &settle_guarded(&1, now)), next}
   end
 
+  defp after_id(query, nil), do: query
+  defp after_id(query, id), do: from(d in query, where: d.id > ^id)
+
   # clear/1 clears what the run of the queue `dispatch_run_id`, ended `run_ended` and not
-  # a prebuild, holds, both columns, in one statement that locks its row alone: for a
-  # settle that failed, so the sweep reads it again. The work item to tell when it
-  # cleared something; none otherwise.
+  # a prebuild, holds, in one statement that locks its row alone: for a settle that
+  # failed, so the sweep reads it again. The work item to tell when it cleared something;
+  # none otherwise.
   @doc false
   @spec clear(Ecto.UUID.t()) :: [told]
   def clear(dispatch_run_id) when is_binary(dispatch_run_id) do
@@ -184,46 +204,32 @@ defmodule Apiary.Dispatches.Settle do
       []
   end
 
-  defp registered(dispatch_run_id),
-    do: Repo.one(from r in Run, where: r.dispatch_run_id == ^dispatch_run_id)
+  # A run whose newest questions cannot be read: no outcome stored, and a warning with its
+  # id, its work item's public id (`wi_…`) and the questions version's (`av_…`), so the
+  # instance admin finds the questions file the store cannot read. At most once an hour
+  # for each run (`Apiary.Runs.StuckLog`).
+  defp unread(%DispatchRun{id: id, work_item_id: work_item_id}) do
+    Apiary.Runs.StuckLog.log(:warning, {:settle, id}, nil, fn ->
+      work_item = Repo.get(WorkItem, work_item_id)
+      version = work_item && Apiary.Artifacts.newest(work_item, "questions")
 
-  defp latest_event(run_id) do
-    Repo.one(
-      from e in Event,
-        where: e.run_id == ^run_id and e.type == ^Result.event_type(),
-        order_by: [desc: e.sequence],
-        limit: 1
-    )
+      "run outcome not stored, newest questions unreadable dispatch_run=#{id} " <>
+        "work_item=#{work_item && work_item.public_id} " <>
+        "questions_version=#{version && version.public_id}"
+    end)
+
+    []
   end
 
-  # The two columns, and nothing else, when they differ from what the row holds; for a
-  # proposal with the workflow model off, the comments the run read marked done.
-  defp write(%DispatchRun{result_outcome: outcome, result: result}, outcome, result), do: []
-
-  defp write(%DispatchRun{id: id, work_item_id: work_item_id} = dispatch_run, outcome, result) do
+  # The column, and nothing else, on a row that holds none (`settle_locked/1`).
+  defp write(%DispatchRun{id: id, work_item_id: work_item_id}, outcome) do
     {1, _rows} =
       Repo.update_all(from(d in DispatchRun, where: d.id == ^id),
-        set: [result_outcome: outcome, result: result]
+        set: [result_outcome: outcome]
       )
 
-    if outcome == :proposal and is_binary(work_item_id) and not staged?(work_item_id),
-      do: mark_read(dispatch_run)
-
+    Apiary.Runs.StuckLog.clear({:settle, id})
     told(work_item_id)
-  end
-
-  # The stage runner stores the proposal of a work item in a stage, and marks the comments
-  # then; a work item in none, or any with the workflow model off, has them marked here.
-  defp staged?(work_item_id),
-    do:
-      Apiary.Stages.on?() and
-        Repo.exists?(from w in WorkItem, where: w.id == ^work_item_id and not is_nil(w.stage_id))
-
-  # The run's proposal is kept: the comments on the take in's proposals it read are done,
-  # in the version its proposal is (`Apiary.WorkItems.Explore.proposal_version/3`).
-  defp mark_read(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt}) do
-    version = Explore.proposal_version(id, take_in, attempt)
-    Apiary.WorkItems.mark_read(id, take_in, attempt, version, DateTime.utc_now())
   end
 
   # told/1 is the work item `work_item_id` to tell once a transaction commits: its

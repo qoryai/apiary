@@ -91,6 +91,10 @@ defmodule ApiaryWeb.RichTextTest do
                "Close <bdi>a\u202E&lt;b&gt;</bdi>?"
 
       assert plain_text(["Close ", {:bdi, "nightly"}, "?"]) == "Close nightly?"
+      assert plain_text(["See ", {:nowrap, "Run 14"}, "."]) == "See Run 14."
+
+      assert render_rich(["See ", {:nowrap, "Run <14>"}]) ==
+               ~s(See <span class="whitespace-nowrap">Run &lt;14&gt;</span>)
     end
 
     test "safe HTML and rendered components are left as they are" do

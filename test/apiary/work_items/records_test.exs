@@ -1,6 +1,6 @@
 defmodule Apiary.WorkItems.RecordsTest do
-  # The tables of what a member gives Explore, a take in's answers and its confirmation,
-  # and of people's comments on the Thread, as the migrations made them, written with no
+  # The tables of what a member gives Explore, a take in's confirmation, and of people's
+  # comments on the Thread, as the migrations made them, written with no
   # changeset between the write and the database.
   use Apiary.DataCase, async: true
 
@@ -8,7 +8,7 @@ defmodule Apiary.WorkItems.RecordsTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.WorkItems.{Answer, Comment, Confirmation}
+  alias Apiary.WorkItems.{Comment, Confirmation}
 
   defp refused(constraint, fun), do: assert_raise(Postgrex.Error, ~r/#{constraint}/, fun)
 
@@ -17,27 +17,6 @@ defmodule Apiary.WorkItems.RecordsTest do
     Repo.query!("UPDATE #{table} SET #{assignments} WHERE id = $1", [
       Ecto.UUID.dump!(id) | params
     ])
-  end
-
-  defp answer!(work_item, attrs \\ %{}) do
-    Repo.insert!(
-      struct!(
-        %Answer{
-          organisation_id: work_item.organisation_id,
-          workspace_id: work_item.workspace_id,
-          work_item_id: work_item.id,
-          take_in: 1,
-          attempt: 1,
-          position: 1,
-          question: "Which basket?",
-          answer: "The one at checkout.",
-          custom: true,
-          answered_by_id: work_item.taken_in_by_id,
-          answered_at: DateTime.utc_now()
-        },
-        attrs
-      )
-    )
   end
 
   defp confirmation!(work_item, attrs \\ %{}) do
@@ -78,96 +57,6 @@ defmodule Apiary.WorkItems.RecordsTest do
   setup do
     %{scope: scope} = sign_up_fixture()
     %{scope: scope, work_item: work_item_fixture(scope)}
-  end
-
-  describe "work_item_answers" do
-    test "a take in and a run are counted from 1, and a position is 1 to 20", %{work_item: item} do
-      answer = answer!(item)
-
-      for assignment <- ["take_in = 0", "attempt = 0", "position = 0", "position = 21"] do
-        refused("work_item_answers_run_check", fn ->
-          update!("work_item_answers", answer.id, assignment)
-        end)
-      end
-
-      assert %{num_rows: 1} = update!("work_item_answers", answer.id, "position = 20")
-    end
-
-    test "an answer is 1 to 2,000 code points, a question 1 to 20,000", %{work_item: item} do
-      answer = answer!(item)
-
-      for {column, max} <- [answer: 2000, question: 20_000] do
-        for text <- ["", String.duplicate("é", max + 1)] do
-          refused("work_item_answers_#{column}_check", fn ->
-            update!("work_item_answers", answer.id, "#{column} = $2", [text])
-          end)
-        end
-
-        assert %{num_rows: 1} =
-                 update!("work_item_answers", answer.id, "#{column} = $2", [
-                   String.duplicate("é", max)
-                 ])
-      end
-    end
-
-    test "an answer has custom and no version; a comment has a version, at position 1",
-         %{work_item: item} do
-      answer = answer!(item)
-
-      for assignment <- [
-            "custom = NULL",
-            "proposal_version = 1",
-            "done_version = 2, done_at = now()"
-          ] do
-        refused("work_item_answers_kind_check", fn ->
-          update!("work_item_answers", answer.id, assignment)
-        end)
-      end
-
-      comment = answer!(item, %{attempt: 2, question: nil, custom: nil, proposal_version: 1})
-
-      for assignment <- [
-            "custom = false",
-            "proposal_version = NULL",
-            "proposal_version = 0",
-            "position = 2",
-            "done_version = 2",
-            "done_at = now()",
-            "done_version = 0, done_at = now()"
-          ] do
-        refused("work_item_answers_kind_check", fn ->
-          update!("work_item_answers", comment.id, assignment)
-        end)
-      end
-
-      assert %{num_rows: 1} =
-               update!("work_item_answers", comment.id, "done_version = 2, done_at = now()")
-    end
-
-    test "one answer to a question of a run", %{work_item: item} do
-      answer!(item)
-
-      assert_raise Ecto.ConstraintError,
-                   ~r/work_item_answers_work_item_id_take_in_attempt_position_index/,
-                   fn ->
-                     answer!(item)
-                   end
-
-      assert answer!(item, %{position: 2})
-      assert answer!(item, %{attempt: 2})
-      assert answer!(item, %{take_in: 2})
-    end
-
-    test "an answer is of its work item's workspace", %{scope: scope, work_item: item} do
-      answer = answer!(item)
-      elsewhere = workspace_fixture(scope.organisation)
-
-      refused("work_item_answers_work_item_id_fkey", fn ->
-        update!("work_item_answers", answer.id, "workspace_id = $2", [
-          Ecto.UUID.dump!(elsewhere.id)
-        ])
-      end)
-    end
   end
 
   describe "work_item_confirmations" do
@@ -322,36 +211,30 @@ defmodule Apiary.WorkItems.RecordsTest do
     end
   end
 
-  describe "both" do
+  describe "a confirmation" do
     test "follow their work item to another workspace of its organisation", ctx do
       %{scope: scope, work_item: item} = ctx
-      answer = answer!(item)
       confirmation = confirmation!(item)
       elsewhere = workspace_fixture(scope.organisation)
 
       assert %{num_rows: 1} =
                update!("work_items", item.id, "workspace_id = $2", [Ecto.UUID.dump!(elsewhere.id)])
 
-      assert Repo.reload!(answer).workspace_id == elsewhere.id
       assert Repo.reload!(confirmation).workspace_id == elsewhere.id
     end
 
     test "go with their work item", %{work_item: item} do
-      answer = answer!(item)
       confirmation = confirmation!(item)
       Repo.delete!(item)
 
-      assert Repo.reload(answer) == nil
       assert Repo.reload(confirmation) == nil
     end
 
     test "stay when the member's account goes, with no member", %{work_item: item} do
       user = user_fixture()
-      answer = answer!(item, %{answered_by_id: user.id})
       confirmation = confirmation!(item, %{confirmed_by_id: user.id})
       Repo.delete!(user)
 
-      assert %Answer{answered_by_id: nil, answer: "The one at checkout."} = Repo.reload!(answer)
       assert %Confirmation{confirmed_by_id: nil} = Repo.reload!(confirmation)
     end
   end

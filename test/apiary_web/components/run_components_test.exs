@@ -101,6 +101,45 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
+    test "a quiet run with no heartbeat and no event counts from when it was first heard of" do
+      at = DateTime.add(DateTime.utc_now(), -47, :second)
+
+      html =
+        render_component(&RunComponents.alive/1,
+          state: "running",
+          quiet: true,
+          interval: 30,
+          run: %{state: "running", inserted_at: at}
+        )
+
+      assert text(html) =~ ~r/^No heartbeat for 4\d s/
+      assert html =~ ~s(data-since="#{DateTime.to_iso8601(at)}")
+    end
+
+    test "a quiet run's event does not restart the count of its missing heartbeat" do
+      first_heard = DateTime.add(DateTime.utc_now(), -62, :second)
+      event = DateTime.add(DateTime.utc_now(), -2, :second)
+
+      html =
+        render_component(&RunComponents.alive/1,
+          state: "running",
+          quiet: true,
+          interval: 30,
+          last_event_at: event,
+          run: %{state: "running", inserted_at: first_heard, last_event_at: event}
+        )
+
+      assert text(html) =~ ~r/^No heartbeat for 1 m 0\d s/
+      assert html =~ ~s(data-since="#{DateTime.to_iso8601(first_heard)}")
+    end
+
+    test "a running run with no time at all says Alive" do
+      for attrs <- [[], [quiet: true], [quiet: true, run: %{state: "running"}]] do
+        html = render_component(&RunComponents.alive/1, [state: "running"] ++ attrs)
+        assert text(html) == "Alive"
+      end
+    end
+
     test "an ended run's sentence says its state" do
       for {state, run, sentence} <- [
             {"completed", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
@@ -175,7 +214,7 @@ defmodule ApiaryWeb.RunComponentsTest do
         }
       end
 
-      missing = "The run's harness has no skill named triage."
+      missing = "The run's harness has no skill for the workflow triage."
       address = "https://code.example.com/acme/harness"
       base = %{"git" => address, "ref" => "main"}
       stack = Ecto.UUID.generate()
@@ -215,17 +254,17 @@ defmodule ApiaryWeb.RunComponentsTest do
       # With no walk, the workflow of the run of the queue and no source; with no run of the
       # queue loaded, neither, as an exit of the timeline without it reads.
       assert RunComponents.reason_words(ended.(nil)) ==
-               "The run's harness has no skill named explore-a-ticket."
+               "The run's harness has no skill for the workflow explore-a-ticket."
 
       assert RunComponents.reason_words(%{reason: "workflow_not_in_harness", state: "failed"}) ==
-               "The run's harness has no skill with the name of the run's workflow."
+               "The run's harness has no skill for the run's workflow."
 
       assert RunComponents.reason_words(%Run{
                state: "failed",
                reason: "workflow_not_in_harness",
                exited_at: ~U[2026-11-02 09:00:00Z]
              }) ==
-               "The run's harness has no skill with the name of the run's workflow."
+               "The run's harness has no skill for the run's workflow."
     end
 
     test "a refused batch reads events refused, whatever the state" do

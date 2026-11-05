@@ -18,13 +18,18 @@ defmodule Apiary.WorkItems do
   # `Apiary.Access`, and tells the pages once it commits. `Apiary.WorkItems.Moves` says
   # how, what each refuses, and the order of its locks.
   #
-  # ## What a member gives Explore: answer, confirm, explore again
+  # ## What a member gives Explore: answer, review comments, confirm, explore again
   #
-  # `answer(scope, work_item, attempt, answers)` answers the questions of the latest run
-  # of the work item's take in, by their position (`"1"` to `"20"`), or, given a text,
-  # comments on the latest run's proposal, and queues the take in's next run, which reads
-  # them (`take_in_answers/2`, `take_in_changes/3`); `confirm(scope, work_item, attempt)`
-  # confirms the latest run's proposal, which makes the work item ready for Shape;
+  # `answer(scope, work_item, attempt, answers)` answers one or more of the open questions
+  # of the work item, by their position (`"1"` to `"20"`), or, given a text, writes a
+  # review comment on the proposal and sends it, and queues the take in's next run, which
+  # reads the questions and the review comments as artifacts (`Apiary.Explore.Questions`,
+  # `Apiary.Explore.ReviewComments`); `review_comment/4` and `reply/5` write a review
+  # comment or a reply while no run is running, and queue no run;
+  # `send_review_comments(scope, work_item, attempt)` queues the next run where the
+  # questions or the proposal wait and a review comment is open;
+  # `confirm(scope, work_item, attempt)` confirms the latest run's proposal, which makes
+  # the work item ready for Shape;
   # `explore_again(scope, work_item, attempt)` queues the take in's next run after a run
   # that gave no result, was lost or was cancelled. `attempt` is the latest run's, as the
   # page read it. `Apiary.WorkItems.Moves` says how and what each refuses.
@@ -96,9 +101,10 @@ defmodule Apiary.WorkItems do
   # `FOR UPDATE`, by id when there are several, then a workspace's counter of numbers
   # (`Apiary.WorkItems.Number`), taken only right after its work item, then the
   # environment records, the runs of the queue and their dispatches
-  # (`Apiary.Dispatches.Slots`), and the adapter's feed counter, last. A comment of a work
-  # item (`Apiary.WorkItems.Comment`) is held `FOR UPDATE` only right after its work item,
-  # as a comment's deletion holds it. No collection or
+  # (`Apiary.Dispatches.Slots`), the adapter's feed counter, and, last, for a work item that
+  # moves, the target's counter of run numbers (`Apiary.Runs.Number.raise_past/2`). A
+  # comment of a work item (`Apiary.WorkItems.Comment`) is locked `FOR UPDATE` only right
+  # after its work item, as a comment's deletion locks it. No collection or
   # target is locked after a work item. A close takes the connections first (the removal
   # ends them before it closes), then the work items `FOR UPDATE` in the order of their
   # ids, then their runs of the queue `FOR UPDATE` in the order of their ids, then the
@@ -121,7 +127,7 @@ defmodule Apiary.WorkItems do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Sources.Comment, as: SourceComment
   alias Apiary.Sources.Item
-  alias Apiary.WorkItems.{Answer, Comment, Explore, ExploreView, Moves, State, WorkItem}
+  alias Apiary.WorkItems.{Comment, Explore, ExploreView, Moves, State, WorkItem}
   alias Apiary.WorkItems.{WorkItemEvent, WorkList}
 
   # The largest number a work item has, the column's: a bigint.
@@ -187,24 +193,35 @@ defmodule Apiary.WorkItems do
   defdelegate close(scope, work_item), to: Moves
 
   @doc false
-  # answer/4 answers the questions of the latest run, `attempt`, of `work_item`'s take in,
-  # or comments on its proposal, and queues its next run (`Apiary.WorkItems.Moves`).
-  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t()) ::
+  # answer/4 answers open questions at the latest run, `attempt`, of `work_item`'s take
+  # in, or writes a review comment on its proposal and sends it, and queues its next run
+  # (`Apiary.WorkItems.Moves`).
+  @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t() | [Moves.answer_by_id()]) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers) do
-    # Hand-over: with the workflow model, answers to the last run a stage's entry may have
-    # escalate the stage, `round_limit`, as the runner does for questions at that run
-    # (`Apiary.Stages.answers_used_up/1`).
-    case Moves.answer(scope, work_item, attempt, answers) do
-      {:error, :used_up} = refused ->
-        if Apiary.Stages.on?(),
-          do: Apiary.Stages.answers_used_up(work_item, refused),
-          else: refused
+  defdelegate answer(scope, work_item, attempt, answers), to: Moves
 
-      result ->
-        result
-    end
-  end
+  @doc false
+  # review_comment/4 writes the scope's member's review comment on the newest proposal of
+  # `work_item`'s take in, whose latest run is `attempt`, while no run is running; it
+  # queues no run (`Apiary.WorkItems.Moves`).
+  @spec review_comment(Scope.t(), WorkItem.t(), pos_integer, term) ::
+          {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
+  defdelegate review_comment(scope, work_item, attempt, text), to: Moves
+
+  @doc false
+  # reply/5 adds the scope's member's reply to the review comment `id`, which opens it
+  # again, while no run is running; it queues no run (`Apiary.WorkItems.Moves`).
+  @spec reply(Scope.t(), WorkItem.t(), pos_integer, String.t(), term) ::
+          {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
+  defdelegate reply(scope, work_item, attempt, id, text), to: Moves
+
+  @doc false
+  # send_review_comments/3 queues the next run of `work_item`'s take in, where the
+  # questions or the proposal of its latest run, `attempt`, wait and a review comment is
+  # open (`Apiary.WorkItems.Moves`).
+  @spec send_review_comments(Scope.t(), WorkItem.t(), pos_integer) ::
+          {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
+  defdelegate send_review_comments(scope, work_item, attempt), to: Moves
 
   @doc false
   # confirm/3 confirms the proposal of the latest run, `attempt`, of `work_item`'s take
@@ -256,104 +273,6 @@ defmodule Apiary.WorkItems do
   @spec delete_comment(Scope.t(), term) ::
           {:ok, Comment.t()} | {:error, :not_found | :forbidden | :deleted}
   defdelegate delete_comment(scope, comment_id), to: Moves
-
-  @doc false
-  # take_in_answers/2 is the answers given to the questions of the runs of take in
-  # `take_in` of `work_item`, oldest first, by the run they answered, then the question's
-  # place, for the input of the take in's next run: each `question`, as the run asked it,
-  # `answer`, `custom`, true for the member's text and false for an option's title, `by`,
-  # the member who answered, named as the input names a person
-  # (`Apiary.Dispatches.Inputs.person_name/1`), and `at`, when, in UTC to the whole
-  # second, in the explore input's order (`inputs.schema.json` `answers`). A comment on a
-  # proposal is no answer (`take_in_changes/3`).
-  #
-  # A stated limit: the answers count toward the input's bound
-  # (`Apiary.Dispatches.Inputs.max_bytes/0`, 768 KiB), which leaves out only comments to
-  # fit. Two runs' answers, each question and answer at the most the contract allows,
-  # with a ticket's body at the most it holds, can pass that bound with every comment left
-  # out; the claim then ends the run, `inputs_invalid`, and Explore reads it as a run
-  # without a result.
-  @spec take_in_answers(WorkItem.t(), pos_integer) :: [Jason.OrderedObject.t()]
-  def take_in_answers(%WorkItem{id: id}, take_in)
-      when is_binary(id) and is_integer(take_in) and take_in >= 1 do
-    answers =
-      Repo.all(
-        from a in Answer,
-          where: a.work_item_id == ^id and a.take_in == ^take_in and not is_nil(a.question),
-          order_by: [asc: a.attempt, asc: a.position]
-      )
-
-    names = names(answers)
-
-    for answer <- answers do
-      Jason.OrderedObject.new([
-        {"question", answer.question},
-        {"answer", answer.answer},
-        {"custom", answer.custom},
-        {"by", Jason.OrderedObject.new([{"name", Map.fetch!(names, answer.answered_by_id)}])},
-        {"at", answer.answered_at |> DateTime.truncate(:second) |> DateTime.to_iso8601()}
-      ])
-    end
-  end
-
-  @doc false
-  # take_in_changes/3 is the comments on the proposals of take in `take_in` of
-  # `work_item` that no saved update of the proposal has read yet, made on a run before
-  # `attempt`, oldest first, for the input of the run `attempt`: each `text`, `by`, the
-  # member who wrote it, named as `take_in_answers/2` names a person, and `at`, when, in
-  # the explore input's order (`inputs.schema.json` `changes`).
-  @spec take_in_changes(WorkItem.t(), pos_integer, pos_integer) :: [Jason.OrderedObject.t()]
-  def take_in_changes(%WorkItem{id: id}, take_in, attempt)
-      when is_binary(id) and is_integer(take_in) and is_integer(attempt) do
-    comments =
-      Repo.all(
-        from a in Answer,
-          where: a.work_item_id == ^id and a.take_in == ^take_in and is_nil(a.question),
-          where: is_nil(a.done_at) and a.attempt < ^attempt,
-          order_by: [asc: a.attempt, asc: a.answered_at]
-      )
-
-    names = names(comments)
-
-    for comment <- comments do
-      Jason.OrderedObject.new([
-        {"text", comment.answer},
-        {"by", Jason.OrderedObject.new([{"name", Map.fetch!(names, comment.answered_by_id)}])},
-        {"at", comment.answered_at |> DateTime.truncate(:second) |> DateTime.to_iso8601()}
-      ])
-    end
-  end
-
-  defp names(rows) do
-    rows
-    |> Enum.map(& &1.answered_by_id)
-    |> Enum.uniq()
-    |> Map.new(&{&1, Apiary.Dispatches.Inputs.person_name(&1)})
-  end
-
-  @doc false
-  # mark_read/5 marks done, at `now`, the comments of take in `take_in` of the work item
-  # `work_item_id` that the run `attempt` read: those still open, made on a run before
-  # it. `version` is the version of the proposal the run's update saved. Called once that
-  # update is saved: with the workflow model on, after its `proposal` version is stored
-  # (`Apiary.Stages`); off, when the run's proposal is kept on its run of the queue
-  # (`Apiary.Dispatches.Settle`). How many it marked.
-  @spec mark_read(Ecto.UUID.t(), pos_integer, pos_integer, pos_integer, DateTime.t()) ::
-          non_neg_integer
-  def mark_read(work_item_id, take_in, attempt, version, %DateTime{} = now)
-      when is_binary(work_item_id) and is_integer(take_in) and is_integer(attempt) and
-             is_integer(version) and version >= 1 do
-    {count, _rows} =
-      Repo.update_all(
-        from(a in Answer,
-          where: a.work_item_id == ^work_item_id and a.take_in == ^take_in,
-          where: is_nil(a.question) and is_nil(a.done_at) and a.attempt < ^attempt
-        ),
-        set: [done_version: version, done_at: now]
-      )
-
-    count
-  end
 
   ## Reading Explore
 

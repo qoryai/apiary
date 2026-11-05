@@ -50,6 +50,31 @@ defmodule Apiary.Artifacts.Store.VolumeTest do
     assert staging(root) == []
   end
 
+  test "removes at a commit the staged copies of the root older than an hour", %{root: root} do
+    {:ok, left} = Volume.stage({:binary, "left by a killed push"}, 100)
+    {:ok, fresh} = Volume.stage({:binary, "a push in progress"}, 100)
+    File.touch!(left.path, System.os_time(:second) - 3601)
+    # Another old file of the root, not a staged copy, stays.
+    other = Path.join(root, "notes.tmp")
+    File.write!(other, "other")
+    File.touch!(other, System.os_time(:second) - 7200)
+
+    {:ok, staged} = Volume.stage({:binary, "gift cards"}, 100)
+    assert {:ok, _key} = Volume.commit(staged)
+
+    assert staging(root) == [fresh.path]
+    assert File.exists?(other)
+    assert {:ok, _key} = Volume.commit(fresh)
+  end
+
+  test "fails the commit of a staged copy that was removed", %{root: root} do
+    {:ok, staged} = Volume.stage({:binary, "removed before its commit"}, 100)
+    File.rm!(staged.path)
+
+    assert {:error, _reason} = Volume.commit(staged)
+    assert Path.wildcard(Path.join(root, "*/*/*")) == []
+  end
+
   test "reads a path in chunks and stops past the limit", %{root: root, tmp_dir: tmp_dir} do
     source = Path.join(tmp_dir, "source")
     File.write!(source, :binary.copy("x", 300_000))

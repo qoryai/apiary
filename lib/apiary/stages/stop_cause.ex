@@ -6,6 +6,8 @@ defmodule Apiary.Stages.StopCause do
   # claim's gateway and that gateway's keys (`context`).
   @moduledoc false
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   import Ecto.Query
 
   alias Apiary.Adapters.Collection
@@ -35,9 +37,6 @@ defmodule Apiary.Stages.StopCause do
   @spec text(DispatchRun.t(), WorkItem.t(), context) :: String.t()
   def text(run, work_item, context \\ %{})
 
-  def text(%DispatchRun{end_cause: :run_ended, result_outcome: :refused}, _work_item, _context),
-    do: "The run's result does not match the explore result schema."
-
   def text(%DispatchRun{end_cause: :run_ended, result_outcome: :error}, _work_item, _context),
     do: "The run ended with an error."
 
@@ -61,6 +60,18 @@ defmodule Apiary.Stages.StopCause do
   def text(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
     {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
     cause <> "\n" <> fix
+  end
+
+  # failed_after_proposal/1 is why a run of Explore stopped whose registered run failed
+  # after it pushed version `version` of its proposal: one line, in the default locale's
+  # words (`ApiaryWeb.Lingo.default_locale/0`) whatever the calling process's locale, as
+  # the escalation stores it.
+  @doc false
+  @spec failed_after_proposal(pos_integer) :: String.t()
+  def failed_after_proposal(version) when is_integer(version) do
+    Gettext.with_locale(ApiaryWeb.Gettext, ApiaryWeb.Lingo.default_locale(), fn ->
+      gettext("The run failed after it wrote proposal version %{version}.", version: version)
+    end)
   end
 
   # set_up_step/1 is the step of the workspace's set-up whose page has the fix for why
@@ -167,8 +178,8 @@ defmodule Apiary.Stages.StopCause do
   defp workflow_gap(%{workflow: workflow, source: source}, work_item) do
     missing =
       if workflow,
-        do: "The run's harness has no skill named #{workflow}.",
-        else: "The run's harness has no skill with the name of the run's workflow."
+        do: "The run's harness has no skill for the workflow #{workflow}.",
+        else: "The run's harness has no skill for the run's workflow."
 
     case gap_source(source, work_item) do
       nil -> missing

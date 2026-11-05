@@ -16,8 +16,6 @@ defmodule Apiary.WorkItems.ProposalCommentsMigrationTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.WorkItems
-
   @version 20_261_103_100_000
   @migration Apiary.Repo.Migrations.KeepCommentsOnAProposal
   @options [log: false, migration_lock: false]
@@ -37,6 +35,8 @@ defmodule Apiary.WorkItems.ProposalCommentsMigrationTest do
   end
 
   setup do
+    # The table this migration changes, dropped by a later one, back for the test.
+    Apiary.AnswersTable.back!()
     %{scope: scope} = sign_up_fixture()
     %{scope: scope}
   end
@@ -62,6 +62,34 @@ defmodule Apiary.WorkItems.ProposalCommentsMigrationTest do
     end
   end
 
+  # A row of `work_item_answers` as it was written before answers and review comments
+  # were kept in artifacts: an answer, `question` its question, or a comment on version 1
+  # of the proposal, `question` nil. No code writes the table now.
+  defp kept!(work_item, user, position, question, answer) do
+    {:ok, work_item_id} = Ecto.UUID.dump(work_item.id)
+    {:ok, organisation_id} = Ecto.UUID.dump(work_item.organisation_id)
+    {:ok, workspace_id} = Ecto.UUID.dump(work_item.workspace_id)
+    {:ok, user_id} = Ecto.UUID.dump(user.id)
+
+    Repo.insert_all("work_item_answers", [
+      %{
+        id: Ecto.UUID.bingenerate(),
+        organisation_id: organisation_id,
+        workspace_id: workspace_id,
+        work_item_id: work_item_id,
+        take_in: 1,
+        attempt: 1,
+        position: position,
+        question: question,
+        answer: answer,
+        custom: if(question, do: true),
+        proposal_version: if(question, do: nil, else: 1),
+        answered_by_id: user_id,
+        answered_at: DateTime.utc_now()
+      }
+    ])
+  end
+
   defp answers do
     %{rows: rows} =
       Repo.query!("SELECT question, answer FROM work_item_answers ORDER BY position")
@@ -72,8 +100,9 @@ defmodule Apiary.WorkItems.ProposalCommentsMigrationTest do
   test "with no comment kept, down keeps the answers and brings changes and the checks back",
        %{scope: scope} do
     work_item = work_item_fixture(scope)
-    explore_run_fixture(work_item, result: questions_result())
-    {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The main one.", "2" => "Spring"})
+    explore_run_fixture(work_item)
+    kept!(work_item, scope.user, 1, "Which basket?", "The main one.")
+    kept!(work_item, scope.user, 2, "Which sale?", "Spring")
 
     assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
 
@@ -102,8 +131,8 @@ defmodule Apiary.WorkItems.ProposalCommentsMigrationTest do
     scope: scope
   } do
     work_item = work_item_fixture(scope)
-    explore_run_fixture(work_item, result: understood_result())
-    {:ok, _} = WorkItems.answer(scope, work_item, 1, "Offer a refund first.")
+    explore_run_fixture(work_item)
+    kept!(work_item, scope.user, 1, nil, "Offer a refund first.")
 
     # The migration's transaction, a savepoint of the test's, is rolled back.
     error =

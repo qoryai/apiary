@@ -49,7 +49,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
         :running -> [[state: :handed_over]]
         :confirm -> [[result: understood_result()]]
         :questions -> [[result: questions_result()]]
-        :used_up -> List.duplicate([result: questions_result()], 3)
+        :used_up -> List.duplicate([end_cause: :lost], 3)
         :shape -> [[result: understood_result()]]
       end
 

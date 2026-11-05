@@ -73,9 +73,9 @@ defmodule Apiary.Runs.Projector do
   @heartbeat "dev.qory.run.heartbeat"
   # The events whose pass ends the open steps of a run that exited (`end_open_steps/1`).
   @ending ["dev.qory.run.exited", "dev.qory.run.step_started", "dev.qory.run.step_exited"]
-  # The events whose fold may decide what a run of a workspace's queue gave: its exit and
-  # its result.
-  @settling ["dev.qory.run.exited", "dev.qory.runtime.result"]
+  # The event whose fold decides what a run of a workspace's queue gave: its exit, after
+  # which the run pushes no artifact (`Apiary.Explore.Outcome`).
+  @settling ["dev.qory.run.exited"]
 
   @doc """
   Projects the run's unprojected events. Returns `{:ok, run}` with the run as it is now,
@@ -496,8 +496,8 @@ defmodule Apiary.Runs.Projector do
   # with it, once its passes have committed, in a separate transaction that locks the
   # queue's run before the registered run, after its work item or, for a prebuild, its
   # environment record (`Apiary.Dispatches.RunEnd.run_ended/1`); the workspaces whose
-  # slots changed are told. A failure is logged and the lost-run check ends it at its next
-  # tick (`Apiary.Dispatches.RunEnd.lose/1`).
+  # slots changed are told. A failure is logged and the lost-run check ends it at a later
+  # tick (`Apiary.Dispatches.RunEnd.lose/3`).
   defp end_handed_over(%Run{dispatch_run_id: id, exited_at: %DateTime{}} = run)
        when is_binary(id) do
     run |> Apiary.Dispatches.RunEnd.run_ended() |> Apiary.Dispatches.broadcast()
@@ -511,7 +511,7 @@ defmodule Apiary.Runs.Projector do
   # and no exit, ends the queue's run with it, `run_refused`, once its passes have
   # committed, in a separate transaction that locks the queue's run first
   # (`Apiary.Dispatches.RunEnd.refused/1`). A failure is logged and the lost-run check ends
-  # it at its next tick (`Apiary.Dispatches.RunEnd.lose/1`).
+  # it at a later tick (`Apiary.Dispatches.RunEnd.lose/3`).
   defp end_refused(%Run{dispatch_run_id: id, refused_at: %DateTime{}} = run)
        when is_binary(id) do
     run |> Apiary.Dispatches.RunEnd.refused() |> Apiary.Dispatches.broadcast()
@@ -521,10 +521,10 @@ defmodule Apiary.Runs.Projector do
 
   defp end_refused(_run), do: :ok
 
-  # A run a workspace's queue handed over whose passes folded an exit or a result event
-  # has what it gave stored on the queue's run, once its passes and its end committed, in
-  # a separate transaction (`Apiary.Dispatches.Settle.settle/1`): a result that came
-  # after its outcome, or after it settled, counts so. The work item is told. A failure is
+  # A run a workspace's queue handed over whose passes folded an exit has what it gave
+  # stored on the queue's run, once its passes and its end committed, in a separate
+  # transaction (`Apiary.Dispatches.Settle.settle/1`), where its end has not stored it
+  # already. The work item is told. A failure is
   # logged, and what the queue's run holds is cleared (`Apiary.Dispatches.Settle.clear/1`),
   # so the sweep of the lost-run check stores it at a tick after, once the run is settled;
   # a clear that fails too is logged, and what was stored stays until the run's next

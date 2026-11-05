@@ -7,7 +7,6 @@ defmodule Apiary.Kinds.BoundsCallersTest do
 
   import Apiary.DescriptionFixtures
 
-  alias Apiary.Explore.Result
   alias Apiary.Integrations.Description
   alias Apiary.Kinds.{Bounds, ServiceDefinition}
 
@@ -99,22 +98,46 @@ defmodule Apiary.Kinds.BoundsCallersTest do
     assert calls(fn -> ServiceDefinition.validate(over) end) == [{:within?, bounds}]
   end
 
-  test "an explore result is walked within the schema's bounds, and JSV never reads one over them" do
+  @tag :tmp_dir
+  test "a questions artifact is walked within its bounds, and JSV never reads one over them",
+       %{tmp_dir: dir} do
+    type = Enum.find(Apiary.Artifacts.Type.standard(), &(&1.name == "questions"))
+
     question = %{
+      "id" => "q1",
       "question" => "Which region?",
-      "options" => [%{"title" => "Europe", "explanation" => "Serve from Europe."}]
+      "options" => [%{"title" => "Europe", "explanation" => "Serve from Europe."}],
+      "state" => "open",
+      "asked" => %{"run" => 1, "at" => "2026-11-04T10:00:00Z"}
     }
 
-    result = %{"version" => 1, "verdict" => "not_understood", "questions" => [question]}
-    valid = Jason.encode!(result)
-    over = Jason.encode!(%{result | "questions" => List.duplicate(question, 21)})
+    write = fn name, document ->
+      path = Path.join(dir, name)
+      File.write!(path, Jason.encode!(document))
+      path
+    end
 
-    # The longest list the schema takes is `questions`, at most 20 (`options` takes 10),
-    # and the object with the most members is the result, with 4.
-    bounds = [list: 20, members: 4]
+    valid = write.("valid.json", %{"questions" => [question]})
+    # A document of more values than the walk takes: 65,537 ids in `follows`.
+    over =
+      write.("over.json", %{
+        "questions" => [Map.put(question, "follows", List.duplicate("q1", 65_537))]
+      })
 
-    assert {:ok, _result} = Result.parse(valid)
-    assert calls(fn -> Result.parse(valid) end) == [{:within?, bounds}, :jsv]
-    assert calls(fn -> Result.parse(over) end) == [{:within?, bounds}]
+    # The format's lists are unbounded: the walk bounds them by the values in all, and an
+    # object by a question's 9 members (`Apiary.Artifacts.Format`).
+    bounds = [list: 65_536, members: 9, nodes: 65_536, string: 131_072, depth: 16]
+
+    assert {:ok, "application/json"} =
+             Apiary.Artifacts.Format.check(type, "questions.json", valid)
+
+    assert calls(fn -> Apiary.Artifacts.Format.check(type, "questions.json", valid) end) == [
+             {:within?, bounds},
+             :jsv
+           ]
+
+    assert calls(fn -> Apiary.Artifacts.Format.check(type, "questions.json", over) end) == [
+             {:within?, bounds}
+           ]
   end
 end

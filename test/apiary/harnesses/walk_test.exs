@@ -2616,6 +2616,38 @@ defmodule Apiary.Harnesses.WalkTest do
                "Owners and admins of #{org} connect an integration that covers #{@tools} in Organisation settings › Integrations."
     end
 
+    # The stage runner cannot read the work item's questions: the run still ends, and the
+    # stage sweep of the lost-run check moves the stage once they can be read.
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, a failed walk with unreadable questions still ends the run",
+         ctx do
+      setting(ctx.scope, @setting)
+      run = queued(ctx)
+      work_item = Repo.get!(Apiary.WorkItems.WorkItem, run.work_item_id)
+      asked_run = Apiary.StagesFixtures.asked_before!(run)
+      path = Apiary.StagesFixtures.unreadable_questions!(ctx.scope, work_item, asked_run)
+
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+      {result, log} = ExUnit.CaptureLog.with_log(fn -> job(run) end)
+      assert result == :ok
+
+      assert log =~
+               "stage end left for later, newest questions unreadable dispatch_run=#{run.id}"
+
+      assert %DispatchRun{state: :ended, end_cause: :harness_unresolved} =
+               Repo.get!(DispatchRun, run.id)
+
+      assert %Apiary.WorkItems.WorkItem{stage_state: :running} =
+               Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
+
+      File.rename!(path <> ".away", path)
+      assert {[_], nil} = Apiary.Stages.sweep(Dispatches.now(), nil)
+
+      # Open questions come before a run that stopped.
+      assert %Apiary.WorkItems.WorkItem{stage_state: :waiting_answers} =
+               Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
+    end
+
     test "a refusal fails the walk on the first attempt and ends the run harness_unresolved",
          ctx do
       setting(ctx.scope, @setting)
@@ -3072,7 +3104,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
   describe "the harness choices" do
     @qory_git "https://github.com/qoryai/harness"
-    @qory_ref "bde1cf61186ec5cb405294dcc233021ea0c092bf"
+    @qory_ref "f2b3b4d3f1f764ec7e0f3ff3709eade08a22d6eb"
     @pin String.duplicate("c3", 20)
 
     # A harness repository whose root is its stack, with a local module.

@@ -1,13 +1,13 @@
 defmodule Apiary.Dispatches.SettleTest do
-  # What a run of the queue gave, kept on its row (`Apiary.Dispatches.Settle`), through
-  # the writers that store it: the end of the run by its exit, or by an outcome given
-  # before a run of the queue was refused one (`Apiary.Dispatches.RunEnd`), a projection
-  # that folded an exit or a result event (`Apiary.Runs.Projector`), and the sweep of the
-  # lost-run check (`Apiary.Runs.Liveness`);
-  # and the handover's error (`Apiary.Dispatches.Handover`). Only a run that is not a
-  # prebuild and ended `run_ended` is settled; `updated_at` never changes; a result that
-  # comes later replaces what was stored; and the result kept is what the pages read once
-  # the run's events are pruned.
+  # What a run of the queue gave, kept on its row (`Apiary.Dispatches.Settle`), read from
+  # the artifacts the run pushed (`Apiary.Explore.Outcome`), through the writers that
+  # store it: the end of the run by its exit, or by an outcome given before a run of the
+  # queue was refused one (`Apiary.Dispatches.RunEnd`), a projection that folded an exit
+  # (`Apiary.Runs.Projector`), and the sweep of the lost-run check
+  # (`Apiary.Runs.Liveness`); and the handover's error (`Apiary.Dispatches.Handover`).
+  # Only a run that is not a prebuild and ended `run_ended`, or `lost` with questions left
+  # open, is settled; `updated_at` never changes; `result` is never written; and what the
+  # pages read once the run's events are pruned comes from the artifacts.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -20,7 +20,6 @@ defmodule Apiary.Dispatches.SettleTest do
 
   alias Apiary.{Dispatches, WorkItems}
   alias Apiary.Dispatches.{DispatchRun, RunEnd, Settle}
-  alias Apiary.Explore.Result
   alias Apiary.Runs.{Event, Liveness, Projector, Run}
   alias Apiary.WorkItems.{Confirmation, Explore, WorkItem}
 
@@ -39,23 +38,24 @@ defmodule Apiary.Dispatches.SettleTest do
   defp run!(%{run: %Run{id: id}}), do: Repo.get!(Run, id)
   defp work_item!(%{dispatch_run: %DispatchRun{work_item_id: id}}), do: Repo.get!(WorkItem, id)
 
+  # What the row holds: the outcome, and `result`, which no writer writes.
   defp stored(handed) do
     %DispatchRun{result_outcome: outcome, result: result} = queue_run!(handed)
     {outcome, result}
   end
 
-  defp result!(handed, sequence, document),
-    do:
-      result_event!(handed.run, sequence, %{
-        "is_error" => false,
-        "result" => Jason.encode!(document)
-      })
+  # What the run pushes through the run API: a proposal, or questions.
+  defp proposal!(handed),
+    do: push_result!(queue_run!(handed), run!(handed), understood_result())
 
-  defp exited!(handed, sequence),
+  defp questions!(handed, texts \\ ["Which basket?", "Which sale?"]),
+    do: push_result!(queue_run!(handed), run!(handed), questions_result(texts))
+
+  defp exited!(handed, sequence, state \\ "succeeded"),
     do:
       event_fixture(handed.run, sequence, "run.exited", %{
-        "state" => "succeeded",
-        "exit_code" => 0
+        "state" => state,
+        "exit_code" => if(state == "succeeded", do: 0, else: 1)
       })
 
   # An outcome given before a run of the queue was refused one, as the rows written then
@@ -95,6 +95,17 @@ defmodule Apiary.Dispatches.SettleTest do
   defp subscribe!(ctx),
     do: Phoenix.PubSub.subscribe(Apiary.PubSub, WorkItems.topic(ctx.scope.workspace.id))
 
+  # The stored copy of the newest questions file of the run's work item moved away until
+  # the test ends, as a store that cannot read it: the stored copy's path.
+  defp unreadable!(handed) do
+    {version, _document} = Apiary.Explore.Questions.newest(work_item!(handed))
+    [file] = version.files
+    {:ok, path} = Apiary.Artifacts.open_file(file)
+    File.rename!(path, path <> ".away")
+    on_exit(fn -> File.rename(path <> ".away", path) end)
+    path
+  end
+
   # The run's events gone and marked so, as retention leaves them.
   defp prune!(handed) do
     Repo.delete_all(from e in Event, where: e.run_id == ^handed.run.id)
@@ -105,40 +116,26 @@ defmodule Apiary.Dispatches.SettleTest do
   end
 
   describe "the end and a projection" do
-    test "the outcome first, then the exit's fold: stored by the projection, and told", ctx do
+    test "the outcome's end stores the proposal the run pushed, and tells", ctx do
       handed = handed_over!(ctx)
+      proposal!(handed)
+      subscribe!(ctx)
       outcome!(ctx, handed)
 
-      # Ended by its outcome, no result yet and not settled: nothing stored.
       assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
-      assert stored(handed) == {nil, nil}
-      ended_at = queue_run!(handed).updated_at
-
-      subscribe!(ctx)
-      result!(handed, 8, understood_result())
-      exited!(handed, 9)
-      project!(handed)
-
-      assert {:proposal, %{"verdict" => "understood"}} = stored(handed)
-      assert queue_run!(handed).updated_at == ended_at
+      assert stored(handed) == {:proposal, nil}
       public_id = work_item!(handed).public_id
       assert_receive {:work_items_changed, [^public_id]}
-    end
 
-    test "a result folded before the outcome: stored by the outcome's end", ctx do
-      handed = handed_over!(ctx)
-      result!(handed, 8, questions_result())
+      # The exit's fold that follows finds it stored, and changes nothing.
+      ended_at = queue_run!(handed).updated_at
+      exited!(handed, 9)
       project!(handed)
-      assert stored(handed) == {nil, nil}
-
-      outcome!(ctx, handed)
-
-      assert {:questions,
-              %{"questions" => [%{"question" => "Which basket?"}, %{"question" => "Which sale?"}]}} =
-               stored(handed)
+      assert stored(handed) == {:proposal, nil}
+      assert queue_run!(handed).updated_at == ended_at
     end
 
-    test "the exit first: stored by its end, with no result an outcome of none", ctx do
+    test "the exit first: stored by its end, with no artifact an outcome of none", ctx do
       handed = handed_over!(ctx)
       exited!(handed, 9)
       project!(handed)
@@ -152,6 +149,76 @@ defmodule Apiary.Dispatches.SettleTest do
       assert queue_run!(handed).updated_at == ended_at
     end
 
+    test "open questions come before a proposal, and before a run that failed", ctx do
+      asked = handed_over!(ctx)
+      proposal!(asked)
+      questions!(asked)
+      exited!(asked, 9)
+      project!(asked)
+      assert stored(asked) == {:questions, nil}
+
+      failed = handed_over!(ctx)
+      questions!(failed)
+      exited!(failed, 9, "failed")
+      project!(failed)
+      assert stored(failed) == {:questions, nil}
+    end
+
+    test "a proposal under a name other than main: none, as Explore reads main alone", ctx do
+      handed = handed_over!(ctx)
+      dispatch_run = queue_run!(handed)
+
+      {:ok, _version} =
+        Apiary.Artifacts.push(
+          {:run, dispatch_run},
+          work_item!(handed),
+          "proposal",
+          [%{filename: "draft.md", content_type: "text/markdown", binary: "A draft."}],
+          name: "draft",
+          stage_id: dispatch_run.stage_id
+        )
+
+      exited!(handed, 9)
+      project!(handed)
+      assert stored(handed) == {:none, nil}
+    end
+
+    test "a proposal from a run that failed: none", ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      exited!(handed, 9, "failed")
+      project!(handed)
+      assert stored(handed) == {:none, nil}
+    end
+
+    test "a proposal of an earlier run of the take in counts; answered questions do not",
+         ctx do
+      handed = handed_over!(ctx)
+      questions!(handed, ["Which basket?"])
+      exited!(handed, 9)
+      project!(handed)
+      assert stored(handed) == {:questions, nil}
+      work_item = work_item!(handed)
+
+      assert {:ok, _answered} =
+               WorkItems.answer(ctx.scope, work_item, 1, %{"1" => "The small one."})
+
+      %DispatchRun{} = queued = Repo.get_by!(DispatchRun, work_item_id: work_item.id, attempt: 2)
+      second = handed_over(ctx.scope, ctx.key, queued, %{})
+      proposal!(second)
+      exited!(second, 9)
+      project!(second)
+      assert stored(second) == {:proposal, nil}
+
+      # A run of another workflow reads its artifacts itself: none.
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^second.dispatch_run.id),
+        set: [result_outcome: nil, workflow: "review"]
+      )
+
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert stored(second) == {:none, nil}
+    end
+
     test "the exit folded, its end not yet written: the outcome's end stores it", ctx do
       handed = handed_over!(ctx)
 
@@ -163,56 +230,280 @@ defmodule Apiary.Dispatches.SettleTest do
       assert stored(handed) == {:none, nil}
     end
 
-    test "a result event that says an error, or that the check refuses", ctx do
-      errored = handed_over!(ctx)
-      result_event!(errored.run, 8, %{"is_error" => true, "result" => "{}"})
-      exited!(errored, 9)
-      project!(errored)
-      assert stored(errored) == {:error, nil}
+    test "an answer after the run ended changes no outcome stored", ctx do
+      handed = handed_over!(ctx)
+      questions!(handed)
+      exited!(handed, 9)
+      project!(handed)
+      assert stored(handed) == {:questions, nil}
 
-      refused = handed_over!(ctx)
-      result_event!(refused.run, 8, %{"is_error" => false, "result" => "not json"})
-      exited!(refused, 9)
-      project!(refused)
-      assert stored(refused) == {:refused, nil}
+      assert {:ok, _answered} =
+               WorkItems.answer(ctx.scope, work_item!(handed), 1, %{
+                 "1" => "The small one.",
+                 "2" => "The spring sale."
+               })
+
+      # A later settle of the same run, as a projection's, reads the questions answered,
+      # and keeps what the run gave.
+      assert Settle.settle(handed.dispatch_run.id) == []
+      assert stored(handed) == {:questions, nil}
     end
   end
 
   describe "the sweep" do
-    test "no exit: nothing until 600 s after the outcome, then the sweep stores none", ctx do
+    test "stores what a run ended with no outcome stored gave, once, and tells", ctx do
       handed = handed_over!(ctx)
-      %Run{outcome_received_at: received_at} = outcome!(ctx, handed)
+      proposal!(handed)
+      exited!(handed, 9)
+      project!(handed)
       ended_at = queue_run!(handed).updated_at
 
-      assert Settle.sweep(DateTime.add(received_at, 599, :second)) == []
-      assert stored(handed) == {nil, nil}
+      # A row ended before outcomes were read from artifacts, or whose settle failed.
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^handed.dispatch_run.id),
+        set: [result_outcome: nil]
+      )
 
       subscribe!(ctx)
-      Liveness.check(DateTime.add(received_at, 600, :second))
-      assert stored(handed) == {:none, nil}
+      Liveness.check(Dispatches.now())
+      assert stored(handed) == {:proposal, nil}
       assert queue_run!(handed).updated_at == ended_at
       public_id = work_item!(handed).public_id
       assert_receive {:work_items_changed, [^public_id]}
 
       # Settled, it is not read again.
-      assert Settle.sweep(DateTime.add(received_at, 700, :second)) == []
+      assert Settle.sweep(DateTime.add(Dispatches.now(), 700, :second)) == []
     end
 
-    test "a run lost, or whose events were pruned, is settled at once", ctx do
-      lost = handed_over!(ctx)
-      outcome!(ctx, lost)
+    test "a run whose newest questions cannot be read is left unset, and settled once they can",
+         ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      # A question no other test asks, so no other test stores the same file.
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
 
-      Repo.update_all(from(r in Run, where: r.id == ^lost.run.id),
-        set: [state: "lost", lost_at: DateTime.utc_now()]
+      {version, _document} = Apiary.Explore.Questions.newest(work_item!(handed))
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The end reads no open question it can trust: no proposal or none is kept for good.
+      exited!(handed, 9)
+      log = ExUnit.CaptureLog.capture_log(fn -> project!(handed) end)
+      assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
+      assert stored(handed) == {nil, nil}
+
+      assert log =~
+               "run outcome not stored, newest questions unreadable " <>
+                 "dispatch_run=#{handed.dispatch_run.id} " <>
+                 "work_item=#{work_item!(handed).public_id} questions_version=#{version.public_id}"
+
+      # The sweep reads it again within the hour, in the same process: no second line.
+      log = ExUnit.CaptureLog.capture_log(fn -> assert Settle.sweep(Dispatches.now()) == [] end)
+      refute log =~ "dispatch_run=#{handed.dispatch_run.id}"
+      assert stored(handed) == {nil, nil}
+
+      File.rename!(path <> ".away", path)
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert stored(handed) == {:questions, nil}
+      assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
+    test "reads after where the sweep before stopped, so runs left unset fill no batch",
+         ctx do
+      # Two runs ended with questions, their outcome unset; the first by id cannot have its
+      # questions read.
+      [first, second] =
+        [handed_over!(ctx), handed_over!(ctx)]
+        |> Enum.map(fn handed ->
+          questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+          exited!(handed, 9)
+          project!(handed)
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^handed.dispatch_run.id),
+            set: [result_outcome: nil]
+          )
+
+          handed
+        end)
+        |> Enum.sort_by(& &1.dispatch_run.id)
+
+      unreadable!(first)
+      now = Dispatches.now()
+
+      # One run a sweep: the first is read and stays unset.
+      {result, log} = ExUnit.CaptureLog.with_log(fn -> Settle.sweep(now, nil, 1) end)
+      assert {[], next} = result
+      assert next == first.dispatch_run.id
+      assert log =~ "dispatch_run=#{first.dispatch_run.id}"
+      assert stored(first) == {nil, nil}
+      assert stored(second) == {nil, nil}
+
+      # The next sweep reads after it, and settles the second.
+      assert {[_], next} = Settle.sweep(now, next, 1)
+      assert next == second.dispatch_run.id
+      assert stored(second) == {:questions, nil}
+
+      # Fewer than the limit read: the sweep after starts from the first id again.
+      assert {[], nil} = Settle.sweep(now, next, 1)
+
+      # The process's tick keeps the id the sweep stopped at.
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^second.dispatch_run.id),
+        set: [result_outcome: nil]
       )
 
-      pruned = handed_over!(ctx)
-      outcome!(ctx, pruned)
-      prune!(pruned)
+      state = %{interval: :timer.hours(1), cursors: %{settle: first.dispatch_run.id}}
+      assert {:noreply, %{cursors: %{settle: nil}}} = Liveness.handle_info(:tick, state)
+      assert stored(second) == {:questions, nil}
+      assert stored(first) == {nil, nil}
+    end
 
-      assert [_, _] = Settle.sweep(Dispatches.now())
-      assert stored(lost) == {:none, nil}
-      assert stored(pruned) == {:none, nil}
+    test "a run whose events were pruned is settled from its artifacts", ctx do
+      handed = handed_over!(ctx)
+      questions!(handed)
+      outcome!(ctx, handed)
+      prune!(handed)
+
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^handed.dispatch_run.id),
+        set: [result_outcome: nil]
+      )
+
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert stored(handed) == {:questions, nil}
+    end
+  end
+
+  describe "a run lost by the check" do
+    test "with questions left open: stored as questions", ctx do
+      handed = handed_over!(ctx)
+      questions!(handed)
+      Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+
+      assert %DispatchRun{end_cause: :lost, result_outcome: :questions} = queue_run!(handed)
+    end
+
+    # The stage runner reads the questions at the end (`Apiary.Stages`): it raises, the
+    # end's transaction rolls back, and the next check ends the run again.
+    @tag needs: [:factory, :workflow_model]
+    test "with its newest questions unreadable: not ended, then ended at a check after",
+         ctx do
+      handed = handed_over!(ctx)
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+      path = unreadable!(handed)
+      lost_at = DateTime.add(handed.run.backstop_at, 1, :second)
+      id = handed.dispatch_run.id
+
+      # Two reads of the questions, one line each: Settle's, then the stage runner's.
+      log = ExUnit.CaptureLog.capture_log(fn -> Liveness.check(lost_at) end)
+      assert log =~ "run outcome not stored, newest questions unreadable dispatch_run=#{id} "
+      assert log =~ "run end failed dispatch_run=#{id} error=Apiary.Stages.QuestionsUnreadable"
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      # The next tick, within the hour, reads the run again and writes neither line.
+      log = ExUnit.CaptureLog.capture_log(fn -> Liveness.check(lost_at) end)
+      refute log =~ "dispatch_run=#{id}"
+      assert %DispatchRun{state: :handed_over} = queue_run!(handed)
+
+      File.rename!(path <> ".away", path)
+      Liveness.check(lost_at)
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: :questions} =
+               queue_run!(handed)
+
+      assert %WorkItem{stage_state: :waiting_answers} = work_item!(handed)
+      # Ended and settled, the run is no longer kept for its lines.
+      assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
+    # A lost run the stage runner does not read, as its stage is not running: Settle's
+    # read alone logs, and the run ends with no outcome.
+    @tag needs: [:factory, :workflow_model]
+    test "with its newest questions unreadable and its stage not running: ended, one line",
+         ctx do
+      handed = handed_over!(ctx)
+      questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+      unreadable!(handed)
+      id = handed.dispatch_run.id
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^handed.dispatch_run.work_item_id),
+        set: [stage_state: :waiting_answers]
+      )
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+        end)
+
+      assert log =~ "run outcome not stored, newest questions unreadable dispatch_run=#{id} "
+      refute log =~ "run end failed dispatch_run=#{id}"
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: nil} =
+               queue_run!(handed)
+    end
+
+    # Runs whose end raises at every tick, more than one batch of them, keep no run after
+    # them from its end: each call reads after where the call before stopped, and logs one
+    # line per run it read.
+    @tag needs: [:factory, :workflow_model]
+    test "runs whose questions stay unreadable keep no later run from its end", ctx do
+      runs =
+        for _n <- 1..4 do
+          handed = handed_over!(ctx)
+          questions!(handed, ["Which basket #{System.unique_integer([:positive])}?"])
+          handed
+        end
+        |> Enum.sort_by(& &1.dispatch_run.id)
+
+      # The first three by id are stuck; the last can be ended.
+      [one, two, three, last] = runs
+      Enum.each([one, two, three], &unreadable!/1)
+      # Past every run's deadline for its exit, so each is lost.
+      lost_at =
+        runs |> Enum.map(& &1.run.backstop_at) |> Enum.max(DateTime) |> DateTime.add(1, :second)
+
+      lines = fn log, handed ->
+        log
+        |> String.split("run end failed dispatch_run=#{handed.dispatch_run.id}")
+        |> length()
+        |> Kernel.-(1)
+      end
+
+      # A batch of two: the first two, both stuck.
+      {{[], next}, log} = ExUnit.CaptureLog.with_log(fn -> RunEnd.lose(lost_at, nil, 2) end)
+      assert next == two.dispatch_run.id
+      assert {lines.(log, one), lines.(log, two), lines.(log, three)} == {1, 1, 0}
+      assert queue_run!(last).state == :handed_over
+
+      # After them: the third, stuck, and the last, which ends.
+      {{[_ | _], next_after}, log} =
+        ExUnit.CaptureLog.with_log(fn -> RunEnd.lose(lost_at, next, 2) end)
+
+      assert next_after == last.dispatch_run.id
+      assert {lines.(log, three), lines.(log, last)} == {1, 0}
+
+      assert %DispatchRun{state: :ended, end_cause: :lost, result_outcome: :questions} =
+               queue_run!(last)
+
+      # Fewer than two after the last: the next call starts from the first id again.
+      assert {[], nil} = RunEnd.lose(lost_at, next_after, 2)
+      assert Enum.all?([one, two, three], &(queue_run!(&1).state == :handed_over))
+
+      # The process's tick keeps the id the call stopped at.
+      state = %{interval: :timer.hours(1), cursors: %{lose: two.dispatch_run.id}}
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:noreply, %{cursors: %{lose: nil}}} = Liveness.handle_info(:tick, state)
+      end)
+    end
+
+    test "with a proposal and no open question: nothing stored", ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+
+      assert %DispatchRun{end_cause: :lost, result_outcome: nil} = queue_run!(handed)
+      assert Settle.settle(handed.dispatch_run.id) == []
     end
   end
 
@@ -220,7 +511,6 @@ defmodule Apiary.Dispatches.SettleTest do
     test "a prebuild, whatever ends it", ctx do
       place = handover_place_fixture(ctx.scope)
       handed = prebuild_handed_over!(ctx.scope, place.key)
-      result!(handed, 8, understood_result())
       event_fixture(handed.run, 9, "run.exited", %{"state" => "failed", "exit_code" => 1})
       project!(handed)
 
@@ -231,7 +521,7 @@ defmodule Apiary.Dispatches.SettleTest do
       assert stored(handed) == {nil, nil}
     end
 
-    test "a run closed or undone, and one lost by the check", ctx do
+    test "a run closed or undone, and one lost by the check with nothing open", ctx do
       lost = handed_over!(ctx)
       Liveness.check(DateTime.add(lost.run.backstop_at, 1, :second))
       assert %DispatchRun{end_cause: :lost} = queue_run!(lost)
@@ -264,184 +554,14 @@ defmodule Apiary.Dispatches.SettleTest do
     end
   end
 
-  describe "a result that comes later" do
-    test "replaces what was stored, and an error after it clears the result", ctx do
-      handed = handed_over!(ctx)
-      exited!(handed, 9)
-      project!(handed)
-      assert stored(handed) == {:none, nil}
-
-      result!(handed, 10, understood_result())
-      project!(handed)
-      assert {:proposal, %{"verdict" => "understood"}} = stored(handed)
-
-      result!(handed, 11, questions_result(["Which shelf?"]))
-      project!(handed)
-
-      assert {:questions, %{"questions" => [%{"question" => "Which shelf?", "options" => []}]}} =
-               stored(handed)
-
-      result_event!(handed.run, 12, %{"is_error" => true})
-      project!(handed)
-      assert stored(handed) == {:error, nil}
-    end
-  end
-
-  describe "a stored proposal, then the run settles" do
-    # What the row holds, where the page and Explore.status/2 put the run, the status in
-    # SQL, and what the rule of the latest result event gives
-    # (`Apiary.Explore.Result.given/3`), at `at`.
-    defp reads(ctx, handed, at) do
-      work_item = work_item!(handed)
-      page = WorkItems.explore(ctx.scope, work_item, at)
-
-      latest =
-        Repo.one(
-          from e in Event,
-            where: e.run_id == ^handed.run.id and e.type == "dev.qory.runtime.result",
-            order_by: [desc: e.sequence],
-            limit: 1
-        )
-
-      rule =
-        case Result.given(run!(handed), latest, at) do
-          {verdict, %{}} -> verdict
-          other -> other
-        end
-
-      %{
-        stored: stored(handed),
-        status: Explore.current(work_item, at).status,
-        page: {page.status, page.run.place, page.run.outcome},
-        sql: Map.fetch!(Explore.statuses([work_item.id]), work_item.id),
-        rule: rule
-      }
-    end
-
-    test "a later result without a verdict, no exit: running, then at 600 s what it gave",
-         ctx do
-      for {data, outcome} <- [
-            {%{"is_error" => true, "result" => "{}"}, :error},
-            {%{"is_error" => false}, :none},
-            {%{"is_error" => false, "result" => "not json"}, :refused}
-          ] do
-        handed = handed_over!(ctx)
-        %Run{outcome_received_at: received_at} = outcome!(ctx, handed)
-        at = &DateTime.add(received_at, &1, :second)
-
-        result!(handed, 8, understood_result())
-        project!(handed)
-
-        assert %{
-                 stored: {:proposal, %{}},
-                 status: :confirm,
-                 page: {:confirm, :proposal, :proposal},
-                 sql: :confirm,
-                 rule: :proposal
-               } = reads(ctx, handed, at.(60))
-
-        # The run withdraws it before it settles: what was stored is cleared, and told.
-        subscribe!(ctx)
-        result_event!(handed.run, 9, data)
-        project!(handed)
-        public_id = work_item!(handed).public_id
-        assert_receive {:work_items_changed, [^public_id]}
-
-        assert reads(ctx, handed, at.(599)) == %{
-                 stored: {nil, nil},
-                 status: :running,
-                 page: {:running, :running, nil},
-                 sql: :running,
-                 rule: :unsettled
-               }
-
-        assert Settle.sweep(at.(599)) == []
-        Liveness.check(at.(600))
-
-        assert reads(ctx, handed, at.(600)) == %{
-                 stored: {outcome, nil},
-                 status: :no_result,
-                 page: {:no_result, :no_result, outcome},
-                 sql: :no_result,
-                 rule: outcome
-               }
-      end
-    end
-
-    test "the run lost after a proposal: the proposal stands, as its result decides", ctx do
-      handed = handed_over!(ctx)
-      outcome!(ctx, handed)
-      result!(handed, 8, understood_result())
-      project!(handed)
-
-      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
-        set: [state: "lost", lost_at: DateTime.utc_now()]
-      )
-
-      now = Dispatches.now()
-      Liveness.check(now)
-
-      assert %{
-               stored: {:proposal, %{}},
-               status: :confirm,
-               page: {:confirm, :proposal, :proposal},
-               sql: :confirm,
-               rule: :proposal
-             } = reads(ctx, handed, now)
-    end
-
-    test "the run lost after a proposal it withdrew: lost, what the latest result gave stored",
-         ctx do
-      handed = handed_over!(ctx)
-      outcome!(ctx, handed)
-      result!(handed, 8, understood_result())
-      project!(handed)
-      assert {:proposal, %{}} = stored(handed)
-      result_event!(handed.run, 9, %{"is_error" => true})
-      project!(handed)
-      assert stored(handed) == {nil, nil}
-
-      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
-        set: [state: "lost", lost_at: DateTime.utc_now()]
-      )
-
-      now = Dispatches.now()
-      Liveness.check(now)
-
-      assert reads(ctx, handed, now) == %{
-               stored: {:error, nil},
-               status: :lost,
-               page: {:lost, :lost, nil},
-               sql: :lost,
-               rule: :error
-             }
-    end
-
-    test "a run lost by the check before its outcome, its proposal folded: lost, nothing stored",
-         ctx do
-      handed = handed_over!(ctx)
-      result!(handed, 8, understood_result())
-      project!(handed)
-      at = DateTime.add(handed.run.backstop_at, 1, :second)
-      Liveness.check(at)
-
-      assert %DispatchRun{end_cause: :lost} = queue_run!(handed)
-
-      assert %{stored: {nil, nil}, status: :lost, page: {:lost, :lost, nil}, sql: :lost} =
-               reads(ctx, handed, at)
-    end
-  end
-
   describe "clear/1, for a settle that failed" do
-    test "clears what the row holds, and the sweep stores it again with the latest result",
-         ctx do
+    test "clears what the row holds, and the sweep stores it again", ctx do
       handed = handed_over!(ctx)
+      proposal!(handed)
       exited!(handed, 9)
       project!(handed)
-      assert stored(handed) == {:none, nil}
+      assert stored(handed) == {:proposal, nil}
 
-      # A late result whose settle failed: the event is stored, the row still says none.
-      result!(handed, 10, understood_result())
       subscribe!(ctx)
       assert [{:work_item, _, public_id}] = Settle.clear(handed.dispatch_run.id)
       assert public_id == work_item!(handed).public_id
@@ -449,7 +569,7 @@ defmodule Apiary.Dispatches.SettleTest do
       assert Settle.clear(handed.dispatch_run.id) == []
 
       assert [_] = Settle.sweep(Dispatches.now())
-      assert {:proposal, %{"verdict" => "understood"}} = stored(handed)
+      assert stored(handed) == {:proposal, nil}
     end
 
     test "leaves a run its handover could not form as it is", ctx do
@@ -461,40 +581,59 @@ defmodule Apiary.Dispatches.SettleTest do
     end
   end
 
-  describe "the result kept" do
-    test "a proposal reads from the run once its events are pruned, and is confirmed", ctx do
+  describe "what the pages read" do
+    # Where the page, Explore.current/2 and the status in SQL put the run, at `at`.
+    defp reads(ctx, handed, at) do
+      work_item = work_item!(handed)
+      page = WorkItems.explore(ctx.scope, work_item, at)
+
+      %{
+        status: Explore.current(work_item, at).status,
+        page: {page.status, page.run.place, page.run.outcome},
+        sql: Map.fetch!(Explore.statuses([work_item.id]), work_item.id)
+      }
+    end
+
+    test "a proposal, its events pruned: the gate, and confirmed", ctx do
       handed = handed_over!(ctx)
-      result!(handed, 8, understood_result())
+      proposal!(handed)
       exited!(handed, 9)
       project!(handed)
       prune!(handed)
       work_item = work_item!(handed)
 
-      assert %{
+      assert reads(ctx, handed, Dispatches.now()) == %{
                status: :confirm,
-               run: %{place: :proposal, proposal: %{message: "## What this is" <> _}}
-             } =
+               page: {:confirm, :proposal, :proposal},
+               sql: :confirm
+             }
+
+      assert %{run: %{proposal: %{message: "## What this is" <> _}}} =
                WorkItems.explore(ctx.scope, work_item)
 
       assert [_ | _] = WorkItems.explore_thread(ctx.scope, work_item)
       assert {:ok, _confirmed} = WorkItems.confirm(ctx.scope, work_item, 1)
 
-      assert %Confirmation{result: %{"verdict" => "understood"}} =
+      assert %Confirmation{result: %{"proposal_version" => 1}} =
                Repo.get_by!(Confirmation, work_item_id: work_item.id)
     end
 
-    test "questions read from the run once its events are pruned, and are answered", ctx do
+    test "questions, its events pruned: the questions, and answered", ctx do
       handed = handed_over!(ctx)
-      result!(handed, 8, questions_result())
+      questions!(handed)
       exited!(handed, 9)
       project!(handed)
       prune!(handed)
       work_item = work_item!(handed)
 
-      assert %{
+      assert reads(ctx, handed, Dispatches.now()) == %{
                status: :questions,
-               run: %{questions: [%{text: "Which basket?"}, %{text: "Which sale?"}]}
-             } = WorkItems.explore(ctx.scope, work_item)
+               page: {:questions, :questions, :questions},
+               sql: :questions
+             }
+
+      assert %{run: %{questions: [%{text: "Which basket?"}, %{text: "Which sale?"}]}} =
+               WorkItems.explore(ctx.scope, work_item)
 
       assert [_ | _] = WorkItems.explore_thread(ctx.scope, work_item)
 
@@ -503,6 +642,18 @@ defmodule Apiary.Dispatches.SettleTest do
                  "1" => "The small one.",
                  "2" => "The spring sale."
                })
+    end
+
+    test "a proposal, then the run lost: lost", ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      at = DateTime.add(handed.run.backstop_at, 1, :second)
+      Liveness.check(at)
+
+      assert %DispatchRun{end_cause: :lost} = queue_run!(handed)
+
+      assert %{stored: {nil, nil}, status: :lost, page: {:lost, :lost, nil}, sql: :lost} =
+               Map.put(reads(ctx, handed, at), :stored, stored(handed))
     end
   end
 end

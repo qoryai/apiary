@@ -18,6 +18,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Edition, EditionStubs, Repo, WorkItems}
+  alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Runs.Projector
   alias Apiary.WorkItems.WorkItem
 
@@ -49,6 +50,43 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
   defp state(work_item), do: Repo.get!(WorkItem, work_item.id).state
 
+  # Runs `push` with the run of the queue `dispatch_run` live, as a run pushes before it
+  # ends (`Apiary.Artifacts.push/5` returns `{:error, :run_ended}` for a run that
+  # ended), then sets the run back to its state, end and outcome.
+  defp while_live(dispatch_run, push) do
+    was = Repo.get!(DispatchRun, dispatch_run.id)
+    set_run!(was, state: :handed_over, end_cause: nil, result_outcome: nil, result: nil)
+    value = push.()
+
+    set_run!(
+      was,
+      Keyword.new([:state, :end_cause, :result_outcome, :result], &{&1, Map.fetch!(was, &1)})
+    )
+
+    value
+  end
+
+  defp set_run!(dispatch_run, changes) do
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id), set: changes)
+  end
+
+  # How many runs of the queue the work item has.
+  defp runs(work_item),
+    do: Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+
+  # The answers of the newest questions, in order: `{option, note}` each.
+  defp answered(work_item) do
+    case Apiary.Explore.Questions.newest(work_item) do
+      {_version, document} ->
+        for %{"state" => "answered", "answer" => answer} <- document["questions"],
+            do: {answer["option"], answer["note"]}
+
+      nil ->
+        []
+    end
+  end
+
   describe "the tabs" do
     test "Ticket, Explore and the Thread, with the header, the step card and Details", %{
       conn: conn,
@@ -56,7 +94,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     } do
       work_item = queued(scope)
 
-      {:ok, view, html} = live(conn, page(scope, work_item.number))
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/ticket"))
       assert html =~ "The checkout keeps the old price"
       assert has_element?(view, "#work-item-head-title")
       assert has_element?(view, "#work-item-step")
@@ -72,6 +110,131 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert_patch(view, page(scope, work_item.number, "/thread"))
       assert has_element?(view, "#work-item-thread-ev-1")
       assert render(view) =~ "You took this in from"
+    end
+
+    # Every place that links to a work item uses the address with no tab: the Work items
+    # list and board, the Backlog's Take in and its ticket page, a run's page, Activity, a
+    # version's page and its Add a version page, and the link Copy in the header.
+    test "an address with no tab opens on Explore's tab while the stage is Explore", %{
+      conn: conn,
+      scope: scope
+    } do
+      running = work_item_fixture(scope)
+      explore_run_fixture(running, state: :handed_over)
+      {asked, _run} = asked(scope)
+      {at_gate, _run} = proposed(scope)
+
+      ended =
+        for {status, runs} <- [
+              no_result: [[]],
+              lost: [[end_cause: :lost]],
+              cancelled: [[end_cause: :released]],
+              used_up: List.duplicate([end_cause: :lost], 3)
+            ] do
+          work_item = work_item_fixture(scope)
+
+          for opts <- runs do
+            %{dispatch_run: dispatch_run} = explore_run_fixture(work_item, opts)
+            Settle.settle(dispatch_run.id)
+          end
+
+          read = Repo.get!(WorkItem, work_item.id)
+          assert %{status: ^status} = WorkItems.explore(scope, read, DateTime.utc_now())
+          work_item
+        end
+
+      for work_item <- [queued(scope), running, asked, at_gate | ended] do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+        assert has_element?(view, "#work-item-explore")
+        refute has_element?(view, "#work-item-ticket-text")
+        assert has_element?(view, ~s(#work-item-tabs a[aria-current="page"]), "Explore")
+        refute has_element?(view, ~s(#work-item-tabs a[aria-current="page"]), "Thread")
+      end
+    end
+
+    test "the crumb links the tab the work item opens on, from another tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      crumb = fn view, href ->
+        has_element?(view, ~s(#breadcrumb a[href="#{href}"]), "Work item #")
+      end
+
+      {at_explore, _run} = proposed(scope)
+      explore = page(scope, at_explore.number, "/explore")
+
+      {:ok, view, _html} = live(conn, page(scope, at_explore.number, "/ticket"))
+      assert crumb.(view, explore)
+
+      {:ok, view, _html} = live(conn, explore)
+      refute has_element?(view, "#breadcrumb a", "Work item #")
+
+      {past, _run} = proposed(scope)
+      {:ok, _} = WorkItems.confirm(scope, past, 1)
+      ticket = page(scope, past.number, "/ticket")
+
+      {:ok, view, _html} = live(conn, page(scope, past.number, "/thread"))
+      assert crumb.(view, ticket)
+
+      {:ok, view, _html} = live(conn, ticket)
+      refute has_element?(view, "#breadcrumb a", "Work item #")
+    end
+
+    test "an address that names a tab keeps it: Ticket has an address, and a reload stays", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = queued(scope)
+      ticket = page(scope, work_item.number, "/ticket")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, ~s(#work-item-tabs a[href="#{ticket}"]))
+      view |> element("#work-item-tabs a", "Ticket") |> render_click()
+      assert_patch(view, ticket)
+      assert has_element?(view, "#work-item-ticket-text")
+      refute has_element?(view, "#work-item-explore")
+
+      {:ok, view, _html} = live(conn, ticket)
+      assert has_element?(view, "#work-item-ticket-text")
+      refute has_element?(view, "#work-item-explore")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/thread"))
+      assert has_element?(view, "#work-item-thread-ev-1")
+      refute has_element?(view, "#work-item-explore")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert has_element?(view, "#work-item-explore")
+    end
+
+    test "an address with no tab opens on the Ticket tab once the work item left Explore", %{
+      conn: conn,
+      scope: scope
+    } do
+      {closed, _run} = proposed(scope)
+      {:ok, _} = WorkItems.close(scope, closed)
+
+      {confirmed, _run} = proposed(scope)
+      {:ok, _} = WorkItems.confirm(scope, confirmed, 1)
+
+      for work_item <- [closed, confirmed] do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+        assert has_element?(view, "#work-item-ticket-text")
+        refute has_element?(view, "#work-item-explore")
+      end
+    end
+
+    test "a read while the page is open leaves the tab where it is", %{conn: conn, scope: scope} do
+      {work_item, _run} = proposed(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-explore")
+
+      {:ok, _} = WorkItems.close(scope, work_item)
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+
+      assert has_element?(view, "#work-item-explore")
+      refute has_element?(view, "#work-item-ticket-text")
     end
 
     test "the ticket's title as a page shows it, and none where nothing is left", %{
@@ -126,7 +289,8 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       end
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
-      assert has_element?(view, "#work-item-explore-run", "Attempt 1 of 3")
+      assert has_element?(view, "#work-item-explore-run", "Attempt 1")
+      refute has_element?(view, "#work-item-explore-run", "of 3")
       assert has_element?(view, "#work-item-explore-run", "Queued")
     end
 
@@ -144,65 +308,67 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
   end
 
   describe "the answers" do
-    test "the form sends the options and texts alone, and the next run is queued", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "the form sends an option, an option with a note, and a note alone; the next run is queued",
+         %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
 
       explore_run_fixture(work_item,
         result:
           questions_result([
             %{
-              "question" => "Which basket?",
+              "question" => "Which currency should the invoice PDF show?",
               "options" => [
-                %{"title" => "The one at checkout", "explanation" => "Where people pay."},
-                %{"title" => "The saved one", "explanation" => "Kept for later."}
+                %{"title" => "The order's currency", "explanation" => "What the customer paid."},
+                %{"title" => "The shop's currency", "explanation" => "What the books keep."}
               ]
             },
-            "Which sale?"
+            %{
+              "question" => "Should the credit note PDF change too?",
+              "options" => [%{"title" => "Yes", "explanation" => "Both use one template."}]
+            },
+            "Which invoices are affected?"
           ])
       )
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
       assert has_element?(view, "#work-item-explore-questions-answer-1-options[role=radiogroup]")
+      assert has_element?(view, "#work-item-explore-questions-answer-1-own[value=own]")
 
       view
       |> element("#work-item-explore-questions-form")
       |> render_submit(%{
         "number" => Integer.to_string(work_item.number),
         "answers" => %{
-          "1" => %{"option" => "The one at checkout", "custom" => "", "x" => "y"},
-          "2" => %{"custom" => "The spring sale."},
-          "x" => %{"custom" => "y"}
+          "q1" => %{"option" => "1", "note" => "", "x" => "y"},
+          "q2" => %{"option" => "1", "note" => "Only for bank refunds."},
+          "q3" => %{"note" => "Every invoice since 1 October."},
+          "x" => %{"note" => "y"}
         },
-        "_unused_answers[1][custom]" => "",
         "other" => "z"
       })
 
-      assert [%{answer: "The one at checkout"}, %{answer: "The spring sale."}] =
-               Repo.all(
-                 from a in Apiary.WorkItems.Answer,
-                   where: a.work_item_id == ^work_item.id,
-                   order_by: a.position
-               )
+      assert answered(work_item) == [
+               {"The order's currency", nil},
+               {"Yes", "Only for bank refunds."},
+               {nil, "Every invoice since 1 October."}
+             ]
 
+      assert runs(work_item) == 2
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
+      refute has_element?(view, "#work-item-explore-questions-form")
     end
 
-    test "choosing an option clears the text, and typing clears the option", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "Give your own option needs the field: the error under it, the draft kept, nothing written",
+         %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
 
       explore_run_fixture(work_item,
         result:
           questions_result([
             %{
-              "question" => "Which basket?",
+              "question" => "Which currency should the invoice PDF show?",
               "options" => [
-                %{"title" => "The one at checkout", "explanation" => "Where people pay."}
+                %{"title" => "The order's currency", "explanation" => "What the customer paid."}
               ]
             }
           ])
@@ -210,72 +376,123 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
       form = element(view, "#work-item-explore-questions-form")
+      field = "#work-item-explore-questions-answer-1"
 
-      render_change(form, %{
-        "_target" => ["answers", "1", "custom"],
-        "answers" => %{"1" => %{"option" => "The one at checkout", "custom" => "Mine."}}
-      })
+      assert has_element?(view, ~s|#{field}[placeholder="Add details (optional)"]|)
 
-      refute has_element?(view, "#work-item-explore-questions-answer-1-1[checked]")
-      assert has_element?(view, "#work-item-explore-questions-answer-1", "Mine.")
+      render_change(form, %{"answers" => %{"q1" => %{"option" => "own", "note" => ""}}})
+      assert has_element?(view, ~s(#{field}[placeholder="Your option"][aria-label="Your option"]))
+      assert has_element?(view, "#{field}-own[checked]")
 
-      render_change(form, %{
-        "_target" => ["answers", "1", "option"],
-        "answers" => %{"1" => %{"option" => "The one at checkout", "custom" => "Mine."}}
-      })
-
-      assert has_element?(view, "#work-item-explore-questions-answer-1-1[checked]")
-      refute has_element?(view, "#work-item-explore-questions-answer-1", "Mine.")
-
-      # A send with both, before the last change reached the page, keeps the draft's.
       render_submit(form, %{
         "number" => Integer.to_string(work_item.number),
-        "answers" => %{"1" => %{"option" => "The one at checkout", "custom" => "Mine."}}
+        "answers" => %{"q1" => %{"option" => "own", "note" => "  "}}
       })
 
-      assert [%{answer: "The one at checkout"}] = Repo.all(Apiary.WorkItems.Answer)
+      assert has_element?(view, "#{field}-error", "Write your option, or pick one above.")
+      assert has_element?(view, ~s(#{field}[aria-invalid="true"]))
+      assert has_element?(view, "#{field}-own[checked]")
+      assert answered(work_item) == []
+      assert runs(work_item) == 1
+
+      render_submit(form, %{
+        "number" => Integer.to_string(work_item.number),
+        "answers" => %{
+          "q1" => %{"option" => "own", "note" => "The currency of the shop's country."}
+        }
+      })
+
+      assert answered(work_item) == [{nil, "The currency of the shop's country."}]
+      assert runs(work_item) == 2
     end
 
-    test "a question with neither an option nor a text is marked under its field", %{
+    test "a partial send writes the answers with text; the rest stays open", %{
       conn: conn,
       scope: scope
     } do
       {work_item, _run} = asked(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
 
-      html =
-        view
-        |> element("#work-item-explore-questions-form")
-        |> render_submit(%{
-          "number" => Integer.to_string(work_item.number),
-          "answers" => %{"1" => %{"custom" => "The one at checkout."}, "2" => %{"custom" => "  "}}
-        })
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{
+        "number" => Integer.to_string(work_item.number),
+        "answers" => %{"q1" => %{"note" => "The one at checkout."}, "q2" => %{"note" => "  "}}
+      })
 
-      assert html =~
-               "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
-
-      assert has_element?(view, "#work-item-explore-questions-answer-2[aria-invalid]")
-      assert state(work_item) == :exploring
-      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 0
+      assert answered(work_item) == [{nil, "The one at checkout."}]
+      {_version, document} = Apiary.Explore.Questions.newest(work_item)
+      assert Enum.map(document["questions"], & &1["state"]) == ["answered", "open"]
+      assert runs(work_item) == 2
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
     end
 
-    test "an answer that is not text is refused with the form's errors, and nothing is written",
+    test "a send with no answer is refused under the form, and nothing is written", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = asked(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{
+        "number" => Integer.to_string(work_item.number),
+        "answers" => %{"q1" => %{"note" => " "}, "q2" => %{"note" => "  "}}
+      })
+
+      assert has_element?(
+               view,
+               "#work-item-explore-questions-error[role=alert]",
+               "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
+             )
+
+      refute has_element?(view, "[aria-invalid]")
+      assert state(work_item) == :exploring
+      assert answered(work_item) == []
+      assert runs(work_item) == 1
+    end
+
+    test "an answer that is not text counts as none: the form's error, and nothing is written",
          %{conn: conn, scope: scope} do
       {work_item, _run} = asked(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
 
-      for forged <- [%{"a" => "b"}, %{"custom" => ["x"]}, ["x"], 1.5, true, 7, nil] do
+      for forged <- [
+            %{"a" => "b"},
+            %{"note" => ["x"]},
+            %{"option" => %{"x" => "1"}},
+            ["x"],
+            1.5,
+            true,
+            7,
+            nil
+          ] do
         html =
           render_hook(view, "answer", %{
             "number" => Integer.to_string(work_item.number),
-            "answers" => %{"1" => forged, "2" => %{"custom" => "The spring sale."}}
+            "answers" => %{"q1" => forged, "q2" => %{"note" => "  "}}
           })
 
         assert html =~
-                 "Choose an option or write an answer. If nobody knows, say so: Qory reads that too."
+                 "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
+      end
 
-        assert has_element?(view, "#work-item-explore-questions-answer-1[aria-invalid]")
-        assert has_element?(view, "#work-item-explore-questions-answer-2", "The spring sale.")
+      # An option out of range, or a word, picks nothing.
+      for option <- ["0", "9", "-1", "own1", "The one at checkout"] do
+        render_hook(view, "answer", %{
+          "number" => Integer.to_string(work_item.number),
+          "answers" => %{"q1" => %{"option" => option}}
+        })
+
+        assert has_element?(
+                 view,
+                 "#work-item-explore-questions-error",
+                 "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
+               ),
+               option
+
+        assert answered(work_item) == [], option
       end
 
       render_hook(view, "answer", %{
@@ -283,7 +500,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         "answers" => "x"
       })
 
-      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 0
+      assert answered(work_item) == []
       assert state(work_item) == :exploring
     end
 
@@ -294,76 +511,320 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {work_item, _run} = asked(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
 
-      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "First.", "2" => "Second."})
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, 1, [
+          %{"id" => "q1", "note" => "First."},
+          %{"id" => "q2", "note" => "Second."}
+        ])
 
       html =
         render_hook(view, "answer", %{
           "number" => Integer.to_string(work_item.number),
-          "answers" => %{"1" => %{"custom" => "Late."}, "2" => %{"custom" => "Late."}}
+          "answers" => %{"q1" => %{"note" => "Late."}, "q2" => %{"note" => "Late."}}
         })
 
       refute html =~ "Late."
       refute html =~ "Choose an option"
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
-      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 2
+      assert answered(work_item) == [{nil, "First."}, {nil, "Second."}]
+      assert runs(work_item) == 2
     end
   end
 
-  describe "Confirm and comments" do
-    test "the step card links Explore's tab, where an empty field confirms", %{
+  describe "the gate and review comments" do
+    test "the step card links Explore's tab, where Confirm confirms", %{
       conn: conn,
       scope: scope
     } do
       {work_item, _run} = proposed(scope)
-      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/ticket"))
 
       refute has_element?(view, "#work-item-step button")
-      view |> element("#work-item-step-explore") |> render_click()
+      view |> element("#work-item-step-explore", "Read the proposal") |> render_click()
       assert_patch(view, page(scope, work_item.number, "/explore"))
 
-      assert has_element?(view, "#work-item-explore-reply-go", "Confirm")
-      view |> element("#work-item-explore-reply") |> render_submit(%{"change" => ""})
-      assert has_element?(view, "#work-item-step .q-wi-badge", "Ready")
-      refute has_element?(view, "#work-item-explore-reply")
+      # No review comment open: Confirm alone, the primary button.
+      refute has_element?(view, "#work-item-explore-gate-send")
+      refute has_element?(view, "#work-item-explore-gate-unread")
+      view |> element("#work-item-explore-gate-go", "Confirm") |> render_click()
 
-      assert %{result: %{"verdict" => "understood"}} =
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Ready")
+      refute has_element?(view, "#work-item-explore-gate")
+      refute has_element?(view, "#work-item-explore-proposal-review-add")
+      assert has_element?(view, "#work-item-explore-proposal .badge", "Confirmed")
+
+      assert %{result: %{"proposal_version" => 1}} =
                Apiary.WorkItems.Explore.confirmation(work_item.id, 1)
+
+      assert runs(work_item) == 1
     end
 
-    test "a text turns the button into Send change, and sends the comment", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "Add review comment is a page: it writes an open review comment, then Send review comments queues one run",
+         %{conn: conn, scope: scope} do
       {work_item, _run} = proposed(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
-      form = element(view, "#work-item-explore-reply")
 
-      render_change(form, %{"change" => "Offer a refund first."})
-      assert has_element?(view, "#work-item-explore-reply-go", "Send change")
-      render_change(form, %{"change" => ""})
-      assert has_element?(view, "#work-item-explore-reply-go", "Confirm")
+      view |> element("#work-item-explore-proposal-review-add") |> render_click()
+      assert_patch(view, page(scope, work_item.number, "/explore?review=new"))
+      assert has_element?(view, "#work-item-review-page h1", "Add review comment")
+      refute has_element?(view, "#work-item-explore")
 
-      render_submit(form, %{"change" => "Offer a refund first."})
+      view
+      |> element("#work-item-review-page-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "text" => "Show the order's currency."
+      })
 
-      assert [%{answer: "Offer a refund first.", question: nil}] =
-               Repo.all(Apiary.WorkItems.Answer)
+      assert_patch(view, page(scope, work_item.number, "/explore"))
+      refute has_element?(view, "#work-item-review-page")
 
-      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
-      assert has_element?(view, "#work-item-explore-comments h3", "Comments")
+      {_version, comments} = Apiary.Explore.ReviewComments.newest(work_item)
 
-      assert has_element?(view, "#work-item-explore-comments-1-m", "You, on version 1")
+      assert [%{"id" => "c1", "text" => "Show the order's currency.", "state" => "open"} = c1] =
+               comments["review_comments"]
+
+      assert c1["on"]["version"] == 1
+      # A review comment queues no run.
+      assert runs(work_item) == 1
+
+      card = "#work-item-review-c1"
+      assert has_element?(view, "#{card} .q-rc-by", "You, on version 1")
+      assert has_element?(view, "#{card} .badge", "Open")
+      assert has_element?(view, "#{card} .q-rc-text", "Show the order's currency.")
+      assert has_element?(view, "#work-item-explore-proposal-review-c1")
+
+      gate = "#work-item-explore-gate"
 
       assert has_element?(
                view,
-               "#work-item-explore-comments-1-m",
-               "Qory is updating the proposal"
+               gate,
+               "Send review comments starts the next run. That run reads your review comments and updates the proposal."
              )
 
-      refute has_element?(view, "#work-item-explore-reply")
-      assert state(work_item) == :exploring
+      assert has_element?(view, "#{gate}-unread", "Confirm leaves 1 review comment unread.")
+
+      view |> element(gate) |> render_submit(%{"number" => "#{work_item.number}"})
+
+      assert runs(work_item) == 2
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
+      refute has_element?(view, gate)
+      refute has_element?(view, "#work-item-explore-proposal-review-add")
+      refute has_element?(view, "#{card}-reply")
+      assert has_element?(view, "#{card}-reading", "Attempt 2 reads this review comment.")
+      # The queued run has no run row yet, so the words have no link.
+      refute has_element?(view, "#{card}-reading a")
+
+      # A second send while the run is queued changes nothing.
+      render_hook(view, "run_with_comments", %{"number" => "#{work_item.number}"})
+      assert runs(work_item) == 2
     end
 
-    test "the proposal's Markdown on the tab, and the comment in the Thread", %{
+    test "Confirm with open review comments shows how many it leaves unread, and confirms", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = proposed(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Keep the old PDFs.")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-gate-unread",
+               "Confirm leaves 2 review comments unread."
+             )
+
+      assert has_element?(view, "#work-item-explore-gate-send", "Send review comments")
+      view |> element("#work-item-explore-gate-go", "Confirm") |> render_click()
+
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Ready")
+      assert runs(work_item) == 1
+    end
+
+    test "Reply is a page: a member's reply to a review comment a run closed opens it again", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = work_item_fixture(scope)
+
+      %{dispatch_run: dispatch_run, run: run} =
+        explore_run_fixture(work_item, result: understood_result())
+
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
+      while_live(dispatch_run, fn -> reply_as_run!(dispatch_run, run, "declined") end)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      card = "#work-item-review-c1"
+      assert has_element?(view, "#{card}.q-rc-done")
+      # The only closed card is the first of the closed ones, so it is opened.
+      assert has_element?(view, "#{card}-h[aria-expanded=true]")
+      assert has_element?(view, "#{card} .q-rc-out", "Declined in version 1")
+      refute has_element?(view, "#{card} .badge")
+      refute has_element?(view, "#work-item-explore-gate-unread")
+
+      view |> element("#{card}-reply") |> render_click()
+      assert_patch(view, page(scope, work_item.number, "/explore?reply=c1"))
+      assert has_element?(view, "#work-item-review-page h1", "Reply")
+
+      assert has_element?(
+               view,
+               "#work-item-review-page-comment .q-rc-text",
+               "Show the order's currency."
+             )
+
+      form = element(view, "#work-item-review-page-form")
+      render_submit(form, %{"number" => "#{work_item.number}", "comment" => "c1", "text" => " "})
+      assert has_element?(view, "#work-item-review-page-error", "Write your reply.")
+
+      render_submit(form, %{
+        "number" => "#{work_item.number}",
+        "comment" => "c1",
+        "text" => "The customer pays in their currency."
+      })
+
+      assert_patch(view, page(scope, work_item.number, "/explore"))
+
+      {_version, comments} = Apiary.Explore.ReviewComments.newest(work_item)
+
+      assert [%{"state" => "open", "replies" => [_run_reply, member]}] =
+               comments["review_comments"]
+
+      assert member["text"] == "The customer pays in their currency."
+
+      assert has_element?(view, "#{card} .badge", "Reopened")
+
+      assert has_element?(
+               view,
+               "#{card}-reply-2.q-rc-member",
+               "The customer pays in their currency."
+             )
+
+      assert has_element?(
+               view,
+               "#work-item-explore-gate-unread",
+               "Confirm leaves 1 review comment unread."
+             )
+
+      assert runs(work_item) == 1
+    end
+
+    test "a run's reply with the outcome asked, as stored: Asked as question 1, linked to that question",
+         %{
+           conn: conn,
+           scope: scope
+         } do
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: understood_result())
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Name the refund rule.")
+
+      %{dispatch_run: dispatch_run, run: run} =
+        explore_run_fixture(work_item, result: questions_result(["Which refund?"]))
+
+      while_live(dispatch_run, fn -> reply_as_run!(dispatch_run, run, "asked", "q1") end)
+
+      {_version, document} = Apiary.Explore.ReviewComments.newest(work_item)
+
+      assert [%{"replies" => [%{"outcome" => "asked", "question" => "q1"}]}] =
+               document["review_comments"]
+
+      explore = page(scope, work_item.number, "/explore")
+      {:ok, view, _html} = live(conn, explore)
+      target = "work-item-explore-questions-question-1"
+      assert has_element?(view, "##{target}", "Which refund?")
+
+      inline = "#work-item-explore-proposal-review-c1-reply-1 a"
+      assert has_element?(view, inline, "Asked as question 1")
+      assert has_element?(view, ~s(#{inline}[href="##{target}"]))
+
+      rail = "#work-item-review-c1-reply-1 a"
+      assert has_element?(view, rail, "Asked as question 1")
+      assert has_element?(view, ~s(#{rail}[href="#{explore}##{target}"]))
+    end
+
+    test "a review comment page the reader may not use goes back to Explore's tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = proposed(scope)
+
+      # Opened at its address: sent to Explore's tab.
+      explore = page(scope, work_item.number, "/explore")
+      assert {:error, {:live_redirect, %{to: ^explore}}} = live(conn, explore <> "?reply=c9")
+
+      queued = queued(scope)
+      queued_explore = page(scope, queued.number, "/explore")
+
+      assert {:error, {:live_redirect, %{to: ^queued_explore}}} =
+               live(conn, queued_explore <> "?review=new")
+
+      # Patched to from the tab: back to the tab.
+      {:ok, view, _html} = live(conn, explore)
+      render_patch(view, explore <> "?reply=c9")
+      assert_patch(view, explore)
+      refute has_element?(view, "#work-item-review-page")
+      assert has_element?(view, "#work-item-explore")
+    end
+
+    test "Add review comment without a proposal goes back to Explore's tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = asked(scope)
+      explore = page(scope, work_item.number, "/explore")
+
+      assert {:error, {:live_redirect, %{to: ^explore}}} = live(conn, explore <> "?review=new")
+
+      {:ok, view, _html} = live(conn, explore)
+      refute has_element?(view, "#work-item-explore-proposal-review-add")
+      render_patch(view, explore <> "?review=new")
+      assert_patch(view, explore)
+      refute has_element?(view, "#work-item-review-page")
+      assert has_element?(view, "#work-item-explore")
+    end
+
+    test "another form page starts with an empty field and no error", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = proposed(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Keep the old PDFs.")
+      explore = page(scope, work_item.number, "/explore")
+      number = "#{work_item.number}"
+
+      {:ok, view, _html} = live(conn, explore <> "?reply=c1")
+
+      view
+      |> element("#work-item-review-page-form")
+      |> render_submit(%{"number" => number, "comment" => "c1", "text" => " "})
+
+      assert has_element?(view, "#work-item-review-page-error", "Write your reply.")
+
+      render_patch(view, explore)
+      render_patch(view, explore <> "?review=new")
+      assert has_element?(view, "#work-item-review-page h1", "Add review comment")
+      refute has_element?(view, "#work-item-review-page-error")
+      refute has_element?(view, ~s(#work-item-review-page-text[aria-invalid]))
+
+      long = String.duplicate("a", 2_001)
+      render_patch(view, explore <> "?reply=c1")
+
+      view
+      |> element("#work-item-review-page-form")
+      |> render_submit(%{"number" => number, "comment" => "c1", "text" => long})
+
+      assert has_element?(view, "#work-item-review-page-text", long)
+
+      render_patch(view, explore)
+      render_patch(view, explore <> "?reply=c2")
+      assert has_element?(view, "#work-item-review-page-comment .q-rc-text", "Keep the old PDFs.")
+      refute has_element?(view, "#work-item-review-page-text", long)
+      refute has_element?(view, "#work-item-review-page-error")
+    end
+
+    test "the proposal's Markdown on the tab, and the review comment in the Thread", %{
       conn: conn,
       scope: scope
     } do
@@ -372,57 +833,107 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       assert has_element?(view, "#work-item-explore-proposal-text h4", "What this is")
       assert has_element?(view, "#work-item-explore-proposal-text li", "Clear the basket")
+      assert has_element?(view, "#work-item-explore-proposal .q-xp-cap", "Version 1")
+      refute render(view) =~ "wrote this"
+      refute has_element?(view, "#work-item-explore-run")
 
-      assert has_element?(
-               view,
-               "#work-item-explore-proposal .q-xp-cap",
-               "Version 1. Attempt 1 wrote this."
-             )
+      {:ok, page_view, _html} = live(conn, page(scope, work_item.number, "/explore?review=new"))
 
-      view
-      |> element("#work-item-explore-reply")
-      |> render_submit(%{"change" => "Offer **a refund** first."})
+      page_view
+      |> element("#work-item-review-page-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "text" => "Offer **a refund** first."
+      })
 
       {:ok, thread, _html} = live(conn, page(scope, work_item.number, "/thread"))
       html = render(thread)
-      assert html =~ "You commented on Qory&#39;s proposal"
+      assert html =~ "You wrote a review comment on the proposal"
       assert html =~ "Offer **a refund** first."
       refute html =~ "<strong>a refund</strong>"
     end
 
-    test "a blank or long comment is refused under the field, and the text stays", %{
+    test "a reply in the Thread, apart from the review comment it replies to", %{
       conn: conn,
       scope: scope
     } do
       {work_item, _run} = proposed(scope)
-      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
-      form = element(view, "#work-item-explore-reply")
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
+      {:ok, _} = WorkItems.reply(scope, work_item, 1, "c1", "Keep the old PDFs.")
 
-      render_submit(form, %{"change" => " \n "})
-      assert has_element?(view, "#work-item-explore-reply-error", "Write what to change.")
+      {:ok, thread, _html} = live(conn, page(scope, work_item.number, "/thread"))
+      html = render(thread)
+      assert html =~ "You wrote a review comment on the proposal"
+      assert html =~ "Show the order&#39;s currency."
+      assert html =~ "You replied to a review comment"
+      assert html =~ "Keep the old PDFs."
+      assert length(String.split(html, "You wrote a review comment on the proposal")) == 2
+    end
+
+    test "a blank, long or hidden-character review comment is refused under the field, and the text stays",
+         %{conn: conn, scope: scope} do
+      {work_item, _run} = proposed(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore?review=new"))
+      form = element(view, "#work-item-review-page-form")
+      number = "#{work_item.number}"
+
+      render_submit(form, %{"number" => number, "text" => " \n "})
+      assert has_element?(view, "#work-item-review-page-error", "Write your review comment.")
+      assert has_element?(view, ~s(#work-item-review-page-text[aria-invalid="true"]))
 
       long = String.duplicate("a", 2_001)
-      render_submit(form, %{"change" => long})
+      render_submit(form, %{"number" => number, "text" => long})
 
       assert has_element?(
                view,
-               "#work-item-explore-reply-error",
-               "Shorten the comment to 2,000 characters or fewer."
+               "#work-item-review-page-error",
+               "Shorten the review comment to 2,000 characters or fewer."
              )
 
-      assert has_element?(view, "#work-item-explore-reply-text", long)
-      assert has_element?(view, "#work-item-explore-reply-go", "Send change")
+      assert has_element?(view, "#work-item-review-page-text", long)
 
-      render_submit(form, %{"change" => "Offer \u202Ea refund."})
+      render_submit(form, %{"number" => number, "text" => "Offer \u202Ea refund."})
 
       assert has_element?(
                view,
-               "#work-item-explore-reply-error",
-               "Remove the invisible or control characters from the comment."
+               "#work-item-review-page-error",
+               "Remove the invisible or control characters from the review comment."
              )
 
-      assert Repo.aggregate(Apiary.WorkItems.Answer, :count) == 0
+      assert Apiary.Explore.ReviewComments.newest(work_item) == nil
       assert state(work_item) == :exploring
+    end
+
+    test "a long or hidden-character reply shows its error under the field in the words of a reply",
+         %{conn: conn, scope: scope} do
+      {work_item, _run} = proposed(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Show the order's currency.")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore?reply=c1"))
+      form = element(view, "#work-item-review-page-form")
+      fields = %{"number" => "#{work_item.number}", "comment" => "c1"}
+
+      long = String.duplicate("a", 2_001)
+      render_submit(form, Map.put(fields, "text", long))
+
+      assert has_element?(
+               view,
+               "#work-item-review-page-error",
+               "Shorten the reply to 2,000 characters or fewer."
+             )
+
+      assert has_element?(view, "#work-item-review-page-text", long)
+
+      render_submit(form, Map.put(fields, "text", "Keep \u202Ethe old PDFs."))
+
+      assert has_element?(
+               view,
+               "#work-item-review-page-error",
+               "Remove the invisible or control characters from the reply."
+             )
+
+      {_version, document} = Apiary.Explore.ReviewComments.newest(work_item)
+      assert [%{"id" => "c1"} = comment] = document["review_comments"]
+      assert comment["replies"] in [nil, []]
     end
 
     test "the edit page is gone", %{conn: conn, scope: scope} do
@@ -443,6 +954,18 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert state(work_item) == :closed
     end
 
+    test "a member who approves nothing closes another person's work item", %{scope: scope} do
+      work_item = queued(scope)
+      %{user: member} = member_fixture(scope, :member)
+      {:ok, view, _html} = live(log_in_user(build_conn(), member), page(scope, work_item.number))
+
+      view |> element("#work-item-head-close") |> render_click()
+      view |> element("#work-item-close-go") |> render_click()
+
+      assert state(work_item) == :closed
+      assert Repo.get!(WorkItem, work_item.id).closed_by_id == member.id
+    end
+
     test "Run Explore again after a run without a result", %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
       explore_run_fixture(work_item, run: %{exit_state: "failed", state: "failed"})
@@ -457,13 +980,36 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       work_item = work_item_fixture(scope)
 
       for _attempt <- 1..3 do
-        explore_run_fixture(work_item, result: questions_result())
+        explore_run_fixture(work_item, run: %{exit_state: "failed", state: "failed"})
       end
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-step .q-wi-badge", "3 of 3 attempts used")
       assert has_element?(view, "#work-item-step-close", "Close work item…")
+    end
+
+    test "questions at the take in's third run still take answers, which queue a fourth",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+
+      for _attempt <- 1..3 do
+        explore_run_fixture(work_item, result: questions_result(["Which invoices?"]))
+      end
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      refute has_element?(view, "#work-item-step-close")
+      assert has_element?(view, "#work-item-explore-questions-form")
+
+      view
+      |> element("#work-item-explore-questions-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q3" => %{"note" => "Every invoice since 1 October."}}
+      })
+
+      assert runs(work_item) == 4
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
     end
 
     test "an event for another number does nothing", %{conn: conn, scope: scope} do
@@ -539,10 +1085,22 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
     test "a run whose last result was an error still says so", %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
-      explore_run_fixture(work_item, result: {:data, %{"is_error" => true, "result" => "No"}})
+      %{dispatch_run: dispatch_run, run: run} = explore_run_fixture(work_item)
+
+      # A release that read the run's result event stored `error` for one whose
+      # `is_error` was true; Core reads that event no more, and the row keeps it.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+          set: [result_outcome: :error]
+        )
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
-      assert has_element?(view, "#work-item-explore-none-h", "The run ended with an error.")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-none-h",
+               "The run ended with an error (Run #{run.number})."
+             )
     end
   end
 
@@ -575,20 +1133,25 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
     test "for want of a model key: each tab puts the fix first, none says it ended with an error",
          %{conn: conn, scope: scope} do
-      {work_item, _run} = refused(scope, "model_key_missing")
+      {work_item, run} = refused(scope, "model_key_missing")
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(
                view,
                "#work-item-step-line",
-               @key_fix <> " The gateway had no model key for attempt 1."
+               @key_fix <> " The gateway had no model key for attempt 1 (Run #{run.number})."
              )
 
       refute html =~ "ended with an error"
 
       {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
-      assert has_element?(view, "#work-item-explore-none-h", "The run did not start.")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-none-h",
+               "The run did not start (Run #{run.number})."
+             )
 
       assert has_element?(
                view,
@@ -605,7 +1168,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
     test "at attempt 3 of 3: the step card puts the fix first and keeps that no run is left",
          %{conn: conn, scope: scope} do
-      {work_item, _run} = refused(scope, "model_key_missing", 3)
+      {work_item, run} = refused(scope, "model_key_missing", 3)
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
@@ -613,7 +1176,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
                view,
                "#work-item-step-line",
                @key_fix <>
-                 " The gateway had no model key for attempt 3. That was attempt 3 of 3, the last attempt of this take in."
+                 " The gateway had no model key for attempt 3 (Run #{run.number}). That was attempt 3 of 3, the last attempt of this take in."
              )
 
       refute html =~ "ended without a result. That was run"
@@ -632,10 +1195,16 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
     test "with another code, every tab keeps the words for an error",
          %{conn: conn, scope: scope} do
-      {work_item, _run} = refused(scope, "image_user_root")
+      {work_item, run} = refused(scope, "image_user_root")
 
       {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
-      assert has_element?(view, "#work-item-explore-none-h", "The run ended with an error.")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-none-h",
+               "The run ended with an error (Run #{run.number})."
+             )
+
       refute html =~ "model key"
 
       {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
@@ -679,7 +1248,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       send(view.pid, {:work_items_changed, [work_item.public_id]})
 
-      assert_redirect(view, page(scope, work_item.number))
+      assert_redirect(view, page(scope, work_item.number, "/explore"))
     end
 
     test "a member removed behind the page's back is sent away on a message of the work item",
@@ -791,6 +1360,23 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     end
   end
 
+  describe "the Thread's proposal lines" do
+    test "only the proposal that waits at Confirm has who confirms next", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: understood_result(%{"message" => "The first take."}))
+      explore_run_fixture(work_item, result: understood_result(%{"message" => "The next take."}))
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/thread")
+      thread = view |> element("#work-item-thread") |> render()
+
+      assert length(String.split(thread, "Explore wrote a proposal")) == 3
+      assert length(String.split(thread, "You confirm next")) == 2
+    end
+  end
+
   describe "a run's link, after the work item moved" do
     setup %{scope: scope} do
       :ok = Edition.put_test_stub(EditionStubs.MembersReachNamed)
@@ -798,7 +1384,12 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       here = owner.workspace
       there = workspace_fixture(owner.organisation, "There")
       {work_item, run} = asked(owner)
-      {:ok, _} = WorkItems.answer(owner, work_item, 1, %{"1" => "At checkout.", "2" => "Spring."})
+
+      {:ok, _} =
+        WorkItems.answer(owner, work_item, 1, [
+          %{"id" => "q1", "note" => "At checkout."},
+          %{"id" => "q2", "note" => "Spring."}
+        ])
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
         set: [workspace_id: there.id]
@@ -813,12 +1404,53 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       conn = log_in_user(ctx.conn, ctx.member)
       org = ctx.scope.organisation
 
+      # The queued attempt 2 has no run page, so Details links only attempt 1.
+      Repo.delete_all(
+        from d in DispatchRun, where: d.work_item_id == ^ctx.work_item.id and d.state == :waiting
+      )
+
       {:ok, view, html} =
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/explore")
 
       href = ~p"/#{org}/#{ctx.here}/runs/#{ctx.run.number}"
       assert has_element?(view, ~s(a[href="#{href}"]))
       assert html =~ "At checkout."
+    end
+
+    test "a running run's texts link its page only where the reader may read that page", ctx do
+      owner = ctx.scope
+      work_item = work_item_fixture(owner)
+      %{run: earlier} = explore_run_fixture(work_item, result: questions_result())
+      %{run: running} = explore_run_fixture(work_item, state: :handed_over)
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [workspace_id: ctx.there.id]
+      )
+
+      org = owner.organisation
+      address = ~p"/#{org}/#{ctx.there}/work/#{work_item.number}/explore"
+      page = ~p"/#{org}/#{ctx.here}/runs/#{running.number}"
+      earlier_page = ~p"/#{org}/#{ctx.here}/runs/#{earlier.number}"
+      conn = log_in_user(ctx.conn, ctx.member)
+
+      # The address has the number of the run the text is about.
+      EditionStubs.MembersReachNamed.put([ctx.here.id, ctx.there.id])
+      {:ok, view, _html} = live(conn, address)
+      assert has_element?(view, ~s(#work-item-explore-wait-h a[href="#{page}"]))
+      assert has_element?(view, ~s(.q-wi-st a[href="#{page}"]), "Explore is running")
+      refute has_element?(view, "#work-item-explore-wait p + p a")
+      assert has_element?(view, "#work-item-explore-wait p + p", "Attempt 2 reads")
+
+      # The older run's row links the older run's page, not the newest run's.
+      assert earlier_page != page
+      assert has_element?(view, ~s(.q-xp-runrow a[href="#{earlier_page}"]), "Attempt 1")
+      refute has_element?(view, ~s(.q-xp-runrow a[href="#{page}"]), "Attempt 1")
+
+      EditionStubs.MembersReachNamed.put([ctx.there.id])
+      {:ok, view, _html} = live(conn, address)
+      refute has_element?(view, ~s(a[href*="/runs/"]))
+      assert has_element?(view, "#work-item-explore-wait-h", "Explore is running")
+      assert has_element?(view, ".q-wi-st", "Explore is running")
     end
 
     test "its attempt alone where the reader reads only the workspace it is in now", ctx do
@@ -830,7 +1462,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/explore")
 
       refute has_element?(view, ~s(a[href*="/runs/"]))
-      assert has_element?(view, "#work-item-explore-run", "Attempt 2 of 3")
+      assert has_element?(view, "#work-item-explore-run", "Attempt 2")
       refute html =~ "Run #{ctx.run.number}"
       assert html =~ "At checkout."
 
@@ -838,7 +1470,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         live(conn, ~p"/#{org}/#{ctx.there}/work/#{ctx.work_item.number}/thread")
 
       refute has_element?(thread, ~s(a[href*="/runs/"]))
-      assert render(thread) =~ "Qory started Explore in attempt 1"
+      assert render(thread) =~ "Explore started in attempt 1"
       refute render(thread) =~ "Run #{ctx.run.number}"
       assert render(thread) =~ "At checkout."
     end

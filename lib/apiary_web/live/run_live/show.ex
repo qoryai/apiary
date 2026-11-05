@@ -15,9 +15,9 @@ defmodule ApiaryWeb.RunLive.Show do
   `:run_id` in the URL is the run's number (`Apiary.Runs.Run`, `number`); the node's run
   id, the run's subject, is on Details. An address with the run's `public_id`, `rn_…`, the
   id the API gives, is patched to the number's, for a run of the caller's workspace alone.
-  A run that is not in the caller's workspace renders the not-found state, whatever else
-  it may be, the same for a number of no run and a number of another workspace's run, and
-  so does the node's run id in the URL.
+  A number the caller's workspace does not have renders the not-found state, whatever
+  run that number is in another workspace, and so does an `rn_` id of another workspace's
+  run and the node's run id in the URL.
 
   The timeline is a stream over a window of the run's items (300 on mount, 200 more at
   either end, never more than 600 in the DOM); the layout of the whole run comes from
@@ -147,7 +147,13 @@ defmodule ApiaryWeb.RunLive.Show do
                 >
                   <i aria-hidden="true"></i><span id="run-outcome">{outcome_sentence(@run)}</span>
                 </span>
-                <.state_mark :if={!outcome_sentence(@run)} id="run-state" state={@run.state} word />
+                <.state_mark
+                  :if={!outcome_sentence(@run)}
+                  id="run-state"
+                  state={@run.state}
+                  quiet={@quiet_for != nil}
+                  word
+                />
                 <.end_reason run={@run} id="run-reason" />
                 <.alive
                   :if={@run.state in ~w(pending running)}
@@ -461,11 +467,11 @@ defmodule ApiaryWeb.RunLive.Show do
             role="menuitem"
             tabindex="-1"
             phx-hook="CopyToClipboard"
-            data-copy={@run.number}
+            data-copy={@run.public_id}
             data-copied-words={gettext("Copied")}
             data-menu-close
           >
-            <.icon name="hero-link" class="size-4" /> {gettext("Copy run number")}
+            <.icon name="hero-link" class="size-4" /> {gettext("Copy run id")}
             <span class="sr-only" aria-live="polite"></span>
           </button>
         </li>
@@ -496,7 +502,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 rich_gettext(
                   "Copy again in a minute. If it fails again, %{contact_support} with run %{run}. Qory Apiary could not build the diagnostics.",
                   contact_support: ApiaryWeb.Support.plain(mid_sentence: true),
-                  run: @run.number
+                  run: @run.public_id
                 )
               )
             }
@@ -953,7 +959,7 @@ defmodule ApiaryWeb.RunLive.Show do
         <dl id="run-facts" class="q-rail-kv">
           <dt>{gettext("State")}</dt>
           <dd>
-            <.state_mark state={@run.state} word />
+            <.state_mark state={@run.state} quiet={@quiet} word />
             <span :if={@run.state == "pending"} class="q-rail-sub">
               {if @run.registered_at, do: gettext("Registered only"), else: gettext("Ping only")}
             </span>
@@ -1123,14 +1129,14 @@ defmodule ApiaryWeb.RunLive.Show do
       <section class="q-rail-sec" aria-labelledby="rail-record">
         <h3 id="rail-record">{gettext("Record")}</h3>
         <dl class="q-rail-kv">
-          <dt>{gettext("Run number")}</dt>
+          <dt>{gettext("Run id")}</dt>
           <dd>
-            <span id="run-number">{@run.number}</span>
+            <span id="run-id">{@run.public_id}</span>
             <.copy_button
-              id="copy-run-number"
-              target="#run-number"
+              id="copy-run-id"
+              target="#run-id"
               icon_only
-              label={gettext("Copy the run number")}
+              label={gettext("Copy the run id")}
             />
           </dd>
           <dt>{gettext("Run id on the machine")}</dt>

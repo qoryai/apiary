@@ -280,6 +280,13 @@ defmodule Apiary.Runs.RegistrationTest do
       assert node.instance_limit_refused_at
     end
 
+    test "the first run of a new workspace is 1, and a repeat takes no number", %{key: key} do
+      body = body()
+      assert {:ok, %{run: %Run{number: 1}, repeated: false}} = register(key, body)
+      assert {:ok, %{run: %Run{number: 1}, repeated: true}} = register(key, body)
+      assert {:ok, %{run: %Run{number: 2}, repeated: false}} = register(key, body())
+    end
+
     test "a repeat of the same bytes under the same key is given its answer, admitted by nothing",
          %{key: key} do
       body = body()

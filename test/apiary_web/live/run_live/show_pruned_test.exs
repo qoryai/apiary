@@ -72,7 +72,7 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     {:ok, lv, html} =
       live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
-    assert has_element?(lv, "#run-number", Integer.to_string(run.number))
+    assert has_element?(lv, "#run-id", run.public_id)
 
     # the policy card is `security`'s
     if Apiary.Features.on?(:security),

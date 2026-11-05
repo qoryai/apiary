@@ -1,60 +1,69 @@
 defmodule Apiary.WorkItems.Proposal do
-  # Proposal reads an Explore run's result (`Apiary.Explore.Result`) as the work item pages
-  # draw it, and checks what a member gives Explore: the answers to a run's questions and
-  # a comment on a run's proposal. Pure: no database.
+  # Proposal reads the questions of a work item as the work item pages draw them, and
+  # checks what a member gives Explore: the answers to the open questions and a review
+  # comment on the proposal. Pure: no database.
   #
-  # ## The result as the pages draw it
+  # ## The questions as the pages draw them
   #
-  # `from_result/1` is the proposal of a result whose verdict is `understood`:
-  # `%{message: text}`, the proposal as Markdown, nil for a result stored before the
-  # proposal was Markdown, which has no `message`. `questions/1` is the questions of a
-  # result whose verdict is `not_understood`, in its order, each
-  # `%{question: text, options: [%{title: text, explanation: text}]}`: the question as
-  # Markdown and the options the run offers, none for a question that offers none. A
-  # question stored before questions had options is a text: its options are none.
+  # `question/1` is one question of a questions document (`Apiary.Explore.Questions`):
+  # `%{question: text, options: [%{title: text, explanation: text, recommended: boolean}]}`,
+  # the question and the options the run offers, none for a question that offers none.
+  # `recommended` is true only for an option whose `recommended` is true in the document.
   #
   # ## The checks
   #
-  # Each text a member gives is held to the rule the explore contract holds the text it
-  # carries to (`priv/contract/explore/v1/result.schema.json` `$defs/text`): no control
-  # character but tab, line feed and carriage return, and none of the invisible ones the
-  # rule lists (`:characters`), since a run is never given an input it would refuse.
-  # Lengths are counted in code points, as the contract counts them. A text is read with
-  # its line breaks as line feeds and without the white space around it; one empty then is
+  # Each text a member gives is held to the rule of the questions format's `$defs/text`
+  # (`priv/schemas/artifacts/questions.schema.json`): no control character but tab, line
+  # feed and carriage return, and none of the invisible ones the rule lists
+  # (`:characters`), since a run is never given a text it would refuse. Lengths are
+  # counted in code points, as the format counts them. A text is read with its line
+  # breaks as line feeds and without the white space around it; one empty then is
   # `:blank`.
   #
-  # `check_answers(questions, answers)` checks the answers a form gives to `questions`, by
-  # each question's position from 1, as text (`"1"` to `"20"`). Each question has one
-  # answer: `%{"option" => title}`, the title of one of the question's options, or
-  # `%{"custom" => text}`, the member's text, at most 2,000 code points, the explore
-  # input's answer (`inputs.schema.json` `answers[].answer`, a `$defs/short_text`). A
-  # member's text alone may also be given as a string. A member who selects no option and
-  # writes no text leaves the answer `:blank`; an empty `"option"` or `"custom"` counts as
-  # none. `{:ok, [{position, question, answer, custom}]}`, `question` the question's text
-  # and `custom` false for an option's title; or `{:error, errors}` by position (`:blank`,
-  # `{:too_long, 2000}`, `:characters`); or `{:error, :invalid}` for a form that names
+  # `check_answers(questions, answers)` checks the answers a form gives to `questions`,
+  # the open questions, by each question's position from 1, as text (`"1"` to `"20"`).
+  # A question has at most one answer: `%{"option" => title}`, the title of one of the
+  # question's options, or `%{"custom" => text}`, the member's text, at most 2,000 code
+  # points, the format's `answer.text`. A member's text alone may also be given as a
+  # string. A question the form leaves out, or whose answer has no option and no text, is
+  # not answered; an empty `"option"` or `"custom"` counts as none. At least one question
+  # is answered. `{:ok, [{position, question, answer, custom}]}`, for the questions
+  # answered, `question` the question's text and `custom` false for an option's title; or
+  # `{:error, errors}` by position (`{:too_long, 2000}`, `:characters`, and `:blank` for
+  # every question when none is answered); or `{:error, :invalid}` for a form that names
   # another question, gives no text, gives both an option and a text, or an option title
   # the question does not have.
   #
-  # `check_comment(text)` checks a member's comment on a proposal: `{:ok, text}`, at most
-  # 2,000 code points as an answer is, the explore input's `changes[].text`; or
-  # `{:error, error}` (`:blank`, `{:too_long, 2000}`, `:characters`), or
-  # `{:error, :invalid}` for no text.
+  # `check_answers_by_id(questions, answers)` checks the answers a form gives by
+  # question id: `questions` is the questions of the newest questions document, as it
+  # stores them, and `answers` a list of `%{"id" => id, "option" => title | nil,
+  # "note" => text | nil}`, at least one, each id once; `"option"` and `"note"` may be
+  # left out. An answer has an option, a note, or both: an option with a note adds detail
+  # to the option, and no option ("Give your own option") makes the note the answer, so
+  # the note is required. An empty option or note, once trimmed, counts as none.
+  # `{:ok, [{id, option, note}]}`, in the order given, the option as the question's title
+  # and the note cleaned, nil for none (`Apiary.Explore.Questions.answer/4`); or
+  # `{:error, errors}` by id: `:unknown_id` (no question has the id), `:not_open` (the
+  # question is answered or closed), `:unknown_option` (no option of the question has the
+  # title), `:note_required` (no option and no note), `{:too_long, 2000}` and
+  # `:characters` (the note); or `{:error, :invalid}` for no list, an empty one, an entry
+  # of another shape, or an id twice.
+  #
+  # `check_comment(text)` checks a member's review comment on a proposal, or a reply to
+  # one: `{:ok, text}`, at most 2,000 code points; or `{:error, error}` (`:blank`,
+  # `{:too_long, 2000}`, `:characters`), or `{:error, :invalid}` for no text.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
-  # result.schema.json: `$defs/short_text` and the most `questions`.
+  # questions.schema.json: `$defs/short_text`, and the most questions a form shows.
   @max_short 2000
   @max_questions 20
-  # result.schema.json `$defs/text`: the characters a text refuses.
+  # questions.schema.json `$defs/text`: the characters a text refuses.
   @refused ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
 
-  @typedoc "A proposal as the work item pages draw it."
-  @type t :: %{message: String.t() | nil}
-
   @typedoc "An option a run offers for a question."
-  @type option :: %{title: String.t(), explanation: String.t()}
+  @type option :: %{title: String.t(), explanation: String.t(), recommended: boolean}
 
   @typedoc "A question a run asks, as the work item pages draw it."
   @type question :: %{question: String.t(), options: [option]}
@@ -62,43 +71,39 @@ defmodule Apiary.WorkItems.Proposal do
   @typedoc "What is wrong with a text a member gives."
   @type error :: :blank | :characters | {:too_long, pos_integer}
 
+  @typedoc "What is wrong with an answer a form gives by question id."
+  @type by_id_error ::
+          :unknown_id
+          | :not_open
+          | :unknown_option
+          | :note_required
+          | :characters
+          | {:too_long, pos_integer}
+
   # max_answer/0 is the most code points an answer, or a comment, has.
   @doc false
   @spec max_answer() :: pos_integer
   def max_answer, do: @max_short
 
-  # max_questions/0 is the most questions a run asks.
+  # max_questions/0 is the most questions a form answers at once.
   @doc false
   @spec max_questions() :: pos_integer
   def max_questions, do: @max_questions
 
-  ## The result
+  ## The questions
 
-  # from_result/1 is the proposal of `result`, a result whose verdict is `understood`.
-  @doc false
-  @spec from_result(map) :: t
-  def from_result(%{"verdict" => "understood"} = result) do
-    case result do
-      %{"message" => message} when is_binary(message) -> %{message: message}
-      _stored_before -> %{message: nil}
-    end
-  end
-
-  # questions/1 is the questions of `result`, a result whose verdict is `not_understood`.
-  @doc false
-  @spec questions(map) :: [question]
-  def questions(%{"verdict" => "not_understood", "questions" => questions})
-      when is_list(questions),
-      do: Enum.map(questions, &question/1)
-
-  # question/1 is one question of a result, or of a `questions` artifact, as the pages
-  # draw it: a question stored as a text offers no option.
+  # question/1 is one question of a questions document as the pages draw it.
   @doc false
   @spec question(map | String.t()) :: question
   def question(%{"question" => text} = question) when is_binary(text) do
     options =
-      for %{"title" => title, "explanation" => explanation} <- List.wrap(question["options"]),
-          do: %{title: title, explanation: explanation}
+      for %{"title" => title, "explanation" => explanation} = option <-
+            List.wrap(question["options"]),
+          do: %{
+            title: title,
+            explanation: explanation,
+            recommended: option["recommended"] == true
+          }
 
     %{question: text, options: options}
   end
@@ -115,14 +120,15 @@ defmodule Apiary.WorkItems.Proposal do
   def check_answers(questions, answers) when is_list(questions) and is_map(answers) do
     keys = for position <- 1..length(questions)//1, do: Integer.to_string(position)
 
-    with true <- Enum.sort(Map.keys(answers)) == Enum.sort(keys),
+    with true <- Enum.all?(Map.keys(answers), &(&1 in keys)),
          checked when is_list(checked) <- check_each(questions, answers) do
-      case for({key, {:error, error}} <- checked, into: %{}, do: {key, error}) do
-        errors when errors == %{} ->
-          {:ok, for({_key, {:ok, answer}} <- checked, do: answer)}
+      errors = for {key, {:error, error}} <- checked, error != :blank, into: %{}, do: {key, error}
+      given = for {_key, {:ok, answer}} <- checked, do: answer
 
-        errors ->
-          {:error, errors}
+      cond do
+        errors != %{} -> {:error, errors}
+        given == [] -> {:error, Map.new(keys, &{&1, :blank})}
+        true -> {:ok, given}
       end
     else
       _invalid -> {:error, :invalid}
@@ -137,7 +143,7 @@ defmodule Apiary.WorkItems.Proposal do
     |> Enum.reduce_while([], fn {question, position}, acc ->
       key = Integer.to_string(position)
 
-      case answer(question, answers[key]) do
+      case answer(question, Map.get(answers, key, %{})) do
         :invalid ->
           {:halt, :invalid}
 
@@ -212,6 +218,69 @@ defmodule Apiary.WorkItems.Proposal do
       {:error, _error} = refused -> refused
     end
   end
+
+  # check_answers_by_id/2 checks the answers a form gives by question id (the moduledoc).
+  @doc false
+  @spec check_answers_by_id([map], term) ::
+          {:ok, [{String.t(), String.t() | nil, String.t() | nil}]}
+          | {:error, %{String.t() => by_id_error} | :invalid}
+  def check_answers_by_id(questions, [_ | _] = answers) when is_list(questions) do
+    by_id = Map.new(questions, &{&1["id"], &1})
+
+    with true <- Enum.all?(answers, &by_id_shape?/1),
+         ids = Enum.map(answers, & &1["id"]),
+         true <- length(Enum.uniq(ids)) == length(ids) do
+      checked = Enum.map(answers, &by_id(&1, Map.get(by_id, &1["id"])))
+      errors = for {id, {:error, error}} <- checked, into: %{}, do: {id, error}
+
+      if errors == %{},
+        do: {:ok, for({_id, {:ok, answer}} <- checked, do: answer)},
+        else: {:error, errors}
+    else
+      false -> {:error, :invalid}
+    end
+  end
+
+  def check_answers_by_id(_questions, _answers), do: {:error, :invalid}
+
+  defp by_id_shape?(%{"id" => id} = given) when is_binary(id) do
+    Enum.all?(Map.keys(given), &(&1 in ["id", "option", "note"])) and
+      (is_nil(given["option"]) or is_binary(given["option"])) and
+      (is_nil(given["note"]) or is_binary(given["note"]))
+  end
+
+  defp by_id_shape?(_given), do: false
+
+  defp by_id(%{"id" => id}, nil), do: {id, {:error, :unknown_id}}
+
+  defp by_id(%{"id" => id}, %{"state" => state}) when state != "open",
+    do: {id, {:error, :not_open}}
+
+  defp by_id(%{"id" => id} = given, question) do
+    titles = for %{"title" => title} <- List.wrap(question["options"]), do: title
+
+    with {:ok, option} <- by_id_option(present(given["option"]), titles),
+         {:ok, note} <- by_id_note(present(given["note"]), option) do
+      {id, {:ok, {id, option, note}}}
+    else
+      {:error, error} -> {id, {:error, error}}
+    end
+  end
+
+  defp by_id_option(nil, _titles), do: {:ok, nil}
+
+  defp by_id_option(given, titles) do
+    given = if String.valid?(given), do: normal(given), else: given
+
+    case Enum.find(titles, &(normal(&1) == given)) do
+      nil -> {:error, :unknown_option}
+      title -> {:ok, title}
+    end
+  end
+
+  defp by_id_note(nil, nil), do: {:error, :note_required}
+  defp by_id_note(nil, _option), do: {:ok, nil}
+  defp by_id_note(note, _option), do: text(note, @max_short)
 
   ## A comment
 

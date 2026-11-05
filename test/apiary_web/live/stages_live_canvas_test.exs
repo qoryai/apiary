@@ -33,7 +33,7 @@ defmodule ApiaryWeb.StagesLive.CanvasTest do
     assert Enum.map(view["stages"], & &1["name"]) == ~w(Explore Shape Build Verify Release)
 
     assert %{
-             "sequence" => [%{"loop" => "at most 3 rounds", "workflows" => ["explore-a-ticket"]}],
+             "sequence" => [%{"workflow" => "explore-a-ticket"}],
              "gate" => "Gate: a member approves",
              "alerts" => []
            } = hd(view["stages"])

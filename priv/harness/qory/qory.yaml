@@ -1,7 +1,7 @@
 apiVersion: qory.dev/v1alpha1
 qory: ">=0.13.0"
 exports:
-  stacks: [core, software]
-  modules: [core, software-factory]
+  stacks: [core, software, authoring]
+  modules: [core, software-factory, harness-authoring]
 harness:
   extends: {path: ., stack: core}

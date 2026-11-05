@@ -148,11 +148,38 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
+    test "one number in two workspaces: each address shows the run of its workspace", %{
+      conn: conn,
+      scope: scope
+    } do
+      ours = projected(scope, record())
+      other = scope_fixture()
+      theirs = projected(other, record())
+      assert ours.number == theirs.number
+
+      # Each address is read by a member of its workspace.
+      {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{ours.number}/details")
+      assert html =~ ours.public_id
+      refute html =~ theirs.public_id
+
+      theirs_conn = log_in_user(build_conn(), other.user)
+
+      {:ok, _lv, html} =
+        live(theirs_conn, "#{workspace_path(other)}/runs/#{theirs.number}/details")
+
+      assert html =~ theirs.public_id
+      refute html =~ ours.public_id
+    end
+
     test "a number of no run and the number of another workspace's run render the same page",
          %{conn: conn, scope: scope} do
-      theirs = projected(scope_fixture(), record())
-      %{rows: [[highest]]} = Repo.query!("SELECT max(number) FROM runs")
-      missing = highest + 1
+      # Two runs there, so the second's number is one this workspace, with one run, has not.
+      other = scope_fixture()
+      projected(other, record())
+      theirs = projected(other, record())
+      projected(scope, record())
+      assert theirs.number == 2
+      missing = 3
       address = &"#{workspace_path(scope)}/runs/#{&1}"
 
       # The page names the number it was asked by, and nothing else differs.
@@ -301,7 +328,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              |> List.flatten() == ~w(run-tab-timeline run-tab-terminal run-tab-connections)
     end
 
-    test "the more menu copies the number and offers the log, to a reader of the log", %{
+    test "the more menu copies the run id and offers the log, to a reader of the log", %{
       conn: conn,
       scope: scope
     } do
@@ -315,13 +342,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(
                lv,
-               ~s(#run-menu-copy[phx-hook="CopyToClipboard"][data-copy="#{run.number}"])
+               ~s(#run-menu-copy[phx-hook="CopyToClipboard"][data-copy="#{run.public_id}"])
              )
 
       assert has_element?(lv, ~s(#run-menu-raw[href="#{log}"][target="_blank"]), "Raw log")
       assert has_element?(lv, ~s(#run-menu-download[href="#{log}?download=1"][download]))
 
-      # Copy diagnostics, beside Copy run number: the hook reads the run's document and copies it.
+      # Copy diagnostics, beside Copy run id: the hook reads the run's document and copies it.
       diagnostics = "#{workspace_path(scope)}/runs/#{run.number}/diagnostics"
 
       assert has_element?(
@@ -346,7 +373,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
             {"signed-out", "Sign in again, then copy again. Your session ended."},
             {"server",
              "Copy again in a minute. If it fails again, contact support with run " <>
-               "#{run.number}. Qory Apiary could not build the diagnostics."},
+               "#{run.public_id}. Qory Apiary could not build the diagnostics."},
             {"clipboard",
              "Allow this page to use the clipboard, then copy again. " <>
                "The browser did not allow the copy."}
@@ -354,8 +381,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert has_element?(lv, ~s(#run-menu-diagnostics[data-failed-#{cause}="#{line}"])),
                cause
       end
-
-      refute has_element?(lv, ~s(#run-menu-diagnostics[data-failed-server*="#{run.public_id}"]))
 
       ids =
         lv
@@ -457,11 +482,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       for section <- ~w(rail-run rail-labels rail-command rail-record),
           do: assert(has_element?(lv, "#run-details ##{section}"))
 
-      assert has_element?(lv, "#run-details dt", "Run number")
-      assert has_element?(lv, "#run-number", Integer.to_string(run.number))
-      assert has_element?(lv, "#copy-run-number[aria-label='Copy the run number']")
-      refute has_element?(lv, "#run-details", run.public_id)
-      assert has_element?(lv, "#run-menu-copy[data-copy='#{run.number}']", "Copy run number")
+      assert has_element?(lv, "#run-details dt", "Run id")
+      assert has_element?(lv, "#run-id", run.public_id)
+      assert has_element?(lv, "#copy-run-id[aria-label='Copy the run id']")
+      assert has_element?(lv, "#run-menu-copy[data-copy='#{run.public_id}']", "Copy run id")
       assert has_element?(lv, "#run-details dt", "Run id on the machine")
       assert has_element?(lv, "#run-details dd#run-node-run-id", run.node_run_id)
       refute page_title(lv) =~ "Details ·"
@@ -660,6 +684,73 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         {:ok, _lv, html} = page.(run)
         refute html =~ "have arrived and are being read."
         assert html =~ ~r/projected through <span[^>]*>#000#{first + 1}</
+      end
+    end
+
+    # `quiet_for/2` counts from `inserted_at` for a run with no heartbeat, and such a run
+    # may have no event either.
+    test "quiet with no heartbeat and no event: the page counts from when the run was heard of",
+         %{conn: conn, scope: scope} do
+      long_ago = DateTime.add(DateTime.utc_now(), -47, :second)
+      run = run_fixture(scope, %{state: "running", inserted_at: long_ago})
+      assert is_nil(run.last_heartbeat_at) and is_nil(run.last_event_at)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+      assert lv |> element("#run-alive") |> render() =~ "No heartbeat for"
+      assert has_element?(lv, "#run-alive.q-alive-amber")
+    end
+
+    # The state's dot and the alive line show one state: pulsed is alive, amber and still is
+    # quiet, in the header and in the rail.
+    test "the state's dot: quiet is amber and still, alive pulses, by the same run", %{
+      conn: conn,
+      scope: scope
+    } do
+      now = DateTime.utc_now()
+      alive = run_fixture(scope, %{state: "running", last_heartbeat_at: now, inserted_at: now})
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{alive.number}"
+      {:ok, lv, _html} = live(conn, path)
+
+      for place <- ["#run-state", "#run-facts .q-sdot-running"] do
+        assert has_element?(lv, "#{place} > i")
+        refute has_element?(lv, "#{place} .q-dot")
+      end
+
+      refute has_element?(lv, "#run-alive.q-alive-amber")
+
+      # The heartbeat is late: the page changes with no reload.
+      old = DateTime.add(now, -47, :second)
+
+      alive
+      |> Ecto.Changeset.change(last_heartbeat_at: old)
+      |> Repo.update!()
+      |> Runs.broadcast_changed()
+
+      assert has_element?(lv, "#run-alive.q-alive-amber")
+
+      for place <- ["#run-state", "#run-facts .q-sdot-running"] do
+        assert has_element?(lv, "#{place} > .q-dot.q-alive-amber")
+        refute has_element?(lv, "#{place} > i")
+        refute has_element?(lv, "#{place} .q-ripple")
+        assert lv |> element(place) |> render() =~ "Running"
+      end
+    end
+
+    test "the state's dot of a pending or ended run stays as it is", %{conn: conn, scope: scope} do
+      for state <- ["pending", "failed"] do
+        run =
+          run_fixture(scope, %{
+            state: state,
+            inserted_at: DateTime.add(DateTime.utc_now(), -47, :second)
+          })
+
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+        assert has_element?(lv, "#run-facts .q-sdot-#{state} > i")
+        refute has_element?(lv, "#run-facts .q-sdot .q-dot")
       end
     end
 
@@ -1088,7 +1179,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              |> List.flatten() == ~w(run-tab-timeline run-tab-connections)
 
       refute has_element?(lv, "#run-tab-terminal")
-      assert has_element?(lv, ~s(#run-menu-copy[data-copy="#{run.number}"]))
+      assert has_element?(lv, ~s(#run-menu-copy[data-copy="#{run.public_id}"]))
       refute has_element?(lv, "#run-menu-raw")
       refute has_element?(lv, "#run-menu-download")
       # Copy diagnostics copies the log, so it is not offered either.
@@ -3668,7 +3759,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} = run_page(conn, scope, run)
 
       words =
-        "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of repository acme/shop."
+        "The run's harness has no skill for the workflow explore-a-ticket. The harness comes from the harness file at the root of repository acme/shop."
 
       assert words_of(lv, "#run-meta #run-state + #run-reason") == words
       assert words_of(lv, "#run-facts #rail-reason") == words

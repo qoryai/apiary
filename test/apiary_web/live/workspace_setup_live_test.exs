@@ -3449,6 +3449,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       if run_attrs do
         %Run{
+          number:
+            Apiary.RunEventsFixtures.next_run_number(item.organisation_id, item.workspace_id),
           organisation_id: item.organisation_id,
           workspace_id: item.workspace_id,
           node_run_id: queued.run_id,
@@ -3677,7 +3679,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         assert has_element?(lv, "#set-up-test-failed[data-cause=silent]")
 
         assert words(lv, "#set-up-test-failed") ==
-                 String.replace(line, "RUN_ID", Integer.to_string(run.number)),
+                 String.replace(line, "RUN_ID", run.public_id),
                node.name
       end
     end
@@ -3814,7 +3816,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         assert has_element?(lv, "#set-up-test-failed[data-cause=#{cause}]")
 
         assert words(lv, "#set-up-test-failed") ==
-                 String.replace(line, "RUN_ID", Integer.to_string(run.number))
+                 String.replace(line, "RUN_ID", run.public_id)
 
         refute has_element?(lv, "#set-up-test-preparation")
         assert has_element?(lv, "#set-up-test-run", "Run the test")

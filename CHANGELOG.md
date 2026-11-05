@@ -480,38 +480,167 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The documentation at `/docs` describes the `factory` feature: its steps in the guides,
   the variables of the instance's node pool and gateway, and its modules in the module
   reference. An instance without `factory` serves none of that text.
-- On a work item's **Explore** tab, Qory's proposal is one Markdown text, the newest
-  version, under the caption “Version 2. Attempt 2 wrote this.” The page draws the text
-  with raw HTML dropped, no image loaded, links only to http, https and mailto addresses,
-  and headings two levels down. Under it, **Comments** lists the comments of this take
-  in, each with “You, on version 1” or “Dana, on version 1”. Under the list, a reader who
-  may act has the field “What should change?” and one button: **Confirm** while the field
-  is empty, **Send change** once it has text. Enter writes a line break; only the button
-  sends. While a run reads the open comments, the field and the button are hidden, and
-  each open comment shows “Qory is updating the proposal”. An earlier run of the take in
-  shows “Wrote a proposal” in its fold, without the text.
-- **Send change** keeps the comment, up to 2,000 characters, and queues the next run of
-  Explore, which reads the newest proposal and each comment that no saved update has read.
-  When that run saves an updated proposal, each comment it read is marked done: muted,
-  with a tick and “Done in version 2”. A run that asks questions, fails or ends without a
-  result marks nothing, and the next run reads the comment again. Each comment starts one
-  run. On the last run of a take in, a comment adds a run: after attempt 3 of 3, the
-  comment starts attempt 4 of 4. Owners, admins and members comment; with the
-  `workflow_model` feature, only the stage's approvers, where the stage lists them. A
-  comment that breaks a rule shows the fix under the field: “Write what to change.”,
-  “Shorten the comment to 2,000 characters or fewer.”, “Remove the invisible or control
-  characters from the comment.” or “Ask one of this stage's approvers to comment. Only
-  they can comment on its proposal.”
-- Qory's questions on the **Explore** tab are Markdown, drawn as the proposal is. Each
-  question shows the options the run wrote as cards to choose from, each with a title and
-  an explanation, and the field “Give your own option”. Choosing a card clears the field,
-  and typing in the field clears the card. A question with no option shows the field
-  alone. One **Send answers** sends every answer. A question left without an answer shows
-  “Choose an option or write an answer. If nobody knows, say so: Qory reads that too.”
-- A comment on Qory's proposal shows in the work item's Thread as “Dana commented on
-  Qory's proposal”, or “You commented on Qory's proposal”, with the comment; in Activity
-  as “Commented on Qory's proposal for a work item”; and in the Runs list, on the run it
-  started, as “Attempt 2 of 3, after a comment from Dana”.
+- A run of Explore pushes the proposal, the questions and the review comments as artifacts
+  of its work item while it runs, through the run API, each with the name `main`.
+- On a work item's **Explore** tab, the newest proposal is one Markdown text in the
+  frame **Proposal**, under the caption “Version 2”, and after **Confirm** “Version 2.
+  You confirmed it 5 minutes ago.” A confirmed proposal has the badge **Confirmed**. The
+  page draws the text with raw HTML dropped, links only to http, https and mailto
+  addresses, and headings two levels down. It shows the PNG, JPEG, GIF, WebP and SVG
+  images of the same proposal version, and a reference to a file that version does not
+  have as “Image not in this version: …”. A reader not shown the `workflow_model`
+  feature sees each image as its words, such as “Image: Checkout page”, with no link.
+  The list under the text's last top-level `## Sources` heading is in the fold “Sources
+  (3)” at the foot of the frame, closed. Mermaid diagrams of five types are drawn as
+  images, in the app's colours: flowchart, state, class and ER diagrams in a hand-drawn
+  look; sequence diagrams in Mermaid's classic look. Each has its source in the fold
+  “Diagram source”; the settings a diagram sets, in a directive or front matter, are
+  dropped. A diagram of another type, or one that would load an address, shows as
+  written under “Qory Apiary does not draw this diagram, so it is shown as written.”,
+  and one with an error under “This diagram has an error, so it is shown as written.”
+  One fold at the foot of the tab lists each of Explore's runs in the take in; its first
+  line shows how many there are and the versions of the newest proposal and questions.
+  An earlier run that wrote a proposal opens to that version. The fold also lists the
+  work item's artifacts under **Artifacts**, where a version a run made reads “Run 14”,
+  without its round; artifact pages keep “Run 14 · round 2”. At the Explore stage, the
+  stage's runs and artifacts no longer show above the tabs; its notes stay there. A wide
+  table on the tab scrolls in a frame with a visible bar, as on the **Document** view,
+  and its words stay whole.
+- An open work item whose current stage is Explore opens on the **Explore** tab from
+  every link that names no tab, and the **Ticket** tab has the address
+  `/work/<number>/ticket`.
+- On a work item's **Explore** tab, step card and **Details**, a text about one run
+  links to that run's page, and the link ends with the run's number in the workspace: a
+  line with no attempt number, such as “Explore is running again, with your review
+  comments (Run 14).”, as a whole, and a line with “Attempt 3 (Run 14)” on those words.
+  While a run is queued or running, the top row of the step card reads “Explore”, the
+  state and “Run 14”, “Run 14” is the link, and the sentence under the row has no link
+  and no number. The line under the title, “Explore is running”, links to the run with
+  no number. A run with no page yet, or a reader who may not read the run, sees the same
+  text with no link and no number. On an earlier attempt that opens a fold, a click on
+  the link opens the run's page and a click beside it opens the fold. In the wait block,
+  only the heading links to the run: its sentence is plain, as “Attempt 3 reads the
+  ticket…”.
+- The dot of a running Explore run on the line under a work item's title and on its step
+  card follows the run's page: it is blue and pulses while the run is alive, and it is
+  amber with no pulse once the heartbeat is late. A queued run's dot stays still. A running
+  run's badge and word on a work item's page are blue too. On its step card and Explore
+  tab, those of a running Explore run are amber once the heartbeat is late. The dot
+  changes with the page open, as on the run's page: on each heartbeat, and within 5
+  seconds once the heartbeat is late. On the Work items list, a running row and the stages strip's “N exploring” have the same blue
+  dot, still.
+- The **Document** view of an artifact draws Mermaid diagrams as the **Explore** tab
+  does: the same five types in the same looks, each with its source in the fold “Diagram
+  source”, and any other diagram as written, under the same lines. On that view, a table
+  wider than the text column scrolls in a frame, and a long word wraps, so neither runs
+  under **Details**. A proposal's **Sources** on that view are a closed fold under the
+  text, as on the tab.
+- The **Questions** frame under the proposal lists the questions that a run of this take
+  in wrote or reopened. For a member who may answer, the first line is “Run with answers
+  starts the next run. That run reads your answers and updates the proposal.” Answered
+  questions fold to one line; the open ones follow under “Open questions”. Each question
+  shows the options the run wrote as cards, up to 4, then the card “Give your own option”,
+  and one field with the placeholder “Add details (optional)”, or “Your option” while
+  **Give your own option** is picked. That field is then required: “Write your option, or
+  pick one above.” A question with no options shows the field alone, with the placeholder
+  “Give your own option”. The option a run recommends has the mark “Recommended by the
+  agent” on its card, and on a closed answer that chose it. A reopened question shows
+  its earlier answer under “Earlier answer”, a question that follows another links to it
+  with “Follows question 1”, and a withdrawn one has the badge “Withdrawn”. **Run with
+  answers** sends every answer given, with the open review comments, and starts the next
+  run, at any count of runs; a question with no option and no text stays open. With every
+  answer blank, a member who may send review comments (with the workflow model, only the
+  stage's approvers, where the stage lists them) sends the open review comments of this
+  take in instead. With none open, or for any other member, the form shows “Choose an
+  option or write an answer. If nobody knows, say so: Explore reads that too.” Questions
+  that changed after the page showed them get no answer, and the form shows “Check the
+  questions and your answers, then click Run with answers again. The questions changed
+  after the page showed them, so no answer was sent.” While a run runs, and to a person
+  who may not answer, the open questions show as text.
+- **Add review comment**, in the header of the Proposal frame, opens a page with the
+  field “Review comment”, whenever no run runs, also while questions are open. Each card
+  under **Review comments** shows who wrote it and on which version (“You, on version
+  1”), the badge “Open” or “Reopened”, the text, its replies, and **Reply**; the first
+  card is open and the others are folded to their first line; a click on that line opens
+  or folds it. A run's reply closes a review comment with its outcome, “Changed in version
+  2”, “Answered in version 2”, “Declined in version 2” or “Asked as question 4”, and the
+  card turns muted, with a tick. A member's reply opens it again. A review comment and a
+  reply take up to 2,000 characters and start no run. While a run reads an open review
+  comment, its card shows “Attempt 3 (Run 14) reads this review comment.” From 1007 px the
+  cards are in the right column beside the tabs, on every tab, and the column stays in view
+  while the page scrolls; below 1007 px they are at the top of the Proposal frame. Owners,
+  admins and members write review comments and replies; with the `workflow_model` feature,
+  only the stage's approvers, where the stage lists them. Any other member has no **Add
+  review comment** or **Reply**, and the address of either page goes back to the tab. A
+  member who stopped being an approver after the page opened sees “Ask one of this stage's
+  approvers to write review comments on the proposal. Only approvers of the stage can
+  write them.” under the field when they send, with the text kept. A text that breaks a
+  rule shows the fix under the field: “Write your review comment.”, “Write your reply.”,
+  “Shorten the review comment to 2,000 characters or fewer.”, “Shorten the reply to 2,000
+  characters or fewer.”, “Remove the invisible or control characters from the review
+  comment.” or “Remove the invisible or control characters from the reply.”
+- At the gate, under the proposal, **Confirm** confirms it, for a member who may
+  confirm. While review comments are open, a member who may send them first sees “Send
+  review comments starts the next run. That run reads your review comments and updates
+  the proposal.” (“the review comments” where another member wrote one of them), then
+  **Send review comments**, which starts the next run with every open review comment of
+  this take in, and **Confirm**, beside “Confirm leaves 2 review comments unread.” With
+  the workflow model, where the stage lists approvers, a member who is not one of them
+  sees neither button and neither line. Where the stage lists approvers, the header
+  reads “You confirm next” for a member who may confirm; any other member reads “Dana
+  confirms next”, “Dana or Sam confirms next” or “One of 3 approvers confirms next”, and
+  the step card “Dana confirms the proposal or sends review comments.”, “Dana or Sam
+  confirms the proposal or sends review comments.” or “One of the stage's 3 approvers
+  confirms the proposal or sends review comments.” The Work items list shows the same
+  words on the row, and its **Waiting on you** view, its Confirm band's count and the
+  sidebar's count go to the members who may confirm, not to an owner who is not listed.
+  Elsewhere the header shows the owner as before, “You confirm next” or “Dana confirms
+  next”. A member who stopped being an approver after the page showed the gate, and
+  clicks **Send review comments**, sees “Ask an approver of Explore to act on it.” under
+  the gate, and no run starts. With the workflow model, where the stage lists approvers,
+  only they approve a gate. Every member answers the questions. The access action
+  `work_item.review_comment` covers a review comment, a reply and a send.
+- When **Run with answers**, **Send review comments**, a review comment or a reply sends
+  nothing, the answers or the text stay, and the form shows the fix under it: “Send it
+  again when attempt 3 ends. Attempt 3 (Run 14) started first, so nothing was sent.” when
+  another run started first, and the Add review comment or Reply page stays open; “Copy your
+  text if you need it. You can no longer send this review comment, because the work item
+  changed.” on that page, or “… this reply …”, after a confirm, a close or an undo by
+  another member, and that page has no button to send it; “Try again in a minute. The
+  artifact store cannot be reached.”; “Check the page, then send again. The work item
+  changed after the page showed it, so nothing was sent.” (the questions form shows its
+  changed-questions text instead); “Reload the page. Your access or the work item
+  changed, so nothing was sent.”; “Send again. Qory Apiary could not save it.” for any
+  other error. At the run limit, no line shows. **Confirm** shows no line when it fails.
+- A review comment shows in the work item's Thread as “Dana wrote a review comment on
+  the proposal”, or “You wrote a review comment on the proposal”, with its text, and a
+  reply as “Dana replied to a review comment”; in Activity as “Wrote a review comment on
+  a work item's proposal”, “Replied to a review comment on a work item's proposal” and
+  “Sent 2 review comments on a work item's proposal”; and in the Runs list, on the run
+  it started, as “Attempt 2 of 3, after a comment from Dana”. The Thread also shows
+  Explore's runs: “Explore started in attempt 1”, “Explore started again, with the
+  answers, in attempt 2”, “Explore started again, with the review comments, in attempt
+  3” after **Send review comments**, “Explore wrote 2 questions, after 30 s”, “Explore
+  wrote a proposal, after 30 s”, with who confirms next, as in the header (“… You
+  confirm next”), only on the proposal that waits at **Confirm**, and “Explore wrote
+  replies to 2 review comments, after 30 s”, with the icon of a run that ended well, for
+  a run that wrote only replies. A run that wrote nothing shows “Attempt 2 ended without
+  a result”.
+- While a run that **Send review comments** started is queued, the tab shows “Explore is
+  queued again, with your review comments (Run 14).” to the member who sent them, else
+  “…with the review comments (Run 14).”, over “Attempt 3 starts when the workspace's pool
+  takes it. It reads the ticket, the newest proposal and the review comments.” While it
+  runs: “Explore is running again, with your review comments (Run 14).” over “Attempt 3
+  reads the ticket, the newest proposal and your review comments, then writes the next
+  proposal and questions.”; for other members both say
+  “the review comments”.
+- In **Earlier take ins**, a run's questions are headed “Question” or “Questions”, or
+  “Question and answer” or “Questions and answers” where answers show, over “Attempt 1
+  (Run 13) wrote this question.” or “Attempt 1 (Run 13) wrote these questions.”
+- From this release, Explore counts only the open questions that a run of the current
+  take in wrote or reopened, when it decides whether a work item waits for answers. A
+  work item whose Explore outcome was stored before this release shows that outcome as
+  it was stored.
 <!-- /feature -->
 - The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
   allows for every run of the workspace, by group, such as **Harness sources**,
@@ -554,14 +683,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - In Workspace settings › Artifact types, owners and admins switch each standard type on
   or off, and each change is an audit entry. Forms and the stage editor offer only the
   types that are on. A push of a type that is off returns `422 unknown_type`, and the
-  message says to switch the type on. `proposal`, `questions` and `verdict` are always
-  on. A type stays on while an artifact of the workspace has it, or while the current
-  process or a process version in use includes it. A workspace keeps every standard
-  type until a person switches one off.
+  message says to switch the type on. `proposal`, `questions`, `review-comments` and
+  `verdict` are always on. A person adds no version of `questions` or `review-comments` by
+  hand: members write them on the **Explore** tab. A type stays on while an artifact of
+  the workspace has it, or while the current process or a process version in use includes
+  it. A workspace keeps every standard type until a person switches one off.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
 - In the notes for the next run, a comment on Explore's proposal is labelled “Comment ·
   Explore”. The run API sends it as a note of kind `answer`.
+- When a run of Explore fails after it pushed a proposal, its stage escalates with “The
+  run failed after it wrote proposal version 2.” Questions wait for answers at any count
+  of runs and in any round: a stage no longer escalates them at its last round.
 - `GET work-item` returns the run's number in `run.number`.
 <!-- /feature -->
 - A run page shows a run's `push` steps in a section **After the session**, under the
@@ -585,9 +718,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   harness. The first workspace of an organisation starts from that template. A workspace
   with no template uses the `core` stack. Stages and Workflow show the stack: “Harness:
   Qory harness, stack software”.
-- The Qory harness is pinned at harness commit bde1cf61, which exports the stacks `core`
-  and `software`. On the Qory harness, the Stack select of each repository lists
-  `software`.
+- The Qory harness is pinned at harness commit f2b3b4d, which exports the stacks `core`,
+  `software`, and `authoring`, and whose `explore-a-ticket` pushes the proposal, the questions and the
+  replies to review comments as artifacts. On the Qory harness, the Stack select of each
+  repository lists `software`.
 - A workspace made from the software template gets the artifact type `branch`, and every
   standard type stays shown.
 <!-- feature: factory, workflow_model -->
@@ -598,9 +732,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: workflow_model -->
 - The software workspace type's default stages and texts come from the copy of the Qory
-  harness in the release, and they are unchanged. An instance with no save on
-  Instance settings › Workspace types gets them as one more version of the type, so the
-  version number rises by 1. New workspaces copy that version.
+  harness in the release. Its Explore stage runs `explore-a-ticket` once per run, without
+  a loop of 3 rounds. An instance with no save on Instance settings › Workspace types gets
+  them as one more version of the type. New workspaces copy that version.
 - A workspace on a harness repository no longer has `explore-a-ticket` added to the
   workflows it lists: a stack that does not list it gets a cross on Stages, and Explore
   waits. A workspace on the Qory harness gets the same cross when its stack does not
@@ -635,16 +769,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gives anyone else 404 there. The public documentation leaves them out of its pages,
   sidebar and search, and a link to them is its words. `mix docs` builds both trees. The
   guides stay in the repository's `guides` directory.
-- Every run has a number, one count for the whole server, and the console names and
-  addresses a run by it: “Run 18342” at `/acme/main/runs/18342`, in the run page's header
-  and breadcrumb, the Runs list, the Overview, a work item's page, Activity and the
-  search results. A run's title, when it sent one, is the line under the header. An
-  address with the run's `rn_` id, such as a link built from the API, sends on to the
-  number's address in the same workspace. Details shows **Run number** with Copy, the
-  run's menu copies the number, and a downloaded log is named `run-18342.log`. A run's
-  place in a take in reads “Attempt 2 of 3”. The API keeps the `rn_` id, and the
-  diagnostics endpoint, `GET /v1/runs/<run>/diagnostics`, takes the number or the `rn_`
-  id.
+- Each workspace counts its runs from 1, and the console shows a run by its number and
+  uses the number in its address: "Run 3" at `/acme/main/runs/3`, in the run page's header
+  and breadcrumb, the Runs list, the Overview, a work item's page, Activity and the search
+  results. A work item that moves into a workspace whose count is lower raises that count
+  to the work item's highest number, so the workspace's numbers jump. A run's title, when
+  it sent one, is the line under the header. An address with the run's `rn_`
+  id, such as a link built from the API, sends on to the number's address in the same
+  workspace. An address with a number the workspace does not have shows not found.
+  Details shows **Run id**, the `rn_` id, with Copy, the run's menu copies the `rn_` id,
+  a line that sends you to support has the `rn_` id, and the file name of a downloaded log
+  is that id, `rn_0123456789abcdef.log`. A run's place in a take in reads "Attempt 2 of
+  3". The API keeps the `rn_` id, and the diagnostics endpoint,
+  `GET /v1/runs/<run id>/diagnostics`, takes only the `rn_` id; a number is `404`
+  `not_found`.
 - The Runs list shows, for each run, the workflow it ran (such as `explore-a-ticket`,
   with the stage and round that placed it), its work item as a link, and how it started,
   such as "Taken in by dana". The Host column is gone, and the Target column and the
@@ -816,9 +954,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the work item. The upgrade closes every declined work item (Migrations). Activity
   still describes an earlier decline as “Declined a work item”, and its filter no longer
   offers “Work item declined”.
-- At Confirm, the step card shows “Confirm Qory's proposal, or write what to change.” and
-  **Read Qory's proposal**, which opens the **Explore** tab, where **Confirm** is. A
-  reader who may not act reads “You confirm next” or “Dana confirms next”. A person
+- At Confirm, the step card shows “Confirm the proposal, or add review comments and send
+  them.” and **Read the proposal**, which opens the **Explore** tab, where **Confirm** is.
+  A reader who may not act reads “You confirm next” or “Dana confirms next”. A person
   changes a proposal with a comment: **Change**, the edit page with **Confirm changes**,
   **Show Qory's words**, the caption “Qory shows it as plain text” and the proposal's
   sections (Complexity, Understanding, In scope, Out of scope, Approach, Not chosen,
@@ -834,16 +972,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The Backlog has two tabs, **Open** and **Taken in**. A ticket closed at its source
   leaves the Backlog: it is in neither tab, and its filter values go with it. Its ticket
   page still opens at its address.
-- Explore's contract follows integrations commit `e6ebf76c`. An `understood` result is one
-  Markdown `message`, the proposal; `complexity`, `understanding`, `scope`, `approach`
-  and `knowledge` are removed. A `not_understood` result has 1 to 20 `questions`, each a
-  Markdown `question` of up to 20,000 characters with 0 to 10 `options`, each a `title`
-  of 1 to 200 characters and an `explanation` of 1 to 2,000. The run's inputs gain
-  `proposal`, the newest proposal of the take in, and `changes`, the comments that no
-  saved update has read, and each entry of `answers` gains `custom`: true for the
-  person's text, false for an option's title. `attempt` has no maximum, and `of` is not
-  fixed at 3. A run whose result has the earlier shape ends with “The run's result does
-  not match the explore result schema.”
+- Explore's contract follows integrations commit `8c48db84`. A run of Explore returns no
+  result: `result.schema.json` is removed, and the run pushes `proposal`, `questions` and
+  `review-comments` through the run API, where it reads them too. The run's inputs no
+  longer have `answers`, `proposal`, `changes` or `run.of`, and `attempt` has no maximum.
+  `GET work-item` no longer returns `answers`; a note of kind `answer` is an answer, a
+  review comment or a reply. A version of `proposal` is one Markdown file of up to
+  256 KiB, PNG, JPEG, GIF, WebP or SVG images, and an optional `sources.json`, at most 10
+  files and 5 MiB together; an SVG uses only the elements and attributes that
+  `docs/contract/run-api.md` lists. A question in `questions` has 0 to 4 `options`, each a
+  `title`, an `explanation` and an optional `recommended`, true on at most one option of
+  the question. `questions` and `review-comments` take only the name `main`, and a run's
+  version that changes what members wrote returns `422 invalid_artifact`. A JSON file of a
+  standard type with a key twice in one object returns `422 invalid_artifact`. A push that
+  the end of its run overtakes returns `409 run_ended`, and no version is stored. Explore
+  needs the `workflow_model` feature: without it the run API returns 404, and every run of
+  Explore ends with no result.
 - The access action `work_item.decline` is removed. **Close work item…** on the run-limit
   card needs `work_item.close`.
 <!-- /feature -->
@@ -870,13 +1014,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   finished before the upgrade stays in **Open** until a person closes it or its ticket
   closes.
 - An escalation card has no **Decline**. Its other buttons stay.
-- The artifact type `proposal` is a document, one Markdown file `proposal.md` of up to
-  256 KiB, in place of structured JSON. A `questions` artifact takes up to 256 KiB, up
-  from 64 KiB, and each question in it is an Explore question, with its options.
+- The artifact type `proposal` is a document: one Markdown file of up to 256 KiB, in
+  place of structured JSON, with images and an optional `sources.json`, up to 10 files
+  and 5 MiB. A `questions` artifact contains every question of a work item with its
+  answers, up to 1 MiB; a question has 0 to 4 `options`, and an option has an optional
+  `recommended`, at most one per question. `review-comments` is a new standard type, up
+  to 1 MiB. The page of a `questions` version shows each question's `context` as
+  Explore's tab does, with raw HTML dropped and links only to http, https and mailto
+  addresses.
 <!-- /feature -->
 
 ### Fixed
 
+- A run's page shows “No heartbeat for 47 s”, counted from when the workspace first
+  heard of the run, for a running run with no heartbeat after one heartbeat interval.
+  Before, the page ended in an Internal Server Error for a run with no event either, and
+  the count restarted at each event for a run with events.
 - A page of a workspace that is open when its test run passes, such as the run's page,
   drops the sidebar's group Set up within a second. Before, the group stayed, with the
   Test run step not done, until the page was opened again.
@@ -921,6 +1074,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `runs`: `number` becomes unique per workspace, from a new table `run_counters` with one
+  row per workspace that has runs, and the sequence `runs_number_seq` goes. Existing runs
+  get new numbers: each workspace's runs are numbered from 1 in the order they were
+  created, and each counter also goes past the highest number of the runs of the work
+  items now in its workspace. Runs of a work item moved before this migration may repeat a
+  number. An old link to `/runs/<number>` may then show another run of the workspace or
+  not found; a link with the `rn_` id keeps working. The migration updates every row of
+  `runs` in one transaction. Until it ends, reads and writes of `runs` and writes to
+  `workspaces` and `organisations` wait: 128 s on 1,000,000 runs with the 23 indexes of
+  `runs`, on a machine that was not idle (Upgrading guide). A new trigger,
+  `runs_number_from_counter`, takes a number from the counter for an insert with none, so
+  the previous release keeps working on this schema. The `down` numbers the runs across
+  the server again without restoring the numbers they had. This migration leaves the run
+  numbers in stored `questions` and `review-comments` documents (`asked.run`,
+  `reopened.run`, `by.run`) as they were, and so does `down`. An open question in such a
+  document may then stop matching its run, so a member cannot answer it, or may count as a
+  question of a later run. Upgrade before an instance stores these documents.
 - `run_steps`: the check on `kind` also allows `build` and `push`. The check is added
   without a scan, and a second migration then validates it with a scan that does not
   block writes. It changes no existing row.
@@ -929,10 +1099,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `dispatches`: two nullable columns, `machine_end_state` and `machine_end_at`, with a
   check that scans `dispatches` under a lock that blocks writes. It changes no existing
   row.
-- `runs`: a `number` column, `bigint`, unique and NOT NULL, whose default is the next
-  value of the new sequence `runs_number_seq`. The runs already there are numbered from 1
-  in the order they started, then the sequence goes on from the highest number. The
-  migration locks `runs` against reads and writes while it runs.
+- `runs`: a `number` column, `bigint`, NOT NULL. The runs already there are numbered from
+  1, and `20261105090000` numbers them per workspace (the `runs` entry on `number` at the
+  top of this section).
 - `type_template_versions`: three nullable columns, `name`, `summary` and `description`,
   with a check on their lengths (1 to 60, 200 and 1,200 characters) that scans the table
   under a lock that blocks writes. It changes no existing row.
@@ -1024,18 +1193,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   moves a ticket from open to closed sets it. The migration closes no work item: a live
   work item whose ticket closed before the upgrade stays open until a person closes it or
   the adapter sends that ticket again as closed.
-- `work_item_answers`: `question` becomes nullable, with a check of 1 to 20,000
-  characters in place of 1 to 2,000, and four nullable columns, `custom`,
-  `proposal_version`, `done_version` and `done_at`, with a check on their combinations.
-  The migration sets `custom` to true on every existing row, which rewrites the table, and
-  the checks scan it under a lock that blocks writes. `work_item_confirmations`: the
-  column `changes` is dropped, with the edits people made to a proposal before they
-  confirmed it. A rollback stops with an error and changes nothing while
-  `work_item_answers` contains a comment or a question longer than 2,000 characters:
-  “Qory Apiary keeps people's comments on a proposal, which have no question, and
-  questions of up to 20000 characters, so this migration rolls back only while no comment
-  and no question longer than 2000 characters is kept. Some are.” Otherwise it brings
-  back `changes`, empty.
+- `work_item_confirmations`: the column `changes` is dropped, with the edits people made
+  to a proposal before they confirmed it. A rollback brings it back, empty.
+- `work_item_answers` comes with this release and is dropped by it: answers and review
+  comments are kept in the artifacts `questions` and `review-comments`. On an upgrade from
+  0.1.0 the table is empty when it is dropped. A rollback creates it again, empty.
+- `dispatch_runs`: the check on `result_outcome` is replaced to allow the outcome
+  `questions` on a run ended `lost`. It scans `dispatch_runs` under a lock that blocks
+  reads and writes, and changes no row. A rollback stops with an error while a run ended
+  `lost` has an outcome.
+- `work_items`: a partial index on the work items that explore with their stage running,
+  built inside the migration, so writes to `work_items` wait until the build ends.
 
 ## [0.1.0] - 2026-10-13
 

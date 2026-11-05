@@ -104,7 +104,6 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
              ]
 
       assert attr(html, "#work-items-stages-explore .q-wi-mk", "class") == [
-               "q-wi-mk q-wi-mk-run",
                "q-wi-mk q-wi-mk-wait",
                "q-wi-mk q-wi-mk-err"
              ]
@@ -119,6 +118,20 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
 
         assert texts(html, "#work-items-stages-explore .q-wl-st-attn > span") == words
       end
+    end
+
+    test "the exploring mark is the Runs page's blue dot, still" do
+      html = strip(exploring: 2)
+
+      assert texts(html, "#work-items-stages-explore .q-wl-attn") == ["2 exploring"]
+
+      assert count(
+               html,
+               "#work-items-stages-explore .q-wl-attn .q-sdot.q-sdot-running > i[class~='after:hidden']"
+             ) == 1
+
+      assert count(html, ".q-wi-mk-run") == 0
+      assert count(html, ".q-ripple") == 0
     end
 
     test "nothing to say: the words for none" do
@@ -285,6 +298,34 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
   end
 
   describe "work_item_row/1" do
+    test "a running row has the Runs page's blue dot, still; other marks stay" do
+      running = row(work_item(%{status: :running}))
+      assert count(running, ".q-wl-row .q-sdot.q-sdot-running > i[class~='after:hidden']") == 1
+      assert count(running, ".q-wi-mk-run") == 0
+      assert count(running, ".q-ripple") == 0
+
+      queued = row(work_item(%{status: :queued}))
+      assert attr(queued, ".q-wl-row .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-todo"]
+      assert count(queued, ".q-sdot-running") == 0
+
+      at_stage =
+        row(work_item(%{status: :shape}), stage_status: %{words: "Build · Running", mark: :run})
+
+      assert count(at_stage, ".q-wl-row .q-sdot-running > i") == 1
+      assert count(at_stage, ".q-wi-mk-run") == 0
+
+      done = row(work_item(%{status: :shape}), stage_status: %{mark: :done})
+      assert attr(done, ".q-wl-row .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-done"]
+    end
+
+    test "the row's narrow layouts have a query container: the groups and the flat list" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      assert css =~ ~r/\.q-wl-grp,\s*#work-items-rows \{\s*container-type: inline-size;/
+      assert css =~ ~r/@container \(max-width: 900px\) \{\s*\.q-wl-row \{/
+      assert css =~ ~r/@container \(max-width: 700px\) \{\s*\.q-wl-row \{/
+    end
+
     test "its parts, the whole row a link to the work item" do
       html = row(work_item())
 

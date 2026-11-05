@@ -207,33 +207,27 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       refute Repo.exists?(from i in Instance, where: i.node_id == ^key.node_id)
     end
 
-    test "answers a run by its number as by its rn_ id, a run of another organisation too",
+    test "returns a run by its rn_ id, a run of another organisation too",
          %{admin: admin, key: key, seed: seed, run: run} do
       # The run is in the organisation of another sign-up than the key's admin.
       refute run.organisation_id == admin.organisation.id
-      assert is_integer(run.number)
 
-      by_number = diagnose(key.key_id, seed, Integer.to_string(run.number))
-      by_id = diagnose(key.key_id, seed, run.public_id)
-
-      for conn <- [by_number, by_id] do
-        assert conn.status == 200
-        assert signed_answer?(conn)
-        assert Jason.decode!(conn.resp_body)["run"]["id"] == run.public_id
-      end
+      conn = diagnose(key.key_id, seed, run.public_id)
+      assert conn.status == 200
+      assert signed_answer?(conn)
+      assert Jason.decode!(conn.resp_body)["run"]["id"] == run.public_id
     end
 
-    test "a number of no run, above the most, with a leading zero or a mark is not found",
+    # A number is unique only in its workspace, and the key reads every workspace.
+    test "a run's number is not found, as a number of no run",
          %{key: key, seed: seed, run: run} do
-      %{rows: [[highest]]} = Repo.query!("SELECT max(number) FROM runs")
+      assert is_integer(run.number)
 
       for id <- [
-            Integer.to_string(highest + 1),
-            "9223372036854775807",
+            Integer.to_string(run.number),
+            "99999999",
             "9223372036854775808",
-            "99999999999999999999",
             "0",
-            "0#{run.number}",
             "-#{run.number}",
             "%23#{run.number}",
             "Run%20#{run.number}"

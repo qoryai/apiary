@@ -184,11 +184,8 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert explore == %{
                "id" => id_of("Explore"),
                "name" => "Explore",
-               "label" =>
-                 "Explore. a loop of explore-a-ticket, at most 3 rounds. Gate: a member approves",
-               "sequence" => [
-                 %{"loop" => "at most 3 rounds", "workflows" => ["explore-a-ticket"]}
-               ],
+               "label" => "Explore. explore-a-ticket. Gate: a member approves",
+               "sequence" => [%{"workflow" => "explore-a-ticket"}],
                "gate" => "Gate: a member approves",
                "add" => "Add a stage after Explore",
                "alerts" => [],
@@ -1015,7 +1012,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       # A name the harness repository does not list: list it in the stack, or choose another.
       view
       |> form("#stage-form",
-        stage: %{sequence: %{"0" => %{body: %{"0" => %{workflow: "capture-demo"}}}}}
+        stage: %{sequence: %{"0" => %{workflow: "capture-demo"}}}
       )
       |> render_change()
 

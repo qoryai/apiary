@@ -742,8 +742,11 @@ defmodule ApiaryWeb.HarnessComponents do
   def workflow_gap_words(%{workflow: workflow, source: source}) do
     missing =
       if workflow,
-        do: gettext("The run's harness has no skill named %{workflow}.", workflow: workflow),
-        else: gettext("The run's harness has no skill with the name of the run's workflow.")
+        do:
+          gettext("The run's harness has no skill for the workflow %{workflow}.",
+            workflow: workflow
+          ),
+        else: gettext("The run's harness has no skill for the run's workflow.")
 
     case gap_source_words(source) do
       nil -> missing

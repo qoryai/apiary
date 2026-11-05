@@ -190,7 +190,9 @@ defmodule Apiary.Adapters.Collections do
   #      items first, then their work items (`Apiary.Sources.Ingest`);
   #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
   #      right after the work item it numbers;
-  #   7. the adapter's feed counter, last.
+  #   7. the adapter's feed counter;
+  #   8. for a work item that moves, the target's counter of run numbers
+  #      (`Apiary.Runs.Number.raise_past/2`), last.
   #
   # A start that changes the adapter's `items` holds, after its row, the adapter's
   # connections that have not ended `FOR SHARE`, by id, then every live collection of

@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.BacklogTakeInTest do
   # What a refused Take in says (`ApiaryWeb.BacklogComponents.take_in_refused/3`), for
   # each refusal of `Apiary.WorkItems.take_in/3`, in the source's word for its items; and
-  # the Take in block (`take_in_block/1`) for a person who may not take a ticket in.
+  # Take in (`take_in_block/1`): Take in and its hint, or why in place of both to a person
+  # who may not take a ticket in.
   use Apiary.DataCase, async: true
 
   import Phoenix.LiveViewTest
@@ -68,16 +69,35 @@ defmodule ApiaryWeb.BacklogTakeInTest do
              "This task is closed at Tracker, so it was not taken in."
   end
 
-  test "the block says why in place of Take in to a person who may not take one in", ctx do
+  test "Take in, with its hint beside it" do
+    html =
+      render_component(&BacklogComponents.take_in_block/1, id: "ti", ticket_id: "tk_01")
+      |> LazyHTML.from_fragment()
+
+    assert LazyHTML.attribute(LazyHTML.query(html, "#ti"), "class") == ["q-bl-ti-act"]
+    assert LazyHTML.text(LazyHTML.query(html, "#ti-button")) =~ "Take in"
+    assert LazyHTML.attribute(LazyHTML.query(html, "#ti-button"), "phx-value-id") == ["tk_01"]
+
+    assert LazyHTML.attribute(LazyHTML.query(html, "#ti-button"), "aria-describedby") == [
+             "ti-hint"
+           ]
+
+    assert String.trim(LazyHTML.text(LazyHTML.query(html, "#ti-hint"))) ==
+             "Take in starts exploring this ticket."
+
+    assert Enum.empty?(LazyHTML.query(html, "#ti-refused"))
+  end
+
+  test "why in place of Take in and its hint to a person who may not take one in", ctx do
     html =
       render_component(&BacklogComponents.take_in_block/1,
         id: "ti",
         ticket_id: "tk_01",
-        workspace: ctx.scope.workspace.name,
         refused: BacklogComponents.take_in_who_may(ctx.scope)
       )
 
     refute html =~ ~s(id="ti-button")
+    refute html =~ ~s(id="ti-hint")
     assert html =~ "Only members of #{ctx.scope.workspace.name} take tickets in."
   end
 end

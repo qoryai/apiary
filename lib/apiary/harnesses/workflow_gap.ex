@@ -1,6 +1,6 @@
 defmodule Apiary.Harnesses.WorkflowGap do
   # A run that ended with the reason `workflow_not_in_harness`: qory found no skill or
-  # command with the name of the run's workflow in the harness it composed for the run,
+  # command for the run's workflow in the harness it composed for the run,
   # and closed the run failed before the runtime started. Qory Apiary only reads the code;
   # this module gives the facts a page or an escalation says of it: the workflow, and
   # where the run's harness came from, read from the run's harness walk

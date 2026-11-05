@@ -272,7 +272,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert get_resp_header(conn, "x-qory-signature-ed25519") == [expected]
     end
 
-    test "is the work item's snapshot: ticket, stage, outputs, verdict and answers", ctx do
+    test "is the work item's snapshot: ticket, stage, outputs and verdict", ctx do
       place!(ctx)
       conn = read(ctx, "/work-item")
       assert signed_answer?(conn)
@@ -296,13 +296,13 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert body["ticket"]["title"] == ctx.work_item.title
       assert is_list(body["comments"])
       assert body["comments_omitted"] == 0
-      assert body["answers"] == []
+      refute Map.has_key?(body, "answers")
 
       assert body["stage"] == %{
                "id" => @explore,
                "name" => "Explore",
                "round" => 1,
-               "rounds" => 3,
+               "rounds" => nil,
                "state" => "running"
              }
 
@@ -1026,7 +1026,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "then run the round again."
          }},
         {:not_found, 404, %{"error" => "not_found"}},
-        {:store_unavailable, 503, %{"error" => "unavailable"}}
+        {:store_unavailable, 503, %{"error" => "unavailable"}},
+        # A run that ended after the check before the push, found ended under the work
+        # item's lock.
+        {:run_ended, 409,
+         %{
+           "error" => "run_ended",
+           "message" => "The run has ended, so it can no longer push artifacts or give a verdict."
+         }}
       ]
 
       for {push_error, status, answer} <- cases do
@@ -1035,6 +1042,206 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         assert signed_answer?(conn)
         assert json_response(conn, status) == answer, inspect(push_error)
       end
+    end
+
+    test "a proposal is one Markdown file with images and sources.json, and each refusal says why",
+         ctx do
+      md = {"proposal.md", "text/markdown", "# Gift cards\n\n![Checkout](checkout.svg)\n"}
+      sources = {"sources.json", "application/json", ~s({"sources": []})}
+      svg = {"checkout.svg", "image/svg+xml", @svg}
+      png = {"cart.png", "image/png", @png}
+
+      conn = write(ctx, "/artifacts", push_body("proposal", [md, svg, png, sources]))
+      assert %{"artifact" => %{"type" => "proposal"}} = json_response(conn, 201)
+
+      unsafe = ~s(<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com/"/></svg>)
+      escaped = ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect fill="\\0"/></svg>)
+      iframe = ~s(<svg xmlns="http://www.w3.org/2000/svg"><iframe/></svg>)
+
+      big_svg =
+        ~s(<svg xmlns="http://www.w3.org/2000/svg"><desc>#{String.duplicate("a", 524_288)}</desc></svg>)
+
+      cases = [
+        {[md, {"notes.txt", "text/plain", "Gift cards."}], ["files[1]"],
+         "Fix notes.txt to match the format of proposal: a proposal is one Markdown file " <>
+           "(.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."},
+        {[md, {"cart.png", "image/gif", "GIF89a" <> <<1>>}], ["files[1]"],
+         "Replace cart.png with an image of the type its name ends in."},
+        {[md, {"checkout.svg", "image/svg+xml", @png}], ["files[1]"],
+         "Replace checkout.svg with an image of the type its name ends in."},
+        {[{"proposal.md", "text/markdown", <<0xFF>>}], ["files[0]"],
+         "Fix proposal.md to match the format of proposal: " <>
+           "a document is a Markdown file of UTF-8 text."},
+        {[md, {"other.md", "text/markdown", "# Other"}], ["files"],
+         "Push one Markdown file (.md) in each version of proposal."},
+        {[png], ["files"], "Push one Markdown file (.md) in each version of proposal."},
+        {[{"proposal.md", "text/markdown", String.duplicate("a", 262_145)}], ["files[0]"],
+         "Shrink proposal.md to at most 262144 bytes."},
+        {[md, {"checkout.svg", "image/svg+xml", unsafe}], ["files[1]"],
+         "Remove the href attribute from checkout.svg. An SVG in a proposal uses only the " <>
+           "elements and attributes the run API document lists, with no script, HTML or " <>
+           "reference outside the file."},
+        {[md, {"checkout.svg", "image/svg+xml", escaped}], ["files[1]"],
+         "Remove a backslash in the fill attribute from checkout.svg. An SVG in a proposal " <>
+           "uses only the elements and attributes the run API document lists, with no " <>
+           "script, HTML or reference outside the file."},
+        {[md, {"checkout.svg", "image/svg+xml", iframe}], ["files[1]"],
+         "Remove the iframe element from checkout.svg. An SVG in a proposal uses only the " <>
+           "elements and attributes the run API document lists, with no script, HTML or " <>
+           "reference outside the file."},
+        {[md, {"checkout.svg", "image/svg+xml", "<svg><rect></svg>"}], ["files[1]"],
+         "Make checkout.svg a well-formed SVG file in UTF-8 with an svg root element."},
+        {[md, {"checkout.svg", "image/svg+xml", "<svg/>"}], ["files[1]"],
+         ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg.)},
+        {[md, {"checkout.svg", "image/svg+xml", ~s(<svg xmlns="urn:example:x"/>)}], ["files[1]"],
+         ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of checkout.svg.)},
+        {[md, {"checkout.svg", "image/svg+xml", big_svg}], ["files[1]"],
+         "Shrink checkout.svg to at most 524288 bytes."},
+        {[md, {"checkout.svg", "image/svg+xml", "<!DOCTYPE svg>" <> @svg}], ["files[1]"],
+         "Remove the DOCTYPE from checkout.svg. An SVG in a proposal uses only the elements " <>
+           "and attributes the run API document lists, with no script, HTML or reference " <>
+           "outside the file."},
+        {[md, {"sources.json", "application/json", "{"}], ["files[1]"],
+         "Make sources.json valid JSON. The file does not parse as JSON."},
+        {[md, {"sources.json", "application/json", String.duplicate(" ", 1_048_577)}],
+         ["files[1]"], "Shrink sources.json to at most 1048576 bytes."},
+        {[md, {"sources.json", "application/json", ~s({"items": []})}], ["files[1]"],
+         "Fix sources.json to match the format of proposal sources: " <>
+           "at #, additional properties are not allowed but found property 'items'."},
+        {[md, {"sources.json", "application/json", ~s({"sources": [], "sources": []})}],
+         ["files[1]"],
+         "Fix sources.json to match the format of proposal sources: " <>
+           "at #, the object has the key sources twice."}
+      ]
+
+      for {files, names, message} <- cases do
+        conn = write(ctx, "/artifacts", push_body("proposal", files))
+
+        assert json_response(conn, 422) == %{
+                 "error" => "invalid_artifact",
+                 "names" => names,
+                 "message" => message
+               },
+               message
+      end
+
+      assert [_one] = RunApiStubs.pushed()
+    end
+
+    test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
+      md = {"proposal.md", "text/markdown", "# Gift cards"}
+      images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}
+      conn = write(ctx, "/artifacts", push_body("proposal", [md | images]))
+
+      assert json_response(conn, 422) == %{
+               "error" => "too_many_files",
+               "type" => "proposal",
+               "limit" => 10,
+               "message" => "Push at most 10 files in one version of proposal."
+             }
+
+      large = @png <> :binary.copy("a", 5_242_880)
+      conn = write(ctx, "/artifacts", push_body("proposal", [md, {"a.png", "image/png", large}]))
+
+      assert json_response(conn, 422) == %{
+               "error" => "too_large",
+               "type" => "proposal",
+               "limit" => 5_242_880,
+               "message" =>
+                 "Shrink the files of one version of proposal to at most 5242880 bytes together."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a run's version of questions or review comments that changes what members wrote is 422",
+         ctx do
+      cases = [
+        {"questions", :id_dropped,
+         "Keep every question of the newest version of questions in questions.json: " <>
+           "the id of a question is missing."},
+        {"questions", :answer_changed,
+         "Leave each answer in questions.json as the newest version of questions has it: " <>
+           "members write the answers."},
+        {"questions", :history_changed,
+         "Leave the history of each question in questions.json as the newest version of " <>
+           "questions has it, and give a new question no history."},
+        {"questions", :reopen_not_kept,
+         "Move the answer of a question you reopen, unchanged, to the end of its history " <>
+           "in questions.json."},
+        {"questions", :asked_changed,
+         "Leave asked of each question in questions.json as the newest version of " <>
+           "questions has it."},
+        {"questions", :reopened_run,
+         "Set reopened.run in the history of each question you reopen in questions.json " <>
+           "to this run's number."},
+        {"questions", :answered_changed,
+         "Leave question, context and options of each answered question in " <>
+           "questions.json as the newest version of questions has them."},
+        {"questions", :follows_changed,
+         "Leave follows of each question in questions.json as the newest version of " <>
+           "questions has it."},
+        {"questions", :order_changed,
+         "Keep the questions of the newest version of questions first in questions.json, " <>
+           "in the same order, and add new questions after them."},
+        {"questions", :follows_unknown,
+         "Set follows of each question you add in questions.json to ids of questions " <>
+           "before it in questions.json."},
+        {"questions", :new_not_open,
+         "Set the state of each question you add in questions.json to open."},
+        {"questions", :asked_run,
+         "Set asked.run of each question you add in questions.json to this run's number."},
+        {"review-comments", :id_dropped,
+         "Keep every review comment of the newest version of review-comments in " <>
+           "review-comments.json: the id of a review comment is missing."},
+        {"review-comments", :comment_added,
+         "Remove the review comment you added in review-comments.json: " <>
+           "members write review comments."},
+        {"review-comments", :comment_changed,
+         "Leave on, text, by and at of each review comment in review-comments.json as the " <>
+           "newest version of review-comments has them."},
+        {"review-comments", :reply_changed,
+         "Leave each earlier reply in review-comments.json as the newest version of " <>
+           "review-comments has it."},
+        {"review-comments", :reply_not_run,
+         "Set by.run of your reply in review-comments.json to this run's number."},
+        {"review-comments", :replies_added,
+         "Add at most one reply to each review comment in review-comments.json."},
+        {"review-comments", :not_open,
+         "Reply in review-comments.json only to review comments that are open."},
+        {"review-comments", :not_closed,
+         "Close each review comment you reply to in review-comments.json."},
+        {"review-comments", :state_changed,
+         "Change the state of a review comment in review-comments.json only by closing an " <>
+           "open one with your reply."},
+        {"review-comments", :question_unknown,
+         "Push the question you asked first, then review-comments.json: the question of a " <>
+           "reply with the outcome asked is the id of a question in the newest version of " <>
+           "questions."}
+      ]
+
+      for {type, reason, message} <- cases do
+        RunApiStubs.put(:push_error, {:invalid, {:kept, 0, reason}})
+
+        conn =
+          write(ctx, "/artifacts", push_body(type, [{"#{type}.json", "application/json", "{}"}]))
+
+        assert signed_answer?(conn)
+
+        assert json_response(conn, 422) == %{
+                 "error" => "invalid_artifact",
+                 "names" => ["files[0]"],
+                 "message" => message
+               },
+               inspect({type, reason})
+      end
+
+      # Every reason of each check has its message.
+      assert Enum.sort(for {"questions", reason, _} <- cases, do: reason) ==
+               Enum.sort(Apiary.Explore.Questions.reasons())
+
+      assert Enum.sort(for {"review-comments", reason, _} <- cases, do: reason) ==
+               Enum.sort(Apiary.Explore.ReviewComments.reasons())
     end
 
     test "a run that has ended is 409 run_ended, for a push and a verdict", ctx do
@@ -1066,6 +1273,38 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert json_response(write(ctx, "/verdict", %{"verdict" => "passed"}), 409)["error"] ==
                "run_ended"
+    end
+
+    test "a run of Explore with no stage pushes into Explore's stage, so Exists passes",
+         ctx do
+      # Queued before the workflow model was on: the run and its work item have no stage.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [stage_id: nil, workflow: nil, step: "explore"]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [stage_id: nil, stage_state: nil, stage_round: nil, stage_entry: nil]
+        )
+
+      refute Apiary.Artifacts.exists?(ctx.work_item, @explore, "proposal")
+
+      body = push_body("proposal", [{"proposal.md", "text/markdown", "# Proposal\n"}])
+      assert write(ctx, "/artifacts", body).status == 201
+
+      assert [%{stage_id: @explore, opts: opts}] = RunApiStubs.pushed()
+      assert opts[:stage_id] == @explore
+      assert Apiary.Artifacts.exists?(ctx.work_item, @explore, "proposal")
+
+      # A run of another workflow with no stage has none; a run with a stage keeps it.
+      dispatch_run = Repo.get!(DispatchRun, ctx.dispatch_run.id)
+
+      assert Apiary.Stages.run_stage_id(%{dispatch_run | workflow: "build"}, ctx.work_item) ==
+               nil
+
+      assert Apiary.Stages.run_stage_id(%{dispatch_run | stage_id: "st_other"}, ctx.work_item) ==
+               "st_other"
     end
   end
 

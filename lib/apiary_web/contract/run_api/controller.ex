@@ -17,7 +17,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `not_found`, and so is, for a file, a version id or a filename the run's
   #      work item does not have: another run's version, another work item's and an
   #      unknown one get the same answer;
-  #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, then a body
+  #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, read here
+  #      and again under the work item's lock (`Apiary.Artifacts.push/5`), then a body
   #      over its size `413` `payload_too_large`, then a body outside the contract `400`
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
@@ -25,7 +26,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      type to switch it on; more files than the type takes `422` `too_many_files`; files
   #      over the type's size limit together `422` `too_large`; then a content that is not
   #      strict base64 `400` `invalid_request`; then what `Apiary.Artifacts.push/5` returns,
-  #      the files that do not match the type's format among it, `422` `invalid_artifact`.
+  #      the files that do not match the type's format among it, `422` `invalid_artifact`;
+  #      a run's version of `questions` or `review-comments` that changes what members
+  #      wrote, `422` `invalid_artifact` with the rule it breaks; and a version of
+  #      `questions` or `review-comments` whose file is over the size limit as stored,
+  #      with each number that is an integer in value written as an integer (`1e3` as
+  #      `1000`), `422` `too_large`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -43,6 +49,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   require Logger
 
+  alias Apiary.Artifacts.Format
   alias Apiary.PublicId
   alias ApiaryWeb.Contract.Configuration
   alias ApiaryWeb.Contract.RunApi.{Body, Boundary, Run, Wire}
@@ -115,7 +122,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
          {:ok, version} <-
            Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
              name: push.name,
-             stage_id: Boundary.stage_id(run.dispatch_run),
+             stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
              note: push.note
            )
            |> pushed(%{
@@ -140,7 +147,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
          {:ok, version} <-
            Boundary.push({:run, run.dispatch_run}, run.work_item, "verdict", [file],
              name: "main",
-             stage_id: Boundary.stage_id(run.dispatch_run),
+             stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
              note: nil
            )
            |> pushed(%{
@@ -356,11 +363,32 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
        do: {:error, :invalid_request, "files[#{index}].filename"}
 
   defp refused({:invalid, {check, index}}, push)
-       when check in [:format, :extension, :unreadable] and is_integer(index),
+       when check in [
+              :format,
+              :extension,
+              :unreadable,
+              :document_size,
+              :image_type,
+              :svg_format,
+              :svg_root
+            ] and
+              is_integer(index),
        do:
          {:error,
           {:invalid_artifact, "files[#{index}]",
            mismatch(check, Enum.at(push.filenames, index) || "files[#{index}]", push)}}
+
+  # A proposal's SVG that fails the strict check, with the part refused
+  # (`Apiary.Artifacts.Format`).
+  defp refused({:invalid, {{:svg_content, part}, index}}, push) when is_integer(index) do
+    filename = Enum.at(push.filenames, index) || "files[#{index}]"
+
+    {:error,
+     {:invalid_artifact, "files[#{index}]",
+      "Remove #{part} from #{filename}. An SVG in a proposal uses only the elements and " <>
+        "attributes the run API document lists, with no script, HTML or reference outside " <>
+        "the file."}}
+  end
 
   # A failed schema check, with the JSON pointer of the first failing value and JSV's message
   # for it, as `Apiary.Artifacts.SchemaError` returns them: text, written as it is.
@@ -370,8 +398,21 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
     {:error,
      {:invalid_artifact, "files[#{index}]",
-      "Fix #{filename} to match the format of #{push.name}: at #{path}, #{error}."}}
+      "Fix #{filename} to match #{schema_of(push.name, filename)}: at #{path}, #{error}."}}
   end
+
+  # A run's version of the questions or the review comments that changes what members
+  # wrote (`Apiary.Artifacts.push/5`): the rule it breaks.
+  defp refused({:invalid, {:kept, index, reason}}, push) when is_integer(index) do
+    filename = Enum.at(push.filenames, index) || "files[#{index}]"
+    {:error, {:invalid_artifact, "files[#{index}]", kept(push.name, reason, filename)}}
+  end
+
+  defp refused({:invalid, :one_markdown}, push),
+    do:
+      {:error,
+       {:invalid_artifact, "files",
+        "Push one Markdown file (.md) in each version of #{push.name}."}}
 
   defp refused({:invalid, :no_video}, push),
     do:
@@ -383,19 +424,154 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # A run of another work item; the person's refusals never come to a run.
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
+  # A run that ended after `live/1` read it, found ended under the work item's lock.
+  defp refused(:run_ended, _push), do: {:error, :run_ended}
+
   defp refused(_refusal, _push), do: {:error, :unavailable}
+
+  # The format a refused file is fixed to: for a proposal's sources.json, the proposal
+  # sources format; for a structured type's file, its type's. The format also refuses a key
+  # that comes twice in an object, which no JSON Schema keyword checks.
+  defp schema_of("proposal", "sources.json"), do: "the format of proposal sources"
+  defp schema_of(type, _filename), do: "the format of #{type}"
+
+  # The message of a run's version that changes what members wrote, by the rule it breaks
+  # (`Apiary.Explore.Questions`, `Apiary.Explore.ReviewComments`).
+  defp kept("questions", reason, filename) do
+    case reason do
+      :id_dropped ->
+        "Keep every question of the newest version of questions in #{filename}: " <>
+          "the id of a question is missing."
+
+      :asked_changed ->
+        "Leave asked of each question in #{filename} as the newest version of " <>
+          "questions has it."
+
+      :follows_changed ->
+        "Leave follows of each question in #{filename} as the newest version of " <>
+          "questions has it."
+
+      :order_changed ->
+        "Keep the questions of the newest version of questions first in #{filename}, " <>
+          "in the same order, and add new questions after them."
+
+      :answer_changed ->
+        "Leave each answer in #{filename} as the newest version of questions has it: " <>
+          "members write the answers."
+
+      :history_changed ->
+        "Leave the history of each question in #{filename} as the newest version of " <>
+          "questions has it, and give a new question no history."
+
+      :reopen_not_kept ->
+        "Move the answer of a question you reopen, unchanged, to the end of its history " <>
+          "in #{filename}."
+
+      :reopened_run ->
+        "Set reopened.run in the history of each question you reopen in #{filename} " <>
+          "to this run's number."
+
+      :answered_changed ->
+        "Leave question, context and options of each answered question in " <>
+          "#{filename} as the newest version of questions has them."
+
+      :new_not_open ->
+        "Set the state of each question you add in #{filename} to open."
+
+      :asked_run ->
+        "Set asked.run of each question you add in #{filename} to this run's number."
+
+      :follows_unknown ->
+        "Set follows of each question you add in #{filename} to ids of questions " <>
+          "before it in #{filename}."
+    end
+  end
+
+  defp kept("review-comments", reason, filename) do
+    case reason do
+      :id_dropped ->
+        "Keep every review comment of the newest version of review-comments in " <>
+          "#{filename}: the id of a review comment is missing."
+
+      :comment_added ->
+        "Remove the review comment you added in #{filename}: members write review comments."
+
+      :comment_changed ->
+        "Leave on, text, by and at of each review comment in #{filename} as the newest " <>
+          "version of review-comments has them."
+
+      :reply_changed ->
+        "Leave each earlier reply in #{filename} as the newest version of " <>
+          "review-comments has it."
+
+      :reply_not_run ->
+        "Set by.run of your reply in #{filename} to this run's number."
+
+      :replies_added ->
+        "Add at most one reply to each review comment in #{filename}."
+
+      :not_open ->
+        "Reply in #{filename} only to review comments that are open."
+
+      :not_closed ->
+        "Close each review comment you reply to in #{filename}."
+
+      :state_changed ->
+        "Change the state of a review comment in #{filename} only by closing an open " <>
+          "one with your reply."
+
+      :question_unknown ->
+        "Push the question you asked first, then #{filename}: the question of a reply " <>
+          "with the outcome asked is the id of a question in the newest version of questions."
+    end
+  end
 
   # The message of a file that `Apiary.Artifacts` refuses by its format check: the file,
   # the type and what the type's base view takes.
   defp mismatch(:unreadable, filename, _push),
     do: "Push #{filename} again: Qory Apiary could not read it after it was received."
 
+  # A proposal's Markdown file over 256 KiB, its SVG over 512 KiB or its sources.json over
+  # 1 MiB (`Apiary.Artifacts.Format`).
+  defp mismatch(:document_size, filename, _push),
+    do: "Shrink #{filename} to at most #{Format.proposal_bytes(filename)} bytes."
+
+  # A proposal's image whose bytes are not the type its extension names, such as cart.png
+  # with the bytes of a GIF (`Apiary.Artifacts.Format`).
+  defp mismatch(:image_type, filename, _push),
+    do: "Replace #{filename} with an image of the type its name ends in."
+
+  # A proposal's SVG that does not parse, is not UTF-8, or has another root than svg
+  # (`Apiary.Artifacts.Format`).
+  defp mismatch(:svg_format, filename, _push),
+    do: "Make #{filename} a well-formed SVG file in UTF-8 with an svg root element."
+
+  # A proposal's SVG whose root svg is outside the SVG namespace: with no xmlns, such as an
+  # SVG copied from an HTML page, or with another address.
+  defp mismatch(:svg_root, filename, _push),
+    do: ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of #{filename}.)
+
+  # A proposal's sources.json that is not one JSON document.
+  defp mismatch(:format, "sources.json" = filename, %{name: "proposal"}),
+    do: "Make #{filename} valid JSON. The file does not parse as JSON."
+
   defp mismatch(check, filename, push),
-    do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, push)}."
+    do: "Fix #{filename} to match the format of #{push.name}: #{takes(check, filename, push)}."
 
-  defp takes(:extension, _push), do: "the filename of a document ends in .md"
+  # A proposal's file that is neither Markdown, its sources nor an image, by its
+  # extension or its bytes, gets the proposal's line; its Markdown file that is not UTF-8
+  # text, a document's.
+  defp takes(check, filename, %{name: "proposal"}) when check in [:format, :extension] do
+    if check == :format and String.downcase(Path.extname(filename)) == ".md",
+      do: "a document is a Markdown file of UTF-8 text",
+      else:
+        "a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images " <>
+          "and an optional sources.json"
+  end
 
-  defp takes(:format, push) do
+  defp takes(:extension, _filename, _push), do: "the filename of a document ends in .md"
+
+  defp takes(:format, _filename, push) do
     case field(push.type, :base_view) do
       :document -> "a document is a Markdown file of UTF-8 text"
       :image -> "an image is a PNG, JPEG, GIF, WebP or SVG file"

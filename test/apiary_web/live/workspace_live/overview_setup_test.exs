@@ -147,6 +147,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       )
 
     Repo.insert!(%Run{
+      number: Apiary.RunEventsFixtures.next_run_number(scope.organisation.id, scope.workspace.id),
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       node_run_id: queued.run_id,

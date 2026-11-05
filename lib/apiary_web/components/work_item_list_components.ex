@@ -524,7 +524,11 @@ defmodule ApiaryWeb.WorkItemListComponents do
   title. Questions, and a take in that used its runs, wait for the reader with `can_act`.
   """
   attr :id, :string, required: true, doc: "the row's DOM id, with the work item's number"
-  attr :work_item, :map, required: true, doc: "the work item"
+
+  attr :work_item, :map,
+    required: true,
+    doc:
+      "the work item; at Explore's gate of a stage that lists its approvers, with `:confirmers`, as the work item's page has it (`ApiaryWeb.WorkItemComponents.status_words/1`)"
 
   attr :integration, :string,
     required: true,

@@ -1,7 +1,8 @@
 defmodule Apiary.Runs.RunNumberMigrationTest do
-  # The migration that gives every run its number, run down and up again inside the test's
-  # transaction, which rolls it all back. It changes the `runs` table under every other
-  # test, so it is not async.
+  # The migration that set a number on every run, one count on the server, run down and up again inside
+  # the test's transaction, which rolls it all back. The migration that numbers runs per
+  # workspace runs down first, as it comes after this one. It changes the `runs` table
+  # under every other test, so it is not async.
   use Apiary.DataCase, async: false
 
   # Running a migration up again while later ones are applied makes Ecto warn that an
@@ -11,22 +12,31 @@ defmodule Apiary.Runs.RunNumberMigrationTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Runs.Run
-
   @version 20_261_101_120_000
   @migration Apiary.Repo.Migrations.NumberEveryRun
+  @later_version 20_261_105_090_000
+  @later Apiary.Repo.Migrations.NumberRunsPerWorkspace
 
   setup_all do
-    unless Code.ensure_loaded?(@migration) do
-      Application.app_dir(:apiary, "priv/repo/migrations")
-      |> Path.join("#{@version}_number_every_run.exs")
-      |> Code.require_file()
+    migrations = Application.app_dir(:apiary, "priv/repo/migrations")
+
+    for {module, file} <- [
+          {@migration, "#{@version}_number_every_run.exs"},
+          {@later, "#{@later_version}_number_runs_per_workspace.exs"}
+        ],
+        not Code.ensure_loaded?(module) do
+      migrations |> Path.join(file) |> Code.require_file()
     end
 
     :ok
   end
 
   @options [log: false, migration_lock: false]
+
+  setup do
+    assert :ok = Ecto.Migrator.down(Repo, @later_version, @later, @options)
+    :ok
+  end
 
   defp down!, do: assert(:ok = Ecto.Migrator.down(Repo, @version, @migration, @options))
   defp up!, do: assert(:ok = Ecto.Migrator.up(Repo, @version, @migration, @options))
@@ -114,35 +124,6 @@ defmodule Apiary.Runs.RunNumberMigrationTest do
 
     id = insert!(scope, at(1), nil)
     assert Map.fetch!(numbers(), id) == 1
-  end
-
-  test "an insert through the schema reads its number back, and no two runs share one" do
-    %{scope: scope} = sign_up_fixture()
-
-    insert = fn ->
-      Repo.insert!(%Run{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        node_run_id: Ecto.UUID.generate(),
-        public_id: Run.new_public_id()
-      })
-    end
-
-    first = insert.()
-    second = insert.()
-
-    assert is_integer(first.number) and first.number >= 1
-    assert second.number == first.number + 1
-
-    assert_raise Ecto.ConstraintError, ~r/runs_number_index/, fn ->
-      Repo.insert!(%Run{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        node_run_id: Ecto.UUID.generate(),
-        public_id: Run.new_public_id(),
-        number: first.number
-      })
-    end
   end
 
   test "down removes the column and its sequence; up brings both back" do

@@ -53,23 +53,23 @@ defmodule Apiary.Processes.TypeTemplatesRacesTest do
 
       versions = together(for _ <- 1..sides(6), do: fn -> TypeTemplates.newest(@type_key) end)
 
-      assert [%TypeTemplate{number: 1, release: 2}] = Enum.uniq_by(versions, & &1.id)
+      assert [%TypeTemplate{number: 1, release: 3}] = Enum.uniq_by(versions, & &1.id)
       assert numbers() == [1]
     end
   end
 
   test "a read of a later release's default waits for a first read, and adds its version" do
     {first, first_pid} = hold(fn -> TypeTemplates.newest(@type_key) end)
-    assert %TypeTemplate{number: 1, release: 2} = first.result
+    assert %TypeTemplate{number: 1, release: 3} = first.result
 
-    second = start(fn -> TypeTemplates.newest(@type_key, 3) end)
+    second = start(fn -> TypeTemplates.newest(@type_key, 4) end)
 
     # The second waits with no row to read. Without the lock it waits on the first's
     # insert instead, its version 1 conflicts, and it adds no version 2.
     await_blocked(second.backend, first_pid)
     commit(first)
 
-    assert %TypeTemplate{number: 2, release: 3} = Task.await(second.task)
+    assert %TypeTemplate{number: 2, release: 4} = Task.await(second.task)
     assert numbers() == [1, 2]
   end
 end

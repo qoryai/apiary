@@ -1111,6 +1111,31 @@ defmodule Apiary.DispatchesTest do
                  "Read why on the page of target #{target}, under Targets, then choose Rebuild there."
     end
 
+    # The stage runner cannot read the held run's questions: the run still ends with the
+    # build's failure, and the stage sweep of the lost-run check moves the stage once they
+    # can be read.
+    @tag needs: [:factory, :workflow_model]
+    test "with the workflow model, a held run with unreadable questions still ends", ctx do
+      queue_prebuild!(ctx.collection, ctx.deleted)
+      held = held!(ctx)
+      work_item = Repo.get!(WorkItem, held.work_item_id)
+      asked_run = Apiary.StagesFixtures.asked_before!(held)
+      path = Apiary.StagesFixtures.unreadable_questions!(ctx.scope, work_item, asked_run)
+      {:ok, _deleted} = Nodes.delete_node(ctx.scope, ctx.deleted)
+
+      {_changed, log} = ExUnit.CaptureLog.with_log(fn -> Dispatches.sweep(Dispatches.now()) end)
+
+      assert log =~
+               "stage end left for later, newest questions unreadable dispatch_run=#{held.id}"
+
+      assert %DispatchRun{state: :ended, end_cause: :build_failed} = run!(held)
+      assert %WorkItem{stage_state: :running} = Repo.get!(WorkItem, held.work_item_id)
+
+      File.rename!(path <> ".away", path)
+      assert {[_], nil} = Apiary.Stages.sweep(Dispatches.now(), nil)
+      assert %WorkItem{stage_state: :waiting_answers} = Repo.get!(WorkItem, held.work_item_id)
+    end
+
     test "ends no held run while a live pool has the image for the target", ctx do
       prebuild = queue_prebuild!(ctx.collection, ctx.deleted)
       held = held!(ctx)

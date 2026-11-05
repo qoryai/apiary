@@ -395,13 +395,13 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       assert has_element?(
                lv,
-               "#node-runs-table #run-#{run.number} .q-rowlink",
+               "#node-runs-table #run-#{run.public_id} .q-rowlink",
                "Run #{run.number}"
              )
 
       assert has_element?(
                lv,
-               "#node-runs-table #run-#{run.number} .q-rl-about",
+               "#node-runs-table #run-#{run.public_id} .q-rl-about",
                "Implementation · ticket ENG-17"
              )
 
@@ -628,10 +628,10 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       {:ok, lv, _html} = live(conn, node_path(scope, pool))
 
       # An instance with no row is addressed by its newest open run's public id.
-      lv |> element("#node-instance-run-#{run.number}-clear") |> render_click()
+      lv |> element("#node-instance-#{run.public_id}-clear") |> render_click()
       assert_patch(lv, node_path(scope, pool, "/runs/#{run.public_id}/clear-instance"))
       # Its row is the confirmation, in place of its cells.
-      row = "#node-running tr#node-instance-run-#{run.number}.q-confirming"
+      row = "#node-running tr#node-instance-#{run.public_id}.q-confirming"
       assert has_element?(lv, "#{row} #clear-instance", "Clear i_1?")
       refute has_element?(lv, "#{row} [id$='-menu']")
       lv |> element("#{row} #clear-instance-confirm") |> render_click()
@@ -788,9 +788,9 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-running tr#node-instance-#{instance.id}", "spot-1")
       assert has_element?(lv, "#node-instance-#{instance.id}-menu")
       assert has_element?(lv, "#node-instance-#{instance.id}-clear")
-      assert has_element?(lv, "#node-running tr#node-instance-run-#{run.number}", "i-beta-42")
-      assert has_element?(lv, "#node-instance-run-#{run.number}-menu")
-      assert has_element?(lv, "#node-instance-run-#{run.number}-clear")
+      assert has_element?(lv, "#node-running tr#node-instance-#{run.public_id}", "i-beta-42")
+      assert has_element?(lv, "#node-instance-#{run.public_id}-menu")
+      assert has_element?(lv, "#node-instance-#{run.public_id}-clear")
       refute_instance_ids.(lv)
 
       {:ok, lv, _html} = live(conn, node_path(scope, pool, "/instances/#{instance.id}/clear"))
@@ -802,7 +802,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       assert has_element?(
                lv,
-               "tr#node-instance-run-#{run.number}.q-confirming",
+               "tr#node-instance-#{run.public_id}.q-confirming",
                "Clear i-beta-42?"
              )
 

@@ -107,16 +107,14 @@ defmodule Apiary.ProcessesTest do
       assert Processes.validate(default()) == :ok
     end
 
-    test "is Explore, a loop of explore-a-ticket of 3 rounds, then Shape, Build, Verify and Release, each with a person's gate" do
+    test "is Explore, one run of explore-a-ticket, then Shape, Build, Verify and Release, each with a person's gate" do
       assert Enum.map(default()["stages"], & &1["name"]) ==
                ["Explore", "Shape", "Build", "Verify", "Release"]
 
       [explore | rest] = default()["stages"]
       assert explore["id"] == @explore
 
-      assert explore["sequence"] == [
-               %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}
-             ]
+      assert explore["sequence"] == [%{"workflow" => "explore-a-ticket"}]
 
       assert explore["outputs"] == [%{"type" => "proposal", "required" => true}]
 
