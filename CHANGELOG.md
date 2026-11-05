@@ -874,11 +874,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   256 KiB, in place of structured JSON. A `questions` artifact takes up to 256 KiB, up
   from 64 KiB, and each question in it is an Explore question, with its options.
 <!-- /feature -->
-- These are instance actions: `instance.read`, `instance.review_connections`,
-  `instance.mail_save`, `instance.mail_resend`, `instance.mail_on`, `instance.rename`,
-  `instance.configure`, `instance.support_save` and `account.password_link`. Only an
-  instance admin takes them: an owner of the instance's organisation whose membership is
-  not suspended and whose account is in use. A person outside that organisation gets not
+- Only an instance admin takes the instance actions: `instance.read`,
+  `instance.review_connections`, `instance.mail_save`, `instance.mail_resend`,
+  `instance.mail_on`, `instance.rename`, `instance.configure`, `instance.support_save` and
+  `account.password_link`. An instance admin is an owner of the instance's organisation
+  whose membership is not suspended and whose account is in use. A person outside that organisation gets not
   found, and an admin or a member inside it gets forbidden. A release command still makes a
   password link.
 <!-- feature: observability -->
@@ -889,6 +889,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `instance.read_factory`, `adapter.create`, `adapter.edit`, `adapter.set_interval`,
   `adapter.delete`, `adapter.setup`, `node.set_instance_limit`, `harness.assigned` and
   `harness.unassigned` are instance actions.
+- A gateway's request for a run's work credential while `factory` is off returns 404, with
+  no call to the adapter and no Activity entry.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `workspace_type.edit` is an instance action.
