@@ -318,8 +318,8 @@ The scope `Apiary.Access.in_instance/1` puts in the instance organisation contai
 organisation's id, so `Apiary.Access.can?/3` reads no row for an instance action, beyond
 whatever the edition's check (`c:Apiary.Edition.check/3`) reads. `Apiary.Access.reload/2`, and
 so `Apiary.Access.authorize/3`, clears the id, and the check compares with the id read then. A
-page on `:instance` keeps this id in `@scope` until it mounts again, or until a change of the
-reader's memberships computes `@scope` again. These moves to another organisation clear the
+page on `:instance` keeps this id in `@scope` until it mounts again, or computes `@scope`
+again when the reader's memberships change. These moves to another organisation clear the
 id too: `Apiary.Organisations.put_reach/2`, and so `Apiary.Organisations.resolve_scope/4`;
 `Apiary.Organisations.load_scope/2`; `Apiary.Organisations.load_home_scope/2`;
 `Apiary.Organisations.accept_invitation/2`, on the scope in the invitation's organisation; and

@@ -1529,8 +1529,10 @@ defmodule Apiary.Access do
   The answer of `authorize/3`, with its reason, from the scope as it is, without a read of
   the scope. Step 9 of the moduledoc reads a work item's process version when the work
   item does not have it loaded, and an instance action reads the instance organisation's
-  id when the scope has none (`in_instance/1`). For a context function that asks more than one question in one change: it reads once
-  with `reload/2` and asks each question of that scope.
+  id at most once, in a scope without the id, and not when the action's feature is off;
+  the edition's check (`c:Apiary.Edition.check/3`) may read too. For a context function
+  that asks more than one question in one change: it reads once with `reload/2` and asks
+  each question of that scope.
   """
   @spec check(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
   def check(scope, action, subject) do
