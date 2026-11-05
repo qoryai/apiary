@@ -205,6 +205,7 @@ defmodule Apiary.GatewayServingTest do
       |> Scope.for_access_key()
     end
 
+    @tag :feature_sets
     test "of a workspace acts for that workspace alone", ctx do
       key_scope = key_scope(ctx.scope, gateway_fixture(ctx.scope))
       second = workspace_scope(ctx.scope.user, ctx.second)
@@ -216,6 +217,7 @@ defmodule Apiary.GatewayServingTest do
       end
     end
 
+    @tag :feature_sets
     test "of an organisation acts for every workspace of it, and of no other", ctx do
       key_scope = key_scope(ctx.scope, organisation_gateway_fixture(ctx.scope))
       second = workspace_scope(ctx.scope.user, ctx.second)
@@ -227,6 +229,7 @@ defmodule Apiary.GatewayServingTest do
       end
     end
 
+    @tag :feature_sets
     test "of the instance acts for any workspace", ctx do
       %{access_key: key} = installed_key_fixture(instance_gateway_fixture())
       key_scope = Scope.for_access_key(key)

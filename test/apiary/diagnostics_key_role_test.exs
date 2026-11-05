@@ -62,6 +62,7 @@ defmodule Apiary.DiagnosticsKeyRoleTest do
     end
   end
 
+  @tag :feature_sets
   test "is not found for any other action, on a run or anywhere", ctx do
     run = run_fixture(ctx.owner)
 
@@ -116,6 +117,7 @@ defmodule Apiary.DiagnosticsKeyRoleTest do
     assert Access.check(scope, @action, run_fixture(ctx.other)) == {:error, :not_found}
   end
 
+  @tag :feature_sets
   test "is not found where observability is off", ctx do
     run = run_fixture(ctx.owner)
     previous = Application.get_env(:apiary, :features)
