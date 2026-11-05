@@ -46,15 +46,6 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeysTest do
     enrol!(Enrolment.issued_code(code, SigningKey.fingerprint()), "laptop")
   end
 
-  # Makes the scope's person a member, with another instance admin in their place: the
-  # instance keeps one. Returns the scope of the other.
-  defp revoke_instance_admin(scope) do
-    other = Apiary.OrganisationsFixtures.member_fixture(scope)
-    {:ok, _} = Apiary.Organisations.grant_instance_admin(other.user)
-    {:ok, _} = Apiary.Organisations.revoke_instance_admin(scope.user)
-    other.scope
-  end
-
   describe "for an instance admin" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()
@@ -121,32 +112,6 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeysTest do
       assert render(view) =~ "laptop is revoked."
       refute has_element?(view, "#key-#{key.key_id}")
       assert %AccessKey{revoked_at: %DateTime{}} = Repo.get!(AccessKey, key.id)
-    end
-
-    test "Get the command by one who is no longer an instance admin moves to the list's path, and makes no code",
-         %{conn: conn, scope: scope} do
-      {:ok, view, _html} = live(conn, ~p"/instance/diagnostics-keys")
-      other = revoke_instance_admin(scope)
-
-      assert has_element?(view, "#code-new-button")
-      refute_redirected(view)
-
-      assert {:error, {:live_redirect, %{to: "/instance/diagnostics-keys"}}} =
-               view |> element("#code-new-button") |> render_click()
-
-      assert AccessKeys.diagnostics_node(other) == nil
-    end
-
-    test "Yes, revoke by one who is no longer an instance admin moves to the list's path, and revokes nothing",
-         %{conn: conn, scope: scope} do
-      key = revocable_key(scope)
-      {:ok, view, _html} = live(conn, ~p"/instance/diagnostics-keys/#{key.key_id}/revoke")
-      revoke_instance_admin(scope)
-
-      assert {:error, {:live_redirect, %{to: "/instance/diagnostics-keys"}}} =
-               view |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-
-      assert %AccessKey{revoked_at: nil} = Repo.get!(AccessKey, key.id)
     end
 
     # The confirm is open at the key's path when the person's membership goes, with no

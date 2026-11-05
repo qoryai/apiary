@@ -412,45 +412,6 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
     assert has_element?(lv, "#set-up-#{shown.public_id}")
   end
 
-  describe "for one who is no longer an instance admin" do
-    setup do
-      # The fixture signs up without a password, as with mail.
-      Apiary.Mail.put_test_source(:env)
-      %{user: user} = sign_up_fixture()
-      Apiary.Mail.put_test_source(:none)
-      {:ok, %{granted?: true}} = Apiary.Organisations.grant_instance_admin(user)
-      %{user: user, conn: log_in_user(build_conn(), user)}
-    end
-
-    test "Skip on the last step moves to the page's path, and marks nothing reviewed",
-         %{conn: conn, user: user} do
-      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=mail")
-      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
-
-      # The page handles the broadcast before it renders.
-      assert has_element?(lv, "#set-up-mail")
-      refute_redirected(lv)
-
-      assert {:error, {:live_redirect, %{to: "/instance/set-up"}}} =
-               lv |> element("#set-up-skip-button") |> render_click()
-
-      refute Apiary.Setup.connections_reviewed?()
-    end
-
-    test "a save on the mail step moves to the page's path, and saves nothing",
-         %{conn: conn, user: user} do
-      {:ok, lv, _html} = live(conn, ~p"/instance/set-up?step=mail")
-      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
-
-      assert {:error, {:live_redirect, %{to: "/instance/set-up"}}} =
-               lv
-               |> form("#mail_form", mail: %{smtp_relay: "smtp.example.com"})
-               |> render_submit()
-
-      assert Apiary.Mail.settings() == nil
-    end
-  end
-
   test "Skip and Continue lead to the next step", %{conn: conn} do
     %{adapter: first} = connectable_adapter_fixture(%{name: named("a-tracker")})
     %{adapter: second} = settable_adapter_fixture(%{name: named("b-tracker")})

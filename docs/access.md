@@ -308,16 +308,19 @@ the instance's organisation:
 - Any other page or controller calls `ApiaryWeb.Access.instance_can?/2`, or
   `Apiary.Access.can?/3` with the scope from `Apiary.Access.instance_scope/1`.
 
-A page on `:instance` keeps `@scope` until it mounts again. A reader who stops being an
-instance admin stays on the open page, with its buttons. A write fails as soon as the
-membership changes, because `Apiary.Access.authorize/3` reads the membership again.
+A page on `:instance` computes `@scope` again when the reader's memberships change. A reader
+who is no longer an instance admin moves to `/`. A page that sets
+`ApiaryWeb.UserAuth.on_membership_change/2` itself computes `@scope` again itself. A write
+fails as soon as the membership changes, because `Apiary.Access.authorize/3` reads the
+membership again.
 
 The scope `Apiary.Access.in_instance/1` puts in the instance organisation contains that
 organisation's id, so `Apiary.Access.can?/3` reads no row for an instance action, beyond
 whatever the edition's check (`c:Apiary.Edition.check/3`) reads. `Apiary.Access.reload/2`, and
 so `Apiary.Access.authorize/3`, clears the id, and the check compares with the id read then. A
-page on `:instance` keeps this id in `@scope` until it mounts again. These moves to another
-organisation clear the id too: `Apiary.Organisations.put_reach/2`, and so `Apiary.Organisations.resolve_scope/4`;
+page on `:instance` keeps this id in `@scope` until it mounts again, or computes `@scope`
+again when the reader's memberships change. These moves to another organisation clear the
+id too: `Apiary.Organisations.put_reach/2`, and so `Apiary.Organisations.resolve_scope/4`;
 `Apiary.Organisations.load_scope/2`; `Apiary.Organisations.load_home_scope/2`;
 `Apiary.Organisations.accept_invitation/2`, on the scope in the invitation's organisation; and
 `Apiary.Accounts.Scope.in_organisation/2`.

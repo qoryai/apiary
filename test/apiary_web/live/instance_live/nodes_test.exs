@@ -438,49 +438,6 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
     end
   end
 
-  describe "for one who is no longer an instance admin" do
-    setup do
-      %{user: user} = sign_up_fixture()
-      {:ok, %{granted?: true}} = Apiary.Organisations.grant_instance_admin(user)
-      %{user: user, conn: log_in_user(build_conn(), user)}
-    end
-
-    test "Save on Settings moves to the list's path, and saves nothing",
-         %{conn: conn, user: user, pool: pool} do
-      {:ok, lv, _html} =
-        live(conn, ~p"/instance/qory-pool-and-gateway/#{pool.public_id}/settings")
-
-      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
-
-      # The page handles the broadcast before it renders.
-      assert has_element?(lv, "#node-form")
-      refute_redirected(lv)
-
-      assert {:error, {:live_redirect, %{to: "/instance/qory-pool-and-gateway"}}} =
-               lv |> form("#node-form", node: %{instance_limit: "4"}) |> render_submit()
-
-      assert Repo.reload!(pool).instance_limit == nil
-    end
-
-    test "Yes, revoke moves to the list's path, and revokes nothing",
-         %{conn: conn, user: user, pool: pool} do
-      %{access_key: key} = installed_key_fixture(pool)
-
-      {:ok, lv, _html} =
-        live(
-          conn,
-          ~p"/instance/qory-pool-and-gateway/#{pool.public_id}/keys/#{key.key_id}/revoke"
-        )
-
-      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
-
-      assert {:error, {:live_redirect, %{to: "/instance/qory-pool-and-gateway"}}} =
-               lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-
-      assert Repo.get!(AccessKey, key.id).revoked_at == nil
-    end
-  end
-
   describe "Revoke on the Access key tab, refused" do
     setup %{pool: pool} do
       %{access_key: key} = installed_key_fixture(pool)

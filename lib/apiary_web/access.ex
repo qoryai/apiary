@@ -115,9 +115,11 @@ defmodule ApiaryWeb.Access do
   (`Apiary.Access.instance_scope/1`) into the socket as `:scope`, and answers as a path
   that does not exist (`ApiaryWeb.NotFound`) for anyone else. The page asks
   `Apiary.Access.can?/3` of `@scope` and the instance organisation, `@scope.organisation`,
-  for its instance actions. `:scope` stays as it was until the page mounts again, so a
-  reader who stops being an instance admin stays on the page, with its buttons, and a
-  write fails, because `Apiary.Access.authorize/3` reads the membership again.
+  for its instance actions. On a change of the reader's memberships
+  (`ApiaryWeb.UserAuth.on_membership_change/2`) it computes `:scope` again from the
+  reloaded `current_scope`, and sends a reader who is no longer an instance admin to `/`,
+  as a page sends one whose membership is gone. A page that sets
+  `on_membership_change/2` replaces this one, and computes `:scope` again itself.
 
   With an action, `on_mount({ApiaryWeb.Access, action})`, it lets the page mount only for a
   reader who may take `action` (the moduledoc). The action is kept with the page, so that
@@ -127,7 +129,10 @@ defmodule ApiaryWeb.Access do
   def on_mount(:instance, _params, _session, socket) do
     case Apiary.Access.instance_scope(socket.assigns.current_scope) do
       {:ok, scope} ->
-        {:cont, Phoenix.Component.assign(socket, :scope, scope)}
+        {:cont,
+         socket
+         |> Phoenix.Component.assign(:scope, scope)
+         |> ApiaryWeb.UserAuth.on_membership_change(&instance_scope_again/1)}
 
       :error ->
         raise ApiaryWeb.NotFound
@@ -153,6 +158,15 @@ defmodule ApiaryWeb.Access do
     case Apiary.Access.instance_scope(scope) do
       {:ok, instance} -> Apiary.Access.can?(instance, action, instance.organisation)
       :error -> false
+    end
+  end
+
+  # The instance scope, computed again from the reloaded `current_scope` after a change of
+  # the reader's memberships; a reader who is no longer an instance admin goes to `/`.
+  defp instance_scope_again(socket) do
+    case Apiary.Access.instance_scope(socket.assigns.current_scope) do
+      {:ok, scope} -> Phoenix.Component.assign(socket, :scope, scope)
+      :error -> Phoenix.LiveView.redirect(socket, to: "/")
     end
   end
 

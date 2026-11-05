@@ -895,6 +895,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - `workspace_type.edit` is an instance action.
 <!-- /feature -->
+- An instance admin who stops being one while a page of Instance settings is open moves to
+  `/`. Before, the page and its buttons stayed until it was reloaded, and each save failed.
 
 ### Fixed
 
