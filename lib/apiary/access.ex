@@ -966,10 +966,11 @@ defmodule Apiary.Access do
   LiveView that holds it. A page asks `can?/3`, with the same action, for what it shows:
   a button for an action the reader may not take is not rendered. `can?/3` uses the scope
   as it was loaded, so a page may call it on every render. It reads the database in two
-  cases: step 9 reads a work item's process version when the work item does not have it
-  loaded, and an instance action reads the instance organisation's id once per call, in
-  a scope that did not come from `in_instance/1`. A scope from `reload/2` has no such id,
-  so `authorize/3` compares with the id as the database has it now. A
+  cases, beyond whatever the edition's check (`c:Apiary.Edition.check/3`) reads: step 9
+  reads a work item's process version when the work item does not have it loaded, and an
+  instance action reads the instance organisation's id at most once per call, in a scope
+  without the id, and not when the action's feature is off. A scope from `reload/2` has no
+  such id, so `authorize/3` compares with the id as the database has it now. A
   context function that asks several questions in one change reads once with `reload/2`
   and asks each with `check/3`.
 
@@ -1285,7 +1286,8 @@ defmodule Apiary.Access do
   key's or nil, as it is.
 
   The scope it puts in that organisation has the organisation's id in
-  `instance_organisation_id`, so `can?/3` reads no row for an instance action.
+  `instance_organisation_id`, so `can?/3` reads no row for an instance action, beyond
+  whatever the edition's check (`c:Apiary.Edition.check/3`) reads.
   """
   @spec in_instance(Scope.t() | nil) :: Scope.t() | nil
   def in_instance(%Scope{user: %User{}, access_key: nil} = scope) do

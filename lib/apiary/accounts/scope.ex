@@ -44,7 +44,8 @@ defmodule Apiary.Accounts.Scope do
 
   `instance_organisation_id` is the instance organisation's id as
   `Apiary.Access.in_instance/1` read it, so `Apiary.Access.can?/3` reads no row for an
-  instance action in that scope. Nil in any other scope, where the check reads the id:
+  instance action in that scope, beyond whatever the edition's check
+  (`c:Apiary.Edition.check/3`) reads. Nil in any other scope, where the check reads the id:
   `Apiary.Access.reload/2` and every move to another organisation set it to nil.
   """
 

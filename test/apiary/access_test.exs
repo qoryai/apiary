@@ -626,6 +626,22 @@ defmodule Apiary.AccessTest do
       end
     end
 
+    test "a held scope keeps the id after another organisation becomes the instance's", ctx do
+      organisation = ctx.owner.organisation
+
+      # The core's instance organisation is the oldest in use (`Apiary.Edition.Core`).
+      set_inserted_at(organisation, DateTime.add(ctx.instance.inserted_at, -1, :day))
+      {:ok, held} = Access.instance_scope(ctx.owner)
+      assert held.instance_organisation_id == organisation.id
+
+      set_inserted_at(organisation, organisation.inserted_at)
+      assert Apiary.Edition.instance_organisation_id() == ctx.instance.id
+
+      assert Access.can?(held, :"instance.read", held.organisation)
+      assert Access.authorize(held, :"instance.read", held.organisation) == {:error, :not_found}
+      assert Access.instance_scope(ctx.owner) == :error
+    end
+
     test "a scope moved to another organisation has no id", ctx do
       moved = Access.in_instance(ctx.elsewhere)
       assert moved.instance_organisation_id == ctx.instance.id
@@ -955,6 +971,13 @@ defmodule Apiary.AccessTest do
 
   # A person's own action, asked of no place.
   defp own?(action), do: Access.action(action).asked_of == :new_organisation
+
+  defp set_inserted_at(%Organisation{id: id}, inserted_at) do
+    {1, _} =
+      Apiary.Repo.update_all(from(o in Organisation, where: o.id == ^id),
+        set: [inserted_at: inserted_at]
+      )
+  end
 
   # The queries this process runs during `fun`, counted on the repo's telemetry event.
   defp queries_during(fun) do
