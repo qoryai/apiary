@@ -51,7 +51,7 @@ defmodule Apiary.AccessKeys do
 
   require Logger
 
-  alias Apiary.{Access, Accounts, Adapters, Audit, Features, Repo}
+  alias Apiary.{Access, Accounts, Adapters, Audit, Repo}
   alias Apiary.Adapters.Installed
   alias Apiary.Adapters.Installed.CodeFile
   alias Apiary.Nodes.Installed, as: NodesInstalled
@@ -1304,7 +1304,6 @@ defmodule Apiary.AccessKeys do
     with :ok <- maker_may_enrol(found),
          {:ok, node} <- lock_enrolling_node(found),
          :ok <- code_of_kind(request, node),
-         :ok <- enrols_kind(node),
          {:ok, code} <- lock_code(found),
          true <- code.created_by_id == found.created_by_id || {:error, :unauthorized},
          {:ok, state} <- code_state(code, node, request, now),
@@ -1422,18 +1421,6 @@ defmodule Apiary.AccessKeys do
   # its hash finds.
   defp code_of_kind(%Enrolment{code_head: head}, %Node{kind: kind}),
     do: if(EnrolmentCode.of_kind?(head, kind), do: :ok, else: {:error, :unauthorized})
-
-  # An adapter's code enrols nothing while the instance is without the feature adapters
-  # belong to: it is no code, as any other refusal at this step is.
-  defp enrols_kind(%Node{kind: :adapter}),
-    do: if(Features.on?(:factory), do: :ok, else: {:error, :unauthorized})
-
-  # A diagnostics key's code, likewise, while the instance is without the feature the run
-  # diagnostics belong to.
-  defp enrols_kind(%Node{kind: :diagnostics}),
-    do: if(Features.on?(:observability), do: :ok, else: {:error, :unauthorized})
-
-  defp enrols_kind(%Node{}), do: :ok
 
   # A code without an organisation is an adapter's, or the instance's pool's or gateway's,
   # whose node has none either.
