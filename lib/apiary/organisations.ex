@@ -168,7 +168,8 @@ defmodule Apiary.Organisations do
         reach: nil,
         workspace: nil,
         edition: %{},
-        hidden: nil
+        hidden: nil,
+        instance_organisation_id: nil
     })
   end
 
@@ -567,7 +568,8 @@ defmodule Apiary.Organisations do
         | organisation: membership.organisation,
           membership: membership,
           reach: nil,
-          edition: %{}
+          edition: %{},
+          instance_organisation_id: nil
       },
       place
     )
@@ -3868,7 +3870,8 @@ defmodule Apiary.Organisations do
             here = %{
               scope
               | organisation: invitation.organisation,
-                workspace: invitation.workspace
+                workspace: invitation.workspace,
+                instance_organisation_id: nil
             }
 
             # The lock order (docs/access.md): the edition, which may hold the organisation

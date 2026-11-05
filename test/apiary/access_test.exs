@@ -568,6 +568,100 @@ defmodule Apiary.AccessTest do
       assert Access.can?(second, :"instance.rename", ctx.instance)
       assert Access.authorize(second, :"instance.rename", ctx.instance) == {:error, :forbidden}
     end
+
+    test "can?/3 on an instance action runs no query in the scope of in_instance/1", ctx do
+      moved = Access.in_instance(ctx.elsewhere)
+      assert moved.instance_organisation_id == ctx.instance.id
+
+      {:ok, page} = Access.instance_scope(ctx.elsewhere)
+      assert page.instance_organisation_id == ctx.instance.id
+
+      assert queries_during(fn ->
+               for scope <- [moved, moved, page, page] do
+                 assert Access.can?(scope, :"instance.read", ctx.instance)
+               end
+
+               refute Access.can?(moved, :"instance.read", ctx.owner.organisation)
+             end) == []
+    end
+
+    test "can?/3 on an instance action reads the id once in any other scope", ctx do
+      assert ctx.admin.instance_organisation_id == nil
+
+      assert [_read] =
+               queries_during(fn ->
+                 assert Access.can?(ctx.admin, :"instance.read", ctx.instance)
+               end)
+    end
+
+    test "authorize/3 compares with the instance organisation's id read now", ctx do
+      subject = ctx.owner.organisation
+
+      # As if the owner's organisation had been the instance's when the scope was loaded.
+      moved_away = %{ctx.owner | instance_organisation_id: subject.id}
+      assert Access.can?(moved_away, :"instance.read", subject)
+      assert Access.authorize(moved_away, :"instance.read", subject) == {:error, :not_found}
+
+      # As if the instance's organisation had been another when the scope was loaded.
+      moved_here = %{ctx.admin | instance_organisation_id: subject.id}
+      refute Access.can?(moved_here, :"instance.read", ctx.instance)
+      assert Access.authorize(moved_here, :"instance.read", ctx.instance) == :ok
+    end
+
+    test "reload/2 clears the id in every scope it returns", ctx do
+      id = ctx.instance.id
+      %{access_key: key} = access_key_fixture(ctx.admin)
+
+      for scope <- [
+            ctx.admin,
+            Scope.for_instance(ctx.instance),
+            Scope.for_user(ctx.admin.user),
+            Scope.for_access_key(key)
+          ] do
+        stale = %{scope | instance_organisation_id: id}
+        assert Access.reload(stale).instance_organisation_id == nil
+
+        assert {:ok, %Scope{instance_organisation_id: nil}} =
+                 Apiary.Repo.transact(fn -> {:ok, Access.reload(stale, lock: :share)} end)
+      end
+    end
+
+    test "a scope moved to another organisation has no id", ctx do
+      moved = Access.in_instance(ctx.elsewhere)
+      assert moved.instance_organisation_id == ctx.instance.id
+      elsewhere = ctx.owner.organisation
+
+      assert {:ok, reached} = Apiary.Organisations.put_reach(moved, elsewhere)
+      assert reached.organisation.id == elsewhere.id
+      assert reached.instance_organisation_id == nil
+
+      assert Scope.in_organisation(moved, elsewhere).instance_organisation_id == nil
+
+      loaded = Apiary.Organisations.load_scope(moved, elsewhere.id)
+      assert loaded.organisation.id == elsewhere.id
+      assert loaded.instance_organisation_id == nil
+    end
+
+    test "a person in another organisation takes no instance action", ctx do
+      action = :"instance.read"
+      elsewhere = ctx.owner.organisation
+
+      refute Access.can?(ctx.owner, action, ctx.instance)
+      refute Access.can?(ctx.owner, action, elsewhere)
+
+      # Not reached: no place and no id, whatever the scope had before.
+      stale = %{ctx.owner | instance_organisation_id: elsewhere.id}
+      assert %Scope{organisation: nil, instance_organisation_id: nil} = Access.in_instance(stale)
+      refute Access.can?(Access.in_instance(stale), action, ctx.instance)
+
+      # An instance admin's scope moved out of the instance's organisation.
+      {:ok, moved} = Apiary.Organisations.put_reach(Access.in_instance(ctx.elsewhere), elsewhere)
+      refute Access.can?(moved, action, ctx.instance)
+      refute Access.can?(moved, action, elsewhere)
+
+      # Inside the organisation, the role still decides.
+      refute Access.can?(Access.in_instance(ctx.inner_admin), action, ctx.instance)
+    end
   end
 
   describe "a part of a feature" do
@@ -861,4 +955,35 @@ defmodule Apiary.AccessTest do
 
   # A person's own action, asked of no place.
   defp own?(action), do: Access.action(action).asked_of == :new_organisation
+
+  # The queries this process runs during `fun`, counted on the repo's telemetry event.
+  defp queries_during(fun) do
+    handler = "access-queries-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :telemetry.attach(
+      handler,
+      [:apiary, :repo, :query],
+      fn _event, _measurements, meta, _config ->
+        if self() == parent, do: send(parent, {:access_query, meta.query})
+      end,
+      nil
+    )
+
+    try do
+      fun.()
+    after
+      :telemetry.detach(handler)
+    end
+
+    collect_queries([])
+  end
+
+  defp collect_queries(acc) do
+    receive do
+      {:access_query, query} -> collect_queries([query | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
 end

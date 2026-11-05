@@ -41,6 +41,11 @@ defmodule Apiary.Accounts.Scope do
   address and the client of the request, `%{remote_ip:, user_agent:}`, which the web side
   puts on the scope it loads (`put_origin/2`), or the worker of the job,
   `%{worker: "Apiary.Audit.PruneJob"}`. Nil where nobody said.
+
+  `instance_organisation_id` is the instance organisation's id as
+  `Apiary.Access.in_instance/1` read it, so `Apiary.Access.can?/3` reads no row for an
+  instance action in that scope. Nil in any other scope, where the check reads the id:
+  `Apiary.Access.reload/2` and every move to another organisation set it to nil.
   """
 
   alias Apiary.AccessKeys.AccessKey
@@ -74,7 +79,8 @@ defmodule Apiary.Accounts.Scope do
             origin: nil,
             hidden: nil,
             edition: %{},
-            key_organisation: nil
+            key_organisation: nil,
+            instance_organisation_id: nil
 
   @doc """
   Creates a scope for the given user.
@@ -219,7 +225,8 @@ defmodule Apiary.Accounts.Scope do
         edition: %{},
         # Nothing of the scope's organisation is carried over: an audit entry's scope asks
         # no gate, so nil, nothing hidden, rather than an ask of the edition here.
-        hidden: nil
+        hidden: nil,
+        instance_organisation_id: nil
     }
   end
 

@@ -314,6 +314,11 @@ who is no longer an instance admin moves to `/`. A page that sets
 fails as soon as the membership changes, because `Apiary.Access.authorize/3` reads the
 membership again.
 
+The scope from `Apiary.Access.in_instance/1` contains the instance organisation's id, so
+`Apiary.Access.can?/3` reads no row for an instance action. `Apiary.Access.reload/2`, and so
+`Apiary.Access.authorize/3`, clears the id, and the check compares with the id read then. A
+move to another organisation clears it too.
+
 `Apiary.Access.instance_admin?/1` is true where `instance.read` passes in that scope, by the
 membership as the database has it now. It is for what takes no action: a page's wording, the
 set-up steps a page lists, and the core's `c:Apiary.Edition.harness_owner/1`. An edition may
@@ -899,10 +904,11 @@ The races are tested outside the sandbox, on connections that commit
 ## The page asks the same question
 
 - A page shows a button, a link or a tab by `Apiary.Access.can?/3` with the same action as
-  the function behind it, so the two cannot disagree. `can?/3` answers from the scope as
-  loaded, with no database read of the scope, and is cheap on every render. The one read
-  is of a work item's process version, for the stage's approvers, when the work item does
-  not have it loaded.
+  the function behind it, so the two cannot disagree. `can?/3` uses the scope as loaded, so
+  a page may call it on every render. It reads the database in two cases: for the stage's
+  approvers, a work item's process version when the work item does not have it loaded; for
+  an instance action in a scope that did not come from `Apiary.Access.in_instance/1` or
+  `Apiary.Access.instance_scope/1`, the instance organisation's id, once per call.
 - A page that reads asks its read action on mount, `on_mount {ApiaryWeb.Access, action}`,
   after the path scope and the feature gate, and answers not found when refused.
 - A page of Instance settings mounts on `on_mount {ApiaryWeb.Access, :instance}`, and any

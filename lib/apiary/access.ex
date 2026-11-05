@@ -964,10 +964,12 @@ defmodule Apiary.Access do
   check that counts. It reads the person's membership again from the database, with what
   the edition put on the scope, because what a scope carries may be as old as the
   LiveView that holds it. A page asks `can?/3`, with the same action, for what it shows:
-  a button for an action the reader may not take is not rendered. `can?/3` answers from
-  the scope as it was loaded, without a read, so a page may ask it on every render; the
-  one read is step 9's, of a work item's process version when the work item does not
-  have it loaded. A
+  a button for an action the reader may not take is not rendered. `can?/3` uses the scope
+  as it was loaded, so a page may call it on every render. It reads the database in two
+  cases: step 9 reads a work item's process version when the work item does not have it
+  loaded, and an instance action reads the instance organisation's id once per call, in
+  a scope that did not come from `in_instance/1`. A scope from `reload/2` has no such id,
+  so `authorize/3` compares with the id as the database has it now. A
   context function that asks several questions in one change reads once with `reload/2`
   and asks each with `check/3`.
 
@@ -1281,15 +1283,26 @@ defmodule Apiary.Access do
   person who does not reach that organisation, and before the first sign-up, their scope
   with no place, which may no instance action. Any other scope, the instance's, an access
   key's or nil, as it is.
+
+  The scope it puts in that organisation has the organisation's id in
+  `instance_organisation_id`, so `can?/3` reads no row for an instance action.
   """
   @spec in_instance(Scope.t() | nil) :: Scope.t() | nil
   def in_instance(%Scope{user: %User{}, access_key: nil} = scope) do
     with %Organisation{} = organisation <- instance_organisation(),
          {:ok, instance} <- Apiary.Organisations.put_reach(scope, organisation) do
-      instance
+      %{instance | instance_organisation_id: organisation.id}
     else
       _unreached ->
-        %{scope | organisation: nil, workspace: nil, membership: nil, reach: nil, edition: %{}}
+        %{
+          scope
+          | organisation: nil,
+            workspace: nil,
+            membership: nil,
+            reach: nil,
+            edition: %{},
+            instance_organisation_id: nil
+        }
     end
   end
 
@@ -1513,7 +1526,8 @@ defmodule Apiary.Access do
   @doc """
   The answer of `authorize/3`, with its reason, from the scope as it is, without a read of
   the scope. Step 9 of the moduledoc reads a work item's process version when the work
-  item does not have it loaded. For a context function that asks more than one question in one change: it reads once
+  item does not have it loaded, and an instance action reads the instance organisation's
+  id when the scope has none (`in_instance/1`). For a context function that asks more than one question in one change: it reads once
   with `reload/2` and asks each question of that scope.
   """
   @spec check(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
@@ -1536,14 +1550,15 @@ defmodule Apiary.Access do
 
   # An instance action, in the order of the moduledoc's "The instance's admins": its
   # feature, asked of the instance; the instance step; the edition; the place; the role.
-  # The instance organisation's id is read once here, and passed to each step that needs it.
+  # The instance organisation's id is the scope's from `in_instance/1`, or else read once
+  # here, and passed to each step that needs it.
   defp check_instance(scope, action, subject) do
     shown_as = shown_as(action)
 
     if not is_nil(shown_as) and not Features.visible?(nil, shown_as) do
       {:error, :not_found}
     else
-      instance_id = Edition.instance_organisation_id()
+      instance_id = instance_id_of(scope)
 
       if at_instance?(scope, instance_id) do
         case Edition.check(scope, action, subject) do
@@ -1555,6 +1570,9 @@ defmodule Apiary.Access do
       end
     end
   end
+
+  defp instance_id_of(%Scope{instance_organisation_id: id}) when is_binary(id), do: id
+  defp instance_id_of(_scope), do: Edition.instance_organisation_id()
 
   # The instance step: the instance's scope, or a scope in the instance organisation while
   # it is not marked for deletion, as the scope carries it.
@@ -2009,6 +2027,9 @@ defmodule Apiary.Access do
   instance's has only its marks to read again. Any other scope, one without a user or an
   organisation, comes back without a membership, so it may nothing a role would allow.
 
+  Every scope it returns has `instance_organisation_id` set to nil, so a check of that
+  scope reads the instance organisation's id as the database has it now.
+
   With the membership it reads the deletion marks of the organisation and the workspace,
   so an organisation or a workspace marked since the scope was loaded answers not found
   (`check/3`). A scope that carries no membership has the person's membership there
@@ -2026,7 +2047,8 @@ defmodule Apiary.Access do
   @spec reload(Scope.t() | nil, keyword) :: Scope.t() | nil
   def reload(scope, opts \\ [])
 
-  def reload(%Scope{access_key: %AccessKey{}} = scope, _opts), do: scope
+  def reload(%Scope{access_key: %AccessKey{}} = scope, _opts),
+    do: %{scope | instance_organisation_id: nil}
 
   def reload(%Scope{user: %User{id: user_id}, organisation: %Organisation{}} = scope, opts) do
     lock? = opts[:lock] == :share
@@ -2035,6 +2057,7 @@ defmodule Apiary.Access do
     # edition's own (`lock_places/1`), first, then the membership, then the account.
     if lock?, do: lock_places(scope)
 
+    scope = %{scope | instance_organisation_id: nil}
     scope = scope |> reload_membership(lock?) |> Edition.reload(opts)
 
     # What the person is not shown, asked once the edition's reach is read again: with
@@ -2053,11 +2076,13 @@ defmodule Apiary.Access do
     %{
       scope
       | organisation: reload_marks(scope.organisation),
-        workspace: reload_marks(scope.workspace)
+        workspace: reload_marks(scope.workspace),
+        instance_organisation_id: nil
     }
   end
 
-  def reload(%Scope{} = scope, _opts), do: %{scope | membership: nil, reach: nil}
+  def reload(%Scope{} = scope, _opts),
+    do: %{scope | membership: nil, reach: nil, instance_organisation_id: nil}
 
   def reload(nil, _opts), do: nil
 
