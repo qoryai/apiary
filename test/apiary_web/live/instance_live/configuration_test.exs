@@ -549,6 +549,34 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
     end
   end
 
+  describe "for one who is no longer an instance admin" do
+    setup do
+      unset_variables()
+      Apiary.EditionKit.hide_instance_organisation()
+      :ok
+    end
+
+    setup :register_and_log_in_user
+
+    test "the page stays, and a save moves to its path and saves nothing",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/configuration")
+      stored = InstanceConfig.load()
+
+      {:ok, _} = Apiary.Organisations.grant_instance_admin(member_fixture(scope).user)
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(scope.user)
+
+      # The page handles the broadcast before it renders.
+      assert has_element?(view, "#config-invitations-form")
+      refute_redirected(view)
+
+      assert {:error, {:live_redirect, %{to: "/instance/configuration"}}} =
+               save(view, :invitations, %{invitations_per_day: "5"})
+
+      assert InstanceConfig.load() == stored
+    end
+  end
+
   describe "for a plain member of the instance's organisation" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()

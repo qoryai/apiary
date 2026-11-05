@@ -47,6 +47,13 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
     {flash["info"], view, html}
   end
 
+  # Makes the scope's person a member, with another instance admin in their place: the
+  # instance keeps one.
+  defp revoke_instance_admin(scope) do
+    {:ok, _} = Apiary.Organisations.grant_instance_admin(member_fixture(scope).user)
+    {:ok, _} = Apiary.Organisations.revoke_instance_admin(scope.user)
+  end
+
   # Deletes the person's membership of the scope's organisation, with no broadcast.
   defp remove_membership(scope) do
     {1, _} =
@@ -322,20 +329,37 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       assert text(view, "#instance-support-address-source") == "Set by SUPPORT_ADDRESS"
     end
 
-    # The page computes its instance scope again on the membership's change
-    # (`ApiaryWeb.Access`'s `:instance`), and leaves; the context refuses a save all the
-    # same.
-    test "one who is no longer an instance admin, on the page, leaves it, and saves nothing",
+    # The page keeps its instance scope until it mounts again (`ApiaryWeb.Access`'s
+    # `:instance`), so it stays open; `Apiary.Access.authorize/3` reads the membership again,
+    # so a save fails.
+    test "one who is no longer an instance admin stays on the page, and saves nothing",
          %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/instance/general")
-      # Another admin first: the instance keeps one.
-      {:ok, _} = Apiary.Organisations.grant_instance_admin(member_fixture(scope).user)
-      {:ok, _} = Apiary.Organisations.revoke_instance_admin(scope.user)
+      revoke_instance_admin(scope)
       refute Apiary.Access.instance_admin?(Apiary.Accounts.Scope.for_user(scope.user))
 
-      assert_redirect(view, "/")
-      assert {:error, :forbidden} = ProductName.rename(scope, %{"product_name" => "Acme Agents"})
+      # The page handles the broadcast before it renders.
+      assert has_element?(view, "#instance-name-form")
+      refute_redirected(view)
+
+      assert {:error, {:live_redirect, %{to: "/instance/general"}}} = save(view, "Acme Agents")
       assert ProductName.get() == nil
+    end
+
+    test "one who is no longer an instance admin stays on the page, and saves no address",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/general")
+      revoke_instance_admin(scope)
+
+      assert has_element?(view, "#instance-support-form")
+      refute_redirected(view)
+
+      assert {:error, {:live_redirect, %{to: "/instance/general"}}} =
+               view
+               |> form("#instance-support-form", support: %{support_address: "help@example.com"})
+               |> render_submit()
+
+      assert Apiary.SupportAddress.get() == nil
     end
 
     # The membership's row is deleted with no broadcast: the event arrives before

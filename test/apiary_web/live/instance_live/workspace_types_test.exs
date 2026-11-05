@@ -392,6 +392,26 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert new_output_options(view) == standard_names()
     end
 
+    test "one who is no longer an instance admin stays on the page, and saves no version",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, @edit)
+      view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
+      versions = TypeTemplates.versions(@type_key)
+
+      other = Apiary.OrganisationsFixtures.member_fixture(scope)
+      {:ok, _} = Apiary.Organisations.grant_instance_admin(other.user)
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(scope.user)
+
+      # The page handles the broadcast before it renders.
+      assert has_element?(view, "#type-save")
+      refute_redirected(view)
+
+      assert {:error, {:live_redirect, %{to: @index}}} =
+               view |> element("#type-save") |> render_click()
+
+      assert TypeTemplates.versions(@type_key) == versions
+    end
+
     test "a key no type has is a path that does not exist", %{conn: conn} do
       assert_raise ApiaryWeb.NotFound, fn -> live(conn, "/instance/workspace-types/acme.none") end
     end

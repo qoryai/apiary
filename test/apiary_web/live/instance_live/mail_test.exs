@@ -210,6 +210,15 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
     end
   end
 
+  # Makes the scope's person a member, with another instance admin in their place: the
+  # instance keeps one. The fixture signs up without a password, as with mail.
+  defp revoke_instance_admin(scope) do
+    Mail.put_test_source(:env)
+    member_fixture(scope, :owner)
+    Mail.put_test_source(:none)
+    {:ok, _} = Apiary.Organisations.revoke_instance_admin(scope.user)
+  end
+
   # Deletes the person's membership of the scope's organisation, with no broadcast.
   defp remove_membership(scope) do
     {1, _} =
@@ -702,6 +711,36 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       _first = sent_path()
       unthrottle!()
       remove_membership(scope)
+
+      assert {:error, {:live_redirect, %{to: "/instance/mail"}}} =
+               view |> element("#mail-resend") |> render_click()
+
+      refute_received {:email, %{subject: @subject}}
+    end
+
+    test "one who is no longer an instance admin stays on the page, and saves nothing",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      revoke_instance_admin(scope)
+
+      assert has_element?(view, "#mail_form")
+      refute_redirected(view)
+
+      assert {:error, {:live_redirect, %{to: "/instance/mail"}}} = save(view)
+      assert no_mail_saved?()
+      refute_received {:email, %{subject: @subject}}
+    end
+
+    test "one who is no longer an instance admin, who saved, stays, and sends no link again",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      _first = sent_path()
+      unthrottle!()
+      revoke_instance_admin(scope)
+
+      assert has_element?(view, "#mail-resend")
+      refute_redirected(view)
 
       assert {:error, {:live_redirect, %{to: "/instance/mail"}}} =
                view |> element("#mail-resend") |> render_click()

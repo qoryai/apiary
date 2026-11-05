@@ -76,14 +76,63 @@ defmodule ApiaryWeb.AdapterLive.AccessKeyTest do
   end
 
   describe "for one who is no longer an instance admin" do
-    test "the open tab moves to /, on the change of their membership", %{adapter: adapter} do
+    setup do
       %{user: user} = sign_up_fixture()
       {:ok, %{granted?: true}} = Apiary.Organisations.grant_instance_admin(user)
-      {:ok, lv, _html} = build_conn() |> log_in_user(user) |> live(tab_path(adapter))
+      %{user: user, conn: log_in_user(build_conn(), user)}
+    end
+
+    test "the open tab stays, on the change of their membership",
+         %{conn: conn, user: user, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, tab_path(adapter))
 
       {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
 
-      assert_redirect(lv, "/")
+      # The page handles the broadcast before it renders.
+      assert has_element?(lv, "h1", adapter.name)
+      assert has_element?(lv, "#code-new-button")
+      refute_redirected(lv)
+    end
+
+    test "Get the command moves to the tab's path, and makes no code",
+         %{conn: conn, user: user, admin: admin, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, tab_path(adapter))
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
+
+      path = tab_path(adapter)
+
+      assert {:error, {:live_redirect, %{to: ^path}}} =
+               lv |> element("#code-new-button") |> render_click()
+
+      assert Adapters.list_codes(admin, adapter) == []
+    end
+
+    test "Yes, revoke moves to the tab's path, and revokes nothing",
+         %{conn: conn, user: user, adapter: adapter} do
+      %{access_key: key} = installed_key_fixture(adapter)
+      {:ok, lv, _html} = live(conn, tab_path(adapter, "/#{key.key_id}/revoke"))
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
+
+      path = tab_path(adapter)
+
+      assert {:error, {:live_redirect, %{to: ^path}}} =
+               lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+
+      assert Repo.get!(AccessKey, key.id).revoked_at == nil
+    end
+
+    test "cancelling a command moves to the tab's path, and cancels nothing",
+         %{conn: conn, user: user, admin: admin, adapter: adapter} do
+      {:ok, row, _code} = Adapters.create_code(admin, adapter)
+      {:ok, lv, _html} = live(conn, tab_path(adapter, "/codes/#{row.id}/revoke"))
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
+
+      path = tab_path(adapter)
+
+      assert {:error, {:live_redirect, %{to: ^path}}} =
+               lv |> element("#code-#{row.id}-confirm-button") |> render_click()
+
+      assert Repo.get!(EnrolmentCode, row.id).cancelled_at == nil
     end
   end
 

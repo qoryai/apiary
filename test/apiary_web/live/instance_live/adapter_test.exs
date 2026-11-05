@@ -522,6 +522,64 @@ defmodule ApiaryWeb.InstanceLive.AdapterTest do
     end
   end
 
+  describe "for one who is no longer an instance admin" do
+    setup do
+      %{user: user} = sign_up_fixture()
+      {:ok, %{granted?: true}} = Apiary.Organisations.grant_instance_admin(user)
+      %{user: user, conn: log_in_user(build_conn(), user)}
+    end
+
+    test "Save on Rename moves to the Overview's path, and renames nothing",
+         %{conn: conn, user: user, admin: admin, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/rename"))
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
+
+      assert has_element?(lv, "#adapter-rename-form")
+      refute_redirected(lv)
+
+      path = page_path(adapter)
+
+      assert {:error, {:live_redirect, %{to: ^path}}} =
+               lv |> form("#adapter-rename-form", adapter: %{name: "Other"}) |> render_submit()
+
+      assert Adapters.get_adapter(admin, adapter.public_id).name == adapter.name
+    end
+
+    test "Remove moves to the Overview's path, and removes nothing",
+         %{conn: conn, user: user, admin: admin, adapter: adapter} do
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings/remove"))
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
+
+      path = page_path(adapter)
+
+      assert {:error, {:live_redirect, %{to: ^path}}} =
+               lv |> element("#adapter-remove-button") |> render_click()
+
+      assert Adapters.get_adapter(admin, adapter.public_id)
+    end
+
+    test "Save of the pull interval moves to the Overview's path, and saves nothing",
+         %{conn: conn, user: user, adapter: adapter} do
+      declare(adapter,
+        sync_default_interval: 3600,
+        sync_minimum_interval: 900,
+        sync_sends_changes: true
+      )
+
+      {:ok, lv, _html} = live(conn, page_path(adapter, "/settings"))
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(user)
+
+      path = page_path(adapter)
+
+      assert {:error, {:live_redirect, %{to: ^path}}} =
+               lv
+               |> form("#adapter-interval-form", sync: %{sync_interval: "7200"})
+               |> render_submit()
+
+      assert Repo.reload!(adapter).sync_interval == nil
+    end
+  end
+
   describe "Remove" do
     test "says what happens, then revokes its keys, cancels its codes, ends its connections and closes their work items",
          %{conn: conn, admin: admin} do
