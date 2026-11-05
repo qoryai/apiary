@@ -83,6 +83,13 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute has_element?(lv, "#members")
     end
 
+    test "a search that finds nobody says what it looked for", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      lv |> form("#people-search", q: "abc") |> render_change()
+      assert has_element?(lv, "#people-none", "No member's email has abc.")
+    end
+
     test "still lists the members on the next event once the scope's workspace is marked",
          %{conn: conn, scope: scope} do
       %{user: other} = member_fixture(scope, :member)
@@ -454,6 +461,17 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute html =~ founder.user.email
       refute html =~ invitation.email
       assert %{members: [], invitations: []} = :sys.get_state(lv.pid).socket.assigns
+    end
+
+    test "with an empty list and an empty search box, the page says nothing of a search",
+         %{conn: conn, scope: scope, membership: membership} do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      Apiary.Repo.delete!(membership)
+      render_hook(lv, "set_level", %{})
+
+      assert %{shown: [], q: ""} = :sys.get_state(lv.pid).socket.assigns
+      refute has_element?(lv, "#people-none")
     end
 
     test "a removed member's open page is sent to /", %{

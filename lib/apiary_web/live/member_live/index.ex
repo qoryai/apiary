@@ -255,7 +255,7 @@ defmodule ApiaryWeb.MemberLive.Index do
           </p>
         </div>
 
-        <p :if={@shown == []} id="people-none" class="text-[13px] text-muted">
+        <p :if={@shown == [] and @q != ""} id="people-none" class="text-[13px] text-muted">
           {gettext("No member's email has %{text}.", text: @q)}
         </p>
         <.table
