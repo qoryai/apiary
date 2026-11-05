@@ -83,6 +83,21 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute has_element?(lv, "#members")
     end
 
+    test "still lists the members on the next event once the scope's workspace is marked",
+         %{conn: conn, scope: scope} do
+      %{user: other} = member_fixture(scope, :member)
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      assert html =~ other.email
+
+      # Marked behind the page's back: no broadcast reaches it. An event then reads the list
+      # again, with the scope as the page loaded it.
+      scope.workspace |> Apiary.Deletion.mark_changeset(scope) |> Repo.update!()
+      html = render_hook(lv, "set_level", %{})
+
+      assert html =~ other.email
+      assert has_element?(lv, "#member-#{scope.membership.id}")
+    end
+
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 

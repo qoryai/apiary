@@ -1139,9 +1139,10 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   # The members and the invitations, for a person who may read them as the database has it
   # now (`member.read`, with `Apiary.Access.authorize/3`): the page's scope is stale until
-  # the broadcast of a change to the membership moves the page.
+  # the broadcast of a change to the membership moves the page. Asked with no workspace: the
+  # organisation's members stay readable while the scope's workspace is marked for deletion.
   defp people(scope) do
-    case Access.authorize(scope, :"member.read", scope.organisation) do
+    case Access.authorize(%{scope | workspace: nil}, :"member.read", scope.organisation) do
       :ok -> {Organisations.list_members(scope), invitations(scope)}
       {:error, _refused} -> {[], []}
     end
