@@ -1061,8 +1061,9 @@ defmodule Apiary.Access do
   instance's organisation, whichever organisation the page's path is in: `in_instance/1`
   for a context function, which then asks `authorize/3`; `instance_scope/1` for a page,
   which asks `can?/3` (`ApiaryWeb.Access`'s `:instance`). `instance_admin?/1` says
-  whether a scope's person is one, for what asks no action: the release commands and a
-  page's wording.
+  whether a scope's person is one, for what asks no action: a page's wording,
+  an edition's harness owner and an edition's commands. Core's release commands
+  read the membership, with `instance_admin_membership?/1`.
 
   A recent sign-in is no part of the answer: where an action needs one, the context
   function asks it after `authorize/3` (`Apiary.Accounts.sudo_mode?/1`).
@@ -1246,8 +1247,9 @@ defmodule Apiary.Access do
   membership is not suspended and whose account is in use (not deleted, and active as the
   edition says, `c:Apiary.Edition.active_accounts/2`). False for a scope without a person,
   and for nil. Whoever asks with a person's scope, whatever organisation the scope is in,
-  gets the same answer. For what asks no action: the release commands and a page's
-  wording; anything that acts asks its action.
+  gets the same answer. For what asks no action: a page's wording,
+  an edition's harness owner and an edition's commands; anything that acts asks
+  its action.
   """
   @spec instance_admin?(Scope.t() | nil) :: boolean
   def instance_admin?(%Scope{user: %User{}, access_key: nil} = scope) do
@@ -1416,7 +1418,8 @@ defmodule Apiary.Access do
   instance_admin_membership?/1 says whether a membership makes its person an instance
   admin: it is a membership of the instance's organisation
   (`c:Apiary.Edition.instance_organisation_id/0`), at `instance_admin_level/0`. False for a
-  membership of any other organisation, and nil. `instance_admin?/1` asks it of a scope.
+  membership of any other organisation, and nil. Core's release commands that grant and
+  revoke an instance admin read it.
   """
   @spec instance_admin_membership?(%Membership{} | nil) :: boolean
   def instance_admin_membership?(%Membership{organisation_id: id, level: @instance_admin_level})
