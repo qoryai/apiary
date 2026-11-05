@@ -153,7 +153,9 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
       {:ok, key} ->
         {:noreply, to_index(socket, :info, gettext("%{label} is revoked.", label: key.label))}
 
-      {:error, :forbidden} ->
+      # No longer an instance admin, or the key is gone: the mount answers with the path as
+      # it is now, not found or the current list.
+      {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, push_navigate(socket, to: @index)}
 
       {:error, _not_saved} ->

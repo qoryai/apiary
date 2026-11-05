@@ -6,6 +6,7 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeysTest do
   # admin hides the instance's organisation, a row every test shares.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
 
   alias Apiary.{AccessKeys, Repo, SigningKey}
@@ -36,6 +37,13 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeysTest do
     {:ok, request} = Enrolment.decode(body)
     {:ok, key} = AccessKeys.enrol(request)
     key
+  end
+
+  # A key in use, made by the scope's person; signed in just now, as making a code asks.
+  defp revocable_key(scope) do
+    scope = put_in(scope.user.authenticated_at, DateTime.utc_now())
+    {:ok, _row, code} = AccessKeys.create_diagnostics_code(scope)
+    enrol!(Enrolment.issued_code(code, SigningKey.fingerprint()), "laptop")
   end
 
   describe "for an instance admin" do
@@ -104,6 +112,38 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeysTest do
       assert render(view) =~ "laptop is revoked."
       refute has_element?(view, "#key-#{key.key_id}")
       assert %AccessKey{revoked_at: %DateTime{}} = Repo.get!(AccessKey, key.id)
+    end
+
+    # The confirm is open at the key's path when the person's membership goes, with no
+    # broadcast: the event arrives before `:membership_changed`.
+    test "Yes, revoke by one whose membership is gone moves to the list's path, and revokes nothing",
+         %{conn: conn, scope: scope} do
+      key = revocable_key(scope)
+      {:ok, view, _html} = live(conn, ~p"/instance/diagnostics-keys/#{key.key_id}/revoke")
+
+      {1, _} =
+        Repo.delete_all(
+          from m in Apiary.Organisations.Membership,
+            where: m.user_id == ^scope.user.id and m.organisation_id == ^scope.organisation.id
+        )
+
+      assert {:error, {:live_redirect, %{to: "/instance/diagnostics-keys"}}} =
+               view |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+
+      assert %AccessKey{revoked_at: nil} = Repo.get!(AccessKey, key.id)
+    end
+
+    test "Yes, revoke of a key that is gone moves to the list's path, with the list as it is",
+         %{conn: conn, scope: scope} do
+      key = revocable_key(scope)
+      {:ok, view, _html} = live(conn, ~p"/instance/diagnostics-keys/#{key.key_id}/revoke")
+      Repo.delete!(Repo.get!(AccessKey, key.id))
+
+      assert {:error, {:live_redirect, %{to: "/instance/diagnostics-keys"}}} =
+               view |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+
+      {:ok, view, _html} = live(conn, ~p"/instance/diagnostics-keys")
+      refute has_element?(view, "#key-#{key.key_id}")
     end
 
     test "the command's page, opened again, has no code", %{conn: conn} do
