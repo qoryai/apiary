@@ -9,14 +9,11 @@ defmodule Apiary.Dispatches.Inputs do
   # - `explore/3`: the explore contract's `inputs.schema.json`, version 1, every member in
   #   the schema's order, from the rows Qory keeps and nothing the starter sent:
   #   - `work_item`: its public id, its number and its address (`Apiary.WorkItems.stable_url/1`);
-  #   - `run`: the run's `attempt` and `of`, counted over the runs of its take in that
-  #     started: a run that ended before it started because its image was missing from
-  #     the registry, and was queued again (`Apiary.Dispatches.requeue_for_image/1`),
-  #     counts in neither. Such a requeue raises the take in's attempt and `of` by one
-  #     each in Qory Apiary, so the input gives both less the take in's requeues up to
-  #     the run: `attempt` from 1, and `of` the take in's 3, or one more for each
-  #     comment on a proposal that the run limit let add a run
-  #     (`Apiary.Dispatches.queue_next/3`);
+  #   - `run`: the run's `attempt`, counted over the runs of its take in that started: a
+  #     run that ended before it started because its image was missing from the registry,
+  #     and was queued again (`Apiary.Dispatches.requeue_for_image/1`), does not count.
+  #     Such a requeue raises the take in's attempt by one in Qory Apiary, so the input
+  #     gives it less the take in's requeues up to the run, from 1, with no maximum;
   #   - `ticket`: the ticket as the work item kept it when it was taken in, its ref, its
   #     address, its title and its collection's title, and as the ticket's row holds it now,
   #     its text, who filed it and when (`Apiary.Sources.Item`). A test work item has no
@@ -35,20 +32,13 @@ defmodule Apiary.Dispatches.Inputs do
   #     (`Apiary.Sources.Item`, `Apiary.Sources.Comment`);
   #   - `comments_omitted`: how many of the oldest were left out to keep the input within
   #     `max_bytes/0`, 768 KiB encoded, 0 for none;
-  #   - `answers`: the answers given within the run's take in, oldest first
-  #     (`Apiary.WorkItems.take_in_answers/2`), each with whether it is the member's text
-  #     and who gave it, named as who took the work item in is named and held to the same
-  #     rule;
-  #   - `proposal`: the newest proposal of the run's take in, the `message` of the latest
-  #     run before it whose result is a proposal, as Markdown; left out where the take in
-  #     has none, or that run's result is cleared or was stored before the proposal was
-  #     Markdown;
-  #   - `changes`: the comments on the take in's proposals that no saved update of the
-  #     proposal has read yet, oldest first (`Apiary.WorkItems.take_in_changes/3`), each
-  #     with who wrote it, named as an answer's author is;
   #   - `target`: the run's target, the documents' `target`, left out where the
   #     work item has none;
   #   - `domain`: the name of the workspace's domain, the documents' `domain`.
+  #
+  #   The answers, the proposal and the review comments are not in the input: the run
+  #   reads them as artifacts of the work item (`Apiary.Explore.Questions`,
+  #   `Apiary.Explore.ReviewComments`) through the run API.
   #
   #   The claim gives the target and the domain (`Apiary.Dispatches.Handover`), the same
   #   values it writes into the documents.
@@ -81,7 +71,7 @@ defmodule Apiary.Dispatches.Inputs do
   @former_member "former member"
   # explore/v1 inputs.schema.json: `$defs/member` name, 1 to 160 characters on one line.
   @max_name 160
-  # result.schema.json `$defs/text`: the characters a text refuses; a name refuses tab,
+  # inputs.schema.json `$defs/text`: the characters a text refuses; a name refuses tab,
   # line feed and carriage return besides.
   @refused_in_text ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
   @refused_in_name ~r/[\x{9}\x{A}\x{D}]/u
@@ -134,13 +124,10 @@ defmodule Apiary.Dispatches.Inputs do
 
     with {:ok, item} <- ticket(work_item),
          {:ok, by} <- taken_in_by(work_item),
-         :ok <- valid(work_item),
-         {:ok, answers} <- answers(work_item, dispatch_run),
-         {:ok, changes} <- changes(work_item, dispatch_run) do
+         :ok <- valid(work_item) do
       comments = Enum.map(comments(item), &comment/1)
-      counted = started(dispatch_run)
-      given = %{answers: answers, proposal: proposal(dispatch_run), changes: changes}
-      document = &document(work_item, counted, item, by, given, run, &1, &2)
+      attempt = started(dispatch_run)
+      document = &document(work_item, attempt, item, by, run, &1, &2)
       inputs = bounded(document, comments, budget)
 
       # Every comment left out, the rest is within `max_bytes/0` by the columns' bounds; held
@@ -180,41 +167,6 @@ defmodule Apiary.Dispatches.Inputs do
     case id && Repo.get(User, id) do
       %User{deleted_at: nil, email: email} when is_binary(email) -> User.short_name(email)
       _deleted -> @former_member
-    end
-  end
-
-  # The answers of the run's take in, read once, each with a name the contract takes.
-  defp answers(work_item, %DispatchRun{take_in: take_in}) do
-    answers = WorkItems.take_in_answers(work_item, take_in)
-
-    if Enum.all?(answers, &name?(&1["by"]["name"])),
-      do: {:ok, answers},
-      else: {:error, :inputs_invalid}
-  end
-
-  # The comments the run reads, each with a name the contract takes.
-  defp changes(work_item, %DispatchRun{take_in: take_in, attempt: attempt}) do
-    changes = WorkItems.take_in_changes(work_item, take_in, attempt)
-
-    if Enum.all?(changes, &name?(&1["by"]["name"])),
-      do: {:ok, changes},
-      else: {:error, :inputs_invalid}
-  end
-
-  # The newest proposal of the take in, before the run: the Markdown of the latest run
-  # that gave one, nil for none.
-  defp proposal(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt}) do
-    Repo.one(
-      from r in DispatchRun,
-        where: r.work_item_id == ^id and r.take_in == ^take_in and r.attempt < ^attempt,
-        where: r.result_outcome == :proposal and not is_nil(r.result),
-        order_by: [desc: r.attempt],
-        limit: 1,
-        select: r.result
-    )
-    |> case do
-      %{"message" => message} when is_binary(message) -> message
-      _none -> nil
     end
   end
 
@@ -262,7 +214,7 @@ defmodule Apiary.Dispatches.Inputs do
   defp person(name, kind),
     do: Jason.OrderedObject.new([{"name", name}, {"kind", Atom.to_string(kind)}])
 
-  defp document(work_item, {attempt, of}, item, by, given, run, comments, omitted) do
+  defp document(work_item, attempt, item, by, run, comments, omitted) do
     Jason.OrderedObject.new(
       [
         {"version", @version},
@@ -272,7 +224,7 @@ defmodule Apiary.Dispatches.Inputs do
            {"number", work_item.number},
            {"url", WorkItems.stable_url(work_item)}
          ])},
-        {"run", Jason.OrderedObject.new([{"attempt", attempt}, {"of", of}])}
+        {"run", Jason.OrderedObject.new([{"attempt", attempt}])}
       ] ++
         ticket_entry(work_item, item) ++
         [
@@ -283,18 +235,14 @@ defmodule Apiary.Dispatches.Inputs do
              {"at", time(work_item.taken_in_at)}
            ])},
           {"comments", comments},
-          {"comments_omitted", omitted},
-          {"answers", given.answers}
-        ] ++
-        proposal_entry(given.proposal) ++
-        [{"changes", given.changes}] ++ target(run.target) ++ [{"domain", run.domain}]
+          {"comments_omitted", omitted}
+        ] ++ target(run.target) ++ [{"domain", run.domain}]
     )
   end
 
-  # The `attempt` and `of` of `dispatch_run` counted over the runs of its take in that
-  # started (the moduledoc): each less the runs of the take in up to it that an image
-  # requeue queued.
-  defp started(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt, of: of}) do
+  # The `attempt` of `dispatch_run` counted over the runs of its take in that started
+  # (the moduledoc): less the runs of the take in up to it that an image requeue queued.
+  defp started(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt}) do
     requeues =
       Repo.aggregate(
         from(r in DispatchRun,
@@ -304,7 +252,7 @@ defmodule Apiary.Dispatches.Inputs do
         :count
       )
 
-    {attempt - requeues, of - requeues}
+    attempt - requeues
   end
 
   # The ticket, left out for a test work item, which has none.
@@ -324,9 +272,6 @@ defmodule Apiary.Dispatches.Inputs do
        ])}
     ]
   end
-
-  defp proposal_entry(nil), do: []
-  defp proposal_entry(message), do: [{"proposal", message}]
 
   defp target(nil), do: []
 

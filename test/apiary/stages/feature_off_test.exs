@@ -1,14 +1,13 @@
 defmodule Apiary.Stages.FeatureOffTest do
-  # Without `workflow_model`, Explore works as before the stage runner: a take in queues
-  # run 1 of 3 with no place in a process, a run's end stores no artifact and opens no
-  # escalation, and a confirmation writes no gate decision.
+  # Without `workflow_model`, Explore runs with no stage runner: a take in queues run 1 of
+  # 3 with no place in a process, and a run's end opens no escalation. The run API answers
+  # 404, so a run pushes no proposal and no questions, and every run ends with no result.
   use Apiary.DataCase, async: false
   use Oban.Testing, repo: Apiary.Repo
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.StagesFixtures
-  import Apiary.WorkItemsFixtures
 
   alias Apiary.{Artifacts, Harnesses, Repo, Stacks, Stages, WorkItems}
   alias Apiary.Dispatches.DispatchRun
@@ -61,22 +60,27 @@ defmodule Apiary.Stages.FeatureOffTest do
     assert_enqueued(worker: WalkJob, args: %{"dispatch_run_id" => run.id})
   end
 
-  test "a proposal, questions and no result store nothing for the stage runner", %{scope: scope} do
-    work_item = taken_in_fixture(scope) |> end_run!(questions_result())
-    {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
+  test "a run's end gives no result: no run pushes an artifact, as the run API answers 404",
+       %{scope: scope} do
+    work_item = taken_in_fixture(scope) |> end_run!(nil)
+    assert WorkItems.explore(scope, work_item).status == :no_result
+    assert %DispatchRun{result_outcome: :none, round: nil} = newest_run(work_item)
+
+    # Explore again runs it once more, and so on to the run limit; no answer, no review
+    # comment and no confirmation can be given, as no proposal or question exists.
+    {:ok, _} = WorkItems.explore_again(scope, work_item, 1)
     assert %DispatchRun{attempt: 2, of: 3, round: nil} = newest_run(work_item)
-
     work_item = end_run!(work_item, nil)
-    {:ok, _} = WorkItems.explore_again(scope, work_item, 2)
-    work_item = end_run!(work_item, understood_result())
 
-    assert {:ok, %WorkItem{}} = WorkItems.confirm(scope, work_item, 3)
-    assert Repo.get_by(Confirmation, work_item_id: work_item.id)
+    assert WorkItems.answer(scope, work_item, 2, %{"1" => "a"}) == {:error, :not_waiting}
+    assert WorkItems.review_comment(scope, work_item, 2, "Also this.") == {:error, :not_waiting}
+    assert WorkItems.confirm(scope, work_item, 2) == {:error, :not_waiting}
 
     assert %WorkItem{state: :exploring, stage_id: nil, stage_state: nil} =
              Repo.get!(WorkItem, work_item.id)
 
     assert Artifacts.list(work_item) == []
+    assert Repo.get_by(Confirmation, work_item_id: work_item.id) == nil
     assert Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id) == []
     assert Repo.all(from d in GateDecision, where: d.work_item_id == ^work_item.id) == []
     assert Stages.status(work_item) == nil

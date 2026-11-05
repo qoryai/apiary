@@ -24,7 +24,7 @@ defmodule ApiaryWeb.ArtifactFileControllerTest do
 
     %{user: user, scope: scope} = sign_up_fixture()
     work_item = work_item_fixture(scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
 
     # Pushed as a run, which no feature gates, so the test with the feature off has it.
     {:ok, version} =

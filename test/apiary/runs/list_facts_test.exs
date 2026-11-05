@@ -300,6 +300,34 @@ defmodule Apiary.Runs.ListFactsTest do
       assert facts(scope, commented).started_by == {:comment, 2, 3, user.id}
     end
 
+    test "a send of the review comments, at the gate and while questions wait", %{
+      scope: scope,
+      user: user
+    } do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
+      first = started_run(scope)
+      queue_run!(scope, first, work_item: work_item)
+
+      # Run 1's proposal waits at the gate; run 2's questions wait.
+      for attempt <- [1, 2] do
+        work_item_event!(work_item, :answered, user, %{
+          "take_in" => 1,
+          "attempt" => attempt,
+          "count" => 1,
+          "review_comments" => ["c1"]
+        })
+      end
+
+      at_gate = started_run(scope)
+      queue_run!(scope, at_gate, work_item: work_item, attempt: 2)
+      while_asked = started_run(scope)
+      queue_run!(scope, while_asked, work_item: work_item, attempt: 3)
+
+      assert facts(scope, at_gate).started_by == {:comment, 2, 3, user.id}
+      assert facts(scope, while_asked).started_by == {:comment, 3, 3, user.id}
+    end
+
     test "a test work item's run, a direct run, and a later run no event explains", %{
       scope: scope,
       user: user

@@ -13,7 +13,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo}
+  alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo, WorkItems}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.ArtifactComponents
 
@@ -43,7 +43,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
     %{user: user, scope: scope} = sign_up_fixture()
     work_item = work_item_fixture(scope)
-    %{dispatch_run: run, run: registered} = explore_run_fixture(work_item)
+    %{dispatch_run: run, run: registered} = explore_run_fixture(work_item, state: :handed_over)
 
     Map.merge(context, %{
       conn: log_in_user(build_conn(), user),
@@ -111,6 +111,16 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert has_element?(
                view,
+               ~s([phx-hook="Mermaid"][data-not-drawn="Qory Apiary does not draw this diagram, so it is shown as written."])
+             )
+
+      assert has_element?(
+               view,
+               ~s([phx-hook="Mermaid"][data-failed="This diagram has an error, so it is shown as written."])
+             )
+
+      assert has_element?(
+               view,
                ~s(#artifact-files a[href="#{file_path(ctx, version, "plan.md")}"])
              )
 
@@ -122,6 +132,62 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                |> then(&Regex.scan(~r/Version \d/, &1))
 
       assert has_element?(view, ~s(#artifact-history a[aria-current="page"]), "Version 2")
+    end
+
+    test "shows only a proposal's Markdown file as its document, its images as words", ctx do
+      text = "# Invoice total\n\n![Invoice header](checkout.svg)\n\n![x](sources.json)\n"
+      version = pushed!(ctx, "proposal", [{"proposal.md", text}])
+
+      # A proposal version with an image and sources.json beside its Markdown: the push of
+      # this branch takes one Markdown file, so the other files are added as rows, before
+      # the Markdown file in the version's order.
+      [markdown] = version.files
+
+      for {filename, type} <- [
+            {"checkout.svg", "image/svg+xml"},
+            {"sources.json", "application/json"}
+          ] do
+        Repo.insert!(%{
+          markdown
+          | id: nil,
+            __meta__: %{markdown.__meta__ | state: :built},
+            filename: filename,
+            content_type: type
+        })
+      end
+
+      files = Repo.preload(version, :files, force: true).files
+      version = %{version | files: Enum.sort_by(files, &(&1.filename == "proposal.md"))}
+      assert List.last(version.files).filename == "proposal.md"
+      type = ApiaryWeb.ArtifactLive.Load.type(ctx.work_item, "proposal")
+
+      assert Enum.map(ArtifactComponents.documents(type, version), & &1.filename) == [
+               "proposal.md"
+             ]
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      view_id = "#artifact-view-#{version.public_id}"
+
+      assert has_element?(view, "#{view_id}-0 h3", "Invoice total")
+      assert has_element?(view, "#{view_id}-0", "Image: Invoice header")
+      assert has_element?(view, "#{view_id}-0", "Image: x")
+      refute has_element?(view, "#{view_id}-0 img")
+      refute has_element?(view, "#{view_id}-documents")
+
+      for filename <- ["proposal.md", "checkout.svg", "sources.json"] do
+        assert has_element?(
+                 view,
+                 ~s(#artifact-files a[href="#{file_path(ctx, version, filename)}"]),
+                 filename
+               )
+      end
+
+      # An image or sources.json is never rendered as a document.
+      for filename <- ["sources.json", "checkout.svg"] do
+        render_hook(view, "show-document", %{"file" => filename})
+        assert has_element?(view, "#{view_id}-0 h3", "Invoice total")
+        refute has_element?(view, "#{view_id}-1")
+      end
     end
 
     test "shows raster images inline and an SVG as a download only", ctx do
@@ -186,6 +252,74 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute has_element?(view, ~s(a[href="javascript:x"]))
     end
 
+    test "a questions version shows a question's context as the Explore tab shows it", ctx do
+      context =
+        "See the [order export](https://example.com/export).\n\n<script>window.pwned = true</script>\n\n" <>
+          "[bad](javascript:alert(1)) and [mail](mailto:a@example.com)"
+
+      version =
+        pushed!(ctx, "questions", [
+          {"questions.json",
+           Jason.encode!(%{
+             "questions" => [
+               %{
+                 "id" => "q1",
+                 "question" => "Which [order export](https://example.com/export)?",
+                 "context" => context,
+                 "options" => [],
+                 "state" => "open",
+                 "asked" => %{"run" => 1, "at" => "2026-11-05T10:00:00Z"}
+               }
+             ]
+           })}
+        ])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(
+               view,
+               ~s(table .q-ticket-formatted.q-xp-md a[href="https://example.com/export"]),
+               "order export"
+             )
+
+      assert has_element?(view, ~s(table .q-ticket-formatted a[href="mailto:a@example.com"]))
+      refute has_element?(view, ~s(a[href^="javascript:"]))
+      refute render(view) =~ "<script>window.pwned"
+
+      # The question itself is plain text, on the tab too.
+      assert has_element?(view, "table td", "Which [order export](https://example.com/export)?")
+    end
+
+    test "only a questions document's context is Markdown" do
+      markdown = "See [the plan](https://example.com/plan)."
+
+      shown = fn name, view, value ->
+        render_component(&ArtifactComponents.view/1,
+          id: "view",
+          type: %Apiary.Artifacts.Type{name: name, base_view: :structured, view: view},
+          version: %Apiary.Artifacts.Version{
+            files: [%Apiary.Artifacts.ArtifactFile{filename: "a.json"}]
+          },
+          content: %{"a.json" => {:json, value}},
+          path: fn _file -> "/a.json" end
+        )
+      end
+
+      assert shown.("questions", :questions, %{"context" => markdown}) =~
+               ~s(<a href="https://example.com/plan")
+
+      for {name, view, value} <- [
+            {"questions", :questions, %{"note" => markdown}},
+            {"bid-set", nil, %{"context" => markdown}},
+            {"verdict", :verdict, %{"context" => markdown}},
+            {"change", :change, %{"context" => markdown}}
+          ] do
+        html = shown.(name, view, value)
+        assert html =~ markdown, name
+        refute html =~ "<a href", name
+      end
+    end
+
     test "says the table is cut only when values are left out" do
       shown = fn values ->
         render_component(&ArtifactComponents.view/1,
@@ -205,7 +339,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert shown.(%{"a" => List.duplicate(1, 5000)}) =~ "Shown: the first 5,000 values."
     end
 
-    test "names the run that made a version, with its round, or a run it cannot name", ctx do
+    test "shows the run that made a version with its round, or A run for one with no number",
+         ctx do
       import Ecto.Query
 
       Apiary.Repo.update_all(from(d in Apiary.Dispatches.DispatchRun, where: d.id == ^ctx.run.id),
@@ -214,9 +349,9 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
-      short = "Run #{ctx.claimed.number}"
-      assert has_element?(view, "#artifact-writer a", "#{short} · round 2")
-      assert has_element?(view, "#artifact-history a", "#{short} · round 2")
+      writer = "Run #{ctx.claimed.number} · round 2"
+      assert has_element?(view, "#artifact-writer a", writer)
+      assert has_element?(view, "#artifact-history a", writer)
 
       %{dispatch_run: unclaimed} =
         explore_run_fixture(ctx.work_item, state: :waiting, registered: false)
@@ -246,6 +381,29 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       html = render_component(&ArtifactComponents.made_by/1, version: version, scope: ctx.scope)
       assert html =~ ~s(href="/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/runs/)
+    end
+
+    # A work item moves with its artifacts, and its runs stay in the workspace they ran in:
+    # this workspace may have another run with that number.
+    test "shows a run of another workspace without a link, after a real move", ctx do
+      connection = ticket_connection_fixture(ctx.scope)
+      ticket = backlog_ticket_fixture(ctx.scope, connection: connection)
+      {:ok, work_item} = WorkItems.take_in(ctx.scope, ticket.public_id)
+      %{dispatch_run: run, run: claimed} = explore_run_fixture(work_item, state: :handed_over)
+      pushed!(%{ctx | run: run, work_item: work_item}, "explainer", [{"plan.md", "# First"}])
+
+      there = workspace_scope(ctx.scope.user, workspace_fixture(ctx.scope.organisation))
+
+      %{work_item: moved} =
+        moved_work_item_fixture(ctx.scope, work_item, ticket, connection, there)
+
+      assert moved.workspace_id == there.workspace.id
+
+      [%{versions: [version]}] = Artifacts.list(moved)
+
+      html = render_component(&ArtifactComponents.made_by/1, version: version, scope: there)
+      assert html =~ "Run #{claimed.number}"
+      refute html =~ "href="
     end
 
     test "offers a document over 256 KiB as a download, not shown", ctx do
@@ -334,6 +492,89 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#artifact-add")
     end
 
+    test "the page's two columns use the class with the 1007 px breakpoint", ctx do
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(view, ".q-art-cols #artifact-details")
+      refute render(view) =~ "lg:grid-cols-[minmax(0,1fr)_18rem]"
+    end
+
+    test "a proposal's Sources are a closed fold under its text; another type's are a heading",
+         ctx do
+      text = """
+      ## Background
+
+      The invoice shows the wrong currency.
+
+      ## Sources
+
+      - [Invoice guide](https://help.example.com/invoices)
+      - web: src/invoice.ts
+      """
+
+      version = pushed!(ctx, "proposal", [{"proposal.md", text}], name: "main")
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      html = render_async(view)
+      doc = LazyHTML.from_fragment(html)
+
+      assert has_element?(view, "details.q-xp-sources:not([open]) > summary", "Sources (2)")
+      assert has_element?(view, "details.q-xp-sources a", "Invoice guide")
+      assert has_element?(view, ".q-ticket-formatted h4", "Background")
+      refute has_element?(view, "h4", "Sources")
+
+      # The fold follows the text in the section, nothing after it.
+      assert doc |> LazyHTML.query("section > details.q-xp-sources:last-child") |> Enum.count() ==
+               1
+
+      other = pushed!(ctx, "explainer", [{"plan.md", text}])
+      {:ok, view, _html} = live(ctx.conn, page(ctx, other))
+      render_async(view)
+
+      assert has_element?(view, ".q-ticket-formatted h4", "Sources")
+      refute has_element?(view, "details.q-xp-sources")
+    end
+
+    test "a wide table scrolls in a frame on a version's page, and only there", ctx do
+      version =
+        pushed!(ctx, "explainer", [{"plan.md", "| A | B |\n|---|---|\n| one | two |\n"}])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      assert has_element?(view, ".q-art-cols .q-ticket-formatted table")
+
+      css = File.read!(Path.expand("../../../../assets/css/app.css", __DIR__))
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted \{\s*contain: inline-size;\s*overflow-wrap: break-word;\s*\}/
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted table \{\s*display: block;\s*overflow-x: auto;[^}]*scrollbar-color: auto;\s*\}/
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted table::-webkit-scrollbar \{\s*height: 8px;\s*\}/
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted table::-webkit-scrollbar-thumb \{\s*border-radius: 4px;\s*background-color: var\(--q-faint\);\s*\}/
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted table::-webkit-scrollbar-track \{\s*background-color: var\(--color-base-200\);\s*\}/
+
+      refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted \{[^}]*contain:/
+      refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted table \{[^}]*display: block/
+      refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted table::-webkit-scrollbar/
+    end
+
+    test "a member who approves nothing adds a version: Add a version stores it", ctx do
+      %{user: member} = member_fixture(ctx.scope, :member)
+
+      push_proposal(%{ctx | conn: log_in_user(build_conn(), member)}, [
+        {"proposal.md", "# Gift cards"}
+      ])
+
+      assert [%{versions: [version]}] = Artifacts.list(ctx.work_item)
+      assert version.user_id == member.id
+    end
+
     test "is not found for another work item's version or another workspace", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       other = work_item_fixture(ctx.scope)
@@ -380,6 +621,40 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     |> render_submit()
   end
 
+  # Adds `files`, `{filename, bytes}`, on an open Add a version page.
+  defp upload_proposal(view, files) do
+    input =
+      file_input(
+        view,
+        "#artifact-form",
+        :files,
+        for({name, content} <- files, do: %{name: name, content: content})
+      )
+
+    for {name, _content} <- files, do: render_upload(input, name)
+  end
+
+  # Pushes `files` as a proposal on the Add a version page; the page's HTML after.
+  defp push_proposal(ctx, files) do
+    {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+    upload_proposal(view, files)
+
+    view
+    |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+    |> render_submit()
+  end
+
+  # Pushes `svg` as a proposal's diagram.svg and checks the line for `:svg_root`.
+  defp assert_svg_root(ctx, svg) do
+    html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+    assert html =~
+             "Set xmlns=&quot;http://www.w3.org/2000/svg&quot; on the svg root element of diagram.svg."
+
+    refute html =~ "Upload diagram.svg again."
+    assert Artifacts.list(ctx.work_item) == []
+  end
+
   describe "adding a version by hand" do
     test "stores the files and goes to the new version's page", ctx do
       {:ok, view, html} =
@@ -422,11 +697,32 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
 
-      for name <- ~w(mockup proposal questions verdict),
+      for name <- ~w(mockup proposal verdict),
           do: assert(has_element?(view, ~s(#artifact-form option[value="#{name}"])), name)
 
-      for name <- ~w(explainer screenshot change),
+      for name <- ~w(explainer screenshot change questions review-comments),
           do: refute(has_element?(view, ~s(#artifact-form option[value="#{name}"])), name)
+    end
+
+    test "leaves out the questions and the review comments, and refuses a push of them", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "questions"))
+
+      for name <- ~w(questions review-comments),
+          do: refute(has_element?(view, ~s(#artifact-form option[value="#{name}"])), name)
+
+      view
+      |> file_input("#artifact-form", :files, [
+        %{name: "questions.json", content: ~s({"questions": []}), type: "application/json"}
+      ])
+      |> render_upload("questions.json")
+
+      html =
+        view
+        |> element("#artifact-form")
+        |> render_submit(%{artifact: %{type: "questions", name: "main", note: ""}})
+
+      assert html =~ "Choose a type from the list."
+      assert Artifacts.list(ctx.work_item) == []
     end
 
     test "says to choose another type when the type is hidden after the page opened", ctx do
@@ -465,6 +761,218 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                "Use lowercase letters and digits, in groups joined by single hyphens, at most 64 characters."
 
       assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows the line to remove a proposal's file that is neither Markdown nor an image",
+         ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+
+      input =
+        file_input(view, "#artifact-form", :files, [
+          %{name: "proposal.md", content: "# Gift cards", type: "text/markdown"},
+          %{name: "notes.txt", content: "Gift cards.", type: "text/plain"}
+        ])
+
+      render_upload(input, "proposal.md")
+      render_upload(input, "notes.txt")
+
+      html =
+        view
+        |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+        |> render_submit()
+
+      assert html =~
+               "Remove notes.txt: a proposal is one Markdown file (.md) with PNG, JPEG, GIF, WebP or SVG images and an optional sources.json."
+
+      refute html =~ "a document is a Markdown file"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows which part to remove from a proposal's SVG", ctx do
+      svg =
+        ~s(<svg xmlns="http://www.w3.org/2000/svg" onload="start"><rect/></svg>)
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+      assert html =~
+               "Remove the onload attribute from diagram.svg. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file."
+
+      refute html =~ "Upload diagram.svg again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows the line to shrink a proposal's Markdown file past 256 KiB", ctx do
+      big = "# Gift cards\n" <> String.duplicate("a", 262_144)
+
+      html = push_proposal(ctx, [{"proposal.md", big}])
+
+      assert html =~ "Shrink proposal.md to at most 256 KiB."
+      refute html =~ "Upload proposal.md again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows the line to shrink a proposal's sources.json past 1 MiB", ctx do
+      big = ~s({"sources":[]}) <> String.duplicate(" ", 1_048_576)
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"sources.json", big}])
+
+      assert html =~ "Shrink sources.json to at most 1 MiB."
+      refute html =~ "Upload sources.json again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows the line to add exactly one Markdown file to a proposal", ctx do
+      html = push_proposal(ctx, [{"a.md", "# A"}, {"b.md", "# B"}])
+
+      assert html =~ "Add exactly one Markdown file (.md) to the version."
+      refute html =~ "Add the version again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows the line to replace a proposal's image that is not the type its name ends in",
+         ctx do
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"chart.png", "Gift cards"}])
+
+      assert html =~ "Replace chart.png with an image of the type its name ends in."
+      refute html =~ "Upload chart.png again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "maps each reason for a proposal's file to its line" do
+      for {reason, filename, line} <- [
+            {:image_type, "chart.png",
+             "Replace chart.png with an image of the type its name ends in."},
+            {:svg_format, "diagram.svg",
+             "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."},
+            {:svg_root, "diagram.svg",
+             ~s(Set xmlns="http://www.w3.org/2000/svg" on the svg root element of diagram.svg.)},
+            {:format, "proposal.md", "Replace proposal.md with a Markdown file of UTF-8 text."},
+            {:format, "sources.json",
+             "Make sources.json valid JSON. The file does not parse as JSON."}
+          ] do
+        assert ApiaryWeb.ArtifactLive.New.proposal_format_line(reason, filename) == line
+      end
+    end
+
+    test "shows the line to make a proposal's SVG a well-formed SVG file", ctx do
+      for svg <- [
+            ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect></svg>),
+            <<"<svg xmlns=\"http://www.w3.org/2000/svg\"><text>", 0xFF, "</text></svg>">>
+          ] do
+        html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+        assert html =~
+                 "Make diagram.svg a well-formed SVG file in UTF-8 with an svg root element."
+
+        refute html =~ "Upload diagram.svg again."
+        assert Artifacts.list(ctx.work_item) == []
+      end
+    end
+
+    test "shows the line to set the SVG namespace on a proposal's svg root element with none",
+         ctx do
+      assert_svg_root(ctx, "<svg/>")
+    end
+
+    test "shows the line to set the SVG namespace on a proposal's svg root element of another",
+         ctx do
+      assert_svg_root(ctx, ~s(<svg xmlns="urn:x"/>))
+    end
+
+    test "shows the line to shrink a proposal's SVG past 512 KiB", ctx do
+      svg =
+        ~s(<svg xmlns="http://www.w3.org/2000/svg"><!--) <>
+          String.duplicate("a", 524_288) <> "--></svg>"
+
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+      assert html =~ "Shrink diagram.svg to at most 512 KiB."
+      refute html =~ "Upload diagram.svg again."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows the line to remove a DOCTYPE or too many attributes from a proposal's SVG", ctx do
+      attributes = Enum.map_join(1..257, " ", &~s(data-a#{&1}="1"))
+
+      for {svg, part} <- [
+            {~s(<!DOCTYPE svg><svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>),
+             "the DOCTYPE"},
+            {~s(<svg xmlns="http://www.w3.org/2000/svg"><rect #{attributes}/></svg>),
+             "the attributes past the 256th on the rect element"}
+          ] do
+        html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"diagram.svg", svg}])
+
+        assert html =~
+                 "Remove #{part} from diagram.svg. An SVG in a proposal may contain only shapes, text, gradients, patterns, masks, styles, simple filters and links inside the file."
+
+        refute html =~ "Upload diagram.svg again."
+        assert Artifacts.list(ctx.work_item) == []
+      end
+    end
+
+    test "shows the line to replace a proposal's Markdown file that is not UTF-8 text", ctx do
+      html = push_proposal(ctx, [{"proposal.md", <<"# Gift cards ", 0xFF, 0xFE>>}])
+
+      assert html =~ "Replace proposal.md with a Markdown file of UTF-8 text."
+      refute html =~ "an image of the type its name ends in"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows the line to make a proposal's sources.json valid JSON", ctx do
+      html = push_proposal(ctx, [{"proposal.md", "# Gift cards"}, {"sources.json", "{"}])
+
+      assert html =~ "Make sources.json valid JSON. The file does not parse as JSON."
+      refute html =~ "Markdown file of UTF-8 text"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "shows where a proposal's sources.json fails its format", ctx do
+      html =
+        push_proposal(ctx, [
+          {"proposal.md", "# Gift cards"},
+          {"sources.json", ~s({"sources":"none"})}
+        ])
+
+      assert html =~
+               "Fix sources.json to match the format of proposal sources: at #/sources, value is not of type array."
+
+      refute html =~ "JSON Schema"
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "returns the line of the proposal sources format for a key twice in sources.json" do
+      detail = %{path: "#", error: "the object has the key sources twice"}
+      proposal = Enum.find(Apiary.Artifacts.Type.standard(), &(&1.name == "proposal"))
+
+      assert ApiaryWeb.ArtifactLive.New.schema_line("sources.json", proposal, detail) ==
+               "Fix sources.json to match the format of proposal sources: at #, the object has the key sources twice."
+    end
+
+    test "stores a proposal with an image and sources.json", ctx do
+      sources =
+        Jason.encode!(%{
+          "sources" => [
+            %{"kind" => "page", "ref" => "https://example.com/plan", "why" => "The plan."}
+          ]
+        })
+
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))
+
+      upload_proposal(view, [
+        {"proposal.md", "# Gift cards"},
+        {"chart.png", @png},
+        {"diagram.svg", @svg},
+        {"sources.json", sources}
+      ])
+
+      assert {:error, {:live_redirect, _to}} =
+               view
+               |> form("#artifact-form", artifact: %{type: "proposal", name: "main", note: ""})
+               |> render_submit()
+
+      [artifact] = Artifacts.list(ctx.work_item)
+      [version] = artifact.versions
+      assert_redirect(view, page(ctx, version))
     end
 
     test "counts the chosen type's most files as the reader adds them", ctx do
@@ -539,7 +1047,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       line = view |> element("#artifact-files-error-0") |> render()
 
-      assert line =~ "Fix v.json to match the JSON Schema of verdict: at #,"
+      assert line =~ "Fix v.json to match the format of verdict: at #,"
+      refute line =~ "JSON Schema"
       assert line =~ "&lt;i&gt;x&lt;/i&gt;"
       refute line =~ "<i>"
       assert Artifacts.list(ctx.work_item) == []
@@ -642,7 +1151,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       in_stage(ctx.work_item, "st_aaaaaaaaaa")
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
 
-      ArtifactStoreHook.on_commit(fn -> in_stage(ctx.work_item, "st_bbbbbbbbbb") end)
+      ArtifactStoreHook.on_stage(fn -> in_stage(ctx.work_item, "st_bbbbbbbbbb") end)
 
       html = add_notes(view)
 

@@ -232,6 +232,7 @@ defmodule Apiary.Stages.StopCauseTest do
       {:ok, run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
 
       Repo.insert!(%Apiary.Runs.Run{
+        number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
         node_run_id: run.run_id,
@@ -301,6 +302,7 @@ defmodule Apiary.Stages.StopCauseTest do
         )
 
       Repo.insert!(%Apiary.Runs.Run{
+        number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
         node_run_id: run.run_id,
@@ -317,7 +319,7 @@ defmodule Apiary.Stages.StopCauseTest do
     test "names the workflow and where the harness comes from, by the walk's origin" do
       %{scope: scope} = sign_up_fixture()
       {:ok, choice} = Apiary.Stacks.Sources.choose(scope, :qory)
-      missing = "The run's harness has no skill named explore-a-ticket."
+      missing = "The run's harness has no skill for the workflow explore-a-ticket."
 
       {run, work_item} = gap(scope, origin: :file)
 
@@ -375,7 +377,7 @@ defmodule Apiary.Stages.StopCauseTest do
       {run, work_item} = gap(scope, origin: :file)
 
       assert StopCause.text(run, work_item) ==
-               "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of target acme/web-shop."
+               "The run's harness has no skill for the workflow explore-a-ticket. The harness comes from the harness file at the root of target acme/web-shop."
     end
 
     test "any other reason is a run that ended without a result" do

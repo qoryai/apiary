@@ -50,7 +50,7 @@ defmodule Apiary.Lingo.Domain.Definition do
     git: "https://github.com/qoryai/harness",
     stack: "core",
     stacks: ["core", "software"],
-    latest: "bde1cf61186ec5cb405294dcc233021ea0c092bf",
+    latest: "f2b3b4d3f1f764ec7e0f3ff3709eade08a22d6eb",
     named: []
   }
 

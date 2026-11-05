@@ -2314,7 +2314,7 @@ defmodule ApiaryWeb.OverviewComponents do
       rich_gettext(
         "%{contact_support} with run %{run}. The machine stopped sending for 10 minutes.",
         contact_support: ApiaryWeb.Support.rich(),
-        run: run.number
+        run: run.public_id
       )
 
   # How a test run's run ended, as the run page's header shows its state and reason

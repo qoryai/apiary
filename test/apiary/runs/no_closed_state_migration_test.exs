@@ -42,17 +42,19 @@ defmodule Apiary.Runs.NoClosedStateMigrationTest do
   defp insert!(scope, state, columns \\ []) do
     id = Ecto.UUID.generate()
     names = Enum.map_join(columns, &", #{elem(&1, 0)}")
-    values = Enum.map_join(6..(5 + length(columns))//1, &", $#{&1}")
+    values = Enum.map_join(7..(6 + length(columns))//1, &", $#{&1}")
 
     Repo.query!(
       "INSERT INTO runs (id, organisation_id, workspace_id, node_run_id, state, inserted_at, " <>
-        "updated_at#{names}) VALUES ($1, $2, $3, $4, $5, now(), now()#{values})",
+        "updated_at, number#{names}) VALUES ($1, $2, $3, $4, $5, now(), now(), $6#{values})",
       [
         Ecto.UUID.dump!(id),
         Ecto.UUID.dump!(scope.organisation.id),
         Ecto.UUID.dump!(scope.workspace.id),
         Ecto.UUID.dump!(Ecto.UUID.generate()),
-        state | Keyword.values(columns)
+        state,
+        Apiary.RunEventsFixtures.next_run_number(scope.organisation.id, scope.workspace.id)
+        | Keyword.values(columns)
       ]
     )
 

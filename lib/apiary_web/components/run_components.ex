@@ -182,12 +182,12 @@ defmodule ApiaryWeb.RunComponents do
   under its earlier name reads as the new one. A run whose starter sent its outcome with
   no state, stored as cancelled and `stopped`, reads "the starter gave no outcome".
   `workflow_not_in_harness`, which qory gives when the harness it composed for the run
-  has no skill with the name of the run's workflow, reads two sentences: "The run's
-  harness has no skill named explore-a-ticket.", then where the harness came from, such
-  as "The harness is the Qory harness.", none for a hidden harness. They need the run's
+  has no skill for the run's workflow, reads two sentences: "The run's harness has no
+  skill for the workflow explore-a-ticket.", then where the harness came from, such as
+  "The harness is the Qory harness.", none for a hidden harness. They need the run's
   run of the queue with its harness walk and work item loaded, as
-  `Apiary.Runs.Record.fetch_run/2` loads them; without them the first sentence says "the
-  name of the run's workflow". qory's four codes for a read-only run it closed read
+  `Apiary.Runs.Record.fetch_run/2` loads them; without them the first sentence reads "the
+  run's workflow". qory's four codes for a read-only run it closed read
   "read-only run with no wall", "setup runs inside the agent's container", "image has
   nested Docker" and "setup container not removed". Any other code is the one the run's
   starter gave, shown as given with spaces for underscores: `no_longer_needed` reads "no
@@ -958,11 +958,20 @@ defmodule ApiaryWeb.RunComponents do
   attr :last_event_at, :any, default: nil
   attr :interval, :integer, default: nil
   attr :quiet, :boolean, default: false
-  attr :run, :any, default: nil, doc: "the run, for the sentences of the ended states"
+
+  attr :run, :any,
+    default: nil,
+    doc: "the run, for the sentences of the ended states and the count of a quiet run"
+
   attr :class, :any, default: nil
 
   def alive(assigns) do
-    assigns = assign(assigns, :since, assigns.last_heartbeat_at || assigns.last_event_at)
+    since = assigns.last_heartbeat_at || assigns.last_event_at
+
+    # `quiet_for/2` counts from `heard_at/1`, so a quiet run with no heartbeat counts from
+    # when the workspace first heard of it, whatever its events.
+    quiet_since = (assigns.run && heard_at(assigns.run)) || since
+    assigns = assign(assigns, since: since, quiet_since: quiet_since)
 
     ~H"""
     <span
@@ -972,11 +981,11 @@ defmodule ApiaryWeb.RunComponents do
       class={["q-alive", @state == "running" && @quiet && "q-alive-amber", @class]}
     >
       <%= cond do %>
-        <% @state == "running" and @quiet -> %>
+        <% @state == "running" and @quiet and @quiet_since -> %>
           <span class="q-dot" aria-hidden="true"></span>
           <span class="tooltip tooltip-left q-tip-wide" tabindex="0" data-tip={quiet_tip(@interval)}>
             <.spliced text={gettext("No heartbeat for %{duration}", duration: hole())}>
-              <.seconds_since at={@since} />
+              <.seconds_since at={@quiet_since} />
             </.spliced><span class="sr-only">. {quiet_tip(@interval)}</span>
           </span>
         <% @state == "running" and @since -> %>
@@ -2014,7 +2023,7 @@ defmodule ApiaryWeb.RunComponents do
   columns join by the table's width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
 
-  Every row's id is the run's number's (`run-<number>`); its title is a link to the run's page that
+  Every row's id is the run's (`run-<public_id>`); its title is a link to the run's page that
   covers the row. `selected` marks the row a preview beside the list shows
   (`aria-current`). `target={false}` leaves the target out, for a list of one target.
   `nodes`, the nodes the runs ran on by id (`Apiary.Nodes.names/2`), adds the Node column
@@ -2263,7 +2272,7 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <tr
-      id={"run-#{@run.number}"}
+      id={"run-#{@run.public_id}"}
       class="q-rl-row"
       role="row"
       data-run={@run.number}
@@ -2462,7 +2471,7 @@ defmodule ApiaryWeb.RunComponents do
   defp run_row(assigns) do
     ~H"""
     <tr
-      id={"run-#{@run.number}"}
+      id={"run-#{@run.public_id}"}
       class="q-rl-row"
       role="row"
       data-run={@run.number}
@@ -3217,7 +3226,7 @@ defmodule ApiaryWeb.RunComponents do
           <div class="q-hits">
             <.link
               :for={hit <- @open.runs}
-              id={"#{@id}-run-#{hit.run.number}"}
+              id={"#{@id}-run-#{hit.run.public_id}"}
               navigate={@run_path && @run_path.(hit.run)}
               class="q-hit"
             >

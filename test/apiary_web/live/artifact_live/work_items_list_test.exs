@@ -17,7 +17,7 @@ defmodule ApiaryWeb.ArtifactLive.WorkItemsListTest do
 
     %{user: user, scope: scope} = sign_up_fixture()
     work_item = work_item_fixture(scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
     conn = log_in_user(build_conn(), user)
 
     {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/work")

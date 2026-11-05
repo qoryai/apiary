@@ -26,6 +26,7 @@ defmodule Apiary.WorkItems.WorkListTest do
     no_result: 0,
     waiting: 0,
     waiting_you: 0,
+    waiting_listed: 0,
     ready: 0
   }
   @empty %{
@@ -421,7 +422,7 @@ defmodule Apiary.WorkItems.WorkListTest do
         :questions -> [[result: questions_result()]]
         :no_result -> [[]]
         :lost -> [[end_cause: :lost]]
-        :used_up -> List.duplicate([result: questions_result()], 3)
+        :used_up -> List.duplicate([end_cause: :lost], 3)
         :shape -> [[result: understood_result()]]
       end
 
@@ -576,6 +577,7 @@ defmodule Apiary.WorkItems.WorkListTest do
                no_result: 2,
                waiting: 2,
                waiting_you: 1,
+               waiting_listed: 0,
                ready: 1
              }
     end

@@ -8,8 +8,8 @@ defmodule Apiary.WorkflowEndToEndTest do
   # Each test drives the steps before it again, then the step it is named for:
   #
   #   1. Take in: Explore's run is queued under process version 1.
-  #   2. The run reads its work item, pushes a proposal, and ends with its explore v1
-  #      result; Explore reaches its gate.
+  #   2. The run reads its work item, pushes a proposal, and ends; Explore reaches its
+  #      gate.
   #   3. Dana saves version 2, in which Shape has a required output and Build has a loop
   #      and an output, and assigns the work item to it. Dana confirms Explore; Shape, with
   #      no workflow, is at its gate. Approving Shape is refused until Dana adds acceptance
@@ -139,8 +139,8 @@ defmodule Apiary.WorkflowEndToEndTest do
   end
 
   # 2. The gateway claims and attaches explore-a-ticket's run. The run reads its work
-  # item, pushes a proposal, and ends with today's explore v1 result (D1), which the stage
-  # runner stores as a proposal and a verdict `passed`.
+  # item, pushes a proposal, and ends; with no question open, Explore goes on to its
+  # Exists check and its gate.
   defp step_2(ctx) do
     run = claim!(ctx)
 
@@ -159,11 +159,12 @@ defmodule Apiary.WorkflowEndToEndTest do
              "id" => @explore,
              "name" => "Explore",
              "round" => 1,
-             "rounds" => 3,
+             "rounds" => nil,
              "state" => "running"
            }
 
     assert snapshot["inputs"] == []
+    refute Map.has_key?(snapshot, "answers")
 
     assert snapshot["outputs"] == [
              %{"type" => "proposal", "required" => true, "version" => nil, "check" => "missing"}
@@ -173,7 +174,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert snapshot["verdict"] == nil
     assert snapshot["notes"] == []
 
-    proposal = explore_result()["message"]
+    proposal = proposal()
 
     pushed =
       json_response(
@@ -184,24 +185,24 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert %{"type" => "proposal", "name" => "main", "version" => %{"number" => 1}} =
              pushed["artifact"]
 
-    end_run!(ctx, run, result: explore_result())
+    end_run!(ctx, run)
 
     work_item = reload(ctx.work_item)
     assert_place(work_item, @explore, :at_gate, 1)
 
-    # A run reads its work item's artifacts after it ends: the pushed proposal, the
-    # proposal of its explore result, and the verdict `passed`.
+    # A run reads its work item's artifacts after it ends: the proposal it pushed, and no
+    # verdict, which Explore does not give.
     index = json_response(read!(ctx, run, "/artifacts"), 200)
-    assert %{"newest_version" => 2} = artifact(index, "proposal")
-    assert %{"newest_version" => 1} = verdict = artifact(index, "verdict")
+    assert %{"newest_version" => 1} = artifact(index, "proposal")
+    refute Enum.any?(index["artifacts"], &(&1["type"] == "verdict"))
 
-    for version <- artifact(index, "proposal")["versions"] ++ verdict["versions"] do
+    for version <- artifact(index, "proposal")["versions"] do
       assert version["writer"] == %{"kind" => "run", "run_id" => run.run_id}
       assert version["stage_id"] == @explore
     end
 
     status = Stages.status(work_item, ctx.scope)
-    assert [%{type: "proposal", check: :passed, version: %{number: 2}}] = status.outputs
+    assert [%{type: "proposal", check: :passed, version: %{number: 1}}] = status.outputs
     assert status.gate.approvable?
 
     Map.put(ctx, :work_item, work_item)
@@ -229,9 +230,9 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert_place(work_item, @shape, :at_gate, 1)
     assert work_item.process_version_id == v2.id
 
-    # The approval covers the newest proposal, the one of the explore result.
+    # The approval covers the newest proposal, the one the run pushed.
     proposal = Artifacts.newest(work_item, "proposal")
-    assert proposal.number == 2
+    assert proposal.number == 1
 
     assert [%GateDecision{kind: :approve, versions: [proposal_id]}] =
              decisions(work_item, @explore)
@@ -571,22 +572,13 @@ defmodule Apiary.WorkflowEndToEndTest do
   # its exit, `succeeded` unless `state:` is set.
   defp end_run!(ctx, run, opts \\ []) do
     {key, seed} = ctx.place.gateway_key
-
-    result =
-      for document <- List.wrap(opts[:result]) do
-        wire_event(run.run_id, 3, "runtime.result", %{
-          "is_error" => false,
-          "result" => Jason.encode!(document)
-        })
-      end
-
     state = Keyword.get(opts, :state, "succeeded")
     exit_code = if state == "succeeded", do: 0, else: 1
 
     exited =
       wire_event(run.run_id, 4, "run.exited", %{"state" => state, "exit_code" => exit_code})
 
-    assert response(signed_post(build_conn(), key.key_id, seed, result ++ [exited]), 202) == ""
+    assert response(signed_post(build_conn(), key.key_id, seed, [exited]), 202) == ""
     project!(run.id)
 
     assert %DispatchRun{state: :ended} = Repo.get!(DispatchRun, run.dispatch_run_id)
@@ -658,25 +650,21 @@ defmodule Apiary.WorkflowEndToEndTest do
 
   ## The documents
 
-  # A valid explore v1 result whose verdict is `understood`.
-  defp explore_result do
-    %{
-      "version" => 1,
-      "verdict" => "understood",
-      "message" => """
-      ## What this is
+  # The proposal explore-a-ticket's run pushes, as Markdown.
+  defp proposal do
+    """
+    ## What this is
 
-      Acme customers pay part of a Web shop order with a gift card.
+    Acme customers pay part of a Web shop order with a gift card.
 
-      ## How Qory would do it
+    ## How to do it
 
-      Take the gift card as a second payment of the order.
+    Take the gift card as a second payment of the order.
 
-      ## Alternatives
+    ## Alternatives
 
-      - Turn the gift card into a discount. Why not: a discount changes the order's taxes.
-      """
-    }
+    - Turn the gift card into a discount. Why not: a discount changes the order's taxes.
+    """
   end
 
   # Version 2: Shape must output acceptance criteria; Build reads them, runs a loop of

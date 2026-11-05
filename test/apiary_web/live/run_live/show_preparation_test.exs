@@ -322,8 +322,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
              )
 
       html = render(lv)
-      assert html =~ "with run #{run.number}."
-      refute html =~ "with run #{run.public_id}."
+      assert html =~ "with run #{run.public_id}."
       refute has_element?(lv, "#prepare-machine-machine-log")
       refute html =~ "nstance admin"
     end

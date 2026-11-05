@@ -840,6 +840,12 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp write(plan, ctx, concurrency) do
     total = length(plan)
 
+    # The numbers of all the runs at once, in the plan's order, as the chunks finish in any.
+    {:ok, numbers} =
+      Repo.transact(fn -> {:ok, Apiary.Runs.Number.block(ctx.scope.workspace, max(total, 1))} end)
+
+    ctx = Map.put(ctx, :first_number, numbers.first)
+
     plan
     |> Enum.chunk_every(@chunk)
     |> Task.async_stream(&write_chunk(&1, ctx),
@@ -911,6 +917,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     run = %{
       id: id,
       public_id: Run.new_public_id(),
+      number: ctx.first_number + spec.index - 1,
       organisation_id: organisation.id,
       workspace_id: workspace.id,
       node_run_id: run_id,

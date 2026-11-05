@@ -77,7 +77,7 @@ defmodule Apiary.Processes do
   # a type's versions keep it (`Apiary.Processes.TypeTemplates`), and a higher one here
   # adds the changed default as a new version of each type no instance admin has saved.
   # Raise it when a copy changes the template's process.
-  @template_version 2
+  @template_version 3
 
   # Crockford base32 without i, l, o and u, as `Apiary.PublicId` writes its ids.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"

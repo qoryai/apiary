@@ -39,6 +39,7 @@ defmodule Apiary.WorkspaceSetupTest do
 
     if run_attrs do
       %Run{
+        number: Apiary.RunEventsFixtures.next_run_number(item.organisation_id, item.workspace_id),
         organisation_id: item.organisation_id,
         workspace_id: item.workspace_id,
         node_run_id: queued.run_id,

@@ -98,6 +98,8 @@ defmodule Apiary.Kinds.Schema do
   def valid?(value, root), do: match?({:ok, _value}, JSV.validate(value, root, cast: false))
 
   @summarised 8
+  # The keywords whose value is data, not a schema: their members are left as they are.
+  @data_keywords ~w(const enum default examples)
 
   @doc """
   summary/1 is JSV's `error` summed up for a log: `%{valid: false, count: count,
@@ -120,6 +122,42 @@ defmodule Apiary.Kinds.Schema do
         end
     }
   end
+
+  @doc """
+  code_point_lengths/1 is `schema`, a decoded JSON Schema, with each object that has an
+  integer `minLength` or `maxLength` given the bounds as a pattern instead,
+  `^[\\s\\S]{min,max}$`, which PCRE in UTF mode counts in code points:
+  `%{"allOf" => [rest, %{"pattern" => ...}]}`. JSV counts both keywords in graphemes, and
+  a contract counts code points, as JSON Schema does: a text of 2002 code points written
+  as 1001 letters with a combining accent would pass a `maxLength` of 2000. Both keywords
+  and the pattern apply to strings only, so nothing else changes. The members of `const`,
+  `enum`, `default` and `examples` are data and stay as they are. Give it to `file!/2` as
+  the schema's `adjust`.
+  """
+  @spec code_point_lengths(term) :: term
+  def code_point_lengths(schema) when is_map(schema) do
+    schema =
+      Map.new(schema, fn
+        {keyword, value} when keyword in @data_keywords -> {keyword, value}
+        {keyword, value} -> {keyword, code_point_lengths(value)}
+      end)
+
+    case Map.split(schema, ["minLength", "maxLength"]) do
+      {bounds, rest} when bounds != %{} ->
+        min = Map.get(bounds, "minLength", 0)
+        max = Map.get(bounds, "maxLength")
+
+        if is_integer(min) and (is_integer(max) or is_nil(max)),
+          do: %{"allOf" => [rest, %{"pattern" => "^[\\s\\S]{#{min},#{max}}$"}]},
+          else: schema
+
+      _none ->
+        schema
+    end
+  end
+
+  def code_point_lengths(list) when is_list(list), do: Enum.map(list, &code_point_lengths/1)
+  def code_point_lengths(other), do: other
 
   # A file of ours that refers to Forager's contract or to the integrations contract's
   # definitions gets the vendored copy, whose patterns are read as the contract reads

@@ -1543,8 +1543,8 @@ defmodule ApiaryWeb.CoreComponents do
       symbol as it is, in an `<abbr>` whose tooltip and accessible name are the address;
       the address is also in visually hidden text where the letter is, and the letter is
       hidden from screen readers;
-    * the `<abbr>` is a tab stop, except with `in_link`, inside a link or a row that
-      opens, which may hold no focusable element;
+    * the `<abbr>` is a tab stop, except with `in_link`, inside a link, a button or a row
+      that opens, which may hold no focusable element;
     * the reader's address (`reader`, or `kind` `self`) has the account menu's colour,
       and its tooltip and accessible name read "dana@example.com (you)";
     * "Former member", the words `ApiaryWeb.People` gives for a deleted account, is those
@@ -1563,7 +1563,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   attr :in_link, :boolean,
     default: false,
-    doc: "with `email`: inside a link or a row that opens, so it is no tab stop"
+    doc: "with `email`: inside a link, a button or a row that opens, so it is no tab stop"
 
   attr :kind, :string, default: "person", values: ~w(person self organisation pending)
   attr :size, :string, default: "sm", values: ~w(xs sm md lg)

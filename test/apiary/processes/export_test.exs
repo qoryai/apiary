@@ -10,7 +10,6 @@ defmodule Apiary.Processes.ExportTest do
 
   alias Apiary.{Artifacts, Organisations, Processes, Stacks}
   alias Apiary.Artifacts.{TemplateTypes, Type}
-  alias Apiary.Explore.Result
   alias Apiary.Harnesses.Reader
   alias Apiary.Kinds.Schema
   alias Apiary.Organisations.Workspace
@@ -42,7 +41,7 @@ defmodule Apiary.Processes.ExportTest do
   defp exported(workspace) do
     bytes = Processes.export(workspace)
     assert {:ok, file} = Reader.parse(bytes)
-    assert Schema.valid?(file, Schema.file!(@schema, &Result.code_point_lengths/1))
+    assert Schema.valid?(file, Schema.file!(@schema, &Schema.code_point_lengths/1))
     assert {:ok, template} = Reader.template(bytes)
     assert TemplateTypes.check(template) == :ok
     template

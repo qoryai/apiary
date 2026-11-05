@@ -33,7 +33,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   import Apiary.NodesFixtures
   import Apiary.Races
   import Apiary.RunEventsFixtures, only: [event_fixture: 4]
-  import Apiary.WorkItemsFixtures, only: [result_event!: 3, understood_result: 0]
+  import Apiary.WorkItemsFixtures, only: [push_result!: 3, understood_result: 0]
 
   alias Apiary.{Dispatches, Edition, Environments, Repo, Targets}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
@@ -542,18 +542,15 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       {outcome, result}
     end
 
-    defp result!(handed, sequence) do
-      result_event!(handed.run, sequence, %{
-        "is_error" => false,
-        "result" => Jason.encode!(understood_result())
-      })
-    end
+    # The run pushes its proposal during the run, through the run API.
+    defp proposal!(handed),
+      do: push_result!(handed.dispatch_run, handed.run, understood_result())
 
-    test "a projection of the result and the exit, and a settle at once: one end, stored",
+    test "a projection of the exit, and a settle at once, after a proposal: one end, stored",
          ctx do
       for _round <- 1..4 do
         handed = handed_over!(ctx)
-        result!(handed, 8)
+        proposal!(handed)
 
         event_fixture(handed.run, 9, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
 
@@ -565,7 +562,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
         assert {:ok, %Run{}} = projected
         assert {:run_ended, _run} = ended!(ctx, handed)
-        assert {:proposal, %{"verdict" => "understood"}} = stored(handed)
+        assert stored(handed) == {:proposal, nil}
       end
     end
 

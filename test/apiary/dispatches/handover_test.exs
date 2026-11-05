@@ -258,7 +258,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert inputs["version"] == 1
       assert inputs["work_item"]["id"] == work_item.public_id
       assert inputs["work_item"]["number"] == work_item.number
-      assert inputs["run"] == %{"attempt" => 1, "of" => 3}
+      assert inputs["run"] == %{"attempt" => 1}
 
       assert inputs["ticket"] == %{
                "external_ref" => work_item.external_ref,
@@ -277,7 +277,11 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert inputs["instruction"]["at"] =~ ~r/\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/
       assert inputs["comments"] == []
       assert inputs["comments_omitted"] == 0
-      assert inputs["answers"] == []
+
+      # The answers, the proposal and the review comments are artifacts the run pulls.
+      for key <- ~w(answers proposal changes facts solution),
+          do: refute(Map.has_key?(inputs, key))
+
       assert inputs["target"] == %{"system" => "forge.example.com", "path" => "acme/shop"}
       assert inputs["domain"] == "software"
     end
@@ -432,6 +436,11 @@ defmodule Apiary.Dispatches.HandoverTest do
       # registered run cannot be inserted.
       in_the_way =
         Repo.insert!(%Run{
+          number:
+            Apiary.RunEventsFixtures.next_run_number(
+              ctx.scope.organisation.id,
+              ctx.scope.workspace.id
+            ),
           organisation_id: ctx.scope.organisation.id,
           workspace_id: ctx.scope.workspace.id,
           node_run_id: queued.run_id,
@@ -703,34 +712,6 @@ defmodule Apiary.Dispatches.HandoverTest do
       ended!(ctx, queued, :inputs_invalid)
     end
 
-    test "whose answers name a member by a name the contract refuses ends inputs_invalid",
-         ctx do
-      {work_item, queued} = queued!(ctx)
-      %{user: member} = member_fixture(ctx.scope)
-
-      {1, _rows} =
-        Repo.update_all(from(u in Apiary.Accounts.User, where: u.id == ^member.id),
-          set: [email: "ann\u202Ex#{System.unique_integer([:positive])}@example.com"]
-        )
-
-      Repo.insert!(%Apiary.WorkItems.Answer{
-        organisation_id: work_item.organisation_id,
-        workspace_id: work_item.workspace_id,
-        work_item_id: work_item.id,
-        take_in: queued.take_in,
-        attempt: 1,
-        position: 1,
-        question: "Which basket?",
-        answer: "The one at checkout.",
-        custom: true,
-        answered_by_id: member.id,
-        answered_at: DateTime.utc_now()
-      })
-
-      assert claim(ctx) == {:ok, :none}
-      ended!(ctx, queued, :inputs_invalid)
-    end
-
     test "ends a stale dispatch of it run_ended", ctx do
       {work_item, queued} = queued!(ctx)
       stale = claimed!(ctx)
@@ -919,7 +900,7 @@ defmodule Apiary.Dispatches.HandoverTest do
              }
 
       assert {inputs["comments"], inputs["comments_omitted"]} == {[], 0}
-      assert inputs["answers"] == []
+      refute Map.has_key?(inputs, "answers")
 
       # The members the contract's input without a ticket has, in its order.
       fixture = @without_ticket |> File.read!() |> Jason.decode!(objects: :ordered_objects)

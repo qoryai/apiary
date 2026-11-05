@@ -9,8 +9,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # - its exit once folded, whatever its state: `run_ended`, by the projection that folded
   #   it, right after its pass (`run_ended/1`, from `Apiary.Runs.Projector`). A run that
   #   is not a prebuild, ended so, has what it gave stored on the run of the queue in the
-  #   same transaction when it is decided already (`Apiary.Dispatches.Settle`), and later
-  #   otherwise. No outcome is given to a run of the queue (`Apiary.Runs.Outcome` refuses
+  #   same transaction (`Apiary.Dispatches.Settle`), read from the artifacts it pushed.
+  #   No outcome is given to a run of the queue (`Apiary.Runs.Outcome` refuses
   #   one); a run that is not a prebuild and has an outcome given before that rule ends
   #   `run_ended` as by its exit;
   # - its gateway's refusal, once folded (`refused/1`, from `Apiary.Runs.Projector`):
@@ -19,7 +19,7 @@ defmodule Apiary.Dispatches.RunEnd do
   #   refusal's code is kept as `end_detail`. The registered run stays failed with that
   #   code as its reason (`Apiary.Runs.Fold`). A refusal that comes after an exit or any
   #   other end changes nothing, and a prebuild's refusal ends nothing of the queue;
-  # - the lost-run check (`lose/1`, from `Apiary.Runs.Liveness`): `lost`, for a run its
+  # - the lost-run check (`lose/3`, from `Apiary.Runs.Liveness`): `lost`, for a run its
   #   gateway never attached by its `attach_by`, or with no exit by its `backstop_at`,
   #   which its attach sets to the attach and `backstop_seconds/1` of its step. The check
   #   marks the registered run lost by its rules first; this ends the run of the queue. It
@@ -124,16 +124,17 @@ defmodule Apiary.Dispatches.RunEnd do
   # waits for it there with its `FOR UPDATE`. With the workflow model on, the end writes
   # the work item's place in its stage and may queue its next run
   # (`Apiary.Stages.run_ended/2`), so the work item is locked `FOR UPDATE`.
-  # An end by an exit writes the run of the queue a second time when the result it
-  # stores differs from the one the row has (`settled/4`, `Apiary.Dispatches.Settle`,
-  # which skips equal values), and Postgres then checks that write's foreign key with a
-  # `FOR KEY SHARE` lock on the work item. Taken there alone, after the run of the
-  # queue, that lock waits on a release that holds the work item and waits on the run of
-  # the queue: a deadlock (40P01). Then the run of the queue is locked `FOR UPDATE`, then
-  # the registered run, then the dispatches are written. With the workflow model off,
-  # `refused/1` holds nothing first: it writes the run of the queue once. With it on, it
-  # holds the work item `FOR UPDATE` first (`Apiary.Stages.hold_work_item/1`), since the
-  # end writes the work item's place in its stage.
+  # An end by an exit writes the run of the queue a second time when it stores what the
+  # run gave on a row that holds no outcome yet (`settled/4`,
+  # `Apiary.Dispatches.Settle`, which writes only while the row holds none), and
+  # Postgres then checks that write's foreign key with a `FOR KEY SHARE` lock on the
+  # work item. Taken there alone, after the run of the queue, that lock waits on a
+  # release that holds the work item and waits on the run of the queue: a deadlock
+  # (40P01). Then the run of the queue is locked `FOR UPDATE`, then the registered run,
+  # then the dispatches are written. With the workflow model off, `refused/1` holds
+  # nothing first: it writes the run of the queue once. With it on, it holds the work
+  # item `FOR UPDATE` first (`Apiary.Stages.hold_work_item/1`), since the end writes the
+  # work item's place in its stage.
   # Every path that locks a run of the queue together with its dispatches or its
   # registered run locks the run of the queue first (`Apiary.Dispatches.Slots`), so two
   # ends of one run take turns there and the second finds it ended. A projection and an
@@ -142,8 +143,6 @@ defmodule Apiary.Dispatches.RunEnd do
   # queue before it calls here locks the run of the queue first.
 
   import Ecto.Query, only: [from: 2]
-
-  require Logger
 
   alias Apiary.{Dispatches, Environments, Repo}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle, Slots}
@@ -287,8 +286,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # `cause`, when it is still handed over and `run` is its registered run, locked after it,
   # and, for a prebuild that ends `lost` or by a `failed` or `lost` exit, records its last
   # build as failed on the record of `held`, what `hold/1` held before, then queues the
-  # build once more or ends the runs held for it (the moduledoc). Ended `run_ended`, what
-  # the run gave is stored when it is decided already (`Apiary.Dispatches.Settle`); a run
+  # build once more or ends the runs held for it (the moduledoc). Ended `run_ended`, or
+  # `lost` with questions left open, what the run gave is stored
+  # (`Apiary.Dispatches.Settle`); a run
   # whose exit says its image was missing, with `held` `{:image_missing, records,
   # collections}`, then has that image cleared, its build queued and the next run of its
   # take in queued (the moduledoc). Such a run whose image `hold/1` did not hold ends
@@ -335,8 +335,8 @@ defmodule Apiary.Dispatches.RunEnd do
   defp staged(%DispatchRun{id: id}),
     do: if(Apiary.Stages.on?(), do: Apiary.Stages.run_ended(id), else: [])
 
-  defp settled(dispatch_run, run, :run_ended, now),
-    do: Settle.settle_locked(%{dispatch_run | state: :ended, end_cause: :run_ended}, run, now)
+  defp settled(dispatch_run, _run, cause, _now) when cause in [:run_ended, :lost],
+    do: Settle.settle_locked(%{dispatch_run | state: :ended, end_cause: cause})
 
   defp settled(%DispatchRun{work_item_id: work_item_id}, _run, :run_refused, _now),
     do: Settle.told(work_item_id)
@@ -490,7 +490,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # code unredeemed, with no exit, refusal, outcome or release. The registered run fails,
   # `machine_stopped` (`start_failure`), with the dispatch as its `dispatch_id`, and the
   # run of the queue and the dispatch end `lost`, as the lost-run check ends them at the
-  # code's expiry (`lose/1`), with what that end does for a prebuild's build. In a
+  # code's expiry (`lose/3`), with what that end does for a prebuild's build. In a
   # separate transaction, the run of the queue locked first, then the registered run.
   # Nothing changes for a dispatch not handed over, of a run of the queue not handed over
   # any more, or of a run that redeemed its code. The ids of the workspaces whose slots
@@ -549,49 +549,72 @@ defmodule Apiary.Dispatches.RunEnd do
   # or that is silent (`lost`), or whose exit came and whose end was not written
   # (`run_ended`), or whose refusal was folded and whose end was not written
   # (`run_refused`): at most `@batch`, each in a separate transaction. One that
-  # raises is logged by its id and the exception's module, and the rest are still ended.
-  # The ids of the workspaces whose slots changed, and the work items whose run settled,
-  # for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  # raises is logged by its id and the exception's module, in one line, and the rest are
+  # still ended. The ids of the workspaces whose slots changed, and the work items whose
+  # run settled, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
   @doc false
   @spec lose(DateTime.t()) :: [Ecto.UUID.t() | Settle.told()]
-  def lose(%DateTime{} = now) do
-    from(d in DispatchRun,
-      join: r in Run,
-      on: r.dispatch_run_id == d.id,
-      where: fragment("? = 'handed_over'", d.state),
-      where:
-        (d.step != ^@prebuild and
-           (not is_nil(r.outcome_state) or not is_nil(r.exited_at) or not is_nil(r.exit_state) or
-              not is_nil(r.refused_at))) or
-          (d.step == ^@prebuild and (not is_nil(r.exited_at) or not is_nil(r.exit_state))) or
-          not is_nil(r.released_at) or not is_nil(r.start_failure) or
-          (is_nil(r.attached_at) and r.attach_by < ^now) or
-          r.backstop_at < ^now or
-          (not is_nil(r.attached_at) and is_nil(r.exited_at) and is_nil(r.exit_state) and
-             fragment(
-               "GREATEST(?, ?) + make_interval(secs => ?) < ?",
-               r.last_heartbeat_at,
-               r.attached_at,
-               @silence,
-               ^now
-             )),
-      order_by: d.id,
-      limit: @batch,
-      select: d.id
-    )
-    |> Repo.all()
-    |> Enum.flat_map(&lose_guarded(&1, now))
-    |> Enum.uniq()
+  def lose(%DateTime{} = now), do: now |> lose(nil) |> elem(0)
+
+  # lose/3 is `lose/1` for the runs whose id comes after `after_id`, or from the first
+  # for nil, at most `limit`, in the order of their ids: `{changed, next}`, `next` the
+  # `after_id` of the next call, the last id read when it read `limit`, nil when it read
+  # fewer. So runs whose end raises at every tick, such as one whose newest questions
+  # cannot be read (`Apiary.Stages`), do not keep the runs after them from their end:
+  # the lost-run check keeps `next` between its ticks (`Apiary.Runs.Liveness`).
+  @doc false
+  @spec lose(DateTime.t(), Ecto.UUID.t() | nil, pos_integer) ::
+          {[Ecto.UUID.t() | Settle.told()], Ecto.UUID.t() | nil}
+  def lose(%DateTime{} = now, after_id, limit \\ @batch) do
+    ids =
+      from(d in DispatchRun,
+        join: r in Run,
+        on: r.dispatch_run_id == d.id,
+        where: fragment("? = 'handed_over'", d.state),
+        where:
+          (d.step != ^@prebuild and
+             (not is_nil(r.outcome_state) or not is_nil(r.exited_at) or not is_nil(r.exit_state) or
+                not is_nil(r.refused_at))) or
+            (d.step == ^@prebuild and (not is_nil(r.exited_at) or not is_nil(r.exit_state))) or
+            not is_nil(r.released_at) or not is_nil(r.start_failure) or
+            (is_nil(r.attached_at) and r.attach_by < ^now) or
+            r.backstop_at < ^now or
+            (not is_nil(r.attached_at) and is_nil(r.exited_at) and is_nil(r.exit_state) and
+               fragment(
+                 "GREATEST(?, ?) + make_interval(secs => ?) < ?",
+                 r.last_heartbeat_at,
+                 r.attached_at,
+                 @silence,
+                 ^now
+               )),
+        order_by: d.id,
+        limit: ^limit,
+        select: d.id
+      )
+      |> after_id(after_id)
+      |> Repo.all()
+
+    next = if length(ids) == limit, do: List.last(ids)
+    {ids |> Enum.flat_map(&lose_guarded(&1, now)) |> Enum.uniq(), next}
   end
+
+  defp after_id(query, nil), do: query
+  defp after_id(query, id), do: from(d in query, where: d.id > ^id)
 
   # A silent run lost for good is broadcast as changed once its end commits.
   defp lose_guarded(id, now) do
     {:ok, {changed, silenced}} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
     if silenced, do: Apiary.Runs.broadcast_changed(silenced)
+    Apiary.Runs.StuckLog.clear({:lose, id})
     changed
   rescue
     error ->
-      Logger.error("run end failed dispatch_run=#{id} error=#{inspect(error.__struct__)}")
+      module = error.__struct__
+
+      Apiary.Runs.StuckLog.log(:error, {:lose, id}, module, fn ->
+        "run end failed dispatch_run=#{id} error=#{inspect(module)}"
+      end)
+
       []
   end
 

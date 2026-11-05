@@ -75,13 +75,14 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     refute render(view) =~ "Workflows</th>"
   end
 
-  test "marks proposal, questions and verdict Always on, and no other type", ctx do
+  test "marks proposal, questions, review-comments and verdict Always on, and no other type",
+       ctx do
     {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
 
-    for name <- ~w(proposal questions verdict),
+    for name <- ~w(proposal questions review-comments verdict),
         do: assert(has_element?(view, "#artifact-type-#{name}", "Always on"), name)
 
-    for name <- Type.standard_names() -- ~w(proposal questions verdict),
+    for name <- Type.standard_names() -- ~w(proposal questions review-comments verdict),
         do: refute(has_element?(view, "#artifact-type-#{name}", "Always on"), name)
 
     assert render(view) =~
@@ -143,7 +144,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
       Processes.save(ctx.scope, ctx.scope.workspace, with_type("screenshot"), trial: true)
 
     work_item = work_item_fixture(ctx.scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
 
     store =
       Path.join(System.tmp_dir!(), "apiary-types-test-#{System.unique_integer([:positive])}")
@@ -336,7 +337,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     used = custom!(ctx.scope, %{"name" => "bid-set", "base_view" => "document"})
 
     work_item = work_item_fixture(ctx.scope)
-    %{dispatch_run: run} = explore_run_fixture(work_item)
+    %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
 
     store =
       Path.join(System.tmp_dir!(), "apiary-types-test-#{System.unique_integer([:positive])}")

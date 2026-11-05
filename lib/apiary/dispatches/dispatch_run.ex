@@ -112,7 +112,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :target_access_gone
   ]
 
-  # What a run gave (`Apiary.Explore.Result.outcome/1`).
+  # What a run of Explore gave once it ended (`Apiary.Explore.Outcome`); `:error` and
+  # `:refused` only on runs that ended before Explore's runs pushed artifacts.
   @result_outcomes [:proposal, :questions, :error, :none, :refused]
 
   # The step that builds a collection's environment for a node pool.

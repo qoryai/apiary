@@ -770,7 +770,8 @@ defmodule ApiaryWeb.Routes do
               # thread; and the Backlog, the tickets it takes in from, and one ticket by its
               # public id (`tk_…`).
               live "/work", WorkItemLive.Index, :index
-              live "/work/:number", WorkItemLive.Show, :ticket
+              live "/work/:number", WorkItemLive.Show, :open
+              live "/work/:number/ticket", WorkItemLive.Show, :ticket
               live "/work/:number/explore", WorkItemLive.Show, :explore
               live "/work/:number/thread", WorkItemLive.Show, :thread
               # A work item's artifacts, with the `workflow_model` feature: Add a version by

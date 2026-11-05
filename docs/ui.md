@@ -1707,15 +1707,19 @@ takes the whole window through Focus (The terminal, below). The top bar's breadc
 and `Run 14`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page draws no other breadcrumb.
 
-A run's address, `/:org/:workspace/runs/:run_id`, carries the run's number, one count
-for the whole server (`Apiary.Runs.Run`, `number`). An address with the run's `rn_` id,
+A run's address, `/:org/:workspace/runs/:run_id`, has the run's number, one count
+for each workspace, from 1 (`Apiary.Runs.Run`, `number`). A work item that moves into a
+workspace whose count is lower raises that count to the work item's highest number, so the
+workspace's numbers jump. An address with the run's `rn_` id,
 the id the API gives, is sent on to the number's address when the run is in the
 workspace; a number or `rn_` id of no run of the workspace, the run id on the machine and
 any other value are not found, the same page for each. The header, the breadcrumb, the
-lists and the titles name a run "Run 14"; Details' Record shows "Run number" with Copy,
+lists and the titles show a run as "Run 14"; Details' Record shows "Run id", the run's `rn_`
+id, with Copy, because support and diagnostics find a run by it on the whole server;
 the run id on the machine on the next row, "Run id on the machine", and the search finds
-a run by its `rn_` id or the run id on the machine. The run page, the lists and the
-titles show no `rn_` id. Details and the runs list's preview show the instance id
+a run by its `rn_` id or the run id on the machine. Other than on Details and in a line
+that sends the reader to support, the run page, the lists and the titles show no `rn_`
+id. Details and the runs list's preview show the instance id
 Forager claimed for the run, when it claimed one, under "Machine id".
 
 - **The header** is "Run" and the run's number, `Run 14`, alone; then the title the run
@@ -1730,9 +1734,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   page), the runtime, the host, when it
   started, how long it took (left out for a run that did not start, which never ran) and
   its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
-  (Copy run number, Raw log, Download log, a file named `run-14.log`), and no
-  Close: Qory Apiary records what a run reports and never ends a run it did not start; it
-  starts none today. The seven
+  (Copy run id, Raw log, Download log, a file with the `rn_` id as its name,
+  `rn_0123456789abcdef.log`), and no Close: Qory Apiary records what a run reports and
+  never ends a run it did not start; it starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
   meta line, in one cut line whole on hover: the last result of its timeline that was no
   success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
@@ -1893,8 +1897,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   with no state reads "the starter gave no outcome" in the meta line, the rail and the
   preview, after the state's word "Cancelled", with no "as its starter said" sentence.
   None names who or what ended the run. `workflow_not_in_harness`, which qory gives
-  when the harness it composed for the run has no skill with the name of the run's
-  workflow, reads two sentences: "The run's harness has no skill named
+  when the harness it composed for the run has no skill for the run's workflow, reads
+  two sentences: "The run's harness has no skill for the workflow
   explore-a-ticket.", then where the harness came from, from the run's harness walk:
   "The harness comes from the harness file at the root of target acme/web-shop."
   ("repository" in a software workspace), "The harness comes from

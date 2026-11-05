@@ -22,7 +22,8 @@ defmodule Apiary.WorkItems.MemberActionsRacesTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias Apiary.WorkItems.{Answer, Confirmation, WorkItem, WorkItemEvent}
+  alias Apiary.Artifacts.{Artifact, Version}
+  alias Apiary.WorkItems.{Confirmation, WorkItem, WorkItemEvent}
   alias Ecto.Adapters.SQL.Sandbox
 
   @moduletag needs: :factory
@@ -69,6 +70,18 @@ defmodule Apiary.WorkItems.MemberActionsRacesTest do
   defp count(schema, ctx),
     do: Repo.aggregate(from(r in schema, where: r.work_item_id == ^ctx.work_item.id), :count)
 
+  # The versions of the work item's questions: the run's, and one for each answer kept.
+  defp questions_versions(ctx),
+    do:
+      Repo.aggregate(
+        from(v in Version,
+          join: a in Artifact,
+          on: a.id == v.artifact_id,
+          where: a.work_item_id == ^ctx.work_item.id and a.type == "questions"
+        ),
+        :count
+      )
+
   defp kinds(ctx),
     do:
       Repo.all(
@@ -102,7 +115,7 @@ defmodule Apiary.WorkItems.MemberActionsRacesTest do
 
     assert {{:ok, %WorkItem{}}, {:error, :stale}} = twice(answer(ctx))
 
-    assert count(Answer, ctx) == 1
+    assert questions_versions(ctx) == 2
     assert kinds(ctx) == [:taken_in, :answered]
     assert runs(ctx) == [{1, :ended}, {2, :waiting}]
   end
@@ -135,7 +148,7 @@ defmodule Apiary.WorkItems.MemberActionsRacesTest do
     commit(closed)
 
     assert {:error, :not_live} = await(answering)
-    assert count(Answer, ctx) == 0
+    assert questions_versions(ctx) == 1
     assert kinds(ctx) == [:taken_in, :closed]
   end
 end

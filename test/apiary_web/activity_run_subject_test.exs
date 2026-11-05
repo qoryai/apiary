@@ -10,13 +10,13 @@ defmodule ApiaryWeb.ActivityRunSubjectTest do
   test "a run is named by its number and links to its page" do
     %{scope: scope} = sign_up_fixture()
     id = Ecto.UUID.generate()
-    names = %{runs: %{id => 18_342}}
+    names = %{runs: %{id => 3}}
     entry = %Entry{subject_kind: "run", subject_id: id}
 
-    assert %{text: "Run 18342", mono: false, href: href} =
+    assert %{text: "Run 3", mono: false, href: href} =
              Core.subject(entry, :"run.read", names, scope, scope.workspace)
 
-    assert href == "/#{scope.organisation.slug}/#{scope.workspace.slug}/runs/18342"
+    assert href == "/#{scope.organisation.slug}/#{scope.workspace.slug}/runs/3"
 
     assert %{text: "A run"} =
              Core.subject(entry, :"run.read", %{runs: %{}}, scope, scope.workspace)

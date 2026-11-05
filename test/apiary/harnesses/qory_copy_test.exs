@@ -16,11 +16,11 @@ defmodule Apiary.Harnesses.QoryCopyTest do
 
   # The files copied from qoryai/harness at the commit in `.harness-ref`, by their SHA-256
   # there.
-  @harness_ref "bde1cf61186ec5cb405294dcc233021ea0c092bf"
+  @harness_ref "f2b3b4d3f1f764ec7e0f3ff3709eade08a22d6eb"
   @copied_sha256 %{
-    "qory.yaml" => "0d43ac5ebe9ebdbb2087f42b14a56a8dea3db95516b7d514d1093cfea8a62f6e",
+    "qory.yaml" => "794c65e0e8b6b2578aa3306ad7c2cf2441a311ea6e651537f118fc0954115da1",
     "modules/software-factory/process.yaml" =>
-      "0dd02cf172a414c21ad52f52ff70b668517bb004b6fc1fc74d7579d5c44915c4",
+      "31f4e5a8b6a720f43296142cdbd6c3236fcd8444ceeae49049749630d2166f50",
     "stacks/core/qory-stack.yaml" =>
       "1189e86746a88f25db585913250a830849107c3a18107bc6cef9f24c022b012f",
     "stacks/software/qory-stack.yaml" =>
@@ -52,14 +52,15 @@ defmodule Apiary.Harnesses.QoryCopyTest do
     assert QoryCopy.file("missing.yaml") == nil
   end
 
-  test "Definition keeps stack core and lists the stacks the copy exports" do
+  test "Definition keeps stack core and lists the stacks that runs compose" do
     harness = Definition.qory_harness()
     assert harness.stack == "core"
     assert harness.stacks == ["core", "software"]
     assert Definition.qory("qory.software").harness["stack"] == "core"
 
+    # The `authoring` stack ships in the harness, and runs do not compose it.
     {:ok, exports} = Reader.exports(QoryCopy.file("qory.yaml"))
-    assert exports.stacks == harness.stacks
+    assert exports.stacks == harness.stacks ++ ["authoring"]
   end
 
   describe "the copied template" do

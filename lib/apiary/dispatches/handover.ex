@@ -189,6 +189,7 @@ defmodule Apiary.Dispatches.Handover do
 
   alias Apiary.Runs.{
     About,
+    Number,
     ProviderCredential,
     Registration,
     Run,
@@ -1079,6 +1080,14 @@ defmodule Apiary.Dispatches.Handover do
   defp insert_run(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do
     %Run{
       public_id: Run.new_public_id(),
+      number:
+        Number.next(
+          %Workspace{
+            id: dispatch_run.workspace_id,
+            organisation_id: dispatch_run.organisation_id
+          },
+          key.node
+        ),
       organisation_id: dispatch_run.organisation_id,
       workspace_id: dispatch_run.workspace_id,
       node_run_id: dispatch_run.run_id,

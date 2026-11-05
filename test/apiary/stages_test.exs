@@ -1,8 +1,8 @@
 defmodule Apiary.StagesTest do
   # The stage runner with the workflow model on (`Apiary.Stages`): a take in enters the
   # first stage and queues explore-a-ticket through today's dispatch; a run's end through
-  # its settle maps today's explore result into artifacts (D1); the gate, the escalations,
-  # moves, and what the work item page reads.
+  # its settle reads the proposal and the questions the run pushed; the gate, the
+  # escalations, moves, and what the work item page reads.
   # Not async: a test sets the store adapter, the application's setting.
   use Apiary.DataCase, async: false
 
@@ -33,6 +33,19 @@ defmodule Apiary.StagesTest do
   defp take_in!(scope), do: taken_in_fixture(scope)
 
   defp reload(work_item), do: Repo.get!(WorkItem, work_item.id)
+
+  # Turns the workflow model on or off for this test.
+  defp workflow_model(on?) do
+    previous = Application.get_env(:apiary, :features)
+
+    features =
+      if on?,
+        do: Enum.uniq([:workflow_model | previous]),
+        else: List.delete(previous, :workflow_model)
+
+    Application.put_env(:apiary, :features, features)
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+  end
 
   defp runs(work_item),
     do:
@@ -80,11 +93,30 @@ defmodule Apiary.StagesTest do
     )
   end
 
-  # The one file of a `proposal` version, as a run's end stores it: the proposal as
-  # Markdown.
+  # The one file of a `proposal` version, as a run pushes it: the proposal as Markdown.
   defp a_proposal do
-    {:ok, file} = Stages.proposal_file(understood_result())
-    [file]
+    [
+      %{
+        filename: "proposal.md",
+        content_type: "text/markdown",
+        binary: understood_result()["message"]
+      }
+    ]
+  end
+
+  # The end of a run that pushes the verdict `verdict`, as `Apiary.StagesFixtures.end_run!/3`
+  # takes it.
+  defp verdict(verdict) do
+    fn run, _registered ->
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, run},
+          Repo.get!(WorkItem, run.work_item_id),
+          "verdict",
+          %{"verdict" => verdict},
+          stage_id: run.stage_id
+        )
+    end
   end
 
   # The text of a version's first file.
@@ -95,11 +127,12 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  # Explore as the default process has it: explore-a-ticket, with no loop.
   defp explore_stage(extra \\ %{}) do
     stage(
       @explore,
       "Explore",
-      [%{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}],
+      [%{"workflow" => "explore-a-ticket"}],
       Map.merge(%{"outputs" => [%{"type" => "proposal", "required" => true}]}, extra)
     )
   end
@@ -118,7 +151,7 @@ defmodule Apiary.StagesTest do
                stage_state: :running,
                stage_round: 1,
                stage_entry: 0,
-               loop_entry: 0
+               loop_entry: nil
              } = work_item
 
       assert version_id == version.id
@@ -134,7 +167,7 @@ defmodule Apiary.StagesTest do
                stage_id: @explore,
                round: 1,
                stage_entry: 0,
-               loop_entry: 0,
+               loop_entry: nil,
                workflow: "explore-a-ticket",
                machine_type: "default"
              } = run
@@ -304,8 +337,8 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "the D1 mapping of an explore result" do
-    test "a proposal becomes a proposal version and a verdict passed; the gate opens", %{
+  describe "the end of a run of Explore" do
+    test "a proposal the run pushed, with no open question, opens the gate", %{
       scope: scope
     } do
       work_item = take_in!(scope)
@@ -321,8 +354,9 @@ defmodule Apiary.StagesTest do
                versions(work_item, "proposal")
 
       assert proposal.run_id == run.id
-      assert [%{writer: :run} = verdict] = versions(work_item, "verdict")
-      assert Stages.Artifacts.read_json(verdict) == %{"verdict" => "passed"}
+      # The run pushed its proposal; Core writes no verdict for it, and the run list shows
+      # it passed, as when Core wrote one.
+      assert versions(work_item, "verdict") == []
 
       assert [%{filename: "proposal.md", content_type: "text/markdown; charset=utf-8"}] =
                proposal.files
@@ -331,7 +365,7 @@ defmodule Apiary.StagesTest do
 
       status = Stages.status(work_item, scope)
 
-      assert %{stage: %{id: @explore, name: "Explore"}, state: :at_gate, round: 1, rounds: 3} =
+      assert %{stage: %{id: @explore, name: "Explore"}, state: :at_gate, round: 1, rounds: nil} =
                status
 
       assert [%{type: "proposal", required: true, check: :passed, version: %{number: 1}}] =
@@ -363,7 +397,7 @@ defmodule Apiary.StagesTest do
       refute_received {:stage_changed, _id}
     end
 
-    test "questions wait for answers; the answers run the same workflow as round 2", %{
+    test "open questions wait for answers; the answers run the same workflow again", %{
       scope: scope
     } do
       work_item = take_in!(scope)
@@ -371,71 +405,139 @@ defmodule Apiary.StagesTest do
 
       assert work_item.stage_state == :waiting_answers
       assert [questions] = versions(work_item, "questions")
+      assert %{writer: :run} = questions
 
-      assert Stages.Artifacts.read_json(questions) == %{
-               "questions" => [
-                 %{"question" => "Which basket?", "options" => []},
-                 %{"question" => "Which sale?", "options" => []}
-               ]
-             }
+      assert %{"questions" => [%{"id" => "q1", "state" => "open"}, %{"id" => "q2"}]} =
+               Stages.Artifacts.read_json(questions)
 
       {:ok, _work_item} =
         WorkItems.answer(scope, work_item, 1, %{"1" => "The main one", "2" => "Spring"})
 
       work_item = reload(work_item)
 
-      assert %{stage_state: :running, stage_round: 2} = work_item
+      # Explore has no loop: the same workflow runs again in the same round.
+      assert %{stage_state: :running, stage_round: 1} = work_item
 
       assert %DispatchRun{
                attempt: 2,
                of: 3,
-               round: 2,
-               loop_entry: 0,
+               round: 1,
+               loop_entry: nil,
                workflow: "explore-a-ticket"
              } =
                newest_run(work_item)
     end
 
-    test "questions in the last round escalate round_limit", %{scope: scope} do
+    test "open questions at the last run wait for answers, past the runs counted", %{
+      scope: scope
+    } do
       work_item = take_in!(scope)
 
       work_item =
-        Enum.reduce(1..2, work_item, fn attempt, work_item ->
+        Enum.reduce(1..3, work_item, fn attempt, work_item ->
           work_item = end_run!(work_item, questions_result())
+          assert work_item.stage_state == :waiting_answers
           {:ok, _} = WorkItems.answer(scope, work_item, attempt, %{"1" => "a", "2" => "b"})
           reload(work_item)
         end)
 
+      assert %DispatchRun{attempt: 4, of: 4} = newest_run(work_item)
       work_item = end_run!(work_item, questions_result())
+      assert work_item.stage_state == :waiting_answers
+      refute escalation(work_item)
+    end
+
+    test "open questions in a loop's last round wait for answers", %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "sequence" => [
+            %{"loop" => %{"rounds" => 1, "body" => [%{"workflow" => "explore-a-ticket"}]}}
+          ]
+        })
+      ])
+
+      work_item = take_in!(scope) |> end_run!(questions_result())
+      assert work_item.stage_state == :waiting_answers
+      refute escalation(work_item)
+    end
+
+    test "a run that pushed no proposal escalates check_failed", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(nil)
+
       assert work_item.stage_state == :escalated
 
-      assert %Escalation{cause: :round_limit, round: 3, gaps: "Which basket?\nWhich sale?"} =
+      assert %Escalation{
+               cause: :check_failed,
+               round: 1,
+               gaps: "No proposal was stored in this stage."
+             } = escalation(work_item)
+    end
+
+    test "in a loop, a run with no verdict starts the next round", %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "sequence" => [
+            %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "explore-a-ticket"}]}}
+          ]
+        })
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
+
+      work_item = end_run!(work_item, nil)
+      assert %Escalation{cause: :round_limit, round: 2} = escalation(work_item)
+    end
+
+    test "a run that exited failed escalates run_stopped", %{scope: scope} do
+      work_item = take_in!(scope)
+      work_item = end_run!(work_item, nil, %{exit_state: "failed", outcome_state: "failed"})
+
+      assert work_item.stage_state == :escalated
+
+      # With no proposal written, it reads as a run with no result.
+      assert %Escalation{cause: :run_stopped, gaps: "The run ended without a result."} =
                escalation(work_item)
     end
 
-    test "a run without a result escalates run_stopped with the cause", %{scope: scope} do
+    test "a run that failed after it wrote a proposal escalates run_stopped with its version",
+         %{scope: scope} do
       work_item = take_in!(scope)
-      work_item = end_run!(work_item, nil)
-      run = newest_run(work_item)
+
+      work_item =
+        end_run!(work_item, understood_result(), %{exit_state: "failed", outcome_state: "failed"})
 
       assert work_item.stage_state == :escalated
-
-      assert %Escalation{cause: :run_stopped, round: 1, gaps: "The run ended without a result."} =
-               escalation = escalation(work_item)
-
-      assert escalation.run_id == run.id
-      assert %{escalation: %{cause: :run_stopped, run: %{attempt: 1}}} = Stages.status(work_item)
-    end
-
-    test "a result that fails its schema escalates run_stopped", %{scope: scope} do
-      work_item = take_in!(scope)
-      work_item = end_run!(work_item, %{"version" => 1, "verdict" => "understood"})
 
       assert %Escalation{
                cause: :run_stopped,
-               gaps: "The run's result does not match the explore result schema."
-             } =
-               escalation(work_item)
+               gaps: "The run failed after it wrote proposal version 1."
+             } = escalation(work_item)
+
+      # The proposal is the stage's output, so the member may accept it as it is.
+      assert [%{type: "proposal", check: :passed}] = Stages.status(work_item).outputs
+
+      assert {:ok, %WorkItem{stage_state: :at_gate}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil,
+                 expect_stage: reload(work_item).stage_id
+               )
+    end
+
+    test "open questions come before a run that stopped", %{scope: scope} do
+      work_item = take_in!(scope)
+
+      work_item =
+        end_run!(work_item, questions_result(), %{exit_state: "failed", outcome_state: "failed"})
+
+      assert work_item.stage_state == :waiting_answers
+      refute escalation(work_item)
+    end
+
+    test "a run that pushed a proposal and no open question goes on to the gate", %{
+      scope: scope
+    } do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      assert work_item.stage_state == :at_gate
     end
 
     test "a lost run escalates run_stopped", %{scope: scope} do
@@ -451,6 +553,315 @@ defmodule Apiary.StagesTest do
                gaps: "The run stopped reporting and was marked lost."
              } =
                escalation(work_item)
+    end
+
+    test "an end whose newest questions cannot be read raises and changes nothing, lost or not",
+         %{scope: scope} do
+      # A question no other test asks, so no other test stores the same file.
+      text = "Which basket #{System.unique_integer([:positive])}?"
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+
+      # Questions pushed, then the run's end stored with what it gave, `questions`, as a
+      # settle that read them writes it; then the file cannot be read.
+      work_item = end_run!(work_item, questions_result([text]))
+      assert work_item.stage_state == :waiting_answers
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :running]
+        )
+
+      {version, _document} = Apiary.Explore.Questions.newest(work_item)
+      [file] = version.files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      for cause <- [:run_ended, :lost] do
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [end_cause: cause, result_outcome: :questions]
+        )
+
+        assert_raise Apiary.Stages.QuestionsUnreadable, fn ->
+          Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+        end
+
+        assert %WorkItem{stage_state: :running} = reload(work_item)
+        refute escalation(work_item)
+      end
+
+      # Readable again, the end is read as it is: the questions wait for answers.
+      File.rename!(path <> ".away", path)
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %WorkItem{stage_state: :waiting_answers} = reload(work_item)
+      refute escalation(work_item)
+    end
+
+    test "a claim's end with unreadable questions is left, then read by the stage sweep",
+         %{scope: scope} do
+      text = "Which basket #{System.unique_integer([:positive])}?"
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+
+      # The run pushed its questions while it was live; then a claim ended it before it
+      # started, as the claim's end stores it, and the questions file cannot be read.
+      work_item =
+        end_run!(work_item, fn run, registered ->
+          push_result!(run, registered, questions_result([text]))
+        end)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :running]
+        )
+
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+        set: [end_cause: :key_gone, result_outcome: :error]
+      )
+
+      {version, _document} = Apiary.Explore.Questions.newest(work_item)
+      [file] = version.files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The claim's act is left, with one warning: the end stays stored.
+      {told, log} = ExUnit.CaptureLog.with_log(fn -> Stages.claim_ended([run.id]) end)
+      assert told == []
+      assert log =~ "stage end left for later, newest questions unreadable dispatch_run=#{run.id}"
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      assert %DispatchRun{state: :ended, end_cause: :key_gone} = Repo.get!(DispatchRun, run.id)
+
+      # The stage sweep reads it at each tick until the file can be read, with one line
+      # an hour.
+      {{[], nil}, log} =
+        ExUnit.CaptureLog.with_log(fn -> Stages.sweep(DateTime.utc_now(), nil) end)
+
+      assert log =~
+               "stage end failed dispatch_run=#{run.id} error=Apiary.Stages.QuestionsUnreadable"
+
+      {{[], nil}, log} =
+        ExUnit.CaptureLog.with_log(fn -> Stages.sweep(DateTime.utc_now(), nil) end)
+
+      refute log =~ "dispatch_run=#{run.id}"
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+
+      File.rename!(path <> ".away", path)
+      assert {[_], nil} = Stages.sweep(DateTime.utc_now(), nil)
+      assert %WorkItem{stage_state: :waiting_answers} = reload(work_item)
+      assert Apiary.Runs.StuckLog.lines() == %{}
+
+      # An end the stage acted on is not read again.
+      assert Stages.sweep(DateTime.utc_now(), nil) == {[], nil}
+    end
+
+    test "the stage sweep writes the text a claim writes for a gateway with no secrets",
+         %{scope: scope} do
+      gateway = Apiary.NodesFixtures.gateway_fixture(scope)
+      Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, gateway, %{allow_secrets: false})
+
+      pool =
+        Apiary.NodesFixtures.pool_fixture(scope, %{gateway_choice: :named, gateway_id: gateway.id})
+
+      %{access_key: pool_key} = Apiary.AccessKeysFixtures.browser_key_fixture(scope, pool)
+      {:ok, through, keys} = Apiary.Dispatches.Handover.gateway(pool)
+
+      # Two runs a claim through the pool ended `secrets_not_allowed`.
+      [by_claim, by_sweep] =
+        for _n <- 1..2 do
+          work_item = take_in!(scope)
+          run = newest_run(work_item)
+          now = DateTime.utc_now()
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [state: :ended, end_cause: :secrets_not_allowed, result_outcome: :error]
+          )
+
+          %Apiary.Dispatches.Dispatch{
+            organisation_id: run.organisation_id,
+            workspace_id: run.workspace_id
+          }
+          |> Apiary.Dispatches.Dispatch.claim_changeset(%{
+            dispatch_run_id: run.id,
+            pool_id: pool.id,
+            access_key_id: pool_key.id,
+            claimed_at: now,
+            lease_until: Apiary.Dispatches.lease_until(now)
+          })
+          |> Apiary.PublicId.Insert.insert!()
+
+          work_item
+        end
+
+      # The sweep reads again the context the claim passes, for each run, and none for a
+      # run with no dispatch.
+      for work_item <- [by_claim, by_sweep] do
+        assert Stages.claim_context(newest_run(work_item).id) == %{gateway: through, keys: keys}
+      end
+
+      assert Stages.claim_context(newest_run(take_in!(scope)).id) == %{}
+
+      # The claim's act, with what the claim knew; the sweep's, with what it reads again.
+      assert [_] = Stages.claim_ended([newest_run(by_claim).id], %{gateway: through, keys: keys})
+      assert {[_], nil} = Stages.sweep(DateTime.utc_now(), nil)
+
+      # The same text, but the work item's number.
+      texts =
+        for work_item <- [by_claim, by_sweep] do
+          assert %Escalation{cause: :run_stopped, gaps: text} = escalation(work_item)
+          String.replace(text, "##{reload(work_item).number}", "#N")
+        end
+
+      assert [text, text] = texts
+      assert text =~ "allowed to receive the run's secrets"
+    end
+
+    test "the stage sweep reads after where the sweep before stopped", %{scope: scope} do
+      # Two runs ended by a claim whose stage did not act.
+      [first, second] =
+        for _n <- 1..2 do
+          work_item = take_in!(scope)
+          run = newest_run(work_item)
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [state: :ended, end_cause: :key_gone, result_outcome: :error]
+          )
+
+          run
+        end
+        |> Enum.sort_by(& &1.id)
+
+      assert {[_], next} = Stages.sweep(DateTime.utc_now(), nil, 1)
+      assert next == first.id
+      assert {[_], next} = Stages.sweep(DateTime.utc_now(), first.id, 1)
+      assert next == second.id
+      assert Stages.sweep(DateTime.utc_now(), second.id, 1) == {[], nil}
+
+      for run <- [first, second] do
+        assert %Escalation{cause: :run_stopped} =
+                 escalation(Repo.get!(WorkItem, run.work_item_id))
+      end
+    end
+
+    test "the stage sweep skips the ends the runner does not act on", %{scope: scope} do
+      ended! = fn changes ->
+        work_item = take_in!(scope)
+        run = newest_run(work_item)
+
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [state: :ended] ++ changes
+        )
+
+        {work_item, run}
+      end
+
+      # An end the runner ignores, one of each.
+      ignored =
+        for cause <- [:closed, :undone, :released, :superseded],
+            do: ended!.(end_cause: cause, result_outcome: nil)
+
+      # An exit with no outcome yet, which Settle stores first.
+      unsettled = ended!.(end_cause: :run_ended, result_outcome: nil)
+
+      # An older attempt: a newer one is queued.
+      {older, run} = ended!.(end_cause: :key_gone, result_outcome: :error)
+
+      %DispatchRun{}
+      |> Ecto.Changeset.change(
+        run
+        |> Map.take(
+          DispatchRun.__schema__(:fields) -- [:id, :public_id, :inserted_at, :updated_at]
+        )
+        |> Map.merge(%{
+          attempt: run.attempt + 1,
+          run_id: Ecto.UUID.generate(),
+          state: :waiting,
+          end_cause: nil,
+          result_outcome: nil
+        })
+      )
+      |> Apiary.PublicId.Insert.insert!()
+
+      # A stage that is not running.
+      {waiting, _run} = ended!.(end_cause: :key_gone, result_outcome: :error)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^waiting.id),
+          set: [stage_state: :waiting_answers]
+        )
+
+      skipped = Enum.map(ignored ++ [unsettled, {older, run}], &elem(&1, 0)) ++ [waiting]
+      before = Enum.map(skipped, &reload/1)
+
+      assert Stages.sweep(DateTime.utc_now(), nil) == {[], nil}
+      assert Enum.map(skipped, &reload/1) == before
+      assert Enum.all?(skipped, &is_nil(escalation(&1)))
+    end
+
+    test "the stage sweep finds nothing with the workflow model off", %{scope: scope} do
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+        set: [state: :ended, end_cause: :key_gone, result_outcome: :error]
+      )
+
+      workflow_model(false)
+      assert Stages.sweep(DateTime.utc_now(), nil) == {[], nil}
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+    end
+
+    test "with the workflow model back on, the stage sweep acts on one batch per call",
+         %{scope: scope} do
+      # Two ends while the workflow model was off: the sweep acts on neither.
+      [first, second] =
+        for(_n <- 1..2, do: newest_run(take_in!(scope))) |> Enum.sort_by(& &1.id)
+
+      workflow_model(false)
+
+      Repo.update_all(from(d in DispatchRun, where: d.id in ^[first.id, second.id]),
+        set: [state: :ended, end_cause: :key_gone, result_outcome: :error]
+      )
+
+      running? = fn run -> Repo.get!(WorkItem, run.work_item_id).stage_state == :running end
+      assert Stages.sweep(DateTime.utc_now(), nil, 1) == {[], nil}
+      assert {running?.(first), running?.(second)} == {true, true}
+
+      # Back on: a batch of one acts on the first alone, and the next call on the second.
+      workflow_model(true)
+
+      assert {[_], next} = Stages.sweep(DateTime.utc_now(), nil, 1)
+      assert next == first.id
+      assert {running?.(first), running?.(second)} == {false, true}
+
+      assert {[_], _next} = Stages.sweep(DateTime.utc_now(), next, 1)
+      assert {running?.(first), running?.(second)} == {false, false}
+    end
+
+    test "a tick of the lost-run check keeps where the stage sweep stopped", %{scope: scope} do
+      [first, second] =
+        for _n <- 1..2 do
+          work_item = take_in!(scope)
+          run = newest_run(work_item)
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [state: :ended, end_cause: :key_gone, result_outcome: :error]
+          )
+
+          run
+        end
+        |> Enum.sort_by(& &1.id)
+
+      # The tick reads after the stage cursor it was given: the second alone, and fewer
+      # than a batch, so the next tick starts from the first id again.
+      state = %{interval: :timer.hours(1), cursors: %{stage: first.id}}
+
+      assert {:noreply, %{cursors: %{stage: nil}}} =
+               Apiary.Runs.Liveness.handle_info(:tick, state)
+
+      assert %WorkItem{stage_state: :running} = Repo.get!(WorkItem, first.work_item_id)
+      assert %Escalation{} = escalation(Repo.get!(WorkItem, second.work_item_id))
     end
 
     test "a run queued before its work item was placed counts for the stage it is in", %{
@@ -470,7 +881,7 @@ defmodule Apiary.StagesTest do
       )
       |> Repo.update!()
 
-      assert %WorkItem{stage_state: :at_gate} = end_run!(work_item, understood_result())
+      assert %WorkItem{stage_state: :waiting_answers} = end_run!(work_item, questions_result())
     end
 
     test "a run's end is read once: a second settle changes nothing", %{scope: scope} do
@@ -569,15 +980,15 @@ defmodule Apiary.StagesTest do
          %{scope: scope} do
       save!(scope, [
         explore_stage(%{
-          "outputs" => [
-            %{"type" => "proposal", "required" => true},
-            %{"type" => "mockup", "required" => true}
-          ]
+          "sequence" => [
+            %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}
+          ],
+          "outputs" => [%{"type" => "mockup", "required" => true}]
         })
       ])
 
       gaps = "No mockup was stored in this stage."
-      work_item = take_in!(scope) |> end_run!(understood_result())
+      work_item = take_in!(scope) |> end_run!(verdict("passed"))
 
       assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
       assert %DispatchRun{round: 2} = newest_run(work_item)
@@ -586,11 +997,40 @@ defmodule Apiary.StagesTest do
       assert [%{kind: :check, stage_id: @explore, user_id: nil, note: ^gaps}] =
                Stages.notes(work_item)
 
-      work_item = work_item |> end_run!(understood_result()) |> end_run!(understood_result())
+      work_item = work_item |> end_run!(verdict("passed")) |> end_run!(verdict("passed"))
 
       assert %Escalation{cause: :round_limit, gaps: ^gaps} = escalation(work_item)
       assert %{gaps: ^gaps} = Stages.status(work_item)
       assert [%{kind: :check}, %{kind: :check}] = Stages.notes(work_item)
+    end
+
+    test "a workflow's report reads the questions named main alone", %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "sequence" => [
+            %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}
+          ],
+          "outputs" => [%{"type" => "mockup", "required" => true}]
+        })
+      ])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          verdict("passed").(run, registered)
+          Apiary.WorkItemsFixtures.push_result!(run, registered, questions_result())
+
+          # Questions under another name, as a version stored before the name was checked.
+          {1, _rows} =
+            Repo.update_all(
+              from(a in Apiary.Artifacts.Artifact,
+                where: a.work_item_id == ^run.work_item_id and a.type == "questions"
+              ),
+              set: [name: "other"]
+            )
+        end)
+
+      assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
     end
   end
 
@@ -646,7 +1086,7 @@ defmodule Apiary.StagesTest do
                {:error, :not_at_gate}
     end
 
-    test "request changes reruns the loop from round 1, with the note and its version", %{
+    test "request changes reruns the sequence from its start, with the note and its version", %{
       scope: scope
     } do
       work_item = take_in!(scope) |> end_run!(understood_result())
@@ -670,7 +1110,7 @@ defmodule Apiary.StagesTest do
                decisions(work_item)
 
       assert decision.artifact_version_id == proposal.public_id
-      assert %DispatchRun{attempt: 2, of: 4, round: 1} = newest_run(work_item)
+      assert %DispatchRun{attempt: 2, of: 3, round: 1, loop_entry: nil} = newest_run(work_item)
     end
 
     test "only the listed approvers approve", %{scope: scope} do
@@ -842,7 +1282,7 @@ defmodule Apiary.StagesTest do
           stage_id: @explore
         )
 
-      ArtifactStoreHook.on_commit(fn ->
+      ArtifactStoreHook.on_stage(fn ->
         {1, _rows} =
           Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
             set: [stage_id: @shape]
@@ -951,12 +1391,9 @@ defmodule Apiary.StagesTest do
 
       assert id == proposal.public_id
 
+      # The run ended and pushes nothing more; a person adds the newer version.
       {:ok, _version} =
-        Stages.Artifacts.push(
-          {:run, newest_run(work_item)},
-          work_item,
-          "proposal",
-          a_proposal(),
+        Stages.Artifacts.push({:person, scope}, work_item, "proposal", a_proposal(),
           stage_id: @explore
         )
 
@@ -978,8 +1415,7 @@ defmodule Apiary.StagesTest do
                      approvals: [%{user_id: ^user_id, stage_id: @explore}]
                    }
                  ]
-               },
-               %{type: "verdict", approved_version: nil, changed_after_approval: false}
+               }
              ] = Stages.artifact_index(work_item)
     end
   end
@@ -1028,21 +1464,25 @@ defmodule Apiary.StagesTest do
   end
 
   describe "escalations" do
+    # A run whose registered run exited failed: the stage escalates, `run_stopped`.
     setup %{scope: scope} do
-      work_item = take_in!(scope) |> end_run!(nil)
+      work_item =
+        take_in!(scope) |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
       %{work_item: work_item}
     end
 
-    test "another round reruns the workflow as the next round, with the note", %{
+    test "another round reruns the workflow, with the note", %{
       scope: scope,
       work_item: work_item
     } do
-      assert {:ok, %WorkItem{stage_state: :running, stage_round: 2}} =
+      # Explore has no loop: the workflow runs again in the same round.
+      assert {:ok, %WorkItem{stage_state: :running, stage_round: 1}} =
                Stages.resolve_escalation(scope, work_item, :another_round, "Read the sale page",
                  expect_stage: reload(work_item).stage_id
                )
 
-      assert %DispatchRun{attempt: 2, round: 2} = newest_run(work_item)
+      assert %DispatchRun{attempt: 2, round: 1} = newest_run(work_item)
 
       assert %Escalation{resolution: :another_round, note: "Read the sale page"} =
                Repo.get_by(Escalation, work_item_id: work_item.id)
@@ -1060,7 +1500,7 @@ defmodule Apiary.StagesTest do
 
     test "Explore again resolves it as another round", %{scope: scope, work_item: work_item} do
       assert {:ok, _} = WorkItems.explore_again(scope, work_item, 1)
-      assert %{stage_state: :running, stage_round: 2} = reload(work_item)
+      assert %{stage_state: :running, stage_round: 1} = reload(work_item)
 
       assert %Escalation{resolution: :another_round} =
                Repo.get_by(Escalation, work_item_id: work_item.id)
@@ -1092,7 +1532,8 @@ defmodule Apiary.StagesTest do
         })
       ])
 
-      work_item = take_in!(scope) |> end_run!(questions_result())
+      # A run with no verdict in the loop's last round.
+      work_item = take_in!(scope) |> end_run!(nil)
       assert %Escalation{cause: :round_limit} = escalation(work_item)
 
       assert {:ok, %WorkItem{stage_state: :at_gate, stage_entry: 1}} =
@@ -1161,12 +1602,12 @@ defmodule Apiary.StagesTest do
       work_item =
         take_in!(scope)
         |> end_run!(nil)
-        |> as_placed!(stage_state: :escalated, stage_round: 1, stage_entry: 0, loop_entry: 0)
+        |> as_placed!(stage_state: :escalated, stage_round: 1, stage_entry: 0, loop_entry: nil)
 
       assert %{state: :escalated, escalation: %{cause: :run_stopped, round: 1}} =
                Stages.status(work_item)
 
-      assert {:ok, %WorkItem{stage_state: :running, stage_round: 2}} =
+      assert {:ok, %WorkItem{stage_state: :running, stage_round: 1}} =
                Stages.resolve_escalation(scope, work_item, :another_round, nil,
                  expect_stage: reload(work_item).stage_id
                )
@@ -1174,20 +1615,20 @@ defmodule Apiary.StagesTest do
       assert %Escalation{resolution: :another_round} =
                Repo.get_by(Escalation, work_item_id: work_item.id)
 
-      assert %DispatchRun{attempt: 2, round: 2, stage_id: @explore} = newest_run(work_item)
+      assert %DispatchRun{attempt: 2, round: 1, stage_id: @explore} = newest_run(work_item)
     end
 
     test "an escalated work item explores again", %{scope: scope} do
       work_item =
         take_in!(scope)
         |> end_run!(nil)
-        |> as_placed!(stage_state: :escalated, stage_round: 1, stage_entry: 0, loop_entry: 0)
+        |> as_placed!(stage_state: :escalated, stage_round: 1, stage_entry: 0, loop_entry: nil)
 
       assert {:ok, _work_item} = WorkItems.explore_again(scope, work_item, 1)
-      assert %DispatchRun{attempt: 2, round: 2} = newest_run(work_item)
+      assert %DispatchRun{attempt: 2, round: 1} = newest_run(work_item)
     end
 
-    test "a work item waiting for answers runs the next round", %{scope: scope} do
+    test "a work item waiting for answers runs again", %{scope: scope} do
       work_item =
         take_in!(scope)
         |> end_run!(questions_result())
@@ -1195,12 +1636,12 @@ defmodule Apiary.StagesTest do
           stage_state: :waiting_answers,
           stage_round: 1,
           stage_entry: 0,
-          loop_entry: 0
+          loop_entry: nil
         )
 
       assert {:ok, _work_item} = WorkItems.answer(scope, work_item, 1, %{"1" => "a", "2" => "b"})
 
-      assert %DispatchRun{attempt: 2, round: 2, workflow: "explore-a-ticket"} =
+      assert %DispatchRun{attempt: 2, round: 1, workflow: "explore-a-ticket"} =
                newest_run(work_item)
     end
 
@@ -1385,14 +1826,16 @@ defmodule Apiary.StagesTest do
         })
       ])
 
-      work_item = take_in!(scope) |> end_run!(nil)
+      work_item =
+        take_in!(scope) |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
       assert reload(work_item).stage_state == :escalated
 
       assert WorkItems.explore_again(member.scope, work_item, 1) == {:error, :not_approver}
       assert %Escalation{resolution: nil} = escalation(work_item)
 
       assert {:ok, _} = WorkItems.explore_again(scope, work_item, 1)
-      assert %{stage_state: :running, stage_round: 2} = reload(work_item)
+      assert %{stage_state: :running, stage_round: 1} = reload(work_item)
 
       user_id = scope.user.id
 
@@ -1407,32 +1850,9 @@ defmodule Apiary.StagesTest do
                )
     end
 
-    test "questions outside a loop get three runs, then escalate round_limit", %{scope: scope} do
-      save!(scope, [explore_stage(%{"sequence" => [%{"workflow" => "explore-a-ticket"}]})])
-      work_item = take_in!(scope)
-      assert [%DispatchRun{attempt: 1, of: 3}] = runs(work_item)
-
-      work_item = end_run!(work_item, questions_result())
-      assert work_item.stage_state == :waiting_answers
-      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "Main", "2" => "Spring"})
-      assert %DispatchRun{attempt: 2, of: 3} = newest_run(work_item)
-
-      work_item = end_run!(reload(work_item), questions_result())
-      assert work_item.stage_state == :waiting_answers
-      {:ok, _} = WorkItems.answer(scope, work_item, 2, %{"1" => "Main", "2" => "Spring"})
-      assert %DispatchRun{attempt: 3, of: 3} = newest_run(work_item)
-
-      work_item = end_run!(reload(work_item), questions_result())
-      assert work_item.stage_state == :escalated
-
-      assert %Escalation{cause: :round_limit, gaps: "Which basket?\nWhich sale?"} =
-               escalation(work_item)
-    end
-
-    test "an answer to the last run a placed work item may have escalates round_limit", %{
+    test "an answer to the last run a placed work item may have runs again", %{
       scope: scope
     } do
-      save!(scope, [explore_stage(%{"sequence" => [%{"workflow" => "explore-a-ticket"}]})])
       work_item = take_in!(scope)
       run = newest_run(work_item)
 
@@ -1441,17 +1861,14 @@ defmodule Apiary.StagesTest do
         Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id), set: [of: 1])
 
       work_item = end_run!(work_item, questions_result())
+      assert work_item.stage_state == :waiting_answers
 
-      {1, _rows} =
-        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [stage_state: :waiting_answers]
-        )
-
-      assert {:ok, %WorkItem{stage_state: :escalated}} =
+      assert {:ok, _work_item} =
                WorkItems.answer(scope, reload(work_item), 1, %{"1" => "Main", "2" => "Spring"})
 
-      assert %Escalation{cause: :round_limit, gaps: "Which basket?\nWhich sale?"} =
-               escalation(work_item)
+      assert %{stage_state: :running} = reload(work_item)
+      assert %DispatchRun{attempt: 2} = newest_run(work_item)
+      refute escalation(work_item)
     end
 
     test "a note is measured in code points, as the database measures it", %{scope: scope} do
@@ -1506,17 +1923,6 @@ defmodule Apiary.StagesTest do
 
       assert %WorkItem{state: :closed, stage_id: @shape, stage_state: :at_gate} =
                reload(work_item)
-    end
-
-    test "answers_used_up returns the refusal and opens no escalation", %{scope: scope} do
-      work_item = take_in!(scope) |> end_run!(questions_result())
-      assert work_item.stage_state == :waiting_answers
-      {:ok, _closed} = Moves.close(scope, work_item)
-
-      assert Stages.answers_used_up(work_item, {:error, :used_up}) == {:error, :used_up}
-
-      assert %WorkItem{state: :closed, stage_state: :waiting_answers} = reload(work_item)
-      refute escalation(work_item)
     end
   end
 end

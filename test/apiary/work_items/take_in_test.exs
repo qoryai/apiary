@@ -438,10 +438,6 @@ defmodule Apiary.WorkItems.TakeInTest do
       assert {:error, {:taken, %WorkItem{id: ^id}}} =
                WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
     end
-
-    test "take_in_answers/2 is none until the questions come", ctx do
-      assert WorkItems.take_in_answers(ctx.work_item, 1) == []
-    end
   end
 
   describe "subscribe/1" do

@@ -23,6 +23,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   use ApiaryWeb, :html
 
+  alias ApiaryWeb.WorkItemComponents
+
   @note_units 2 * 2_000
 
   ## The stage track
@@ -64,6 +66,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     </div>
     """
   end
+
+  # The stage's waiting or running run: it has a path only at Explore.
+  defp live_run(page),
+    do: Enum.find(page.runs, &(&1.shows in [:running, :queued] and &1.stage_id == page.stage.id))
 
   defp track_class(:done), do: "done"
   defp track_class(:now), do: "now"
@@ -112,15 +118,17 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <div class="q-wi-step-h">
         <h2 id={"#{@id}-h"}>{@page.stage.name}</h2>
         <span id={"#{@id}-state"}><.state_badge state={shown_state(@page)} /></span>
+        <WorkItemComponents.run_link
+          :if={@page.state == :running}
+          id={"#{@id}-run-link"}
+          run={live_run(@page)}
+        />
       </div>
-      <p :if={@page.rounds} id={"#{@id}-round"} class="q-wi-bee-line">
+      <p :if={@page.rounds && !@page.at_explore} id={"#{@id}-round"}>
         {gettext("Round %{round} of %{rounds}",
           round: Format.number(@page.round || 1),
           rounds: Format.number(@page.rounds)
         )}
-      </p>
-      <p :if={@page.version} id={"#{@id}-version"} class="text-xs opacity-70">
-        {gettext("Process version %{number}", number: Format.number(@page.version))}
       </p>
       <p :if={@notice} id={"#{@id}-notice"} class="q-xp-err" role="alert">{@notice}</p>
       <.stage_body
@@ -137,11 +145,33 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
+  @doc """
+  The stage's state as the stage card shows it, as a badge: on the step card, where it is
+  the one card of the stage at Explore.
+  """
+  attr :id, :string, default: "work-item-step-state"
+  attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
+  attr :quiet, :boolean, default: false, doc: "the stage's run has a late heartbeat"
+
+  def stage_badge(assigns) do
+    ~H"""
+    <span id={@id}><.state_badge state={shown_state(@page)} quiet={@quiet} /></span>
+    """
+  end
+
   attr :state, :atom, required: true
+  attr :quiet, :boolean, default: false
 
   defp state_badge(assigns) do
     assigns =
-      assign(assigns, color: state_color(assigns.state), words: state_words(assigns.state))
+      assign(assigns,
+        color:
+          if(assigns.quiet and assigns.state == :running,
+            do: "warning",
+            else: state_color(assigns.state)
+          ),
+        words: state_words(assigns.state)
+      )
 
     ~H"""
     <.badge color={@color} class="q-wi-badge">{@words}</.badge>
@@ -154,7 +184,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp shown_state(%{state: state}), do: state
 
   defp state_color(:queued), do: "neutral"
-  defp state_color(:running), do: "success"
+  defp state_color(:running), do: "info"
   defp state_color(:at_gate), do: "info"
   defp state_color(:done), do: "neutral"
   defp state_color(_state), do: "warning"
@@ -201,10 +231,15 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :check, :any, default: nil
 
   defp stage_body(%{page: %{state: :running}} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :line,
+        gettext("%{stage} is running.", stage: assigns.page.stage.name)
+      )
+
     ~H"""
-    <p :if={!@page.queued} id={"#{@id}-line"}>
-      {gettext("%{stage} is running.", stage: @page.stage.name)}
-    </p>
+    <p :if={!@page.queued} id={"#{@id}-line"}><.rich text={@line} /></p>
     """
   end
 
@@ -611,8 +646,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   @doc """
   The runs of the work item, newest first: each an attempt, counted from the work item's
-  first run ("Attempt 2"), so that it is not taken for the run's number on the server
-  ("Run 18342"), with its workflow, its round and its verdict, or none yet.
+  first run ("Attempt 2"), so that it is not taken for the run's number in its workspace
+  ("Run 3"), with its workflow, its round and its verdict, or none yet.
   """
   attr :id, :string, default: "work-item-runs"
   attr :runs, :list, required: true
@@ -624,7 +659,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <p :if={@runs == []} id={"#{@id}-none"}>{gettext("No run yet.")}</p>
       <ol :if={@runs != []} class="flex flex-col gap-1">
         <li :for={{run, i} <- Enum.with_index(@runs)} id={"#{@id}-#{i}"}>
-          {run_words(run)}
+          <.rich text={run_words(run)} />
         </li>
       </ol>
     </section>
@@ -632,12 +667,18 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   defp run_words(run) do
-    gettext("Attempt %{attempt} · %{workflow} · round %{round} · %{verdict}",
-      attempt: Format.number(run.number),
+    rich_gettext("%{attempt} · %{workflow} · round %{round} · %{verdict}",
+      attempt: WorkItemComponents.attempt_words(run),
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
-      verdict: shows_words(run.shows)
+      verdict: if(run.shows == :running, do: running_word(%{}), else: shows_words(run.shows))
     )
+  end
+
+  defp running_word(assigns) do
+    ~H"""
+    <span class="text-info-soft-content">{shows_words(:running)}</span>
+    """
   end
 
   defp shows_words(:passed), do: gettext("passed")

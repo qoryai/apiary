@@ -175,7 +175,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(lv, "#run-details #rail-command")
       assert has_element?(lv, "#run-details #rail-record")
       refute has_element?(lv, "#run-details #rail-policy")
-      assert has_element?(lv, "#run-number", Integer.to_string(run.number))
+      assert has_element?(lv, "#run-id", run.public_id)
       refute html =~ "Policy in force"
     end
   end
@@ -195,7 +195,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       html = render(lv)
       refute_policy(html)
 
-      assert has_element?(lv, "#run-#{run.number} .q-rl-denied", "1")
+      assert has_element?(lv, "#run-#{run.public_id} .q-rl-denied", "1")
       refute has_element?(lv, "#runs-page a[href*='/policy']")
     end
   end

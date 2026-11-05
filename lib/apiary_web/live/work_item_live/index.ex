@@ -211,6 +211,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   can_act={@can_act}
                   now={@now}
                   statuses={@stage_statuses}
+                  confirmers={@confirmers}
                 />
               </.stage_band>
             <% true -> %>
@@ -228,6 +229,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                     can_act={@can_act}
                     now={@now}
                     statuses={@stage_statuses}
+                    confirmers={@confirmers}
                   />
                 </.stage_group>
               </div>
@@ -244,6 +246,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   can_act={@can_act}
                   now={@now}
                   statuses={@stage_statuses}
+                  confirmers={@confirmers}
                 />
               </.stage_group>
               <.stage_band
@@ -265,6 +268,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   can_act={@can_act}
                   now={@now}
                   statuses={@stage_statuses}
+                  confirmers={@confirmers}
                 />
               </.stage_band>
               <ul
@@ -279,6 +283,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
                   can_act={@can_act}
                   now={@now}
                   statuses={@stage_statuses}
+                  confirmers={@confirmers}
                 />
               </ul>
               <.work_items_pager
@@ -303,12 +308,16 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   attr :now, :any, required: true
   attr :statuses, :map, default: %{}, doc: "`ApiaryWeb.WorkItemLive.Workflow.row_statuses/3`"
 
+  attr :confirmers, :map,
+    default: %{},
+    doc: "`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`"
+
   defp rows(assigns) do
     ~H"""
     <.work_item_row
       :for={row <- @rows}
       id={"work-item-#{row.id}"}
-      work_item={work_item(row, @people, @scope)}
+      work_item={work_item(row, @people, @scope, @confirmers[row.id])}
       integration={row.integration}
       navigate={work_item_path(@scope, row)}
       can_act={@can_act}
@@ -338,6 +347,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
        board: nil,
        groups: nil,
        stage_statuses: %{},
+       confirmers: %{},
        people: %{},
        waiting: nil,
        now: DateTime.utc_now(),
@@ -441,7 +451,17 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       end
 
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
-    people = people(rows, one_owner(params), socket.assigns.options.owner)
+
+    # Where the stage of a row's work item lists its approvers, who confirms next at
+    # Explore's gate, as the work item's page shows it, wherever `Apiary.Access` applies
+    # the list (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`).
+    confirmers =
+      if Apiary.Features.on?(:workflow_model),
+        do: Workflow.row_confirmers(scope, rows),
+        else: %{}
+
+    approvers = for {_id, [_ | _] = ids} <- confirmers, id <- ids, do: id
+    people = people(rows, one_owner(params), socket.assigns.options.owner, approvers)
 
     # Under the board the Open view groups its rows by stage.
     groups =
@@ -455,6 +475,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
       board: board,
       groups: groups,
       stage_statuses: stage_statuses,
+      confirmers: confirmers,
       list: list,
       bands: bands,
       people: people,
@@ -532,13 +553,13 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # The people the rows name, their owners and who ended them, and the one owner the list
   # is filtered to (`one_owner/1`), whom Confirm's line names, by account id, with the
   # owners the Filter menu offers: `%{id => address}`.
-  defp people(rows, owner, offered) do
+  defp people(rows, owner, offered, approvers) do
     known = Map.new(offered, &{&1.key, &1.label})
 
     ids =
       rows
       |> Enum.flat_map(&[&1.owner_id, &1.ended_by_id])
-      |> Enum.concat([owner])
+      |> Enum.concat([owner | approvers])
       |> Enum.reject(&(is_nil(&1) or Map.has_key?(known, &1)))
       |> Enum.uniq()
 
@@ -567,8 +588,9 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   ## Rows
 
   # A row as the components draw a work item.
-  defp work_item(row, people, scope) do
+  defp work_item(row, people, scope, confirmers) do
     %{
+      confirmers: row_confirmers(confirmers, people, scope),
       number: row.number,
       title: row.title,
       test: row.test,
@@ -585,6 +607,10 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     }
   end
 
+  # Who confirms next on a row: `:you`, the approvers by name, or nil for the owner rule.
+  defp row_confirmers([_ | _] = ids, people, scope), do: Enum.map(ids, &person(people, &1, scope))
+  defp row_confirmers(confirmers, _people, _scope), do: confirmers
+
   defp status(%{state: :exploring, status: status}), do: status
   defp status(%{state: state}), do: state
 
@@ -594,16 +620,18 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp reason(_reason), do: nil
 
   # What waits at Confirm, on the strip and Confirm's band: for the reader where any waits
-  # for them, else for the one owner the list is filtered to, else for a member.
+  # for them, else for the one owner the list is filtered to where no gate lists approvers,
+  # else for a member.
   defp waiting(%{waiting_you: n}, _params, _people) when n > 0, do: %{count: n, for: :you}
 
-  defp waiting(%{waiting: n}, params, people) when n > 0 do
+  defp waiting(%{waiting: n, waiting_listed: 0}, params, people) when n > 0 do
     case one_owner(params) do
       nil -> %{count: n, for: :member}
       id -> %{count: n, for: People.short(Map.get(people, id) || People.former_member())}
     end
   end
 
+  defp waiting(%{waiting: n}, _params, _people) when n > 0, do: %{count: n, for: :member}
   defp waiting(_stages, _params, _people), do: nil
 
   # The one owner the list is filtered to, as the id `Ecto.UUID.cast/1` gives for the

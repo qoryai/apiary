@@ -24,7 +24,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
   defp runs(scope, query \\ ""), do: workspace_path(scope, "/runs") <> query
 
-  defp row(run), do: "#run-#{run.number}"
+  defp row(run), do: "#run-#{run.public_id}"
 
   # The id of a target, acme/shop on github.example unless given, as the address writes it.
   defp tg(scope, system \\ "github.example", path \\ "acme/shop"),
@@ -841,6 +841,25 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       requeued = started_run(scope, %{}, ago: 40)
 
+      # A send of the review comments, at the gate and while questions wait, on a second
+      # work item.
+      sent_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Send them"})
+      queue_run!(scope, started_run(scope, %{}, ago: 65), work_item: sent_item)
+
+      for attempt <- [1, 2] do
+        work_item_event!(sent_item, :answered, user, %{
+          "take_in" => 1,
+          "attempt" => attempt,
+          "count" => 1,
+          "review_comments" => ["c1"]
+        })
+      end
+
+      at_gate = started_run(scope, %{}, ago: 64)
+      queue_run!(scope, at_gate, work_item: sent_item, attempt: 2)
+      while_asked = started_run(scope, %{}, ago: 63)
+      queue_run!(scope, while_asked, work_item: sent_item, attempt: 3)
+
       queue_run!(scope, requeued,
         work_item: work_item,
         attempt: 4,
@@ -876,6 +895,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       for {run, words} <- [
             {first, "Taken in by #{name}"},
             {answered, "Attempt 2 of 3, after answers from #{name}"},
+            {at_gate, "Attempt 2 of 3, after a comment from #{name}"},
+            {while_asked, "Attempt 3 of 3, after a comment from #{name}"},
             {again, "Explore again by #{name}"},
             {requeued, "Queued again after a missing image"},
             {second, "Taken in again by #{name}"},
@@ -2669,7 +2690,18 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
       assert has_element?(view, "#runs-preview h2", "Run #{older.number}")
 
-      theirs = started_run(scope_fixture(), shop())
+      # A number this workspace has not got: the highest here, and one more over there.
+      other = scope_fixture()
+
+      %{rows: [[highest]]} =
+        Repo.query!("SELECT max(number) FROM runs WHERE workspace_id = $1", [
+          Ecto.UUID.dump!(scope.workspace.id)
+        ])
+
+      theirs =
+        Enum.map(0..highest, fn _ -> started_run(other, shop()) end) |> List.last()
+
+      assert theirs.number == highest + 1
       view = open(conn, runs(scope, "?run=#{theirs.number}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)

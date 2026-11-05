@@ -74,6 +74,14 @@ defmodule Apiary.Runs do
     Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id, id))
   end
 
+  @doc "Ends `subscribe/2` for one run of the scope's workspace."
+  def unsubscribe(%Scope{workspace: %Workspace{id: workspace_id}}, %Run{
+        id: id,
+        workspace_id: workspace_id
+      }) do
+    Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id, id))
+  end
+
   @doc false
   def broadcast_changed(%Run{} = run) do
     broadcast_touched(run)
@@ -130,7 +138,7 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's workspace by its `public_id`, `rn_…`, the id the API gives;
+  One run of the scope's workspace by its `public_id`, `rn_` and 16 characters, the id in the API;
   raises `Ecto.NoResultsError` when the workspace has none such, which a run of
   another workspace and a malformed id both are, the node's run id among them.
   """
@@ -141,9 +149,9 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's workspace by `param`: its number (`Run.parse_number/1`), the
-  form the run's URL carries, or its `public_id`, `rn_…`; nil for a run the workspace has
-  not got, a run of another workspace among them, and for anything of neither shape.
+  One run of the scope's workspace by `param`: its number in that workspace
+  (`Run.parse_number/1`), the form in the run's URL, or its `public_id`, `rn_` and 16
+  characters; nil for a number or id the workspace does not have and for anything of neither shape.
   """
   @spec get_run_by_param(Scope.t(), term) :: Run.t() | nil
   def get_run_by_param(%Scope{} = scope, param) do

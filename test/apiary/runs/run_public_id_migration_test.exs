@@ -37,12 +37,13 @@ defmodule Apiary.Runs.RunPublicIdMigrationTest do
 
     Repo.query!(
       "INSERT INTO runs (id, organisation_id, workspace_id, node_run_id, state, inserted_at, " <>
-        "updated_at) VALUES ($1, $2, $3, $4, 'pending', now(), now())",
+        "updated_at, number) VALUES ($1, $2, $3, $4, 'pending', now(), now(), $5)",
       [
         Ecto.UUID.dump!(id),
         Ecto.UUID.dump!(scope.organisation.id),
         Ecto.UUID.dump!(scope.workspace.id),
-        Ecto.UUID.dump!(Ecto.UUID.generate())
+        Ecto.UUID.dump!(Ecto.UUID.generate()),
+        Apiary.RunEventsFixtures.next_run_number(scope.organisation.id, scope.workspace.id)
       ]
     )
 

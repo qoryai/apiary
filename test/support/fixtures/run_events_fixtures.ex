@@ -16,9 +16,24 @@ defmodule Apiary.RunEventsFixtures do
   @doc "`seconds` after `t0/0`."
   def at(seconds), do: DateTime.add(@t0, round(seconds * 1000), :millisecond)
 
+  @doc "The next number of the workspace's runs, for a run a test writes straight to the table."
+  def next_run_number(organisation_id, workspace_id) do
+    {:ok, number} =
+      Repo.transact(fn ->
+        {:ok,
+         Apiary.Runs.Number.next(%Apiary.Organisations.Workspace{
+           id: workspace_id,
+           organisation_id: organisation_id
+         })}
+      end)
+
+    number
+  end
+
   @doc "A pending run in the scope's workspace, as the receiver creates it on a first event."
   def run_fixture(%Scope{organisation: organisation, workspace: workspace}, attrs \\ %{}) do
     %Run{
+      number: Apiary.RunEventsFixtures.next_run_number(organisation.id, workspace.id),
       organisation_id: organisation.id,
       workspace_id: workspace.id,
       node_run_id: Ecto.UUID.generate()

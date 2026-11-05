@@ -429,7 +429,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
 
       assert shown_list(workspace) == nil
       assert audit_entries(workspace) == []
-      assert length(Artifacts.types(workspace)) == 10
+      assert length(Artifacts.types(workspace)) == 11
     end
 
     test "leaves types/1 with what the template listed and the always-on types", ctx do
@@ -438,7 +438,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       assert {:ok, workspace} = applied(ctx.workspace, template(listed), ctx.scope)
 
       assert Enum.map(Artifacts.types(workspace), & &1.name) ==
-               ~w(screenshot proposal questions verdict customer-facts reply-draft)
+               ~w(screenshot proposal questions review-comments verdict customer-facts reply-draft)
     end
 
     @tag needs: :workflow_model

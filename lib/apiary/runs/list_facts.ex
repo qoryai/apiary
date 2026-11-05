@@ -56,7 +56,7 @@ defmodule Apiary.Runs.ListFacts do
     * `{:answers, attempt, of, person}`, a run queued by answers to the questions of the
       run before it, by who answered;
     * `{:comment, attempt, of, person}`, a run queued by a comment on the proposal of the
-      run before it, by who commented;
+      run before it, or by a send of the review comments, by who commented or sent them;
     * `{:explore_again, person}`, a run queued by Explore again, by who asked;
     * `:process`, any other run the stage runner placed.
 
@@ -304,6 +304,12 @@ defmodule Apiary.Runs.ListFacts do
   defp answers_event(events, row), do: find(events, :answered, row.take_in, row.attempt - 1)
 
   defp answers(row, %{actor_kind: :person, actor_id: id, data: %{"comment" => true}})
+       when is_binary(id),
+       do: {:comment, row.attempt, row.of, id}
+
+  # A send of the review comments, at the gate or while the questions wait, answers no
+  # question: the run reads as queued by a comment.
+  defp answers(row, %{actor_kind: :person, actor_id: id, data: %{"review_comments" => _}})
        when is_binary(id),
        do: {:comment, row.attempt, row.of, id}
 

@@ -349,6 +349,30 @@ defmodule Apiary.Dispatches.SchemaTest do
       end
     end
 
+    test "has, ended lost, the outcome questions alone, for questions left open", %{
+      scope: scope
+    } do
+      run = queued!(scope)
+
+      for outcome <- ~w(proposal error none refused) do
+        refused("dispatch_runs_result_outcome_check", fn ->
+          update!(
+            "dispatch_runs",
+            run.id,
+            "state = 'ended', end_cause = 'lost', result_outcome = $2",
+            [outcome]
+          )
+        end)
+      end
+
+      assert %{num_rows: 1} =
+               update!(
+                 "dispatch_runs",
+                 run.id,
+                 "state = 'ended', end_cause = 'lost', result_outcome = 'questions'"
+               )
+    end
+
     test "keeps a result, a JSON object of at most 1 MiB, with a proposal or questions alone",
          %{scope: scope} do
       run = queued!(scope)

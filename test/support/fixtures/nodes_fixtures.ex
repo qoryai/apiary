@@ -495,8 +495,12 @@ defmodule Apiary.NodesFixtures do
   """
   def node_run_fixture(%Node{} = node, instance_id, attrs \\ %{}) do
     now = DateTime.utc_now()
+    attrs = Map.new(attrs)
+    organisation_id = Map.get(attrs, :organisation_id, node.organisation_id)
+    workspace_id = Map.get(attrs, :workspace_id, node.workspace_id)
 
     %Run{
+      number: Apiary.RunEventsFixtures.next_run_number(organisation_id, workspace_id),
       organisation_id: node.organisation_id,
       workspace_id: node.workspace_id,
       node_run_id: Ecto.UUID.generate(),

@@ -50,7 +50,7 @@ defmodule ApiaryWeb.RunLive.RunCodePagesTest do
   test "the runs list shows the run", %{conn: conn, scope: scope, run: run} do
     {:ok, view, _html} = live(conn, workspace_path(scope, "/runs"))
     render_async(view)
-    assert has_element?(view, "#run-#{run.number}")
+    assert has_element?(view, "#run-#{run.public_id}")
   end
 
   test "the overview shows the run lost, never picked up, once its code expires",
@@ -65,13 +65,13 @@ defmodule ApiaryWeb.RunLive.RunCodePagesTest do
     render_async(view, 5_000)
 
     assert view
-           |> element("#att-run-#{run.number}")
+           |> element("#att-run-#{run.public_id}")
            |> render() =~ "Lost, never posted its exit"
 
     assert view
            |> render()
            |> LazyHTML.from_fragment()
-           |> LazyHTML.query("#att-run-#{run.number} .q-ar-why")
+           |> LazyHTML.query("#att-run-#{run.public_id} .q-ar-why")
            |> LazyHTML.attribute("title") == [@never]
   end
 end

@@ -251,9 +251,9 @@ defmodule Apiary.Stages.RunnerTest do
                {"explore-a-ticket", 0, 0, 2}
     end
 
-    test "questions in the loop's last round escalate round_limit" do
+    test "questions in the loop's last round wait for answers too" do
       outcome = Runner.step(explore(), pos(0, 0, 3), {:run, {:questions, "Which page?"}})
-      assert outcome.actions == [{:escalate, :round_limit, "Which page?"}]
+      assert %{state: :waiting_answers, actions: []} = outcome
     end
 
     test "escalate and a stopped run escalate inside a loop too" do

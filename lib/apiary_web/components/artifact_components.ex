@@ -18,6 +18,7 @@ defmodule ApiaryWeb.ArtifactComponents do
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Type, Version}
   alias Apiary.Runs.Run
   alias ApiaryWeb.People
+  alias ApiaryWeb.WorkItemComponents
 
   # The content types an image view shows inline: raster formats only.
   @inline_images ~w(image/png image/jpeg image/gif image/webp)
@@ -84,6 +85,20 @@ defmodule ApiaryWeb.ArtifactComponents do
     end
   end
 
+  @doc """
+  documents/2 is the files of `version` that its document view shows: of a `proposal`,
+  its Markdown files (`text/markdown`), so an image or `sources.json` of the version is
+  never shown as a document; of any other type, every file.
+  """
+  @spec documents(Type.t(), Version.t()) :: [ArtifactFile.t()]
+  def documents(%Type{name: "proposal"}, %Version{files: files}),
+    do: Enum.filter(files, &markdown?/1)
+
+  def documents(_type, %Version{files: files}), do: files
+
+  defp markdown?(%ArtifactFile{content_type: type}),
+    do: is_binary(type) and String.starts_with?(type, "text/markdown")
+
   ## The plain list
 
   @doc """
@@ -116,6 +131,8 @@ defmodule ApiaryWeb.ArtifactComponents do
       `outputs`). A type with no entry shows no check.
     * `add`: whether the reader may add a version by hand (`artifact.write`); true shows
       Add a version, which needs `scope` and `number`.
+    * `round`: whether a run's writer shows its round (`writer/2`); false on the Explore
+      tab.
   """
   attr :id, :string, required: true
   attr :artifacts, :list, required: true
@@ -123,6 +140,7 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :number, :any, default: nil
   attr :checks, :map, default: %{}
   attr :add, :boolean, default: false
+  attr :round, :boolean, default: true
 
   def list(assigns) do
     assigns = assign(assigns, :links?, assigns.scope != nil and assigns.number != nil)
@@ -153,7 +171,7 @@ defmodule ApiaryWeb.ArtifactComponents do
           <span class="text-[12.5px]/5 text-muted">
             {ngettext("%{number} file", "%{number} files", length(newest.files),
               number: Format.number(length(newest.files))
-            )} · <.made_by version={newest} scope={@scope} />
+            )} · <.made_by version={newest} scope={@scope} round={@round} />
           </span>
         </li>
       </ul>
@@ -207,37 +225,40 @@ defmodule ApiaryWeb.ArtifactComponents do
     do: gettext("%{type} %{name} v%{number}", type: type, name: name, number: number)
 
   @doc """
-  writer/1 is who made a version, in words: a person's email address, "Former member"
+  writer/2 is who made a version, in words: a person's email address, "Former member"
   for an account that is gone; for a run, "Run" and the number of the run its claim
-  registered (`Apiary.Runs.Run`) and the round where the run of the queue has one, such
-  as "Run 14 · round 2", or "A run" where no run is registered or read.
+  registered (`Apiary.Runs.Run`), and the round where the run of the queue has one and
+  `round` is true, such as "Run 14 · round 2" or "Run 14"; "A run" where no run is
+  registered or read. The Explore tab passes `round` false: inside a work item, its
+  runs count by attempt.
   """
-  @spec writer(Version.t()) :: String.t()
-  def writer(%Version{writer: :person, user: %Apiary.Accounts.User{} = user}),
+  @spec writer(Version.t(), boolean) :: String.t()
+  def writer(version, round \\ true)
+
+  def writer(%Version{writer: :person, user: %Apiary.Accounts.User{} = user}, _round),
     do: People.email(user)
 
-  def writer(%Version{writer: :person}), do: People.former_member()
+  def writer(%Version{writer: :person}, _round), do: People.former_member()
 
-  def writer(%Version{writer: :run, run: %{run: %Run{number: number}, round: round}})
+  def writer(%Version{writer: :run, run: %{run: %Run{number: number}, round: round}}, true)
       when is_integer(number) and is_integer(round),
-      do:
-        gettext("Run %{run} · round %{round}",
-          run: number,
-          round: Format.number(round)
-        )
+      do: gettext("Run %{run} · round %{round}", run: number, round: Format.number(round))
 
-  def writer(%Version{writer: :run, run: %{run: %Run{number: number}}}) when is_integer(number),
-    do: gettext("Run %{run}", run: number)
+  def writer(%Version{writer: :run, run: %{run: %Run{number: number}}}, _round)
+      when is_integer(number),
+      do: gettext("Run %{run}", run: number)
 
-  def writer(%Version{writer: :run}), do: gettext("A run")
+  def writer(%Version{writer: :run}, _round), do: gettext("A run")
 
   @doc """
-  made_by/1 is who made a version (`writer/1`); for a run, a link to the run's page where
-  `scope` is given, a run is registered, and the reader may read the workspace's runs
-  (`run.read`, `Apiary.Access.can?/3`); else its words.
+  made_by/1 is who made a version (`writer/2`, with its round where `round` is true); for
+  a run, a link to the run's page where `scope` is given, a run is registered, and the
+  reader may read the workspace's runs (`run.read`, `Apiary.Access.can?/3`); else its
+  words.
   """
   attr :version, Version, required: true
   attr :scope, :any, default: nil
+  attr :round, :boolean, default: true
 
   def made_by(
         %{version: %Version{writer: :run, run: %{run: %Run{number: number}}}, scope: %{}} =
@@ -248,22 +269,25 @@ defmodule ApiaryWeb.ArtifactComponents do
       assign(
         assigns,
         :link?,
-        Apiary.Access.can?(assigns.scope, :"run.read", assigns.scope.workspace)
+        # A work item moves with its artifacts and its runs stay: a number in this address
+        # would be another run's, of the workspace the reader is in.
+        assigns.version.run.workspace_id == assigns.scope.workspace.id and
+          Apiary.Access.can?(assigns.scope, :"run.read", assigns.scope.workspace)
       )
 
     ~H"""
-    <span :if={!@link?}>{writer(@version)}</span>
+    <span :if={!@link?}>{writer(@version, @round)}</span>
     <.link
       :if={@link?}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@version.run.run}"}
       class="text-accent"
     >
-      {writer(@version)}
+      {writer(@version, @round)}
     </.link>
     """
   end
 
-  def made_by(assigns), do: ~H"{writer(@version)}"
+  def made_by(assigns), do: ~H"{writer(@version, @round)}"
 
   ## A version's files
 
@@ -297,17 +321,19 @@ defmodule ApiaryWeb.ArtifactComponents do
   @doc """
   view/1 is a version shown by its type's base view:
 
-    * document: the Markdown file `shown`, the first unless given, rendered
-      (`ApiaryWeb.ArtifactLive.Markdown`), with Mermaid diagrams drawn in the browser
-      (`assets/js/hooks/mermaid.js`); with more than one file, a list of the files above
-      it, each other file a button that sends `show-document` with its filename;
+    * document: the Markdown file `shown` of the version's documents (`documents/2`),
+      the first unless given, rendered (`ApiaryWeb.ArtifactLive.Markdown`), with Mermaid
+      diagrams drawn in the browser (`assets/js/hooks/mermaid.js`); with more than one
+      document, a list of them above it, each other document a button that sends
+      `show-document` with its filename;
     * image: PNG, JPEG, GIF and WebP inline from the download address; an SVG as a
       download only;
     * video: each MP4 or WebM file with the controls, the version's WebVTT files as its
       captions;
     * file: the downloads;
     * structured: the JSON document as a table, nested objects and lists as nested
-      rows, every value as text; a `change`'s `url` is a link where it is `http` or `https`.
+      rows, every value as text; a `change`'s `url` is a link where it is `http` or `https`,
+      and a `questions` document's `context` is Markdown, as on Explore's tab.
 
   `content` is what the page read of the files, a map from filename: for a document,
   `{:markdown, rendered}` (`ApiaryWeb.ArtifactLive.Markdown.render/1`) or `:too_large`;
@@ -331,19 +357,19 @@ defmodule ApiaryWeb.ArtifactComponents do
     do: ~H|<div id={"#{@id}-pending"} class="min-h-6"></div>|
 
   def view(%{type: %Type{base_view: :document}} = assigns) do
-    files = assigns.version.files
+    files = documents(assigns.type, assigns.version)
     index = Enum.find_index(files, &(&1.filename == assigns.shown)) || 0
-    assigns = assign(assigns, index: index, file: Enum.at(files, index))
+    assigns = assign(assigns, files: files, index: index, file: Enum.at(files, index))
 
     ~H"""
     <div class="grid gap-4">
       <nav
-        :if={length(@version.files) > 1}
+        :if={length(@files) > 1}
         id={"#{@id}-documents"}
         aria-label={gettext("Documents of this version")}
       >
         <ul class="flex flex-wrap gap-x-4 gap-y-1 text-[13px]/5">
-          <li :for={{file, at} <- Enum.with_index(@version.files)}>
+          <li :for={{file, at} <- Enum.with_index(@files)}>
             <span :if={at == @index} class="font-medium break-all" aria-current="true">
               {file.filename}
             </span>
@@ -369,10 +395,17 @@ defmodule ApiaryWeb.ArtifactComponents do
         data-script={@script}
         data-alt={gettext("Diagram")}
         data-source={gettext("Diagram source")}
+        data-not-drawn={gettext("Qory Apiary does not draw this diagram, so it is shown as written.")}
         data-failed={gettext("This diagram has an error, so it is shown as written.")}
       >
         <section class="grid gap-2" aria-label={@file.filename}>
-          <.document text={content(@content, @file)} file={@file} path={@path} />
+          <.document
+            id={"#{@id}-#{@index}"}
+            text={content(@content, @file)}
+            file={@file}
+            path={@path}
+            proposal={@type.name == "proposal"}
+          />
         </section>
       </div>
     </div>
@@ -449,7 +482,7 @@ defmodule ApiaryWeb.ArtifactComponents do
       <.structured
         :for={file <- @version.files}
         content={content(@content, file)}
-        change={@type.view == :change}
+        view={@type.view}
       />
     </div>
     """
@@ -460,17 +493,32 @@ defmodule ApiaryWeb.ArtifactComponents do
   defp content(:pending, _file), do: :pending
   defp content(content, file), do: Map.get(content, file.filename)
 
+  attr :id, :string, required: true
   attr :text, :any, required: true
   attr :file, ArtifactFile, required: true
   attr :path, :any, required: true
+  attr :proposal, :boolean, required: true
 
+  # A proposal's Sources are a closed fold under its text, as on Explore's tab. Another
+  # type's document shows a `## Sources` heading as any other heading.
   defp document(%{text: {:markdown, rendered}} = assigns) do
-    assigns = assign(assigns, :rendered, rendered)
+    {rendered, sources, count} =
+      if assigns.proposal,
+        do: WorkItemComponents.split_sources(rendered),
+        else: {rendered, nil, 0}
+
+    assigns = assign(assigns, rendered: rendered, sources: sources, count: count)
 
     ~H"""
     <%= case @rendered do %>
       <% {:html, html} -> %>
         <div class="q-ticket-formatted">{html}</div>
+        <WorkItemComponents.sources_fold
+          :if={@sources}
+          id={"#{@id}-sources"}
+          sources={@sources}
+          count={@count}
+        />
       <% {:as_written, written} -> %>
         <div class="grid gap-2">
           <p class="text-[13px]/5 text-muted">{gettext("Shown as written.")}</p>
@@ -492,12 +540,12 @@ defmodule ApiaryWeb.ArtifactComponents do
   end
 
   attr :content, :any, required: true
-  attr :change, :boolean, default: false
+  attr :view, :atom, default: nil
 
   defp structured(%{content: :pending} = assigns), do: ~H|<div class="min-h-6"></div>|
 
   defp structured(%{content: {:json, value}} = assigns) do
-    {rows, _shown} = rows(value, assigns.change, 0, @max_values)
+    {rows, _shown} = rows(value, assigns.view, 0, @max_values)
     assigns = assign(assigns, rows: rows, cut: values(value, @max_values + 1) > @max_values)
 
     ~H"""
@@ -540,6 +588,8 @@ defmodule ApiaryWeb.ArtifactComponents do
                 <.value_table rows={nested} />
               <% {:link, url} -> %>
                 <.external_link href={url}>{url}</.external_link>
+              <% {:markdown, text} -> %>
+                <WorkItemComponents.run_text value={%{text: text}} key={:text} />
               <% {:null} -> %>
                 <span class="text-muted">{gettext("(none)")}</span>
               <% {:text, text} -> %>
@@ -555,38 +605,42 @@ defmodule ApiaryWeb.ArtifactComponents do
   # The rows of a JSON value, and how many values they show, at most `left` more: an
   # object's members by key, a list's items by position from 1, nested values as nested
   # rows. A scalar at the top is one row with no key.
-  defp rows(value, change, used, left) when is_map(value) do
+  defp rows(value, view, used, left) when is_map(value) do
     value
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.reduce_while({[], used}, fn {key, member}, {acc, used} ->
       if used >= left do
         {:halt, {acc, used}}
       else
-        {cell, used} = cell(member, change and key == "url", change, used + 1, left)
+        {cell, used} = cell(member, shown_as(view, key), view, used + 1, left)
         {:cont, {[%{key: Apiary.ExternalText.lines(key), value: cell} | acc], used}}
       end
     end)
     |> then(fn {acc, used} -> {Enum.reverse(acc), used} end)
   end
 
-  defp rows(value, change, used, left) when is_list(value) do
+  defp rows(value, view, used, left) when is_list(value) do
     value
     |> Enum.with_index(1)
     |> Enum.reduce_while({[], used}, fn {item, index}, {acc, used} ->
       if used >= left do
         {:halt, {acc, used}}
       else
-        {cell, used} = cell(item, false, change, used + 1, left)
+        {cell, used} = cell(item, :text, view, used + 1, left)
         {:cont, {[%{key: Integer.to_string(index), value: cell} | acc], used}}
       end
     end)
     |> then(fn {acc, used} -> {Enum.reverse(acc), used} end)
   end
 
-  defp rows(value, _change, used, _left) do
-    {cell, used} = cell(value, false, false, used + 1, used + 1)
+  defp rows(value, _view, used, _left) do
+    {cell, used} = cell(value, :text, nil, used + 1, used + 1)
     {[%{key: "", value: cell}], used}
   end
+
+  defp shown_as(:change, "url"), do: :url
+  defp shown_as(:questions, "context"), do: :markdown
+  defp shown_as(_view, _key), do: :text
 
   # How many values `rows/4` would show of a JSON value with no bound, counted up to
   # `limit`: each member or item, nested ones too, and a scalar at the top as one.
@@ -604,26 +658,29 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   defp count(_scalar, counted, _limit), do: counted
 
-  defp cell(value, _url?, change, used, left) when is_map(value) or is_list(value) do
-    {nested, used} = rows(value, change, used, left)
+  defp cell(value, _shown_as, view, used, left) when is_map(value) or is_list(value) do
+    {nested, used} = rows(value, view, used, left)
     {{:rows, nested}, used}
   end
 
-  defp cell(nil, _url?, _change, used, _left), do: {{:null}, used}
+  defp cell(nil, _shown_as, _view, used, _left), do: {{:null}, used}
 
-  defp cell(value, true, _change, used, _left) when is_binary(value) do
+  defp cell(value, :markdown, _view, used, _left) when is_binary(value),
+    do: {{:markdown, value}, used}
+
+  defp cell(value, :url, _view, used, _left) when is_binary(value) do
     if web_url?(value),
       do: {{:link, value}, used},
       else: {{:text, Apiary.ExternalText.lines(value)}, used}
   end
 
-  defp cell(value, _url?, _change, used, _left) when is_binary(value),
+  defp cell(value, _shown_as, _view, used, _left) when is_binary(value),
     do: {{:text, Apiary.ExternalText.lines(value)}, used}
 
-  defp cell(value, _url?, _change, used, _left) when is_boolean(value),
+  defp cell(value, _shown_as, _view, used, _left) when is_boolean(value),
     do: {{:text, if(value, do: "true", else: "false")}, used}
 
-  defp cell(value, _url?, _change, used, _left), do: {{:text, to_string(value)}, used}
+  defp cell(value, _shown_as, _view, used, _left), do: {{:text, to_string(value)}, used}
 
   # An absolute `http` or `https` URL with a host and no user name or password.
   defp web_url?(url) do

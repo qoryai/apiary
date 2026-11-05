@@ -10,7 +10,7 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.Dispatches.{DispatchRun, Settle}
+  alias Apiary.Dispatches.Settle
   alias Apiary.WorkItems.{Confirmation, Explore, WorkItem}
 
   @moduletag needs: :factory
@@ -22,7 +22,8 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
 
   # A work item whose current take in has the runs `runs` gives, each `explore_run_fixture/2`
   # options, its last of attempt `attempt` when given; each run ended `run_ended` and
-  # settled has what it gave stored. `confirmed: true` confirms the take in.
+  # settled has what it gave stored: a run after one that pushed a proposal, which pushed
+  # none, still stands at that proposal. `confirmed: true` confirms the take in.
   defp work_item!(scope, runs, opts \\ []) do
     work_item = work_item_fixture(scope)
 
@@ -31,16 +32,8 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
       if Keyword.get(run_opts, :settle, true), do: Settle.settle(dispatch_run.id)
     end
 
-    if Keyword.get(opts, :cleared), do: clear!(work_item)
     if Keyword.get(opts, :confirmed), do: confirm!(work_item)
     work_item
-  end
-
-  # The result of each of its runs cleared, as retention clears it.
-  defp clear!(work_item) do
-    Repo.update_all(from(d in DispatchRun, where: d.work_item_id == ^work_item.id),
-      set: [result: nil]
-    )
   end
 
   defp confirm!(work_item) do
@@ -55,8 +48,8 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
     })
   end
 
-  # Two earlier runs that gave questions, and the run limit is 3.
-  defp at_limit(last), do: [[result: questions_result()], [result: questions_result()], last]
+  # Two earlier runs that gave no result, and the run limit is 3.
+  defp at_limit(last), do: [[], [], last]
 
   defp cases do
     unsettled = [
@@ -75,19 +68,17 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
       {:confirm, [[result: understood_result(), run: %{state: "cancelled"}]], []},
       {:questions, [[result: questions_result()]], []},
       {:no_result, [[]], []},
-      {:no_result, [[result: {:data, %{"is_error" => true, "result" => "{}"}}]], []},
-      {:no_result, [[result: {:data, %{"is_error" => false, "result" => "not json"}}]], []},
       {:no_result, [[end_cause: :ticket_gone]], []},
       {:no_result, [[end_cause: :inputs_invalid]], []},
-      {:no_result, [[result: understood_result()]], cleared: true},
-      {:no_result, [[result: questions_result()]], cleared: true},
+      {:confirm, [[result: understood_result()], []], []},
       {:lost, [[end_cause: :lost]], []},
       {:lost, [[run: %{state: "lost", lost_at: DateTime.utc_now()}]], []},
       {:cancelled, [[end_cause: :released]], []},
       {:cancelled, [[end_cause: :closed]], []},
       {:cancelled, [[end_cause: :undone]], []},
       {:cancelled, [[run: %{state: "cancelled"}]], []},
-      {:used_up, at_limit(result: questions_result()), []},
+      # Open questions wait for answers at any count of runs.
+      {:questions, at_limit(result: questions_result()), []},
       {:used_up, at_limit([]), []},
       {:used_up, at_limit(end_cause: :lost), []},
       {:used_up, at_limit(end_cause: :released), []},
@@ -127,8 +118,13 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
   end
 
   test "reads the current take in alone, its latest run", %{scope: scope} do
-    work_item = work_item!(scope, [[result: understood_result()], []])
-    assert Explore.statuses([work_item.id]) == %{work_item.id => :no_result}
+    work_item =
+      work_item!(scope, [
+        [result: understood_result()],
+        [run: %{state: "lost", exit_state: "lost"}]
+      ])
+
+    assert Explore.statuses([work_item.id]) == %{work_item.id => :lost}
 
     # A take in again: its runs are of take in 2, and the proposal of take in 1 counts no more.
     Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [take_in: 2])

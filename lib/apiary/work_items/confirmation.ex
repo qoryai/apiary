@@ -3,8 +3,9 @@ defmodule Apiary.WorkItems.Confirmation do
   # item made (`Apiary.WorkItems.Moves`), at most one per take in. It makes the work item
   # ready for Shape.
   #
-  # `take_in` and `attempt` name the run. `result` is the run's result as Qory read it
-  # (`Apiary.Explore.Result`), kept so the proposal outlives the run's events.
+  # `take_in` and `attempt` name the run. `result` is `%{"proposal_version" => n}`, the
+  # version of the work item's proposal confirmed; a confirmation written before Explore's
+  # runs pushed their proposal as an artifact keeps the run's result, with its `message`.
   # `confirmed_by_id` is the member, nil once their account's row is gone, and
   # `confirmed_at` when. A confirmation is of its work item's workspace, held to it by the
   # composite key, and follows it, as its events do.

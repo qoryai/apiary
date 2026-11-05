@@ -2,11 +2,12 @@ defmodule Apiary.Runs.Run do
   @moduledoc """
   A run as the workspace knows it: the projection of the run's events.
 
-  `number` is the run's number, unique on the server and set by the database when the row
-  is created: the console names and addresses a run by it, "Run 18342" at
-  `/:org/:workspace/runs/18342`. `public_id` is the run's id in the API, `rn_` and sixteen
-  characters (`Apiary.PublicId`). The application sets it when it creates the row; the
-  column's default, `run_public_id()`, is the same shape.
+  `number` is the run's number, unique in its workspace, from a counter of the workspace's
+  runs: the console shows a run by it and uses it in the run's address, "Run 3" at
+  `/:org/:workspace/runs/3`. `public_id` is the run's id on the whole server and in the
+  API, `rn_` and sixteen characters (`Apiary.PublicId`), by which support and diagnostics
+  find a run. The application sets it when it creates the row; the column's default,
+  `run_public_id()`, is the same shape.
 
   `node_run_id` is the node's run id, an external id: the run's id as its node gave it,
   `run_id` and the subject of the run's events in the server contract, unique within the
@@ -42,9 +43,10 @@ defmodule Apiary.Runs.Run do
   @derive {Phoenix.Param, key: :number}
   schema "runs" do
     field :public_id, :string, read_after_writes: true
-    # The run's number on the server, from 1, never twice: the column's default takes the
-    # next of the sequence `runs_number_seq` when the run is inserted. The console
-    # addresses and names a run by it ("Run 18342", `/:org/:workspace/runs/18342`).
+    # The run's number in its workspace, from 1, never twice. This release's code takes it
+    # from `Apiary.Runs.Number` in the insert's transaction. An insert with no number gets
+    # one from the trigger `runs_number_from_counter`, and Ecto reads it back. The console
+    # shows a run by it and uses it in the run's address ("Run 3", `/:org/:workspace/runs/3`).
     field :number, :integer, read_after_writes: true
     field :node_run_id, Ecto.UUID
 

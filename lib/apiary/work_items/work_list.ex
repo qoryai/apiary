@@ -17,10 +17,17 @@ defmodule Apiary.WorkItems.WorkList do
   # Shape once confirmed, Explore otherwise.
   #
   # **Views:** `:open`, the live work items, of one stage with `stage:`; `:you`, those that
-  # wait for the reader: the live work items the reader owns whose proposal waits at
-  # Confirm, as the sidebar counts them (`waiting_on/1`); `:closed`, those closed or
-  # undone. The counts of each view and each stage come from one grouped query,
+  # wait for the reader, as the sidebar counts them (`waiting_on/1`); `:closed`, those
+  # closed or undone. The counts of each view and each stage come from one grouped query,
   # under the same search and filters as the page, without its view and stage.
+  #
+  # **Who a work item waits for.** A live work item whose proposal waits at Confirm waits
+  # for the approvers its stage's gate lists, and for its owner where the gate lists no
+  # one. `gates/2` reads the process versions once, and checks with `Apiary.Access` whether
+  # the reader may confirm at each gate that lists approvers; `waits_for_reader/2` applies
+  # the results in the query, so the count, the view and the row
+  # (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`) follow one rule, with no query per
+  # work item.
   #
   # **A row** is a plain map: the work item's public id (`id`), its number in the
   # workspace, its title as taken in, its ticket's key at the source or nil, shown as text
@@ -57,13 +64,44 @@ defmodule Apiary.WorkItems.WorkList do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Repo, WorkItems}
+  alias Apiary.{Access, Features, Processes, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Filters
+  alias Apiary.Stages.Approvers
   alias Apiary.WorkItems.{Explore, WorkItem, WorkItemEvent}
+
+  # Whether the work item `w` stands at a gate of `keys` (`gates/2`): a placed work item,
+  # on its process version, or the current one where it has none, at its stage.
+  defmacrop at_gate(w, gates, keys) do
+    quote do
+      fragment(
+        "coalesce(? IS NOT NULL AND coalesce(?::text, ?) || ':' || ? = ANY(?), false)",
+        unquote(w).stage_state,
+        unquote(w).process_version_id,
+        type(^unquote(gates).current, :string),
+        unquote(w).stage_id,
+        type(^unquote(keys), {:array, :string})
+      )
+    end
+  end
+
+  # Whether the work item `w`, at Confirm, waits for the reader of `gates` (`gates/2`): at
+  # a gate that lists approvers, where the reader may confirm there; else where the reader
+  # owns it.
+  defmacrop waits_for_reader(w, gates) do
+    quote do
+      fragment(
+        "CASE WHEN ? THEN TRUE WHEN ? THEN FALSE ELSE ? = ? END",
+        at_gate(unquote(w), unquote(gates), unquote(gates).you),
+        at_gate(unquote(w), unquote(gates), unquote(gates).listed),
+        unquote(w).owner_id,
+        type(^unquote(gates).reader, :binary_id)
+      )
+    end
+  end
 
   @page_size 50
   @band_size 8
@@ -85,6 +123,7 @@ defmodule Apiary.WorkItems.WorkList do
     no_result: 0,
     waiting: 0,
     waiting_you: 0,
+    waiting_listed: 0,
     ready: 0
   }
   @no_page %{
@@ -159,6 +198,7 @@ defmodule Apiary.WorkItems.WorkList do
           no_result: non_neg_integer,
           waiting: non_neg_integer,
           waiting_you: non_neg_integer,
+          waiting_listed: non_neg_integer,
           ready: non_neg_integer
         }
 
@@ -235,14 +275,14 @@ defmodule Apiary.WorkItems.WorkList do
     case workspace(scope) do
       {:ok, organisation_id, workspace_id} ->
         params = normalise(params)
-        reader = scope.user.id
+        gates = gates(scope, organisation_id)
         filtered = filtered(organisation_id, workspace_id, params, now)
 
         filtered
-        |> view(params.view, reader)
+        |> view(params.view, gates)
         |> stage(params.view, params.stage)
         |> page(params, order(params))
-        |> Map.merge(counts(filtered, reader))
+        |> Map.merge(counts(filtered, gates))
 
       :error ->
         @no_page
@@ -265,9 +305,9 @@ defmodule Apiary.WorkItems.WorkList do
     case workspace(scope) do
       {:ok, organisation_id, workspace_id} ->
         params = normalise(params)
-        reader = scope.user.id
+        gates = gates(scope, organisation_id)
         filtered = filtered(organisation_id, workspace_id, params, now)
-        open = view(filtered, :open, reader)
+        open = view(filtered, :open, gates)
 
         bands =
           Map.new(@stages, fn stage ->
@@ -275,20 +315,14 @@ defmodule Apiary.WorkItems.WorkList do
               open
               |> stage(:open, stage)
               |> order_by([work_item: w, explore_status: s],
-                desc:
-                  fragment(
-                    "(? = 'confirm' AND ? = ?)",
-                    s.status,
-                    w.owner_id,
-                    type(^reader, :binary_id)
-                  )
+                desc: fragment("(? = 'confirm' AND ?)", s.status, waits_for_reader(w, gates))
               )
               |> rows({params.sort, :desc}, @band_size)
 
             {stage, rows}
           end)
 
-        Map.put(counts(filtered, reader), :bands, bands)
+        Map.put(counts(filtered, gates), :bands, bands)
 
       :error ->
         @no_bands
@@ -311,7 +345,7 @@ defmodule Apiary.WorkItems.WorkList do
       {:ok, organisation_id, workspace_id} ->
         organisation_id
         |> filtered(workspace_id, normalise(params), now)
-        |> view(:open, scope.user.id)
+        |> view(:open, nil)
         |> exclude(:select)
         |> group_by([work_item: w], [w.stage_id, w.process_version_id])
         |> select([work_item: w], %{
@@ -329,8 +363,8 @@ defmodule Apiary.WorkItems.WorkList do
   def stage_counts(%Scope{}, _params, _now), do: []
 
   # waiting_on/1 is how many live work items of the scope's workspace wait for the scope's
-  # person, the view `:you` with no search and no filter: those the person owns whose
-  # proposal waits at Confirm. 0 to a person who may not read its work items.
+  # person, the view `:you` with no search and no filter. 0 to a person who may not read
+  # its work items.
   @doc false
   @spec waiting_on(Scope.t()) :: non_neg_integer
   def waiting_on(%Scope{} = scope) do
@@ -338,7 +372,7 @@ defmodule Apiary.WorkItems.WorkList do
       {:ok, organisation_id, workspace_id} ->
         organisation_id
         |> work_items(workspace_id)
-        |> view(:you, scope.user.id)
+        |> view(:you, gates(scope, organisation_id))
         |> select([work_item: w], count(w.id))
         |> Repo.one()
 
@@ -461,20 +495,50 @@ defmodule Apiary.WorkItems.WorkList do
     |> Explore.with_status()
   end
 
-  defp view(query, :open, _reader), do: where(query, [work_item: w], w.state == :exploring)
+  defp view(query, :open, _gates), do: where(query, [work_item: w], w.state == :exploring)
 
-  # The reader's live work items whose proposal waits at Confirm.
-  defp view(query, :you, reader),
+  # The live work items whose proposal waits at Confirm for the reader.
+  defp view(query, :you, gates),
     do:
       where(
         query,
         [work_item: w, explore_status: s],
-        w.state == :exploring and w.owner_id == ^reader and
-          s.status == ^Explore.status_name(:confirm)
+        w.state == :exploring and s.status == ^Explore.status_name(:confirm) and
+          waits_for_reader(w, gates)
       )
 
-  defp view(query, :closed, _reader),
+  defp view(query, :closed, _gates),
     do: where(query, [work_item: w], w.state in [:closed, :undone])
+
+  # The gates of the workspace's process versions that list approvers, for
+  # `waits_for_reader/2`, each as `version id:stage id`: `listed`, all of them; `you`, those
+  # where `Apiary.Access` allows the reader `work_item.confirm` on a work item at that gate;
+  # `current`, the id of the current version; `reader`, the reader's account id.
+  # A gate with an empty list stays with the owner, as the row does. None with the workflow
+  # model off, where `Apiary.Stages.Approvers.allows?/2` lists no one. One query.
+  defp gates(%Scope{workspace: workspace} = scope, organisation_id) do
+    versions = if Features.on?(:workflow_model), do: Processes.list_versions(workspace), else: []
+
+    listed =
+      for version <- versions,
+          %{"id" => stage_id} = stage <- version.document["stages"] || [],
+          [_ | _] <- [Approvers.listed(stage)] do
+        {"#{version.id}:#{stage_id}",
+         %WorkItem{
+           organisation_id: organisation_id,
+           workspace_id: workspace.id,
+           stage_id: stage_id,
+           process_version: version
+         }}
+      end
+
+    %{
+      reader: scope.user.id,
+      current: Enum.find_value(versions, &(&1.status == :current && &1.id)),
+      listed: Enum.map(listed, &elem(&1, 0)),
+      you: for({key, at} <- listed, Access.can?(scope, :"work_item.confirm", at), do: key)
+    }
+  end
 
   defp stage(query, :open, :explore),
     do: where(query, [explore_status: s], s.status in ^Explore.status_names(@explore_statuses))
@@ -845,8 +909,9 @@ defmodule Apiary.WorkItems.WorkList do
   defp parse_cursor(_cursor, _order), do: :error
 
   # How many work items of the query each view and each stage holds, by one grouped
-  # query: by state and status, with how many of each the reader owns.
-  defp counts(query, reader) do
+  # query: by state and status, with how many of each would wait for the reader at Confirm
+  # (`waits_for_reader/2`), and how many stand at a gate that lists approvers.
+  defp counts(query, gates) do
     query
     |> exclude(:select)
     |> group_by([work_item: w, explore_status: s], [w.state, s.status])
@@ -854,11 +919,13 @@ defmodule Apiary.WorkItems.WorkList do
       w.state,
       s.status,
       count(w.id),
-      filter(count(w.id), w.owner_id == ^reader)
+      filter(count(w.id), waits_for_reader(w, gates)),
+      filter(count(w.id), at_gate(w, gates, gates.listed))
     })
     |> Repo.all()
-    |> Enum.reduce(%{counts: @no_counts, stages: @no_stages}, fn {state, status, n, mine}, acc ->
-      add(acc, state, Explore.status_of(status), n, mine)
+    |> Enum.reduce(%{counts: @no_counts, stages: @no_stages}, fn row, acc ->
+      {state, status, n, mine, listed} = row
+      add(acc, state, Explore.status_of(status), n, {mine, listed})
     end)
   end
 
@@ -878,10 +945,11 @@ defmodule Apiary.WorkItems.WorkList do
   defp attention(acc, status, n, _mine) when status in [:no_result, :lost, :cancelled],
     do: bump(acc, :stages, :no_result, n)
 
-  defp attention(acc, :confirm, n, mine) do
+  defp attention(acc, :confirm, n, {mine, listed}) do
     acc
     |> bump(:stages, :waiting, n)
     |> bump(:stages, :waiting_you, mine)
+    |> bump(:stages, :waiting_listed, listed)
     |> bump(:counts, :you, mine)
   end
 

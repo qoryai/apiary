@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "work_item": {
+    "id": "wi_8kx2mq4vt9ab3c5d",
+    "number": 341,
+    "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
+  },
+  "run": {
+    "attempt": 3
+  },
+  "ticket": {
+    "external_ref": "TRK-77",
+    "url": "https://tracker.example.com/items/TRK-77",
+    "title": "A refund for a late order",
+    "body": "Order 4417 arrived nine days late. The customer asks for a refund.",
+    "filed_by": {
+      "name": "Alex Example",
+      "kind": "person"
+    },
+    "filed_at": "2026-10-17T09:12:00Z",
+    "collection": "Customer care"
+  },
+  "instruction": {
+    "text": "",
+    "by": {
+      "name": "Sam Example"
+    },
+    "at": "2026-10-17T09:30:00Z"
+  },
+  "comments": [
+    {
+      "by": {
+        "name": "Alex Example",
+        "kind": "person"
+      },
+      "at": "2026-10-17T11:40:00Z",
+      "body": "The customer called again this morning."
+    }
+  ],
+  "comments_omitted": 12,
+  "facts": [
+    "Order 4417 is **nine days late**, against the delivery date on the order.",
+    "The customer asks for a refund of the full amount.",
+    "The [late delivery policy](https://help.example.com/policies/late-delivery) covers a delivery more than seven days late."
+  ],
+  "target": {
+    "system": "tracker.example.com",
+    "path": "customer-care"
+  },
+  "domain": "customer-care"
+}

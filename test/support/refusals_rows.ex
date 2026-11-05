@@ -539,6 +539,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"work_item.undo",
         :"work_item.close",
         :"work_item.answer",
+        :"work_item.review_comment",
         :"work_item.confirm",
         :"work_item.explore_again",
         :"work_item.comment",

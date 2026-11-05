@@ -125,7 +125,8 @@ defmodule Apiary.Runs.Registration do
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Policy.{ComposedConfiguration, Render, RunConfiguration, Serving}
-  alias Apiary.Runs.{About, Batch, Run, RunKey, Sender}
+  alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.{About, Batch, Number, Run, RunKey, Sender}
 
   # The body's members, by the names the contract gives them.
   @version "version"
@@ -914,13 +915,24 @@ defmodule Apiary.Runs.Registration do
   # then finds no row and the public id taken by another run: that try is a collision, and
   # the insert runs again with a new id (`Apiary.PublicId.Insert`). When every try finds
   # the id taken, the registration is unavailable, as one the database fails.
+  #
+  # The run's number comes first, which locks the workspace's counter until the transaction
+  # ends. An insert that does nothing returns its number to the counter, so a repeat leaves no gap.
   defp insert(access_key, registration, meta, digest, answer, now) do
+    workspace = %Workspace{
+      id: access_key.workspace_id,
+      organisation_id: access_key.organisation_id
+    }
+
     result =
       PublicId.Insert.run(Run, fn _try ->
         public_id = Run.new_public_id()
+        number = Number.next(workspace, access_key.node)
 
         {inserted, _rows} =
-          insert_row(public_id, access_key, registration, meta, digest, answer, now)
+          insert_row(public_id, number, access_key, registration, meta, digest, answer, now)
+
+        if inserted == 0, do: Number.give_back(workspace)
 
         run =
           Repo.one(
@@ -949,13 +961,14 @@ defmodule Apiary.Runs.Registration do
     end
   end
 
-  defp insert_row(public_id, access_key, registration, meta, digest, answer, now) do
+  defp insert_row(public_id, number, access_key, registration, meta, digest, answer, now) do
     Repo.insert_all(
       Run,
       [
         %{
           id: Ecto.UUID.generate(),
           public_id: public_id,
+          number: number,
           organisation_id: access_key.organisation_id,
           workspace_id: access_key.workspace_id,
           node_run_id: registration.run_id,
