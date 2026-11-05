@@ -19,6 +19,15 @@ defmodule Apiary.AccessTest do
   @answering Apiary.AccessCase.answering([Apiary.AccessRows])
   @table Apiary.AccessCase.rows(@answering)
 
+  # An edition that sends its process the scope of an invitation's acceptance
+  # (`c:Apiary.Edition.accepted/4`).
+  defmodule SendsAcceptedScope do
+    def accepted(repo, scope, invitation, membership) do
+      send(self(), {:accepted_in, scope})
+      Apiary.Edition.module().accepted(repo, scope, invitation, membership)
+    end
+  end
+
   test "an action that is none raises" do
     assert_raise ArgumentError, fn -> Access.can?(nil, :"no.such_action", nil) end
     assert_raise ArgumentError, fn -> Access.authorize(nil, :"no.such_action", nil) end
@@ -656,6 +665,20 @@ defmodule Apiary.AccessTest do
       loaded = Apiary.Organisations.load_scope(moved, elsewhere.id)
       assert loaded.organisation.id == elsewhere.id
       assert loaded.instance_organisation_id == nil
+    end
+
+    test "an invitation's acceptance passes the edition a scope with no id", ctx do
+      moved = Access.in_instance(ctx.elsewhere)
+      assert moved.instance_organisation_id == ctx.instance.id
+
+      %{scope: inviter, organisation: organisation} = sign_up_fixture()
+      %{token: token} = invitation_fixture(inviter, %{"email" => moved.user.email})
+      :ok = Apiary.Edition.put_test_stub(SendsAcceptedScope)
+
+      assert {:ok, _membership} = Apiary.Organisations.accept_invitation(moved, token)
+
+      assert_received {:accepted_in, %Scope{instance_organisation_id: nil} = here}
+      assert here.organisation.id == organisation.id
     end
 
     test "a person in another organisation takes no instance action", ctx do

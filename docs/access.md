@@ -319,7 +319,11 @@ organisation's id, so `Apiary.Access.can?/3` reads no row for an instance action
 whatever the edition's check (`c:Apiary.Edition.check/3`) reads. `Apiary.Access.reload/2`, and
 so `Apiary.Access.authorize/3`, clears the id, and the check compares with the id read then. A
 page on `:instance` keeps this id in `@scope` until it mounts again, or until a change of the
-reader's memberships computes `@scope` again. A move to another organisation clears it too.
+reader's memberships computes `@scope` again. These moves to another organisation clear the
+id too: `Apiary.Organisations.put_reach/2`, and so `Apiary.Organisations.resolve_scope/4`;
+`Apiary.Organisations.load_scope/2`; `Apiary.Organisations.load_home_scope/2`;
+`Apiary.Organisations.accept_invitation/2`, on the scope in the invitation's organisation; and
+`Apiary.Accounts.Scope.in_organisation/2`.
 
 `Apiary.Access.instance_admin?/1` is true where `instance.read` passes in that scope, by the
 membership as the database has it now. It is for what takes no action: a page's wording, the

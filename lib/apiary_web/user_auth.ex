@@ -743,8 +743,7 @@ defmodule ApiaryWeb.UserAuth do
         workspace: nil,
         membership: nil,
         reach: nil,
-        edition: %{},
-        instance_organisation_id: nil
+        edition: %{}
     }
 
   # Every hook mounts the scope through here, so a LiveView's log lines carry the person's
