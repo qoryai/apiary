@@ -260,10 +260,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     end
   end
 
-  # What a run shows: its verdict, queued or running, its questions; an ended run with
-  # neither ended without a verdict. `Apiary.Stages.runs/1` gives no end cause, so the page
+  # What a run shows: its verdict, queued or running, its questions; a run an undo of its
+  # take in ended, undone; an ended run with neither ended without a verdict. The page
   # does not tell a run that ended with a result from one that stopped.
   defp shows(%{verdict: verdict}, _asked) when verdict in [:passed, :failed], do: verdict
+  defp shows(%{status: :ended, end_cause: :undone}, _asked), do: :undone
   defp shows(%{status: status}, _asked) when status in [:waiting, :claimed], do: :queued
   defp shows(%{status: :handed_over}, _asked), do: :running
 

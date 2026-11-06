@@ -50,6 +50,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       "a redirect or a line of text, never a page: it leads a person of the connection's " <>
         "organisation to the integration's page, and raises not found for anyone else " <>
         "(`test/apiary_web/controllers/adapter_redirect_controller_test.exs` holds it)",
+    "/work-items/:work_item_id" =>
+      "a redirect, never a page: it leads a person who may read the work item to its " <>
+        "page, and raises not found for anyone else " <>
+        "(`test/apiary_web/controllers/work_item_redirect_controller_test.exs` tests it)",
     "/docs/admin" =>
       "for an instance admin alone (`test/apiary_web/controllers/docs_controller_test.exs` " <>
         "holds it)",

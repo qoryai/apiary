@@ -174,6 +174,38 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       end
     end
 
+    test "an ended work item of another workspace: Take in again, its title with no number" do
+      work_item = %{number: nil, state: :closed, path: nil, finished: false}
+      html = row(ticket(%{work_item: work_item}))
+
+      assert attr(html, ".q-bl-act button", "title") == [
+               "Brings back the work item from another workspace"
+             ]
+    end
+
+    for {state, finished} <- [exploring: false, closed: true] do
+      test "a work item of another workspace, #{state}: Taken in, with no number and no link" do
+        work_item = %{
+          number: nil,
+          state: unquote(state),
+          path: nil,
+          finished: unquote(finished)
+        }
+
+        html = row(ticket(%{work_item: work_item}))
+
+        assert count(html, "a.q-bl-wi") == 0
+        assert text(html, "span.q-bl-wi") == "Taken in"
+        refute text(html, ".q-bl-act") =~ "#"
+
+        assert attr(html, "span.q-bl-wi", "title") == [
+                 "Taken in as a work item of another workspace"
+               ]
+
+        assert count(html, ".q-bl-act button") == 0
+      end
+    end
+
     test "finished: the work item's number links its page, and no action" do
       work_item = %{number: 69, state: :closed, path: "/acme/shop/work/69", finished: true}
       html = row(ticket(%{work_item: work_item}))

@@ -45,13 +45,14 @@ defmodule ApiaryWeb.BacklogComponents do
       `kind`;
     * `:comment_count` - a whole number;
     * `:updated_at` - a `DateTime`, when it last changed at the source;
-    * `:work_item` - `nil`, or the ticket's work item, a map with `:number`, `:state` (an
-      atom: `:undone`, `:closed`, or a state in which it is live, such as `:exploring`),
-      `:path` (its page, or `nil`) and `:finished`, true for a finished one whose ticket
-      has not reopened (`Apiary.WorkItems.Finished`).
+    * `:work_item` - `nil`, or the ticket's work item, a map with `:number` (`nil` for one
+      of another workspace), `:state` (an atom: `:undone`, `:closed`, or a state in which
+      it is live, such as `:exploring`), `:path` (its page, or `nil`) and `:finished`,
+      true for a finished one whose ticket has not reopened (`Apiary.WorkItems.Finished`).
 
   The action follows the ticket: an open ticket with no work item has Take in; a live or
-  finished work item is its number, a link; an undone or closed one offers Take in again.
+  finished work item is its number, a link, or Taken in for one of another workspace; an
+  undone or closed one offers Take in again.
 
   `take_in` and `take_in_again` are what a press does (`phx-click`: an event name or a
   `Phoenix.LiveView.JS`), sent with the ticket's id as `phx-value-id`.
@@ -137,7 +138,7 @@ defmodule ApiaryWeb.BacklogComponents do
           type="button"
           variant="link"
           class="q-bl-take"
-          title={gettext("Brings back work item #%{number}", number: @ticket.work_item.number)}
+          title={again_title(@ticket.work_item)}
           phx-click={@take_in_again}
           phx-value-id={@ticket.id}
         >
@@ -158,7 +159,27 @@ defmodule ApiaryWeb.BacklogComponents do
 
   defp row_view(%{work_item: _live}), do: %{link: true, action: nil}
 
+  # Take in again's title: the work item's number, or, for a work item of another
+  # workspace, which has none in the row, where it comes back from.
+  defp again_title(%{number: number}) when is_integer(number),
+    do: gettext("Brings back work item #%{number}", number: number)
+
+  defp again_title(_elsewhere), do: gettext("Brings back the work item from another workspace")
+
+  # The title of a work item of another workspace in its ticket's row.
+  defp elsewhere_title, do: gettext("Taken in as a work item of another workspace")
+
   attr :work_item, :map, required: true
+
+  # A live or finished work item of another workspace: the row has no number for it and
+  # no page to link, so it shows that the ticket is taken in, with where on hover.
+  defp work_item_link(%{work_item: %{number: nil}} = assigns) do
+    ~H"""
+    <span class="q-bl-wi" title={elsewhere_title()}>
+      <.icon name="hero-rectangle-stack-micro" class="size-3" />{gettext("Taken in")}
+    </span>
+    """
+  end
 
   defp work_item_link(assigns) do
     assigns =

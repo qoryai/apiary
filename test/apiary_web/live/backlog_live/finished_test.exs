@@ -96,6 +96,16 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
   defp again_button(ticket), do: row(ticket) <> ~s( button[phx-click="take_in_again"])
   defp work_link(ticket), do: row(ticket) <> " a.q-bl-wi"
 
+  defp again_title(view, ticket) do
+    view
+    |> element(again_button(ticket))
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("button")
+    |> LazyHTML.attribute("title")
+    |> List.first()
+  end
+
   describe "the table" do
     test "open, with no work item: Open, with Take in", ctx do
       assert {:open, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
@@ -129,9 +139,45 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
 
       assert {:open, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
       assert has_element?(view, again_button(ctx.ticket))
+      assert again_title(view, ctx.ticket) == "Brings back work item ##{work_item.number}"
 
       {:ok, list, _html} = live(ctx.conn, work_list(ctx.scope, "closed"))
       assert words(list, work_row(work_item) <> " .q-wl-nx") == "Closed by you"
+    end
+
+    test "open, closed in another workspace: Open, with Take in again and no number", ctx do
+      {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
+      {:ok, _closed} = WorkItems.close(ctx.scope, work_item)
+      other = Apiary.OrganisationsFixtures.workspace_fixture(ctx.scope.organisation, "Second")
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [workspace_id: other.id]
+        )
+
+      assert {:open, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
+      assert again_title(view, ctx.ticket) == "Brings back the work item from another workspace"
+    end
+
+    test "open, at a stage in another workspace: Taken in, with no number and no link", ctx do
+      {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
+      other = Apiary.OrganisationsFixtures.workspace_fixture(ctx.scope.organisation, "Second")
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [workspace_id: other.id]
+        )
+
+      assert {:taken, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
+      refute has_element?(view, work_link(ctx.ticket))
+      assert words(view, row(ctx.ticket) <> " span.q-bl-wi") == "Taken in"
+
+      assert view
+             |> element(row(ctx.ticket) <> " span.q-bl-wi")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("span.q-bl-wi")
+             |> LazyHTML.attribute("title") == ["Taken in as a work item of another workspace"]
     end
 
     test "open, a person undid its take in: Open, with Take in again", ctx do

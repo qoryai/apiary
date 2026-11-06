@@ -5633,6 +5633,11 @@ msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
+msgid "Brings back the work item from another workspace"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
 msgid "Brings back work item #%{number}"
 msgstr ""
 
@@ -6444,12 +6449,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another workflow for %{stage}, or choose a harness that lists %{workflow} under workflows on the Workflow page. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run."
+msgid "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Stages page, or someone uses Check again on a work item."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Stages or Workflow page, or someone uses Check again on a work item."
+msgid "Choose another workflow for %{stage}. To keep %{workflow}, change the harness on the Details tab to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8569,7 +8574,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page or the Workflow page."
+msgid "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -18031,6 +18036,7 @@ msgstr ""
 msgid "Take the harness sources from at most %{n} accounts, then run Explore again. A run takes %{n} harness credentials at most."
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
@@ -18050,6 +18056,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Taken in again by %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Taken in as a work item of another workspace"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -22091,6 +22102,11 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
+msgid "You can change this later in Workspace settings › %{stages}."
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
 msgid "You can change this later in Workspace settings › Destinations."
 msgstr ""
 
@@ -24100,6 +24116,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "unchanged"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "undone"
 msgstr ""
 
 #: lib/apiary/runs/filters.ex

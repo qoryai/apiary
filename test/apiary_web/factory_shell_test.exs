@@ -44,6 +44,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.CollectionsLive,
     ApiaryWeb.ChooseCollectionsLive,
     ApiaryWeb.AdapterRedirectController,
+    ApiaryWeb.WorkItemRedirectController,
     ApiaryWeb.AdapterInstallController,
     ApiaryWeb.AdapterSetupController
   ]
@@ -124,6 +125,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       ":workspace" -> scope.workspace.slug
       ":adapter_id" -> adapter.public_id
       ":connection_id" -> "ac_0000000000000000"
+      ":work_item_id" -> "wi_0000000000000000"
       ":number" -> "1"
       ":" <> _param -> "x1"
       segment -> segment
@@ -178,6 +180,8 @@ defmodule ApiaryWeb.FactoryShellTest do
              Enum.sort(
                [
                  {:get, "/integrations/ac_0000000000000000"},
+                 # A work item's permanent address.
+                 {:get, "/work-items/wi_0000000000000000"},
                  # The organisation's: the list, Add an integration (connecting one), and
                  # an integration's page in the organisation.
                  {:get, "#{org}/settings/integrations"},
@@ -729,6 +733,19 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
+    test "a work item's permanent address answers so for a work item that exists", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      unknown = workspace_path(scope, "/no-such-page")
+
+      for asker <- [conn, build_conn()] do
+        assert answer(fn -> get(asker, "/work-items/#{work_item.public_id}") end) ==
+                 answer(fn -> get(asker, unknown) end)
+      end
+    end
+
     test "each route answers so with a character of its path escaped, as the router decodes it",
          %{conn: conn, scope: scope, adapter: adapter} do
       unknown = workspace_path(scope, "/no-such-page")
@@ -751,7 +768,10 @@ defmodule ApiaryWeb.FactoryShellTest do
       adapter: adapter
     } do
       for {:get, path, module} <- factory_routes(scope, adapter),
-          module != ApiaryWeb.AdapterRedirectController do
+          module not in [
+            ApiaryWeb.AdapterRedirectController,
+            ApiaryWeb.WorkItemRedirectController
+          ] do
         {:ok, view, _html} = navigable(conn, scope, path)
 
         assert {%{status: 404, reason: "reload"}, _call} =

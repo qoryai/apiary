@@ -211,6 +211,13 @@ page and an Instance page, the one the person came from (Two levels, below).
   creates another; else who creates workspaces.
   A workspace they do not reach gets the same page as an address that matches none. An
   organisation they do not reach is the plain `404`, "Not Found".
+- **A work item's permanent address.** `/work-items/wi_…`, the link other systems and
+  runs get (`Apiary.WorkItems.stable_url/1`), redirects to the work item's page,
+  `/:org/:workspace/work/:number`, at the organisation's and the workspace's addresses
+  when the link is followed, without the query. A visitor signs in first, whatever the
+  id, and then comes back to it. A person who may not open the work item gets the plain
+  `404`, "Not Found", the same as for an unknown or malformed id: a dead end would list
+  the organisation's workspaces.
 
 ## No modals
 

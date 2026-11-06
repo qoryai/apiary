@@ -9,7 +9,7 @@
 //   o                open every tool call          x / Shift+x     next / previous denied
 //   g e              the live end                  g t             the top
 //   c                copy the focused item's link
-import {singleKeys} from "./shortcuts"
+import {singleKeys} from "./shortcuts.js"
 
 const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 const typing = el => el.closest("input, textarea, select, [contenteditable='true']")
@@ -20,8 +20,8 @@ export const TimelineKeys = {
     this.onKey = e => this.key(e)
     this.el.addEventListener("keydown", this.onKey)
     // A patch of one item puts the server's attributes back: what this hook set on it
-    // (inert, the dimming, the target) is set again. Setting what is already set changes
-    // nothing, so this does not feed itself.
+    // (inert, the dimming, the target) is set again. `apply` writes only what differs: a
+    // write of the value already there still makes a record, which calls `apply` again.
     this.observer = new MutationObserver(() => this.apply())
     this.observer.observe(this.el, {childList: true, subtree: true, attributes: true, attributeFilter: ["class", "inert"]})
     this.apply()
@@ -57,8 +57,10 @@ export const TimelineKeys = {
     const {target, isolate} = this.el.dataset
     for (const li of this.el.children) {
       const off = Boolean(isolate) && li.dataset.lane !== isolate
+      // A forced toggle of a class that is already right makes no record, but
+      // `inert = true` is a setAttribute, which makes one every time.
       li.classList.toggle("q-ti-off", off)
-      li.inert = off
+      if (li.inert !== off) li.inert = off
       li.classList.toggle("is-target", Boolean(target) && li.id === target)
     }
     if (target !== this.lastTarget) {

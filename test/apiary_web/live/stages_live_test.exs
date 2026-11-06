@@ -333,7 +333,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       select(view, "Build")
 
       undeclared =
-        "Choose another workflow for Build, or choose a harness that lists capture-demo under workflows on the Workflow page. The Qory harness does not list capture-demo, so Build waits and starts no run."
+        "Choose another workflow for Build. To keep capture-demo, change the harness on the Details tab to one that lists it under workflows. The Qory harness does not list capture-demo, so Build waits and starts no run."
 
       assert has_element?(view, "#stage-panel [data-stage-alert]", undeclared)
       assert undeclared in card(view, "Build")["alerts"]
@@ -1459,7 +1459,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stages-check-clear",
-               "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page or the Workflow page."
+               "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page."
              )
 
       refute render(element(view, "#stages-details")) =~ ~r/harness is read|been read/
