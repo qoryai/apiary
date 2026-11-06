@@ -455,8 +455,10 @@ documents' `harness`. Third, the workspace's harness choice, else the harness it
 organisation shares with every workspace: its document applies the same way. Last, the
 Qory harness: the harness of the workspace type's definition
 (`Apiary.Lingo.Domain.Definition`) at the newest version the release ships, at the stack
-the workspace recorded when it was made from the Qory template, else `core`
-(`Apiary.Organisations.Workspace.qory_stack/1`). A stored
+the workspace recorded, else `core` (`Apiary.Organisations.Workspace.qory_stack/1`). A
+workspace records its stack when it is made from the Qory template. A workspace of the
+software domain made before the stack was recorded gets `software` on the upgrade,
+unless it was made from a template of a harness repository. A stored
 document's base is read at the `ref` of its row's version (`Apiary.Stacks.version_ref/3`):
 the Qory harness at "latest" at the commit of the newest version the release ships, a
 harness repository at the branch, tag or commit saved; the documents' `harness` has that

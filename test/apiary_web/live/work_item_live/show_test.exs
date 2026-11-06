@@ -1104,6 +1104,130 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     end
   end
 
+  describe "an undo before a run started" do
+    @error "The run ended with an error."
+
+    # A take in from the Backlog, as a person makes it: its first run waits in the queue,
+    # or, while Explore waits for a workflow its harness does not list, none is queued.
+    defp taken_in(scope) do
+      connection = ticket_connection_fixture(scope)
+      ticket = backlog_ticket_fixture(scope, connection: connection)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      work_item
+    end
+
+    defp runs_of(work_item),
+      do:
+        Repo.all(
+          from d in DispatchRun,
+            where: d.work_item_id == ^work_item.id,
+            select: {d.state, d.end_cause, d.result_outcome}
+        )
+
+    defp explore_waits!(scope) do
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: scope.workspace.organisation_id,
+        workspace_id: scope.workspace.id,
+        choice: :repository,
+        version_kind: :commit,
+        version_name: String.duplicate("c3", 20),
+        harness: "extends:\n  git: https://code.example.com/northwind/harness\n  stack: core\n"
+      })
+
+      :ok = Apiary.Processes.record_declared(scope.workspace, ["review"])
+    end
+
+    defp assert_undone_tab(conn, scope, work_item) do
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-undone-h",
+               "You undid the take in just now, before a run started."
+             )
+
+      assert has_element?(
+               view,
+               "#work-item-explore-undone-body",
+               "There is nothing to show or confirm."
+             )
+
+      refute has_element?(view, "#work-item-explore-none")
+      refute render(view) =~ @error
+    end
+
+    test "of a waiting run: the run ends undone with no outcome, and Explore's tab has the undo",
+         %{conn: conn, scope: scope} do
+      work_item = taken_in(scope)
+      assert [{:waiting, nil, nil}] = runs_of(work_item)
+
+      {:ok, _undone} = WorkItems.undo(scope, work_item)
+
+      assert [{:ended, :undone, nil}] = runs_of(work_item)
+      assert_undone_tab(conn, scope, work_item)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "while Explore waits for a workflow: no run, and Explore's tab has the undo",
+         %{conn: conn, scope: scope} do
+      explore_waits!(scope)
+      work_item = taken_in(scope)
+      assert runs_of(work_item) == []
+
+      {:ok, _undone} = WorkItems.undo(scope, work_item)
+
+      assert runs_of(work_item) == []
+      assert_undone_tab(conn, scope, work_item)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "of a waiting run: the stage's Runs list has the run undone", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = taken_in(scope)
+      {:ok, _undone} = WorkItems.undo(scope, work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-runs-0",
+               "Attempt 1 · explore-a-ticket · round 1 · undone"
+             )
+
+      refute has_element?(view, "#work-item-runs-0", "ended without a verdict")
+    end
+  end
+
+  describe "a close before a run started" do
+    @tag needs: [:factory, :workflow_model]
+    test "while Explore waits for a workflow: no run, and Explore's tab has the close",
+         %{conn: conn, scope: scope} do
+      explore_waits!(scope)
+      work_item = taken_in(scope)
+      {:ok, _closed} = WorkItems.close(scope, work_item)
+      assert runs_of(work_item) == []
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-closed-h",
+               "You closed this work item on "
+             )
+
+      assert has_element?(
+               view,
+               "#work-item-explore-closed-body",
+               "There is nothing to show or confirm."
+             )
+
+      refute has_element?(view, "#work-item-explore-none")
+      refute render(view) =~ "The run ended with an error."
+    end
+  end
+
   describe "a run the gateway refused" do
     @key_fix "Add a model key in Organisation settings › Model providers."
 

@@ -475,8 +475,7 @@ defmodule Apiary.WorkItems do
   @doc false
   # get_by_public_id/2 is the work item of the scope's organisation whose public id is
   # `public_id` (`wi_…`), in whichever of its workspaces it is now, with that workspace,
-  # to a person who may read the work items there: the address the work item's stable url
-  # (`stable_url/1`) leads to. nil otherwise.
+  # to a person who may read the work items there. nil otherwise.
   @spec get_by_public_id(Scope.t(), term) :: WorkItem.t() | nil
   def get_by_public_id(%Scope{organisation: %Organisation{id: organisation_id}} = scope, id) do
     with true <- Apiary.PublicId.valid?(WorkItem.prefix(), id),
@@ -495,6 +494,50 @@ defmodule Apiary.WorkItems do
   end
 
   def get_by_public_id(%Scope{}, _id), do: nil
+
+  @doc false
+  # locate/2 is what the address `stable_url/1` returns leads to: the work item whose
+  # public id is `public_id` (`wi_…`), in whichever organisation and workspace it is now,
+  # and the person's scope in that workspace, for a person who reaches that workspace and
+  # may read its work items there, as the work item's page checks: `{:ok, work_item,
+  # scope}`, the work item with that workspace. `:error` for anything else, one result
+  # for all, so the caller's response does not show whether the id exists.
+  #
+  # The reads are the same for every id, in the same order, so their time does not show
+  # it either: the person's scope in each workspace of each organisation they reach
+  # (`Apiary.Organisations.list_places/1`, `Apiary.Organisations.workspace_scopes/1`, as
+  # `Apiary.Organisations.resolve_scope/4` puts it when the person opens one), then one
+  # read of the work item among those workspaces, with an empty id, which no work item
+  # has, in place of a malformed one. `Apiary.Access.can?/3` then checks in that scope
+  # whether the person may read it, with no read.
+  @spec locate(Scope.t(), term) :: {:ok, WorkItem.t(), Scope.t()} | :error
+  def locate(%Scope{user: %Apiary.Accounts.User{} = user} = scope, public_id) do
+    scopes =
+      for %{organisation: %Organisation{} = organisation} <-
+            Apiary.Organisations.list_places(user),
+          {:ok, reached} <- [Apiary.Organisations.put_reach(scope, organisation)],
+          {workspace_id, there} <- Apiary.Organisations.workspace_scopes(reached),
+          into: %{},
+          do: {workspace_id, there}
+
+    id = if Apiary.PublicId.valid?(WorkItem.prefix(), public_id), do: public_id, else: ""
+    workspace_ids = Map.keys(scopes)
+
+    with %WorkItem{} = work_item <-
+           Repo.one(
+             from w in WorkItem,
+               where: w.public_id == ^id and w.workspace_id in ^workspace_ids
+           ),
+         %Scope{workspace: %Workspace{} = workspace} = there <- scopes[work_item.workspace_id],
+         work_item = %{work_item | workspace: workspace},
+         true <- Access.can?(there, :"work_item.read", work_item) do
+      {:ok, work_item, there}
+    else
+      _none -> :error
+    end
+  end
+
+  def locate(_scope, _public_id), do: :error
 
   @doc false
   # get_for_ticket/2 is the work item of the ticket `item_id` (`tk_…`) of a collection
@@ -864,7 +907,8 @@ defmodule Apiary.WorkItems do
   # instance's public URL (`Apiary.Setup.public_url/0`, the configured one where no
   # endpoint runs, as under `bin/apiary eval`), then `/work-items/` and the work item's
   # public id. It names no organisation and no workspace, so it stays the same when the
-  # work item moves to another workspace. No route of the instance serves it yet.
+  # work item moves to another workspace. `ApiaryWeb.WorkItemRedirectController` serves
+  # it, by `locate/2`.
   @spec stable_url(WorkItem.t()) :: String.t()
   def stable_url(%WorkItem{public_id: public_id}) when is_binary(public_id),
     do: Apiary.Setup.public_url() <> "/work-items/" <> public_id

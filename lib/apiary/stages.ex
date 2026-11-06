@@ -1007,7 +1007,8 @@ defmodule Apiary.Stages do
   # registered run (`rn_…`, nil before a claim registers it), its workflow, stage, round,
   # `take_in` and `attempt` (its place in the take in, from 1), `of` (the attempts its
   # take in may reach), `status` (the state of the run of the
-  # queue: waiting, claimed, handed_over or ended), `verdict` from its verdict artifact
+  # queue: waiting, claimed, handed_over or ended), `end_cause` (why the run of the queue
+  # ended, nil while it has not), `verdict` from its verdict artifact
   # (`:passed`; `:failed` for changes-requested or escalate; nil for none), and when it
   # started and ended, nil for not yet. A run of Explore pushes no verdict: one whose
   # outcome is its proposal (`Apiary.Explore.Outcome`) has the verdict `:passed`, as the
@@ -1035,6 +1036,7 @@ defmodule Apiary.Stages do
         attempt: dispatch_run.attempt,
         of: dispatch_run.of,
         status: dispatch_run.state,
+        end_cause: dispatch_run.end_cause,
         verdict: verdicts[dispatch_run.id] || (run && verdicts[run.id]) || proposed(dispatch_run),
         started_at: run && run.started_at,
         ended_at: ended_at(dispatch_run, run)
@@ -1946,9 +1948,10 @@ defmodule Apiary.Stages do
   @doc false
   @spec not_in_qory(String.t(), String.t()) :: String.t()
   def not_in_qory(stage, workflow) do
-    "#{stage} uses #{workflow}, which the Qory harness does not list. " <>
-      "Choose another workflow for #{stage}, or choose a harness that lists #{workflow} " <>
-      "under workflows on the Workflow page."
+    "Choose another workflow for #{stage} in Workspace settings › Stages. " <>
+      "To keep #{workflow}, change the harness on that page's Details tab to one that " <>
+      "lists it under workflows. #{stage} uses #{workflow}, which the Qory harness does " <>
+      "not list."
   end
 
   defp gaps(%Escalation{gaps: gaps}, _work_item, _stage, _artifacts), do: gaps

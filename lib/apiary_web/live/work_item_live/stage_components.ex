@@ -687,6 +687,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp shows_words(:queued), do: gettext("queued")
   defp shows_words(:running), do: gettext("running")
   defp shows_words(:no_verdict), do: gettext("ended without a verdict")
+  defp shows_words(:undone), do: undone_word()
+
+  # The word of a run an undo of its take in ended, after its round. The one place it is
+  # set.
+  defp undone_word, do: gettext("undone")
 
   @doc false
   # stage_notes/1 lists what the work item's next run reads as work item data

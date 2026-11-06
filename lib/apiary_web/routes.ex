@@ -412,6 +412,10 @@ defmodule ApiaryWeb.Routes do
           # integration's page in the connection's organisation, after the return the
           # adapter hands back, when the link carries one.
           get "/integrations/:connection_id", AdapterRedirectController, :show
+          # A work item's permanent address, by its public id (`wi_…`), with the `factory`
+          # feature, as `Apiary.WorkItems.stable_url/1` returns it: to the work item's
+          # page, wherever the work item is when the link is followed.
+          get "/work-items/:work_item_id", WorkItemRedirectController, :show
         end
 
         scope "/", ApiaryWeb do

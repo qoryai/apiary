@@ -156,7 +156,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
              )
 
       alert =
-        "Choose another workflow for Explore, or list triage in the harness of each workspace of this type. The Qory harness does not list triage. A workspace on the Qory harness waits at Explore once an owner or admin opens its Stages or Workflow page, or someone uses Check again on a work item."
+        "Choose another workflow for Explore, or list triage in the harness of each workspace of this type. The Qory harness does not list triage. A workspace on the Qory harness waits at Explore once an owner or admin opens its Stages page, or someone uses Check again on a work item."
 
       assert has_element?(view, "#stage-panel [data-stage-alert]", alert)
 

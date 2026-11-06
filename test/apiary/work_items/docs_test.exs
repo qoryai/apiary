@@ -17,6 +17,7 @@ defmodule Apiary.WorkItems.DocsTest do
     ApiaryWeb.WorkItemLive.Show,
     ApiaryWeb.WorkItemLive.Comments,
     ApiaryWeb.AdapterRedirectController,
+    ApiaryWeb.WorkItemRedirectController,
     ApiaryWeb.ConnectSession
   ]
 

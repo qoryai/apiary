@@ -879,7 +879,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp check_clear(nil, :qory_workspace),
     do:
       gettext(
-        "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page or the Workflow page."
+        "Every type exists, and every input is an output of an earlier stage. The workflows are checked once an owner or admin opens this page."
       )
 
   defp check_clear(nil, _harness),

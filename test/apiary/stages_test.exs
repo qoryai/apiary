@@ -286,9 +286,10 @@ defmodule Apiary.StagesTest do
 
       # The waiting line has no time of a read, and Check again is not its fix.
       assert Stages.status(work_item).gaps ==
-               "Explore uses capture-demo, which the Qory harness does not list. Choose " <>
-                 "another workflow for Explore, or choose a harness that lists capture-demo " <>
-                 "under workflows on the Workflow page."
+               "Choose another workflow for Explore in Workspace settings › Stages. To " <>
+                 "keep capture-demo, change the harness on that page's Details tab to one " <>
+                 "that lists it under workflows. Explore uses capture-demo, which the Qory " <>
+                 "harness does not list."
 
       # No adapter and no public host is called: the default read takes the Qory names.
       for stub <- [Apiary.Adapters.Calls, Apiary.Harnesses.PublicGit] do
@@ -387,7 +388,7 @@ defmodule Apiary.StagesTest do
              ] = Stages.runs(work_item)
 
       assert Map.keys(run) |> Enum.sort() ==
-               ~w(attempt ended_at id of round stage_id started_at status take_in verdict workflow)a
+               ~w(attempt end_cause ended_at id of round stage_id started_at status take_in verdict workflow)a
 
       public_id = work_item.public_id
       assert_receive {:stage_changed, ^public_id}

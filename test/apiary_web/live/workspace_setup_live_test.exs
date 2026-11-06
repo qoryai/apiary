@@ -1613,7 +1613,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#harness-repository")
 
       assert words(lv, "#set-up-later") ==
-               "You can change this later in Workspace settings › Workflow."
+               "You can change this later in Workspace settings › Stages."
 
       # About this step has the five paragraphs, and no text the step dropped shows.
       assert words(lv, "#set-up-context-h") == "About this step"
@@ -5721,5 +5721,49 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#set-up-pool-remove")
     refute deleted?(pool)
     assert read_only?(lv)
+  end
+end
+
+defmodule ApiaryWeb.WorkspaceSetupLive.HarnessLaterTest do
+  # The Harness step's last line shows where the harness changes later: the settings'
+  # Stages with the `workflow_model` feature, Workflow without it, and the settings list
+  # that page. Not async: the features are the whole node's.
+  use ApiaryWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures
+
+  setup %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    %{conn: log_in_user(conn, user), organisation: organisation, scope: scope}
+  end
+
+  defp later(ctx) do
+    {:ok, lv, _html} =
+      live(ctx.conn, ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/set-up/harness")
+
+    lv
+    |> element("#set-up-later")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.trim()
+  end
+
+  defp tabs(ctx) do
+    {:ok, _lv, html} = live(ctx.conn, ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/settings")
+    for [_, key] <- Regex.scan(~r/id="settings-tab-([a-z_]+)"/, html), do: key
+  end
+
+  @tag with_features: [:observability, :security, :secrets, :factory, :workflow_model]
+  test "with the workflow model: Stages, which the settings list", ctx do
+    assert later(ctx) == "You can change this later in Workspace settings › Stages."
+    assert "stages" in tabs(ctx)
+  end
+
+  @tag with_features: [:observability, :security, :secrets, :factory]
+  test "without it: Workflow, which the settings list", ctx do
+    assert later(ctx) == "You can change this later in Workspace settings › Workflow."
+    assert "workflow" in tabs(ctx)
   end
 end

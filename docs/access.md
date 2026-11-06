@@ -715,3 +715,13 @@ The races are tested outside the sandbox, on connections that commit
   not have it loaded.
 - A page that reads asks its read action on mount, `on_mount {ApiaryWeb.Access, action}`,
   after the path scope and the feature gate, and answers not found when refused.
+- A work item's permanent address, `/work-items/wi_…`
+  (`ApiaryWeb.WorkItemRedirectController`), runs the checks of the work item's page before
+  it redirects there: the path scope of the workspace the work item is in at that moment,
+  and `work_item.read` (`Apiary.WorkItems.locate/2`). A person who fails them gets the
+  plain `404` of an unknown or malformed id. Every id takes the same reads in the same
+  order: the person's scope in each workspace they reach, then one read of the work item
+  among those workspaces; `Apiary.Access.can?/3` then checks that scope, with no read.
+  So the response time does not show whether the work item exists either. A suspended member gets that `404`
+  too, where the page sends them to `/users/organisations`, so the address does not show
+  which organisation the work item is in.

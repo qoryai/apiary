@@ -863,6 +863,17 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp harness_targets(scope, flow),
     do: HarnessTargets.targets(scope, flow.workspace, flow.domain)
 
+  # Where the harness chosen here changes later: the settings' Stages with the
+  # `workflow_model` feature, whose Change leads to the choice; Workflow without it.
+  defp later_harness(scope) do
+    if Features.visible?(scope, :workflow_model),
+      do:
+        gettext("You can change this later in Workspace settings › %{stages}.",
+          stages: SettingsComponents.stages_label()
+        ),
+      else: gettext("You can change this later in Workspace settings › Workflow.")
+  end
+
   ## The Model step's form
 
   # The organisation's model providers with a key that reach `workspace`: those that apply
@@ -2485,7 +2496,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </p>
 
         <p id="set-up-later" class="text-[13px]/5 text-muted">
-          {gettext("You can change this later in Workspace settings › Workflow.")}
+          {later_harness(@current_scope)}
         </p>
 
         <%!-- Continue is below the destinations' forms, which may not nest in the harness

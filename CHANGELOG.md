@@ -641,6 +641,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   take in wrote or reopened, when it decides whether a work item waits for answers. A
   work item whose Explore outcome was stored before this release shows that outcome as
   it was stored.
+- A work item's permanent address, `/work-items/<id>`, opens the work item.
 <!-- /feature -->
 - The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
   allows for every run of the workspace, by group, such as **Harness sources**,
@@ -914,6 +915,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   certificate and the host. A file that is missing or contains no certificate stops the
   boot.
 <!-- /feature -->
+- An organisation at the address `/work-items` moves to `/work-items-2`, because
+  `/work-items` is now reserved for the addresses of work items.
 - Account settings, **Connect Qory Apiary**, and Instance settings › Mail and ›
   Configuration accept a sign-in from the last 15 minutes, up from 10: the time a set-up
   pass of the GitHub adapter lasts.
@@ -1036,18 +1039,35 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The built-in harness uses qory's hello example at a commit that allows extending it.
   With the earlier commit, composing the built-in harness failed, so every test run
   failed.
+- Clicking a lane on a run page, or opening a run page's address with `?lane=`, keeps the
+  browser tab working. Before, the tab stopped responding.
 <!-- feature: factory -->
 - A read-only run that qory closes shows a line on its run page, such as “read-only run
   with no wall”, in place of its code. Its work item shows the fix, then the cause. On an
   installed pool, “Contact support.” replaces a fix in the machine's forager.yaml.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- Explore starts on a work item of a software workspace made before the upgrade that
+  added `workspaces.qory_stack`. This covers a work item taken in after this upgrade, and
+  one shown as waiting for a workflow when you click **Check again**. Before, runs of such
+  a workspace used the Qory harness at the stack `core`, which lists no workflow, so the
+  work item stayed waiting for `explore-a-ticket`.
 - A workspace made from a template runs Explore with no workflow saved on the Workflow
   page. The Stages page checks each workflow against the stack the workspace's runs use.
+- Texts about a workflow the Qory harness does not list, and the quickstart guide, point
+  to **Workspace settings › Stages** and its **Details** tab. Before, they pointed to the
+  Workflow page, which the settings menu does not list with this feature on.
+- The stage's Runs list shows a run that an undo ended as undone, not as ended without a
+  verdict.
 <!-- /feature -->
 <!-- feature: factory -->
 - **Take in again** on a Backlog row brings the work item back and opens its page, or
   shows why it cannot. Before, the button did nothing.
+- Explore's tab of a work item that you undid, or closed before a run was queued, shows how
+  the work item ended. Before, it showed that the run ended with an error.
+- A Backlog row whose work item is in another workspace shows **Taken in** with no
+  number, and **Take in again** has the title “Brings back the work item from another
+  workspace”. Before, both showed “#” with no number.
 <!-- /feature -->
 
 ### Security
@@ -1074,6 +1094,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `organisations`: an organisation at the slug `work-items` moves to the first free one of
+  `work-items-2`, `work-items-3`, …. A rollback changes no row.
 - `runs`: `number` becomes unique per workspace, from a new table `run_counters` with one
   row per workspace that has runs, and the sequence `runs_number_seq` goes. Existing runs
   get new numbers: each workspace's runs are numbered from 1 in the order they were
@@ -1179,6 +1201,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   It changes no row.
 - `workspaces`: a nullable `qory_stack` column, `text`. An empty value means the stack
   `core`.
+- `workspaces` and `stacks`: each workspace of the software domain made before
+  `qory_stack` was added, with no `qory_stack`, gets `software`, unless its version 1
+  came from a template of a harness repository. A Qory harness row at the stack `core`
+  gets `software` too, if it belongs to such a workspace. A row the organisation shares
+  gets it if every workspace that reads that row has `software` after the migration;
+  otherwise it stays at `core`. A row chosen for a target stays. A rollback changes no
+  row.
 - `work_items`, `work_item_events` and `escalations`: the migration locks the three
   tables against reads and writes while it runs. It closes every declined work item,
   with the time and the person of the decline as `closed_at` and `closed_by_id`, then

@@ -345,23 +345,33 @@ later.
    variables** lists it, masked, and you replace it there. Only owners and admins add a
    model key.
 4. **Harness.** **Which harness do runs in Main use?** has two choices:
-   - **Qory harness**, `github.com/qoryai/harness` at the commit it is pinned to, the
-     choice when you have made none. A run reads its repository's `harness.yaml` or
-     `qory.yaml` first, where the repository has one.
-   - **A harness repository**: choose a repository linked to Acme and, in **Branch or
-     tag**, a branch or tag. **Continue** reads the repository and pins the commit that
-     the branch or tag points to; the step shows why the read failed. A run then reads
-     no harness file of its repository.
+   - **Qory harness**, `github.com/qoryai/harness`, the choice when you have made none.
+     Under **Version**, **Always the latest version** uses the newest version this Qory
+     Apiary ships, and moves on when Qory Apiary is upgraded. **A fixed version** cannot
+     be selected until the first release of the Qory harness: the step shows "Named
+     versions come with the first release of the Qory harness." under it.
+   - **A harness repository**: in **Repository**, choose a repository linked to Acme, and
+     in **Stack**, one of the stacks it exports. Under **Version**, keep **Always the
+     latest on** with a branch, where each run uses the branch's newest commit when it
+     starts, or choose **A fixed version** with a tag or commit. **Continue** saves the
+     choice; the step shows why a read or a save failed.
 
-   Under **Repositories**, each of Main's repositories from **Destinations** shows
-   **Workspace default**, or the stack chosen for it. **Change** beside a repository chooses a
-   harness for that repository alone: the **Qory harness**, or **A harness repository**
-   with a **Source**, a **Stack** of it and a **Branch or tag**, then **Save**. A run in
-   that repository then uses that stack, and reads no harness file of the repository.
+   Under **Repositories**, each of Main's repositories from **Destinations** has a
+   **Stack** choice. In **Stack**, choose **Workspace's harness** or one of its stacks;
+   the choice saves at once. To set a harness for that repository alone, choose
+   **A stack of another repository…**, then a **Repository**, a **Stack** of it and a
+   **Branch or tag**, and select **Save**.
+
+   A run in a repository uses the first of these: the repository's `harness.yaml` or
+   `qory.yaml`, where the file sets a harness; the stack set for the repository under
+   **Repositories**; the harness you choose here; the harness your organisation shares;
+   the **Qory harness**.
    Keep **Qory harness** and select **Continue**. The test run uses a built-in harness
    whatever you choose. **Workspace settings › Workflow** shows the choice with its pin,
-   and **Change** there opens the same two choices. Only owners and admins save a
-   harness choice.
+   and **Change** there opens the same two choices. With the `workflow_model` feature,
+   the settings list **Stages** in place of **Workflow**: the **Details** tab of
+   **Workspace settings › Stages** shows the harness, and **Change** beside the harness
+   opens the harness's page. Only owners and admins save a harness choice.
 5. **Machines.** **Which machines run the runs in Main?** shows the pools that
    serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
    shows **Ready** with its gateway, or **Not ready** with the reason. While Main has no
@@ -419,6 +429,13 @@ address**, and enter its address in **Public address**, such as
 `https://github.com/example-org/harness`, without a password or token in it. In
 **Workflow**, choose one of the workflows that the repository's stack lists, and select
 **Save**. **Save** sets only which workflow Main's runs use, not their harness.
+
+With the `workflow_model` feature, the settings list **Stages** in place of **Workflow**,
+and each stage runs the workflows set for it. Open **Workspace settings › Stages**,
+`/acme/main/settings/stages`. On its **Details** tab, **Change** beside the harness
+opens the harness's page. There, select **Change**, choose **A harness repository** with
+its **Repository**, **Stack** and **Version**, and select **Save**. Back on the **Stages**
+tab, select a stage, choose its workflow under **Sequence**, and select **Save**.
 <!-- /feature -->
 
 ## Next

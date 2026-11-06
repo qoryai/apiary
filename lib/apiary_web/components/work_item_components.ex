@@ -1981,6 +1981,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     * while a run is queued or runs: the run line, which run of the take in it is (linked
       to its page), its state and its time, and what the run does next, with whose
       answers from a second run;
+    * an undone work item (`:undone`): that the take in was undone before a run started,
+      whether a run of it waited or the take in queued none; a closed work item whose
+      take in queued no run (`:closed`): who closed it and when (`ended_tab_words/2`);
     * a run without a result (no result, lost or cancelled): what happened, and the run's
       page; for a run that ended at its claim, before it started (`:end_cause`
       `:variables_invalid`, `:ticket_gone`, `:inputs_invalid` or `:target_access_gone`),
@@ -2144,6 +2147,12 @@ defmodule ApiaryWeb.WorkItemComponents do
         test={@work_item[:test] == true}
       />
       <.no_result :if={@view == :no_result} id={"#{@id}-none"} run={@run} />
+      <.ended
+        :if={@view in [:closed, :undone]}
+        id={"#{@id}-#{@view}"}
+        work_item={@work_item}
+        now={@now}
+      />
       <.proposal_frame
         :if={@proposal}
         id={"#{@id}-proposal"}
@@ -2243,6 +2252,16 @@ defmodule ApiaryWeb.WorkItemComponents do
               is_binary(workspace_id),
        do: :wait
 
+  # An undo works only before a run of the take in starts (`Apiary.WorkItems.undo/2`), so
+  # an undone work item has no result to show: its run of the queue ended `undone`, or the
+  # take in queued none, as when its first stage waits for a workflow.
+  defp explore_view(:undone, _run), do: :undone
+
+  # The take in's first run before it exists (`workspace_id` nil) is no run that ended: a
+  # work item closed while Explore waited for it shows how it ended, and any other shows no
+  # result.
+  defp explore_view(:closed, %{workspace_id: nil}), do: :closed
+  defp explore_view(_status, %{workspace_id: nil}), do: nil
   defp explore_view(_status, nil), do: nil
   defp explore_view(_status, %{outcome: outcome}) when outcome in [:proposal, :questions], do: nil
   defp explore_view(_status, _run), do: :no_result
@@ -3761,6 +3780,30 @@ defmodule ApiaryWeb.WorkItemComponents do
     </div>
     """
   end
+
+  # Explore's tab of an ended work item where no run of the take in started, in place of
+  # `no_result/1`: an undone one, or a closed one whose take in queued no run. The frame
+  # has how the work item ended, not an end of a run.
+  defp ended(assigns) do
+    {heading, body} = ended_tab_words(assigns.work_item, assigns.now)
+    assigns = assign(assigns, heading: heading, body: body)
+
+    ~H"""
+    <div id={@id} class="q-xp-wait">
+      <.icon name={end_icon(@work_item.status)} class="q-xp-wait-i size-4" />
+      <div>
+        <p :if={@heading} id={"#{@id}-h"}><b><.rich text={@heading} /></b></p>
+        <p :if={@body} id={"#{@id}-body"}>{@body}</p>
+      </div>
+    </div>
+    """
+  end
+
+  # The words of Explore's tab for an ended work item with no run that started: how it
+  # ended, as the notice above the tabs has it (`end_line/2`), then what is left. The one
+  # place they are set.
+  defp ended_tab_words(work_item, now),
+    do: {end_line(work_item, now), gettext("There is nothing to show or confirm.")}
 
   # A run that pushed a proposal before it ended shows that proposal on the tab, so the
   # page shows no line that there is nothing to show.
