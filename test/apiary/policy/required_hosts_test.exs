@@ -13,7 +13,6 @@ defmodule Apiary.Policy.RequiredHostsTest do
 
   alias Apiary.{Connections, ModelChoices, Policy, Repo}
   alias Apiary.Harnesses.RunHarness
-  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Policy.{ComposedConfiguration, RequiredHosts}
   alias Apiary.Registry.RunAccess
   alias Apiary.Runs.{ProviderCredential, Run, RunCredentials, Target}
@@ -52,7 +51,7 @@ defmodule Apiary.Policy.RequiredHostsTest do
     test "are the hosts a run's stack_hosts has for the workspace's chosen harness" do
       %{scope: scope} = sign_up_fixture()
       run = sealed_run_fixture(scope).run
-      git = Definition.qory_harness().git
+      git = Apiary.Harnesses.Qory.git()
 
       RunHarness
       |> Repo.get_by!(dispatch_run_id: run.dispatch_run_id)
@@ -127,7 +126,7 @@ defmodule Apiary.Policy.RequiredHostsTest do
       {:ok, _stack} =
         Stacks.put_stack(scope, {:target, target}, harness_document(git), choice: :repository)
 
-      rows = same_as_run(scope, [Definition.qory_harness().git, git])
+      rows = same_as_run(scope, [Apiary.Harnesses.Qory.git(), git])
 
       assert Enum.sort(Enum.map(rows, &{&1.host, &1.source, &1.required_by})) == [
                {"github.com", :qory, :instance},

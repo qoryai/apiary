@@ -118,6 +118,45 @@ defmodule ApiaryWeb.NoInstanceWordsTest do
     end
   end
 
+  describe "a workspace whose read of the Qory harness failed" do
+    test "the flash has the support address after the words, as plain text", %{conn: conn} do
+      Application.put_env(:apiary, :support_address, "support@example.com")
+
+      {:ok, %{user: user, organisation: organisation}} =
+        Apiary.Organisations.sign_up_user(
+          %{email: Apiary.AccountsFixtures.unique_user_email(), organisation_name: "Northwind"},
+          nil,
+          open: true,
+          workspace: false
+        )
+
+      Apiary.PublicGitServer.serve(%{},
+        answer: fn conn -> Plug.Conn.send_resp(conn, 429, "") end
+      )
+
+      {:ok, lv, _html} =
+        conn |> log_in_user(user) |> live(~p"/#{organisation}/workspaces/new/qory.software")
+
+      lv |> element("#workspace-type-create") |> render_click()
+
+      flash =
+        lv
+        |> element("#flash-error")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.replace(~r/\s+/, " ")
+
+      # The flash shows the first sentence as its title.
+      assert flash =~ "Create the workspace again later."
+
+      assert flash =~
+               "Reading the harness from https://github.com/qoryai/harness failed: the host " <>
+                 "returned 429 Too Many Requests. If it fails again, contact support at " <>
+                 "support@example.com."
+    end
+  end
+
   describe "Add an integration" do
     test "with none set up, an instance admin reads where to set one up; an owner reads Contact support",
          ctx do

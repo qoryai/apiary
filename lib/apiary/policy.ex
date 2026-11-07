@@ -639,7 +639,9 @@ defmodule Apiary.Policy do
   a request to it in the range named one, handed to the tool or refused by a path rule
   before it reached the tool (nil otherwise); the 50 with the most attempts, most first.
   `unchangeable` is true when no rule can allow it: the wall refused the last attempt of
-  its most recently seen connection, or its host is none a rule can name.
+  its most recently seen connection, or its host is none a rule can name. A request to the
+  run API, which has the wall rule `wall:run-api` (`Apiary.Runs.RunApi`), is left out: the
+  mode does not change what the gateway does with it, so enforce adds no block to it.
 
   Read from `connections` by the workspace and when they were last seen, at most
   20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a

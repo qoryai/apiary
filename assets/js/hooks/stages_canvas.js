@@ -30,12 +30,26 @@ export const MARGIN_BOTTOM = 24
 export const SIDE = 16
 
 // A card's lines, in px: the padding and border, the name, and each line under it with
-// the gap before it. Only for the height of a card React Flow has not measured yet.
+// the gap before it: the description, if any, the workflows, the gate and the alerts.
+// Only for the height of a card React Flow has not measured yet.
 const CARD_FRAME = 34
 const NAME_LINE = 26
 const LINE = 24
 const ROW_GAP = 8
 const LOOP_FRAME = 38
+// A description is at most DESCRIPTION_LINES lines of DESCRIPTION_LINE px, about
+// DESCRIPTION_CHARS characters each.
+const DESCRIPTION_LINE = 20
+const DESCRIPTION_LINES = 3
+const DESCRIPTION_CHARS = 44
+
+// The lines a description takes on a card, at most DESCRIPTION_LINES: each line of the
+// text, between its line breaks, wraps at about DESCRIPTION_CHARS characters.
+export const descriptionLines = text =>
+  Math.min(
+    DESCRIPTION_LINES,
+    text.split("\n").reduce((lines, part) => lines + Math.max(1, Math.ceil(part.length / DESCRIPTION_CHARS)), 0),
+  )
 
 // The estimated height of a card with `data` (layout's card data).
 export const estimateHeight = data => {
@@ -44,7 +58,8 @@ export const estimateHeight = data => {
     sequence.length === 0
       ? [LINE]
       : sequence.map(item => ("loop" in item ? LOOP_FRAME + item.workflows.length * LINE : LINE))
-  const rows = [...steps, LINE, ...(data?.alerts || []).map(() => LINE)]
+  const description = data?.description ? [descriptionLines(data.description) * DESCRIPTION_LINE] : []
+  const rows = [...description, ...steps, LINE, ...(data?.alerts || []).map(() => LINE)]
   return CARD_FRAME + NAME_LINE + rows.reduce((sum, row) => sum + ROW_GAP + row, 0)
 }
 
@@ -139,6 +154,7 @@ export const layout = (view, heights = {}) => {
   const editable = view?.editable === true
   const data = stages.map(stage => ({
     name: text(stage.name),
+    description: text(stage.description),
     sequence: (stage.sequence || []).map(step),
     gate: text(stage.gate),
     alerts: (stage.alerts || []).map(text),

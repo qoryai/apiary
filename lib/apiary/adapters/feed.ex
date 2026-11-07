@@ -4,9 +4,9 @@ defmodule Apiary.Adapters.Feed do
   # An adapter's change feed (the integration contract's `changes.schema.json`): one
   # append-only log per adapter, which the adapter reads back after a cursor, in order
   # (`GET /v1/work-items/changes`, `ApiaryWeb.Contract.ChangesController`). It holds the
-  # work items taken in from the adapter's items, the link state of the adapter's
-  # collections, the grants of the adapter's connections, and the adapter's interval, and
-  # nothing of any other adapter.
+  # work items taken in from the adapter's items, the comments members wrote on them for
+  # the source, the link state of the adapter's collections, the grants of the adapter's
+  # connections, and the adapter's interval, and nothing of any other adapter.
   #
   # ## Writing: `append/2`
   #
@@ -21,6 +21,16 @@ defmodule Apiary.Adapters.Feed do
   #     item's page, at most 2,048 characters of RFC 3986, `https://` and a host, or
   #     `http://` to a loopback address alone (`localhost`, `127.0.0.1` or `[::1]`, with
   #     a port or not), then nothing or a path (`work_item_url?/1`).
+  #   * `%{kind: "comment", comment_id: id, ref: ref, author_name: name, body: body}`: a
+  #     comment a member wrote in Qory Apiary on a work item taken in from one of the
+  #     adapter's items, for the adapter to post on the item, written after the item's
+  #     `taken_in` entry, and again when a member posts it again (`Apiary.Sources.Posts`).
+  #     `id` is the comment's `comment_id`, `sc_` and sixteen lowercase Crockford base32
+  #     characters; `ref` the item's ref; `name` its author's name, 1 to 100 characters on
+  #     one line with at least one that is not a space
+  #     (`Apiary.Sources.Comment.member_name?/1`); `body` 1 to 65,000 characters of valid
+  #     UTF-8, with no NUL. Written only for an adapter whose source takes comments
+  #     (`Apiary.Nodes.Node`, `comments`).
   #   * `%{kind: "collection", collection_ref: ref, status: status}`: one of the adapter's
   #     collections linked (`"linked"`, `Apiary.Adapters.Collection.linked?/1`), or
   #     unlinked (`"unlinked"`). `ref`
@@ -62,7 +72,12 @@ defmodule Apiary.Adapters.Feed do
   # writes it (`Jason.OrderedObject`, its kind first), with the number the page ends at,
   # the answer's cursor. An entry of a kind newer than `revision`, the contract revision
   # the adapter named, is left out, and the page still ends past it
-  # (`definitions.schema.json`), so a replay from the start stays in step.
+  # (`definitions.schema.json`), so a replay from the start stays in step. The page ends
+  # before an entry that would take the answer's body (`body/2`) past 4,194,304 bytes
+  # (4 MiB), counted with the longest cursor, and has at least one entry whenever an
+  # entry the revision defines follows `after`. One entry is at most about 400 KB (a
+  # comment's 65,000 characters, each escaped to six bytes at most), so a page that
+  # stops at the bound has several.
   # `{:error, :stale}` when `after` is past the last entry the feed holds: a cursor this
   # feed never gave.
   #
@@ -74,12 +89,25 @@ defmodule Apiary.Adapters.Feed do
   alias Apiary.Adapters.{Connection, Wire}
   alias Apiary.Nodes.Node
   alias Apiary.Repo
+  alias Apiary.Sources.Comment
 
   # The entries a page holds at most.
   @page_size 100
   # The contract revision that defines each kind: an adapter that names an earlier one is
   # not sent it.
-  @kind_revision %{"work_item" => 1, "collection" => 1, "sync" => 1, "grant" => 1}
+  @kind_revision %{
+    "work_item" => 1,
+    "comment" => 1,
+    "collection" => 1,
+    "sync" => 1,
+    "grant" => 1
+  }
+  # The most bytes an answer's body has (`changes.schema.json`).
+  @max_body 4_194_304
+  # The largest number a cursor writes, eighteen digits (`@cursor`): the body's bound
+  # counts the longest cursor.
+  @max_seq 999_999_999_999_999_999
+  @max_comment_body 65_000
   @work_item_id ~r/\Awi_[A-Za-z0-9_-]{1,64}\z/
   @cursor ~r/\Ac_([0-9]{8,18})\z/
   @max_ref 200
@@ -101,6 +129,13 @@ defmodule Apiary.Adapters.Feed do
             status: String.t(),
             url: String.t()
           }
+          | %{
+              kind: String.t(),
+              comment_id: String.t(),
+              ref: String.t(),
+              author_name: String.t(),
+              body: String.t()
+            }
           | %{kind: String.t(), collection_ref: String.t(), status: String.t()}
           | %{kind: String.t(), interval: pos_integer | nil}
           | %{
@@ -169,7 +204,8 @@ defmodule Apiary.Adapters.Feed do
   # the page ends at (`after_seq` when it holds nothing), `changes` the entries the
   # revision defines, each as the contract writes it; or `{:error, :stale}` for an
   # `after_seq` past the feed's last entry. `opts[:limit]`, `page_size/0` unless given, is
-  # the most it reads.
+  # the most it reads; the page ends before an entry that would take the answer's body
+  # (`body/2`) past `max_body/0` bytes, after at least one entry.
   @doc false
   @spec read(Node.t(), non_neg_integer, pos_integer, keyword) ::
           {:ok, %{seq: non_neg_integer, changes: [Jason.OrderedObject.t()]}}
@@ -191,16 +227,56 @@ defmodule Apiary.Adapters.Feed do
           )
         )
 
-      seq = rows |> List.last(%{seq: after_seq}) |> Map.fetch!(:seq)
-
-      changes =
-        for %{kind: kind, data: data} <- rows,
-            Map.fetch!(@kind_revision, kind) <= revision,
-            do: change(kind, data)
-
-      {:ok, %{seq: seq, changes: changes}}
+      {:ok, page(rows, after_seq, revision)}
     end
   end
+
+  # The rows in order, each of a kind the revision defines as the contract writes it,
+  # until the next would take the body past its bound; the page ends at the last row
+  # taken or left out before that one.
+  defp page(rows, after_seq, revision) do
+    room = @max_body - byte_size(body(revision, %{seq: @max_seq, changes: []}))
+
+    {seq, changes, _room} =
+      Enum.reduce_while(rows, {after_seq, [], room}, fn %{seq: seq, kind: kind, data: data},
+                                                        {last, changes, room} ->
+        if Map.fetch!(@kind_revision, kind) <= revision do
+          change = change(kind, data)
+          # The change, and the comma before it when the page has a change already.
+          size = byte_size(Jason.encode!(change)) + if(changes == [], do: 0, else: 1)
+
+          if size <= room or changes == [],
+            do: {:cont, {seq, [change | changes], room - size}},
+            else: {:halt, {last, changes, room}}
+        else
+          {:cont, {seq, changes, room}}
+        end
+      end)
+
+    %{seq: seq, changes: Enum.reverse(changes)}
+  end
+
+  # The body of the answer to a read of the feed (`changes.schema.json`), for the
+  # revision in the request and the page `read/4` returned: its version, the revision,
+  # the cursor where the page ends, and its entries.
+  @doc false
+  @spec body(pos_integer, %{seq: non_neg_integer, changes: [Jason.OrderedObject.t()]}) ::
+          String.t()
+  def body(revision, %{seq: seq, changes: changes}) do
+    Jason.encode!(
+      Jason.OrderedObject.new([
+        {"version", 1},
+        {"revision", revision},
+        {"cursor", cursor(seq)},
+        {"changes", changes}
+      ])
+    )
+  end
+
+  # The most bytes an answer's body has.
+  @doc false
+  @spec max_body() :: pos_integer
+  def max_body, do: @max_body
 
   # The most entries a page holds.
   @doc false
@@ -244,6 +320,9 @@ defmodule Apiary.Adapters.Feed do
   defp change("work_item", data),
     do: ordered("work_item", data, ~w(work_item_id ref status url))
 
+  defp change("comment", data),
+    do: ordered("comment", data, ~w(comment_id ref author_name body))
+
   defp change("collection", data), do: ordered("collection", data, ~w(collection_ref status))
   defp change("sync", data), do: ordered("sync", data, ~w(interval))
 
@@ -270,6 +349,28 @@ defmodule Apiary.Adapters.Feed do
     end
 
     {"work_item", %{"work_item_id" => id, "ref" => ref, "status" => status, "url" => url}}
+  end
+
+  defp shape!(%{kind: "comment", comment_id: id, ref: ref, author_name: name, body: body} = entry)
+       when map_size(entry) == 5 do
+    unless Comment.comment_id?(id) do
+      raise ArgumentError, "a comment entry's comment_id is sc_ and 16 Crockford characters"
+    end
+
+    ref!(ref, "a comment entry's ref")
+
+    unless Comment.member_name?(name) do
+      raise ArgumentError,
+            "a comment entry's author_name is 1 to 100 characters on one line, not all spaces"
+    end
+
+    unless is_binary(body) and String.valid?(body) and byte_size(body) <= 4 * @max_comment_body and
+             length(String.to_charlist(body)) in 1..@max_comment_body and
+             not String.contains?(body, <<0>>) do
+      raise ArgumentError, "a comment entry's body is 1 to 65000 characters of UTF-8, with no NUL"
+    end
+
+    {"comment", %{"comment_id" => id, "ref" => ref, "author_name" => name, "body" => body}}
   end
 
   defp shape!(%{kind: "collection", collection_ref: ref, status: status} = entry)

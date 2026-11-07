@@ -621,13 +621,54 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
 
       assert has_element?(view, "#target-environment-rebuild .btn-busy", "Asking")
 
+      # A click on Rebuild opens the dialog and queues nothing, nor does Cancel.
       view |> element("#target-environment-rebuild") |> render_click()
+      assert has_element?(view, "#spend-dialog-title", "Rebuild?")
+      assert has_element?(view, "#spend-dialog-go", "Rebuild")
+      assert has_element?(view, ~s|#spend-dialog[data-return="target-environment-rebuild"]|)
+
+      assert has_element?(
+               view,
+               "#spend-dialog-line",
+               "Starts one build machine per pool of #{scope.workspace.name}."
+             )
+
+      refute has_element?(view, "#spend-dialog-line", "model tokens")
+      refute has_element?(view, "#{pool_id(mac)}-waiting")
+      view |> element("#spend-dialog-cancel") |> render_click()
+      refute has_element?(view, "#spend-dialog")
+      refute has_element?(view, "#{pool_id(mac)}-waiting")
+
+      view |> element("#target-environment-rebuild") |> render_click()
+      view |> form("#spend-dialog-form") |> render_submit()
       assert has_element?(view, "#flash-info", "A build of acme/shop is queued.")
       assert has_element?(view, "#{pool_id(mac)}-waiting", "A build is waiting.")
       assert has_element?(view, "#{pool_id(linux)}-waiting", "A build is waiting.")
 
       view |> element("#target-environment-rebuild") |> render_click()
+      confirm_spend(view)
       assert has_element?(view, "#flash-info", "A build of acme/shop is already waiting.")
+    end
+
+    # Rebuild's event, as the button sends it: without the feature `registry` the page
+    # draws no Rebuild, and the dialog opens all the same.
+    test "a URL change closes the dialog and queues nothing", %{
+      conn: conn,
+      scope: scope,
+      path: path
+    } do
+      pool = pool_fixture(scope)
+      shop = collection(scope)
+      view = open(conn, path)
+
+      render_click(view, "rebuild_environment", %{})
+      assert has_element?(view, "#spend-dialog-title", "Rebuild?")
+
+      render_patch(view, path <> "?from=search")
+      refute has_element?(view, "#spend-dialog")
+      render_hook(view, "spend_confirm", %{})
+      refute has_element?(view, "#{pool_id(pool)}-waiting")
+      assert Environments.fetch(pool.id, shop.id) == nil
     end
 
     test "a member's, as every member may", %{scope: scope, path: path} do
@@ -637,6 +678,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       view = open(log_in_user(build_conn(), member), path)
 
       view |> element("#target-environment-rebuild") |> render_click()
+      confirm_spend(view)
       assert has_element?(view, "#flash-info", "A build of acme/shop is queued.")
       assert has_element?(view, "#{pool_id(pool)}-waiting")
     end
@@ -653,6 +695,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       refute has_element?(view, "#target-environment-rebuild")
 
       render_click(view, "rebuild_environment", %{})
+      confirm_spend(view)
       refute has_element?(view, "#flash-info")
       refute has_element?(view, "#{pool_id(pool)}-waiting")
       assert Environments.fetch(pool.id, shop.id) == nil
@@ -675,6 +718,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
       collection(scope)
       view = open(conn, path)
       view |> element("#target-environment-rebuild") |> render_click()
+      confirm_spend(view)
 
       {:ok, activity, _html} = live(conn, "/#{scope.organisation.slug}/audit-log")
       render_async(activity)

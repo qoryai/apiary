@@ -19,13 +19,13 @@ defmodule Apiary.Environments do
   # has prebuilds (`holds?/1`) read no, and the runs start in the pool's default image.
   # A target's page shows that, with no Rebuild (`section/2`, `:no_registry`). A claim
   # there takes no prebuild
-  # (`Apiary.Dispatches.waiting_query/1`). In a workspace whose
+  # (`Apiary.Dispatches.waiting_query/2`). In a workspace whose
   # domain has prebuilds (`holds?/1`, `Apiary.Lingo.Domain.prebuilds?/1`), a waiting run
   # that is not a prebuild, of a work item whose target a live collection of the
   # workspace with an `environment_ref` has, is held for a node pool while no record of
   # such a collection for that pool keeps an image whose `built_ref` is its collection's
   # `environment_ref`, built for the target (`held/1`, a subquery on the run as
-  # `:run`). A claim of the pool takes no held run (`Apiary.Dispatches.claim/3`); a run
+  # `:run`). A claim of the pool takes no held run (`Apiary.Dispatches.claim/4`); a run
   # whose target no collection names, or of a workspace whose domain has no prebuilds, is
   # never held and starts in the pool's default image. On an instance with the feature
   # `security`, a run whose target's run configuration in force names an image in its

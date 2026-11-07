@@ -11,6 +11,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   import Apiary.Midnight
 
   alias Apiary.Policy
+  alias Apiary.Runs.RunApi
   alias ApiaryWeb.PolicyLive.Common
 
   setup :register_and_log_in_user
@@ -1193,6 +1194,34 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#mode-would .q-dest-tool .text-faint > bdi", "tool." <> shown)
       assert render(view) =~ ~r{<bdi[^>]*>evillpmaxe.&lt;script&gt;</bdi>}
       refute view |> element("#mode-would") |> render() =~ "\u202E"
+    end
+
+    test "the fact line and what enforce would deny leave out the run API", %{
+      conn: conn,
+      scope: scope
+    } do
+      run_api = %{
+        "host" => RunApi.placeholder(),
+        "port" => 80,
+        "decision" => "allowed",
+        "rule" => RunApi.rule()
+      }
+
+      started_run(scope, shop(),
+        egress: [
+          run_api,
+          run_api,
+          %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, scope)
+      assert text(view, "#policy-mode-fact") =~ "1 attempt to 1 destination had no rule"
+
+      pick_mode(view, "enforce")
+      assert text(view, "#mode-would-n") == "1 destination"
+      assert text(view, "#mode-would") =~ "files.cdn.example"
+      refute text(view, "#mode-would") =~ RunApi.placeholder()
     end
 
     test "going to enforce asks, lists what would be denied, and allows from the list",

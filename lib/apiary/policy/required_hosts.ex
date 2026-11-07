@@ -29,7 +29,7 @@ defmodule Apiary.Policy.RequiredHosts do
   alias Apiary.Connections
   alias Apiary.Connections.Connection
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Registry.RunAccess
@@ -79,7 +79,7 @@ defmodule Apiary.Policy.RequiredHosts do
     rows =
       for %{host: host, git: git, shared: shared} <-
             ComposedConfiguration.workspace_stack_hosts(workspace) do
-        qory? = git == Definition.qory_harness().git
+        qory? = git == Qory.git()
 
         %{
           host: host,

@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
   @moduledoc """
-  The After the session section of a run's Timeline (`ApiaryWeb.PreparationComponents`): a
-  push step's row, live on an open page, and a failed push that reads as no failed
+  The Outputs saved row of a run's Run list (`ApiaryWeb.PreparationComponents`): a push
+  step's row, live on an open page, and a failed push that reads as no failed
   preparation.
   """
   use ApiaryWeb.ConnCase, async: true
@@ -66,57 +66,60 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
   # The reader is at the end of the page, so a new item joins the window. Else the window
   # stops short of the run's end, and the section waits.
   defp at_end(lv),
-    do: render_hook(element(lv, "#run-timeline"), "live_end", %{"at_end" => true})
+    do: render_hook(element(lv, "#live-end"), "live_end", %{"at_end" => true})
 
   test "a page open on a live run shows the section, a running row, then its end", ctx do
     run = session_over(ctx.scope)
     lv = open(ctx.conn, ctx.scope, run)
 
-    refute has_element?(lv, "#after-session")
+    refute has_element?(lv, "#prepare-machine-outputs")
     assert settled?(lv)
 
     arrive!(lv, run, [push_started(6)])
 
-    assert lv |> element("#after-session h2") |> render() =~ "After the session"
-    assert has_element?(lv, "#after-session-step-1[data-state='running']")
-    row = lv |> element("#after-session-step-1 summary") |> render()
+    assert lv |> element("#prepare-machine-outputs > summary") |> render() =~ "Outputs saved"
+    assert has_element?(lv, "#prepare-machine-outputs #prepare-machine-step-1")
+    assert has_element?(lv, "#prepare-machine-step-1[data-state='running']")
+    row = lv |> element("#prepare-machine-step-1 summary") |> render()
     assert row =~ "Running"
     assert row =~ "q-prep-pulse"
     assert row =~ "Push work to git.example.com/acme/web-shop"
-    assert has_element?(lv, "#after-session-step-1-clock[data-tick='duration']")
+    assert has_element?(lv, "#prepare-machine-step-1-clock[data-tick='duration']")
 
     arrive!(lv, run, [
       {7, "run.log", step_log_data(1, @output)},
       push_exited(8, "succeeded", 0)
     ])
 
-    assert has_element?(lv, "#after-session-step-1[data-state='succeeded']")
-    row = lv |> element("#after-session-step-1 summary") |> render()
+    assert has_element?(lv, "#prepare-machine-step-1[data-state='succeeded']")
+    row = lv |> element("#prepare-machine-step-1 summary") |> render()
     assert row =~ "1 m 12 s"
     refute row =~ "Running"
-    refute has_element?(lv, "#after-session-step-1-clock")
-    assert lv |> element("#after-session-step-1-output") |> render() =~ @output |> String.trim()
-    refute has_element?(lv, "#after-session-step-1[open]")
+    refute has_element?(lv, "#prepare-machine-step-1-clock")
+    assert lv |> element("#prepare-machine-step-1-output") |> render() =~ @output |> String.trim()
+    refute has_element?(lv, "#prepare-machine-step-1[open]")
   end
 
-  test "the section has no total, no cause line and no Clean up row", ctx do
+  test "a failed push has no cause line, and a run that goes on no Machine removed", ctx do
     run = session_over(ctx.scope, [push_started(6), push_exited(7, "failed", 1)])
     lv = open(ctx.conn, ctx.scope, run)
 
-    assert has_element?(lv, "#after-session .q-prep-steps > li", "Push work")
-    refute has_element?(lv, "#after-session .q-prep-total")
-    refute has_element?(lv, "#after-session .q-prep-cause")
-    refute has_element?(lv, "#after-session [data-clean-up]")
+    assert has_element?(lv, "#prepare-machine-outputs-failed .q-prep-steps > li", "Push work")
+    refute has_element?(lv, "#prepare-machine-outputs-failed .q-prep-cause")
+    refute has_element?(lv, "#prepare-machine [data-clean-up]")
   end
 
-  test "the section comes after the timeline, and has no place on another tab", ctx do
+  test "Outputs saved follows Session started, and has no place on another tab", ctx do
     run = session_over(ctx.scope, [push_started(6), push_exited(7, "succeeded", 0)])
     lv = open(ctx.conn, ctx.scope, run)
     html = render(lv)
 
-    assert [_before, after_timeline] = String.split(html, ~s(id="timeline"), parts: 2)
-    assert [between, _rest] = String.split(after_timeline, ~s(id="live-end"), parts: 2)
-    assert between =~ ~s(id="after-session")
+    assert has_element?(lv, "#prepare-machine-session #timeline")
+
+    assert [_before, after_session] =
+             String.split(html, ~s(id="prepare-machine-session"), parts: 2)
+
+    assert after_session =~ ~s(id="prepare-machine-outputs")
 
     {:ok, lv, _html} =
       live(
@@ -124,7 +127,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
         ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}/runs/#{run.number}/network"
       )
 
-    refute has_element?(lv, "#after-session")
+    refute has_element?(lv, "#prepare-machine-outputs")
   end
 
   test "a failed push is open with its output, and nothing reads as a failed preparation",
@@ -149,9 +152,12 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
     lv = open(ctx.conn, ctx.scope, run)
 
-    assert has_element?(lv, "#after-session-step-2-failed[open]")
+    assert has_element?(
+             lv,
+             "#prepare-machine-outputs-failed[open] #prepare-machine-step-2-failed[open]"
+           )
 
-    assert lv |> element("#after-session-step-2-failed-output") |> render() =~
+    assert lv |> element("#prepare-machine-step-2-failed-output") |> render() =~
              "rejected: the branch moved"
 
     refute has_element?(lv, "#prepare-machine-step-2")
@@ -177,7 +183,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
     lv = open(ctx.conn, ctx.scope, run)
 
-    refute has_element?(lv, "#after-session")
+    refute has_element?(lv, "#prepare-machine-outputs")
     assert has_element?(lv, "#prepare-machine-cause")
     assert lv |> element(".q-limits") |> render() =~ "stopped before its session started"
   end
@@ -234,7 +240,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+      assert has_element?(lv, "#prepare-machine-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
     end
 
@@ -252,7 +258,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+      assert has_element?(lv, "#prepare-machine-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
     end
 
@@ -270,7 +276,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+      assert has_element?(lv, "#prepare-machine-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
     end
 
@@ -357,11 +363,11 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
       assert settled?(lv)
 
       arrive!(lv, run, failed_push(8))
-      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+      assert has_element?(lv, "#prepare-machine-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
 
       arrive!(lv, run, [failed_exit(10)])
-      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+      assert has_element?(lv, "#prepare-machine-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
     end
 
@@ -372,7 +378,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
       arrive!(lv, run, failed_push(8) ++ [failed_exit(10)])
 
-      assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
+      assert has_element?(lv, "#prepare-machine-step-1-failed[data-state='failed']")
       refute has_element?(lv, "#run-why")
     end
 
@@ -399,7 +405,7 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
     arrive!(lv, run, [push_started(6)])
 
-    assert has_element?(lv, "#after-session-step-1[data-state='running']")
+    assert has_element?(lv, "#prepare-machine-step-1[data-state='running']")
   end
 
   # The test reads the page as the server sends it, so it shows the new `id` and `open`.
@@ -409,22 +415,22 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
        ctx do
     run = session_over(ctx.scope, [push_started(6)])
     lv = open(ctx.conn, ctx.scope, run)
-    assert has_element?(lv, "#after-session-step-1:not([open])")
+    assert has_element?(lv, "#prepare-machine-step-1:not([open])")
 
     arrive!(lv, run, [push_exited(7, "failed", 1)])
 
-    refute has_element?(lv, "#after-session-step-1")
-    assert has_element?(lv, "#after-session-step-1-failed[open][phx-mounted]")
+    refute has_element?(lv, "#prepare-machine-step-1")
+    assert has_element?(lv, "#prepare-machine-step-1-failed[open][phx-mounted]")
 
     other = session_over(ctx.scope, [push_started(6)])
     lv = open(ctx.conn, ctx.scope, other)
 
     arrive!(lv, other, [push_exited(7, "succeeded", 0)])
 
-    assert has_element?(lv, "#after-session-step-1:not([open])")
+    assert has_element?(lv, "#prepare-machine-step-1:not([open])")
   end
 
-  test "a Prepare machine row keeps its id when its step fails", ctx do
+  test "a Prepare row keeps its id when its step fails", ctx do
     run =
       ctx.scope
       |> run_fixture()
@@ -448,15 +454,15 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
     lv = open(ctx.conn, ctx.scope, run)
     at_end(lv)
 
-    assert has_element?(lv, "#after-session-step-1[data-state='running']")
+    assert has_element?(lv, "#prepare-machine-step-1[data-state='running']")
 
     arrive!(lv, run, [
       {7, "run.exited", %{"state" => "cancelled", "reason" => "stopped", "exit_code" => -1}}
     ])
 
-    assert has_element?(lv, "#after-session-step-1[data-state='cancelled']")
-    refute lv |> element("#after-session-step-1 summary") |> render() =~ "Running"
-    refute has_element?(lv, "#after-session time[data-tick]")
+    assert has_element?(lv, "#prepare-machine-step-1[data-state='cancelled']")
+    refute lv |> element("#prepare-machine-step-1 summary") |> render() =~ "Running"
+    refute has_element?(lv, "#prepare-machine-outputs time[data-tick]")
   end
 
   test "a reader without `run.read_log` sees the row and no output", ctx do
@@ -471,8 +477,8 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
 
     lv = open(ctx.conn, ctx.scope, run)
 
-    assert has_element?(lv, "#after-session-step-1-failed[data-state='failed']")
-    refute has_element?(lv, "#after-session-step-1-failed-output")
+    assert has_element?(lv, "#prepare-machine-step-1-failed[data-state='failed']")
+    refute has_element?(lv, "#prepare-machine-step-1-failed-output")
     refute render(lv) =~ "web-shop.git"
   end
 
@@ -493,13 +499,13 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
     })
 
     arrive!(lv, run, [{6, "runtime.notification", %{"kind" => "k", "message" => "still"}}])
-    refute has_element?(lv, "#after-session")
+    refute has_element?(lv, "#prepare-machine-step-1")
 
     arrive!(lv, run, [push_exited(7, "succeeded", 0)])
-    assert has_element?(lv, "#after-session-step-1[data-state='succeeded']")
+    assert has_element?(lv, "#prepare-machine-step-1[data-state='succeeded']")
   end
 
-  test "a later session's join shows under Prepare machine with no reload", ctx do
+  test "a later session's join shows after Session started with no reload", ctx do
     run = session_over(ctx.scope)
     lv = open(ctx.conn, ctx.scope, run)
 
@@ -508,10 +514,11 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
     ])
 
     assert has_element?(lv, "#prepare-machine-step-1[data-state='running']")
-    refute has_element?(lv, "#after-session")
+    refute has_element?(lv, "#prepare-machine-prepare")
+    refute has_element?(lv, "#prepare-machine-outputs")
   end
 
-  test "the window must reach the run's end for the section to show", ctx do
+  test "Outputs saved shows while the window stops short of the run's end", ctx do
     notes = for n <- 6..320, do: {n, "runtime.notification", %{"kind" => "k", "message" => "m"}}
 
     run =
@@ -523,23 +530,16 @@ defmodule ApiaryWeb.RunLive.ShowAfterSessionTest do
     lv = open(ctx.conn, ctx.scope, run)
 
     assert has_element?(lv, "#timeline-later")
-    refute has_element?(lv, "#after-session")
-
-    render_click(element(lv, "#timeline-later"))
-
-    refute has_element?(lv, "#timeline-later")
-    assert has_element?(lv, "#after-session-step-1")
+    assert has_element?(lv, "#prepare-machine-outputs #prepare-machine-step-1")
   end
 
-  test "a reader who is not at the end sees the section once the new events show", ctx do
+  test "Outputs saved stays while new events wait for a reader not at the end", ctx do
     run = session_over(ctx.scope, [push_started(6)])
     lv = open(ctx.conn, ctx.scope, run)
-    assert has_element?(lv, "#after-session")
+    assert has_element?(lv, "#prepare-machine-outputs")
 
     arrive!(lv, run, [{7, "runtime.notification", %{"kind" => "k", "message" => "late"}}])
-    refute has_element?(lv, "#after-session")
-
-    render_click(element(lv, "#new-events"))
-    assert has_element?(lv, "#after-session")
+    assert has_element?(lv, "#new-events")
+    assert has_element?(lv, "#prepare-machine-outputs")
   end
 end

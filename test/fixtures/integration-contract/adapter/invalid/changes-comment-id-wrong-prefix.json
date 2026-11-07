@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_00000053",
+  "changes": [
+    {
+      "kind": "comment",
+      "comment_id": "cm_7k2m9q4v1x8z3c5d",
+      "ref": "acme/shop#12",
+      "author_name": "Dana Example",
+      "body": "Checkout fails only with a saved card.\n\nSteps are in the item's first comment."
+    }
+  ]
+}

@@ -1188,9 +1188,27 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Set follows of each question you add in questions.json to ids of questions " <>
            "before it in questions.json."},
         {"questions", :new_not_open,
-         "Set the state of each question you add in questions.json to open."},
+         "Add each question in questions.json as open, with no decision, or as decided, " <>
+           "with its decision."},
         {"questions", :asked_run,
          "Set asked.run of each question you add in questions.json to this run's number."},
+        {"questions", :decision_option,
+         "Set decision.option of each question in questions.json to the title of one of " <>
+           "the question's options."},
+        {"questions", :decided_not_new,
+         "Record each decision in questions.json on a question you add, and set no " <>
+           "question already in it to decided."},
+        {"questions", :decided_changed,
+         "Leave question and options of each question with a decision in questions.json " <>
+           "as the newest version of questions has them, and its context while it stays " <>
+           "decided or answered: to change them, withdraw the question and add a new one."},
+        {"questions", :decision_changed,
+         "Leave the decision of each question in questions.json as the newest version of " <>
+           "questions has it, and add none: only the run that adds a question records " <>
+           "its decision."},
+        {"questions", :decision_run,
+         "Set decision.run of each question in questions.json to the question's asked.run: " <>
+           "only the run that asked a question records a decision on it."},
         {"review-comments", :id_dropped,
          "Keep every review comment of the newest version of review-comments in " <>
            "review-comments.json: the id of a review comment is missing."},
@@ -1300,8 +1318,10 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       # A run of another workflow with no stage has none; a run with a stage keeps it.
       dispatch_run = Repo.get!(DispatchRun, ctx.dispatch_run.id)
 
-      assert Apiary.Stages.run_stage_id(%{dispatch_run | workflow: "build"}, ctx.work_item) ==
-               nil
+      assert Apiary.Stages.run_stage_id(
+               %{dispatch_run | workflow: "build", explore: false},
+               ctx.work_item
+             ) == nil
 
       assert Apiary.Stages.run_stage_id(%{dispatch_run | stage_id: "st_other"}, ctx.work_item) ==
                "st_other"

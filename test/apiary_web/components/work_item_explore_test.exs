@@ -195,13 +195,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {:running, running_run(3), "Explore is running (Run 43).",
              "Attempt 3 reads the ticket, then writes a proposal and questions."},
             {:running, Map.merge(running_run(3), %{sent: true, sent_by: nil}),
-             "Explore is running again, with the review comments (Run 43).",
-             "Attempt 3 reads the ticket, the newest proposal and the review comments, then writes the next proposal and questions."},
+             "Explore is running again, with the comments (Run 43).",
+             "Attempt 3 reads the ticket, the newest proposal and the comments, then writes the next proposal and questions."},
             {:queued, pending_run(3), "Explore is queued (Run 43).",
              "Attempt 3 starts when the workspace's pool takes it. It reads the ticket, then writes a proposal and questions."},
             {:queued, Map.merge(pending_run(3), %{sent: true, sent_by: nil}),
-             "Explore is queued again, with the review comments (Run 43).",
-             "Attempt 3 starts when the workspace's pool takes it. It reads the ticket, the newest proposal and the review comments."}
+             "Explore is queued again, with the comments (Run 43).",
+             "Attempt 3 starts when the workspace's pool takes it. It reads the ticket, the newest proposal and the comments."}
           ] do
         html = tab(invoice_item(%{status: status, run: run}))
 
@@ -620,9 +620,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "after an undo: undoing again takes the label off, as a first undo does" do
       for {by, line} <- [
             {@dana,
-             "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket and leaves its comment."},
+             "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket."},
             {@priya,
-             "Priya took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket and leaves its comment."}
+             "Priya took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket."}
           ] do
         html = again(by, previous: :undone)
         assert text(html, "#work-item-step-undo-line") == line
@@ -733,7 +733,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "a member who may act: the badge, the line, and the link to Explore" do
-      html = asked(3, explore_path: "/8wonders/main/work/94/explore")
+      html = asked(3, explore_path: "/8wonders/main/work/94/explore", commenting: true)
 
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Needs answers"
@@ -741,7 +741,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert attr(html, ".q-wi-step-h .q-wi-mk", "class") == ["q-wi-mk q-wi-mk-wait"]
 
       assert text(html, "#work-item-step-line") ==
-               "Answer the 3 questions, and Explore runs again with your answers."
+               "Answer the 3 questions or add a comment, then run another round."
 
       assert count(html, ".q-wi-play") == 0
 
@@ -751,15 +751,23 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "one question; on Explore's tab, no link" do
-      html = asked(1)
+      html = asked(1, commenting: true)
 
       assert text(html, "#work-item-step-line") ==
-               "Answer the question, and Explore runs again with your answer."
+               "Answer the question or add a comment, then run another round."
 
       assert count(html, "#work-item-step-explore") == 0
 
       linked = asked(1, explore_path: "/8wonders/main/work/94/explore")
       assert text(linked, "#work-item-step-explore") == "Answer the question"
+    end
+
+    test "where Explore's tab has no comment field, the line names only the answers" do
+      assert text(asked(1), "#work-item-step-line") ==
+               "Answer the question, then run another round."
+
+      assert text(asked(3), "#work-item-step-line") ==
+               "Answer the 3 questions, then run another round."
     end
 
     test "a reader who may not act: that a member answers next, no button" do
@@ -902,7 +910,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = card(work_item(%{}), explore_path: "/8wonders/main/work/88/explore")
 
       assert text(html, "#work-item-step-line") ==
-               "Confirm the proposal, or add review comments and send them."
+               "Approve the proposal, or add a comment and run another round."
 
       assert count(html, ".q-wi-play") == 0
       assert text(html, "#work-item-step-explore") == "Read the proposal"
@@ -969,10 +977,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         end
 
         assert text(asked(3), "#work-item-step-line") ==
-                 "Answer the 3 questions, and Explore runs again with your answers."
+                 "Answer the 3 questions, then run another round."
 
         assert text(card(work_item(%{})), "#work-item-step-line") ==
-                 "Confirm the proposal, or add review comments and send them."
+                 "Approve the proposal, or add a comment and run another round."
       end)
     end
   end
@@ -1148,14 +1156,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       wait = "#work-item-explore-wait p:last-child"
 
       assert text(tab(queued, earlier_runs: [run1_answered(), run2_answered()]), wait) ==
-               "Attempt 3 starts when the workspace's pool takes it. It reads the ticket, the newest proposal and the review comments."
+               "Attempt 3 starts when the workspace's pool takes it. It reads the ticket, the newest proposal and the comments."
 
       for {sent_by, words} <- [
-            {%{id: "u1", name: "Dana", email: "dana@example.com", you: true},
-             "your review comments"},
-            {%{id: "u2", name: "Lee", email: "lee@example.com", you: false},
-             "the review comments"},
-            {nil, "the review comments"}
+            {%{id: "u1", name: "Dana", email: "dana@example.com", you: true}, "your comments"},
+            {%{id: "u2", name: "Lee", email: "lee@example.com", you: false}, "the comments"},
+            {nil, "the comments"}
           ] do
         running = Map.merge(running_run(3), %{sent: true, sent_by: sent_by})
 
@@ -1187,10 +1193,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       lee = %{id: "u2", name: "Lee", email: "lee@example.com", you: false}
 
       for {sent_by, queued, running} <- [
-            {dana, "Explore is queued again, with your review comments.",
-             "Explore is running again, with your review comments (Run 43)."},
-            {lee, "Explore is queued again, with the review comments.",
-             "Explore is running again, with the review comments (Run 43)."}
+            {dana, "Explore is queued again, with your comments.",
+             "Explore is running again, with your comments (Run 43)."},
+            {lee, "Explore is queued again, with the comments.",
+             "Explore is running again, with the comments (Run 43)."}
           ] do
         run = %{attempt: 3, of: 3, sent: true, sent_by: sent_by}
         html = tab(invoice_item(%{status: :queued, run: run}), earlier_runs: earlier)
@@ -1230,7 +1236,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           questions: invoice_questions(),
           questions_version: 2,
           review_comments: [comment("rc1")],
-          review_path: "/acme/main/work/41/explore?review=new",
           reply_path: &"/acme/main/work/41/explore?reply=#{&1}"
         )
 
@@ -1264,7 +1269,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert texts(html, "#work-item-explore-questions-question-2 .q-xp-opt-t") == ["Yes", "No"]
 
       assert text(html, "#work-item-explore-proposal-review-rc1-reading") ==
-               "Attempt 3 (Run 43) reads this review comment."
+               "Attempt 3 (Run 43) reads this comment."
     end
 
     test "the first run running: no answers, no frames" do
@@ -1302,18 +1307,90 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, ".q-wi-play") == 0
     end
 
-    test "Add review comment, only with its page" do
-      path = "/acme/main/work/41/explore?review=new"
-      html = tab(invoice_item(), proposal: proposal_v(2), review_path: path)
+    test "the header has no Add review comment, also for a reader who may write one" do
+      html = tab(invoice_item(), proposal: proposal_v(2), can_send: true)
 
-      assert text(html, "#work-item-explore-proposal-review-add") == "Add review comment"
-      assert attr(html, "#work-item-explore-proposal-review-add", "href") == [path]
-      assert attr(html, "#work-item-explore-proposal-review-add", "data-phx-link") == ["patch"]
+      assert count(html, "#work-item-explore-proposal-review-add") == 0
+      assert count(html, "#work-item-explore-proposal .q-xp-frame-h a") == 0
+      refute html =~ "Add review comment"
+    end
 
-      assert count(
-               tab(invoice_item(), proposal: proposal_v(2)),
-               "#work-item-explore-proposal-review-add"
-             ) == 0
+    test "Background: its first paragraph, the rest in a closed fold behind Read more" do
+      message = """
+      ## Summary
+
+      Customers choose a delivery date.
+
+      ## Background
+
+      Customers cannot choose when an order arrives.
+
+      The checkout ships every order on the next working day.
+
+      - Support writes to the carrier.
+
+      ### The carrier
+
+      The carrier offers delivery on a chosen day.
+
+      ## Proposed solution
+
+      Add a delivery date step.
+      """
+
+      html = tab(invoice_item(), proposal: proposal_v(2, message))
+      t = "#work-item-explore-proposal-text"
+
+      assert count(html, "#{t} details.q-xp-more") == 1
+      assert attr(html, "#{t} details.q-xp-more", "open") == []
+      assert text(html, "#{t} details.q-xp-more > summary") == "Read more"
+
+      assert attr(html, "#{t} details.q-xp-more > summary > span", "class") == [
+               "hero-chevron-down-micro size-3.5"
+             ]
+
+      # The first paragraph shows, under the heading; the rest of the Background folds,
+      # its lower heading too, up to the next heading of its level.
+      assert texts(html, "#{t} > p") == [
+               "Customers choose a delivery date.",
+               "Customers cannot choose when an order arrives.",
+               "Add a delivery date step."
+             ]
+
+      assert texts(html, "#{t} details.q-xp-more > p") == [
+               "The checkout ships every order on the next working day.",
+               "The carrier offers delivery on a chosen day."
+             ]
+
+      assert texts(html, "#{t} details.q-xp-more li") == ["Support writes to the carrier."]
+      assert texts(html, "#{t} details.q-xp-more h5") == ["The carrier"]
+      assert texts(html, "#{t} > h4") == ["Summary", "Background", "Proposed solution"]
+    end
+
+    test "Background with one paragraph, or none: no fold" do
+      one = """
+      ## Background
+
+      Customers cannot choose when an order arrives.
+
+      ## Proposed solution
+
+      Add a delivery date step.
+
+      More words after it.
+      """
+
+      for message <- [one, @invoice] do
+        html = tab(invoice_item(), proposal: proposal_v(2, message))
+        assert count(html, "details.q-xp-more") == 0
+        refute html =~ "Read more"
+      end
+    end
+
+    test "fold_background/1: the CSS hides the toggle once open; other renders stay" do
+      assert app_css() =~ ~r/\.q-xp-more\[open\] > summary \{\s*display: none;/
+      assert C.fold_background({:as_written, "## Background"}) == {:as_written, "## Background"}
+      assert C.fold_background(nil) == nil
     end
 
     test "Sources: a fold at the foot, closed, with the count of its items and no heading" do
@@ -1602,10 +1679,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = tab(w, can_act: true, proposal: proposal_v(2))
       p = "#work-item-explore-proposal"
 
-      assert text(html, "#{p} .q-xp-frame-h .badge") == "Confirmed"
+      assert text(html, "#{p} .q-xp-frame-h .badge") == "Approved"
 
       assert text(html, "#{p} .q-xp-cap") ==
-               "Version 2. You confirmed it just now."
+               "Version 2. You approved it just now."
 
       assert count(html, "form, button") == 0
 
@@ -1613,7 +1690,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         tab(%{w | confirmed_by: @priya, confirmed_at: ago(3 * 3600)}, proposal: proposal_v(2))
 
       assert text(other, "#{p} .q-xp-cap") ==
-               "Version 2. Priya confirmed it 3 hours ago."
+               "Version 2. Priya approved it 3 hours ago."
     end
 
     test "confirmed, a proposal with no version: who and when, without the version" do
@@ -1621,12 +1698,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       p = "#work-item-explore-proposal"
 
       assert text(tab(w, proposal: proposal_v(nil)), "#{p} .q-xp-cap") ==
-               "You confirmed it just now."
+               "You approved it just now."
 
       other = %{w | confirmed_by: @priya, confirmed_at: ago(3 * 3600)}
 
       assert text(tab(other, proposal: proposal_v(nil)), "#{p} .q-xp-cap") ==
-               "Priya confirmed it 3 hours ago."
+               "Priya approved it 3 hours ago."
 
       refute tab(w, proposal: proposal_v(nil)) =~ "n/a"
     end
@@ -1652,15 +1729,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             can_act: true,
             can_send: true,
             proposal: proposal_v(2),
-            review_comments: comments,
-            review_path: "/acme/main/work/41/explore?review=new"
+            review_comments: comments
           ],
           extra
         )
       )
     end
 
-    test "without open review comments: Confirm alone, primary, under the proposal" do
+    test "without open review comments: the comment, Run another round disabled, Confirm primary" do
       closed = comment("rc1", %{state: :closed, replies: [run_reply(:changed, 2)]})
       html = gate_tab([closed])
       g = "#work-item-explore-gate"
@@ -1668,63 +1744,90 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert attr(html, "#work-item-explore > *", "id") |> Enum.take(2) ==
                ["work-item-explore-proposal", "work-item-explore-gate"]
 
-      assert text(html, "#{g}-go") == "Confirm"
+      assert text(html, "#{g} .q-xp-cap") ==
+               "Run another round starts the next run. That run reads your comment and updates the proposal."
+
+      assert text(html, "#{g} .q-xp-comment label") == "Comment on the whole proposal"
+      assert attr(html, "#{g} .q-xp-comment label", "for") == ["work-item-explore-gate-comment"]
+      assert attr(html, "#{g}-comment", "name") == ["comment"]
+
+      assert attr(html, "#{g}-comment", "placeholder") == [
+               "Add anything the questions do not cover."
+             ]
+
+      assert attr(html, g, "phx-submit") == ["answer"]
+      assert attr(html, g, "phx-change") == ["answer_draft"]
+      assert texts(html, "#{g} button") == ["Run another round", "Approve"]
+      assert attr(html, "#{g}-send", "type") == ["submit"]
+      assert attr(html, "#{g}-send", "disabled") == [""]
+      refute attr(html, "#{g}-send", "class") |> hd() =~ "btn-primary"
       assert attr(html, "#{g}-go", "phx-click") == ["confirm"]
       assert attr(html, "#{g}-go", "phx-value-number") == ["41"]
       assert attr(html, "#{g}-go", "class") |> hd() =~ "btn-primary"
-      assert count(html, "#{g}-send, #{g}-unread") == 0
-      assert count(html, "#{g} .q-xp-cap") == 0
+      assert count(html, "#{g}-unread") == 0
+
+      # The field never words itself as a review comment.
+      field = html |> query("#{g} .q-xp-comment") |> LazyHTML.to_html()
+      refute field =~ ~r/review comment/i
     end
 
-    test "with open review comments: the line, Send review comments first, then Confirm and what it leaves" do
+    test "Run another round is enabled by a comment, or by an open review comment" do
+      g = "#work-item-explore-gate"
+      written = gate_tab([], comment: "Also check the account page.")
+
+      assert attr(written, "#{g}-send", "disabled") == []
+      assert text(written, "#{g}-comment") == "Also check the account page."
+      assert attr(gate_tab([], comment: " \n "), "#{g}-send", "disabled") == [""]
+      assert attr(gate_tab([comment("rc1")]), "#{g}-send", "disabled") == []
+    end
+
+    test "with open review comments: Confirm and what it leaves unread" do
       for {open, words} <- [
-            {1, "Confirm leaves 1 review comment unread."},
-            {2, "Confirm leaves 2 review comments unread."}
+            {1, "Approve leaves 1 comment unread."},
+            {2, "Approve leaves 2 comments unread."}
           ] do
         comments = for i <- 1..open, do: comment("rc#{i}")
         html = gate_tab(comments)
         g = "#work-item-explore-gate"
 
-        assert text(html, "#{g} .q-xp-cap") ==
-                 "Send review comments starts the next run. That run reads your review comments and updates the proposal."
-
-        assert attr(html, g, "phx-submit") == ["run_with_comments"]
         assert attr(html, "#{g} input[type=hidden]", "value") == ["41"]
-        assert text(html, "#{g}-send") == "Send review comments"
-        assert attr(html, "#{g}-send", "type") == ["submit"]
         assert attr(html, "#{g}-send .hero-play-micro", "class") != []
-        assert text(html, "#{g}-go") == "Confirm"
         assert attr(html, "#{g}-go", "type") == ["button"]
         assert attr(html, "#{g}-go", "aria-describedby") == ["work-item-explore-gate-unread"]
         assert text(html, "#{g}-unread") == words
-        assert texts(html, "#{g} button") == ["Send review comments", "Confirm"]
+        assert texts(html, "#{g} button") == ["Run another round", "Approve"]
       end
     end
 
     test "a reader who may not write review comments: Confirm alone; one with neither right: none" do
-      html = gate_tab([comment("rc1")], review_path: nil)
-      assert count(html, "#work-item-explore-gate-send") == 0
-      assert text(html, "#work-item-explore-gate-go") == "Confirm"
+      html = gate_tab([comment("rc1")], can_send: false)
+      assert count(html, "#work-item-explore-gate-send, #work-item-explore-gate-comment") == 0
+      assert text(html, "#work-item-explore-gate-go") == "Approve"
 
       none = gate_tab([comment("rc1")], can_act: false, can_send: false)
       assert count(none, "#work-item-explore-gate") == 0
     end
 
-    test "each control by its right: Send review comments and its line, Confirm and its line" do
+    test "each control by its right: the comment and Run another round, Confirm and its line" do
       g = "#work-item-explore-gate"
 
       # May send (`work_item.review_comment`), may not confirm (`work_item.confirm`).
       html = gate_tab([comment("rc1")], can_act: false)
-      assert texts(html, "#{g} button") == ["Send review comments"]
-      assert count(html, "#{g} .q-xp-cap") == 1
+      assert texts(html, "#{g} button") == ["Run another round"]
+      assert attr(html, "#{g}-send", "class") |> hd() =~ "btn-primary"
+      assert count(html, "#{g} .q-xp-cap, #{g}-comment") == 2
       assert count(html, "#{g}-go, #{g}-unread") == 0
 
-      # May confirm, may not send.
+      # May confirm, may not send: no line on the review comments, which the reader
+      # may not send.
       html = gate_tab([comment("rc1")], can_send: false)
-      assert texts(html, "#{g} button") == ["Confirm"]
+      assert texts(html, "#{g} button") == ["Approve"]
       assert attr(html, "#{g}-go", "class") |> hd() =~ "btn-primary"
-      assert text(html, "#{g}-unread") == "Confirm leaves 1 review comment unread."
-      assert count(html, "#{g}-send, #{g} .q-xp-cap") == 0
+      assert count(html, "#{g}-send, #{g}-unread, #{g} .q-xp-cap, #{g}-comment") == 0
+
+      # May do both: Approve with the line on the open review comment.
+      html = gate_tab([comment("rc1")], [])
+      assert text(html, "#{g}-unread") == "Approve leaves 1 comment unread."
     end
 
     test "a reader with neither right: only the line of a send that was not made" do
@@ -1733,7 +1836,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       g = "#work-item-explore-gate"
 
       assert text(html, "#{g}-error") == line
-      assert count(html, "#{g} button, #{g} .q-xp-cap, #{g}-unread") == 0
+      assert count(html, "#{g} button, #{g} .q-xp-cap, #{g}-unread, #{g}-comment") == 0
     end
 
     test "the old field and Send change are gone" do
@@ -1763,7 +1866,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert attr(html, "#{q} .q-xp-frame-i", "class") |> hd() =~ "hero-question-mark-circle"
 
       assert text(html, "#{q}-cap") ==
-               "Run with answers starts the next run. That run reads your answers and updates the proposal."
+               "Run another round starts the next run. That run reads your answers and updates the proposal."
 
       # Closed: answered and withdrawn, each folded to one line.
       assert attr(html, "#{q}-closed > details", "id") == [
@@ -1785,13 +1888,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert texts(html, "#{q}-question-1-answer-who > .q-xp-it.q-xp-by") ==
                ["You answered 1 hour ago"]
 
-      # Open: in the form, one Run with answers for all.
+      # Open: in the form, one Run another round for all.
       assert texts(html, "#{q} .q-xp-sec > h3") == ["Open questions"]
       assert attr(html, "#{q}-form", "phx-change") == ["answer_draft"]
       assert attr(html, "#{q}-form", "phx-submit") == ["answer"]
       assert attr(html, "#{q}-form input[type=hidden]", "value") == ["41"]
 
-      assert attr(html, "#{q}-form > ol > li", "id") == [
+      assert attr(html, "#{q}-form ol > li", "id") == [
                "#{String.trim_leading(q, "#")}-question-2",
                "#{String.trim_leading(q, "#")}-question-3"
              ]
@@ -1802,7 +1905,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
 
       assert count(html, "button") == 1
-      assert text(html, "#{q}-go") == "Run with answers"
+      assert text(html, "#{q}-go") == "Run another round"
       assert attr(html, "#{q}-go .hero-play-micro", "class") != []
       refute html =~ "Send answers"
       refute html =~ "Sending starts"
@@ -2142,7 +2245,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             can_act: true,
             proposal: proposal_v(2),
             review_comments: comments,
-            review_path: "/acme/main/work/41/explore?review=new",
             reply_path: &"/acme/main/work/41/explore?reply=#{&1}"
           ],
           extra
@@ -2181,7 +2283,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = comments_tab(invoice_comments())
       r = "#work-item-explore-proposal-review"
 
-      assert text(html, "#{r}-h") == "Review comments"
+      assert text(html, "#{r}-h") == "Comments"
       assert count(html, "h3#{r}-h") == 1
 
       assert attr(html, "#{r} > .q-rc", "id") == [
@@ -2301,31 +2403,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   describe "review_page/1" do
-    test "Add review comment: the field, its label, the button, and Cancel" do
-      html =
-        render_component(&C.review_page/1,
-          kind: :comment,
-          number: 41,
-          cancel: "/acme/main/work/41/explore"
-        )
-
-      f = "#work-item-review-page-form"
-      assert text(html, "h1") == "Add review comment"
-      assert attr(html, f, "phx-submit") == ["review_comment"]
-      assert attr(html, "#{f} input[type=hidden]", "name") == ["number"]
-      assert attr(html, "#{f} textarea", "name") == ["text"]
-      assert text(html, "#{f} label") == "Review comment"
-      assert text(html, "#{f} button[type=submit]") == "Add review comment"
-      assert attr(html, "#{f} a", "href") == ["/acme/main/work/41/explore"]
-      assert count(html, ".q-rc") == 0
-    end
-
     test "Reply: the review comment opened above the field, its id in the form" do
       closed = comment("rc1", %{state: :closed, replies: [run_reply(:changed, 2)]})
 
       html =
         render_component(&C.review_page/1,
-          kind: :reply,
           number: 41,
           comment: closed,
           value: "Also the credit notes.",
@@ -2347,25 +2429,27 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Shorten the reply to 2,000 characters or fewer."
 
       assert attr(html, "#{f} textarea", "aria-invalid") == ["true"]
+      assert text(html, "#{f} textarea[name=text]") == "Also the credit notes."
+      assert text(html, "#{f} label") == "Reply"
       assert text(html, "#{f} button[type=submit]") == "Reply"
+      assert attr(html, "#{f} a", "href") == ["/acme/main/work/41/explore"]
     end
 
-    test "comment_error/2: the words of each error, on Add review comment and on Reply" do
+    test "comment_error/2: the words of each error, for the comment and on Reply" do
       for kind <- [:comment, :reply] do
-        assert C.comment_error(:blank, kind) == "Write your review comment."
         assert C.comment_error(:reply_blank, kind) == "Write your reply."
 
         assert C.comment_error(:not_approver, kind) ==
-                 "Ask one of this stage's approvers to write review comments on the proposal. Only approvers of the stage can write them."
+                 "Ask one of this stage's approvers to write comments on the proposal. Only approvers of the stage can write them."
 
         assert C.comment_error(:other, kind) == nil
       end
 
       assert C.comment_error({:too_long, 2000}, :comment) ==
-               "Shorten the review comment to 2,000 characters or fewer."
+               "Shorten the comment to 2,000 characters or fewer."
 
       assert C.comment_error(:characters, :comment) ==
-               "Remove the invisible or control characters from the review comment."
+               "Remove the invisible or control characters from the comment."
 
       assert C.comment_error({:too_long, 2000}, :reply) ==
                "Shorten the reply to 2,000 characters or fewer."
@@ -2589,16 +2673,16 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       for {status, overrides, _run_state, heading, body} <- [
             {:no_result, %{state: :failed, outcome: :error, end_cause: :run_ended}, "Failed",
              "The run ended with an error (Run 12).",
-             "The run's last result was an error. There is nothing to show or confirm."},
+             "The run's last result was an error. There is nothing to show or approve."},
             {:no_result, %{outcome: :none}, "Completed",
-             "The run ended without a result (Run 12).", "There is nothing to show or confirm."},
+             "The run ended without a result (Run 12).", "There is nothing to show or approve."},
             {:no_result, %{outcome: :refused}, "Completed",
              "The run's result did not pass Qory Apiary's check (Run 12).",
              "Qory Apiary accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so it is not shown."},
             {:lost, %{state: :lost, outcome: nil}, "Lost", "The run was lost (Run 12).",
-             "Qory Apiary has no result from the run. There is nothing to show or confirm."},
+             "Qory Apiary has no result from the run. There is nothing to show or approve."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
-             "The run was cancelled (Run 12).", "There is nothing to show or confirm."}
+             "The run was cancelled (Run 12).", "There is nothing to show or approve."}
           ] do
         r =
           run(Map.merge(%{proposal: nil, ended_at: ago(3600), duration: "4 minutes"}, overrides))
@@ -2867,6 +2951,42 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "Remove the user name and password from #{harness}, then run Explore again. A harness source address may not contain a credential."},
             {%{code: "too_many"},
              "Take the harness sources from at most 5 accounts, then run Explore again. A run takes 5 harness credentials at most."},
+            {%{
+               code: "ref_missing",
+               rule: %{
+                 "rule" => "claim",
+                 "values" => %{
+                   "url" => "https://github.com/qoryai/qory",
+                   "ref" => "gone",
+                   "builtin" => true
+                 }
+               }
+             },
+             "Contact support. Reading the harness from https://github.com/qoryai/qory failed: the repository has no branch gone."},
+            {%{
+               code: "harness_unreadable",
+               rule: %{
+                 "rule" => "claim",
+                 "values" => %{
+                   "url" => harness,
+                   "ref" => "main",
+                   "cause" => %{"cause" => "failed"}
+                 }
+               }
+             },
+             "Start the run again later. Reading the harness from #{harness} failed: the host returned something other than a git repository over HTTPS. If it fails again, contact support."},
+            {%{
+               code: "harness_unreadable",
+               rule: %{
+                 "rule" => "claim",
+                 "values" => %{
+                   "url" => harness,
+                   "ref" => "main",
+                   "cause" => %{"cause" => "too_large"}
+                 }
+               }
+             },
+             "Start the run again later. Reading the harness from #{harness} failed: the repository is larger than 16 MiB, or a harness file is larger than 0.25 MiB. If it fails again, contact support."},
             {%{code: "adapter_unavailable", adapter: "code-host"},
              "Run Explore again. If the run ends the same way, contact support. Three calls to the adapter code-host failed."}
           ] do
@@ -2957,7 +3077,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       words = [
         "The run ended with an error (Run 12).",
-        "The run's last result was an error. There is nothing to show or confirm."
+        "The run's last result was an error. There is nothing to show or approve."
       ]
 
       html = tab(work_item(%{number: 97, status: :no_result, run: r}))
@@ -3104,7 +3224,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       for {start, words} <- [
             {nil, "Explore started in attempt 2"},
-            {:review_comments, "Explore started again, with the review comments, in attempt 2"},
+            {:review_comments, "Explore started again, with the comments, in attempt 2"},
             {:answers, "Explore started again, with the answers, in attempt 2"},
             {:again, "Explore started again in attempt 2"}
           ] do
@@ -3155,29 +3275,49 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       comment = "Also check the basket.\n<b>not bold</b>"
 
       html = event(kind: :answered, actor: @dana, questions: [], comment: comment)
-      assert line(html) == "You wrote a review comment on the proposal 14 Oct, 11:25"
+      assert line(html) == "You wrote a comment on the proposal 14 Oct, 11:25"
       [quoted] = html |> query("#ev-1-answers .q-wi-qa-a") |> Enum.to_list()
       assert LazyHTML.text(quoted) == comment
       assert count(html, "#ev-1-answers b") == 0
       assert count(html, "#ev-1-answers .q-wi-qa-q") == 0
 
       other = event(kind: :answered, actor: @priya, questions: [], comment: "Ship it.")
-      assert line(other) == "Priya wrote a review comment on the proposal 14 Oct, 11:25"
+      assert line(other) == "Priya wrote a comment on the proposal 14 Oct, 11:25"
       assert text(other, "#ev-1-answers b") == ""
       assert text(other, "li > div > p:first-child b") == "Priya"
+    end
+
+    test "Run another round with answers and a comment: one line for both, then each quoted" do
+      qs = questions(@answers)
+      comment = "Also check the basket."
+
+      html = event(kind: :answered, actor: @dana, questions: [hd(qs)], comment: comment)
+      assert line(html) == "You answered 1 question and wrote a comment 14 Oct, 11:25"
+      assert texts(html, "#ev-1-answers .q-wi-qa-q") == [hd(qs).text]
+      assert hd(@answers) in texts(html, "#ev-1-answers .q-wi-qa-a")
+
+      mine3 = event(kind: :answered, actor: @dana, questions: qs, comment: comment)
+      assert line(mine3) == "You answered 3 questions and wrote a comment 14 Oct, 11:25"
+
+      other = event(kind: :answered, actor: @priya, questions: [hd(qs)], comment: comment)
+      assert line(other) == "Priya answered 1 question and wrote a comment 14 Oct, 11:25"
+      assert text(other, "li > div > p:first-child b") == "Priya"
+
+      other3 = event(kind: :answered, actor: @priya, questions: qs, comment: comment)
+      assert line(other3) == "Priya answered 3 questions and wrote a comment 14 Oct, 11:25"
     end
 
     test "a reply to a review comment: who, and the reply quoted" do
       html =
         event(kind: :answered, actor: @dana, questions: [], comment: "Ship it.", reply: true)
 
-      assert line(html) == "You replied to a review comment 14 Oct, 11:25"
+      assert line(html) == "You replied to a comment 14 Oct, 11:25"
       assert text(html, "#ev-1-answers .q-wi-qa-a") == "Ship it."
 
       other =
         event(kind: :answered, actor: @priya, questions: [], comment: "Ship it.", reply: true)
 
-      assert line(other) == "Priya replied to a review comment 14 Oct, 11:25"
+      assert line(other) == "Priya replied to a comment 14 Oct, 11:25"
       assert text(other, "li > div > p:first-child b") == "Priya"
     end
 
@@ -3227,7 +3367,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       one = event(kind: :replied, run: run(%{}), replies: 1, duration: "30 seconds")
 
       assert line(one) ==
-               "Explore wrote a reply to 1 review comment, after 30 seconds 14 Oct, 11:25"
+               "Explore wrote a reply to 1 comment, after 30 seconds 14 Oct, 11:25"
 
       assert count(one, ".q-wi-ev-ic .q-wi-play.hero-play-circle") == 1
       assert count(one, ".q-wi-ev-bad") == 0
@@ -3235,15 +3375,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       two = event(kind: :replied, run: run(%{}), replies: 2, duration: "4 minutes")
 
       assert line(two) ==
-               "Explore wrote replies to 2 review comments, after 4 minutes 14 Oct, 11:25"
+               "Explore wrote replies to 2 comments, after 4 minutes 14 Oct, 11:25"
     end
 
     test "proposed: after how long, and whose turn; only how long without an owner" do
       assert line(event(kind: :proposed, owner: @dana, duration: "11 minutes")) ==
-               "Explore wrote a proposal, after 11 minutes. You confirm next 14 Oct, 11:25"
+               "Explore wrote a proposal, after 11 minutes. You approve next 14 Oct, 11:25"
 
       assert line(event(kind: :proposed, owner: @lea, duration: "7 minutes")) ==
-               "Explore wrote a proposal, after 7 minutes. Lea confirms next 14 Oct, 11:25"
+               "Explore wrote a proposal, after 7 minutes. Lea approves next 14 Oct, 11:25"
 
       assert line(event(kind: :proposed, owner: nil, duration: "7 minutes")) ==
                "Explore wrote a proposal, after 7 minutes 14 Oct, 11:25"
@@ -3276,12 +3416,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       for {extra, words} <- [
             {[kind: :explore_again, actor: @dana], "You ran Explore again"},
             {[kind: :explore_again, actor: @priya], "Priya ran Explore again"},
-            {[kind: :confirmed, actor: @dana], "You confirmed the proposal. Ready for Shape"},
-            {[kind: :confirmed, actor: @priya], "Priya confirmed the proposal. Ready for Shape"},
+            {[kind: :confirmed, actor: @dana], "You approved the proposal. Ready for Shape"},
+            {[kind: :confirmed, actor: @priya], "Priya approved the proposal. Ready for Shape"},
             {[kind: :confirmed, actor: @dana, changed: true],
-             "You changed the proposal and confirmed it. Ready for Shape"},
+             "You changed the proposal and approved it. Ready for Shape"},
             {[kind: :confirmed, actor: @priya, changed: true],
-             "Priya changed the proposal and confirmed it. Ready for Shape"}
+             "Priya changed the proposal and approved it. Ready for Shape"}
           ] do
         assert line(event(extra)) == words <> " 14 Oct, 11:25"
       end
@@ -3357,7 +3497,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           can_act: true,
           proposal: proposal_v(1),
           review_comments: [comment("rc_1")],
-          review_path: "/acme/main/work/88/explore?review=new",
           reply_path: &"/acme/main/work/88/explore?reply=#{&1}"
         ),
         event(kind: :started, run: run(%{})),
@@ -3473,7 +3612,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = tab(w, can_act: true, questions: [q(1)])
       assert count(html, "#work-item-explore-limit") == 0
       assert count(html, "#work-item-explore-questions-form") == 1
-      assert text(html, "#work-item-explore-questions-go") == "Run with answers"
+      assert text(html, "#work-item-explore-questions-go") == "Run another round"
       refute html =~ "attempt 4 of 3"
 
       assert text(card(w), ".q-wi-badge") == "Needs answers"
@@ -3551,8 +3690,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       [text] =
         render_component(&C.review_page/1,
-          kind: :comment,
           number: 41,
+          comment: comment("rc1"),
           value: "\nStarts after a line.",
           cancel: "/acme/main/work/41/explore"
         )
@@ -3584,9 +3723,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         page =
           render_component(&C.review_page/1,
-            kind: :comment,
             number: 41,
-            error: :blank,
+            comment: comment("rc1"),
+            error: :reply_blank,
             submits: submits,
             cancel: "/acme/main/work/41/explore"
           )
@@ -3731,8 +3870,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       html =
         render_component(&C.review_page/1,
-          kind: :comment,
           number: 41,
+          comment: comment("rc1"),
           cancel: "/acme/main/work/41/explore"
         )
 
@@ -3880,20 +4019,90 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
   end
 
-  describe "the gate's line about Send review comments" do
-    test "your review comments only for a reader who wrote every open one" do
-      cap = "#work-item-explore-gate .q-xp-cap"
+  describe "the comment on the whole proposal, under the questions" do
+    defp commenting_tab(extra) do
+      tab(
+        invoice_item(%{status: :questions}),
+        Keyword.merge(
+          [
+            can_act: true,
+            can_send: true,
+            proposal: proposal_v(2),
+            questions: invoice_questions(),
+            questions_version: 2
+          ],
+          extra
+        )
+      )
+    end
 
-      assert text(gate_tab([comment("rc1"), comment("rc2")]), cap) ==
-               "Send review comments starts the next run. That run reads your review comments and updates the proposal."
+    test "one field below the last question and above the button; no button of its own" do
+      html = commenting_tab([])
+      q = "#work-item-explore-questions"
 
-      for comments <- [
-            [comment("rc1"), comment("rc2", %{by: @lea})],
-            [comment("rc1", %{by: @lea})]
-          ] do
-        assert text(gate_tab(comments), cap) ==
-                 "Send review comments starts the next run. That run reads the review comments and updates the proposal."
+      assert attr(html, "#{q}-form > *", "class") |> Enum.reject(&is_nil/1) ==
+               ["q-xp-sec", "q-xp-comment", "q-xp-form-foot"]
+
+      assert attr(html, "#{q}-form > .q-xp-sec > *", "class") |> Enum.reject(&is_nil/1) ==
+               ["q-xp-qs"]
+
+      assert text(html, "#{q}-form .q-xp-comment label") == "Comment on the whole proposal"
+      assert attr(html, "#{q}-comment", "name") == ["comment"]
+
+      assert attr(html, "#{q}-comment", "placeholder") == [
+               "Add anything the questions do not cover."
+             ]
+
+      assert texts(html, "#{q}-form button") == ["Run another round"]
+      assert count(html, "#work-item-explore-gate") == 0
+
+      # The field never words itself as a review comment.
+      field = html |> query("#{q}-form .q-xp-comment") |> LazyHTML.to_html()
+      refute field =~ ~r/review comment/i
+    end
+
+    test "only for a reader who may write review comments, where a proposal exists" do
+      q = "#work-item-explore-questions"
+      assert count(commenting_tab(can_send: false), "#{q}-comment") == 0
+      assert count(commenting_tab(proposal: nil), "#{q}-comment") == 0
+      assert count(commenting_tab(can_send: false), "#{q}-go") == 1
+    end
+
+    test "the line above the questions names the comment only where the field shows" do
+      q = "#work-item-explore-questions"
+
+      assert text(commenting_tab([]), "#{q}-cap") ==
+               "Run another round starts the next run. That run reads your answers and your comment, and updates the proposal."
+
+      for no_field <- [commenting_tab(can_send: false), commenting_tab(proposal: nil)] do
+        assert text(no_field, "#{q}-cap") ==
+                 "Run another round starts the next run. That run reads your answers and updates the proposal."
       end
+    end
+
+    test "Run another round: disabled with nothing to send; an answer, a comment or an open review comment enables it" do
+      go = "#work-item-explore-questions-go"
+      assert attr(commenting_tab([]), go, "disabled") == [""]
+
+      for answers <- [
+            %{"q2" => %{"option" => "1"}},
+            %{"q3" => %{"note" => "Only new ones."}},
+            %{"q2" => %{"option" => "own"}}
+          ] do
+        assert attr(commenting_tab(answers: answers), go, "disabled") == []
+      end
+
+      assert attr(commenting_tab(answers: %{"q3" => %{"note" => "  "}}), go, "disabled") == [""]
+      assert attr(commenting_tab(comment: "Also check the totals."), go, "disabled") == []
+      assert attr(commenting_tab(comment: " \n "), go, "disabled") == [""]
+      assert attr(commenting_tab(review_comments: [comment("rc1")]), go, "disabled") == []
+
+      closed = comment("rc1", %{state: :closed, replies: [run_reply(:changed, 2)]})
+      assert attr(commenting_tab(review_comments: [closed]), go, "disabled") == [""]
+
+      # For a reader who may not send review comments, the open ones do not count.
+      blocked = commenting_tab(can_send: false, review_comments: [comment("rc1")])
+      assert attr(blocked, go, "disabled") == [""]
     end
   end
 
@@ -3928,6 +4137,622 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       refute css =~ ~r/@media \(min-width: 1440px\) \{\s*\.q-(wi|xp-rc|rc)[\s{-]/
       refute css =~ "1439.98px"
+    end
+  end
+
+  describe "explore_tab/1, the run's decisions" do
+    defp decided(number, overrides \\ %{}) do
+      q(
+        number,
+        Map.merge(
+          %{
+            text: "Where can a customer change the date after paying?",
+            options: [
+              %{title: "In the account page", explanation: "The order gets a date field."},
+              %{title: "In the order email", explanation: "A link opens the date step again."}
+            ],
+            state: :decided,
+            decision: %{
+              option: "In the account page",
+              reason: "The account page already lists each open order.",
+              run: 41,
+              at: ago(720)
+            }
+          },
+          overrides
+        )
+      )
+    end
+
+    defp changed(number, by, option, note) do
+      decided(number, %{state: :answered, answer: given(by, option, note, 2400)})
+    end
+
+    defp decisions_tab(status, questions, extra \\ []) do
+      tab(
+        invoice_item(%{status: status}),
+        Keyword.merge(
+          [
+            can_act: true,
+            can_send: true,
+            can_change: true,
+            proposal: proposal_v(2),
+            questions: questions,
+            questions_version: 3
+          ],
+          extra
+        )
+      )
+    end
+
+    @ask "Run another round starts the next run. That run reads your answers, your changed decisions and your comment, and updates the proposal."
+    @changed_cap "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the proposal."
+    @gate_cap "Run another round starts the next run. That run reads your comment and updates the proposal."
+
+    test "with open questions: in the questions frame, above the open questions, inside the form" do
+      html = decisions_tab(:questions, invoice_questions() ++ [decided(5)])
+      q = "#work-item-explore-questions"
+
+      assert text(html, "#{q}-h") == "Questions and decisions"
+      assert text(html, "#{q}-cap") == @ask
+      assert count(html, "#work-item-explore-decisions") == 0
+      assert count(html, "#work-item-explore-gate") == 0
+
+      # Answered and withdrawn questions stay at the top; then the decisions, then the
+      # open questions, then the comment and Run another round.
+      assert attr(html, "#{q}-closed > details", "id") == [
+               "work-item-explore-questions-question-1",
+               "work-item-explore-questions-question-4"
+             ]
+
+      assert texts(html, "#{q}-form > .q-xp-sec > h3") == ["Decisions", "Open questions"]
+
+      assert attr(html, "#{q}-form > *", "class") |> Enum.reject(&is_nil/1) ==
+               ["q-xp-sec", "q-xp-sec", "q-xp-comment", "q-xp-form-foot"]
+
+      assert attr(html, "#{q}-decisions .q-xp-decs > details", "id") ==
+               ["work-item-explore-questions-decision-5"]
+
+      assert attr(html, "#{q}-comment", "placeholder") ==
+               ["Add anything the questions and decisions do not cover."]
+
+      # Folded: the question, the run's option, and the run's reason on a second line.
+      row = "#{q}-decision-5"
+      assert attr(html, row, "open") == []
+
+      assert text(html, "#{row} > summary > .q-xp-wrap b") ==
+               "5. Where can a customer change the date after paying?"
+
+      assert text(html, "#{row} > summary > .q-xp-said") == "In the account page"
+
+      assert text(html, "#{row} > summary > .q-xp-dec-why") ==
+               "The account page already lists each open order."
+
+      # Open: the reason, the run and when, the options with the run's option picked.
+      assert text(html, "#{row} .q-xp-dec-r") ==
+               "The account page already lists each open order."
+
+      assert text(html, "#{row} .q-xp-cm-m") == "Run 41 chose it 12 minutes ago"
+
+      field = "work-item-explore-questions-answer-5"
+
+      assert attr(html, "##{field}-options input", "name") ==
+               List.duplicate("answers[q5][option]", 3)
+
+      assert attr(html, "##{field}-options input", "value") == ["1", "2", "own"]
+      assert attr(html, "##{field}-options input", "checked") == [""]
+      assert attr(html, "##{field}-1", "checked") == [""]
+      assert attr(html, "##{field}-options input", "form") == []
+
+      assert texts(html, "##{field}-options label") == [
+               "In the account page Chosen by the agent The order gets a date field.",
+               "In the order email A link opens the date step again.",
+               "Give your own option"
+             ]
+
+      assert attr(html, "##{field}", "name") == ["answers[q5][note]"]
+      assert attr(html, "##{field}", "placeholder") == ["Add details (optional)"]
+      refute html =~ "Recommended by the agent"
+    end
+
+    test "Run another round: a changed decision enables it; the run's option again does not" do
+      go = "#work-item-explore-questions-go"
+      questions = invoice_questions() ++ [decided(5)]
+
+      assert attr(decisions_tab(:questions, questions), go, "disabled") == [""]
+
+      for same <- [%{"option" => "1"}, %{"option" => "1", "note" => " "}, %{"option" => ""}] do
+        html = decisions_tab(:questions, questions, answers: %{"q5" => same})
+        assert attr(html, go, "disabled") == [""]
+      end
+
+      for change <- [
+            %{"option" => "2"},
+            %{"option" => "own", "note" => "Only by phone."},
+            %{"option" => "1", "note" => "And in the app."}
+          ] do
+        html = decisions_tab(:questions, questions, answers: %{"q5" => change})
+        assert attr(html, go, "disabled") == []
+        # The head keeps the run's option while the change is a draft.
+        assert text(html, "#work-item-explore-questions-decision-5 > summary > .q-xp-said") ==
+                 "In the account page"
+      end
+
+      own = decisions_tab(:questions, questions, answers: %{"q5" => %{"option" => "own"}})
+      assert attr(own, "#work-item-explore-questions-answer-5", "placeholder") == ["Your option"]
+    end
+
+    test "without open questions: a frame between the proposal and the gate" do
+      html =
+        decisions_tab(:confirm, [
+          decided(1),
+          decided(2, %{text: "Does gift wrapping move the first date?"})
+        ])
+
+      d = "#work-item-explore-decisions"
+      g = "#work-item-explore-gate"
+
+      assert attr(html, "#work-item-explore > *", "id") |> Enum.take(3) ==
+               [
+                 "work-item-explore-proposal",
+                 "work-item-explore-decisions",
+                 "work-item-explore-gate"
+               ]
+
+      assert count(html, "#work-item-explore-questions") == 0
+      assert text(html, "#{d}-h") == "Decisions"
+      assert attr(html, "#{d} .q-xp-frame-i", "class") |> hd() =~ "hero-check-circle"
+
+      assert attr(html, "#{d} .q-xp-decs > details", "id") == [
+               "work-item-explore-decisions-decision-1",
+               "work-item-explore-decisions-decision-2"
+             ]
+
+      # The fields belong to the gate's form, which sends them.
+      assert attr(html, "#{d} input", "form") |> Enum.uniq() == ["work-item-explore-gate"]
+      assert attr(html, "#{d} textarea", "form") |> Enum.uniq() == ["work-item-explore-gate"]
+
+      assert text(html, "#{g} .q-xp-cap") == @gate_cap
+
+      assert attr(html, "#{g}-comment", "placeholder") ==
+               ["Add anything the questions and decisions do not cover."]
+
+      assert attr(html, "#{g}-send", "disabled") == [""]
+      assert attr(html, "#{g}-go", "disabled") == []
+      assert count(html, "#{g}-hint") == 0
+    end
+
+    test "at the gate, a draft change: Run another round enabled, Approve disabled with why" do
+      html =
+        decisions_tab(:confirm, [decided(1), decided(2)],
+          answers: %{"q2" => %{"option" => "2", "note" => ""}},
+          review_comments: [comment("rc1")]
+        )
+
+      g = "#work-item-explore-gate"
+      field = "#work-item-explore-decisions-answer-2"
+
+      assert attr(html, "#{field}-2", "checked") == [""]
+      assert attr(html, "#{field}-1", "checked") == []
+      assert text(html, "#{field}-options label:first-child .badge") == "Chosen by the agent"
+
+      assert text(html, "#work-item-explore-decisions-decision-2 > summary > .q-xp-said") ==
+               "In the account page"
+
+      assert count(html, "#work-item-explore-decisions .badge-sm.bg-primary-soft") == 0
+      assert text(html, "#{g} .q-xp-cap") == @changed_cap
+      assert attr(html, "#{g}-send", "disabled") == []
+      assert attr(html, "#{g}-go", "disabled") == [""]
+      assert attr(html, "#{g}-go", "aria-describedby") == ["work-item-explore-gate-hint"]
+      assert text(html, "#{g}-hint") == "Run another round to apply your change."
+      assert count(html, "#{g}-unread") == 0
+
+      # The run's option again clears the change.
+      same =
+        decisions_tab(:confirm, [decided(1), decided(2)], answers: %{"q2" => %{"option" => "1"}})
+
+      assert attr(same, "#{g}-go", "disabled") == []
+      assert text(same, "#{g} .q-xp-cap") == @gate_cap
+    end
+
+    test "a changed decision: Changed and the member's option; open, the run's choice under Changed from" do
+      sam = %{id: "pr_sam", name: "Sam", email: "sam@example.com", you: false}
+
+      html =
+        decisions_tab(:confirm, [
+          decided(1),
+          changed(2, sam, "In the order email", nil),
+          changed(3, @dana, nil, "Only by phone.")
+        ])
+
+      row = "#work-item-explore-decisions-decision-2"
+      assert text(html, "#{row} > summary .q-xp-dec-chg .badge") == "Changed"
+      assert text(html, "#{row} > summary .q-xp-dec-said") == "In the order email"
+      assert count(html, "#{row} > summary .q-xp-dec-why") == 0
+      assert count(html, "#{row} input") == 0
+
+      assert text(html, "#{row}-answer") == "In the order email"
+
+      assert texts(html, "#{row} .q-xp-cm-m > span") ==
+               ["Sam changed it 40 minutes ago", "Changed from", "Run 41 chose it 12 minutes ago"]
+
+      assert html =~ ~r{>Changed from</span><wbr></wbr><span class="q-xp-it q-xp-by">}
+
+      assert texts(html, "#{row} .q-xp-ans-old > span") ==
+               ["In the account page", "The account page already lists each open order."]
+
+      # A member's text in place of an option is the head's words.
+      third = "#work-item-explore-decisions-decision-3"
+      assert text(html, "#{third} > summary .q-xp-dec-said") == "Only by phone."
+      assert text(html, "#{third} .q-xp-cm-m:first-of-type") == "You changed it 40 minutes ago"
+
+      # Approve stays enabled: a sent change is not a draft.
+      assert attr(html, "#work-item-explore-gate-go", "disabled") == []
+    end
+
+    test "the run's option with a note: no Changed; open, the options as text, who added the note and the note" do
+      sam = %{id: "pr_sam", name: "Sam", email: "sam@example.com", you: false}
+
+      html =
+        decisions_tab(:confirm, [
+          changed(1, sam, "In the account page", "Show the date in the order list too."),
+          changed(2, @dana, "In the account page", "And in the app.")
+        ])
+
+      row = "#work-item-explore-decisions-decision-1"
+
+      # Folded: the run's option and reason, as before the note.
+      assert count(html, "#{row} > summary .badge") == 0
+      assert count(html, "#{row} > summary .q-xp-dec-chg") == 0
+      assert text(html, "#{row} > summary .q-xp-said") == "In the account page"
+
+      assert text(html, "#{row} > summary .q-xp-dec-why") ==
+               "The account page already lists each open order."
+
+      # Opened: the run's choice as on a decision without an answer, then the note.
+      assert text(html, "#{row} .q-xp-dec-r") ==
+               "The account page already lists each open order."
+
+      assert count(html, "#{row} input") == 0
+      assert count(html, "#{row} textarea") == 0
+
+      assert texts(html, "#{row} .q-xp-opts > li .q-xp-opt-t") == [
+               "In the account page",
+               "In the order email"
+             ]
+
+      assert texts(html, "#{row} .q-xp-cm-m") ==
+               ["Run 41 chose it 12 minutes ago", "Sam added a note 40 minutes ago"]
+
+      assert text(html, "#{row}-answer") == "Show the date in the order list too."
+      refute html =~ "Changed from"
+      assert count(html, "#{row} .q-xp-ans-old") == 0
+
+      second = "#work-item-explore-decisions-decision-2"
+      assert text(html, "#{second} .q-xp-cm-m:last-of-type") == "You added a note 40 minutes ago"
+
+      # A note is no draft: Approve stays enabled.
+      assert attr(html, "#work-item-explore-gate-go", "disabled") == []
+    end
+
+    test "a reader who may not change them reads the options as text" do
+      html = decisions_tab(:confirm, [decided(1)], can_change: false, can_send: false)
+      d = "#work-item-explore-decisions"
+
+      assert count(html, "#{d} input") == 0
+      assert count(html, "#{d} textarea") == 0
+
+      assert texts(html, "#{d}-decision-1 .q-xp-opts > li") == [
+               "In the account page Chosen by the agent The order gets a date field.",
+               "In the order email A link opens the date step again."
+             ]
+
+      assert count(html, "#work-item-explore-gate-send") == 0
+      assert attr(html, "#work-item-explore-gate-go", "disabled") == []
+
+      # While a run runs, the decisions in the questions frame are text too.
+      running =
+        tab(invoice_item(%{status: :running, run: running_run(3)}),
+          can_act: true,
+          can_change: true,
+          questions: invoice_questions() ++ [decided(5)]
+        )
+
+      assert count(running, "#work-item-explore-questions-decisions input") == 0
+
+      assert texts(running, "#work-item-explore-questions .q-xp-sec > h3") ==
+               ["Decisions", "Open questions"]
+    end
+
+    test "decision_changed?/2: another option, Give your own option, or a note" do
+      question = decided(2)
+      refute C.decision_changed?(question, nil)
+      refute C.decision_changed?(question, %{"option" => "1"})
+      refute C.decision_changed?(question, %{"option" => "", "note" => "  "})
+      assert C.decision_changed?(question, %{"option" => "2"})
+      assert C.decision_changed?(question, %{"option" => "own"})
+      assert C.decision_changed?(question, %{"option" => "1", "note" => "Also by phone."})
+      refute C.decision_changed?(changed(2, @dana, "In the order email", nil), %{"option" => "2"})
+      refute C.decision_changed?(q(2), %{"option" => "1"})
+    end
+
+    test "the row's reason is cut to one line, and hidden in the opened row" do
+      css = app_css()
+      assert css =~ ~r/\.q-xp-dec-why \{[^}]*white-space: nowrap;[^}]*text-overflow: ellipsis;/s
+      assert css =~ ~r/details\[open\] > summary > \.q-xp-dec-why \{\s*display: none;/
+      assert css =~ ~r/\.q-xp-dec-said \{[^}]*text-overflow: ellipsis;/s
+    end
+
+    @no_comment_cap "Run another round starts the next run. That run reads your answers and your changed decisions, and updates the proposal."
+    @gate_no_comment_cap "Run another round starts the next run. That run reads your changed decisions and updates the proposal."
+
+    test "may change them and may not comment: the caption at the gate has no comment" do
+      gate = "#work-item-explore-gate"
+
+      for can_act <- [false, true], answers <- [%{}, %{"q1" => %{"option" => "2"}}] do
+        html =
+          decisions_tab(:confirm, [decided(1)],
+            can_act: can_act,
+            can_send: false,
+            answers: answers
+          )
+
+        assert text(html, "#{gate} .q-xp-cap") == @gate_no_comment_cap
+        assert count(html, "#{gate}-comment") == 0
+        assert count(html, "#{gate}-send") == 1
+      end
+    end
+
+    test "may change them and may not comment: the caption under the questions has no comment" do
+      html = decisions_tab(:questions, invoice_questions() ++ [decided(5)], can_send: false)
+      q = "#work-item-explore-questions"
+
+      assert text(html, "#{q}-cap") == @no_comment_cap
+      assert count(html, "#{q}-comment") == 0
+      assert count(html, "#{q}-decisions input[name='answers[q5][option]']") == 3
+    end
+
+    test "every decision sent: no field, no words about a changed decision, and no gate with nothing to send" do
+      sent = changed(1, @dana, "In the order email", nil)
+
+      # A reader with only the right to change decisions has nothing left to send.
+      html = decisions_tab(:confirm, [sent], can_act: false, can_send: false)
+      assert count(html, "#work-item-explore-gate") == 0
+      assert count(html, "#work-item-explore-decisions-decision-1 .badge") == 1
+
+      # An approver has the gate, with the caption for a comment.
+      html = decisions_tab(:confirm, [sent])
+      assert text(html, "#work-item-explore-gate .q-xp-cap") == @gate_cap
+
+      # Under the questions the caption is about the answers and the comment.
+      html = decisions_tab(:questions, invoice_questions() ++ [changed(5, @dana, "A", nil)])
+
+      assert text(html, "#work-item-explore-questions-cap") ==
+               "Run another round starts the next run. That run reads your answers and your comment, and updates the proposal."
+    end
+
+    test "one decision sent and one not: the unsent one keeps its fields" do
+      html = decisions_tab(:confirm, [changed(1, @dana, "In the order email", nil), decided(2)])
+
+      assert count(html, "#work-item-explore-decisions-decision-1 input") == 0
+      assert count(html, "#work-item-explore-decisions-decision-2 input[type=radio]") == 3
+    end
+
+    test "a reopened decision answered with the run's option and no note: the answered line" do
+      sam = %{id: "u2", name: "Sam", email: "sam@example.com", you: false}
+      html = decisions_tab(:confirm, [changed(1, sam, "In the account page", nil), decided(2)])
+      row = "#work-item-explore-decisions-decision-1"
+
+      assert count(html, "#{row} .badge:not(.justify-self-start)") == 0
+      assert count(html, "#{row} > summary .q-xp-dec-chg") == 0
+      assert text(html, "#{row} > summary .q-xp-said") == "In the account page"
+      assert count(html, "#{row} input") == 0
+      assert count(html, "#{row} textarea") == 0
+
+      assert texts(html, "#{row} .q-xp-opts > li .q-xp-opt-t") ==
+               ["In the account page", "In the order email"]
+
+      assert texts(html, "#{row} .q-xp-cm-m") ==
+               ["Run 41 chose it 12 minutes ago", "Sam answered 40 minutes ago"]
+
+      assert count(html, "#{row}-answer") == 0
+      refute html =~ "added a note"
+      refute html =~ "Changed from"
+    end
+
+    test "a reader with no right to change them reads Decisions, with no Run another round" do
+      html =
+        decisions_tab(:confirm, [decided(1)], can_act: false, can_send: false, can_change: false)
+
+      d = "#work-item-explore-decisions"
+
+      assert count(html, "#{d}-decision-1") == 1
+      assert count(html, "#{d} input") == 0
+      assert count(html, "#{d} textarea") == 0
+      assert count(html, "#{d}-decision-1 .q-xp-opts > li") == 2
+      assert count(html, "#work-item-explore-gate-send") == 0
+      assert count(html, "#work-item-explore-gate") == 0
+    end
+
+    defp repeated(number, overrides \\ %{}) do
+      decided(
+        number,
+        Map.merge(
+          %{
+            options: [
+              %{title: "In the account page", explanation: "First."},
+              %{title: "In the account page", explanation: "Second, with the same title."},
+              %{title: "In the order email", explanation: "Third."}
+            ]
+          },
+          overrides
+        )
+      )
+    end
+
+    test "decision_changed?/2 compares titles, as the move does, not places" do
+      question = repeated(1)
+      refute C.decision_changed?(question, %{"option" => "1"})
+      refute C.decision_changed?(question, %{"option" => "2"})
+      assert C.decision_changed?(question, %{"option" => "3"})
+      assert C.decision_changed?(question, %{"option" => "own"})
+      assert C.decision_changed?(question, %{"option" => "9"})
+      assert C.decision_changed?(question, %{"option" => "0"})
+      assert C.decision_changed?(question, %{"option" => "2", "note" => "And by phone."})
+
+      spaced =
+        repeated(1, %{
+          options: [
+            %{title: "In the account page ", explanation: "Trailing space."},
+            %{title: "In the order email", explanation: "Second."}
+          ]
+        })
+
+      refute C.decision_changed?(spaced, %{"option" => "1"})
+      assert C.decision_changed?(spaced, %{"option" => "2"})
+    end
+
+    test "a title that differs by a trailing space: the card shows as the run's option" do
+      spaced =
+        decided(1, %{
+          options: [
+            %{title: "In the account page ", explanation: "Trailing space."},
+            %{title: "In the order email", explanation: "Second."}
+          ]
+        })
+
+      html = decisions_tab(:confirm, [spaced])
+      field = "#work-item-explore-decisions-answer-1"
+
+      assert count(html, "#{field}-1[checked]") == 1
+      assert text(html, "#{field}-options > label:first-child .badge") == "Chosen by the agent"
+    end
+
+    test "the second card of the run's title is no change: Approve stays, Run another round waits" do
+      html = decisions_tab(:confirm, [repeated(1)], answers: %{"q1" => %{"option" => "2"}})
+      gate = "#work-item-explore-gate"
+
+      assert attr(html, "#{gate}-go", "disabled") == []
+      assert attr(html, "#{gate}-send", "disabled") != []
+      assert count(html, "#{gate}-hint") == 0
+
+      html =
+        decisions_tab(:questions, invoice_questions() ++ [repeated(5)],
+          answers: %{"q5" => %{"option" => "2"}}
+        )
+
+      assert attr(html, "#work-item-explore-questions-go", "disabled") != []
+    end
+
+    test "a send that wrote nothing because the questions changed shows its line at the gate" do
+      html = decisions_tab(:confirm, [decided(1)], form_error: :stale)
+
+      assert text(html, "#work-item-explore-gate-error") =~
+               "The questions changed after the page showed them"
+
+      # The line of the move comes first, as under the questions.
+      html = decisions_tab(:confirm, [decided(1)], form_error: :stale, move_error: "Not sent.")
+      assert text(html, "#work-item-explore-gate-error") == "Not sent."
+    end
+
+    test "an error in a decision: its line under the field, and the fold opened after each send" do
+      for {frame, questions} <- [
+            {"#work-item-explore-decisions", [decided(1)]},
+            {"#work-item-explore-questions", [decided(1), q(2)]}
+          ] do
+        status = if length(questions) == 1, do: :confirm, else: :questions
+
+        html =
+          decisions_tab(status, questions,
+            answers: %{"q1" => %{"option" => "own", "note" => ""}},
+            errors: %{"q1" => :note_required},
+            submits: 3
+          )
+
+        row = "#{frame}-decision-1"
+        assert count(html, "#{frame}-answer-1-error") == 1
+        assert attr(html, "#{frame}-answer-1", "aria-invalid") == ["true"]
+
+        assert [opens] = attr(html, "#{row}-opens-3", "phx-mounted")
+        assert opens =~ ~s(#{row}:not([open]\) > summary)
+        assert opens =~ "click"
+        assert attr(html, "#{row}-opens-3", "hidden") != []
+      end
+
+      html = decisions_tab(:confirm, [decided(1)], submits: 3)
+      assert count(html, "#work-item-explore-decisions-decision-1-opens-3") == 0
+    end
+
+    test "an error in a decision at the gate: focus moves to the first such field" do
+      d = "#work-item-explore-decisions"
+
+      html =
+        decisions_tab(:confirm, [decided(1), decided(2), decided(3)],
+          answers: %{
+            "q2" => %{"option" => "own", "note" => ""},
+            "q3" => %{"option" => "own", "note" => ""}
+          },
+          errors: %{"q2" => :note_required, "q3" => :note_required},
+          submits: 3
+        )
+
+      assert [focus] = attr(html, "#{d}-focus-3-2", "phx-mounted")
+      assert focus =~ "#{d}-answer-2"
+      assert attr(html, "#{d}-focus-3-2", "hidden") != []
+      assert count(html, "#{d}-focus-3-3") == 0
+
+      # No error, and a reader with no fields: no focus moves.
+      assert count(
+               decisions_tab(:confirm, [decided(1)], submits: 3),
+               "[id^='work-item-explore-decisions-focus-']"
+             ) == 0
+
+      html =
+        decisions_tab(:confirm, [decided(1)],
+          can_change: false,
+          errors: %{"q1" => :note_required},
+          submits: 3
+        )
+
+      assert count(html, "[id^='work-item-explore-decisions-focus-']") == 0
+    end
+
+    test "an error in a decision under the questions: focus moves there before an open question" do
+      q = "#work-item-explore-questions"
+
+      html =
+        decisions_tab(:questions, [decided(1), q(2)],
+          answers: %{"q1" => %{"option" => "own", "note" => ""}},
+          errors: %{"q1" => :note_required, "q2" => :note_required},
+          submits: 3
+        )
+
+      assert [focus] = attr(html, "#{q}-focus-3-1", "phx-mounted")
+      assert focus =~ "#{q}-answer-1"
+      assert count(html, "#{q}-focus-3-2") == 0
+    end
+
+    test "a question that follows a decision links to the decision's row" do
+      html =
+        decisions_tab(:questions, [
+          decided(1),
+          q(2, %{text: "Which basket?", follows: [1]})
+        ])
+
+      q = "work-item-explore-questions"
+
+      assert text(html, "##{q}-question-2 a") == "Follows question 1"
+      assert attr(html, "##{q}-question-2 a", "href") == ["##{q}-question-1"]
+      assert text(html, "##{q}-decision-1 > summary ##{q}-question-1") =~ "1."
+    end
+
+    test "a decision in its frame has the address a reply links to" do
+      html = decisions_tab(:confirm, [decided(1)])
+
+      assert text(
+               html,
+               "#work-item-explore-decisions-decision-1 > summary #work-item-explore-questions-question-1"
+             ) =~ "1."
     end
   end
 end

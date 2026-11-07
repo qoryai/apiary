@@ -762,6 +762,15 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule ReadsNoMachines do
+    @moduledoc """
+    A person reads no machine and no pool of the workspace (`node.read`), as an edition's
+    reader may.
+    """
+    def check(_scope, :"node.read", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule EndsCollectionAtAssign do
     @moduledoc """
     The organisation's live collections titled `ends-at-assign` end as `collection.assign`

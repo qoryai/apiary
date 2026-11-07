@@ -39,13 +39,16 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `questions`: the questions of the work item's newest questions that a run of the
   #     current take in wrote (`asked.run`) or reopened last (the `reopened.run` of the
   #     last entry of its `history` that has one), in their order, each `%{id:, number:,
-  #     text:, context:, options:, state:, asked_run:, answer:, history:, follows:}`:
-  #     `number` its place in the document, from 1, `state` `:open`, `:answered` or
-  #     `:withdrawn`, `answer` nil or `%{option:, recommended:, note:, by_id:, by:, at:}`
-  #     (`by_id` by the move that wrote it, nil where none matches, `by` the name in the
-  #     document), `history` its earlier answers in the same form, and `follows` the
-  #     numbers of the questions it follows; and `questions_version`, the number of that
-  #     version, nil for none;
+  #     text:, context:, options:, state:, asked_run:, answer:, history:, follows:,
+  #     decision:}`: `number` its row's place on the Explore tab, from 1, top to bottom
+  #     (`shown_numbers/1`), `state` `:open`,
+  #     `:answered`, `:decided` or `:withdrawn`, `decision` nil or the run's choice,
+  #     `%{option:, reason:, run:, at:}`, kept after a member answered, `answer` nil or
+  #     `%{option:, recommended:, note:, by_id:, by:, at:}` (`by_id` by the move that
+  #     wrote it, nil where none matches, `by` the name in the document), `history` its
+  #     earlier answers in the same form, and `follows` the
+  #     numbers of the questions it follows, among these questions; and
+  #     `questions_version`, the number of that version, nil for none;
   #   * `review_comments`: the review comments on the current take in's proposals, oldest
   #     first, each `%{id:, text:, by_id:, at:, version:, state:, reopened:, replies:}`:
   #     `state` `:open` or `:closed`, `reopened` true for an open one a run replied to,
@@ -317,14 +320,13 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   # The questions of the newest questions that a run of the current take in wrote or
-  # reopened last, in their order, each numbered by its place in the document (the
-  # moduledoc).
+  # reopened last, in their order, each numbered by its row's place on the Explore tab
+  # (the moduledoc).
   defp questions_view(ctx) do
-    entries = (ctx.questions || %{})["questions"] || []
-    numbers = for {%{"id" => id}, n} <- Enum.with_index(entries, 1), into: %{}, do: {id, n}
+    numbers = shown_numbers(ctx)
     given = for %{kind: :answer} = entry <- ctx.given, do: entry
 
-    for {%{"id" => id} = question, number} <- Enum.with_index(entries, 1),
+    for %{"id" => id} = question <- (ctx.questions || %{})["questions"] || [],
         current_take_in?(question, ctx) do
       %{options: options} = Proposal.question(question)
       history = question["history"] || []
@@ -332,7 +334,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
       %{
         id: id,
-        number: number,
+        number: numbers[id],
         text: question["question"],
         context: question["context"],
         options: options,
@@ -344,10 +346,42 @@ defmodule Apiary.WorkItems.ExploreView do
             {entry, n} <- Enum.with_index(history),
             do: given_answer(entry, Enum.at(moves, n), options)
           ),
-        follows: for(other <- question["follows"] || [], n = numbers[other], do: n)
+        follows: for(other <- question["follows"] || [], n = numbers[other], do: n),
+        decision: decision(question["decision"])
       }
     end
   end
+
+  # A run's decision on a question, as the page shows it; nil for none.
+  defp decision(%{"option" => option, "reason" => reason} = decision) do
+    %{option: option, reason: reason, run: decision["run"], at: time(decision["at"])}
+  end
+
+  defp decision(_none), do: nil
+
+  # The number of each question the Explore tab shows (`current_take_in?/2`), by its id:
+  # its row's place from 1, top to bottom. With an open question, the questions frame has
+  # the closed questions, the decisions, then the open questions. With none, the Decisions
+  # frame comes first, then the frame of the closed questions
+  # (`ApiaryWeb.WorkItemComponents.explore_tab/1`).
+  defp shown_numbers(ctx) do
+    {decisions, questions} =
+      ((ctx.questions || %{})["questions"] || [])
+      |> Enum.filter(&(match?(%{"id" => _id}, &1) and current_take_in?(&1, ctx)))
+      |> Enum.split_with(&decision_row?/1)
+
+    {open, closed} = Enum.split_with(questions, &(question_state(&1["state"]) == :open))
+    rows = if open == [], do: decisions ++ closed, else: closed ++ decisions ++ open
+
+    rows |> Enum.with_index(1) |> Map.new(fn {%{"id" => id}, n} -> {id, n} end)
+  end
+
+  # Whether the tab shows the question among the decisions
+  # (`ApiaryWeb.WorkItemComponents.decision?/1`).
+  defp decision_row?(%{"decision" => %{"option" => _, "reason" => _}, "state" => state}),
+    do: state in ["decided", "answered"]
+
+  defp decision_row?(_question), do: false
 
   # Whether a run of the current take in wrote the question (`asked.run`) or reopened it
   # last (the `reopened.run` of the last entry of its `history` that has one), the rule of
@@ -367,6 +401,7 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   defp question_state("answered"), do: :answered
+  defp question_state("decided"), do: :decided
   defp question_state("withdrawn"), do: :withdrawn
   defp question_state(_open), do: :open
 
@@ -407,8 +442,7 @@ defmodule Apiary.WorkItems.ExploreView do
   defp review_comments(ctx, take_in) do
     written = for %{kind: :comment, id: id} = given <- ctx.given, into: %{}, do: {id, given}
     replies = for %{kind: :reply} = given <- ctx.given, do: given
-    entries = (ctx.questions || %{})["questions"] || []
-    numbers = for {%{"id" => id}, n} <- Enum.with_index(entries, 1), into: %{}, do: {id, n}
+    numbers = shown_numbers(ctx)
 
     for %{"on" => %{"artifact" => "proposal", "version" => version}} = comment <-
           ReviewComments.entries(ctx.review_comments),
@@ -797,7 +831,10 @@ defmodule Apiary.WorkItems.ExploreView do
   # Whether the run numbered `number` wrote the question (`asked.run`) or reopened it
   # (`reopened_by?/2`), also where a later run reopened it again: the rule of the
   # Thread's `:asked`, of a run's `asked`, and of the questions of a run whose questions
-  # do not wait.
+  # do not wait. A question with a run's `decision` counts only for a run that reopened
+  # it: the run that wrote it wrote the option it chose, for no member to answer.
+  defp wrote?(%{"decision" => %{}} = question, number), do: reopened_by?(question, number)
+
   defp wrote?(question, number),
     do: get_in(question, ["asked", "run"]) == number or reopened_by?(question, number)
 
@@ -1080,8 +1117,11 @@ defmodule Apiary.WorkItems.ExploreView do
   defp take_in_number(%{data: %{"take_in" => n}}, _taken) when is_integer(n), do: n
   defp take_in_number(_event, taken), do: taken + 1
 
-  # A send of the review comments queues a run and gives nothing to read: no entry.
-  defp event_entry(:answered, %{data: %{"review_comments" => _ids}}, _by_run, _ctx), do: nil
+  # A send of the review comments queues a run and gives nothing to read: no entry. A
+  # send that wrote a comment on the proposal too (Run another round) has its entry.
+  defp event_entry(:answered, %{data: %{"review_comments" => _ids} = data}, _by_run, _ctx)
+       when not is_map_key(data, "review_comment"),
+       do: nil
 
   defp event_entry(:answered, event, by_run, ctx) do
     key = {event.data["take_in"], event.data["attempt"]}

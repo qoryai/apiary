@@ -13,10 +13,11 @@ defmodule Apiary.Explore.Outcome do
   #     stopped (`Apiary.Stages`);
   #   * `:none` otherwise.
   #
-  # nil when the newest questions cannot be read (`Apiary.Explore.Questions.current/1`):
-  # what the run gave is not known yet, so `Apiary.Dispatches.Settle` stores nothing and
-  # its sweep reads the run again, rather than keep `proposal` or `none` while questions
-  # wait.
+  # nil when the newest questions cannot be read (`Apiary.Explore.Questions.current/1`),
+  # or whether the run is a run of Explore is not known yet
+  # (`Apiary.Stages.known_explore/1`): what the run gave is not known yet, so
+  # `Apiary.Dispatches.Settle` stores nothing and its sweep reads the run again, rather
+  # than keep `proposal` or `none` while questions wait.
   #
   # A run of a workflow other than Explore's (`Apiary.Stages.explore_run?/1`) gives
   # `:none`: its stage reads its artifacts itself. With the workflow model off no run can
@@ -43,8 +44,17 @@ defmodule Apiary.Explore.Outcome do
   @doc false
   @spec at_end(DispatchRun.t()) :: t | nil
   def at_end(%DispatchRun{work_item_id: work_item_id} = run) when is_binary(work_item_id) do
-    with true <- Apiary.Stages.explore_run?(run),
-         %WorkItem{} = work_item <- Repo.get(WorkItem, work_item_id),
+    case Apiary.Stages.known_explore(run) do
+      %DispatchRun{explore: true} = run -> explore_at_end(run, work_item_id)
+      %DispatchRun{explore: false} -> :none
+      nil -> nil
+    end
+  end
+
+  def at_end(%DispatchRun{}), do: :none
+
+  defp explore_at_end(run, work_item_id) do
+    with %WorkItem{} = work_item <- Repo.get(WorkItem, work_item_id),
          {:ok, questions} <- Questions.current(work_item) do
       cond do
         open?(questions, run) -> :questions
@@ -56,8 +66,6 @@ defmodule Apiary.Explore.Outcome do
       _other -> :none
     end
   end
-
-  def at_end(%DispatchRun{}), do: :none
 
   defp open?({_version, document}, %DispatchRun{work_item_id: id, take_in: take_in}),
     do: Questions.open_in_take_in(document, Questions.take_in_runs(id, take_in)) != []

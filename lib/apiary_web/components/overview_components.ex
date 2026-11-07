@@ -55,6 +55,10 @@ defmodule ApiaryWeb.OverviewComponents do
   alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
 
+  # The run API's rule, which a head of `shown_host/1` matches on. A function head cannot
+  # call `Apiary.Runs.RunApi.rule/0`, so the rule is set here at compile time.
+  @run_api_rule Apiary.Runs.RunApi.rule()
+
   ## The summary
 
   @doc """
@@ -466,20 +470,20 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <span
       class="q-host q-dest-tool q-ar-t q-mono"
-      title={destination_title(@d, @item.port)}
+      title={destination_title(@d)}
     >
       <.tool_mark name={@d.tool} /><span
         :if={@item.path not in [nil, ""]}
         class="q-path"
-      >{@d.path}</span><span class="q-port"><bdi>{@d.host}</bdi>:{@item.port}</span>
+      >{@d.path}</span><span class="q-port"><bdi>{@d.host}</bdi>{port_words(@d)}</span>
     </span>
     """
   end
 
   defp denied_subject(assigns) do
     ~H"""
-    <span class="q-host q-ar-t q-mono" title={destination_title(@d, @item.port)}>
-      <bdi>{@d.host}</bdi><span class="q-port">:{@item.port}</span><span
+    <span class="q-host q-ar-t q-mono" title={destination_title(@d)}>
+      <bdi>{@d.host}</bdi><span :if={@d.port} class="q-port">:{@d.port}</span><span
         :if={@item.held && @item.path not in [nil, ""]}
         class="q-path"
       >{@d.path}</span>
@@ -491,17 +495,24 @@ defmodule ApiaryWeb.OverviewComponents do
   # system's text is shown (`shown/1`), or marked (`Apiary.ExternalText.marked/1`) where
   # nothing is left of one it sent, since the item's case follows what was sent. A host
   # the wall refused for its form, and a path it refused as one that reads two ways
-  # (`wall`), are marked, since what is wrong with them is the reason.
+  # (`wall`), are marked, since what is wrong with them is the reason. A request to the run
+  # API shows the instance's host, with no port (`Apiary.Runs.RunApi`).
   defp shown_destination(item) do
     %{
       host: shown_host(item),
+      port: if(run_api?(item), do: nil, else: item.port),
       path: shown_path(item),
       tool: shown_sent(item[:tool])
     }
   end
 
+  defp run_api?(%{wall: %{rule: rule}}), do: Apiary.Runs.RunApi.run_api?(rule)
+  defp run_api?(_item), do: false
+
   defp shown_host(%{wall: %{rule: "wall:host-form"}, host: host}),
     do: Apiary.ExternalText.marked(host)
+
+  defp shown_host(%{wall: %{rule: @run_api_rule}}), do: Apiary.Runs.RunApi.host()
 
   defp shown_host(%{host: host}), do: shown_sent(host)
 
@@ -1054,15 +1065,24 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   # The destination as shown (`shown_destination/1`), whole, for a cut subject's title.
-  defp destination_title(%{tool: tool, host: host, path: path}, port)
-       when is_binary(tool),
-       do:
-         gettext("%{destination}, a host the tool %{tool} serves",
-           destination: "#{host}:#{port}#{path}",
-           tool: tool
-         )
+  defp destination_title(%{tool: tool} = d) when is_binary(tool),
+    do:
+      gettext("%{destination}, a host the tool %{tool} serves",
+        destination: destination_words(d),
+        tool: tool
+      )
 
-  defp destination_title(%{host: host, path: path}, port), do: "#{host}:#{port}#{path}"
+  defp destination_title(d), do: destination_words(d)
+
+  # A request to the run API has no port, and a space before its path.
+  defp destination_words(%{port: nil, host: host, path: path}) when path not in [nil, ""],
+    do: "#{host} #{path}"
+
+  defp destination_words(%{port: nil, host: host}), do: "#{host}"
+  defp destination_words(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
+
+  defp port_words(%{port: nil}), do: ""
+  defp port_words(%{port: port}), do: ":#{port}"
 
   # A run Apiary marked lost when nothing was heard, which a heartbeat still revives, or one
   # whose exit said it was lost (`Apiary.Runs.Fold`): the session stopped responding, or the
@@ -2160,9 +2180,10 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc false
   # test_failed/1 is the line of a test run that failed for `cause`
   # (`Apiary.WorkspaceSetup.test_run/2`), which the set-up's Test run step shows. A run
-  # that stopped while its machine was prepared shows the step and the cause line of its
-  # Prepare machine section (`Apiary.Runs.Preparation`), with a link to that section;
-  # any other run its end as the run page shows it. `path` is the run page's path.
+  # that stopped while its machine was prepared shows the step and the cause line of the
+  # **Run** list in the run's Timeline (`Apiary.Runs.Preparation`), with a link to the
+  # run's Timeline; any other run its end as the run page shows it. `path` is the run
+  # page's path.
   attr :cause, :atom, required: true
   attr :dispatch_run, :any, default: nil
   attr :run, :any, default: nil
@@ -2186,7 +2207,7 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns =
       assign(assigns,
         step: Preparation.stopped_step(assigns.preparation),
-        what: stopped.what,
+        what: ApiaryWeb.PreparationComponents.cause_what(stopped),
         fix: ApiaryWeb.Support.stored_line(stopped.fix)
       )
 
@@ -2194,9 +2215,9 @@ defmodule ApiaryWeb.OverviewComponents do
     <.rich text={rich_gettext("The test run stopped at %{step}.", step: {:part, :step})}>
       <:part name={:step}><.external_text text={@step} /></:part>
     </.rich>
-    {@what} <.rich text={@fix} />
+    <.rich text={@what} /> <.rich text={@fix} />
     <.link id="set-up-test-preparation" navigate={@path <> "#prepare-machine"} class="q-link">
-      {gettext("Open the run's Prepare machine section")}
+      {gettext("Open the run's Timeline")}
     </.link>
     """
   end

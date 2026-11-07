@@ -11,7 +11,7 @@ defmodule Apiary.Policy.ActivityTest do
 
   alias Apiary.Policy
   alias Apiary.Policy.Activity
-  alias Apiary.Runs.Target
+  alias Apiary.Runs.{RunApi, Target}
 
   @site %{"forge" => "github.example", "repository" => "acme/site"}
   @docs %{"forge" => "github.example", "repository" => "acme/docs"}
@@ -72,6 +72,27 @@ defmodule Apiary.Policy.ActivityTest do
 
       # Allowed in acme/site by its own rule, uncovered in acme/docs.
       assert %{host: "mcp.example", runs: 1, targets: [%{path: "acme/docs"}]} = mcp
+    end
+
+    test "leaves out a request to the run API: enforce adds no block to it" do
+      %{scope: scope} = sign_up_fixture()
+
+      run =
+        started_run(scope, @site,
+          egress: [
+            allowed(RunApi.placeholder(), %{"port" => 80, "rule" => RunApi.rule()}),
+            allowed(RunApi.placeholder(), %{"port" => 80, "rule" => RunApi.rule()}),
+            allowed("new.example")
+          ]
+        )
+
+      target = Repo.get!(Target, run.target_id)
+
+      assert {:ok, [%{host: "new.example", attempts: 1}]} = Policy.uncovered(scope, since())
+      assert {:ok, [%{host: "new.example"}]} = Policy.uncovered(scope, target, since())
+
+      assert {:ok, %{uncovered: [%{host: "new.example"}]}} =
+               Policy.overview_activity(scope, since(), since())
     end
 
     test "nothing older than since, and :unavailable beyond the cap", ctx do

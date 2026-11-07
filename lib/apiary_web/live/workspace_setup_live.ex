@@ -238,6 +238,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     OverviewComponents,
     SetUpComponents,
     SettingsComponents,
+    SpendDialog,
     TemplateReads
   }
 
@@ -263,6 +264,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
        attempt: 0,
        test_notice: nil,
        test_form: test_form(gettext("Hi! Where are you running?")),
+       spend: nil,
        linked: nil,
        unplaced: [],
        listing: false,
@@ -278,6 +280,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
+    # A URL change closes the spend's dialog (`ApiaryWeb.SpendDialog`), confirming nothing.
+    socket = assign(socket, :spend, nil)
     scope = socket.assigns.current_scope
     organisation = scope.organisation
     creates = Access.can?(scope, :"workspace.create", organisation)
@@ -1354,7 +1358,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           HarnessComponents.unchanged?(choice, chosen) and no_save? ->
             {:noreply, go_on(socket)}
 
-          match?({:repository, _source, _stack, _version}, choice) ->
+          # A save that reads a repository runs outside the page's process.
+          match?({:repository, _source, _stack, _version}, choice) or
+              match?({:qory, _version}, choice) ->
             {:noreply,
              socket
              |> assign(saving: true, harness_refusal: nil)
@@ -1400,19 +1406,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       when is_map(params),
       do: {:noreply, HarnessTargets.save(socket, edit, params, &target_saved/3)}
 
-  def handle_event("run_test", params, %{assigns: %{step: :test, may: true}} = socket) do
-    line =
-      case params do
-        %{"test" => %{"line" => line}} -> line
-        _other -> nil
-      end
+  def handle_event("run_test", params, %{assigns: %{step: :test, may: true}} = socket),
+    do: test_run(socket, params, :ask)
 
-    cond do
-      not is_binary(line) -> {:noreply, socket}
-      is_nil(socket.assigns.machines) -> {:noreply, reload(socket)}
-      true -> run_test(socket, line)
+  # Confirm in the spend's dialog of Run the test (`ApiaryWeb.SpendDialog`).
+  def handle_event("spend_confirm", params, %{assigns: %{step: :test, may: true}} = socket) do
+    case SpendDialog.take(socket.assigns.spend, params) do
+      {"run_test", params} -> test_run(assign(socket, :spend, nil), params, :act)
+      nil -> {:noreply, socket}
     end
   end
+
+  def handle_event("spend_cancel", _params, socket), do: {:noreply, assign(socket, :spend, nil)}
 
   # The Machines step's choice between the instance's pool and a pool for the workspace,
   # while the workspace has none.
@@ -1686,6 +1691,42 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
+  # Run the test: from a click (`:ask`) with a line, the spend's dialog opens with the
+  # line kept in the form; from its Confirm (`:act`), the test runs.
+  defp test_run(socket, params, mode) do
+    line =
+      case params do
+        %{"test" => %{"line" => line}} -> line
+        _other -> nil
+      end
+
+    cond do
+      not is_binary(line) ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns.machines) ->
+        {:noreply, reload(socket)}
+
+      # A blank line takes no test in: the field shows its error at once. Nor does a test
+      # that a machine runs: the step shows the line to wait.
+      mode == :ask and String.trim(line) != "" and socket.assigns.test_state != :running ->
+        spend =
+          SpendDialog.ask("run_test", params,
+            title: gettext("Run the test?"),
+            action: gettext("Run the test"),
+            line: SpendDialog.test_line(socket.assigns.current_scope.workspace),
+            return_to: "set-up-test-run",
+            # Lower than 170 px, so the step's field and button stay in sight above it.
+            top: 290
+          )
+
+        {:noreply, assign(socket, test_form: test_form(line), spend: spend)}
+
+      true ->
+        run_test(socket, line)
+    end
+  end
+
   defp run_test(socket, line) do
     scope = socket.assigns.current_scope
 
@@ -1872,6 +1913,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <:crumb :if={@sub}>{connect_label(@step, has_connection?(assigns))}</:crumb>
       <:crumb :if={!@sub}>{SetUpComponents.step_label(@step)}</:crumb>
       <.flow_step {assigns} />
+      <SpendDialog.dialog :if={@spend} spend={@spend} />
     </Layouts.app>
     """
   end
@@ -2967,9 +3009,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp pool_state_line({:not_ready, :gateway_without_key}),
     do: gettext("Not ready: the gateway has no active key")
 
-  # The failure code of a refused save, for the page's tests: the walk's, or `limited`.
+  # The failure code of a refused save, for the page's tests: the walk's, the Qory
+  # harness's read, or `limited`.
   defp harness_refusal_code({{:walk, %{failure: failure}}, _words}), do: failure
   defp harness_refusal_code({{:limited, _seconds}, _words}), do: "limited"
+  defp harness_refusal_code({{:qory, {:ref_missing, _ref}}, _words}), do: "qory_ref_missing"
+  defp harness_refusal_code({{:qory, {:unreadable, _cause, _hop}}, _words}), do: "qory_unreadable"
   defp harness_refusal_code({:shared, _words}), do: "shared"
   defp harness_refusal_code(_refusal), do: nil
 

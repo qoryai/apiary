@@ -47,7 +47,7 @@ defmodule Apiary.Targets do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Run, RunVariables, Target}
+  alias Apiary.Runs.{Connection, Run, RunApi, RunVariables, Target}
   alias Apiary.Targets.Pin
 
   @page_size 50
@@ -533,7 +533,8 @@ defmodule Apiary.Targets do
   @doc """
   denied_destinations/4 is the destinations the target's runs were denied since `since`,
   one per host, port and path as Network access counts them, the most attempts first, at
-  most `limit`: `%{host:, port:, path:, attempts:, runs:, last_at:}`, and in all,
+  most `limit`: `%{host:, port:, path:, attempts:, runs:, last_at:, run_api:}`, `run_api`
+  true for the requests to the run API (`Apiary.Runs.RunApi`), and in all,
   `%{destinations:, attempts:}`, the number the target's Network access tab shows under
   Denied for the same window. Read from the workspace's connections last seen in that
   time, so the window bounds it.
@@ -568,7 +569,8 @@ defmodule Apiary.Targets do
           path: c.path,
           attempts: type(sum(c.denied), :integer),
           runs: count(c.run_id, :distinct),
-          last_at: max(c.last_seen_at)
+          last_at: max(c.last_seen_at),
+          run_api: fragment("coalesce(bool_or(? = ?), false)", c.last_rule, ^RunApi.rule())
         }
 
     rows =
@@ -583,6 +585,7 @@ defmodule Apiary.Targets do
             attempts: d.attempts,
             runs: d.runs,
             last_at: d.last_at,
+            run_api: d.run_api,
             destinations: over(count()),
             all_attempts: type(over(sum(d.attempts)), :integer)
           }

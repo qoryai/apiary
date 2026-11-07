@@ -31,15 +31,16 @@ defmodule Apiary.Integrations.DescriptionTest do
                ~w(acme-chat.json acme-cloud.json acme-models.json acme-tracker.json
                   example-gateway.json example-projects.json example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
-                  example-source-guide.json example-source-targets.json example-tracker.json
-                  github.json unknown-role.json)
+                  example-source-comments.json example-source-guide.json
+                  example-source-targets.json example-tracker.json github.json
+                  unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 112
+      assert length(names) == 114
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -58,7 +59,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 47
+      assert length(names) == 49
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -101,6 +102,7 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"guide-steps-11", :maxItems, "#/roles/source/guide/connect/steps"},
             {"guide-steps-empty", :minItems, "#/roles/source/guide/connect/steps"},
             {"guide-undefined-member", :additionalProperties, "#/roles/source/guide/setup"},
+            {"comments-false", :const, "#/roles/source/comments"},
             {"targets-false", :const, "#/roles/source/targets"},
             {"targets-string", :const, "#/roles/source/targets"}
           ] do
@@ -148,6 +150,19 @@ defmodule Apiary.Integrations.DescriptionTest do
         assert Description.item_noun(description) == nil, name
         assert Description.items?(description), name
         assert Description.collection_noun(description) == nil, name
+      end
+    end
+
+    test "whether a source role takes comments: true only where it is set to true" do
+      assert {:ok, commenting} = parse_fixture("example-source-comments.json")
+      assert Description.comments?(commenting)
+      refute Description.targets?(commenting)
+
+      # A source role with no `comments`, and no source role: no comments.
+      for name <- ~w(example-tracker.json example-source-targets.json acme-tracker.json
+                     unknown-role.json) do
+        assert {:ok, description} = parse_fixture(name)
+        refute Description.comments?(description), name
       end
     end
 
@@ -286,12 +301,12 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "3fc796d01e551d7e966be99bd109239ca9806a7c"
+  @integrations_ref "e33240a984c5dd1a94270f3269b16c5b354dd768"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "f5c147113eec95832c102971165afa3308ce2f969b7351555392db1ad1e2a70b",
+      "a1bdeaa7f9638216ecf0f967937296dfd55a6a282e03557670666eb40a9d122f",
     "priv/contract/integration/definitions.schema.json" =>
-      "6198a125d943ac8b8d3f27d757b6d77696171009d6bf218cfd527eacdc0288b8",
+      "1cec0e11d03f689ac5857ba5508c9552b3283964e91bdfc8d02a2605fa8c468f",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "04f85c67a8f04e06c925ce61b5210c7141aec7453b3e645a298f075b06491c1b",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
@@ -302,12 +317,14 @@ defmodule Apiary.Integrations.DescriptionTest do
       "1f41df7746990683f8f23217275531a446aaa11a58e723a0eefd72cd23ceaf57",
     "priv/contract/integration/descriptions/openrouter.json" =>
       "f77a4df6d8115eb3030a2053e8c97f87aef2a8e0566b629673d618cefb28d7bb",
+    "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
+      "5eb6e1b3a917e5a17c806521155f75216004ac572e67d6dce6d9a7e7ff594f8b",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "5225414a3b7024dfedccb6af46e2583f5d670132b838764501fd1bd2fe995393",
+      "fd322a6c16fc28bb94dda3e50b0715c49a68b457933260470a2b11437bf9cddc",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "6198a125d943ac8b8d3f27d757b6d77696171009d6bf218cfd527eacdc0288b8",
+      "1cec0e11d03f689ac5857ba5508c9552b3283964e91bdfc8d02a2605fa8c468f",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "7557e6a7159b3ab7c5e9b249d9cfee9040dcaed7906c1d4c86a0d484ad975a9b"
+      "c3959f0698b7140dad73d55115cb880e18a825c2d6bcb102802152c6b3f0a1a6"
   }
 
   @root Path.expand("../../..", __DIR__)

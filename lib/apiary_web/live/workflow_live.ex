@@ -271,7 +271,9 @@ defmodule ApiaryWeb.WorkflowLive do
           HarnessComponents.unchanged?(choice, chosen) ->
             {:noreply, assign(socket, editing: false, harness_refusal: nil)}
 
-          match?({:repository, _source, _stack, _version}, choice) ->
+          # A save that reads a repository runs outside the page's process.
+          match?({:repository, _source, _stack, _version}, choice) or
+              match?({:qory, _version}, choice) ->
             {:noreply,
              socket
              |> assign(harness_saving: true, harness_refusal: nil)

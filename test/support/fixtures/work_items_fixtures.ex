@@ -279,15 +279,16 @@ defmodule Apiary.WorkItemsFixtures do
   the database, with the run registered for it where it has one. `state:` is `:ended`
   unless given (`:waiting`, `:claimed`, `:handed_over`); an ended run has `end_cause:`,
   `:run_ended` unless given. A run handed over, and one ended `run_ended`, `lost` or
-  `released`, has a registered run (`registered: false` leaves it out): completed, its exit
-  folded and its outcome a minute old unless `run:` changes it. `result:` is what the run
-  pushed during the run (`push_result!/3`): `understood_result/1` a proposal,
-  `questions_result/1` questions; nil, the default, is nothing. A run ended `run_ended` or
-  `lost` is then settled as its end settles it (`Apiary.Dispatches.Settle.settle_locked/1`,
-  unless `settle: false`). A run ended for a cause its handover gives
-  (`variables_invalid`, `ticket_gone`, `inputs_invalid`, `target_access_gone`) has the
-  outcome `:error`, as the handover writes it. Returns
-  `%{dispatch_run: dispatch_run, run: run_or_nil}`.
+  `released`, has a registered run (`registered: false` leaves it out): completed, its
+  exit folded and its outcome a minute old unless `run:` changes it. `result:` is what the
+  run pushed during the run (`push_result!/3`): `understood_result/1` a proposal,
+  `questions_result/1` questions; nil, the default, is nothing. With a `result:`,
+  `decisions:` are the questions whose option the run chose, pushed after it
+  (`push_decided!/3`). A run ended `run_ended` or `lost` is then settled as its end
+  settles it (`Apiary.Dispatches.Settle.settle_locked/1`, unless `settle: false`). A run
+  ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
+  `inputs_invalid`, `target_access_gone`) has the outcome `:error`, as the handover writes
+  it. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
   """
   def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
     take_in = Keyword.get(opts, :take_in, work_item.take_in)
@@ -379,6 +380,14 @@ defmodule Apiary.WorkItemsFixtures do
       _none -> nil
     end
 
+    case {run, Keyword.get(opts, :decisions, [])} do
+      {%Run{} = run, [_ | _] = decisions} ->
+        push_decided!(dispatch_run, run, decisions)
+
+      _none ->
+        nil
+    end
+
     dispatch_run =
       if pushes? do
         dispatch_run
@@ -443,6 +452,51 @@ defmodule Apiary.WorkItemsFixtures do
           Apiary.Explore.Questions.file(%{"questions" => earlier ++ added})
         )
     end
+  end
+
+  @doc """
+  Pushes, as the run `run` of the run of the queue `dispatch_run`, the newest questions of
+  its work item with `decisions` added after them, each with the option the run chose: a
+  map with the `"question"`, its `"options"` (titles and explanations, none recommended),
+  the `"option"` the run chose and its `"reason"`. Each has the id `q<n>`, by its place.
+  """
+  def push_decided!(%DispatchRun{} = dispatch_run, %Run{} = run, decisions)
+      when is_list(decisions) do
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+
+    earlier =
+      case Apiary.Explore.Questions.newest(work_item) do
+        {_version, document} -> document["questions"]
+        nil -> []
+      end
+
+    at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+    added =
+      decisions
+      |> Enum.with_index(length(earlier) + 1)
+      |> Enum.map(fn {decision, n} ->
+        %{
+          "id" => "q#{n}",
+          "question" => decision["question"],
+          "options" => decision["options"],
+          "state" => "decided",
+          "asked" => %{"run" => run.number, "at" => at},
+          "decision" => %{
+            "option" => decision["option"],
+            "reason" => decision["reason"],
+            "run" => run.number,
+            "at" => at
+          }
+        }
+      end)
+
+    push_as_run!(
+      dispatch_run,
+      work_item,
+      "questions",
+      Apiary.Explore.Questions.file(%{"questions" => earlier ++ added})
+    )
   end
 
   defp question_entry(%{"question" => text} = question, id, asked) do

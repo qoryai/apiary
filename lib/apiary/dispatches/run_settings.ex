@@ -7,7 +7,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # time limits are read for the run's workflow (`Apiary.Stacks.workflow/2`, or, with the
   # workflow model, the workflow of the run's stage entry, `Apiary.Stages.run_workflow/1`);
   # for a run with no workflow, only the choices without one apply.
-  # The claim (`Apiary.Dispatches.claim/3`) locks the pool's row, the gateway's row, the
+  # The claim (`Apiary.Dispatches.claim/4`) locks the pool's row, the gateway's row, the
   # records a lapse needs (`Apiary.Dispatches.Slots`), the run of the queue it took and the
   # dispatch it inserted, in that order; then `Apiary.Dispatches.Handover.register/2` calls
   # `hold/1`, and `build/1` with what `hold/1` returned.

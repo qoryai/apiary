@@ -29,7 +29,10 @@ defmodule Apiary.Harnesses.RunHarness do
   #     `failure_rule`, `%{"message", "values"}`, the format rule an `invalid` source
   #     breaks, or `%{"rule" => "fetch", "values"}` with the host, port and seconds of a
   #     public repository's failed read (`too_large`, `source_unreachable`,
-  #     `host_not_allowed`, `rate_limited`, `fetch_failed`); and, for `adapter_unavailable` and `adapter_failed`, `failure_adapter`,
+  #     `host_not_allowed`, `rate_limited`, `fetch_failed`), or `%{"rule" => "claim",
+  #     "values"}` with the address and the ref a claim read, and the cause, host and
+  #     port of a read that failed (`ref_missing`, `harness_unreadable`); and, for
+  #     `adapter_unavailable` and `adapter_failed`, `failure_adapter`,
   #     the adapter's name then, and `failure_adapter_id`, the adapter (`failed_adapter`),
   #     nil for a walk that failed before walks kept it and once the adapter's row is
   #     gone; a page shows the adapter's title (`Apiary.Adapters.title/1`), else that
@@ -60,6 +63,13 @@ defmodule Apiary.Harnesses.RunHarness do
     field :failure_rule, :map
     field :failure_adapter, :string
     field :attempts, :integer, default: 0
+    # Whether the `ref` of the document's base is a branch, a tag or a commit, as the
+    # harness settings chose it (`Apiary.Stacks.Resolution`), nil where not recorded.
+    field :ref_kind, Ecto.Enum, values: [:branch, :tag, :commit]
+    # When a claim's read of the harness first timed out, met the host's limit on reads or
+    # a server error (`Apiary.Dispatches.HarnessReads`), nil for none and after a read
+    # that succeeds; `updated_at` is the time of the last such read.
+    field :read_failed_at, :utc_datetime_usec
 
     belongs_to :dispatch_run, Apiary.Dispatches.DispatchRun
     belongs_to :failed_adapter, Apiary.Nodes.Node, foreign_key: :failure_adapter_id

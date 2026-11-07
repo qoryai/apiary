@@ -132,9 +132,9 @@
           "pattern": "^[a-z][a-z_]{0,39}$"
         },
         "workflow": {
-          "description": "The workflow of the harness that the run starts, such as hello: a lower-case letter, then lower-case letters, digits and hyphens, 1 to 64 characters in all; absent when the run starts no workflow.",
+          "description": "The workflow of the harness that the run starts, such as hello: a lower-case letter, then lower-case letters, digits and hyphens, 1 to 55 characters in all; absent when the run starts no workflow.",
           "type": "string",
-          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          "pattern": "^[a-z][a-z0-9-]{0,54}$"
         },
         "work_item": {
           "description": "The public id of the work item the run is for; absent when the run is for no work item.",
@@ -645,7 +645,7 @@
           "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
         },
         "message": {
-          "description": "A plain statement for the reader that Qory Apiary writes, such as \"This key is compromised: it was printed into the run's log. Replace it.\" It is display text on one line, with no line feed or carriage return, whose wording this contract does not fix, like stopped.text.",
+          "description": "A plain statement for the reader that Qory Apiary writes, such as \"This secret is compromised: it was printed into the run's log. Replace it.\" It is display text on one line, with no line feed or carriage return, whose wording this contract does not fix, like stopped.text.",
           "type": "string",
           "minLength": 1,
           "pattern": "^[^\\x00\\n\\r]*$"

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "work_item": {
+    "id": "wi_8kx2mq4vt9ab3c5d",
+    "number": 341,
+    "url": "https://control.example.com/work-items/wi_8kx2mq4vt9ab3c5d"
+  },
+  "run": {
+    "attempt": 1
+  },
+  "instruction": {
+    "text": "Hello! Where are you running?",
+    "by": {
+      "name": "Sam Example"
+    },
+    "at": "2026-10-17T09:30:00Z"
+  },
+  "comments": [
+    {
+      "by": {
+        "name": "Alex Example",
+        "kind": "person"
+      },
+      "at": "2026-10-17T09:15:00Z",
+      "body": "It started after the bid change on 2026-10-15."
+    }
+  ],
+  "comments_omitted": 0,
+  "domain": "marketing"
+}

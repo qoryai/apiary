@@ -41,6 +41,23 @@ defmodule Apiary.WorkItems.Moves do
   # Its first instruction is the one the page gives, empty for none, within the bounds of
   # `Apiary.WorkItems.WorkItem.take_in_changeset/2`, else the changeset.
   #
+  # ## A comment at take in
+  #
+  # A take in and a take in again may have a comment, `comment`, under its atom key or
+  # its string. Its line breaks become line feeds and it is trimmed; none, or a blank
+  # one, is no comment. A comment with a character a text of several lines may not have
+  # (`Apiary.Names.validate_characters/3`) is a changeset with the error on `:comment`;
+  # one of more than 65,000 characters (`Apiary.Sources.Comment.max_member_body/0`) is
+  # `:comment_too_long`. Both are checked after every other refusal, and before anything
+  # is written. The comment is a comment on the ticket's record
+  # (`Apiary.Sources.Comment.member_changeset/3`), written in the take in's transaction
+  # after its feed entry: by the person, under the name members see for them, in the
+  # state `Apiary.Sources.Comment.first_state/1` returns for the source: `:posting` for a
+  # source that takes comments, `:kept` for any other. The ticket's comments show it, and
+  # Explore's input has it. A comment `:posting` gets a `comment` entry in the adapter's
+  # feed right after it is written, after the take in's `taken_in` entry, for the adapter
+  # to post it on the item (`Apiary.Adapters.Feed`).
+  #
   # ## The order of the locks
   #
   # Every move takes its locks in the order the core keeps for everything that holds more
@@ -52,9 +69,12 @@ defmodule Apiary.WorkItems.Moves do
   # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then the runs of
   # the queue (`Apiary.Dispatches`); then the adapter's feed counter
   # (`Apiary.Adapters.Feed`); then, last, for a work item that moves, the target's counter
-  # of run numbers (`Apiary.Runs.Number.raise_past/2`). An undo and a close take no
-  # connection or collection: the work item, then its runs. An answer, a confirmation and a run of
-  # Explore again take the work item alone, then queue through
+  # of run numbers (`Apiary.Runs.Number.raise_past/2`). A comment at take in, written
+  # after the feed counter, locks the ticket's record `FOR KEY SHARE` through its key; a
+  # write of the record's comments (`Apiary.Sources.Ingest`) locks the record
+  # `FOR UPDATE` and waits on none of the locks above. An undo and a close take no
+  # connection or collection: the work item, then its runs. An answer, a confirmation and
+  # a run of Explore again take the work item alone, then queue through
   # `Apiary.Dispatches.queue_next/3`, which takes the work item again, in the same
   # transaction, before it reads the runs; they lock no run, as a run that ended stays
   # ended and a new run is only written under the work item's lock. A comment takes the
@@ -169,19 +189,21 @@ defmodule Apiary.WorkItems.Moves do
   #     the next run's `attempt` and `of` are one more each
   #     (`Apiary.Dispatches.queue_next/3`). Its event, `:answered`, has the take in, the
   #     attempt answered, the count and the ids of the questions answered (`"questions"`).
-  #   * A review comment (`review_comment/4`) works wherever no run is running and the
-  #     take in has a proposal: where its questions wait, where its proposal waits, and
-  #     after a run that gave no result, was lost or was cancelled. Only a member among the
-  #     approvers of the stage the work item is in, where the stage lists them
-  #     (`work_item.review_comment`, `Apiary.Access`, else `:not_approver`), writes one:
-  #     its text checked
-  #     (`Apiary.WorkItems.Proposal.check_comment/1`, else `{:invalid, %{comment:
-  #     error}}`, or `{:invalid, :form}`). It writes a new version of the review comments,
-  #     by the member, with the review comment, open, on the newest version of the take
-  #     in's proposal (`Apiary.WorkItems.Explore.proposal_version/3`,
-  #     `Apiary.Explore.ReviewComments.comment/5`); with none, `:not_waiting`. It queues no
-  #     run. Its event, `:answered`, has the take in, the attempt of the latest run, the
-  #     count, 1, `"comment"` true and the review comment's id (`"review_comment"`).
+  #   * `review_comment/4` writes one review comment and queues no run. No page calls
+  #     it: Explore's tab writes a comment with `another_round/4`, and tests call it to
+  #     set up a work item. It works wherever no run is running and the take in has a
+  #     proposal: where its questions wait, where its proposal waits, and after a run
+  #     that gave no result, was lost or was cancelled. It asks
+  #     `work_item.review_comment` (`Apiary.Access`, else `:not_approver`), which only
+  #     the approvers of the stage the work item is in have, where the stage lists them,
+  #     and checks the text (`Apiary.WorkItems.Proposal.check_comment/1`, else
+  #     `{:invalid, %{comment: error}}`, or `{:invalid, :form}`). It writes a new version
+  #     of the review comments, by the scope's person, with the review comment, open, on
+  #     the newest version of the take in's proposal
+  #     (`Apiary.WorkItems.Explore.proposal_version/3`,
+  #     `Apiary.Explore.ReviewComments.comment/5`); with none, `:not_waiting`. Its event,
+  #     `:answered`, has the take in, the attempt of the latest run, the count, 1,
+  #     `"comment"` true and the review comment's id (`"review_comment"`).
   #   * A reply to a review comment (`reply/5`) works under the same rule: it adds the
   #     member's reply to the review comment, which opens it again
   #     (`Apiary.Explore.ReviewComments.reply/5`). An id the review comments do not have,
@@ -190,14 +212,39 @@ defmodule Apiary.WorkItems.Moves do
   #     `:answered`, has what a review comment's has, and `"reply"`, the reply's position
   #     among the review comment's replies, from 1.
   #   * The open review comments go to the next run with the answers (`answer/4`), which
-  #     queues it, or by a send of the review comments (`send_review_comments/3`) where the
-  #     latest run's questions or its proposal wait: for a member among the stage's
-  #     approvers, with at least one review comment open on a proposal of the take in
-  #     (else `:not_waiting`; one left open in an earlier take in does not count), it
-  #     queues the take in's next run as an answer does, at any count of runs. It writes
+  #     queues it, or with `send_review_comments/3`. No page calls
+  #     `send_review_comments/3`: Explore's tab sends them with `another_round/4`, and
+  #     tests call it to set up a work item. Where the latest run's questions or its
+  #     proposal wait, for a scope among the stage's approvers, with at least one review
+  #     comment open on a proposal of the take in (else `:not_waiting`; one left open in
+  #     an earlier take in does not count), it queues the take in's next run as an
+  #     answer does, at any count of runs. It writes
   #     nothing to the questions, whose open questions stay open. Its event, `:answered`,
   #     has the take in, the attempt, the count and the ids of the open review comments
   #     (`"review_comments"`).
+  #   * Run another round (`another_round/4`) sends, in one move, what a member drafted on
+  #     Explore's tab, where the latest run's questions or its proposal wait: the answers
+  #     to the open questions (only where the questions wait) and to the decided questions
+  #     of the take in, as an answer by question id gives them, and a comment on the whole
+  #     proposal, written as a review comment is, open, on the newest version of the take
+  #     in's proposal. It queues the take in's next run, once, at any count of runs; that
+  #     run reads the answers, the comment and every other open review comment, as it
+  #     reads them after an answer. It asks `work_item.answer` where answers are given,
+  #     and `work_item.review_comment` for a comment, or where nothing else is given, for
+  #     the open review comments alone (else `:not_approver`). A round with no answer
+  #     left, once the answers that repeat a decision's option are dropped, counts as a
+  #     round with no answers. With no answer, no comment and no review comment open on a
+  #     proposal of the take in, it is `:not_waiting`. An answer to a decided question
+  #     changes the run's decision: the question becomes answered and keeps its
+  #     `decision`. An answer that is the decision's option again, with no note, changes
+  #     nothing and is not written (`Apiary.Explore.Questions.same_as_decision?/3`);
+  #     `answer/4` with only such answers is `:not_waiting`. Its event, `:answered`, has
+  #     the take in, the attempt and the count, and: with answers, the ids of the
+  #     questions answered (`"questions"`) and the comment's id (`"review_comment"`) where
+  #     one is written; without answers, what a send of the review comments has, the
+  #     comment among them, and with a comment, `"comment"` true and its id
+  #     (`"review_comment"`), as a review comment's event has them. Unanswered questions
+  #     stay open.
   #   * Today's form for a comment on the proposal (`answer/4` with a text, where the
   #     latest run's proposal waits) writes the review comment and sends the review
   #     comments, in one move: one event, as a review comment's, and the next run queued.
@@ -242,7 +289,7 @@ defmodule Apiary.WorkItems.Moves do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, Dispatches, Organisations, PublicId, Repo, WorkItems}
+  alias Apiary.{Access, Audit, Dispatches, Names, Organisations, PublicId, Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Feed}
   alias Apiary.Dispatches.DispatchRun
@@ -251,6 +298,7 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Number, as: RunNumber
   alias Apiary.Sources.{Item, Topic}
+  alias Apiary.Sources.Comment, as: SourceComment
   alias Apiary.Explore.{Questions, ReviewComments}
   alias Apiary.WorkItems.{Comment, Confirmation, Explore, Finished, Number, Proposal}
   alias Apiary.WorkItems.{State, WorkItem}
@@ -266,16 +314,18 @@ defmodule Apiary.WorkItems.Moves do
           | :target_invalid
           | :owner
           | :not_taken
+          | :comment_too_long
           | {:taken, WorkItem.t()}
           | Ecto.Changeset.t()
 
   @typedoc """
-  What the page gives a take in: the owner, and the first instruction, under atom keys or
-  their strings.
+  What the page sends with a take in: the owner, the first instruction and a comment on the
+  ticket, under atom keys or their strings.
   """
   @type take_in_attrs :: %{
           optional(:owner_id | String.t()) => Ecto.UUID.t(),
-          optional(:first_instruction | String.t()) => String.t()
+          optional(:first_instruction | String.t()) => String.t(),
+          optional(:comment | String.t()) => String.t()
         }
 
   ## Take in
@@ -292,8 +342,9 @@ defmodule Apiary.WorkItems.Moves do
              :ok <- none_yet(scope, ticket),
              :ok <- open(ticket),
              {:ok, target} <- target(workspace, ticket),
-             {:ok, owner_id} <- owner(scope, attrs) do
-          make(scope, workspace, ticket, target, owner_id, attrs)
+             {:ok, owner_id} <- owner(scope, attrs),
+             {:ok, comment} <- take_in_comment(attrs) do
+          make(scope, workspace, ticket, target, owner_id, attrs, comment)
         end
       end)
 
@@ -312,7 +363,7 @@ defmodule Apiary.WorkItems.Moves do
 
   # A new work item of the ticket, its event, its first run, its feed entry and its entry
   # in the trail.
-  defp make(scope, workspace, ticket, target, owner_id, attrs) do
+  defp make(scope, workspace, ticket, target, owner_id, attrs, comment) do
     %{item: item, collection: collection, adapter: adapter} = ticket
     now = DateTime.utc_now()
 
@@ -343,6 +394,7 @@ defmodule Apiary.WorkItems.Moves do
          :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
          {:ok, _run} <- Dispatches.queue(work_item, 1),
          {:ok, _seq} <- feed(adapter, work_item, "taken_in"),
+         :ok <- write_comment(scope, ticket, comment, now),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
              after: %{state: :exploring},
@@ -526,8 +578,9 @@ defmodule Apiary.WorkItems.Moves do
              :ok <- open(ticket),
              :ok <- not_finished(scope, ended, ticket),
              {:ok, target} <- target(workspace, ticket),
-             {:ok, owner_id} <- owner(scope, attrs) do
-          again(scope, workspace, ended, ticket, target, owner_id, attrs)
+             {:ok, owner_id} <- owner(scope, attrs),
+             {:ok, comment} <- take_in_comment(attrs) do
+          again(scope, workspace, ended, ticket, target, owner_id, attrs, comment)
         end
       end)
 
@@ -563,7 +616,7 @@ defmodule Apiary.WorkItems.Moves do
       else: :ok
   end
 
-  defp again(scope, workspace, ended, ticket, target, owner_id, attrs) do
+  defp again(scope, workspace, ended, ticket, target, owner_id, attrs, comment) do
     %{item: item, collection: collection, adapter: adapter} = ticket
     now = DateTime.utc_now()
     take_in = ended.take_in + 1
@@ -598,6 +651,7 @@ defmodule Apiary.WorkItems.Moves do
            }),
          {:ok, _run} <- Dispatches.queue(work_item, take_in),
          {:ok, _seq} <- feed_if(ended.state == :undone, adapter, work_item, "taken_in"),
+         :ok <- write_comment(scope, ticket, comment, now),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
              before: %{state: ended.state},
@@ -867,8 +921,13 @@ defmodule Apiary.WorkItems.Moves do
   def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers) do
     step(scope, :"work_item.answer", work_item, fn held, current, now ->
       with :ok <- waiting(current, [:questions, :confirm], attempt),
-           {:ok, count, given} <- keep_given(held, scope, current, answers, now),
-           do: {:ok, Map.merge(answered(held, attempt, count), given), true}
+           {:ok, count, given} when count > 0 <- keep_given(held, scope, current, answers, now) do
+        {:ok, Map.merge(answered(held, attempt, count), given), true}
+      else
+        # Each answer was the option of a run's decision again: nothing to send.
+        {:ok, 0, _given} -> {:error, :not_waiting}
+        refused -> refused
+      end
     end)
   end
 
@@ -924,6 +983,86 @@ defmodule Apiary.WorkItems.Moves do
     end)
   end
 
+  @typedoc "What Run another round sends: the answers by question id and the comment."
+  @type round :: %{
+          optional(:answers) => [answer_by_id],
+          optional(:comment) => String.t() | nil
+        }
+
+  # another_round/4 queues the take in's next run with the answers and the comment of
+  # `round`, and the open review comments, in one move (the moduledoc).
+  @doc false
+  @spec another_round(Scope.t(), WorkItem.t(), pos_integer, round) ::
+          {:ok, WorkItem.t()} | {:error, step_refusal}
+  def another_round(%Scope{} = scope, %WorkItem{} = work_item, attempt, %{} = round) do
+    answers = Map.get(round, :answers) || []
+    comment = Map.get(round, :comment)
+    action = if answers == [], do: :"work_item.review_comment", else: :"work_item.answer"
+
+    step(scope, action, work_item, fn held, current, now ->
+      with :ok <- waiting(current, [:questions, :confirm], attempt),
+           {:ok, count, given} <- round_answers(held, scope, current, answers, now),
+           :ok <- no_answer_left(scope, held, count),
+           {:ok, id} <- round_comment(held, scope, current, comment, now) do
+        round_data(held, attempt, count, given, id)
+      end
+    end)
+  end
+
+  defp round_answers(_held, _scope, _current, [], _now), do: {:ok, 0, %{}}
+
+  # Where the proposal waits, the answers change the decisions of the take in's runs: a
+  # decided question does not hold the proposal back.
+  defp round_answers(held, scope, %{status: status}, answers, now)
+       when status in [:questions, :confirm] and is_list(answers),
+       do: keep_by_id(held, scope, answers, now)
+
+  defp round_answers(_held, _scope, _current, _answers, _now), do: {:error, :not_waiting}
+
+  # A round with no answer left, such as one whose answers were all a decision's option
+  # again, is a round with no answers: it sends the comment or the open review comments,
+  # so it asks `work_item.review_comment`, as `step/4` asks it of a round with none.
+  defp no_answer_left(scope, held, 0),
+    do: Access.authorize(scope, :"work_item.review_comment", held)
+
+  defp no_answer_left(_scope, _held, _count), do: :ok
+
+  defp round_comment(_held, _scope, _current, nil, _now), do: {:ok, nil}
+
+  defp round_comment(held, scope, current, text, now) do
+    with :ok <- Access.authorize(scope, :"work_item.review_comment", held),
+         {:ok, text} <- comment_text(text),
+         do: keep_comment(held, scope, current, text, now)
+  end
+
+  # The event's data of Run another round, and the next run queued: with no answer, the
+  # open review comments, the comment among them, as a send of them, and the comment as
+  # a review comment's event has it.
+  defp round_data(held, attempt, 0, _given, nil) do
+    case open_review_comments(held) do
+      {:ok, [_ | _] = ids} ->
+        {:ok, Map.put(answered(held, attempt, length(ids)), "review_comments", ids), true}
+
+      {:ok, []} ->
+        {:error, :not_waiting}
+
+      refused ->
+        refused
+    end
+  end
+
+  defp round_data(held, attempt, 0, _given, id) do
+    with {:ok, ids} <- open_review_comments(held) do
+      data = Map.merge(comment_data(held, attempt, id), %{"count" => length(ids)})
+      {:ok, Map.put(data, "review_comments", ids), true}
+    end
+  end
+
+  defp round_data(held, attempt, count, given, id) do
+    data = Map.merge(answered(held, attempt, count), given)
+    {:ok, if(id, do: Map.put(data, "review_comment", id), else: data), true}
+  end
+
   # One move of what a member gives Explore, in one transaction under the work item's
   # lock, asked `action` (`hold_step/4`): `give` checks and writes, and returns the
   # event's data and whether the take in's next run is queued. Every move writes the entry
@@ -957,16 +1096,8 @@ defmodule Apiary.WorkItems.Moves do
   # What the member gave, kept: the answers to the open questions, or a review comment on
   # the proposal. `{:ok, count, data}`, `data` what the event adds: the ids of the
   # questions answered, or the review comment's id and `"comment"` true.
-  defp keep_given(held, scope, %{status: :questions}, answers, now) when is_list(answers) do
-    with {:ok, document} <- questions(held),
-         {:ok, given} <-
-           invalid(Proposal.check_answers_by_id(answerable(held, document), answers)),
-         {:ok, document} <-
-           noted_by_id(Questions.answer(document, given, person_name(scope), now)),
-         {:ok, _version} <- push(held, scope, Questions.type_name(), Questions.file(document)) do
-      {:ok, length(given), %{"questions" => Enum.map(given, &elem(&1, 0))}}
-    end
-  end
+  defp keep_given(held, scope, %{status: :questions}, answers, now) when is_list(answers),
+    do: keep_by_id(held, scope, answers, now)
 
   defp keep_given(held, scope, %{status: :questions}, answers, now) do
     with {:ok, document} <- questions(held),
@@ -986,6 +1117,33 @@ defmodule Apiary.WorkItems.Moves do
          {:ok, text} <- comment_text(text),
          {:ok, id} <- keep_comment(held, scope, current, text, now),
          do: {:ok, 1, %{"comment" => true, "review_comment" => id}}
+  end
+
+  # The answers by question id, kept, to the open and the decided questions of the take
+  # in. An answer that is the option of a run's decision again, with no note, changes
+  # nothing and is not written (`Apiary.Explore.Questions.same_as_decision?/3`); with no
+  # answer left, nothing is written and the count is 0.
+  defp keep_by_id(held, scope, answers, now) do
+    with {:ok, document} <- questions(held),
+         {:ok, checked} <-
+           invalid(Proposal.check_answers_by_id(answerable(held, document), answers)) do
+      given =
+        Enum.reject(checked, fn {id, option, note} ->
+          Questions.same_as_decision?(Questions.entry(document, id), option, note)
+        end)
+
+      write_by_id(held, scope, document, given, now)
+    end
+  end
+
+  defp write_by_id(_held, _scope, _document, [], _now), do: {:ok, 0, %{}}
+
+  defp write_by_id(held, scope, document, given, now) do
+    with {:ok, document} <-
+           noted_by_id(Questions.answer(document, given, person_name(scope), now)),
+         {:ok, _version} <- push(held, scope, Questions.type_name(), Questions.file(document)) do
+      {:ok, length(given), %{"questions" => Enum.map(given, &elem(&1, 0))}}
+    end
   end
 
   # A new version of the review comments with the member's review comment on the newest
@@ -1010,13 +1168,14 @@ defmodule Apiary.WorkItems.Moves do
     do: Questions.open_in_take_in(document, Questions.take_in_runs(held.id, held.take_in))
 
   # The questions an answer by id is checked against: the questions of the document, with
-  # each open question of an earlier take in as one that is not open, so an answer to it
-  # is refused as an answer to a question that is not open (`:not_open`).
+  # each open or decided question of an earlier take in as one that is not open, so an
+  # answer to it is refused as an answer to a question that is not open (`:not_open`).
   defp answerable(held, document) do
-    ids = held |> open_in_take_in(document) |> MapSet.new(& &1["id"])
+    runs = Questions.take_in_runs(held.id, held.take_in)
+    ids = document |> Questions.answerable_in_take_in(runs) |> MapSet.new(& &1["id"])
 
     Enum.map(document["questions"], fn
-      %{"state" => "open", "id" => id} = question ->
+      %{"state" => state, "id" => id} = question when state in ["open", "decided"] ->
         if MapSet.member?(ids, id), do: question, else: Map.put(question, "state", "earlier")
 
       question ->
@@ -1494,6 +1653,48 @@ defmodule Apiary.WorkItems.Moves do
     end
   end
 
+  # The comment the page sends, its line breaks line feeds, trimmed: `{:ok, nil}` for none
+  # or a blank one, `:comment_too_long` for one past the limit, and a changeset with the
+  # error on `:comment` for one with a character a text of several lines may not have. A
+  # text of more than four bytes for each character it may have is too long before it is
+  # read any further.
+  defp take_in_comment(attrs) do
+    max = SourceComment.max_member_body()
+
+    case attr(attrs, :comment) do
+      nil ->
+        {:ok, nil}
+
+      text when is_binary(text) and byte_size(text) > 4 * max ->
+        {:error, :comment_too_long}
+
+      text when is_binary(text) ->
+        text = if String.valid?(text), do: normal(text), else: text
+
+        changeset =
+          {%{}, %{comment: :string}}
+          |> Ecto.Changeset.change(comment: text)
+          |> Names.validate_characters(:comment, lines: true)
+
+        cond do
+          not changeset.valid? -> {:error, %{changeset | action: :insert}}
+          text == "" -> {:ok, nil}
+          length(String.codepoints(text)) > max -> {:error, :comment_too_long}
+          true -> {:ok, text}
+        end
+
+      _other ->
+        {:error,
+         {%{}, %{comment: :string}}
+         |> Ecto.Changeset.change()
+         |> Ecto.Changeset.add_error(:comment, "is invalid", validation: :cast)
+         |> Map.put(:action, :insert)}
+    end
+  end
+
+  # A text as a form returns it: its line breaks line feeds, trimmed.
+  defp normal(text), do: text |> String.replace(["\r\n", "\r"], "\n") |> String.trim()
+
   # What the page gives under `key`, an atom, or its string, as a form's params name it.
   defp attr(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
 
@@ -1568,6 +1769,48 @@ defmodule Apiary.WorkItems.Moves do
       url: WorkItems.stable_url(work_item)
     })
   end
+
+  # The person's comment on the ticket's record, written after the take in's feed entry:
+  # none for none.
+  defp write_comment(_scope, _ticket, nil, _now), do: :ok
+
+  defp write_comment(%Scope{user: user}, %{item: item, adapter: adapter}, body, now) do
+    %SourceComment{organisation_id: item.organisation_id, item_id: item.id, author_id: user.id}
+    |> SourceComment.member_changeset(
+      %{
+        body: body,
+        author_name: SourceComment.member_name(user.email),
+        post_state: SourceComment.first_state(takes_comments(adapter))
+      },
+      now
+    )
+    |> Repo.insert()
+    |> case do
+      {:ok, %SourceComment{post_state: :posting} = comment} ->
+        with {:ok, _seq} <- comment_entry(adapter, item, comment), do: :ok
+
+      {:ok, %SourceComment{post_state: :kept}} ->
+        :ok
+
+      {:error, _changeset} = refused ->
+        refused
+    end
+  end
+
+  # The `comment` entry for the adapter to post the comment on the item.
+  defp comment_entry(%Node{} = adapter, %Item{} = item, %SourceComment{} = comment) do
+    Feed.append(adapter, %{
+      kind: "comment",
+      comment_id: comment.comment_id,
+      ref: item.external_ref,
+      author_name: comment.author_name,
+      body: comment.body
+    })
+  end
+
+  # Whether the adapter's source takes comments: the `comments` flag, set from its latest
+  # start's description (`Apiary.Nodes.Node`), nil before its first start.
+  defp takes_comments(%Node{comments: comments}), do: comments
 
   defp feed_if(true, adapter, work_item, status), do: feed(adapter, work_item, status)
   defp feed_if(false, _adapter, _work_item, _status), do: {:ok, nil}

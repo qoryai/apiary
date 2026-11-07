@@ -187,6 +187,30 @@ defmodule ApiaryWeb.Contract.InstancePoolRequestTest do
                Repo.reload!(dispatch)
     end
 
+    test "dispatched with a machine type records it on the dispatch", ctx do
+      dispatch = claimed!(ctx, ctx.a)
+
+      conn =
+        signed(ctx, "/v1/dispatches/#{dispatch.public_id}/dispatched", %{
+          "machine_type" => "example-type"
+        })
+
+      assert {conn.status, conn.resp_body} == {204, ""}
+      assert %Dispatch{vendor_machine_type: "example-type"} = Repo.reload!(dispatch)
+    end
+
+    test "dispatched with a machine type that has a space is 400, and records nothing", ctx do
+      dispatch = claimed!(ctx, ctx.a)
+
+      conn =
+        signed(ctx, "/v1/dispatches/#{dispatch.public_id}/dispatched", %{
+          "machine_type" => "example type"
+        })
+
+      assert conn.status == 400
+      assert %Dispatch{dispatched_at: nil, vendor_machine_type: nil} = Repo.reload!(dispatch)
+    end
+
     test "release answers 204, signed, and the run waits again", ctx do
       dispatch = claimed!(ctx, ctx.b)
 

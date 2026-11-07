@@ -926,6 +926,88 @@ defmodule ApiaryWeb.RunComponentsTest do
              ) =~ "The path can be read two ways. The wall denies it in either mode."
     end
 
+    test "a request to the run API: the wall's rule, never a missing path rule" do
+      run_api = %{
+        host: "run-api.qory.invalid",
+        port: 80,
+        method: "HTTP",
+        last_request_method: "POST",
+        path: "outside",
+        last_rule: "wall:run-api"
+      }
+
+      denied = "Rule wall:run-api. The wall denies it in either mode."
+      connect = %{run_api | port: 443, method: "CONNECT", last_request_method: nil, path: ""}
+
+      for connection <- [run_api, connect] do
+        html = row(Map.put(connection, :last_decision, "denied"))
+
+        assert text(html) =~ denied
+        refute text(html) =~ "Host allowed"
+
+        assert html
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query(".q-why-l")
+               |> LazyHTML.attribute("title") == [denied]
+      end
+
+      # With a path rule, the words and the title both add it.
+      with_path_rule = "Rule wall:run-api, path /v1/*. The wall denies it in either mode."
+      html = row(Map.merge(run_api, %{last_decision: "denied", last_path_rule: "/v1/*"}))
+      assert text(html) =~ with_path_rule
+
+      assert html
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query(".q-why-l")
+             |> LazyHTML.attribute("title") == [with_path_rule]
+
+      assigns = %{}
+
+      inline =
+        rendered_to_string(~H"""
+        <RunComponents.connection_row
+          id="e-ra"
+          connection={
+            %{
+              host: "run-api.qory.invalid",
+              port: 80,
+              method: "HTTP",
+              request_method: "POST",
+              path: "outside",
+              decision: "denied",
+              rule: "wall:run-api",
+              mode: "observe",
+              outcome: "refused",
+              at: ~U[2026-09-20 14:02:20.300Z]
+            }
+          }
+          variant="inline"
+        />
+        """)
+
+      why = inline |> LazyHTML.from_fragment() |> LazyHTML.query(".q-why")
+      assert text(LazyHTML.to_html(why)) == "Denied. #{denied}"
+
+      # An allowed one shows its rule alone, as any allowed request.
+      allowed =
+        row(
+          %{
+            run_api
+            | path: "/v1/runs/0193b1c2/work-item",
+              last_request_method: "GET"
+          }
+          |> Map.merge(%{
+            last_decision: "allowed",
+            allowed: 1,
+            denied: 0,
+            last_outcome: "connected"
+          })
+        )
+
+      assert text(allowed) =~ "Rule wall:run-api"
+      refute text(allowed) =~ "The wall denies it"
+    end
+
     @host_form "Forager refuses a host that is neither a name nor an address in canonical form,"
     @own_address "The wall refuses link-local addresses and the machine's addresses,"
 
@@ -2112,6 +2194,170 @@ defmodule ApiaryWeb.RunComponentsTest do
       refute doc |> LazyHTML.query("#cx-1-copy [aria-live]") |> Enum.any?()
       # Without security too: it is the record's host, not a rule.
       refute doc |> LazyHTML.query(".q-cx-acts") |> Enum.any?()
+    end
+  end
+
+  describe "a request to the run API shows the instance's host" do
+    # Forager records a run's requests to the run API with the placeholder host and the
+    # rule `wall:run-api` (`Apiary.Runs.RunApi`).
+    defp run_api_row(connection, variant \\ "workspace") do
+      base = %{
+        id: "c1",
+        host: "run-api.qory.invalid",
+        port: 80,
+        path: "/v1/runs/0193b1c2/work-item",
+        method: "HTTP",
+        last_request_method: "GET",
+        attempts: 1,
+        allowed: 1,
+        denied: 0,
+        last_decision: "allowed",
+        last_rule: "wall:run-api",
+        last_outcome: "connected",
+        last_mode: "enforce",
+        last_seen_at: ~U[2026-09-20 14:02:21Z]
+      }
+
+      assigns = %{c: Map.merge(base, connection), variant: variant}
+
+      rendered_to_string(~H"""
+      <table>
+        <tbody>
+          <RunComponents.connection_row
+            id="cx-1"
+            connection={@c}
+            variant={@variant}
+            started_at={~U[2026-09-20 14:02:11Z]}
+          />
+        </tbody>
+      </table>
+      """)
+      |> LazyHTML.from_fragment()
+    end
+
+    defp run_api_inline(event) do
+      assigns = %{
+        event:
+          Map.merge(
+            %{
+              host: "run-api.qory.invalid",
+              port: 80,
+              method: "HTTP",
+              request_method: "GET",
+              path: "/v1/runs/0193b1c2/work-item",
+              decision: "allowed",
+              rule: "wall:run-api",
+              mode: "enforce",
+              outcome: "connected",
+              at: ~U[2026-09-20 14:02:20.300Z]
+            },
+            event
+          )
+      }
+
+      rendered_to_string(~H"""
+      <RunComponents.connection_row id="e-1" connection={@event} variant="inline" />
+      """)
+      |> LazyHTML.from_fragment()
+    end
+
+    defp texts_of(doc, selector),
+      do: doc |> LazyHTML.query(selector) |> Enum.map(&LazyHTML.text/1)
+
+    test "the row shows the host with no port, its request line on the line under it" do
+      instance = Apiary.Instance.host()
+
+      for variant <- ["workspace", "table"] do
+        doc = run_api_row(%{}, variant)
+
+        assert texts_of(doc, ".q-cx-t.q-cx-runapi .q-cx-h > bdi") == [instance]
+        assert texts_of(doc, ".q-cx-t .q-cx-p") == []
+        assert texts_of(doc, ".q-cx-t > .q-cx-path") != []
+
+        [title] = doc |> LazyHTML.query(".q-cx-t") |> LazyHTML.attribute("title")
+        assert String.starts_with?(title, instance <> " ")
+        refute text(LazyHTML.to_html(doc)) =~ "run-api.qory.invalid"
+      end
+    end
+
+    test "the expander still sends the host, port and path as recorded" do
+      [toggle] = run_api_row(%{}) |> LazyHTML.query("#cx-1-toggle") |> Enum.to_list()
+
+      assert LazyHTML.attribute(toggle, "phx-value-host") == ["run-api.qory.invalid"]
+      assert LazyHTML.attribute(toggle, "phx-value-port") == ["80"]
+      assert LazyHTML.attribute(toggle, "phx-value-path") == ["/v1/runs/0193b1c2/work-item"]
+    end
+
+    test "Copy shows and copies the instance's host" do
+      instance = Apiary.Instance.host()
+      [button] = run_api_row(%{}) |> LazyHTML.query("button#cx-1-copy") |> Enum.to_list()
+
+      assert LazyHTML.attribute(button, "data-copy") == [instance]
+      assert LazyHTML.attribute(button, "aria-label") == ["Copy #{instance}"]
+      assert LazyHTML.attribute(button, "data-tip") == ["Copy #{instance}"]
+    end
+
+    test "a denied CONNECT to the placeholder host shows the instance's host too" do
+      instance = Apiary.Instance.host()
+
+      connect = %{
+        port: 443,
+        path: "",
+        method: "CONNECT",
+        last_request_method: nil,
+        allowed: 0,
+        denied: 1,
+        last_decision: "denied",
+        last_outcome: "refused"
+      }
+
+      doc = run_api_row(connect)
+      assert texts_of(doc, ".q-cx-h > bdi") == [instance]
+      assert texts_of(doc, ".q-cx-p") == []
+      assert doc |> LazyHTML.query(".q-cx-t") |> LazyHTML.attribute("title") == [instance]
+
+      inline =
+        run_api_inline(%{
+          port: 443,
+          path: "",
+          method: "CONNECT",
+          request_method: nil,
+          decision: "denied",
+          outcome: "refused"
+        })
+
+      assert texts_of(inline, ".q-dest > bdi") == [instance]
+      assert texts_of(inline, ".q-dest > .text-faint") == []
+    end
+
+    test "inline, in the timeline, the host has no port and the request line follows" do
+      instance = Apiary.Instance.host()
+      doc = run_api_inline(%{})
+
+      assert texts_of(doc, ".q-dest > bdi") == [instance]
+      assert texts_of(doc, ".q-dest > .text-faint") == []
+      assert texts_of(doc, ".q-dest > .q-rq") == ["GET /v1/runs/0193b1c2/work-item"]
+
+      assert doc |> LazyHTML.query(".q-dest") |> LazyHTML.attribute("title") ==
+               ["#{instance} GET /v1/runs/0193b1c2/work-item"]
+
+      tool = run_api_inline(%{tool: "files"})
+      assert texts_of(tool, ".q-dest-tool .q-on") == [instance]
+    end
+
+    test "a row on another host keeps its host and port" do
+      other = %{host: "api.example.com", port: 443, last_rule: "api.example.com"}
+      doc = run_api_row(other)
+
+      assert texts_of(doc, ".q-cx-h > bdi") == ["api.example.com"]
+      assert texts_of(doc, ".q-cx-h > .q-cx-p") == [":443"]
+      assert doc |> LazyHTML.query(".q-cx-runapi") |> Enum.count() == 0
+
+      assert doc |> LazyHTML.query("button#cx-1-copy") |> LazyHTML.attribute("data-copy") ==
+               ["api.example.com"]
+
+      inline = run_api_inline(%{host: "api.example.com", port: 443, rule: "api.example.com"})
+      assert texts_of(inline, ".q-dest > .text-faint") == [":443"]
     end
   end
 

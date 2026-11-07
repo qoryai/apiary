@@ -17,7 +17,7 @@ defmodule Apiary.Stacks.Stack do
   # | `:workspace` | the workspace | `workspace_id` |
   # | `:organisation` | the organisation's default | none of them |
   #
-  # `workflow` is a workflow name: a lower-case letter, then up to 63 lower-case letters,
+  # `workflow` is a workflow name: a lower-case letter, then up to 54 lower-case letters,
   # digits and hyphens. A run's workflow is read from these rows
   # (`Apiary.Stacks.workflow/2`).
   #
@@ -39,12 +39,9 @@ defmodule Apiary.Stacks.Stack do
   # `version_kind` is the version of a choice, nil on a row the save wrote before versions,
   # whose document's `ref` is read as written (`Apiary.Stacks.version_ref/3`):
   #
-  #   * `:latest` and `:named`, under `:qory`: the newest version of the Qory harness the
-  #     release ships (`Apiary.Lingo.Domain.Definition.qory_harness/0`), or the named
-  #     version `version_name`;
-  #   * `:branch`, `:tag` and `:commit`, under `:repository`: the newest commit of the
-  #     branch `version_name` when each run starts; the tag `version_name`; the commit
-  #     whose full id is `version_name`;
+  #   * `:branch`, `:tag` and `:commit`, under `:qory` and `:repository`: the newest commit
+  #     of the branch `version_name` when each run starts; the tag `version_name`; the
+  #     commit whose full id is `version_name`;
   #   * `:workspace`, on a target's row: the version of the workspace's harness.
   #
   # Changed only through `Apiary.Stacks`.
@@ -67,7 +64,7 @@ defmodule Apiary.Stacks.Stack do
     field :access, Ecto.Enum, values: [:read, :write]
     field :choice, Ecto.Enum, values: [:qory, :repository]
 
-    field :version_kind, Ecto.Enum, values: [:latest, :named, :branch, :tag, :commit, :workspace]
+    field :version_kind, Ecto.Enum, values: [:branch, :tag, :commit, :workspace]
 
     field :version_name, :string
 

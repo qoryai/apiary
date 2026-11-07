@@ -286,7 +286,11 @@ defmodule Apiary.Integrations.FetchTest do
         end
 
         assert request(:get, @url, &Plug.Conn.send_resp(&1, 429, "")) == {:error, :rate_limited}
-        assert request(:get, @url, &Plug.Conn.send_resp(&1, 500, "")) == {:error, :failed}
+        assert request(:get, @url, &Plug.Conn.send_resp(&1, 500, "")) == {:error, :server_error}
+
+        for status <- [501, 505] do
+          assert request(:get, @url, &Plug.Conn.send_resp(&1, status, "")) == {:error, :failed}
+        end
 
         assert request(:get, @url, ok(String.duplicate("a", 11)), max_bytes: 10) ==
                  {:error, :too_large}

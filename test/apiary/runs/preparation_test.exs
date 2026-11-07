@@ -27,6 +27,9 @@ defmodule Apiary.Runs.PreparationTest do
     run
   end
 
+  defp detail(kind, sent_name),
+    do: Preparation.step_detail(%{kind: kind, sent_name: sent_name, number: 1})
+
   defp step_started(sequence, step, name, kind),
     do: {sequence, "run.step_started", %{"step" => step, "name" => name, "kind" => kind}}
 
@@ -122,6 +125,7 @@ defmodule Apiary.Runs.PreparationTest do
                dispatch_id: dispatch_id,
                pool: %{name: "build-pool", place: :workspace, operator: nil},
                machine_type: nil,
+               started_as: nil,
                requested_at: requested_at,
                started: %{state: "succeeded", started_at: started_at, ended_at: ended_at}
              } = preparation.machine
@@ -140,18 +144,57 @@ defmodule Apiary.Runs.PreparationTest do
                  exit_code: 0,
                  started_at: fetch_at,
                  duration_ms: 100,
-                 output: %{text: "Cloning into 'shop'...", truncated: false}
+                 output: %{
+                   lines: [%{number: 1, text: "Cloning into 'shop'..."}],
+                   truncated: false,
+                   lines_cut: false
+                 }
                },
                %{
                  number: 2,
                  name: "Compose the harness for acme/shop",
-                 output: %{text: "", truncated: false}
+                 output: %{lines: [], truncated: false}
                }
              ] = preparation.steps
 
       assert fetch_at == at(2)
       assert preparation.session_started_at == at(7)
       assert preparation.stopped == nil
+    end
+
+    test "the vendor's machine type is an instance admin's alone", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+      change_dispatch!(dispatch, vendor_machine_type: "example-type")
+      run = project!(run, [{1, "run.started", started_data()}])
+
+      refute Apiary.Access.instance_admin?(ctx.scope)
+      assert %{started_as: nil} = Preparation.read(ctx.scope, run).machine
+
+      # The instance's organisation hidden, the oldest one left, the reader's, is the
+      # instance's, and its owner an instance admin.
+      Apiary.EditionKit.module().hide_instance_organisation(
+        Apiary.Edition.instance_organisation_id()
+      )
+
+      assert Apiary.Edition.instance_organisation_id() == ctx.scope.organisation.id
+      assert Apiary.Access.instance_admin?(ctx.scope)
+      assert %{started_as: "example-type"} = Preparation.read(ctx.scope, run).machine
+
+      change_dispatch!(dispatch, vendor_machine_type: nil)
+      assert %{started_as: nil} = Preparation.read(ctx.scope, run).machine
+    end
+
+    test "the machine type is the claim answer's, with its spec; nil for an answer without one",
+         ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+      run = project!(run, [{1, "run.started", started_data()}])
+      assert %{machine_type: nil} = Preparation.read(ctx.scope, run).machine
+
+      spec = Apiary.MachineTypesFixtures.spec()
+      change_dispatch!(dispatch, machine_type: "large", machine_spec: spec)
+
+      assert %{machine_type: %{name: "large", spec: ^spec}} =
+               Preparation.read(ctx.scope, run).machine
     end
 
     test "a run with no repository has no fetch step, and nothing reads as one", ctx do
@@ -228,7 +271,7 @@ defmodule Apiary.Runs.PreparationTest do
                  exit_code: 0,
                  duration_ms: 100,
                  output: %{
-                   text: "To https://git.example.com/acme/web-shop.git",
+                   lines: [%{text: "To https://git.example.com/acme/web-shop.git"}],
                    truncated: false
                  }
                }
@@ -252,7 +295,7 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert preparation.after_session == []
       assert %{cause: :step_failed, step: 3} = preparation.stopped
-      assert Preparation.stopped_step(preparation) =~ "Push work"
+      assert Preparation.stopped_step(preparation) == "Set up dev container"
     end
 
     test "a reader who may not read the log has the step, with no output", ctx do
@@ -309,7 +352,8 @@ defmodule Apiary.Runs.PreparationTest do
                fixer: :workspace_admin,
                text: "No machine was made: No capacity in the region. " <> fix,
                what: "No machine was made: No capacity in the region.",
-               fix: fix
+               fix: fix,
+               detail: nil
              }
     end
 
@@ -361,7 +405,8 @@ defmodule Apiary.Runs.PreparationTest do
                  "The machine did not start the run within 15 minutes of the request. " <>
                    "Contact support with run #{run.public_id}.",
                what: "The machine did not start the run within 15 minutes of the request.",
-               fix: "Contact support with run #{run.public_id}."
+               fix: "Contact support with run #{run.public_id}.",
+               detail: nil
              }
 
       assert stopped.fix =~ run.public_id
@@ -435,11 +480,13 @@ defmodule Apiary.Runs.PreparationTest do
                step: 1,
                fixer: :workspace_admin,
                text:
-                 "Fetch git.example.com/acme/shop failed with exit code 128. An admin of " <>
+                 "Clone repository failed with exit code 128 (git.example.com/acme/shop). " <>
+                   "An admin of " <>
                    "#{ctx.scope.workspace.name} reads the cause in the step's output.",
-               what: "Fetch git.example.com/acme/shop failed with exit code 128.",
+               what: "Clone repository failed with exit code 128 (git.example.com/acme/shop).",
                fix:
-                 "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output."
+                 "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output.",
+               detail: "git.example.com/acme/shop"
              }
     end
 
@@ -461,7 +508,26 @@ defmodule Apiary.Runs.PreparationTest do
       assert %{cause: :step_failed, step: 1, fixer: :support} = stopped
 
       assert stopped.text ==
-               "Fetch image registry.example/agent failed with exit code 0. " <>
+               "Pull images failed with exit code 0 (fetch image registry.example/agent). " <>
+                 "Contact support with run #{run.public_id}."
+    end
+
+    test "a failed machine step takes the pool's row", ctx do
+      %{run: run, dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+      instance_pool = instance_pool_fixture(%{name: "qory-pool"})
+      change_dispatch!(dispatch, pool_id: instance_pool.id)
+
+      run =
+        project!(run, [
+          step_started(1, 1, "start machine", "machine"),
+          step_exited(2, 1, "failed", 1)
+        ])
+
+      assert %{stopped: stopped} = Preparation.read(ctx.scope, run)
+      assert %{cause: :step_failed, step: 1, fixer: :support} = stopped
+
+      assert stopped.text ==
+               "Start machine failed with exit code 1. " <>
                  "Contact support with run #{run.public_id}."
     end
 
@@ -477,7 +543,7 @@ defmodule Apiary.Runs.PreparationTest do
       assert %{steps: [%{exit_code: -1}], stopped: stopped} = Preparation.read(ctx.scope, run)
 
       assert stopped.text ==
-               "Join session 1 failed. An admin of #{ctx.scope.workspace.name} reads the " <>
+               "Start agent failed. An admin of #{ctx.scope.workspace.name} reads the " <>
                  "cause in the step's output."
     end
 
@@ -495,6 +561,101 @@ defmodule Apiary.Runs.PreparationTest do
                "Step 1 failed with exit code 2. An admin of #{ctx.scope.workspace.name} " <>
                  "reads the cause in the step's output."
     end
+
+    test "a failed set-up command: the row's name, and the command in parentheses", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key)
+
+      run =
+        project!(run, [
+          step_started(1, 1, "setup postCreateCommand: npm ci", "setup"),
+          step_exited(2, 1, "failed", 1)
+        ])
+
+      assert %{stopped: stopped} = preparation = Preparation.read(ctx.scope, run)
+
+      assert %{
+               what: "Set up dev container failed with exit code 1 (postCreateCommand: npm ci).",
+               detail: "postCreateCommand: npm ci"
+             } = stopped
+
+      # The text is plain: diagnostics and the page header show it without code font.
+      assert stopped.text ==
+               "Set up dev container failed with exit code 1 (postCreateCommand: npm ci). " <>
+                 "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output."
+
+      assert Preparation.stopped_step(preparation) == "Set up dev container"
+    end
+
+    test "a set-up step named by one word, as qory's prepare: no parentheses", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key)
+
+      run =
+        project!(run, [
+          step_started(1, 1, "prepare", "setup"),
+          step_exited(2, 1, "failed", 1)
+        ])
+
+      assert %{stopped: %{what: what, detail: nil}} = Preparation.read(ctx.scope, run)
+      assert what == "Set up dev container failed with exit code 1."
+    end
+
+    test "an image step named by its reference alone: the reference as sent", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key)
+
+      run =
+        project!(run, [
+          step_started(1, 1, "registry.example.com/acme/storefront-dev:1", "image"),
+          step_exited(2, 1, "failed", -1),
+          step_started(3, 2, "pull registry.example.com/acme/storefront-dev:1", "image"),
+          step_exited(4, 2, "failed", 1)
+        ])
+
+      assert %{steps: [image, pull], stopped: %{what: what}} = Preparation.read(ctx.scope, run)
+
+      # The reference alone, one word, is in parentheses as sent: no upper-case first letter.
+      assert what == "Pull images failed (registry.example.com/acme/storefront-dev:1)."
+
+      assert Preparation.step_detail(image) == "registry.example.com/acme/storefront-dev:1"
+      assert Preparation.step_detail(pull) == "pull registry.example.com/acme/storefront-dev:1"
+    end
+  end
+
+  describe "a step's detail, beside its row's name" do
+    test "is the sent name without the kind, or the whole sent name when it starts otherwise" do
+      assert detail("setup", "setup postCreateCommand: npm ci") == "postCreateCommand: npm ci"
+      assert detail("fetch", "fetch git.example.com/acme/shop") == "git.example.com/acme/shop"
+      assert detail("image", "fetch image registry.example/a") == "fetch image registry.example/a"
+
+      assert detail("image", "registry.example.com/acme/storefront-dev:1") ==
+               "registry.example.com/acme/storefront-dev:1"
+
+      # Spaces around the name are no part of the detail.
+      assert detail("image", "  fetch image registry.example/a ") ==
+               "fetch image registry.example/a"
+
+      assert detail("setup", " setup postCreateCommand: npm ci  ") ==
+               "postCreateCommand: npm ci"
+
+      assert detail("image", " registry.example.com/acme/storefront-dev:1 ") ==
+               "registry.example.com/acme/storefront-dev:1"
+    end
+
+    test "is nil for one word, the label itself, a join, a kind with no label, no name" do
+      assert detail("setup", "setup") == nil
+      assert detail("setup", "prepare") == nil
+      assert detail("image", "image") == nil
+      assert detail("setup", "set up dev container") == nil
+      assert detail("join", "join session 1") == nil
+      assert detail("machine", "start machine") == nil
+      assert detail("compose", "compose the harness") == nil
+      assert detail(nil, nil) == nil
+    end
+
+    test "names the row by its label, or the step's name for a kind with no label" do
+      assert Preparation.row_name(%{kind: "join", name: "Join session 1"}) == "Start agent"
+      assert Preparation.row_name(%{kind: "machine", name: "Start machine"}) == "Start machine"
+      assert Preparation.row_name(%{kind: nil, name: nil, number: 3}) == "Step 3"
+    end
   end
 
   describe "a step's output" do
@@ -509,9 +670,10 @@ defmodule Apiary.Runs.PreparationTest do
 
       run = ctx.scope |> run_fixture() |> project!(events)
 
-      assert %{steps: [%{output: %{text: text, truncated: true}}]} =
+      assert %{steps: [%{output: %{truncated: true, lines_cut: false} = output}]} =
                Preparation.read(ctx.scope, run)
 
+      text = Preparation.output_text(output)
       assert byte_size(text) <= Preparation.output_bytes()
       assert String.ends_with?(text, "\n" <> String.duplicate("x", 99) <> "\nthe last line")
       assert text |> String.split("\n") |> hd() == String.duplicate("x", 99)
@@ -529,8 +691,115 @@ defmodule Apiary.Runs.PreparationTest do
           step_exited(3, 1)
         ])
 
-      assert %{steps: [%{output: %{text: "ready", truncated: false}}]} =
+      assert %{steps: [%{output: %{lines: [%{text: "ready"}], truncated: false}}]} =
                Preparation.read(ctx.scope, run)
+    end
+
+    test "of bytes that are not UTF-8 is cut to 64 KiB of text", ctx do
+      # 300 lines of 100 bytes that are not UTF-8: each byte becomes a character of 3
+      # bytes, so the text is about 90 KiB, from 30 KiB of bytes.
+      line = :binary.copy(<<0xFF>>, 100) <> "\n"
+
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          step_started(1, 1, "setup", "setup"),
+          {2, "run.log", step_log_data(1, :binary.copy(line, 300))},
+          step_exited(3, 1)
+        ])
+
+      assert %{steps: [%{output: %{truncated: true, lines_cut: false} = output}]} =
+               Preparation.read(ctx.scope, run)
+
+      assert byte_size(Preparation.output_text(output)) <= Preparation.output_bytes()
+      assert %{number: 300} = List.last(output.lines)
+    end
+
+    test "of 40,000 lines of one character keeps its last 2,500", ctx do
+      chunk = :binary.copy(".\n", 10_000)
+
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!(
+          [step_started(1, 1, "setup", "setup")] ++
+            for(n <- 2..5, do: {n, "run.log", step_log_data(1, chunk)}) ++ [step_exited(6, 1)]
+        )
+
+      assert %{steps: [%{output: %{truncated: true, lines_cut: true, lines: lines}}]} =
+               Preparation.read(ctx.scope, run)
+
+      assert length(lines) == Preparation.output_lines()
+      assert %{number: 37_501, text: "."} = hd(lines)
+      assert %{number: 40_000} = List.last(lines)
+    end
+
+    test "has its lines numbered from 1, each with the time of the event it began in", ctx do
+      t = ~U[2026-11-06 00:33:07.600000Z]
+      later = fn ms -> DateTime.add(t, ms, :millisecond) end
+
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          step_started(1, 1, "setup", "setup"),
+          # Two lines in one chunk share its time.
+          {2, "run.log", step_log_data(1, "Reading devcontainer.json\n> npm ci\n"), time: t},
+          # A line split over two chunks has the time of the first; a line after a line
+          # feed that ends a chunk begins in the next.
+          {3, "run.log", step_log_data(1, "added 1184 "), time: later.(200)},
+          {4, "run.log", step_log_data(1, "packages\n\n"), time: later.(35_000)},
+          {5, "run.log", step_log_data(1, "found 0 vulnerabilities\n"), time: later.(36_100)},
+          step_exited(6, 1)
+        ])
+
+      assert %{steps: [%{output: %{lines: lines, truncated: false} = output}]} =
+               Preparation.read(ctx.scope, run)
+
+      assert lines == [
+               %{number: 1, at: t, text: "Reading devcontainer.json"},
+               %{number: 2, at: t, text: "> npm ci"},
+               %{number: 3, at: later.(200), text: "added 1184 packages"},
+               %{number: 4, at: later.(35_000), text: ""},
+               %{number: 5, at: later.(36_100), text: "found 0 vulnerabilities"}
+             ]
+
+      assert Preparation.output_text(output) ==
+               "Reading devcontainer.json\n> npm ci\nadded 1184 packages\n\nfound 0 vulnerabilities"
+    end
+
+    test "of a machine step, its kind kept, has its lines and their times", ctx do
+      at = ~U[2026-11-06 00:31:58.900000Z]
+      run = ctx.scope |> run_fixture() |> project!(machine_step_events(1, 1, at))
+
+      assert %{steps: [%{kind: "machine", name: "Start machine", output: %{lines: lines}}]} =
+               Preparation.read(ctx.scope, run)
+
+      assert [%{number: 1, at: ^at, text: "boot  14.8 s"} | _] = lines
+      assert length(lines) == 5
+    end
+
+    test "cut to its end keeps each line's number in the whole output", ctx do
+      line = String.duplicate("x", 95)
+
+      events =
+        [step_started(1, 1, "setup", "setup")] ++
+          for(n <- 1..1_000, do: {n + 1, "run.log", step_log_data(1, "#{n} #{line}\n")}) ++
+          [step_exited(1_002, 1)]
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+
+      assert %{steps: [%{output: %{lines: lines, truncated: true}}]} =
+               Preparation.read(ctx.scope, run)
+
+      assert %{number: 1_000, text: "1000 " <> _} = List.last(lines)
+      assert length(lines) in 600..999
+
+      for %{number: number, text: text, at: time} <- lines do
+        assert text == "#{number} #{line}"
+        assert DateTime.compare(time, at(number + 1)) == :eq
+      end
     end
   end
 
@@ -556,14 +825,15 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert %{
                log_pruned_at: pruned_at,
-               steps: [%{output: %{text: "", truncated: false}}],
+               steps: [%{output: %{lines: [], truncated: false}}],
                stopped: stopped
              } = Preparation.read(ctx.scope, run)
 
       assert pruned_at == run.log_pruned_at
 
       assert stopped.text ==
-               "Setup failed with exit code 2. The step's output was deleted under the " <>
+               "Set up dev container failed with exit code 2. The step's output was deleted " <>
+                 "under the " <>
                  "workspace's log retention, so the cause is no longer shown."
     end
   end
@@ -613,6 +883,184 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert %{machine: %{handed_over_at: nil, end: nil, ended_at: %DateTime{}}} =
                Preparation.read(ctx.scope, run)
+    end
+  end
+
+  describe "the queue, the session's end, what the run pushed and why the machine went" do
+    test "queued_at is when the run of the queue was queued", ctx do
+      %{run: run, dispatch_run: dispatch_run} = handed_over_fixture(ctx.scope, ctx.key)
+      queued_at = Repo.get!(Apiary.Dispatches.DispatchRun, dispatch_run.id).queued_at
+
+      assert %{machine: %{queued_at: ^queued_at}} = Preparation.read(ctx.scope, run)
+      assert %DateTime{} = queued_at
+    end
+
+    test "session_end has the last result, the exit and the model; nil before either", ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "runtime.started", %{"session_id" => "session-0001", "model" => "model-large-1"}}
+        ])
+
+      assert %{session_end: nil} = Preparation.read(ctx.scope, run)
+
+      run =
+        project!(run, [
+          {4, "runtime.result",
+           %{"outcome" => "error", "turns" => 2, "duration_ms" => 1_000, "cost_usd" => 0.1}},
+          {5, "runtime.result",
+           %{"outcome" => "success", "turns" => 14, "duration_ms" => 229_000, "cost_usd" => 0.84}},
+          {6, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}
+        ])
+
+      assert %{
+               session_end: %{
+                 result_at: %DateTime{},
+                 outcome: "success",
+                 turns: 14,
+                 duration_ms: 229_000,
+                 cost_usd: 0.84,
+                 exited_at: %DateTime{},
+                 state: "succeeded",
+                 exit_code: 0,
+                 model: "model-large-1"
+               }
+             } = Preparation.read(ctx.scope, run)
+    end
+
+    test "outputs are the versions the run pushed, not a person's", ctx do
+      %{run: run, dispatch_run: dispatch_run} = handed_over_fixture(ctx.scope, ctx.key)
+      dispatch_run = Repo.get!(Apiary.Dispatches.DispatchRun, dispatch_run.id)
+      work_item = fn -> Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id) end
+
+      file = fn text ->
+        %{filename: "proposal.md", content_type: "text/markdown", binary: text}
+      end
+
+      assert %{outputs: []} = Preparation.read(ctx.scope, run)
+
+      {:ok, _person} =
+        Apiary.Artifacts.push({:person, ctx.scope}, work_item.(), "proposal", [file.("one\n")])
+
+      {:ok, version} =
+        Apiary.Artifacts.push({:run, dispatch_run}, work_item.(), "proposal", [file.("two\n")],
+          name: "main"
+        )
+
+      assert %{
+               outputs: [
+                 %{type: "proposal", name: "main", number: 2, at: at, public_id: public_id}
+               ]
+             } = Preparation.read(ctx.scope, run)
+
+      assert at == version.inserted_at
+      assert public_id == version.public_id
+    end
+
+    test "outputs are this run's alone, not another run's of the queue", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key)
+      %{dispatch_run: other} = handed_over_fixture(ctx.scope, ctx.key)
+      other = Repo.get!(Apiary.Dispatches.DispatchRun, other.id)
+      work_item = Repo.get!(Apiary.WorkItems.WorkItem, other.work_item_id)
+      file = %{filename: "proposal.md", content_type: "text/markdown", binary: "other\n"}
+
+      {:ok, _version} =
+        Apiary.Artifacts.push({:run, other}, work_item, "proposal", [file], name: "main")
+
+      assert %{outputs: []} = Preparation.read(ctx.scope, run)
+    end
+
+    test "outputs read through another workspace of the organisation are none", ctx do
+      %{run: run, dispatch_run: dispatch_run} = handed_over_fixture(ctx.scope, ctx.key)
+      dispatch_run = Repo.get!(Apiary.Dispatches.DispatchRun, dispatch_run.id)
+      work_item = Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id)
+      file = %{filename: "proposal.md", content_type: "text/markdown", binary: "plan\n"}
+
+      {:ok, _version} =
+        Apiary.Artifacts.push({:run, dispatch_run}, work_item, "proposal", [file], name: "main")
+
+      assert %{outputs: [_version]} = Preparation.read(ctx.scope, run)
+
+      workspace = workspace_fixture(ctx.scope.organisation)
+      other = workspace_scope(ctx.scope.user, workspace)
+      assert %{outputs: []} = Preparation.read(other, run)
+    end
+
+    test "queued_at after a release is when the released dispatch ended", ctx do
+      %{dispatch: first, registered: released_run} = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, first.public_id, %{reason: "No capacity."})
+      released = Repo.get!(Dispatch, first.id)
+      queued = Repo.get!(Apiary.Dispatches.DispatchRun, first.dispatch_run_id).queued_at
+
+      # The run of the queue waits again with the same `queued_at`, and is claimed again.
+      {:ok, %{dispatch: second, registered: registered}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
+      assert second.dispatch_run_id == first.dispatch_run_id
+      assert DateTime.before?(queued, released.ended_at)
+
+      ended_at = released.ended_at
+
+      assert %{machine: %{queued_at: ^ended_at}} =
+               Preparation.read(ctx.scope, Repo.get!(Run, registered.id))
+
+      # The released attempt's run keeps the first queueing.
+      assert %{machine: %{queued_at: ^queued}} =
+               Preparation.read(ctx.scope, Repo.get!(Run, released_run.id))
+    end
+
+    test "queued_at after a lapsed lease is when the dispatch lapsed", ctx do
+      %{dispatch: first} = claimed!(ctx)
+      lapse!(first)
+      queued = Repo.get!(Apiary.Dispatches.DispatchRun, first.dispatch_run_id).queued_at
+
+      # The claim frees the lapsed lease, so the run of the queue waits again with the
+      # same `queued_at`, and the claim takes it again and hands it over.
+      dispatch_run = Repo.get!(Apiary.Dispatches.DispatchRun, first.dispatch_run_id)
+
+      %{dispatch: second, run: registered} =
+        Apiary.DispatchedRunsFixtures.handed_over(ctx.scope, ctx.key, dispatch_run, %{})
+
+      assert second.dispatch_run_id == first.dispatch_run_id
+
+      assert %Dispatch{ended_at: nil, stale_at: %DateTime{} = stale_at} =
+               Repo.get!(Dispatch, first.id)
+
+      assert DateTime.before?(queued, stale_at)
+
+      assert %{machine: %{queued_at: ^stale_at}} =
+               Preparation.read(ctx.scope, Repo.get!(Run, registered.id))
+
+      # The run exits, and its run of the queue ends: the stale dispatch ends with it,
+      # after this claim. Queued still starts when the lease lapsed.
+      exited =
+        registered.id
+        |> then(&Repo.get!(Run, &1))
+        |> Ecto.Changeset.change(exited_at: DateTime.utc_now())
+        |> Repo.update!()
+
+      Apiary.Dispatches.RunEnd.run_ended(exited)
+
+      assert %Dispatch{ended_at: %DateTime{}, end_cause: :run_ended} =
+               Repo.get!(Dispatch, first.id)
+
+      assert %{machine: %{queued_at: ^stale_at}} =
+               Preparation.read(ctx.scope, Repo.get!(Run, registered.id))
+    end
+
+    test "removal_cause: the run's loss, else its exit, else nil", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key)
+      assert %{machine: %{removal_cause: nil}} = Preparation.read(ctx.scope, run)
+
+      now = DateTime.utc_now()
+      run = run |> Ecto.Changeset.change(state: "failed", exited_at: now) |> Repo.update!()
+      assert %{machine: %{removal_cause: :run_ended}} = Preparation.read(ctx.scope, run)
+
+      run = run |> Ecto.Changeset.change(state: "lost", lost_at: now) |> Repo.update!()
+      assert %{machine: %{removal_cause: :keep_alive_lost}} = Preparation.read(ctx.scope, run)
     end
   end
 end

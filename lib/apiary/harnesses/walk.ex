@@ -19,8 +19,8 @@ defmodule Apiary.Harnesses.Walk do
   #   3. the workspace's choice, else the harness the organisation shares with every
   #      workspace: its document, the same way;
   #   4. else the Qory harness, the base of the workspace's type's definition
-  #      (`Apiary.Lingo.Domain.definition/1`) at the newest version the release ships, as
-  #      a document that only extends it, origin `:setting`, with no stacks row
+  #      (`Apiary.Lingo.Domain.definition/1`) at its default branch, `main`, as a document
+  #      that only extends it, origin `:setting`, with no stacks row
   #      (`stack_id` nil) and no owner. It is hidden only where the run's organisation is
   #      operated (`c:Apiary.Edition.operated?/1`).
   #
@@ -53,9 +53,8 @@ defmodule Apiary.Harnesses.Walk do
   # The document of the choice's row, origin `:setting`, with the row's id and owner. It
   # is read once and checked again by the save rules (`Apiary.Stacks.Document.check/1`),
   # else `invalid`. A row with a version has its base's `ref` replaced by the `ref` of
-  # that version (`Apiary.Stacks.version_ref/3`), which the run's document then has; a
-  # named version the release does not ship fails `invalid`. The `ref` is checked as any
-  # source's below. The walk reads no document of a row with a workflow: Workspace
+  # that version (`Apiary.Stacks.version_ref/3`), which the run's document then has. The
+  # `ref` is checked as any source's below. The walk reads no document of a row with a workflow: Workspace
   # settings › Workflow sets the runs' workflow there (`Apiary.Stacks.workflow/2`) and
   # the access level it records (`Apiary.Stacks.recorded_access/3`).
   #
@@ -205,7 +204,12 @@ defmodule Apiary.Harnesses.Walk do
     :source_unreachable,
     :host_not_allowed,
     :rate_limited,
-    :fetch_failed
+    :fetch_failed,
+    # Only a claim fails these two, for the Qory harness or the built-in one, whose `ref`
+    # it reads live (`Apiary.Dispatches.Handover`): a ref the repository does not have,
+    # and a read that failed.
+    :ref_missing,
+    :harness_unreadable
   ]
 
   # The form `<user>@<host>:<path>`: no scheme, a user, a host, a colon.
@@ -225,17 +229,21 @@ defmodule Apiary.Harnesses.Walk do
           optional(:stage_run?) => boolean
         }
 
-  @typedoc "A walk that resolved."
+  @typedoc """
+  A walk that resolved. A walk of a choice's row has `ref_kind`: whether the `ref` of the
+  document's base is a branch, a tag or a commit (`Apiary.Stacks.Resolution`).
+  """
   @type walked :: %{
-          origin: :file | :setting,
-          access_level: :read | :write,
-          target_version: String.t() | nil,
-          document: map | nil,
-          stack_id: Ecto.UUID.t() | nil,
-          owner_organisation_id: Ecto.UUID.t() | nil,
-          harness_hidden: boolean,
-          pins: [map],
-          harness_links: [map]
+          optional(:ref_kind) => :branch | :tag | :commit | nil,
+          required(:origin) => :file | :setting,
+          required(:access_level) => :read | :write,
+          required(:target_version) => String.t() | nil,
+          required(:document) => map | nil,
+          required(:stack_id) => Ecto.UUID.t() | nil,
+          required(:owner_organisation_id) => Ecto.UUID.t() | nil,
+          required(:harness_hidden) => boolean,
+          required(:pins) => [map],
+          required(:harness_links) => [map]
         }
 
   @typedoc """
@@ -383,7 +391,7 @@ defmodule Apiary.Harnesses.Walk do
     # the first took.
     section =
       case Document.check(resolution.harness) do
-        {:ok, section} -> at_version(section, resolution.ref)
+        {:ok, section} -> section |> at_version(resolution.ref) |> at_qory(resolution.qory)
         {:error, {message, values}} -> fail(:invalid, nil, message(message, values))
       end
 
@@ -398,6 +406,7 @@ defmodule Apiary.Harnesses.Walk do
       target_version: version,
       document: section,
       stack_id: resolution.stack_id,
+      ref_kind: resolution.ref_kind,
       owner_organisation_id: resolution.owner
     })
   end
@@ -406,12 +415,18 @@ defmodule Apiary.Harnesses.Walk do
   # none, or for a section whose base has no `git`.
   defp at_version(section, nil), do: section
 
-  defp at_version(_section, {:missing, name}), do: fail(:invalid, nil, rule("version", ref: name))
-
   defp at_version(%{"extends" => %{"git" => _git} = base} = section, ref) when is_binary(ref),
     do: %{section | "extends" => %{base | "ref" => ref}}
 
   defp at_version(section, _ref), do: section
+
+  # `section` of a row of the Qory harness's choice with its base at the address the
+  # instance sets now (`Apiary.Harnesses.Qory.git/0`), whatever address the row was saved
+  # with; any other section as it is.
+  defp at_qory(%{"extends" => %{"git" => _git} = base} = section, true),
+    do: %{section | "extends" => %{base | "git" => Apiary.Harnesses.Qory.git()}}
+
+  defp at_qory(section, _qory), do: section
 
   # The Qory harness of the workspace's type at the workspace's stack
   # (`Apiary.Organisations.Workspace.qory_stack/1`), for a run with no choice, after the

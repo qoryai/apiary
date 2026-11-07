@@ -702,6 +702,19 @@ defmodule Apiary.Runs.RecordTest do
       assert %{cost_usd: 0.0912, outcome: "success"} = Enum.find(rows, &(&1.kind == :result))
     end
 
+    test "a call's light item has the type of its end, as its row has", %{scope: scope} do
+      run = projected(scope, runtime_record())
+      index = Record.timeline(scope, run)
+
+      assert for(item <- index.items, item.kind == :tool, do: item.end_type) ==
+               [:finished, :denied]
+
+      rows = Record.items(scope, run, index.items)
+
+      assert for(row <- rows, row.kind == :tool, do: {row.tool, row.status}) ==
+               [{"Skill", :finished}, {"Bash", :denied}]
+    end
+
     test "a line of the runtime's stdout is found in the log, the setup's lines not counted",
          %{scope: scope} do
       run = projected(scope, runtime_record())

@@ -44,10 +44,10 @@ defmodule Apiary.WorkItems.Proposal do
   # `{:ok, [{id, option, note}]}`, in the order given, the option as the question's title
   # and the note cleaned, nil for none (`Apiary.Explore.Questions.answer/4`); or
   # `{:error, errors}` by id: `:unknown_id` (no question has the id), `:not_open` (the
-  # question is answered or closed), `:unknown_option` (no option of the question has the
-  # title), `:note_required` (no option and no note), `{:too_long, 2000}` and
-  # `:characters` (the note); or `{:error, :invalid}` for no list, an empty one, an entry
-  # of another shape, or an id twice.
+  # question is neither open nor decided: answered or closed), `:unknown_option` (no
+  # option of the question has the title), `:note_required` (no option and no note),
+  # `{:too_long, 2000}` and `:characters` (the note); or `{:error, :invalid}` for no
+  # list, an empty one, an entry of another shape, or an id twice.
   #
   # `check_comment(text)` checks a member's review comment on a proposal, or a reply to
   # one: `{:ok, text}`, at most 2,000 code points; or `{:error, error}` (`:blank`,
@@ -253,7 +253,7 @@ defmodule Apiary.WorkItems.Proposal do
 
   defp by_id(%{"id" => id}, nil), do: {id, {:error, :unknown_id}}
 
-  defp by_id(%{"id" => id}, %{"state" => state}) when state != "open",
+  defp by_id(%{"id" => id}, %{"state" => state}) when state not in ["open", "decided"],
     do: {id, {:error, :not_open}}
 
   defp by_id(%{"id" => id} = given, question) do

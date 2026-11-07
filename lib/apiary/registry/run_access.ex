@@ -204,7 +204,7 @@ defmodule Apiary.Registry.RunAccess do
   # instance_host/0 is the host of the instance's public URL, the host the run's
   # credential is set on.
   @spec instance_host() :: String.t()
-  def instance_host, do: URI.parse(ApiaryWeb.Endpoint.url()).host
+  def instance_host, do: Apiary.Instance.host()
 
   # The run's names: its target's image name, nil for a run without a target; whether it
   # is a build; and for a build, its environment image's name and whether it may push

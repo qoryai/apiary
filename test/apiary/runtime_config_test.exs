@@ -10,7 +10,7 @@ defmodule Apiary.RuntimeConfigTest do
     "PUBLIC_URL" => "https://qory.example"
   }
   @mail ~w(SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_TO_LOG MAIL_FROM)
-  @unset ["APIARY_KEYS_DIR", "DATABASE_PASSWORD" | @mail]
+  @unset ["APIARY_KEYS_DIR", "DATABASE_PASSWORD", "QORY_BUILTIN_HARNESS_URL" | @mail]
 
   setup do
     names = Map.keys(@base) ++ @unset
@@ -456,7 +456,7 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   describe "Oban's crontab" do
-    test "is the application's: the core's daily sweeps, its purge of seen requests and its sweep of lapsed claims, then the edition's jobs" do
+    test "is the application's: the core's daily sweeps, its purge of seen requests, its read of the Qory harness and its sweep of lapsed claims, then the edition's jobs" do
       oban = Application.get_env(:apiary, Oban)
 
       assert Enum.map(oban[:crontab], &elem(&1, 1)) ==
@@ -465,6 +465,7 @@ defmodule Apiary.RuntimeConfigTest do
                  Apiary.Organisations.InvitationSweep,
                  Apiary.Deletion.PurgeSweep,
                  Apiary.Adapters.SeenRequestsPurge,
+                 Apiary.Harnesses.QoryRefresh,
                  Apiary.Dispatches.Sweep
                ] ++ Enum.map(Apiary.Edition.crontab(), &elem(&1, 1))
 
@@ -620,6 +621,26 @@ defmodule Apiary.RuntimeConfigTest do
       System.delete_env("SSL_CERT_FILE")
       config = Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
       assert get_in(config, [:apiary, :ssl_cert_file_setting]) == nil
+    end
+  end
+
+  describe "QORY_BUILTIN_HARNESS_URL" do
+    defp builtin_url do
+      "config/runtime.exs"
+      |> Config.Reader.read!(env: :prod, target: :host)
+      |> get_in([:apiary, Apiary.Harnesses.Builtin, :url])
+    end
+
+    test "unset or blank, it is qory's repository on GitHub" do
+      assert builtin_url() == "https://github.com/qoryai/qory"
+
+      System.put_env("QORY_BUILTIN_HARNESS_URL", "  ")
+      assert builtin_url() == "https://github.com/qoryai/qory"
+    end
+
+    test "set, it is the address of the built-in harness" do
+      System.put_env("QORY_BUILTIN_HARNESS_URL", " https://code.example.com/mirror/qory ")
+      assert builtin_url() == "https://code.example.com/mirror/qory"
     end
   end
 end

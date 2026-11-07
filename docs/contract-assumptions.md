@@ -350,16 +350,24 @@ has `revision` 1. A claim answer is a request for a machine: `version`, `revisio
 `dispatch_id`, `pool_id` (the claiming key's node pool), `lease_until`, `run_code`,
 `gateway_url` and `max_lifetime_minutes`, 90 for a prebuild and 1470 for any other claim,
 sent with `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its
-`step`, its `access`, its `target` nor its `work_item`. The answer has no `machine`, so
-the starter uses its default machine type. An explore run's `run_settings` has
-`time_limit_minutes`, an integer from 15 to 1440, after its other members, when a time
-limit resolves for the run's workflow (`Apiary.Stacks.workflow/2`): the limit set for
-that workflow at the run's target, else the one set at its workspace
-(`Apiary.TimeLimits`). With no limit at either place, or no workflow for the run, the
-member is absent, and the run takes the default of the workflow's stack, which the
-machine applies. The claim registers the run, and the run endpoint refuses,
-under any key, a registration whose `run_id` is that of such a run, waiting, claimed,
-handed over or ended, with the signed `409` `run_id_used`, decided
+`step`, its `access`, its `target` nor its `work_item`. A claim may have `offers`, 1 to
+64 `machine_spec`s: the machines the pool can start. Qory Apiary keeps the offers of the
+pool's latest claim (`nodes.offers`, null for a claim without them). A pool that sends
+offers takes only a run whose machine type one of them fits (each number at least the
+type's, the same `arch`, and `virtualization` for a type that needs it), and the answer
+adds `machine` and `machine_spec`, the run's type and its spec, after `lease_until`. A
+pool that sends no offers takes only a run of the instance's default type, a run queued on
+the type that was the default then (`dispatch_runs.machine_type_was_default`), or a run
+queued before machine types, and the answer has neither, so the starter uses its default
+machine type. A run queued before machine types has no spec and is of the default type. An
+explore run's `run_settings` has `time_limit_minutes`, an integer from 15 to 1440, after
+its other members, when a time limit resolves for the run's workflow
+(`Apiary.Stacks.workflow/2`): the limit set for that workflow at the run's target, else
+the one set at its workspace (`Apiary.TimeLimits`). With no limit at either place, or no
+workflow for the run, the member is absent, and the run takes the default of the
+workflow's stack, which the machine applies. The claim registers the run, and the run
+endpoint refuses, under any key, a registration whose `run_id` is that of such a run,
+waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager
 contract giving the other causes and their order. Qory Apiary reads "first" as the first of
 the run endpoint's checks, so the lookup (`dispatch_runs.run_id`, unique on the instance,
@@ -453,22 +461,30 @@ First, the target's harness file, under every harness choice. Second, a stack ch
 the run's target (`Apiary.Stacks.chosen_for/4`): its stored document applies and is the
 documents' `harness`. Third, the workspace's harness choice, else the harness its
 organisation shares with every workspace: its document applies the same way. Last, the
-Qory harness: the harness of the workspace type's definition
-(`Apiary.Lingo.Domain.Definition`) at the newest version the release ships, at the stack
+Qory harness: the repository the instance sets (`QORY_HARNESS_URL`) on the branch
+`main` (`Apiary.Lingo.Domain.Definition`), at the stack
 the workspace recorded, else `core` (`Apiary.Organisations.Workspace.qory_stack/1`). A
 workspace records its stack when it is made from the Qory template. A workspace of the
 software domain made before the stack was recorded gets `software` on the upgrade,
 unless it was made from a template of a harness repository. A stored
 document's base is read at the `ref` of its row's version (`Apiary.Stacks.version_ref/3`):
-the Qory harness at "latest" at the commit of the newest version the release ships, a
-harness repository at the branch, tag or commit saved; the documents' `harness` has that
-`ref`. The walk reads the target's harness file at the target's head, in a workspace
-whose domain has harness files and for a target that a live collection of the workspace
-has; the version that read returned is the run's `target_version`, whichever harness
-then applies. A file whose harness section has `extends`, or lists modules without it,
-applies, and the documents have no `harness`: the machine composes the file at
-`target_version`. A file with neither is passed over. A stored document or the Qory
-harness is the documents' `harness`, as `{"harness": <section>}`. The owner of a stored
+the Qory harness and a harness repository at the branch, tag or commit saved. The
+documents' `harness` has the commit of that `ref`, never a branch or a tag: for the Qory
+harness and the built-in harness of a test work item, the commit the claim reads (a ref
+at a full commit id needs no read); for a harness repository, the commit the walk read
+when the run was queued, which the run's pin records. A claim's read that times out,
+finds no address or connection, or gets `429`, `500`, `502`, `503` or `504` leaves the
+run queued, and the run ends if the reads still fail 10 minutes after the first failure.
+If the claim has no time or requests left for the read (`late`, `no_calls`), the run
+stays queued with no failure recorded. Any other failed read ends the run before it
+starts, `harness_unresolved`, with the code `ref_missing` for a ref the repository does
+not have, else `harness_unreadable`. The walk reads the target's harness file at the
+target's head, in a workspace whose domain has harness files and for a target that a live
+collection of the workspace has; the version that read returned is the run's
+`target_version`, whichever harness then applies. A file whose harness section has
+`extends`, or lists modules without it, applies, and the documents have no `harness`: the
+machine composes the file at `target_version`. A file with neither is passed over. A
+stored document or the Qory harness is the documents' `harness`, as `{"harness": <section>}`. The owner of a stored
 document is the organisation of the person who saved it, when that person saved it as a
 member acting in that organisation; for an instance admin who saved it with no such
 membership, it is the instance's organisation; it is unknown once the owner organisation
@@ -488,8 +504,12 @@ set to the name of one entry of that kind, such as
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first
-redemption of the run code before `lease_until`. A dispatch handed over keeps no lease:
-it never goes stale, and its slot stays held until its run ends. The refusals of
+redemption of the run code before `lease_until`. The optional `machine_type` of
+`dispatched` is the vendor's type of the machine the starter started, 1 to 64 printable
+ASCII characters without a space. The first `dispatched` stores it on the dispatch
+(`dispatches.vendor_machine_type`), and the run's page shows it to instance admins only.
+A body with any other value gets `400` `invalid_request`. A dispatch handed over keeps no
+lease: it never goes stale, and its slot stays held until its run ends. The refusals of
 `dispatched` come in the contract's order: `403` `forbidden` for an unknown dispatch,
 another pool's, or a key the action is refused to, one answer; `410` `gone` for a
 dispatch that ended; `409` `lease_expired` for a dispatch not handed over that is stale
@@ -497,7 +517,8 @@ or past its `lease_until`; and `503` `unavailable` last, after which nothing was
 A lease that lapsed unswept is freed first, and that is committed: the run waits in its
 queue again, or a prebuild ends `superseded` while another prebuild of its collection,
 pool and `environment_ref` waits, and is answered `410` `gone`. A dispatch handed over accepts `dispatched`
-whatever its `lease_until`, and records the time of the first one alone. When a run
+whatever its `lease_until`, and records only the first one: its time, its `external_*` and its
+`machine_type`. When a run
 leaves the claim other than by its handover, its lease lapsing or a release ends its
 registered run `failed`, with the reason `lease_lapsed` or `machine_not_made`, and the
 close of its work item deletes it with the run code; either way the code redeems
@@ -675,7 +696,7 @@ and a later report changes nothing and is still `204`. The trail keeps three ent
 `dispatch.machine_end` for a dispatch at most, about the pool: its first report, its first
 `delete_failed` and its `gone`. After each accepted report that the dispatch does not keep
 as `gone`, Qory Apiary broadcasts a message on the topic of the run registered at the claim,
-and the run's page shows the state in the Clean up row
+and the run's page shows the state in the Machine removed row
 ([ui.md](ui.md), The run page). The access action reaches every node pool's key, enrolled
 before or after, through the role `pool_key`.
 
@@ -1045,10 +1066,14 @@ The size of the pseudo-terminal is in the record: `terminal` of each
 one `dev.qory.run.resized` per change, at the sequence where the new size took effect, so
 the chunks before it were written to the old size and the chunks after it to the new. A
 session's start sets the size the same way for the chunks after it. The projection keeps
-the size the record last said, `runs.terminal_cols` and `runs.terminal_rows`, the later
-of the last session's start and the last resize by sequence; a resize whose data is not a
-size (an integer in 1 to 65535 each) changes nothing. The run page's Details shows it. A
-resize is not an item of the timeline: the terminal is where it matters.
+one size, `runs.terminal_cols` and `runs.terminal_rows`: the later by sequence of the
+session's start that the projection takes the run's runtime from (see What opened a run)
+and the last resize that counts. A resize counts unless its `session` is a bare session
+other than that one, so a helper session's resize leaves the agent's size; a resize with
+no `session` counts. A resize whose data is not a size (an integer in 1 to 65535 each)
+changes nothing. The run page's Details shows the size. A resize is not an item of the
+timeline: the terminal is where it matters. The replay below reads every session's start
+and resize, a helper's included, for the size of its chunks.
 
 The terminal tab replays at the recorded size. The bytes never cross the LiveView socket,
 so the sequence of the sizes has to reach the reader beside the bytes: the log endpoint
@@ -1062,9 +1087,12 @@ its bytes, and xterm.js reflows as a terminal does. A resize that arrives after 
 past it (delivery is in any order) is applied on the next load, not to what is already on
 the screen.
 
-A run without a size is a run on pipes: the endpoint sends no size header and the page fits
-the screen to the box, with the wrap toggle. On pipes `stream` is `stdout` or `stderr`, never
-`terminal`, and a single stream of a pipes run, or a download, is never sized.
+A run without a size is a run where the session the projection takes the runtime from is on
+pipes: the endpoint sends no size header and the page fits the screen to the box, with the
+wrap toggle. On pipes `stream` is `stdout` or `stderr`, never `terminal`, and a single stream
+of such a run, or a download, is never sized. An agent on pipes followed by a helper session
+on a pseudo-terminal is such a run: the helper's chunks have `stream` `terminal`, and they
+too are fitted to the box, not replayed at the helper's size.
 
 ## What opened a run
 
@@ -1079,13 +1107,21 @@ Each session that joins the run has a `dev.qory.session.started`, numbered from 
 `session`, with the runtime, the command, its arguments, the directory and whether it is
 interactive, with the terminal's size and the image where they apply, and a
 `dev.qory.session.exited`, how the session ended. A join that was refused has a
-`dev.qory.session.exited` alone. Both types are stored like every other. The projection
-reads the runtime, its version, the command, its arguments, the directory, whether it is
-interactive and the image from the `dev.qory.session.started` with the highest sequence,
-and folds nothing from `dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's
-`dev.qory.run.exited`, one per run, carries `state` and `exit_code`. A session's
+`dev.qory.session.exited` alone. Both types are stored like every other. A session's
+start with `bare` set to `true`, Forager's mark of a session started with
+`SessionSpec.Runtime` nil, whose event still has a `runtime` name, is bare; any other value
+of `bare` is no mark. The projection reads the runtime, its version, the
+command, its arguments, the directory, whether it is interactive and the image from one
+`dev.qory.session.started`: the one with the highest sequence of those that are not bare,
+else, in a run whose sessions are all bare, the one with the lowest sequence. So a helper
+session such as a git step leaves the agent's values on the run, in any order of arrival.
+Its log chunks are projected as any session's, and its number is stored with the event. The
+projection reads the optional `peak_memory_bytes` and `cpu_time_ms` from each
+`dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's `dev.qory.run.exited`, one per
+run, has `state` and `exit_code`. A session's
 `dev.qory.run.log`, `dev.qory.run.resized` and runtime events carry its number as
-`session`, which is stored with the event; the projection reads nothing from it.
+`session`, which is stored with the event; the projection reads it on a resize alone, to
+tell whether the resize counts.
 
 ## The steps of a run
 
@@ -1105,7 +1141,11 @@ What the projection reads:
 - `step` is an integer from 1 to 2147483647; a step event whose `step` is anything else
   is stored and folded into nothing, and a log chunk with such a `step` has none.
 - `name` is cut to 1024 bytes on a character boundary. `kind` is `fetch`, `compose`,
-  `image`, `build`, `setup`, `join`, `wall` or `push`, and any other value is absent.
+  `image`, `build`, `setup`, `join`, `wall`, `push` or `machine`, and any other value is
+  absent. `machine` is outside the contract's list: it is the start of the run's machine,
+  which `qory run` sends after it redeems the run's code, one log line per part of the
+  start. Its test fixture (`Apiary.RunEventsFixtures.machine_step_events/4`) is local until
+  Forager's contract has one.
 - The exit's `state` is `succeeded`, `failed` or `cancelled`; any other value, or none, is
   `failed`, as for a run's exit. `exit_code` outside -2147483647 to 2147483647 and a
   negative `duration_ms` are absent.
@@ -1493,6 +1533,20 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   a run whose results carried none has no cost (null), which the console reads as
   unrecorded, not as free. A value that is not a JSON number, negative or absurd (a billion
   dollars or more) is read as absent.
+- The optional `peak_memory_bytes` and `cpu_time_ms` of `dev.qory.session.exited` are
+  the enclosure's peak memory, in bytes, and its CPU time, in milliseconds, measured
+  inside the enclosure, and Forager's contract marks them as not for limits or billing.
+  The enclosure is everything behind the session's wall: the agent, a nested Docker
+  daemon, the containers the agent starts, and the setup commands that run inside it.
+  Forager sends them only when the runtime exited behind a wall. Qory Apiary assumes one
+  `dev.qory.session.exited` per session. The run keeps the highest peak of its sessions
+  (`runs.peak_memory_bytes`) and the sum of their CPU time (`runs.cpu_time_ms`), each
+  event once by its id; the sum stops at the bigint maximum. A second
+  `dev.qory.session.exited` for the same session, with a new event id, is counted twice:
+  its CPU time is added again. A value that is not an integer from 0 to the bigint
+  maximum is read as absent, so a value above Forager's maximum of 2^53-1 is still read.
+  A run whose sessions reported neither value has null in both, which the run's page
+  leaves out.
 - Tool invocations are read by the same pipeline as any egress: a `dev.qory.run.egress`
   with `tool` is a connection keyed like any request, by host, port and path, and the
   tool is not part of the key, since the contract refuses a host two tools serve. The

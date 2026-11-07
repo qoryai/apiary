@@ -12,7 +12,7 @@ import {Toast, autoDismiss} from "./hooks/toast"
 import {Ticker} from "./hooks/ticker"
 import {RunList} from "./hooks/runs"
 import {LiveEnd} from "./hooks/live_end"
-import {TimelineKeys} from "./hooks/timeline_keys"
+import {TimelineKeys, TimelinePush} from "./hooks/timeline_keys"
 import {Terminal} from "./hooks/terminal"
 import {FocusOn} from "./hooks/focus_on"
 import {PolicyPage, RuleComposer, ChangeRow} from "./hooks/policy"
@@ -23,6 +23,7 @@ import {FamilyBoxes} from "./hooks/family_boxes"
 import {SecretValues} from "./hooks/secret_values"
 import {GenerateKey} from "./hooks/generate_key"
 import {Mermaid} from "./hooks/mermaid"
+import {SpendDialog} from "./hooks/spend_dialog"
 
 export {autoDismiss}
 
@@ -38,6 +39,7 @@ export const hooks = {
   RunList,
   LiveEnd,
   TimelineKeys,
+  TimelinePush,
   Terminal,
   FocusOn,
   RulePanel,
@@ -51,4 +53,5 @@ export const hooks = {
   SecretValues,
   GenerateKey,
   Mermaid,
+  SpendDialog,
 }

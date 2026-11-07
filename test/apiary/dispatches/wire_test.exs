@@ -105,15 +105,43 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # run/v1/documents.schema.json has a newer description of `workflow` than its commit.
+  # Every vendored contract is at the integrations `main` commit that has machine types.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "676fbda9388aaa1dde630c732f0479f29a3aeca9"},
-          {"run/v1", "676fbda9388aaa1dde630c732f0479f29a3aeca9"},
-          {"integration/v1", "3fc796d01e551d7e966be99bd109239ca9806a7c"},
-          {"explore/v1", "8c48db84e40f7ba1c228ed7a6f07f7ae97486fcd"}
+          {"provisioner/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
+          {"run/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
+          {"integration/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
+          {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
+          {"diagnostics/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
+    end
+  end
+
+  # A run fixture's schema is its directory's name under `fixtures/`, or, under
+  # `invalid/`, the part of its file name before the first `-`.
+  @tag :contract
+  test "every run fixture is valid under its schema, or refused under it under invalid/" do
+    fixtures = Path.join(@vendored, "run/v1/fixtures")
+    valid = Path.wildcard(Path.join(fixtures, "documents/*.json"))
+    invalid = Path.wildcard(Path.join(fixtures, "invalid/*.json"))
+    assert length(valid) == 22 and length(invalid) == 89
+    assert Path.wildcard(Path.join(fixtures, "**/*.json")) |> length() == 22 + 89
+
+    for path <- valid ++ invalid do
+      relative = Path.relative_to(path, fixtures)
+
+      {schema, expected} =
+        case Path.split(relative) do
+          ["invalid", name] -> {name |> String.split("-") |> hd(), false}
+          [dir, _name] -> {dir, true}
+        end
+
+      assert schema == "documents", relative
+      document = path |> File.read!() |> Jason.decode!()
+
+      assert match?({:ok, _}, JSV.validate(document, validator(schema, "run/v1"))) == expected,
+             relative
     end
   end
 
@@ -212,9 +240,9 @@ defmodule Apiary.Dispatches.WireTest do
 
     assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
 
-    assert length(requests) == 10
-    assert length(invalid_requests) == 15
-    assert length(answers) == 16
+    assert length(requests) == 16
+    assert length(invalid_requests) == 31
+    assert length(answers) == 19
     assert length(refusals) == 3
   end
 
@@ -241,9 +269,15 @@ defmodule Apiary.Dispatches.WireTest do
         end
 
       assert Enum.sort(read) == [
+               "claim/offers-64.json",
+               "claim/offers-at-bounds.json",
+               "claim/one-offer.json",
                "claim/one-pool.json",
+               "claim/with-offers.json",
                "claim/without-pool-id.json",
+               "dispatched/longest-machine-type.json",
                "dispatched/with-external.json",
+               "dispatched/with-machine-type.json",
                "dispatched/without-external.json",
                "machine-end/delete-failed.json",
                "machine-end/deleting.json",
@@ -257,10 +291,43 @@ defmodule Apiary.Dispatches.WireTest do
     test "the claims are read to their values" do
       assert claim(fixture("claim/one-pool.json")) ==
                {:ok,
-                %{time: ~U[2026-10-15 12:00:00Z], pool_id: "np_f1xt0re000000000", wait_seconds: 0}}
+                %{
+                  time: ~U[2026-10-15 12:00:00Z],
+                  pool_id: "np_f1xt0re000000000",
+                  wait_seconds: 0,
+                  offers: nil
+                }}
 
       assert claim(fixture("claim/without-pool-id.json")) ==
-               {:ok, %{time: ~U[2026-10-15 12:00:00Z], pool_id: nil, wait_seconds: 25}}
+               {:ok,
+                %{time: ~U[2026-10-15 12:00:00Z], pool_id: nil, wait_seconds: 25, offers: nil}}
+
+      assert claim(fixture("claim/with-offers.json")) ==
+               {:ok,
+                %{
+                  time: ~U[2026-10-15 12:00:00Z],
+                  pool_id: "np_f1xt0re000000000",
+                  wait_seconds: 0,
+                  offers: [
+                    %{
+                      "vcpus" => 4,
+                      "memory_mib" => 16_384,
+                      "disk_gib" => 100,
+                      "arch" => "amd64",
+                      "virtualization" => false
+                    },
+                    %{
+                      "vcpus" => 16,
+                      "memory_mib" => 65_536,
+                      "disk_gib" => 400,
+                      "arch" => "amd64",
+                      "virtualization" => true
+                    }
+                  ]
+                }}
+
+      assert {:ok, %{offers: offers}} = claim(fixture("claim/offers-64.json"))
+      assert length(offers) == 64
     end
 
     test "the dispatched and the release are read to their values" do
@@ -272,11 +339,20 @@ defmodule Apiary.Dispatches.WireTest do
                     type: "example-ci",
                     ref: "run-8812",
                     url: "https://ci.example.com/acme/shop/runs/8812"
-                  }
+                  },
+                  machine_type: nil
                 }}
 
       assert dispatched(fixture("dispatched/without-external.json")) ==
-               {:ok, %{time: ~U[2026-10-15 12:00:20Z], external: nil}}
+               {:ok, %{time: ~U[2026-10-15 12:00:20Z], external: nil, machine_type: nil}}
+
+      assert {:ok, %{machine_type: "example-type", external: %{type: "example-ci"}}} =
+               dispatched(fixture("dispatched/with-machine-type.json"))
+
+      assert {:ok, %{machine_type: longest, external: nil}} =
+               dispatched(fixture("dispatched/longest-machine-type.json"))
+
+      assert byte_size(longest) == 64
 
       assert release(fixture("release/no-capacity.json")) ==
                {:ok,
@@ -298,11 +374,27 @@ defmodule Apiary.Dispatches.WireTest do
         end
 
       assert Enum.sort(refused) == [
+               "claim-offers-65.json",
+               "claim-offers-arch-riscv64.json",
+               "claim-offers-disk-gib-0.json",
+               "claim-offers-disk-gib-65537.json",
+               "claim-offers-empty.json",
+               "claim-offers-memory-mib-511.json",
+               "claim-offers-memory-mib-8388609.json",
+               "claim-offers-undefined-member.json",
+               "claim-offers-vcpus-0.json",
+               "claim-offers-vcpus-1025.json",
+               "claim-offers-without-arch.json",
                "claim-pool-id-node.json",
                "claim-undefined-member.json",
                "claim-wait-seconds-26.json",
                "dispatched-external-ref-nul.json",
                "dispatched-external-type-upper-case.json",
+               "dispatched-machine-type-65.json",
+               "dispatched-machine-type-del.json",
+               "dispatched-machine-type-empty.json",
+               "dispatched-machine-type-non-ascii.json",
+               "dispatched-machine-type-space.json",
                "machine-end-undefined-member.json",
                "machine-end-unknown-state.json",
                "machine-end-version-2.json",
@@ -574,8 +666,42 @@ defmodule Apiary.Dispatches.WireTest do
                {:ok,
                 %{
                   time: ~U[2026-10-15 12:00:20Z],
-                  external: %{type: external["type"], ref: external["ref"], url: external["url"]}
+                  external: %{type: external["type"], ref: external["ref"], url: external["url"]},
+                  machine_type: nil
                 }}
+    end
+
+    test "takes a machine type of 1 to 64 printable ASCII characters, kept as sent" do
+      for type <- [
+            "a",
+            "example-type",
+            "Standard_D4s_v5",
+            "n2-standard-4",
+            "!~",
+            String.duplicate("x", 64)
+          ] do
+        assert {:ok, %{machine_type: ^type}} =
+                 dispatched(Map.put(@dispatched, "machine_type", type))
+      end
+    end
+
+    test "refuses a machine type that is not 1 to 64 printable ASCII characters with no space" do
+      for type <- [
+            "",
+            String.duplicate("x", 65),
+            "example type",
+            "example\ttype",
+            "example-type\n",
+            "example\u007f",
+            "example-typé",
+            "example\u0000",
+            64,
+            nil,
+            ["example-type"],
+            %{"name" => "example-type"}
+          ] do
+        assert dispatched(Map.put(@dispatched, "machine_type", type)) == :error, inspect(type)
+      end
     end
   end
 

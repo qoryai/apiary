@@ -63,6 +63,32 @@ defmodule ApiaryWeb.ConnCase do
   end
 
   @doc """
+  Clicks the confirm button of the spend's dialog (`ApiaryWeb.SpendDialog`) where `view`
+  shows one, so the action of the click that opened it runs; the result of the submit.
+  With no dialog, the view's HTML as it is: for a test of an action that asks only where
+  it starts a run, whatever the fixture leads to.
+  """
+  def confirm_spend(view) do
+    if Phoenix.LiveViewTest.has_element?(view, "#spend-dialog"),
+      do:
+        view
+        |> Phoenix.LiveViewTest.form("#spend-dialog-form")
+        |> Phoenix.LiveViewTest.render_submit(),
+      else: Phoenix.LiveViewTest.render(view)
+  end
+
+  @doc """
+  Clicks the confirm button of the take in's dialog
+  (`ApiaryWeb.BacklogComponents.take_in_dialog/1`) with `comment` in its comment box, so
+  the ticket is taken in; the result of the submit.
+  """
+  def confirm_take_in(view, comment \\ "") do
+    view
+    |> Phoenix.LiveViewTest.form("#take-in-dialog-form", %{comment: comment})
+    |> Phoenix.LiveViewTest.render_submit()
+  end
+
+  @doc """
   The path of the scope's workspace, `/<organisation slug>/<workspace slug>`, followed by
   `rest`: for a path a test cannot write with `~p`, such as one inside a selector. A
   path a test visits is written `~p"/\#{scope.organisation}/\#{scope.workspace}/runs"`.

@@ -584,7 +584,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           {gettext("Close")}
         </button>
       </div>
-      <dl class="q-keys mt-2 text-[13.5px]/5">
+      <dl class="q-keylist mt-1.5 text-[12.5px]/[18px]">
         <dt><kbd class="kbd kbd-sm">a</kbd></dt>
         <dd>{gettext("Add a rule: the composer's host field")}</dd>
         <dt><kbd class="kbd kbd-sm">{pgettext("key", "Enter")}</kbd></dt>
@@ -597,7 +597,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
   end
 
   # The lead of the export: what is exported, as of which version, and in which files. A
-  # target is named in its notation; the file's own head keeps its system and path.
+  # target appears in its notation; the head of each file contains the target's system
+  # and path.
   defp export_lead(export) do
     subject =
       if export.workspace,

@@ -13,8 +13,8 @@ defmodule Apiary.WorkItems.WorkList do
   # **The status.** Where Explore stands for each work item comes from
   # `Apiary.WorkItems.Explore.with_status/1`, in the same query: a run whose outcome is
   # not stored yet reads as running there until it is. A live work item's stage follows
-  # from it (`Apiary.WorkItems.Explore.stage/1`): Confirm while Qory's proposal waits,
-  # Shape once confirmed, Explore otherwise.
+  # from it (`Apiary.WorkItems.Explore.stage/1`): `:confirm` (shown as Approve) while the
+  # proposal waits to be approved, Shape once approved, Explore otherwise.
   #
   # **Views:** `:open`, the live work items, of one stage with `stage:`; `:you`, those that
   # wait for the reader, as the sidebar counts them (`waiting_on/1`); `:closed`, those

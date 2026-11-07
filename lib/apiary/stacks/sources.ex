@@ -115,9 +115,10 @@ defmodule Apiary.Stacks.Sources do
   # saves the stack chosen for one destination of the workspace at the target's row, and
   # creates the target's row where the workspace has none.
   #
-  # The Qory harness reads nothing: its version is the newest the release ships
-  # (`:latest`), or a name the release lists, checked against that list. A harness
-  # repository, or a stack of one, is read as a run's walk reads the base of a document
+  # The Qory harness (`Apiary.Harnesses.Qory`) is read at the branch, tag or commit the
+  # person gave, and the files of its commit are kept (`Apiary.Harnesses.Qory.read/1`); a
+  # read that failed, or a name the repository does not have, is the refusal,
+  # `{:qory, failure}`. A harness repository, or a stack of one, is read as a run's walk reads the base of a document
   # (`Apiary.Harnesses.Walk.pin_base/3`), at the branch, tag or commit the person gave,
   # within the time of a read of a source and counted as one of the person's reads; a
   # walk that failed is the refusal, a name the read does not find among them. The row
@@ -171,7 +172,7 @@ defmodule Apiary.Stacks.Sources do
   alias Apiary.Artifacts.TemplateTypes
   alias Apiary.Harnesses.{Assignment, PublicGit, Reader, Walk}
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{RateLimit, Target}
@@ -609,7 +610,8 @@ defmodule Apiary.Stacks.Sources do
   @typedoc """
   A place New workspace lists templates from: its `group` (`:qory`, `:shared`, `:assigned`
   or `:connected`), the `prefix` of its page keys, its `source` (nil for the Qory
-  template, which is read from the copy), and whether runs hide the harness
+  template, which is read from the stored files of the Qory harness), and whether runs
+  hide the harness
   (`hidden`). A page key is `prefix <> "." <> module`.
   """
   @type listed :: %{
@@ -1420,28 +1422,24 @@ defmodule Apiary.Stacks.Sources do
   @type version :: {:branch, String.t()} | {:tag, String.t()} | {:commit, String.t()}
 
   @typedoc """
-  A harness choice to save: the Qory harness at the newest version the release ships
-  (`:qory` or `{:qory, :latest}`) or at a named version (`{:qory, name}`); a stack of a
-  harness repository at a version (`{:repository, source, stack, version}`); or a
+  A harness choice to save: the Qory harness at its default branch (`:qory`) or at a
+  version (`{:qory, version}`); a stack of a harness repository at a version (`{:repository, source, stack, version}`); or a
   harness repository's root at a branch or tag, pinned at the commit the walk read, with
   no version (`{:repository, source, ref}`).
   """
   @type choice ::
           :qory
-          | {:qory, :latest | String.t()}
+          | {:qory, version}
           | {:repository, source, String.t(), version}
           | {:repository, source, String.t()}
 
   @typedoc """
-  The version of a saved choice: `:latest` or `{:named, name}` for the Qory harness;
-  `{:branch, name}`, `{:tag, name}` or `{:commit, id}` for a harness
-  repository; `:workspace` for a target's stack that takes the version of the
-  workspace's harness; nil for a row saved with no version, read at its pin.
+  The version of a saved choice: `{:branch, name}`, `{:tag, name}` or `{:commit, id}`;
+  `:workspace` for a target's stack that takes the version of the workspace's harness;
+  nil for a row saved with no version, read at its pin.
   """
   @type chosen_version ::
-          :latest
-          | {:named, String.t()}
-          | {:branch, String.t()}
+          {:branch, String.t()}
           | {:tag, String.t()}
           | {:commit, String.t()}
           | :workspace
@@ -1452,7 +1450,8 @@ defmodule Apiary.Stacks.Sources do
   harness, the stack, the version (`t:chosen_version/0`), the `ref` a run reads it at
   now (`pin`: a full commit id, or the name of a branch or tag), whether it is saved,
   and whether it is the harness the organisation shares. A workspace without a choice
-  shows the organisation's shared harness, else the Qory harness at `:latest`, not saved.
+  shows the organisation's shared harness, else the Qory harness at its default branch,
+  not saved.
   """
   @type chosen :: %{
           choice: :qory | :repository,
@@ -1484,7 +1483,7 @@ defmodule Apiary.Stacks.Sources do
               choice: :qory,
               git: harness["git"],
               stack: harness["stack"],
-              version: :latest,
+              version: {:branch, Qory.default_branch()},
               pin: harness["ref"],
               saved: false,
               shared: false
@@ -1510,8 +1509,8 @@ defmodule Apiary.Stacks.Sources do
   @doc false
   # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
   # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
-  # where the choice names none. The Qory harness is not read: its names are the copy's
-  # (`Apiary.Processes.qory_workflows/1`). The
+  # where the choice names none. The Qory harness is not read: its names are those of
+  # its stored files at the choice's version (`Apiary.Processes.qory_workflows/1`). The
   # Stages page, the Workflow page and Check again on a work item read the snapshot
   # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
   # `{:error, reason}`.
@@ -1557,7 +1556,7 @@ defmodule Apiary.Stacks.Sources do
 
     %{
       choice: choice,
-      git: base["git"],
+      git: row_git(choice, base),
       stack: base["stack"],
       version: version_of(row),
       pin: pin(row, nil, nil),
@@ -1567,13 +1566,11 @@ defmodule Apiary.Stacks.Sources do
 
   # The version of `row` as a page shows it (`t:chosen_version/0`).
   defp version_of(%Stack{version_kind: nil}), do: nil
-  defp version_of(%Stack{version_kind: :latest}), do: :latest
   defp version_of(%Stack{version_kind: :workspace}), do: :workspace
 
   defp version_of(%Stack{version_kind: kind, version_name: name}), do: {kind, name}
 
-  # The `ref` a run reads `row` at now (`Apiary.Stacks.version_ref/3`), nil for a named
-  # version the release no longer ships. `workspace` and `organisation` are read only
+  # The `ref` a run reads `row` at now (`Apiary.Stacks.version_ref/3`), nil for none. `workspace` and `organisation` are read only
   # for the version `:workspace`.
   defp pin(row, workspace, organisation) do
     case Stacks.version_ref(row, workspace, organisation) do
@@ -1581,6 +1578,12 @@ defmodule Apiary.Stacks.Sources do
       _missing -> nil
     end
   end
+
+  # The address a row of `choice` reads, its document's base `base`: the Qory harness's
+  # as the instance sets it now (`Apiary.Harnesses.Qory.git/0`), whatever address the row
+  # was saved with; a harness repository's as saved.
+  defp row_git(:qory, _base), do: Qory.git()
+  defp row_git(_choice, base), do: base["git"]
 
   # The base the document `harness` extends, `%{}` for none.
   defp extended(harness) do
@@ -1599,8 +1602,10 @@ defmodule Apiary.Stacks.Sources do
   # harness; `{:error, {:limited, seconds}}` for a person past their reads of the minute;
   # `{:error, {:walk, failure}}` for a harness repository the walk could not read
   # (`t:Apiary.Harnesses.Walk.failure/0`), a branch or tag it does not find among them;
-  # `{:error, :invalid}` for a harness repository without a source, a stack or a version,
-  # and for a named version the release does not ship; or `{:error, changeset}`.
+  # `{:error, {:qory, failure}}` for a version of the Qory harness its read did not find,
+  # or a read that failed (`t:Apiary.Harnesses.Qory.failure/0`); `{:error, :invalid}`
+  # for a harness repository without a source, a stack or a version, and for a version
+  # with no name; or `{:error, changeset}`.
   @spec choose(Scope.t(), choice, keyword) ::
           {:ok, Stack.t()}
           | {:error,
@@ -1609,7 +1614,8 @@ defmodule Apiary.Stacks.Sources do
              | :invalid
              | :shared
              | {:limited, pos_integer}
-             | {:walk, Walk.failure()}}
+             | {:walk, Walk.failure()}
+             | {:qory, Qory.failure()}}
   def choose(%Scope{workspace: %Workspace{} = workspace} = scope, choice, opts \\ []) do
     with :ok <- Access.authorize(scope, :"harness.save", workspace),
          {:ok, chosen, harness, version} <- choice_document(scope, choice) do
@@ -1730,7 +1736,7 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # Where the workspace's harness moves from the row `before` to the row `now`, nil for
-  # the Qory harness at `:latest`, and its repository changes, each target row of
+  # the Qory harness at its default branch, and its repository changes, each target row of
   # `workspace` with the version `:workspace`, by its choice and address:
   #
   #   * those of `before`: keeps its repository and stack and stores the version it
@@ -1757,7 +1763,7 @@ defmodule Apiary.Stacks.Sources do
     cond do
       repository == harness_repository(before) ->
         {kind, name} = followed(before)
-        ref = pin(before || %Stack{version_kind: :latest}, nil, nil)
+        ref = if before, do: pin(before, nil, nil), else: Qory.default_branch()
         harness = row.harness |> extended() |> Map.put("ref", ref) |> document()
         update_followed!(row, harness: harness, version_kind: kind, version_name: name)
 
@@ -1777,7 +1783,7 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # The choice and the address of a workspace's harness row, the Qory harness for none.
-  defp harness_repository(nil), do: {:qory, Definition.qory_harness().git}
+  defp harness_repository(nil), do: {:qory, Qory.git()}
 
   defp harness_repository(%Stack{choice: choice, harness: harness}),
     do: {choice, extended(harness)["git"]}
@@ -1785,27 +1791,36 @@ defmodule Apiary.Stacks.Sources do
   defp choice_of(nil), do: :qory
   defp choice_of(%Stack{choice: choice}), do: choice
 
-  # The version columns of the row `before`, `:latest` for none.
-  defp followed(nil), do: {:latest, nil}
+  # The version columns of the row `before`, the Qory harness's default branch for none.
+  defp followed(nil), do: {:branch, Qory.default_branch()}
   defp followed(%Stack{} = row), do: {row.version_kind, row.version_name}
 
   # `{:ok, choice, document, version}` for `choice`, the version as `Apiary.Stacks.put_stack/4`
   # takes it; `{:error, reason}` as `choose/3` gives.
-  defp choice_document(scope, :qory), do: choice_document(scope, {:qory, :latest})
+  defp choice_document(scope, :qory),
+    do: choice_document(scope, {:qory, {:branch, Qory.default_branch()}})
 
-  defp choice_document(scope, {:qory, :latest}) do
-    base = qory_harness(scope.workspace)
-    {:ok, :qory, document(base), {:latest, nil}}
-  end
+  # The Qory harness at a version, read and its commit's files kept
+  # (`Apiary.Harnesses.Qory.read/1`), so the pages read that commit.
+  defp choice_document(scope, {:qory, {kind, name}})
+       when kind in [:branch, :tag, :commit] and is_binary(name) do
+    name = String.trim(name)
 
-  defp choice_document(scope, {:qory, name}) when is_binary(name) do
-    case Definition.qory_commit(name) do
-      commit when is_binary(commit) ->
-        base = %{qory_harness(scope.workspace) | "ref" => commit}
-        {:ok, :qory, document(base), {:named, name}}
-
-      nil ->
+    cond do
+      name == "" or (kind == :commit and not commit?(name)) ->
         {:error, :invalid}
+
+      true ->
+        with :ok <- spend(scope, :read, @reads_a_minute) do
+          case Qory.read({kind, name}) do
+            {:ok, _commit} ->
+              base = %{qory_harness(scope.workspace) | "ref" => name}
+              {:ok, :qory, document(base), {kind, name}}
+
+            {:error, failure} ->
+              {:error, {:qory, failure}}
+          end
+        end
     end
   end
 
@@ -1880,7 +1895,7 @@ defmodule Apiary.Stacks.Sources do
       harness file first;
     * `{:workspace, stack}`: a stack of the workspace's harness, at its version
       (the moduledoc);
-    * `:qory` or `{:qory, :latest | name}`, and `{:repository, source, stack, version}`:
+    * `:qory` or `{:qory, version}`, and `{:repository, source, stack, version}`:
       as for `t:choice/0`;
     * `{:stack, source, stack, ref}`: a stack of `read/2` of a source of
       `repositories/1`, `assigned/1` or `address/1`, with a branch or tag, saved with no
@@ -1890,7 +1905,7 @@ defmodule Apiary.Stacks.Sources do
   @type target_choice ::
           :default
           | :qory
-          | {:qory, :latest | String.t()}
+          | {:qory, version}
           | {:workspace, String.t()}
           | {:repository, source, String.t(), version}
           | {:stack, source, stack, String.t()}
@@ -1967,18 +1982,18 @@ defmodule Apiary.Stacks.Sources do
   defp target_document(scope, choice), do: choice_document(scope, choice)
 
   # A stack of the workspace's harness, at the `ref` of its version: under the Qory
-  # harness, a stack the release lists, with no read; under a harness repository, read as
-  # a run's walk reads it.
+  # harness, a stack it exports at the stored commit of that `ref`, with no read; under a
+  # harness repository, read as a run's walk reads it.
   defp followed_document(%Scope{workspace: workspace} = scope, stack) do
     harness = Stacks.workspace_harness(workspace, scope.organisation)
-    ref = pin(harness || %Stack{version_kind: :latest}, nil, nil)
+    ref = if harness, do: pin(harness, nil, nil), else: Qory.default_branch()
 
     case {choice_of(harness), ref} do
       {_choice, nil} ->
         {:error, :invalid}
 
       {:qory, ref} ->
-        if stack in Definition.qory_harness().stacks,
+        if stack in Qory.stacks(Qory.version_commit(Qory.row_version(harness))),
           do:
             {:ok, :qory, document(%{qory_harness(workspace) | "stack" => stack, "ref" => ref}),
              {:workspace, nil}},
@@ -2069,7 +2084,7 @@ defmodule Apiary.Stacks.Sources do
       {{system, path},
        %{
          choice: choice,
-         git: base["git"],
+         git: row_git(choice, base),
          narrowing: Map.take(base, ["path", "stack"]),
          stack: base["stack"],
          version: version_of(row),
@@ -2078,8 +2093,8 @@ defmodule Apiary.Stacks.Sources do
     end)
   end
 
-  # The base of the Qory harness of `workspace`'s type, at the newest version the release
-  # ships (`Apiary.Lingo.Domain`) and the workspace's stack (`Workspace.qory_stack/1`).
+  # The base of the Qory harness of `workspace`'s type, at its default branch
+  # (`Apiary.Lingo.Domain`) and the workspace's stack (`Workspace.qory_stack/1`).
   defp qory_harness(workspace) do
     workspace
     |> Domain.for_workspace()
@@ -2241,7 +2256,7 @@ defmodule Apiary.Stacks.Sources do
       scope
       |> Stacks.put_stack({:workspace, workspace}, document(base),
         choice: :qory,
-        version: {:latest, nil},
+        version: {:branch, Qory.default_branch()},
         owner: organisation.id
       )
       |> saved()
@@ -2254,8 +2269,10 @@ defmodule Apiary.Stacks.Sources do
   # `base`: a shared Qory harness at another stack or version is one.
   defp shares_another?(nil, _base), do: false
 
-  defp shares_another?(%Stack{choice: :qory, version_kind: :latest} = row, base),
-    do: extended(row.harness)["stack"] != base["stack"]
+  defp shares_another?(%Stack{choice: :qory} = row, base) do
+    Qory.row_version(row) != {:branch, Qory.default_branch()} or
+      extended(row.harness)["stack"] != base["stack"]
+  end
 
   defp shares_another?(%Stack{}, _base), do: true
 

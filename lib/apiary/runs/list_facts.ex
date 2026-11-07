@@ -23,11 +23,12 @@ defmodule Apiary.Runs.ListFacts do
   #     not the first word of the workflow's name, before its first "-", so Explore with
   #     explore-a-ticket has none. `round` is the run's round inside a loop
   #     (`loop_entry` set), nil outside one. Nil otherwise.
-  #   * `work_item`: `%{number: n, title: title, here: boolean, target_system: system,
-  #     target_path: path}` for the work item of the run of the queue, the target nil for
-  #     a work item with none. Where the work item moved to another workspace since,
-  #     `here` is false and the number and the target are nil, since they are the other
-  #     workspace's. Nil for no work item.
+  #   * `work_item`: `%{number: n, public_id: id, title: title, here: boolean,
+  #     target_system: system, target_path: path}` for the work item of the run of the
+  #     queue, the target nil for a work item with none. Where the work item moved to
+  #     another workspace since, `here` is false and the number and the target are nil,
+  #     since they are the other workspace's; its public id stays, made once with it. Nil
+  #     for no work item.
   #   * `started_by`: how the run started (`started_by/3`), nil where no record says.
   @moduledoc false
 
@@ -79,18 +80,9 @@ defmodule Apiary.Runs.ListFacts do
 
     rows =
       Repo.all(
-        from r in Run,
-          where:
-            r.id in ^ids and r.organisation_id == ^organisation.id and
-              r.workspace_id == ^workspace.id,
-          left_join: x in Dispatch,
-          on: x.id == r.dispatch_id,
-          left_join: d in DispatchRun,
-          on: d.id == coalesce(r.dispatch_run_id, x.dispatch_run_id),
+        from [r, queued: d, work_item: w] in runs_with_work_item(organisation, workspace, ids),
           left_join: h in RunHarness,
           on: h.dispatch_run_id == d.id,
-          left_join: w in WorkItem,
-          on: w.id == d.work_item_id,
           select: %{
             run_id: r.id,
             dispatch_run_id: d.id,
@@ -109,6 +101,7 @@ defmodule Apiary.Runs.ListFacts do
             walk_workflow: h.workflow,
             work_item_id: w.id,
             number: w.number,
+            public_id: w.public_id,
             title: w.title,
             test: w.test,
             target_system: w.target_system,
@@ -131,6 +124,48 @@ defmodule Apiary.Runs.ListFacts do
          started_by: started_by(row, stages, Map.get(events, row.work_item_id, []))
        }}
     end)
+  end
+
+  @doc """
+  The work item of `run` alone, as `of/2` reads it for the run (its `work_item`), in one
+  read: for a page of one run, which needs neither the stage, the workflow nor the events.
+  Nil for a run of no work item, and for a run of another workspace.
+  """
+  @spec work_item(Scope.t(), Run.t()) :: map | nil
+  def work_item(%Scope{organisation: organisation, workspace: workspace}, %Run{id: id}) do
+    row =
+      Repo.one(
+        from [work_item: w] in runs_with_work_item(organisation, workspace, [id]),
+          where: not is_nil(w.id),
+          select: %{
+            work_item_id: w.id,
+            number: w.number,
+            public_id: w.public_id,
+            title: w.title,
+            target_system: w.target_system,
+            target_path: w.target_path,
+            here: w.workspace_id == ^workspace.id
+          }
+      )
+
+    row && work_item(row)
+  end
+
+  # The runs of `ids` in the workspace, each with its run of the queue (`:queued`) and that
+  # run's work item (`:work_item`), both nil for a run of none.
+  defp runs_with_work_item(organisation, workspace, ids) do
+    from r in Run,
+      where:
+        r.id in ^ids and r.organisation_id == ^organisation.id and
+          r.workspace_id == ^workspace.id,
+      left_join: x in Dispatch,
+      on: x.id == r.dispatch_id,
+      left_join: d in DispatchRun,
+      as: :queued,
+      on: d.id == coalesce(r.dispatch_run_id, x.dispatch_run_id),
+      left_join: w in WorkItem,
+      as: :work_item,
+      on: w.id == d.work_item_id
   end
 
   defp workflow(%{step: step}) when is_nil(step), do: nil
@@ -196,11 +231,19 @@ defmodule Apiary.Runs.ListFacts do
   # A work item that moved to another workspace keeps its title alone: its number and its
   # target are the other workspace's.
   defp work_item(%{here: false} = row),
-    do: %{number: nil, title: row.title, here: false, target_system: nil, target_path: nil}
+    do: %{
+      number: nil,
+      public_id: row.public_id,
+      title: row.title,
+      here: false,
+      target_system: nil,
+      target_path: nil
+    }
 
   defp work_item(row),
     do: %{
       number: row.number,
+      public_id: row.public_id,
       title: row.title,
       here: true,
       target_system: row.target_system,

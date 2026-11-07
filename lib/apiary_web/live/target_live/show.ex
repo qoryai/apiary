@@ -67,7 +67,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   alias Apiary.Adapters.Collections
   alias Apiary.Lingo.Domain
   alias Apiary.Runs.{Filters, Target}
-  alias ApiaryWeb.{PolicyLive, SourceComponents}
+  alias ApiaryWeb.{PolicyLive, SourceComponents, SpendDialog}
 
   @recent 5
   @window_days 14
@@ -97,7 +97,8 @@ defmodule ApiaryWeb.TargetLive.Show do
       pinned: Targets.pinned?(scope, target),
       facts: nil,
       runs: nil,
-      new_runs: 0
+      new_runs: 0,
+      spend: nil
     )
     |> load_backlog()
     |> load_environment()
@@ -134,8 +135,10 @@ defmodule ApiaryWeb.TargetLive.Show do
     )
   end
 
+  # A URL change closes the spend's dialog (`ApiaryWeb.SpendDialog`) and confirms nothing.
   @impl true
   def handle_params(%{"target_id" => public_id} = params, uri, socket) do
+    socket = assign(socket, :spend, nil)
     %{target: target, tab: current} = socket.assigns
 
     case {public_id == target.public_id, tab(socket.assigns.live_action, socket.assigns.security)} do
@@ -197,11 +200,42 @@ defmodule ApiaryWeb.TargetLive.Show do
     end
   end
 
+  # Rebuild opens the spend's dialog (`ApiaryWeb.SpendDialog`): a build machine starts
+  # for each pool. Its Confirm rebuilds.
+  def handle_event("rebuild_environment", _params, %{assigns: %{tab: :overview}} = socket) do
+    spend =
+      SpendDialog.ask("rebuild_environment", %{},
+        title: gettext("Rebuild?"),
+        action: gettext("Rebuild"),
+        line: SpendDialog.build_line(socket.assigns.current_scope.workspace),
+        return_to: "target-environment-rebuild"
+      )
+
+    {:noreply, assign(socket, :spend, spend)}
+  end
+
+  def handle_event("spend_confirm", params, %{assigns: %{tab: :overview}} = socket) do
+    case SpendDialog.take(socket.assigns.spend, params) do
+      {"rebuild_environment", _params} -> rebuild(assign(socket, :spend, nil))
+      nil -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("spend_cancel", _params, socket), do: {:noreply, assign(socket, :spend, nil)}
+
+  def handle_event("show_new_runs", _params, %{assigns: %{tab: :overview}} = socket),
+    do: {:noreply, socket |> assign(:new_runs, 0) |> load_summary() |> load_overview()}
+
+  def handle_event(event, params, %{assigns: %{tab: :policy}} = socket),
+    do: PolicyLive.Target.handle_event(event, params, socket)
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
   # Rebuild: a build queued for each pool whose build of the target does not wait
   # unclaimed, with a toast that says whether one was queued or every pool's waits
   # already. A refusal, or a target that names no environment any more, reads the card
   # again and says nothing.
-  def handle_event("rebuild_environment", _params, %{assigns: %{tab: :overview}} = socket) do
+  defp rebuild(socket) do
     %{current_scope: scope, target: target, shared: shared} = socket.assigns
 
     case Environments.rebuild(scope, target) do
@@ -227,14 +261,6 @@ defmodule ApiaryWeb.TargetLive.Show do
         {:noreply, load_environment(socket)}
     end
   end
-
-  def handle_event("show_new_runs", _params, %{assigns: %{tab: :overview}} = socket),
-    do: {:noreply, socket |> assign(:new_runs, 0) |> load_summary() |> load_overview()}
-
-  def handle_event(event, params, %{assigns: %{tab: :policy}} = socket),
-    do: PolicyLive.Target.handle_event(event, params, socket)
-
-  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @impl true
   def handle_info(message, %{assigns: %{tab: :policy}} = socket),
@@ -472,6 +498,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       />
 
       <PolicyLive.Target.content :if={@tab == :policy} {assigns} />
+      <SpendDialog.dialog :if={@spend} spend={@spend} />
     </Layouts.app>
     """
   end
@@ -623,10 +650,13 @@ defmodule ApiaryWeb.TargetLive.Show do
             <li
               :for={row <- @denied.rows}
               id={"target-denied-#{:erlang.phash2({row.host, row.port, row.path})}"}
-              title={"#{sent(row.host)}:#{row.port}#{sent(row.path)}"}
+              title={denied_title(row)}
             >
               <.icon name="hero-no-symbol-micro" class="size-3.5 text-faint" />
-              <span class="q-tgt-dn-dest"><bdi>{sent(row.host)}</bdi><span class="text-faint">:{row.port}</span><span
+              <span class="q-tgt-dn-dest"><bdi>{denied_host(row)}</bdi><span
+                :if={!row.run_api}
+                class="text-faint"
+              >:{row.port}</span>{if row.run_api && row.path not in [nil, ""], do: " "}<span
                 :if={row.path not in [nil, ""]}
                 class="text-muted"
               ><bdi>{sent(row.path)}</bdi></span></span>
@@ -970,6 +1000,17 @@ defmodule ApiaryWeb.TargetLive.Show do
   # A text Forager sent, a denied destination's host or path, as the page shows it where
   # markup cannot go or around a cut (`Apiary.ExternalText.sent/1`).
   defp sent(text), do: Apiary.ExternalText.sent(text)
+
+  # A denied destination's host as the card shows it: the instance's, with no port, for a
+  # request to the run API (`Apiary.Runs.RunApi`), and the path after a space.
+  defp denied_host(%{run_api: true}), do: Apiary.Runs.RunApi.host()
+  defp denied_host(row), do: sent(row.host)
+
+  defp denied_title(%{run_api: true, path: path} = row) when path not in [nil, ""],
+    do: "#{denied_host(row)} #{sent(path)}"
+
+  defp denied_title(%{run_api: true} = row), do: denied_host(row)
+  defp denied_title(row), do: "#{sent(row.host)}:#{row.port}#{sent(row.path)}"
 
   # The target in its system, when the system is a host name: https, the path's segments
   # escaped.

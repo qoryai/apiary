@@ -15,7 +15,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   alias Apiary.Repo
   alias Apiary.Policy
   alias Apiary.Retention
-  alias Apiary.Runs.{Liveness, Projector, Run}
+  alias Apiary.Runs.{Liveness, Projector, Run, RunApi}
   alias ApiaryWeb.Format
 
   # The hints of a lock where no rule can change what became of a request.
@@ -1636,6 +1636,29 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "what enforce would deny leaves out the run API", %{conn: conn, scope: scope} do
+      run_api = %{
+        "host" => RunApi.placeholder(),
+        "port" => 80,
+        "decision" => "allowed",
+        "rule" => RunApi.rule()
+      }
+
+      started_run(scope, shop(),
+        egress: [
+          run_api,
+          run_api,
+          %{"host" => "new.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
+      view = open(conn, scope)
+
+      assert text(view, "#att-policy-enforce") =~ "Enforce would deny 1 destination"
+    end
+
+    @tag needs: :security
     test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())
@@ -2488,6 +2511,36 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     assert has_element?(view, ~s(#{selector} .q-host[title="#{title}"]))
     assert has_element?(view, "#{selector} .q-host .q-port > bdi", "files.tools.internal")
     refute render(element(view, "#{selector} .q-ar-subj")) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "a denied request to the run API shows the instance's host, with no port", %{
+    conn: conn,
+    scope: scope
+  } do
+    started_run(scope, shop(),
+      egress: [
+        %{
+          "host" => "run-api.qory.invalid",
+          "port" => 80,
+          "method" => "HTTP",
+          "request_method" => "POST",
+          "path" => "outside",
+          "decision" => "denied",
+          "outcome" => "refused",
+          "rule" => "wall:run-api"
+        }
+      ]
+    )
+
+    view = open(conn, scope)
+    subject = "#attention-list li[data-kind=denied] .q-ar-subj"
+    instance = Apiary.Instance.host()
+
+    assert has_element?(view, "#{subject} .q-host > bdi", instance)
+    refute has_element?(view, "#{subject} .q-port")
+    assert has_element?(view, ~s(#{subject} .q-host[title="#{instance} outside"]))
+    refute render(view) =~ "run-api.qory.invalid"
   end
 
   @tag needs: :security

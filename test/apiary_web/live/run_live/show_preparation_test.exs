@@ -1,9 +1,11 @@
 defmodule ApiaryWeb.RunLive.ShowPreparationTest do
   @moduledoc """
-  The Prepare machine section of a run's Timeline (`ApiaryWeb.PreparationComponents`):
-  its rows in the order the steps ran, a failed row open with its cause line, and the
-  machine log for an instance admin alone. Not async: the instance admin's tests hide the
-  instance's organisation and set the machine logs' folder.
+  The Run list of a run's Timeline (`ApiaryWeb.PreparationComponents`): its rows in
+  the order the steps ran, Start machine in Machine started, the steps in Prepare,
+  a step's log lines with their numbers and times, a failed or running row open, a failed
+  row with its cause line, and the machine log under Start machine for an instance admin
+  alone. Not async: the instance admin's tests hide the instance's organisation and set
+  the machine logs' folder.
   """
   use ApiaryWeb.ConnCase, async: false
 
@@ -114,6 +116,14 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
     {:ok, _answer} = RunCode.redeem(request, now: now, relayed_by: claimed.gateway.id)
   end
 
+  # The vendor's machine type, as the first `dispatched` reports it.
+  defp vendor_type!(%Dispatch{id: id}, type) do
+    {1, _rows} =
+      Apiary.Repo.update_all(from(d in Dispatch, where: d.id == ^id),
+        set: [vendor_machine_type: type]
+      )
+  end
+
   # Written with no broadcast, as when the broadcast after the commit failed.
   defp dispatched_quietly!(%Dispatch{id: id}) do
     {1, _rows} =
@@ -131,31 +141,287 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       section = lv |> element("#prepare-machine") |> render()
-      assert section =~ "Prepare machine"
+      assert has_element?(lv, "#prepare-machine-h", "Run")
 
       rows =
         section
         |> LazyHTML.from_fragment()
-        |> LazyHTML.query(".q-prep-name, #prepare-machine-session .q-k")
+        |> LazyHTML.query(".q-prep-name")
         |> Enum.map(&LazyHTML.text/1)
 
       assert rows == [
+               "Queued",
                "Machine requested",
                "Machine started",
-               "Fetch git.example.com/acme/shop",
+               "Start machine",
+               "Prepare",
+               "Clone repository",
                "Session started"
              ]
 
-      refute has_element?(lv, "#prepare-machine details[open]")
+      assert has_element?(lv, "#prepare-machine-started #prepare-machine-start-machine")
+      assert has_element?(lv, "#prepare-machine-prepare #prepare-machine-step-1")
+      # The run goes on: Session started is open, with the Timeline inside it.
+      assert has_element?(lv, "#prepare-machine-session[open] #timeline")
+      refute has_element?(lv, "#prepare-machine details[open]:not(#prepare-machine-session)")
       refute has_element?(lv, "#prepare-machine-machine-log")
       refute render(lv) =~ @admin_only
       assert lv |> element("#prepare-machine-requested") |> render() =~ "build-pool"
       assert lv |> element("#prepare-machine-requested") |> render() =~ "pool default"
 
-      assert lv |> element("#prepare-machine-step-1-output pre") |> render() =~
+      assert lv |> element("#prepare-machine-step-1-output .q-log-x") |> render() =~
                "Cloning into &#39;shop&#39;..."
 
       refute has_element?(lv, "#prepare-machine-cause")
+    end
+
+    test "a run of a machine type: Machine requested has its spec, Details its name, the peak the type's memory",
+         ctx do
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+
+      {1, _rows} =
+        Apiary.Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+          set: [machine_type: "large", machine_spec: Apiary.MachineTypesFixtures.spec()]
+        )
+
+      run =
+        project!(
+          run,
+          steps(false) ++
+            [
+              {6, "session.exited",
+               %{
+                 "session" => 1,
+                 "state" => "succeeded",
+                 "exit_code" => 0,
+                 "duration_ms" => 900,
+                 "peak_memory_bytes" => 10_522_669_875
+               }}
+            ]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+      requested = lv |> element("#prepare-machine-requested") |> render()
+      assert requested =~ "large (4 vCPUs, 16 GiB, 60 GiB disk)"
+      refute requested =~ "pool default"
+
+      assert has_element?(lv, "#rail-machine-type", "large")
+      assert has_element?(lv, "#rail-peak-memory", "9.8 of 16 GiB")
+    end
+
+    test "a run with no machine type in its claim answer has no Machine type in Details", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+      run = project!(run, steps(false))
+      lv = open(ctx.conn, ctx.scope, run)
+
+      refute has_element?(lv, "#rail-machine-type")
+      assert lv |> element("#prepare-machine-requested") |> render() =~ "pool default"
+    end
+
+    test "the vendor's machine type is not shown to a member", ctx do
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      vendor_type!(dispatch, "example-type")
+      run = project!(run, steps(false))
+      lv = open(ctx.conn, ctx.scope, run)
+
+      refute has_element?(lv, "#prepare-machine-started-as")
+      refute render(lv) =~ "example-type"
+      refute render(lv) =~ "Started as"
+    end
+
+    test "Prepare groups the steps, in order, with their labels",
+         ctx do
+      zone = reader_at_noon(ctx.scope.user)
+      %{run: run} = claimed_run(ctx.scope)
+      t = ~U[2026-11-06 00:33:07.600000Z]
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 4000}},
+          {4, "run.step_started",
+           %{"step" => 2, "name" => "compose the harness", "kind" => "compose"}},
+          {5, "run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {6, "run.step_started",
+           %{"step" => 3, "name" => "setup postCreateCommand: npm ci", "kind" => "setup"}},
+          {7, "run.log", step_log_data(3, "> npm ci\n"), time: t},
+          {8, "run.log", step_log_data(3, "found 0 vulnerabilities\n"),
+           time: DateTime.add(t, 36_200, :millisecond)},
+          {9, "run.step_exited",
+           %{"step" => 3, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 48_000}},
+          {10, "run.step_started", %{"step" => 4, "name" => "join session 1", "kind" => "join"}},
+          {11, "run.step_exited",
+           %{"step" => 4, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}},
+          {12, "session.started", session_started_data()}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      grouped =
+        lv
+        |> element("#prepare-machine-prepare")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query(".q-prep-steps .q-prep-name")
+        |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+
+      assert grouped == [
+               "Clone repository",
+               "Compose the harness",
+               "Set up dev container",
+               "Start agent"
+             ]
+
+      lines = "#prepare-machine-step-3-output-lines"
+      assert has_element?(lv, "#{lines} .q-log-ln:nth-child(1) .q-log-n", "1")
+      assert has_element?(lv, "#{lines} .q-log-ln:nth-child(1) .q-log-x", "> npm ci")
+      assert has_element?(lv, "#{lines} .q-log-ln:nth-child(2) .q-log-n", "2")
+
+      for {n, time} <- [{1, t}, {2, DateTime.add(t, 36_200, :millisecond)}] do
+        shown = Format.with_time_zone(zone, fn -> Format.time(time, tenths: true) end)
+
+        assert has_element?(
+                 lv,
+                 ~s|#{lines} .q-log-ln:nth-child(#{n}) .q-log-t time[datetime="#{DateTime.to_iso8601(time)}"]|,
+                 shown
+               )
+      end
+    end
+
+    test "a live run: the running step is open, and its lines and the next step arrive",
+         ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 4000}},
+          {4, "run.step_started",
+           %{"step" => 2, "name" => "setup postCreateCommand: npm ci", "kind" => "setup"},
+           time: DateTime.utc_now()},
+          {5, "run.log", step_log_data(2, "> npm ci\n")}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#prepare-machine-prepare[open][data-state='running']")
+      assert has_element?(lv, "#prepare-machine-step-2[open][data-state='running']")
+      refute has_element?(lv, "#prepare-machine-step-1[open]")
+      refute has_element?(lv, "#prepare-machine-start-machine[open]")
+      assert lv |> element("#prepare-machine-step-2 > summary") |> render() =~ "Running"
+      assert has_element?(lv, "#prepare-machine-prepare-clock[data-tick='duration']")
+      refute has_element?(lv, "#prepare-machine-step-2-output-lines .q-log-n", "2")
+
+      # A line arrives: the next flush shows it, numbered.
+      events_fixture(run, [{6, "run.log", step_log_data(2, "added 1184 packages\n")}])
+      {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
+      assert has_element?(lv, "#prepare-machine-step-2-output-lines .q-log-n", "2")
+      assert has_element?(lv, "#prepare-machine-step-2-output-lines .q-log-x", "added 1184")
+
+      # The step ends and the next starts: it is a row of the group, open while it runs.
+      events_fixture(run, [
+        {7, "run.step_exited",
+         %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 48_000}},
+        {8, "run.step_started", %{"step" => 3, "name" => "join session 1", "kind" => "join"}}
+      ])
+
+      {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
+
+      assert has_element?(
+               lv,
+               "#prepare-machine-prepare #prepare-machine-step-3[open]",
+               "Start agent"
+             )
+
+      assert lv |> element("#prepare-machine-step-2 > summary") |> render() =~ "48 s"
+    end
+
+    test "a step of 5,000 lines shows its last 2,500, numbered, in one scrolled box", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      lines = for n <- 1..5_000, do: {n + 2, "run.log", step_log_data(1, "line #{n}\n")}
+
+      run =
+        project!(
+          run,
+          [
+            {1, "run.started", started_data()},
+            {2, "run.step_started",
+             %{"step" => 1, "name" => "setup postCreateCommand: npm ci", "kind" => "setup"}}
+          ] ++
+            lines ++
+            [
+              {5_003, "run.step_exited",
+               %{"step" => 1, "state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+            ]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+      box = "#prepare-machine-step-1-output-lines"
+
+      assert has_element?(lv, "#prepare-machine-step-1[open]")
+      assert has_element?(lv, "#{box}.q-log .q-log-ln:first-child .q-log-n", "2501")
+      assert has_element?(lv, "#{box}.q-log .q-log-ln:first-child .q-log-x", "line 2501")
+      assert has_element?(lv, "#{box} .q-log-ln:last-child .q-log-n", "5000")
+      assert has_element?(lv, "#{box} .q-log-ln:last-child .q-log-x", "line 5000")
+
+      assert has_element?(
+               lv,
+               "#prepare-machine-step-1-output > p",
+               "The output is cut: these are its last 2,500 lines."
+             )
+    end
+
+    test "a machine step: its lines under Start machine, after create machine", ctx do
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      started = DateTime.add(dispatch.dispatched_at, 14_800, :millisecond)
+
+      # The code redeemed 41 s after `dispatched`, after the step's start.
+      run =
+        run
+        |> Ecto.Changeset.change(
+          run_key_issued_at: DateTime.add(dispatch.dispatched_at, 41, :second)
+        )
+        |> Apiary.Repo.update!()
+
+      run =
+        project!(
+          run,
+          [{1, "run.started", started_data()}] ++
+            machine_step_events(2, 1, started) ++
+            [
+              {9, "run.step_started",
+               %{"step" => 2, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}}
+            ]
+        )
+
+      assert [%{kind: "machine"}, %{kind: "fetch"}] = Apiary.Runs.Record.steps(ctx.scope, run)
+      lv = open(ctx.conn, ctx.scope, run)
+
+      refute has_element?(lv, "#prepare-machine-step-1")
+      lines = "#prepare-machine-start-machine #prepare-machine-start-machine-output-lines"
+
+      # `has_element?/3` matches the text with its runs of spaces made one.
+      assert has_element?(
+               lv,
+               "#{lines} .q-log-ln:nth-child(1) .q-log-x",
+               "create machine 14.8 s"
+             )
+
+      assert has_element?(lv, "#{lines} .q-log-ln:nth-child(2) .q-log-x", "boot 14.8 s")
+      assert has_element?(lv, "#{lines} .q-log-ln:nth-child(6) .q-log-x", "write run code 0.1 s")
+      assert has_element?(lv, "#{lines} .q-log-ln:nth-child(6) .q-log-n", "6")
+      assert has_element?(lv, "#prepare-machine-step-2", "Clone repository")
+      refute has_element?(lv, "#prepare-machine-machine-log")
     end
 
     test "the time columns: a legend over each list, every row with both cells", ctx do
@@ -182,11 +448,14 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       assert has_element?(lv, "#prepare-machine-step-1[open]")
+      assert has_element?(lv, "#prepare-machine-prepare[open][data-state='failed']")
       refute has_element?(lv, "#prepare-machine-started[open]")
+      refute has_element?(lv, "#prepare-machine-start-machine[open]")
       assert has_element?(lv, "#prepare-machine-step-1 #prepare-machine-step-1-output")
 
       assert lv |> element("#prepare-machine-step-1 #prepare-machine-cause") |> render() =~
-               "Fetch git.example.com/acme/shop failed with exit code 128. An admin of " <>
+               "Clone repository failed with exit code 128 (git.example.com/acme/shop). " <>
+                 "An admin of " <>
                  "#{ctx.scope.workspace.name} reads the cause in the step&#39;s output."
     end
 
@@ -218,7 +487,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
                  "retention. The timeline and the connections are whole."
 
       assert lv |> element("#prepare-machine-cause") |> render() =~
-               "Fetch git.example.com/acme/shop failed with exit code 128. The step&#39;s " <>
+               "Clone repository failed with exit code 128 (git.example.com/acme/shop). " <>
+                 "The step&#39;s " <>
                  "output was deleted under the workspace&#39;s log retention, so the cause is " <>
                  "no longer shown."
     end
@@ -241,9 +511,10 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       assert has_element?(lv, "#prepare-machine-started[open]")
+      assert has_element?(lv, "#prepare-machine-start-machine[open]")
       refute has_element?(lv, "#prepare-machine-requested[open]")
 
-      assert lv |> element("#prepare-machine-cause") |> render() =~
+      assert lv |> element("#prepare-machine-start-machine #prepare-machine-cause") |> render() =~
                ">An admin of #{ctx.scope.workspace.name} reads why in the log of build-pool on its host.</p>"
 
       assert render(lv) =~ "No machine was made: No capacity in the region."
@@ -268,7 +539,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       :ok = Dispatches.release(key, dispatch.public_id, %{reason: "Key #{run_key} refused."})
       run = Apiary.Repo.get!(Apiary.Runs.Run, run.id)
 
-      # The Prepare machine section's cause and the header both have it filtered.
+      # The Run list's cause and the header both have it filtered.
       assert %{stopped: %{text: text}} = Apiary.Runs.Preparation.read(ctx.scope, run)
       assert text =~ "No machine was made: Key [FILTERED] refused."
       html = ctx.conn |> open(ctx.scope, run) |> render()
@@ -346,19 +617,31 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
          ctx do
       %{dispatch: dispatch, registered: run} = claimed = claimed(ctx.scope)
       claimed_at = DateTime.to_iso8601(dispatch.claimed_at)
+
+      queued_at =
+        Apiary.Repo.get!(Apiary.Dispatches.DispatchRun, dispatch.dispatch_run_id).queued_at
+        |> DateTime.to_iso8601()
+
       lv = open(ctx.conn, ctx.scope, run)
 
-      row = lv |> element("#prepare-machine-started summary") |> render()
+      row = lv |> element("#prepare-machine-started > summary") |> render()
       assert row =~ "Running"
       assert row =~ "q-prep-pulse"
       refute has_element?(lv, "#prepare-machine-started .q-tc1 time")
+
+      # A run still starting: Machine started and Start machine run, both open.
+      assert has_element?(lv, "#prepare-machine-started[open]")
+      assert has_element?(lv, "#prepare-machine-start-machine[open][data-state='running']")
+      assert lv |> element("#prepare-machine-start-machine > summary") |> render() =~ "Running"
 
       assert has_element?(
                lv,
                ~s(#prepare-machine-started-clock[phx-hook="Ticker"][data-tick="duration"][data-since="#{claimed_at}"])
              )
 
-      assert has_element?(lv, ~s(#prepare-machine-total[data-since="#{claimed_at}"]))
+      # The heading counts from the start of Queued.
+      assert has_element?(lv, ~s(#prepare-machine-queued .q-tc1 time[datetime="#{queued_at}"]))
+      assert has_element?(lv, ~s(#prepare-machine-total[data-since="#{queued_at}"]))
       assert lv |> element(".q-prep-hd") |> render() =~ "so far"
 
       # Before `dispatched`, Machine requested has no time under Took.
@@ -368,8 +651,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       # no quiet tick.
       :ok = Dispatches.dispatched(claimed.key, dispatch.public_id, %{external: nil})
       send(lv.pid, :flush)
-      assert has_element?(lv, "#prepare-machine-started .q-tc1 time")
-      assert lv |> element("#prepare-machine-started summary") |> render() =~ "Running"
+      assert has_element?(lv, "#prepare-machine-started > summary .q-tc1 time")
+      assert lv |> element("#prepare-machine-started > summary") |> render() =~ "Running"
 
       dispatch = Apiary.Repo.get!(Dispatch, dispatch.id)
 
@@ -383,12 +666,20 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert lv |> element("#prepare-machine-requested .q-tc2 .q-d") |> render() =~
                ApiaryWeb.RunComponents.format_duration_ms(took)
 
-      # So is the redemption of the run's code.
+      # So is the redemption of the run's code: Start machine and Machine started end, with
+      # their time, and no clock.
       redeem!(claimed)
       send(lv.pid, :flush)
-      row = lv |> element("#prepare-machine-started summary") |> render()
-      refute row =~ "Running"
+      refute lv |> element("#prepare-machine-start-machine > summary") |> render() =~ "Running"
+      refute lv |> element("#prepare-machine-started > summary") |> render() =~ "Running"
+
+      assert has_element?(
+               lv,
+               "#prepare-machine-started[data-state='succeeded'] > summary .q-tc2 .q-d"
+             )
+
       refute has_element?(lv, "#prepare-machine-started-clock")
+      refute has_element?(lv, "#prepare-machine-start-machine-clock")
     end
 
     test "the quiet tick reads the machine's start on the Timeline tab alone", ctx do
@@ -496,7 +787,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert lv |> element("#prepare-machine-step-2 summary") |> render() =~ "48 s"
     end
 
-    test "a live run with no session event counts nothing past its last step", ctx do
+    test "a live run between two steps: no row ticks, and the heading counts up", ctx do
       %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
       exited = DateTime.add(dispatch.claimed_at, 90, :second)
 
@@ -512,13 +803,13 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
         ])
 
       lv = open(ctx.conn, ctx.scope, run)
-      refute has_element?(lv, "#prepare-machine time[data-tick]")
+      refute has_element?(lv, "#prepare-machine .q-prep-steps time[data-tick]")
 
-      # The heading keeps the time from the claim to the step's end.
-      assert lv |> element("#prepare-machine-total") |> render() =~ "1 m 30 s"
-      refute lv |> element(".q-prep-hd") |> render() =~ "so far"
+      # The heading counts up while the run is alive.
+      assert has_element?(lv, "#prepare-machine-total[data-tick='duration']")
+      assert lv |> element(".q-prep-hd") |> render() =~ "so far"
 
-      # Between two steps too: once the next step starts, the heading ticks again.
+      # Once the next step starts, its row ticks.
       events_fixture(run, [
         {4, "run.step_started", %{"step" => 2, "name" => "join session 1", "kind" => "join"},
          time: DateTime.add(exited, 1, :second)}
@@ -526,8 +817,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       {:ok, _run} = Projector.project(run)
       send(lv.pid, :flush)
+      assert has_element?(lv, "#prepare-machine-step-2-clock[data-tick='duration']")
       assert has_element?(lv, "#prepare-machine-total[data-tick='duration']")
-      assert lv |> element(".q-prep-hd") |> render() =~ "so far"
     end
 
     test "a run with no dispatch and no step has no section", ctx do
@@ -571,10 +862,10 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       assert limits_text(lv) ==
-               "The run stopped before its session started, at the step Fetch git.example.com/acme/shop."
+               "The run stopped before its session started, at the step Clone repository."
     end
 
-    test "a released run: the step is Machine started", ctx do
+    test "a released run: the step is Start machine", ctx do
       pool = pool_fixture(ctx.scope, name: "build-pool")
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
       _gateway = gateway_for!(ctx.scope, pool)
@@ -591,7 +882,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       assert limits_text(lv) ==
-               "The run stopped before its session started, at the step Machine started."
+               "The run stopped before its session started, at the step Start machine."
     end
 
     test "a walled run whose session never started has no wall note", ctx do
@@ -670,11 +961,51 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
         })
 
       lv = open(ctx.conn, ctx.scope, run)
-      log = lv |> element("#prepare-machine-machine-log") |> render()
+
+      log =
+        lv |> element("#prepare-machine-start-machine #prepare-machine-machine-log") |> render()
 
       assert log =~ "Machine log (instance admins)"
-      assert log =~ "qory-machine-start: Docker started"
       refute log =~ @admin_only
+
+      # Each line has its number and no time.
+      assert has_element?(lv, "#prepare-machine-machine-log-lines .q-log-n", "1")
+
+      assert has_element?(
+               lv,
+               "#prepare-machine-machine-log-lines .q-log-x",
+               "qory-machine-start: Docker started"
+             )
+
+      refute has_element?(lv, "#prepare-machine-machine-log-lines .q-log-t")
+    end
+
+    test "Start machine shows the vendor's machine type above the machine log", ctx do
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      vendor_type!(dispatch, "example-type")
+      run = project!(run, steps(false))
+      lv = open(ctx.conn, ctx.scope, run)
+
+      started_as =
+        lv |> element("#prepare-machine-start-machine #prepare-machine-started-as") |> render()
+
+      assert started_as =~ "Started as (instance admins)"
+      assert started_as =~ "example-type"
+
+      html = lv |> element("#prepare-machine-start-machine") |> render()
+      {at, _length} = :binary.match(html, "prepare-machine-started-as")
+      {log_at, _length} = :binary.match(html, "prepare-machine-machine-log")
+      assert at < log_at
+    end
+
+    test "with no machine type reported, Start machine has no Started as line", ctx do
+      %{run: run} = claimed_run(ctx.scope)
+      run = project!(run, steps(false))
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#prepare-machine-machine-log")
+      refute has_element?(lv, "#prepare-machine-started-as")
+      refute render(lv) =~ "Started as"
     end
 
     test "before the machine log arrives, says so", ctx do

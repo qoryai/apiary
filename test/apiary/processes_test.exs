@@ -7,6 +7,7 @@ defmodule Apiary.ProcessesTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
+  import Apiary.MachineTypesFixtures
 
   import Apiary.WorkItemsFixtures,
     only: [work_item_fixture: 1, ticket_connection_fixture: 1, backlog_ticket_fixture: 2]
@@ -15,8 +16,7 @@ defmodule Apiary.ProcessesTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Harnesses.QoryCopy
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.Version
   alias Apiary.Stacks.{Sources, Stack}
@@ -128,26 +128,28 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
-    test "is the copied template's process" do
-      assert default() == QoryCopy.template().process
+    test "is the process of the template at main's commit, as the stored files have it" do
+      assert default() == Qory.template(Qory.current()).process
     end
 
-    test "places only workflows the copied stack lists, so its stages do not wait on a harness update" do
+    test "places only workflows the template's stack lists, so its stages do not wait on a harness update" do
       placed = Enum.flat_map(default()["stages"], &Processes.workflows/1)
 
       assert placed != []
-      assert placed -- Processes.qory_workflows() == []
+      assert placed -- Processes.qory_workflows(Qory.current()) == []
     end
 
     # `Apiary.Stages`' explore v1 result and ApiaryWeb.WorkItemLive.Workflow depend on this
     # name. A harness update that renames the workflow, or that drops it from the stack
     # while the template still places it, fails here.
-    test "runs the Explore workflow, which the copied stack lists" do
-      assert Stages.explore_workflow() == "explore-a-ticket"
-      assert "explore-a-ticket" in QoryCopy.workflows("software")
+    test "runs the Explore workflow, which the template's stack lists" do
+      %{scope: scope} = sign_up_fixture()
+
+      assert Stages.explore_workflow(scope.workspace) == "explore-a-ticket"
+      assert "explore-a-ticket" in Qory.workflows(Qory.current(), "software")
 
       [explore | _rest] = default()["stages"]
-      assert Stages.explore_workflow() in Processes.workflows(explore)
+      assert Stages.explore_workflow(scope.workspace.id) in Processes.workflows(explore)
     end
 
     test "is the software type's for a domain without a default, and the template names the type" do
@@ -212,6 +214,80 @@ defmodule Apiary.ProcessesTest do
 
       assert errors(%{default() | "stages" => [explore, %{shape | "name" => " explore "} | rest]}) ==
                [{"#/stages/1/name", :duplicate_stage_name}]
+    end
+
+    test "takes a stage with or without a description of at most 500 characters" do
+      described = &if(&1["id"] == @shape, do: Map.put(&1, "description", &2), else: &1)
+
+      assert Enum.all?(default()["stages"], &(not Map.has_key?(&1, "description")))
+      assert Processes.validate(default()) == :ok
+
+      with_line_break = edit(&described.(&1, "Turn the ticket into a plan.\nKeep it short."))
+      assert Processes.validate(with_line_break) == :ok
+
+      assert Processes.validate(edit(&described.(&1, String.duplicate("é", 500)))) == :ok
+
+      assert {"#/stages/1/description", :schema} in errors(
+               edit(&described.(&1, String.duplicate("a", 501)))
+             )
+
+      assert {"#/stages/1/description", :schema} in errors(edit(&described.(&1, 42)))
+    end
+
+    test "description/1: line breaks as LF, and at most 500 code points of whole graphemes" do
+      assert Processes.description("Plan.\r\nCheck.\rSend.") == "Plan.\nCheck.\nSend."
+      assert Processes.description(String.duplicate("a", 501)) == String.duplicate("a", 500)
+
+      # "é" as "e" and a combining accent: one grapheme, two code points.
+      accent = "e\u0301"
+      text = Processes.description(String.duplicate(accent, 300))
+      assert text == String.duplicate(accent, 250)
+      assert length(String.codepoints(text)) == 500
+      assert String.length(text) == 250
+      assert Processes.validate(edit(&Map.put(&1, "description", text))) == :ok
+
+      # A text of 300 graphemes and 600 code points: within JSV's count, over the schema's.
+      assert Processes.description("a" <> String.duplicate(accent, 300)) ==
+               "a" <> String.duplicate(accent, 249)
+    end
+
+    test "description/1 reads no grapheme after the limit" do
+      text = String.duplicate("a", 1_000_000)
+
+      {cut, reductions} =
+        Task.async(fn ->
+          {:reductions, before} = Process.info(self(), :reductions)
+          cut = Processes.description(text)
+          {:reductions, later} = Process.info(self(), :reductions)
+          {cut, later - before}
+        end)
+        |> Task.await()
+
+      assert cut == String.duplicate("a", 500)
+
+      # A cut that reads all 1,000,000 graphemes takes over 4,000,000 reductions.
+      assert reductions < 100_000
+    end
+
+    test "a description has no line break or space at the start or the end; inner breaks stay" do
+      assert Processes.description("\r\n \nPlan.\r\n\r\nCheck.\n \r") == "Plan.\n\nCheck."
+
+      assert Processes.description(" \n" <> String.duplicate("a", 500) <> "b") ==
+               String.duplicate("a", 500)
+
+      assert Processes.description(String.duplicate("a", 499) <> "\nb") ==
+               String.duplicate("a", 499)
+
+      stage = %{"id" => "st_0000000000", "description" => "\r\nPlan.\r\nCheck.\r\n"}
+
+      assert Processes.with_description_line_breaks(%{"stages" => [stage]}) ==
+               %{"stages" => [%{stage | "description" => "Plan.\nCheck."}]}
+
+      # A blank description has no key, as the stage form saves it.
+      blank = %{stage | "description" => " \r\n\n "}
+
+      assert Processes.with_description_line_breaks(%{"stages" => [blank]}) ==
+               %{"stages" => [Map.delete(stage, "description")]}
     end
 
     test "keeps fields the schema does not list" do
@@ -496,10 +572,15 @@ defmodule Apiary.ProcessesTest do
     test "on the Qory harness come from the stack the workspace recorded, not the definition's" do
       %{scope: scope} = sign_up_fixture()
 
-      assert Definition.qory_harness().stack == "core"
-      assert QoryCopy.workflows("core") == []
-      assert Processes.qory_workflows() == QoryCopy.workflows("software")
-      assert Processes.declared_workflows(scope.workspace) == Processes.qory_workflows()
+      assert Qory.default_stack() == "core"
+      assert Qory.workflows(Qory.current(), "core") == []
+
+      assert Processes.qory_workflows(Qory.current()) ==
+               Qory.workflows(Qory.current(), "software")
+
+      assert Processes.declared_workflows(scope.workspace) ==
+               Processes.qory_workflows(Qory.current())
+
       assert {:ok, ["explore-a-ticket"]} = Sources.chosen_workflows(scope, scope.workspace)
     end
 
@@ -509,7 +590,7 @@ defmodule Apiary.ProcessesTest do
 
       assert %{choice: :qory, stack: "core", saved: false} = chosen = Sources.chosen(workspace)
       assert Processes.qory_workflows(chosen) == []
-      assert Processes.qory_workflows() == ["explore-a-ticket"]
+      assert Processes.qory_workflows(Qory.current()) == ["explore-a-ticket"]
       assert Processes.declared_workflows(workspace) == []
       assert Processes.workflow_declaration(workspace, "explore-a-ticket") == nil
       assert Sources.chosen_workflows(scope, workspace) == {:ok, []}
@@ -565,7 +646,8 @@ defmodule Apiary.ProcessesTest do
           organisation_id: scope.workspace.organisation_id,
           workspace_id: scope.workspace.id,
           choice: :qory,
-          version_kind: :latest,
+          version_kind: :branch,
+          version_name: "main",
           harness: "extends:\n  git: https://github.com/qoryai/harness\n  stack: software\n"
         })
 
@@ -625,6 +707,71 @@ defmodule Apiary.ProcessesTest do
       assert version.document["layout"] == %{"zoom" => 2}
       assert [_, _, _, _, _, %{"id" => id, "name" => "Review"}] = version.document["stages"]
       assert id =~ ~r/\Ast_[0-9a-hjkmnp-tv-z]{10}\z/
+    end
+
+    test "a save keeps a stage's description, and the next save without it removes it", %{
+      scope: scope
+    } do
+      text = "Turn the ticket into a plan.\nA member approves the plan."
+      described = edit(&if(&1["id"] == @shape, do: Map.put(&1, "description", text), else: &1))
+
+      assert {:ok, version} = Processes.save(scope, scope.workspace, described)
+      assert Processes.stage(Processes.get_version!(version.id), @shape)["description"] == text
+
+      assert {:ok, next} = Processes.save(scope, scope.workspace, default(), based_on: version)
+      refute Map.has_key?(Processes.stage(Processes.get_version!(next.id), @shape), "description")
+
+      assert {:error, errors} =
+               Processes.save(
+                 scope,
+                 scope.workspace,
+                 edit(
+                   &if(&1["id"] == @shape,
+                     do: Map.put(&1, "description", String.duplicate("a", 501)),
+                     else: &1
+                   )
+                 )
+               )
+
+      assert %{path: "#/stages/1/description", error: :schema, detail: :maxLength} in errors
+    end
+
+    test "a save refuses a machine type the instance does not have, by its place", %{
+      scope: scope
+    } do
+      document =
+        default()
+        |> Map.put("machine", "huge")
+        |> put_sequence(@shape, [
+          %{"workflow" => "write-specs", "machine" => "large"},
+          %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "review", "machine" => "gpu"}]}}
+        ])
+
+      assert {:error, errors} = Processes.save(scope, scope.workspace, document)
+
+      assert Enum.map(errors, &{&1.path, &1.error}) == [
+               {"#/machine", :unknown_machine_type},
+               {"#/stages/1/sequence/0/machine", :unknown_machine_type},
+               {"#/stages/1/sequence/1/loop/body/0/machine", :unknown_machine_type}
+             ]
+
+      for name <- ~w(huge large gpu), do: machine_type_fixture(name: name)
+      assert {:ok, version} = Processes.save(scope, scope.workspace, document)
+      assert version.document["machine"] == "huge"
+
+      # `default` and an entry with no machine type need no type of that name.
+      assert {:ok, _} =
+               Processes.save(scope, scope.workspace, Map.put(default(), "machine", "default"),
+                 based_on: version
+               )
+    end
+
+    test "the schema refuses a machine type that no type may be named" do
+      for name <- ["Large", "1large", "large_x", "", String.duplicate("a", 65)] do
+        assert {"#/machine", :schema} in errors(Map.put(default(), "machine", name)), name
+      end
+
+      assert Processes.validate(Map.put(default(), "machine", String.duplicate("a", 64))) == :ok
     end
 
     test "a save keeps a workflow the harness does not declare", %{scope: scope} do

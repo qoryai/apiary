@@ -41,7 +41,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   alias Apiary.{Organisations, Processes, Repo, WorkItems}
   alias Apiary.Stacks.Sources
   alias Apiary.WorkItems.WorkItem
-  alias ApiaryWeb.{People, SettingsComponents}
+  alias ApiaryWeb.{MachineTypeWords, People, SettingsComponents}
   alias ApiaryWeb.StagesLive.{Canvas, Editor, Inspector, Words}
 
   @edits Editor.events()
@@ -73,12 +73,14 @@ defmodule ApiaryWeb.StagesLive.Index do
         harness_source: nil,
         declared_error: nil,
         types: Apiary.Artifacts.types(workspace),
+        machine_types: Apiary.MachineTypes.list(),
         members: members,
         people: Map.new(members, &{&1.user.id, People.short(People.email(&1.user))}),
         work_items: [],
         assign_errors: [],
         save_errors: [],
         stage_errors: %{},
+        refused_machines: [],
         save_note: nil,
         rounds_errors: %{},
         workflow_errors: %{},
@@ -170,6 +172,9 @@ defmodule ApiaryWeb.StagesLive.Index do
       draft: version.document,
       selected: Editor.first_id(version.document),
       stage_errors: %{},
+      refused_machines: [],
+      rounds_errors: %{},
+      workflow_errors: %{},
       save_note: nil
     )
     |> authors()
@@ -603,7 +608,9 @@ defmodule ApiaryWeb.StagesLive.Index do
           </div>
 
           <div
-            :if={(@may and @trial != nil and @dirty) or @notice != nil or @save_errors != []}
+            :if={
+              (@may and @trial != nil and @dirty) or @notice != nil or Editor.banner(assigns) != []
+            }
             class={["grid gap-3", @tab == :stages && "py-4"]}
           >
             <p
@@ -616,13 +623,14 @@ defmodule ApiaryWeb.StagesLive.Index do
             <.notice :if={@notice} kind={:success}>
               <span id="stages-notice">{@notice}</span>
             </.notice>
-            <.notice :if={@save_errors != []} kind={:error}>
-              <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
+            <.notice :if={Editor.banner(assigns) != []} kind={:error}>
+              <span :for={error <- Editor.banner(assigns)} class="block" data-save-error>{error}</span>
             </.notice>
           </div>
 
-          <%!-- The canvas is the editor: a card selected on it opens in the inspector beside
-          it. The box takes the rest of the window (`.q-canvas-fill`), with no gap under the
+          <%!-- The canvas is the editor: a card selected on it opens in the inspector, beside
+          it from 1328 px (from 1024 px in Focus and Full screen) and under it below that.
+          The box takes the rest of the window (`.q-canvas-fill`), with no gap under the
           tabs. --%>
           <div :if={@tab == :stages} id="stages-editor" class="q-canvas-fill">
             <Canvas.canvas
@@ -647,9 +655,11 @@ defmodule ApiaryWeb.StagesLive.Index do
                 stage_errors={@stage_errors}
                 rounds_errors={@rounds_errors}
                 workflow_errors={@workflow_errors}
+                refused_machines={@refused_machines}
                 problems={@problems}
                 harness={@cross}
                 machine={@draft["machine"]}
+                machine_types={@machine_types}
                 marks={marks(assigns)}
               />
             </div>
@@ -696,15 +706,17 @@ defmodule ApiaryWeb.StagesLive.Index do
               <.input
                 id="stages-machine"
                 name="process[machine]"
-                value={@draft["machine"]}
+                type="select"
+                value={@draft["machine"] || "default"}
                 label={gettext("Default machine type")}
+                options={MachineTypeWords.default_options(@machine_types, @draft["machine"])}
                 hint={Inspector.machine_hint()}
-                autocomplete="off"
-                spellcheck="false"
               />
             </.form>
             <p :if={!@may} id="stages-machine-read" class="text-[13.5px]/5">
-              {gettext("Default machine type: %{machine}", machine: @draft["machine"])}
+              {gettext("Default machine type: %{machine}",
+                machine: MachineTypeWords.default_words(@machine_types, @draft["machine"])
+              )}
             </p>
 
             <section id="stages-check" aria-labelledby="stages-check-title" class="grid gap-2">

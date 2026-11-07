@@ -575,6 +575,35 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert version.user_id == member.id
     end
 
+    test "has no Add a version for the questions and the review comments", ctx do
+      questions = pushed!(ctx, "questions", [{"questions.json", ~s({"questions": []})}])
+
+      comments =
+        pushed!(ctx, "review-comments", [{"review-comments.json", ~s({"review_comments": []})}])
+
+      proposal = pushed!(ctx, "proposal", [{"proposal.md", "# Proposal"}])
+
+      for version <- [questions, comments] do
+        {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+        refute has_element?(view, "#artifact-add")
+        refute render(view) =~ "Add a version"
+      end
+
+      {:ok, _type} =
+        Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
+          name: "bid-set",
+          base_view: :structured,
+          json_schema: %{"type" => "object"}
+        })
+
+      bids = pushed!(ctx, "bid-set", [{"bids.json", ~s({"campaign": "Web shop"})}])
+
+      for version <- [proposal, bids] do
+        {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+        assert has_element?(view, "#artifact-add")
+      end
+    end
+
     test "is not found for another work item's version or another workspace", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       other = work_item_fixture(ctx.scope)
@@ -1206,12 +1235,11 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       ])
       |> render_upload("criteria.md")
 
-      assert {:error, {:live_redirect, _to}} =
-               view
-               |> form("#artifact-form",
-                 artifact: %{type: "acceptance-criteria", name: "main", note: ""}
-               )
-               |> render_submit()
+      view
+      |> form("#artifact-form", artifact: %{type: "acceptance-criteria", name: "main", note: ""})
+      |> render_submit()
+
+      assert {:error, {:live_redirect, _to}} = confirm_spend(view)
 
       assert %{stage_state: :running} = Repo.get!(WorkItem, work_item.id)
     end

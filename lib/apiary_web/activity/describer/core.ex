@@ -80,7 +80,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"work_item.undo"), do: gettext("Take in undone")
   def label(:"work_item.close"), do: gettext("Work item closed")
   def label(:"work_item.answer"), do: gettext("Work item questions answered")
-  def label(:"work_item.confirm"), do: gettext("Work item proposal confirmed")
+  def label(:"work_item.confirm"), do: gettext("Work item proposal approved")
   def label(:"work_item.explore_again"), do: gettext("Work item explored again")
   def label(:"work_item.comment"), do: gettext("Work item comment added")
   def label(:"work_item.comment_delete"), do: gettext("Work item comment deleted")
@@ -619,42 +619,52 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # A reply to a review comment: an entry of `work_item.answer` with `"comment"` set and
   # the reply's position (`"reply"`).
   defp said(:"work_item.answer", %{"comment" => true, "reply" => _position}, _actor),
-    do: gettext("Replied to a review comment on a work item's proposal")
+    do: gettext("Replied to a comment on a work item's proposal")
 
-  # A review comment: an entry of `work_item.answer` with `"comment"` set.
+  # A comment on the whole proposal (Run another round with no answer): an entry of
+  # `work_item.answer` with `"comment"` set.
   defp said(:"work_item.answer", %{"comment" => true}, _actor),
-    do: gettext("Wrote a review comment on a work item's proposal")
+    do: gettext("Wrote a comment on a work item's proposal")
 
-  # Send review comments: an entry of `work_item.answer` with the ids of the open review
-  # comments that went to the next run (`"review_comments"`).
+  # Run another round with answers and a comment: the questions answered and the review
+  # comment the comment was kept as (`"review_comment"`).
+  defp said(
+         :"work_item.answer",
+         %{"questions" => [_ | _], "review_comment" => _id} = details,
+         _actor
+       ),
+       do:
+         ngettext(
+           "Answered 1 question and wrote a comment on a work item",
+           "Answered %{count} questions and wrote a comment on a work item",
+           answered(details)
+         )
+
+  # Run another round with only the open review comments: an entry of `work_item.answer`
+  # with the ids of the open review comments that went to the next run
+  # (`"review_comments"`).
   defp said(:"work_item.answer", %{"review_comments" => [_ | _] = ids}, _actor),
     do:
       ngettext(
-        "Sent 1 review comment on a work item's proposal",
-        "Sent %{count} review comments on a work item's proposal",
+        "Sent 1 comment on a work item's proposal",
+        "Sent %{count} comments on a work item's proposal",
         length(ids)
       )
 
-  # The count of questions answered, one where the entry says none.
-  defp said(:"work_item.answer", details, _actor) do
-    count =
-      case details["count"] do
-        count when is_integer(count) and count >= 1 -> count
-        _none -> 1
-      end
-
-    ngettext(
-      "Answered 1 question on a work item",
-      "Answered %{count} questions on a work item",
-      count
-    )
-  end
+  # The questions answered.
+  defp said(:"work_item.answer", details, _actor),
+    do:
+      ngettext(
+        "Answered 1 question on a work item",
+        "Answered %{count} questions on a work item",
+        answered(details)
+      )
 
   defp said(:"work_item.confirm", %{"changed" => [_ | _]}, _actor),
-    do: gettext("Changed a work item's proposal and confirmed it")
+    do: gettext("Changed a work item's proposal and approved it")
 
   defp said(:"work_item.confirm", _details, _actor),
-    do: gettext("Confirmed a work item's proposal")
+    do: gettext("Approved a work item's proposal")
 
   defp said(:"work_item.explore_again", _details, _actor),
     do: gettext("Ran Explore again on a work item")
@@ -1301,4 +1311,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 
   defp days(_other), do: gettext("n/a")
+
+  # The count of questions an entry of `work_item.answer` answered, one where it says none.
+  defp answered(details) do
+    case details["count"] do
+      count when is_integer(count) and count >= 1 -> count
+      _none -> 1
+    end
+  end
 end

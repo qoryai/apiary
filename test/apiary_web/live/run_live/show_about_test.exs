@@ -2,10 +2,15 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
+  import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
+  import Apiary.RunListFixtures, only: [queue_run!: 3]
+  import Apiary.WorkItemsFixtures, only: [work_item_fixture: 2]
 
+  alias Apiary.Repo
   alias Apiary.Runs.Projector
+  alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.RunPageComponents
 
   setup :register_and_log_in_user
@@ -27,6 +32,19 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
     run = run_fixture(scope)
     events_fixture(run, [{1, "run.started", started_data(%{"about" => about})}])
     {:ok, run} = Projector.project(run)
+    run
+  end
+
+  # A run of a work item, from its run of the queue, which reports the work item as its
+  # subject too, as a claim hands it over.
+  defp of_work_item(scope, work_item, subjects) do
+    run =
+      started(scope, %{
+        "kind" => "explore",
+        "subjects" => [%{"type" => "work_item", "ref" => work_item.public_id} | subjects]
+      })
+
+    queue_run!(scope, run, work_item: work_item)
     run
   end
 
@@ -249,6 +267,77 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       refute html =~ "<b>#415"
       refute html =~ "<script>alert"
       refute html =~ "<i>Review"
+    end
+  end
+
+  describe "the header's work item" do
+    @describetag needs: :factory
+
+    test "is first on the line: #N and its title, a link to its page", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = work_item_fixture(scope, %{title: "Add currency to orders"})
+      run = of_work_item(scope, work_item, [])
+      {lv, _html} = page(conn, scope, run)
+      label = "##{work_item.number} Add currency to orders"
+      link = "#run-about > a#run-work-item.q-run-wi:first-child"
+
+      assert has_element?(
+               lv,
+               ~s(#{link}[href="#{workspace_path(scope)}/work/#{work_item.number}"][title="#{label}"])
+             )
+
+      assert has_element?(lv, "#{link} > span.hero-rectangle-stack-micro")
+      assert texts(lv, link) == [label]
+      assert has_element?(lv, "#run-work-item + #run-about-kind", "explore")
+    end
+
+    test "a run with no work item has none", %{conn: conn, scope: scope} do
+      run = started(scope, %{"kind" => "Maintenance"})
+      {lv, _html} = page(conn, scope, run)
+
+      assert has_element?(lv, "#run-about > #run-about-kind:first-child", "Maintenance")
+      refute has_element?(lv, "#run-work-item")
+    end
+
+    test "a work item that moved to another workspace: its title alone, no number, no link",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope, %{title: "Say hello"})
+      run = of_work_item(scope, work_item, [])
+      elsewhere = workspace_fixture(scope.organisation)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [workspace_id: elsewhere.id]
+        )
+
+      {lv, _html} = page(conn, scope, run)
+
+      assert has_element?(lv, ~s(#run-about > span#run-work-item:first-child[title="Say hello"]))
+      assert texts(lv, "#run-work-item") == ["Say hello"]
+      refute has_element?(lv, "a#run-work-item")
+      refute has_element?(lv, "#run-about", "##{work_item.number}")
+    end
+
+    test "leaves its subject out of the line; Details keeps every subject", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = work_item_fixture(scope, %{title: "Add currency to orders"})
+      other = %{"type" => "work_item", "ref" => "wi_0000000000000000"}
+      run = of_work_item(scope, work_item, [other, @ticket])
+      {lv, _html} = page(conn, scope, run)
+
+      refute has_element?(lv, "#run-about", work_item.public_id)
+      assert has_element?(lv, "#run-about > span", "work_item wi_0000000000000000")
+      assert has_element?(lv, "#run-about > span", "ticket ENG-17")
+
+      for name <- ["work_item #{work_item.public_id}", "work_item wi_0000000000000000"] do
+        assert has_element?(lv, "#run-about-facts > dd.q-rail-subj", name)
+      end
+
+      assert has_element?(lv, "#run-about-facts > dd.q-rail-subj", "ticket ENG-17")
     end
   end
 

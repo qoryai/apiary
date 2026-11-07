@@ -479,14 +479,14 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"work_item.review_comment",
-      "write a review comment on the proposal for a work item, reply to one, and send the open ones to Explore's next run. When the work item's stage lists approvers, only those people take it.",
+      "write a comment on the proposal for a work item, reply to one, and send the open ones to Explore's next run. When the work item's stage lists approvers, only those people take it.",
       feature: :factory,
       roles: @members,
       audited:
         {:not,
-         "a review comment, a reply and a send each leave the entry of work_item.answer, with the move's details (Apiary.WorkItems.Moves)"}
+         "a comment, a reply and a send each leave the entry of work_item.answer, with the move's details (Apiary.WorkItems.Moves)"}
     ),
-    Action.new(:"work_item.confirm", "confirm Qory's proposal for a work item",
+    Action.new(:"work_item.confirm", "approve the proposal for a work item",
       feature: :factory,
       roles: @members
     ),
@@ -812,8 +812,8 @@ defmodule Apiary.Access do
      workspace or the organisation, as a page asks whether to show the button at all, the
      role alone answers. A level other than the role allows is `{:error, :forbidden}`. An
      invitation is the organisation's, whichever workspace it grants.
-  9. **The stage's approvers**, for approving a stage's gate, confirming Explore's
-     proposal and the review comments on it (`gate.approve`, `work_item.confirm`,
+  9. **The stage's approvers**, for approving a stage's gate, approving Explore's
+     proposal and the comments on it (`gate.approve`, `work_item.confirm`,
      `work_item.review_comment`), asked of a work item. Where the stage the work item is
      in lists approvers, a person who is not among them is `{:error, :not_approver}`.
      Every person the role allows may with the workflow model off, on a work item the

@@ -381,6 +381,15 @@ defmodule Apiary.Integrations.Description do
     do: get_in(document, ["roles", "source", "targets"]) == true
 
   @doc false
+  # comments?/1 is true when the adapter's source takes comments that members write in
+  # Qory Apiary, so that each gets a `comment` entry in the adapter's feed: when its
+  # source role is set to `comments: true`. It is false when the source role has no
+  # `comments`, and for a description with no source role.
+  @spec comments?(t) :: boolean
+  def comments?(%__MODULE__{document: document}),
+    do: get_in(document, ["roles", "source", "comments"]) == true
+
+  @doc false
   # source_apply/1 is the source role's `apply` items, the templates of the run's work
   # credential from this adapter, as decoded, or nil for a description with none
   # (`Apiary.Integrations.ApplyTemplates`).

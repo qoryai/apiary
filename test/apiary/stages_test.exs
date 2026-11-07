@@ -10,6 +10,7 @@ defmodule Apiary.StagesTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
+  import Apiary.MachineTypesFixtures
 
   alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Audit.Entry
@@ -169,10 +170,19 @@ defmodule Apiary.StagesTest do
                stage_entry: 0,
                loop_entry: nil,
                workflow: "explore-a-ticket",
-               machine_type: "default"
+               machine_type: "standard"
              } = run
 
       assert run.process_version_id == version.id
+
+      # The process picks the default type, and the run has the seeded default's spec.
+      assert run.machine_spec == %{
+               "vcpus" => 2,
+               "memory_mib" => 4096,
+               "disk_gib" => 30,
+               "arch" => "amd64",
+               "virtualization" => false
+             }
 
       # The work items' topic of the workspace gets only its message, which every Work items
       # list reads; the stage's change goes on the work item's topic (`Stages.topic/1`).
@@ -311,6 +321,39 @@ defmodule Apiary.StagesTest do
       assert [%DispatchRun{stage_id: @explore}] = runs(work_item)
     end
 
+    test "take_in_starts/2 reads the run a take in would queue, by the take in's rule", %{
+      scope: scope
+    } do
+      ticket = backlog_ticket_fixture(scope)
+
+      assert Stages.take_in_starts(scope.workspace, ticket.public_id) ==
+               {:run, "explore-a-ticket"}
+
+      save!(scope, [
+        explore_stage(%{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]})
+      ])
+
+      assert Stages.take_in_starts(scope.workspace, ticket.public_id) == :none
+
+      # The work item a take in again brings back: its version of the input counts.
+      work_item = take_in!(scope)
+      item = Repo.get!(Apiary.Sources.Item, work_item.item_id)
+
+      {:ok, _version} =
+        Artifacts.push(
+          {:person, scope},
+          work_item,
+          "acceptance-criteria",
+          [%{filename: "criteria.md", binary: "- The price is the sale price."}],
+          stage_id: @explore
+        )
+
+      assert Stages.take_in_starts(scope.workspace, item.public_id) ==
+               {:run, "explore-a-ticket"}
+
+      assert Repo.aggregate(WorkItem, :count) == 1
+    end
+
     test "waits for a required input", %{scope: scope} do
       save!(scope, [
         explore_stage(%{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]})
@@ -335,6 +378,154 @@ defmodule Apiary.StagesTest do
       assert {:ok, %WorkItem{stage_state: :running}} = Stages.resume(work_item)
       assert [%{version: %{number: 1, writer: :person, approvals: []}}] = Stages.inputs(work_item)
       assert [%DispatchRun{workflow: "explore-a-ticket"}] = runs(work_item)
+    end
+  end
+
+  describe "the machine type of a queued run" do
+    test "is the type the entry picks, with its spec, kept after the type changes", %{
+      scope: scope
+    } do
+      large = machine_type_fixture(name: "large", disk_gib: 60)
+
+      save!(scope, [
+        stage(@explore, "Explore", [%{"workflow" => "explore-a-ticket", "machine" => "large"}])
+      ])
+
+      work_item = take_in!(scope)
+      assert [run] = runs(work_item)
+      assert run.machine_type == "large"
+      assert run.machine_spec == spec(%{disk_gib: 60})
+
+      # A later change of the type changes no queued run.
+      large |> Ecto.Changeset.change(vcpus: 8) |> Repo.update!()
+      assert Repo.get!(DispatchRun, run.id).machine_spec == spec(%{disk_gib: 60})
+    end
+
+    test "is the document's type for an entry that picks none", %{scope: scope} do
+      machine_type_fixture(name: "large")
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "large",
+        "stages" => [stage(@explore, "Explore", [%{"workflow" => "explore-a-ticket"}])]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+
+      assert [%DispatchRun{machine_type: "large", machine_spec: spec}] =
+               scope |> take_in!() |> runs()
+
+      assert spec == spec()
+    end
+
+    test "is the default type for a type deleted after the save", %{scope: scope} do
+      large = machine_type_fixture(name: "large")
+
+      save!(scope, [
+        stage(@explore, "Explore", [%{"workflow" => "explore-a-ticket", "machine" => "large"}])
+      ])
+
+      Repo.delete!(large)
+
+      assert [%DispatchRun{machine_type: "standard", machine_spec: %{"vcpus" => 2}}] =
+               scope |> take_in!() |> runs()
+    end
+  end
+
+  describe "whether a run is a run of Explore" do
+    # No commit or file of the Qory harness kept, as before its first read.
+    defp no_harness_kept! do
+      {_count, _rows} = Repo.delete_all("qory_harness_heads")
+      {_count, _rows} = Repo.delete_all("qory_harness_files")
+      :ok
+    end
+
+    test "is kept when the run is queued, so its end does not wait on the stored harness files",
+         %{scope: scope} do
+      work_item = take_in!(scope)
+      assert %DispatchRun{explore: true, workflow: "explore-a-ticket"} = newest_run(work_item)
+
+      # The window before the first read of the Qory harness: no files are kept.
+      no_harness_kept!()
+      assert Stages.explore_workflow(scope.workspace) == nil
+      assert Stages.explore_run?(newest_run(work_item))
+
+      work_item = end_run!(work_item, understood_result())
+      assert work_item.stage_state == :at_gate
+      assert [%{stage_id: @explore}] = versions(work_item, "proposal")
+    end
+
+    test "is not known at the queue before the first read, nor after it while none is kept",
+         %{scope: scope} do
+      no_harness_kept!()
+
+      assert Stages.explore_at_queue("explore", "explore-a-ticket", scope.workspace.id) == nil
+      assert Stages.explore_at_queue("explore", nil, scope.workspace.id)
+      refute Stages.explore_at_queue("build", "explore-a-ticket", scope.workspace.id)
+
+      run = %DispatchRun{
+        step: "explore",
+        workflow: "explore-a-ticket",
+        workspace_id: scope.workspace.id
+      }
+
+      assert Stages.explore_run?(run) == nil
+      assert Stages.known_explore(run) == nil
+    end
+
+    test "not known, leaves the end of the run for later, and is read once the files are kept",
+         %{scope: scope} do
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+      no_harness_kept!()
+
+      # A run queued before the first read, its record with no answer, which ended lost.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [explore: nil, state: :ended, end_cause: :lost]
+        )
+
+      assert {:ok, []} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      refute escalation(work_item)
+      assert %DispatchRun{explore: nil} = Repo.get!(DispatchRun, run.id)
+
+      # The first read keeps the files: the end is read as a run of Explore that stopped.
+      {:ok, _commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
+
+      assert {:ok, [_told]} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %DispatchRun{explore: true} = Repo.get!(DispatchRun, run.id)
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+    end
+
+    test "reads the commit the workspace's harness settings choose, not main's",
+         %{scope: scope} do
+      files =
+        Map.new(Apiary.QoryHarnessFixture.files(), fn {path, content} ->
+          {path, String.replace(content, "explore-a-ticket", "explore-v2")}
+        end)
+
+      Apiary.QoryHarnessFixture.serve!(files, tags: ["v2"])
+      {:ok, _row} = Apiary.Stacks.Sources.choose(scope, {:qory, {:tag, "v2"}})
+
+      assert Stages.explore_workflow(scope.workspace) == "explore-v2"
+      assert Processes.qory_workflows(Apiary.Harnesses.Qory.current()) == ["explore-a-ticket"]
+    end
+
+    test "reads the newest commit kept where the chosen commit's files are not kept",
+         %{scope: scope} do
+      {:ok, row} =
+        Apiary.Stacks.Sources.choose(
+          scope,
+          {:qory, {:commit, Apiary.QoryHarnessFixture.commit()}}
+        )
+
+      row
+      |> Ecto.Changeset.change(version_name: String.duplicate("ab", 20))
+      |> Repo.update!()
+
+      assert Apiary.Harnesses.Qory.workspace_commit(scope.workspace) == nil
+      assert Stages.explore_workflow(scope.workspace) == "explore-a-ticket"
     end
   end
 
@@ -1032,6 +1223,68 @@ defmodule Apiary.StagesTest do
         end)
 
       assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
+    end
+  end
+
+  describe "the end of a run of a workflow other than Explore" do
+    test "with a verdict alone, waits for a question an earlier run of the take in left open",
+         %{scope: scope} do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      work_item = take_in!(scope) |> end_run!(questions_result(["Which basket?"]))
+      assert work_item.stage_state == :waiting_answers
+
+      # The next run of the take in starts while the question is open.
+      {:ok, _run} = Repo.transact(fn -> Stages.next_run(work_item.id, work_item.take_in) end)
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      assert [%DispatchRun{take_in: 1}, %DispatchRun{take_in: 1}] = runs(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+
+      assert work_item.stage_state == :waiting_answers
+      assert escalation(work_item) == nil
+    end
+
+    test "with a verdict, does not wait for a question an earlier take in left open", %{
+      scope: scope
+    } do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      work_item = work_item |> reload() |> end_run!(questions_result(["Which basket?"]))
+      assert work_item.stage_state == :waiting_answers
+
+      {:ok, _closed} = WorkItems.close(scope, reload(work_item))
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      assert %WorkItem{take_in: 2} = work_item = reload(work_item)
+
+      # The run of take in 2 pushes `passed` and a version of the questions that keeps
+      # take in 1's question open.
+      work_item =
+        end_run!(work_item, fn run, registered ->
+          verdict("passed").(run, registered)
+          {_version, document} = Apiary.Explore.Questions.newest(reload(work_item))
+
+          {:ok, _version} =
+            Artifacts.push(
+              {:run, run},
+              reload(work_item),
+              "questions",
+              [Apiary.Explore.Questions.file(document)],
+              name: "main",
+              stage_id: run.stage_id
+            )
+        end)
+
+      assert %DispatchRun{take_in: 2} = run = newest_run(work_item)
+      pushed = Enum.find(versions(work_item, "questions"), &(&1.run_id == run.id))
+
+      assert %{"questions" => [%{"id" => "q1", "state" => "open"}]} =
+               Stages.Artifacts.read_json(pushed)
+
+      assert work_item.stage_state == :at_gate
     end
   end
 

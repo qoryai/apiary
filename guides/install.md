@@ -681,6 +681,43 @@ Qory Apiary reads a public harness repository from its host over HTTPS, from pub
 addresses only. Allow the Qory Apiary server outbound HTTPS to each host your harnesses
 use, such as `github.com:443`.
 <!-- /feature -->
+<!-- feature: factory -->
+
+### The Qory harness
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `QORY_HARNESS_URL` | `https://github.com/qoryai/harness` | The https address of the Qory harness's git repository, which a workspace of a Qory type starts with. Its host must serve it to anyone. Not set, or empty, is the default. |
+| `QORY_BUILTIN_HARNESS_URL` | `https://github.com/qoryai/qory` | The https address of the git repository of the built-in harness, whose `examples/hello` on `main` the run of a test work item composes. Its host must serve it to anyone. Not set, or empty, is the default. |
+
+The Qory Apiary release contains no copy of the Qory harness. Qory Apiary reads the
+repository over git's HTTPS protocol, as `git ls-remote` and `git fetch` read it, from
+public addresses only:
+
+- At boot and every 5 minutes, it reads the newest commit of `main`, and of each branch
+  that a workspace's harness settings follow, and keeps that commit's files in the
+  database. The pages read only the kept files, so a restart or an outage of the host
+  leaves them as they were.
+- A new workspace reads `main`. If the read fails, the workspace is not made.
+- After a run on the Qory harness is queued, Qory Apiary reads the harness once. If the
+  host is out of reach or returns `502`, `503` or `504`, the read runs again after 10 s
+  and after 30 s, and the third failure ends the run before it starts. Any other failure
+  ends the run at once.
+- When a machine claims a run of a workspace on the Qory harness, Qory Apiary reads the
+  commit that the branch, tag or commit in the workspace's harness settings is at, and
+  the machine composes the harness at that commit. With none set, the branch is `main`.
+  The run of a test work item reads `main` of `QORY_BUILTIN_HARNESS_URL` the same way.
+  A run at a full commit id makes no read at claim.
+  - If the branch, tag or commit does not exist, the run ends before it starts.
+  - If the read times out, finds no address or connection, or the host returns `429`,
+    `500`, `502`, `503` or `504`, the run stays queued, and it ends if the reads still
+    fail 10 minutes after the first failure.
+  - If the read fails for another cause, the run ends before it starts.
+
+Allow the Qory Apiary server outbound HTTPS to the hosts of both repositories. The values
+are read at boot, so a change takes a restart. After a change of `QORY_HARNESS_URL`, the
+saved harness settings read the new address too.
+<!-- /feature -->
 
 ### Sign-up and invitations
 

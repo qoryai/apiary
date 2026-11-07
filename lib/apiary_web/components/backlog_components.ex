@@ -47,15 +47,22 @@ defmodule ApiaryWeb.BacklogComponents do
     * `:updated_at` - a `DateTime`, when it last changed at the source;
     * `:work_item` - `nil`, or the ticket's work item, a map with `:number` (`nil` for one
       of another workspace), `:state` (an atom: `:undone`, `:closed`, or a state in which
-      it is live, such as `:exploring`), `:path` (its page, or `nil`) and `:finished`,
-      true for a finished one whose ticket has not reopened (`Apiary.WorkItems.Finished`).
+      it is live, such as `:exploring`), `:path` (its page, or `nil`), `:finished`, true
+      for a finished one whose ticket has not reopened (`Apiary.WorkItems.Finished`), and
+      `:elsewhere`, for one of another workspace whose work items the person may read,
+      `%{workspace:}`, that workspace's name, or nil.
 
   The action follows the ticket: an open ticket with no work item has Take in; a live or
   finished work item is its number, a link, or Taken in for one of another workspace; an
-  undone or closed one offers Take in again.
+  undone or closed one offers Take in again. One of another workspace whose work items
+  the person may read says where it is ("In Main"), as its ticket's Take in here is in
+  the ticket over the list; to anyone else it offers Take in here, with no workspace,
+  its title the hint of Take in here over the list (`take_in_block/1`), which has the
+  reader's workspace (`workspace`).
 
   `take_in` and `take_in_again` are what a press does (`phx-click`: an event name or a
-  `Phoenix.LiveView.JS`), sent with the ticket's id as `phx-value-id`.
+  `Phoenix.LiveView.JS`), sent with the ticket's id as `phx-value-id` and the button's id
+  as `phx-value-return`.
   """
   attr :id, :string, required: true, doc: "the row's DOM id"
   attr :ticket, :map, required: true, doc: "the ticket, as above"
@@ -68,7 +75,11 @@ defmodule ApiaryWeb.BacklogComponents do
   attr :now, :any, default: nil, doc: "the time the row is drawn at; now by default"
   attr :selected, :boolean, default: false, doc: "whether the ticket is the one open"
   attr :take_in, :any, default: nil, doc: "Take in's `phx-click`"
-  attr :take_in_again, :any, default: nil, doc: "Take in again's `phx-click`"
+  attr :take_in_again, :any, default: nil, doc: "Take in again's and Take in here's `phx-click`"
+
+  attr :workspace, :string,
+    default: nil,
+    doc: "the name of the reader's workspace, for Take in here's title"
 
   def ticket_row(assigns) do
     ticket = assigns.ticket
@@ -125,46 +136,72 @@ defmodule ApiaryWeb.BacklogComponents do
         <.work_item_link :if={@link} work_item={@ticket.work_item} />
         <.button
           :if={@action == :take_in}
+          id={"#{@id}-take-in"}
           type="button"
           variant="link"
           class="q-bl-take"
           phx-click={@take_in}
           phx-value-id={@ticket.id}
+          phx-value-return={"#{@id}-take-in"}
         >
           {gettext("Take in")}
         </.button>
         <.button
           :if={@action == :again}
+          id={"#{@id}-again"}
           type="button"
           variant="link"
           class="q-bl-take"
           title={again_title(@ticket.work_item)}
           phx-click={@take_in_again}
           phx-value-id={@ticket.id}
+          phx-value-return={"#{@id}-again"}
         >
           {gettext("Take in again")}
         </.button>
+        <.button
+          :if={@action == :here}
+          id={"#{@id}-here"}
+          type="button"
+          variant="link"
+          class="q-bl-take"
+          title={again_hint(:here, @ticket.work_item, @workspace)}
+          phx-click={@take_in_again}
+          phx-value-id={@ticket.id}
+          phx-value-return={"#{@id}-here"}
+        >
+          {gettext("Take in here")}
+        </.button>
+        <span :if={@action == :elsewhere} id={"#{@id}-elsewhere"} class="q-bl-wi">
+          <.icon name="hero-rectangle-stack-micro" class="size-3" />{gettext("In %{workspace}",
+            workspace: @ticket.work_item.elsewhere.workspace
+          )}
+        </span>
       </span>
     </li>
     """
   end
 
-  # Whether a row links its work item (`link`) and which action (`:take_in`, `:again` or
-  # none).
+  # Whether a row links its work item (`link`) and which action (`:take_in`, `:again`,
+  # `:elsewhere`, `:here` or none). A work item of another workspace has no number here:
+  # "In Main" where the reader may read the work items there, else Take in here.
   defp row_view(%{work_item: nil}), do: %{link: false, action: :take_in}
   defp row_view(%{work_item: %{finished: true}}), do: %{link: true, action: nil}
+
+  defp row_view(%{work_item: %{state: state, elsewhere: %{}}}) when state in [:undone, :closed],
+    do: %{link: false, action: :elsewhere}
+
+  defp row_view(%{work_item: %{state: state, number: nil}}) when state in [:undone, :closed],
+    do: %{link: false, action: :here}
 
   defp row_view(%{work_item: %{state: state}}) when state in [:undone, :closed],
     do: %{link: false, action: :again}
 
   defp row_view(%{work_item: _live}), do: %{link: true, action: nil}
 
-  # Take in again's title: the work item's number, or, for a work item of another
-  # workspace, which has none in the row, where it comes back from.
-  defp again_title(%{number: number}) when is_integer(number),
+  # Take in again's title: the work item's number.
+  defp again_title(%{number: number}),
     do: gettext("Brings back work item #%{number}", number: number)
-
-  defp again_title(_elsewhere), do: gettext("Brings back the work item from another workspace")
 
   # The title of a work item of another workspace in its ticket's row.
   defp elsewhere_title, do: gettext("Taken in as a work item of another workspace")
@@ -469,7 +506,14 @@ defmodule ApiaryWeb.BacklogComponents do
           filed_by={false}
         />
         <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
-        <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
+        <.comments
+          id={@id}
+          comments={@comments}
+          now={@now}
+          integration={@integration}
+          item_noun={@item_noun}
+          rendered_comment={@rendered_comment}
+        />
       </div>
     </div>
     """
@@ -498,7 +542,14 @@ defmodule ApiaryWeb.BacklogComponents do
       <div class="q-bl-tk-grid">
         <div class="q-bl-tk-main">
           <div id={"#{@id}-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
-          <.comments id={@id} comments={@comments} now={@now} rendered_comment={@rendered_comment} />
+          <.comments
+            id={@id}
+            comments={@comments}
+            now={@now}
+            integration={@integration}
+            item_noun={@item_noun}
+            rendered_comment={@rendered_comment}
+          />
         </div>
         <div class="q-bl-tk-side">
           <.facts
@@ -542,6 +593,8 @@ defmodule ApiaryWeb.BacklogComponents do
   attr :id, :string, required: true
   attr :comments, :list, required: true
   attr :now, :any, required: true
+  attr :integration, :string, required: true
+  attr :item_noun, :map, required: true
   attr :rendered_comment, :list, required: true
 
   defp comments(assigns) do
@@ -562,28 +615,187 @@ defmodule ApiaryWeb.BacklogComponents do
           <.avatar name={Apiary.ExternalText.line(comment.author)} size="sm" />
           <b><.external_text text={comment.author} /></b>
           <span class="q-bl-when">{Format.time_ago(comment.at, @now)}</span>
+          <.post_state
+            id={"#{@id}-comment-#{comment.id}-post"}
+            comment={comment}
+            source={@integration}
+          />
         </div>
         <div class="q-bl-txt">{render_slot(@rendered_comment, comment)}</div>
+        <.post_failure
+          id={"#{@id}-comment-#{comment.id}-failed"}
+          comment={comment}
+          source={@integration}
+          item_noun={@item_noun}
+          class="q-bl-txt"
+        />
       </div>
     </section>
     """
   end
 
+  ## A member's comment at its source
+
+  @doc """
+  How far the post of a member's comment at its source is, after the comment's time:
+  "· Posting to GitHub", "· Posted to GitHub" with a link to the comment there, or, for a
+  source that takes no comments, that the comment is kept in Qory Apiary alone. Nothing
+  for a comment the source sent, and for one not posted (`post_failure/1`).
+
+  `comment` has `:post_state` (`:posting`, `:posted`, `:not_posted`, `:kept` or nil) and
+  `:url`. `source` is the integration's name, as its adapter's description gives it.
+  """
+  attr :id, :string, required: true
+  attr :comment, :map, required: true, doc: "the comment, as above"
+  attr :source, :string, required: true, doc: "the integration's name, `\"GitHub\"`"
+
+  def post_state(assigns) do
+    ~H"""
+    <%= case @comment[:post_state] do %>
+      <% :posting -> %>
+        <span id={@id} class="q-cmt-post">· {gettext("Posting to %{source}", source: @source)}</span>
+      <% :posted -> %>
+        <span id={@id} class="q-cmt-post">
+          ·
+          <.external_link href={@comment[:url]} class="q-cmt-posted">
+            {gettext("Posted to %{source}", source: @source)}
+          </.external_link>
+        </span>
+      <% :kept -> %>
+        <span id={@id} class="q-cmt-post">
+          · {gettext("Kept in Qory Apiary only: %{source} takes no comments.", source: @source)}
+        </span>
+      <% _other -> %>
+    <% end %>
+    """
+  end
+
+  @doc """
+  A member's comment that was not posted at its source: "Not posted to GitHub:" and why,
+  in one plain reason per failure, and Post again (`post_again`, a `phx-click` sent with
+  the comment's id as `phx-value-comment`) where the page gives it. Nothing for any other
+  comment.
+
+  `comment` has `:post_state`, `:post_failure` and `:comment_id`. `source` is the
+  integration's name; `item_noun` its words for one of its items
+  (`SourceComponents.item/1`).
+  """
+  attr :id, :string, required: true
+  attr :comment, :map, required: true, doc: "the comment, as above"
+  attr :source, :string, required: true, doc: "the integration's name"
+  attr :item_noun, :map, default: nil, doc: "its source's words for its items; nil for ticket"
+  attr :post_again, :any, default: nil, doc: "Post again's `phx-click`; nil draws none"
+  attr :class, :any, default: nil
+
+  def post_failure(%{comment: %{post_state: :not_posted}} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :words,
+        failure_words(assigns.comment[:post_failure], assigns.source, assigns.item_noun)
+      )
+
+    ~H"""
+    <div id={@id} class={["q-cmt-failed", @class]}>
+      <p id={"#{@id}-why"}><.rich text={@words} /></p>
+      <.button
+        :if={@post_again}
+        id={"#{@id}-again"}
+        type="button"
+        phx-click={@post_again}
+        phx-value-comment={@comment.comment_id}
+      >
+        {gettext("Post again")}
+      </.button>
+    </div>
+    """
+  end
+
+  def post_failure(assigns), do: ~H""
+
+  # "Not posted to GitHub:", in bold, and the failure's reason.
+  defp failure_words(failure, source, item_noun) do
+    head = {:b, gettext("Not posted to %{source}:", source: source)}
+    item = SourceComponents.item(item_noun)
+
+    case failure do
+      :item_gone ->
+        rich_gettext("%{not_posted} the %{item} is no longer at %{source}.",
+          not_posted: head,
+          item: item,
+          source: source
+        )
+
+      :not_permitted ->
+        rich_gettext("%{not_posted} the integration has no access to this %{item}.",
+          not_posted: head,
+          item: item
+        )
+
+      :too_long ->
+        rich_gettext("%{not_posted} the comment is longer than %{source} takes.",
+          not_posted: head,
+          source: source
+        )
+
+      :unreachable ->
+        rich_gettext("%{not_posted} %{source} could not be reached.",
+          not_posted: head,
+          source: source
+        )
+
+      :deleted_at_source ->
+        rich_gettext("%{not_posted} the comment was deleted at %{source}.",
+          not_posted: head,
+          source: source
+        )
+
+      _none ->
+        head
+    end
+  end
+
   ## Take in
 
   @doc """
-  Take in for a ticket, over the list and as a page (`ticket/1`'s `take_in`): Take in, a
-  press of which sends `take_in` (`phx-click`, an event name or a `Phoenix.LiveView.JS`)
-  with the ticket's id as `phx-value-id`, and beside it a hint that Take in starts
-  exploring the ticket. To whoever may not take a ticket in, `refused` says why in place
-  of both.
-  """
-  attr :id, :string, required: true, doc: "the row's DOM id"
-  attr :ticket_id, :string, required: true, doc: "the ticket's public id, `\"tk_…\"`"
-  attr :take_in, :any, default: "take_in", doc: "Take in's `phx-click`"
-  attr :refused, :string, default: nil, doc: "why the reader may not take it in; nil if they may"
+  Take in for a ticket, over the list and as a page (`ticket/1`'s `take_in`), in one of
+  three kinds (`kind`):
 
-  def take_in_block(assigns) do
+    * `:take_in` - Take in, and beside it a hint that Take in starts exploring the ticket;
+    * `:again` - for a ticket whose work item of the workspace ended: which work item it
+      is, a link, and how it ended ("Lea closed it on 5 Nov."), then Take in again and a
+      hint that it brings the work item back;
+    * `:here` - for a ticket whose work item of another workspace ended: which work item
+      it is there, how it ended, a link to it there, then Take in here and a hint that it
+      moves the work item to the workspace (`workspace`), with a number there. To a
+      reader who may not read the work items there (no `:elsewhere`), Take in here and a
+      hint without that workspace or number, and no line on the work item.
+
+  A press of the button sends `take_in` (`phx-click`, an event name or a
+  `Phoenix.LiveView.JS`) with the ticket's id as `phx-value-id` and the button's id as
+  `phx-value-return`. To whoever may not take a ticket in, `refused` says why in place of
+  the button and its hint.
+
+  `work_item`, for `:again` and `:here`, is the ticket's work item as
+  `Apiary.Sources.Backlog.get_ticket/2` gives it: `:number` and `:path` here, `:elsewhere`
+  (`%{workspace:, number:, path:}`) for one of another workspace the reader may read,
+  and `:ended` (`%{kind:, at:, by:}`), how it ended.
+  """
+  attr :id, :string, required: true, doc: "the block's DOM id"
+  attr :ticket_id, :string, required: true, doc: "the ticket's public id, `\"tk_…\"`"
+  attr :kind, :atom, default: :take_in, values: [:take_in, :again, :here]
+  attr :take_in, :any, default: "take_in", doc: "the button's `phx-click`"
+  attr :refused, :string, default: nil, doc: "why the reader may not take it in; nil if they may"
+  attr :work_item, :map, default: nil, doc: "`:again` and `:here`: the work item, as above"
+  attr :workspace, :string, default: nil, doc: "`:here`: the name of the reader's workspace"
+  attr :you, :any, default: nil, doc: "the reader's account id, to say \"You\" for them"
+  attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
+
+  attr :item_noun, :map,
+    default: nil,
+    doc: "what its source calls its items (`Apiary.Adapters.item_noun/1`); nil for ticket"
+
+  def take_in_block(%{kind: :take_in} = assigns) do
     ~H"""
     <div id={@id} class="q-bl-ti-act">
       <%= if @refused do %>
@@ -595,6 +807,7 @@ defmodule ApiaryWeb.BacklogComponents do
           variant="primary"
           phx-click={@take_in}
           phx-value-id={@ticket_id}
+          phx-value-return={"#{@id}-button"}
           aria-describedby={"#{@id}-hint"}
         >
           {gettext("Take in")}
@@ -604,6 +817,254 @@ defmodule ApiaryWeb.BacklogComponents do
         </p>
       <% end %>
     </div>
+    """
+  end
+
+  def take_in_block(assigns) do
+    now = assigns.now || DateTime.utc_now()
+    work_item = assigns.work_item
+    item = SourceComponents.item(assigns.item_noun)
+
+    fact = assigns.kind == :again or work_item.elsewhere != nil
+
+    assigns =
+      assign(assigns,
+        fact: fact,
+        is: fact && is_words(assigns.kind, work_item, item),
+        ended: ended_words(work_item.ended, assigns.you, now),
+        elsewhere: work_item.elsewhere,
+        hint: again_hint(assigns.kind, work_item, assigns.workspace),
+        action: take_in_action(assigns.kind)
+      )
+
+    ~H"""
+    <div id={@id} class="q-bl-ti-act q-bl-ti-again">
+      <p :if={@fact} id={"#{@id}-fact"} class="q-bl-ti-fact">
+        <.rich text={@is} /> <span :if={@ended}>{@ended}</span>
+        <.link
+          :if={@kind == :here}
+          id={"#{@id}-open"}
+          navigate={@elsewhere.path}
+          class="q-bl-ti-open"
+        >
+          {gettext("Open work item #%{number} in %{workspace}",
+            number: @elsewhere.number,
+            workspace: @elsewhere.workspace
+          )}
+        </.link>
+      </p>
+      <%= if @refused do %>
+        <p id={"#{@id}-refused"} class="text-[0.8125rem] text-muted">{@refused}</p>
+      <% else %>
+        <.button
+          id={"#{@id}-button"}
+          type="button"
+          variant="primary"
+          phx-click={@take_in}
+          phx-value-id={@ticket_id}
+          phx-value-return={"#{@id}-button"}
+          aria-describedby={"#{@id}-hint"}
+        >
+          {@action}
+        </.button>
+        <p id={"#{@id}-hint"} class="q-bl-ti-hint text-[0.8125rem] text-muted">{@hint}</p>
+      <% end %>
+    </div>
+    """
+  end
+
+  # "This ticket is work item #8.", the number a link to it; "This ticket is work item #10
+  # in Main." for one of another workspace.
+  defp is_words(:again, %{number: number, path: path}, item),
+    do:
+      rich_gettext("This %{item} is work item %{number}.",
+        item: item,
+        number: {:link, path, "#" <> Integer.to_string(number)}
+      )
+
+  defp is_words(:here, %{elsewhere: elsewhere}, item),
+    do:
+      gettext("This %{item} is work item #%{number} in %{workspace}.",
+        item: item,
+        number: elsewhere.number,
+        workspace: elsewhere.workspace
+      )
+
+  # How the work item ended, by whom and on what day: "Lea closed it on 5 Nov."
+  defp ended_words(%{at: %DateTime{} = at} = ended, you, now) do
+    date = Format.day(at, now)
+    by = ended.by
+
+    case {ended.kind, by && by.id == you, by} do
+      {:closed, true, _by} ->
+        gettext("You closed it on %{date}.", date: date)
+
+      {:closed, _other, %{name: name}} ->
+        gettext("%{name} closed it on %{date}.", name: name, date: date)
+
+      {:closed, _other, nil} ->
+        gettext("It was closed on %{date}.", date: date)
+
+      {:undone, true, _by} ->
+        gettext("You undid the take in on %{date}.", date: date)
+
+      {:undone, _other, %{name: name}} ->
+        gettext("%{name} undid the take in on %{date}.", name: name, date: date)
+
+      {:undone, _other, nil} ->
+        nil
+    end
+  end
+
+  defp ended_words(_ended, _you, _now), do: nil
+
+  defp again_hint(:again, %{number: number}, _workspace),
+    do:
+      gettext("Take in again brings back work item #%{number} and starts exploring again.",
+        number: number
+      )
+
+  defp again_hint(:here, %{elsewhere: nil}, workspace),
+    do: gettext("Take in here moves the work item to %{to}, with a %{to} number.", to: workspace)
+
+  defp again_hint(:here, %{elsewhere: elsewhere}, workspace),
+    do:
+      gettext(
+        "Take in here moves work item #%{number} from %{from} to %{to}, with a %{to} number.",
+        number: elsewhere.number,
+        from: elsewhere.workspace,
+        to: workspace
+      )
+
+  # take_in_action/1 is the words of the button of a take in of `kind`, and of the confirm
+  # button of its dialog: Take in, Take in again or Take in here.
+  @doc false
+  @spec take_in_action(:take_in | :again | :here) :: String.t()
+  def take_in_action(:take_in), do: gettext("Take in")
+  def take_in_action(:again), do: gettext("Take in again")
+  def take_in_action(:here), do: gettext("Take in here")
+
+  ## The take in's dialog
+
+  @doc """
+  The dialog a press of Take in, Take in again or Take in here opens before anything
+  starts (`ApiaryWeb.SpendDialog.frame/1`, wide): "Take in this ticket?", the ticket's
+  text and all its comments on the left, which scroll apart from the comment box on the
+  right, and under the box where the comment goes; in the foot, what the take in starts
+  (`line`), Cancel and the action's name. Focus opens on the comment box. The left
+  column's name for a screen reader is the source's word for its items.
+
+  `ask` is the open take in: `:kind` (`:take_in`, `:again` or `:here`), `:ticket` and
+  `:comments` as `ticket/1` takes them, the ticket's `:integration` with `:comments`
+  (whether its source takes members' comments), `:comment`, the comment as typed,
+  `:errors`, the comment's errors, `:line`, rich text, nil where the take in starts no
+  run, and `:return_to`, the id of the button that opened it. The form sends
+  `"take_in_change"` as the comment changes, `"take_in_confirm"` with it, and
+  `"take_in_cancel"` on Cancel, ×, Escape and a click outside the box.
+  """
+  attr :id, :string, default: "take-in-dialog"
+  attr :ask, :map, required: true, doc: "the open take in, as above"
+  attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
+  attr :item_noun, :map, default: nil, doc: "its source's words for its items; nil for ticket"
+
+  attr :collection_noun, :map,
+    default: nil,
+    doc: "its source's words for its collections; nil for collection"
+
+  slot :rendered_body, doc: "the ticket's text, through `SourceComponents.body/1`"
+  slot :rendered_comment, doc: "a comment's text, given the comment, through `body/1`"
+
+  def take_in_dialog(assigns) do
+    %{ticket: ticket} = ask = assigns.ask
+    now = assigns.now || DateTime.utc_now()
+    integration = ticket.integration.name
+    item = SourceComponents.item(assigns.item_noun)
+
+    assigns =
+      assign(assigns,
+        now: now,
+        ticket: ticket,
+        integration: integration,
+        full_form: shown_full_form(ticket),
+        item: item,
+        title: gettext("Take in this %{item}?", item: item),
+        action: take_in_action(ask.kind),
+        meta:
+          gettext("%{name} filed this %{filed_ago} · updated %{updated_ago}",
+            name: Apiary.ExternalText.line(ticket.filer.name),
+            filed_ago: Format.time_ago(ticket.filed_at, now, case: :inline),
+            updated_ago: Format.time_ago(ticket.updated_at, now, case: :inline)
+          ),
+        where:
+          if(Map.get(ticket.integration, :comments),
+            do:
+              gettext(
+                "Posted as a comment on %{ticket} in %{source}, with your name. On a public %{collection}, anyone can read it.",
+                ticket: shown_full_form(ticket),
+                source: integration,
+                collection: SourceComponents.collection(assigns.collection_noun)
+              ),
+            else:
+              gettext("Kept in Qory Apiary only: %{source} takes no comments.",
+                source: integration
+              )
+          )
+      )
+
+    ~H"""
+    <ApiaryWeb.SpendDialog.frame
+      id={@id}
+      title={@title}
+      action={@action}
+      return_to={@ask.return_to}
+      describedby={@ask.line && "#{@id}-line"}
+      body_label={@item}
+      top={40}
+      width="1180px"
+      confirm="take_in_confirm"
+      cancel="take_in_cancel"
+      change="take_in_change"
+      focus={"#{@id}-comment"}
+    >
+      <div id={"#{@id}-ticket"} class="q-ti-read">
+        <div class="q-bl-tb">
+          <.integration_tile name={@integration} class="q-bl-src" />
+          <span class="q-bl-key" title={@full_form}><.external_text text={@full_form} /></span>
+        </div>
+        <h3 class="q-bl-h"><.external_text text={@ticket.title} /></h3>
+        <p class="q-bl-meta">{@meta}</p>
+        <.facts
+          id={"#{@id}-ticket"}
+          ticket={@ticket}
+          collection_noun={@collection_noun}
+          filed_by={false}
+        />
+        <div id={"#{@id}-ticket-text"} class="q-bl-text">{render_slot(@rendered_body)}</div>
+        <.comments
+          id={"#{@id}-ticket"}
+          comments={@ask.comments}
+          now={@now}
+          integration={@integration}
+          item_noun={@item_noun}
+          rendered_comment={@rendered_comment}
+        />
+      </div>
+      <:side>
+        <.input
+          id={"#{@id}-comment"}
+          name="comment"
+          type="textarea"
+          value={@ask.comment}
+          label={gettext("Comment")}
+          optional
+          hint={@where}
+          errors={@ask.errors}
+          debounce="300"
+          class="q-ti-box"
+        />
+      </:side>
+      <:foot_line :if={@ask.line}><.rich text={@ask.line} /></:foot_line>
+    </ApiaryWeb.SpendDialog.frame>
     """
   end
 

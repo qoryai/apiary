@@ -43,7 +43,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       * Save a basket for later: Explore running, its first run waiting for a machine,
         on the trial version;
       * Checkout total ignores the voucher after a reload: Explore at its gate, with
-        version 2 of its proposal, whose run replied to the review comment Dana wrote on
+        version 2 of its proposal, whose run replied to the comment Dana wrote on
         version 1 and closed it;
       * Search returns no results for words with umlauts: Explore approved by Dana,
         Shape at its gate;
@@ -764,7 +764,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     %{status: :confirm, step: %{attempt: attempt}} =
       Explore.current(work_item, DateTime.utc_now())
 
-    ok!(WorkItems.answer(ctx.dana, work_item, attempt, @comment), "a review comment")
+    ok!(WorkItems.answer(ctx.dana, work_item, attempt, @comment), "a comment")
     record_result!(ctx, work_item, {:proposal, proposal(work_item.title, :updated), :reply})
     current(ctx.dana, work_item)
   end
@@ -1068,10 +1068,14 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   # The run's harness walk as the walk's job leaves it for a target with a root harness
   # file: resolved, from that file. The preview runs no walk job.
-  defp walked_file!(%DispatchRun{id: id}) do
+  defp walked_file!(%DispatchRun{id: id, workspace_id: workspace_id}) do
     {1, _rows} =
       Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^id),
-        set: [state: :resolved, origin: :file, workflow: Stages.explore_workflow()]
+        set: [
+          state: :resolved,
+          origin: :file,
+          workflow: Stages.explore_workflow(workspace_id)
+        ]
       )
   end
 

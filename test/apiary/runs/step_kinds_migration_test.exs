@@ -100,7 +100,7 @@ defmodule Apiary.Runs.StepKindsMigrationTest do
 
     assert validated?()
 
-    for {kind, step} <- Enum.with_index(Step.kinds() -- ["fetch"], 2),
+    for {kind, step} <- Enum.with_index(~w(compose image build setup join wall push), 2),
         do: assert({:ok, _} = insert(run, step, kind))
 
     assert kinds(run) == ~w(fetch compose image build setup join wall push)

@@ -81,6 +81,7 @@ defmodule Apiary.Sources.WireTest do
       body_format: comment["body_format"],
       created_at: time(comment["created_at"]),
       updated_at: time(comment["updated_at"]),
+      comment_id: comment["comment_id"],
       deleted: Map.get(comment, "deleted", false),
       truncated: Map.get(comment, "truncated", [])
     }
@@ -117,7 +118,8 @@ defmodule Apiary.Sources.WireTest do
 
     test "every body of source-item-comments/ is accepted and read as written, raw or decoded" do
       paths = fixtures("source-item-comments/*.json")
-      assert length(paths) == 4
+      assert length(paths) == 5
+      assert "source-item-comments/code-host-comment-id.json" in paths
 
       for path <- paths do
         expected = expected_comments(json(path))
@@ -187,7 +189,8 @@ defmodule Apiary.Sources.WireTest do
       items = fixtures("invalid/source-items-*.json")
       comments = fixtures("invalid/source-item-comments-*.json")
       assert length(items) == 22
-      assert length(comments) == 2
+      assert length(comments) == 3
+      assert "invalid/source-item-comments-comment-id-upper-case.json" in comments
 
       for name <- ~w(comment-count-above-maximum title-nul created-at-leap-second
                      created-at-hour-24 created-at-minute-60 url-user-information
@@ -202,6 +205,85 @@ defmodule Apiary.Sources.WireTest do
       for path <- comments do
         assert Wire.comments(fixture(path)) == :error, path
         assert Wire.comments(json(path)) == :error, path
+      end
+    end
+  end
+
+  describe "a failure report" do
+    test "every body of changes-failed/ is read as written, raw or decoded" do
+      paths = fixtures("changes-failed/*.json")
+
+      assert Enum.sort(paths) ==
+               ~w(changes-failed/not-permitted.json changes-failed/unreachable.json)
+
+      for path <- paths do
+        body = json(path)
+
+        expected =
+          {:ok,
+           %{
+             time: time(body["time"]),
+             comment_id: body["comment_id"],
+             reason: String.to_existing_atom(body["reason"])
+           }}
+
+        assert Wire.failed(fixture(path)) == expected, path
+        assert Wire.failed(body) == expected, path
+      end
+    end
+
+    test "every invalid one is refused" do
+      paths = fixtures("invalid/changes-failed-*.json")
+      assert length(paths) == 2
+
+      for path <- paths do
+        assert Wire.failed(fixture(path)) == :error, path
+        assert Wire.failed(json(path)) == :error, path
+      end
+    end
+
+    test "has exactly its four members, each in range" do
+      good = json("changes-failed/not-permitted.json")
+
+      for reason <- ~w(item_gone not_permitted too_long unreachable) do
+        assert {:ok, %{reason: atom}} = Wire.failed(%{good | "reason" => reason})
+        assert Atom.to_string(atom) == reason
+      end
+
+      for bad <- [
+            Map.put(good, "connection_id", "ac_f1xt0re000000000"),
+            Map.delete(good, "time"),
+            Map.delete(good, "reason"),
+            %{good | "version" => 2},
+            %{good | "version" => "1"},
+            %{good | "time" => "2026-10-15T12:00:00.5Z"},
+            %{good | "comment_id" => "sc_7K2M9Q4V1X8Z3C5D"},
+            %{good | "comment_id" => "sc_7k2m9q4v1x8z3c5"},
+            %{good | "comment_id" => "sc_7k2m9q4v1x8z3c5u"},
+            %{good | "comment_id" => nil},
+            %{good | "reason" => "deleted_at_source"},
+            %{good | "reason" => "Item_gone"},
+            %{good | "reason" => nil},
+            [],
+            "{",
+            nil
+          ] do
+        assert Wire.failed(bad) == :error, inspect(bad)
+      end
+    end
+  end
+
+  describe "a comment's comment_id" do
+    test "is read when given, a member's comment's id, and nil when left out" do
+      id = "sc_7k2m9q4v1x8z3c5d"
+
+      assert {:ok, %{comments: [%{comment_id: ^id}]}} =
+               Wire.comments(set_of(Map.put(comment(), "comment_id", id)))
+
+      assert {:ok, %{comments: [%{comment_id: nil}]}} = Wire.comments(set_of(comment()))
+
+      for bad <- ["sc_7K2M9Q4V1X8Z3C5D", "cm_7k2m9q4v1x8z3c5d", "sc_", "", nil, 1] do
+        refute comment_ok?(Map.put(comment(), "comment_id", bad)), inspect(bad)
       end
     end
   end

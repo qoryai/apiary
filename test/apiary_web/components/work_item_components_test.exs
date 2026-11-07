@@ -93,8 +93,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     for {status, owner, ended_by, words, mark} <- [
           {:queued, :dana, nil, "Explore is queued", "todo"},
           {:running, :dana, nil, "Explore is running", "run"},
-          {:confirm, :dana, nil, "You confirm next", "wait"},
-          {:confirm, :priya, nil, "Priya confirms next", "wait_other"},
+          {:confirm, :dana, nil, "You approve next", "wait"},
+          {:confirm, :priya, nil, "Priya approves next", "wait_other"},
           {:shape, :priya, nil, "Ready for Shape", "ready"},
           {:closed, :lea, :priya, "Closed by Priya", "closed"},
           {:closed, :lea, :dana, "Closed by you", "closed"},
@@ -161,7 +161,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(html, "h1") == "Checkout totals are a cent off when a discount applies#88"
       assert text(html, "h1 .q-wi-no") == "#88"
-      assert text(html, ".q-wi-meta .q-wi-st") == "You confirm next"
+      assert text(html, ".q-wi-meta .q-wi-st") == "You approve next"
 
       assert attr(html, "a.q-wi-ref", "href") == [@url]
       assert attr(html, "a.q-wi-ref", "title") == ["Open acme/shop#1204 on GitHub"]
@@ -191,7 +191,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, ".q-wi-meta > span:last-child") == "Ppriya@example.com owns it"
       assert attr(html, ".q-wi-meta abbr", "data-tip") == ["priya@example.com"]
       assert attr(html, ".q-wi-meta abbr", "tabindex") == ["0"]
-      assert text(html, ".q-wi-meta .q-wi-st") == "Priya confirms next"
+      assert text(html, ".q-wi-meta .q-wi-st") == "Priya approves next"
       assert count(html, "#work-item-head-close") == 0
       assert count(html, "#work-item-head-copy") == 1
     end
@@ -224,7 +224,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "named Stages; the current stage is the current step" do
       html = track(work_item(%{status: :queued}))
       assert attr(html, "ol", "aria-label") == ["Stages"]
-      assert text(html, "li.q-wi-stage") == "1 Explore 2 Confirm 3 Shape"
+      assert text(html, "li.q-wi-stage") == "1 Explore 2 Approve 3 Shape"
       assert attr(html, "[aria-current]", "id") == ["work-item-stages-explore"]
       assert attr(html, "[aria-current]", "aria-current") == ["step"]
       assert states(html) == ["q-wi-stage-now", "q-wi-stage-todo", "q-wi-stage-todo"]
@@ -282,7 +282,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         })
 
     test "taken in by the reader: the run's icon, the Undo line and Undo" do
-      html = card(queued(@dana, ago(5)))
+      html = card(queued(@dana, ago(5)) |> Map.put(:taken_in_comment, true))
 
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Queued"
@@ -292,18 +292,32 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                "When the run starts, Explore reads the ticket and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket and leaves its comment."
+               "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket, and your comment stays."
 
       assert text(html, "#work-item-step-undo button") == "Undo"
       assert attr(html, "#work-item-step-undo button", "phx-click") == ["undo"]
       assert attr(html, "#work-item-step-undo button", "phx-value-number") == ["341"]
     end
 
-    test "taken in by another member" do
-      html = card(queued(@priya, ago(20 * 60)))
+    test "taken in by another member, with a comment" do
+      html = card(queued(@priya, ago(20 * 60)) |> Map.put(:taken_in_comment, true))
 
       assert text(html, "#work-item-step-undo-line") ==
-               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket and leaves its comment."
+               "Priya took this in 20 minutes ago. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket, and the comment by Priya stays."
+    end
+
+    test "taken in without a comment: no comment in the Undo line, by the reader or another member" do
+      for {by, line} <- [
+            {@dana,
+             "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket."},
+            {@priya,
+             "Priya took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the ticket."}
+          ] do
+        for comment <- [false, nil] do
+          html = card(queued(by, ago(5)) |> Map.put(:taken_in_comment, comment))
+          assert text(html, "#work-item-step-undo-line") == line
+        end
+      end
     end
 
     test "after the uninstall: the reader's line says nothing changes on the ticket" do
@@ -414,12 +428,12 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "the reader's: Your turn, the line, and Read the proposal, no buttons" do
       html = card(work_item(), explore_path: "/acme/main/work/88/explore")
 
-      assert text(html, "h2") == "Confirm"
+      assert text(html, "h2") == "Approve"
       assert text(html, ".q-wi-badge") == "Your turn"
       assert count(html, ".q-wi-step-ask") == 1
 
       assert text(html, "#work-item-step-line") ==
-               "Confirm the proposal, or add review comments and send them."
+               "Approve the proposal, or add a comment and run another round."
 
       refute html =~ "Mock-up"
       assert count(html, ".q-wi-play") == 0
@@ -441,7 +455,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "without the right to act: whose turn it is, no link" do
       html = card(work_item(%{owner: @priya}), can_act: false)
 
-      assert text(html, "#work-item-step-line") == "Priya confirms next"
+      assert text(html, "#work-item-step-line") == "Priya approves next"
 
       assert count(html, ".q-wi-play") == 0
       refute html =~ "Confirm the proposal"
@@ -457,7 +471,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
         )
 
       assert text(acts, "#work-item-step-line") ==
-               "Confirm the proposal, or add review comments and send them."
+               "Approve the proposal, or add a comment and run another round."
 
       assert count(acts, "#work-item-step-explore") == 1
     end
@@ -465,7 +479,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     test "without the right to act: the reader as you, another owner by name, escaped" do
       mine = card(work_item(), can_act: false)
 
-      assert text(mine, "#work-item-step-line") == "You confirm next"
+      assert text(mine, "#work-item-step-line") == "You approve next"
 
       html =
         card(
@@ -475,13 +489,13 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
           can_act: false
         )
 
-      assert html =~ "&lt;b&gt;Ana&lt;/b&gt; confirms next"
+      assert html =~ "&lt;b&gt;Ana&lt;/b&gt; approves next"
       assert count(html, "#work-item-step-line b") == 0
     end
 
     test "without the right to act and without an owner: no line, and no buttons" do
       html = card(work_item(%{owner: nil}), can_act: false)
-      assert text(html, "h2") == "Confirm"
+      assert text(html, "h2") == "Approve"
       assert count(html, "#work-item-step-line") == 0
       assert count(html, "button") == 0
     end
@@ -502,12 +516,12 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, ".q-wi-badge") == "Ready"
 
       assert text(html, ".q-wi-step > p") ==
-               "Mirek confirmed the proposal 3 hours ago. Shape is the plan and its acceptance criteria."
+               "Mirek approved the proposal 3 hours ago. Shape is the plan and its acceptance criteria."
 
       mine = card(work_item(%{status: :shape, confirmed_by: @dana, confirmed_at: ago(3 * 3600)}))
 
       assert text(mine, ".q-wi-step > p") ==
-               "You confirmed the proposal 3 hours ago. Shape is the plan and its acceptance criteria."
+               "You approved the proposal 3 hours ago. Shape is the plan and its acceptance criteria."
     end
 
     test "an ended work item has no card" do
@@ -709,7 +723,7 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       assert text(html, "h2") == "Details"
 
       assert texts(html, "dt") ==
-               ["Owner", "Ticket", "Collection", "Taken in", "First instruction", "Runs"]
+               ["Owner", "Ticket", "Collection", "Taken in", "Runs"]
 
       assert text(html, "#work-item-details-owner .sr-only") == "dana@example.com (you)"
       assert text(html, "#work-item-details-owner abbr span[aria-hidden]") == "D"
@@ -725,7 +739,8 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
 
       assert text(html, "#work-item-details-repository") == "acme/shop"
       assert text(html, "#work-item-details-taken-in") == "14 Oct, by Lea"
-      assert text(html, "#work-item-details-instruction") =~ "Check the rounding in the basket"
+      assert count(html, "#work-item-details-instruction") == 0
+      refute html =~ "Check the rounding in the basket"
       assert text(html, "#work-item-details-runs") == "Attempt 1 (Run 14) · 1 run, ended"
       assert attr(html, "#work-item-details-runs a", "href") == ["/8wonders/main/runs/14"]
     end
@@ -753,7 +768,6 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
                "Ppriya@example.com owns it · G #1204"
 
       assert text(html, "#work-item-details-taken-in") == "14 Oct, by you"
-      assert text(html, "#work-item-details-instruction") == "None"
       assert text(html, "#work-item-details-runs") == "Attempt 2 · 2 runs, 1 running"
     end
 
@@ -772,11 +786,11 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       end
     end
 
-    test "an empty or blank first instruction is none" do
-      for blank <- ["", "   ", "\n\t "] do
-        html = details(work_item(%{first_instruction: blank}))
-        assert text(html, "#work-item-details-instruction") == "None"
-        assert count(html, "#work-item-details-instruction .q-wi-q") == 0
+    test "has no row for a first instruction, whatever the work item has" do
+      for instruction <- [nil, "", "Check the rounding."] do
+        html = details(work_item(%{first_instruction: instruction}))
+        refute "First instruction" in texts(html, "dt")
+        assert count(html, "#work-item-details-instruction") == 0
       end
     end
 
@@ -1338,13 +1352,13 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
     @bug %{one: "bug", other: "bugs"}
 
     test "the step card and its Undo line" do
-      html = card(queued(@dana, ago(5)), item_noun: @bug)
+      html = card(queued(@dana, ago(5)) |> Map.put(:taken_in_comment, true), item_noun: @bug)
 
       assert text(html, ".q-wi-icon-line") ==
                "When the run starts, Explore reads the bug and writes a proposal."
 
       assert text(html, "#work-item-step-undo-line") ==
-               "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the bug and leaves its comment."
+               "You took this in just now. Until a run starts, you can undo the take in: Qory Apiary removes its label from the bug, and your comment stays."
     end
 
     test "the notices, the close question and the end notice" do
@@ -1386,14 +1400,14 @@ defmodule ApiaryWeb.WorkItemComponentsTest do
       html = details(w, collection_noun: %{one: "project", other: "projects"})
 
       assert texts(html, "dt") ==
-               ["Owner", "Ticket", "Project", "Taken in", "First instruction", "Runs"]
+               ["Owner", "Ticket", "Project", "Taken in", "Runs"]
 
       assert text(html, "#work-item-details-repository") == "Shop board"
     end
 
     test "Details and the first tab name it by the word, its first letter in upper case" do
       assert texts(details(work_item(), item_noun: @bug), "dt") ==
-               ["Owner", "Bug", "Collection", "Taken in", "First instruction", "Runs"]
+               ["Owner", "Bug", "Collection", "Taken in", "Runs"]
 
       tabs =
         render_component(&WorkItemComponents.work_item_tabs/1,

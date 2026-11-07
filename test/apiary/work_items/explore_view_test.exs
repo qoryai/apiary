@@ -70,7 +70,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert marks.(question) == expected
     end
 
-    test "a run that asked: its questions by position, then answered, its answers and who gave them",
+    test "a run with questions: its questions by position, then answered, its answers and who gave them",
          ctx do
       asked =
         questions_result([
@@ -1016,7 +1016,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert %{
                status: :questions,
                questions: [
-                 %{id: "q2", number: 2, text: "Which sale?", state: :open, asked_run: ^asked_2}
+                 %{id: "q2", number: 1, text: "Which sale?", state: :open, asked_run: ^asked_2}
                ],
                run: %{questions: [%{public_id: "1", text: "Which sale?"}]},
                earlier_take_ins: [
@@ -1202,5 +1202,144 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       end)
 
     Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
+  end
+
+  describe "a run's decisions in the Thread" do
+    @decision %{
+      "question" => "Which currency does the invoice show?",
+      "options" => [
+        %{"title" => "The order's currency", "explanation" => "What the customer paid."},
+        %{"title" => "The shop's currency", "explanation" => "What the books keep."}
+      ],
+      "option" => "The order's currency",
+      "reason" => "The customer pays in the order's currency."
+    }
+
+    test "a run with one open question and two decided questions wrote one question", ctx do
+      now = DateTime.utc_now()
+
+      %{run: run} =
+        explore_run_fixture(ctx.work_item,
+          result: questions_result(["Which basket?"]),
+          decisions: [@decision, %{@decision | "question" => "Which date does it show?"}],
+          run: timed(now, 9, 8)
+        )
+
+      assert %{run: %{asked: 1}} = WorkItems.explore(ctx.scope, ctx.work_item)
+
+      asked =
+        for %{kind: :asked, run: %{id: id}} = entry <-
+              WorkItems.explore_thread(ctx.scope, ctx.work_item, now),
+            id == run.public_id,
+            do: Enum.map(entry.questions, & &1.text)
+
+      assert asked == [["Which basket?"]]
+    end
+
+    test "a run with a proposal and a decided question wrote no question", ctx do
+      now = DateTime.utc_now()
+
+      %{run: run} =
+        explore_run_fixture(ctx.work_item,
+          result: understood_result(),
+          decisions: [@decision],
+          run: timed(now, 9, 8)
+        )
+
+      assert %{run: %{asked: 0}} = WorkItems.explore(ctx.scope, ctx.work_item)
+
+      kinds =
+        for %{run: %{id: id}, kind: kind} <-
+              WorkItems.explore_thread(ctx.scope, ctx.work_item, now),
+            id == run.public_id,
+            do: kind
+
+      assert :asked not in kinds
+      assert :proposed in kinds
+    end
+
+    test "a run that reopens a changed decision wrote one question", ctx do
+      now = DateTime.utc_now()
+
+      explore_run_fixture(ctx.work_item,
+        result: understood_result(),
+        decisions: [@decision],
+        run: timed(now, 9, 8)
+      )
+
+      {:ok, _work_item} =
+        WorkItems.another_round(ctx.scope, ctx.work_item, 1, %{
+          answers: [%{"id" => "q1", "option" => "The shop's currency", "note" => nil}],
+          comment: nil
+        })
+
+      item = Apiary.StagesFixtures.end_run!(reload(ctx.work_item), &reopen!(&1, &2, "q1"))
+
+      assert %{status: :questions, run: %{asked: 1}} = WorkItems.explore(ctx.scope, item)
+
+      asked =
+        for %{kind: :asked} = entry <- WorkItems.explore_thread(ctx.scope, item, now),
+            do: Enum.map(entry.questions, & &1.text)
+
+      assert asked == [[@decision["question"]]]
+    end
+
+    defp numbers(scope, work_item) do
+      for question <- WorkItems.explore(scope, work_item).questions,
+          into: %{},
+          do: {question.id, question.number}
+    end
+
+    defp send_note(scope, work_item, id) do
+      {:ok, _work_item} =
+        WorkItems.another_round(scope, work_item, 1, %{
+          answers: [%{"id" => id, "option" => nil, "note" => "The main one"}],
+          comment: nil
+        })
+    end
+
+    test "with an open question: the numbers read closed, decisions, then open", ctx do
+      explore_run_fixture(ctx.work_item,
+        result: questions_result(["Which basket?", "Which shelf?"]),
+        decisions: [@decision]
+      )
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q3" => 1, "q1" => 2, "q2" => 3}
+
+      send_note(ctx.scope, ctx.work_item, "q1")
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q1" => 1, "q3" => 2, "q2" => 3}
+    end
+
+    test "a changed decision stays among the decisions, above a closed question", ctx do
+      explore_run_fixture(ctx.work_item,
+        result: questions_result(["Which basket?"]),
+        decisions: [@decision]
+      )
+
+      {:ok, _work_item} =
+        WorkItems.another_round(ctx.scope, ctx.work_item, 1, %{
+          answers: [
+            %{"id" => "q1", "option" => nil, "note" => "The main one"},
+            %{"id" => "q2", "option" => "The shop's currency", "note" => nil}
+          ],
+          comment: nil
+        })
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
+    end
+
+    test "with no open question: the numbers read decisions, then closed", ctx do
+      explore_run_fixture(ctx.work_item,
+        result: questions_result(["Which basket?"]),
+        decisions: [@decision]
+      )
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
+
+      send_note(ctx.scope, ctx.work_item, "q1")
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
+    end
   end
 end

@@ -215,6 +215,7 @@ defmodule ApiaryWeb.PolicyComponents do
   """
   attr :id, :string, required: true
   attr :title, :string, required: true
+  attr :heading, :string, default: "h2", values: ~w(h2 h3), doc: "the title's heading level"
   attr :count, :any, default: nil
   attr :class, :any, default: nil
   attr :rest, :global
@@ -227,7 +228,7 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <section id={@id} class={["q-sect", @class]} aria-labelledby={"#{@id}-h"} {@rest}>
       <header>
-        <h2 id={"#{@id}-h"}>{@title}</h2>
+        <.dynamic_tag tag_name={@heading} id={"#{@id}-h"}>{@title}</.dynamic_tag>
         <span :if={@count} id={"#{@id}-n"} class="q-sect-n">{count_label(@count)}</span>
         <span class="grow"></span>
         {render_slot(@trailing)}

@@ -462,6 +462,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("code_id", "/instance/adapters/" <> _, p), do: p.adapter_code_id
   defp value_of("instance", _path, p), do: p.instance
   defp value_of("type", "/instance/workspace-types/" <> _, p), do: p.workspace_type
+  defp value_of("name", "/instance/machine-types/" <> _, _p), do: "standard"
   # A workspace type's page, where a kind card leads.
   defp value_of("type", "/:org/workspaces/new/:type", p), do: p.workspace_type
   defp value_of("code_id", _path, p), do: p.code_id

@@ -12,6 +12,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- On an integration's page in **Organisation settings › Integrations**, each collection
+  assigned to a workspace, such as a repository, has **Unassign** for owners and admins.
+  **Unassign** shows a confirmation in the row's place, then unassigns the collection:
+  its tickets leave the workspace's Backlog, and work items taken in from it stay where
+  they are. After **Unassign**, the row keeps its place until the list sorts again: when
+  the page loads again, when you open another page, view, search or filter, or after
+  **Assign to workspace**. In a list filtered by workspace, the row leaves the list. A row
+  on a deleted workspace shows “Deleted, purged on” and the day under the workspace's
+  name, and has **Unassign** too.
 - An organisation with no workspace shows the kind cards on its overview,
   `/<organisation>`, under “What will your first workspace do?”, and
   `/<organisation>/workspaces/new` shows them under “What will this workspace do?”.
@@ -40,6 +49,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   On a workspace type's page the canvas is view-only. Workspace settings › Stages and
   Instance settings › Workspace types show the canvas on a **Stages** tab and the other
   settings on a **Details** tab.
+- Each stage has an optional **Description** under its name in the stage editor: plain
+  text of at most 500 characters, with line breaks. A stage's card on the canvas shows it
+  under the name, cut to three lines. A template's `process.yaml` may set `description` on
+  a stage.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
@@ -75,24 +88,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Qory Apiary keeps each step of a run from `dev.qory.run.step_started` and
   `dev.qory.run.step_exited`: a fetch, compose, image, setup, join or wall, with its state,
   exit code and duration, and its log lines under the step's number.
-- A run's Timeline starts with **Prepare machine** and the time the machine took:
-  **Machine requested**, with the pool and the machine type, for a run a node pool
-  claimed; **Machine started**; a row for each step that ran before the session; and
-  **Session started**. Owners, admins and members open a step's row to read its output,
-  the last 64 KiB. A failed step's row is open, with what happened and who fixes it, such
-  as “<step> failed with exit code 1.” and “An admin of Main reads the cause in the step's
-  output.” An instance admin also reads the machine log under **Machine started**; anyone
-  else reads “The instance admin can read the machine's log.” A run that stopped before
-  its session started shows “The run stopped before its session started, at the step
-  <step>.” above the Timeline. The section updates without a reload until the session
-  starts or the run ends.
-- **Prepare machine** ends in **Clean up**, which shows what the node pool reported about
-  removing the run's machine: "Machine removed", "Machine removal requested" or "Removal
-  failed: the machine still exists", with the time of the report. With no report, a run
-  that ended shows "Waiting for a report" for 15 minutes, then "No removal report". A run
-  on a permanent machine shows "Machine stays registered" once it ended. A pool's starter
-  reports at `POST /v1/dispatches/<dispatch_id>/machine-end`, and the audit log records
-  its first report, its first failed removal and the removal.
+- A run's Timeline starts with **Run**, the run as one list with its total time:
+  **Queued** and **Machine requested**, with the pool and the machine type, for a run a
+  node pool claimed; **Machine started**; **Prepare**, a row for each step that ran
+  before the session; **Session started**, which opens to the run's events: open while
+  the run runs, closed once it has ended; **Session finished**; **Outputs saved**, with
+  the artifact versions the run pushed and its push steps; and **Machine removed**. Each
+  row shows its start time and how long it took.
+  Owners, admins and members open a step's row to read its output, the last 64 KiB. A
+  failed step's row is open, with what happened and who fixes it, such as “<step> failed
+  with exit code 1.” and “An admin of Main reads the cause in the step's output.” An
+  instance admin also reads the machine log under **Machine started**. A run that stopped
+  before its session started shows “The run stopped before its session started, at the
+  step <step>.” above the Timeline. The list updates without a reload while the run runs.
+- **Machine removed** shows what the node pool reported about removing the run's machine:
+  "Machine removal requested" or "Removal failed: the machine still exists", or, once the
+  machine is gone, how long the removal took and why: "Run ended" or "Keep-alive lost".
+  With no report, a run that ended shows "Waiting for a report" for 15 minutes, then "No
+  removal report". A run on a permanent machine ends with **Machine stays registered** in
+  place of **Machine removed**. A pool's starter reports at
+  `POST /v1/dispatches/<dispatch_id>/machine-end`, and the audit log records its first
+  report, its first failed removal and the removal.
 - **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as JSON,
   for owners, admins and members who may read the run's log. The diagnostics contain the
   run, its queue entry and claim, how its machine was prepared, its latest 5,000 events at
@@ -295,11 +311,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   line, with **Copy command**.
 - **Harness**, “Which harness do runs in Main use?”, sets the harness of the
   workspace's runs. **About this step** explains what a harness is, which harness a run
-  uses, and the versions. The choices are two: **Qory harness**, with **Version**
-  **Always the latest version**, the newest version this Qory Apiary release ships, which
-  moves on when Qory Apiary is upgraded, and **A fixed version**, disabled with “Named
-  versions come with the first release of the Qory harness.”; or **A harness
-  repository**: a **Repository** from a searchable list of the connected repositories, a
+  uses, and the versions. The choices are two: **Qory harness**, with **Version**,
+  **Always the latest on** a branch, `main` unless you change it, or **A fixed version**,
+  a tag or a commit; or **A harness repository**:
+  a **Repository** from a searchable list of the connected repositories, a
   **Stack** it exports, and **Version**, **Always the latest on** a branch, `main` unless
   you change it, or **A fixed version**, a tag or a commit. Where the repository exports
   no stack, “acme/tools exports no stack. Add a qory.yaml or harness.yaml at its root
@@ -327,10 +342,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and hyphens, and no spaces.”; a harness whose content breaks a rule, with “Correct the
   harness in acme/tools:” and the rule, such as “it has no harness file and no harness is
   set”; and an error in Qory Apiary, with “Qory Apiary could not read acme/tools because
-  of an error in Qory Apiary. Try again. If it repeats, tell an instance admin.” Each run
-  on a branch reads the branch's newest commit when it starts and records it. A
-  workspace with no saved choice uses the Qory harness. Owners and admins choose. The
-  test run keeps its built-in harness.
+  of an error in Qory Apiary. Try again. If it repeats, tell an instance admin.” A run on
+  a branch uses the branch's newest commit: on the Qory harness, the commit when a machine
+  claims the run; on a harness repository, the commit when the run is queued. A workspace
+  with no saved choice uses the Qory harness. Owners and admins choose. The test run
+  keeps its built-in harness.
 - Under the choices, **Repositories** lists the workspace's repositories from
   **Destinations**, each with a **Stack**: **Workspace's harness** until you choose
   another, a stack the workspace's harness exports, or **A stack of another
@@ -401,17 +417,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Test**.
 - When the set-up's test run fails, the **Test run** step shows why and what fixes it, by
   cause, with **Run the test** above it. A test run that stopped while its machine was
-  prepared shows “The test run stopped at <step>.”, the cause line of the run's **Prepare
-  machine** section, and **Open the run's Prepare machine section**. A test run that ended
-  shows how, such as “The test run failed after the session started: <reason>.” or “The
-  test run failed: the run's settings did not pass a check on the machine
-  (image_unknown).”, with **See the run**. A test run that ended before a machine started
-  it shows the fix where the set-up has one: shorten the line in **Say hi to your agent**,
-  choose the model again on the **Model** step, or have an instance admin install the
-  instance's gateway with `QORY_INSTALLED_GATEWAY` where the run's gateway is not allowed
-  to receive its secrets. Else the step shows “No run was recorded, so this step cannot
-  show why.” For a missing model key, the line is “Add a model key on the Model step. The
-  gateway had no model key for the run.”
+  prepared shows “The test run stopped at <step>.”, the cause line of the run's Timeline,
+  and **Open the run's Timeline**. A test run that ended shows how, such as “The test run
+  failed after the session started: <reason>.” or “The test run failed: the run's settings
+  did not pass a check on the machine (image_unknown).”, with **See the run**. A test run
+  that ended before a machine started it shows the fix where the set-up has one: shorten
+  the line in **Say hi to your agent**, choose the model again on the **Model** step, or
+  have an instance admin install the instance's gateway with `QORY_INSTALLED_GATEWAY`
+  where the run's gateway is not allowed to receive its secrets. Else the step shows “No
+  run was recorded, so this step cannot show why.” For a missing model key, the line is
+  “Add a model key on the Model step. The gateway had no model key for the run.”
 - While a workspace's test run has not passed, every link to the workspace and a sign-in
   open its Overview, which shows “Finish setting up Main”, each step with a check once it
   is done and a link to its page, and **Continue: Model**, to the first step that is not
@@ -464,7 +479,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Acme”. Acme shares a harness already.” Where Acme shares the Qory harness, sharing a
   harness repository replaces it. The core shows the setting nowhere.
 - **Workspace settings › Workflow**, for owners and admins, shows the workspace's
-  **Harness** on two lines, such as “Qory harness” over “Always the latest version”, or
+  **Harness** on two lines, such as “Qory harness, stack software” over “main”, or
   the harness the organisation shares where the workspace has no saved choice.
   **Change** opens the two choices of the set-up's **Harness** step, with **Save** and
   **Cancel**. Under the harness, **Repositories** shows the same rows as the Harness
@@ -480,11 +495,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The documentation at `/docs` describes the `factory` feature: its steps in the guides,
   the variables of the instance's node pool and gateway, and its modules in the module
   reference. An instance without `factory` serves none of that text.
-- A run of Explore pushes the proposal, the questions and the review comments as artifacts
+- A run of Explore pushes the proposal, the questions and `review-comments` as artifacts
   of its work item while it runs, through the run API, each with the name `main`.
+- A run records a decision on a question it adds, as a question in the state `decided`
+  of the questions format, and a member may change the decision by answering the
+  question. The run API returns 422 for a push that adds an open question with a
+  decision, decides a question already in the questions, changes, drops or adds a
+  decision later, changes the question or options of a question with a decision, or its
+  context while it stays decided, or gives a decision an option or a run that does not
+  match its question.
 - On a work item's **Explore** tab, the newest proposal is one Markdown text in the
-  frame **Proposal**, under the caption “Version 2”, and after **Confirm** “Version 2.
-  You confirmed it 5 minutes ago.” A confirmed proposal has the badge **Confirmed**. The
+  frame **Proposal**, under the caption “Version 2”, and after **Approve** “Version 2.
+  You approved it 5 minutes ago.” An approved proposal has the badge **Approved**. The
   page draws the text with raw HTML dropped, links only to http, https and mailto
   addresses, and headings two levels down. It shows the PNG, JPEG, GIF, WebP and SVG
   images of the same proposal version, and a reference to a file that version does not
@@ -511,12 +533,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `/work/<number>/ticket`.
 - On a work item's **Explore** tab, step card and **Details**, a text about one run
   links to that run's page, and the link ends with the run's number in the workspace: a
-  line with no attempt number, such as “Explore is running again, with your review
-  comments (Run 14).”, as a whole, and a line with “Attempt 3 (Run 14)” on those words.
-  While a run is queued or running, the top row of the step card reads “Explore”, the
-  state and “Run 14”, “Run 14” is the link, and the sentence under the row has no link
-  and no number. The line under the title, “Explore is running”, links to the run with
-  no number. A run with no page yet, or a reader who may not read the run, sees the same
+  line with no attempt number, such as “Explore is running again, with your comments
+  (Run 14).”, as a whole, and a line with “Attempt 3 (Run 14)” on those words. While a
+  run is queued or running, the top row of the step card reads “Explore”, the state and
+  “Run 14”, “Run 14” is the link, and the sentence under the row has no link and no
+  number. The line under the title, “Explore is running”, links to the run with no
+  number. A run with no page yet, or a reader who may not read the run, sees the same
   text with no link and no number. On an earlier attempt that opens a fold, a click on
   the link opens the run's page and a click beside it opens the fold. In the wait block,
   only the heading links to the run: its sentence is plain, as “Attempt 3 reads the
@@ -536,104 +558,109 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   under **Details**. A proposal's **Sources** on that view are a closed fold under the
   text, as on the tab.
 - The **Questions** frame under the proposal lists the questions that a run of this take
-  in wrote or reopened. For a member who may answer, the first line is “Run with answers
-  starts the next run. That run reads your answers and updates the proposal.” Answered
-  questions fold to one line; the open ones follow under “Open questions”. Each question
-  shows the options the run wrote as cards, up to 4, then the card “Give your own option”,
-  and one field with the placeholder “Add details (optional)”, or “Your option” while
-  **Give your own option** is picked. That field is then required: “Write your option, or
-  pick one above.” A question with no options shows the field alone, with the placeholder
+  in wrote or reopened. For a member who may answer, the first line is “Run another
+  round starts the next run. That run reads your answers and your comment, and updates
+  the proposal.”, or “Run another round starts the next run. That run reads your answers
+  and updates the proposal.” where the tab has no comment field. Answered questions fold
+  to one line; the open ones follow under “Open questions”. Each question shows the
+  options the run wrote as cards, up to 4, then the card “Give your own option”, and one
+  field with the placeholder “Add details (optional)”, or “Your option” while **Give
+  your own option** is picked. That field is then required: “Write your option, or pick
+  one above.” A question with no options shows the field alone, with the placeholder
   “Give your own option”. The option a run recommends has the mark “Recommended by the
   agent” on its card, and on a closed answer that chose it. A reopened question shows
   its earlier answer under “Earlier answer”, a question that follows another links to it
-  with “Follows question 1”, and a withdrawn one has the badge “Withdrawn”. **Run with
-  answers** sends every answer given, with the open review comments, and starts the next
-  run, at any count of runs; a question with no option and no text stays open. With every
-  answer blank, a member who may send review comments (with the workflow model, only the
-  stage's approvers, where the stage lists them) sends the open review comments of this
-  take in instead. With none open, or for any other member, the form shows “Choose an
-  option or write an answer. If nobody knows, say so: Explore reads that too.” Questions
-  that changed after the page showed them get no answer, and the form shows “Check the
-  questions and your answers, then click Run with answers again. The questions changed
-  after the page showed them, so no answer was sent.” While a run runs, and to a person
-  who may not answer, the open questions show as text.
-- **Add review comment**, in the header of the Proposal frame, opens a page with the
-  field “Review comment”, whenever no run runs, also while questions are open. Each card
-  under **Review comments** shows who wrote it and on which version (“You, on version
+  with “Follows question 1”, and a withdrawn one has the badge “Withdrawn”. Under the
+  last question, a member who may write comments, where a proposal exists, has the field
+  **Comment on the whole proposal**. **Run another round** sends every answer given, the
+  comment and the open comments to one run, at any count of runs. It is enabled once an
+  answer, a comment or an open comment the member may send is there. A question with no
+  option and no text stays open. With every answer blank, a member who may send comments
+  (with the workflow model, only the stage's approvers, where the stage lists them)
+  sends the open comments of this take in instead. With none open, or for any other
+  member, the form shows “Choose an option or write an answer. If nobody knows, say so:
+  Explore reads that too.” Questions that changed after the page showed them get no
+  answer, and the form shows “Check the questions and your answers, then click Run
+  another round again. The questions changed after the page showed them, so no answer
+  was sent.” While a run runs, and to a person who may not answer, the open questions
+  show as text.
+- Each card under **Comments** shows who wrote it and on which version (“You, on version
   1”), the badge “Open” or “Reopened”, the text, its replies, and **Reply**; the first
   card is open and the others are folded to their first line; a click on that line opens
-  or folds it. A run's reply closes a review comment with its outcome, “Changed in version
-  2”, “Answered in version 2”, “Declined in version 2” or “Asked as question 4”, and the
-  card turns muted, with a tick. A member's reply opens it again. A review comment and a
-  reply take up to 2,000 characters and start no run. While a run reads an open review
-  comment, its card shows “Attempt 3 (Run 14) reads this review comment.” From 1007 px the
-  cards are in the right column beside the tabs, on every tab, and the column stays in view
-  while the page scrolls; below 1007 px they are at the top of the Proposal frame. Owners,
-  admins and members write review comments and replies; with the `workflow_model` feature,
-  only the stage's approvers, where the stage lists them. Any other member has no **Add
-  review comment** or **Reply**, and the address of either page goes back to the tab. A
-  member who stopped being an approver after the page opened sees “Ask one of this stage's
-  approvers to write review comments on the proposal. Only approvers of the stage can
-  write them.” under the field when they send, with the text kept. A text that breaks a
-  rule shows the fix under the field: “Write your review comment.”, “Write your reply.”,
-  “Shorten the review comment to 2,000 characters or fewer.”, “Shorten the reply to 2,000
-  characters or fewer.”, “Remove the invisible or control characters from the review
-  comment.” or “Remove the invisible or control characters from the reply.”
-- At the gate, under the proposal, **Confirm** confirms it, for a member who may
-  confirm. While review comments are open, a member who may send them first sees “Send
-  review comments starts the next run. That run reads your review comments and updates
-  the proposal.” (“the review comments” where another member wrote one of them), then
-  **Send review comments**, which starts the next run with every open review comment of
-  this take in, and **Confirm**, beside “Confirm leaves 2 review comments unread.” With
-  the workflow model, where the stage lists approvers, a member who is not one of them
-  sees neither button and neither line. Where the stage lists approvers, the header
-  reads “You confirm next” for a member who may confirm; any other member reads “Dana
-  confirms next”, “Dana or Sam confirms next” or “One of 3 approvers confirms next”, and
-  the step card “Dana confirms the proposal or sends review comments.”, “Dana or Sam
-  confirms the proposal or sends review comments.” or “One of the stage's 3 approvers
-  confirms the proposal or sends review comments.” The Work items list shows the same
-  words on the row, and its **Waiting on you** view, its Confirm band's count and the
-  sidebar's count go to the members who may confirm, not to an owner who is not listed.
-  Elsewhere the header shows the owner as before, “You confirm next” or “Dana confirms
-  next”. A member who stopped being an approver after the page showed the gate, and
-  clicks **Send review comments**, sees “Ask an approver of Explore to act on it.” under
-  the gate, and no run starts. With the workflow model, where the stage lists approvers,
-  only they approve a gate. Every member answers the questions. The access action
-  `work_item.review_comment` covers a review comment, a reply and a send.
-- When **Run with answers**, **Send review comments**, a review comment or a reply sends
-  nothing, the answers or the text stay, and the form shows the fix under it: “Send it
-  again when attempt 3 ends. Attempt 3 (Run 14) started first, so nothing was sent.” when
-  another run started first, and the Add review comment or Reply page stays open; “Copy your
-  text if you need it. You can no longer send this review comment, because the work item
-  changed.” on that page, or “… this reply …”, after a confirm, a close or an undo by
-  another member, and that page has no button to send it; “Try again in a minute. The
-  artifact store cannot be reached.”; “Check the page, then send again. The work item
-  changed after the page showed it, so nothing was sent.” (the questions form shows its
-  changed-questions text instead); “Reload the page. Your access or the work item
-  changed, so nothing was sent.”; “Send again. Qory Apiary could not save it.” for any
-  other error. At the run limit, no line shows. **Confirm** shows no line when it fails.
-- A review comment shows in the work item's Thread as “Dana wrote a review comment on
-  the proposal”, or “You wrote a review comment on the proposal”, with its text, and a
-  reply as “Dana replied to a review comment”; in Activity as “Wrote a review comment on
-  a work item's proposal”, “Replied to a review comment on a work item's proposal” and
-  “Sent 2 review comments on a work item's proposal”; and in the Runs list, on the run
-  it started, as “Attempt 2 of 3, after a comment from Dana”. The Thread also shows
-  Explore's runs: “Explore started in attempt 1”, “Explore started again, with the
-  answers, in attempt 2”, “Explore started again, with the review comments, in attempt
-  3” after **Send review comments**, “Explore wrote 2 questions, after 30 s”, “Explore
-  wrote a proposal, after 30 s”, with who confirms next, as in the header (“… You
-  confirm next”), only on the proposal that waits at **Confirm**, and “Explore wrote
-  replies to 2 review comments, after 30 s”, with the icon of a run that ended well, for
-  a run that wrote only replies. A run that wrote nothing shows “Attempt 2 ended without
-  a result”.
-- While a run that **Send review comments** started is queued, the tab shows “Explore is
-  queued again, with your review comments (Run 14).” to the member who sent them, else
-  “…with the review comments (Run 14).”, over “Attempt 3 starts when the workspace's pool
-  takes it. It reads the ticket, the newest proposal and the review comments.” While it
-  runs: “Explore is running again, with your review comments (Run 14).” over “Attempt 3
-  reads the ticket, the newest proposal and your review comments, then writes the next
-  proposal and questions.”; for other members both say
-  “the review comments”.
+  or folds it. A run's reply closes a comment with its outcome, “Changed in version 2”,
+  “Answered in version 2”, “Declined in version 2” or “Asked as question 4”, and the
+  card turns muted, with a tick. A member's reply opens it again. A reply takes up to
+  2,000 characters and starts no run; so does the comment on the whole proposal, which
+  goes with **Run another round**. While a run reads an open comment, its card shows
+  “Attempt 3 (Run 14) reads this comment.” From 1007 px the cards are in the right
+  column beside the tabs, on every tab, and the column stays in view while the page
+  scrolls; below 1007 px they are at the top of the Proposal frame. Owners, admins and
+  members write comments and replies; with the `workflow_model` feature, only the
+  stage's approvers, where the stage lists them. Any other member has no comment field
+  and no **Reply**, and the address of the Reply page goes back to the tab. A member who
+  stopped being an approver after the Reply page opened sees “Ask one of this stage's
+  approvers to write comments on the proposal. Only approvers of the stage can write
+  them.” under the field when they send, with the text kept. A text that breaks a rule
+  shows the fix under the field: “Write your reply.”, “Shorten the comment to 2,000
+  characters or fewer.”, “Shorten the reply to 2,000 characters or fewer.”, “Remove the
+  invisible or control characters from the comment.” or “Remove the invisible or control
+  characters from the reply.”
+- At the gate, under the proposal, **Approve** approves it, for a member who may
+  approve. A member who may write comments sees “Run another round starts the next run.
+  That run reads your comment and updates the proposal.”, the field **Comment on the
+  whole proposal**, **Run another round**, which sends the comment and every open
+  comment of this take in to one run, and **Approve**, beside “Approve leaves 2 comments
+  unread.” while comments are open. **Run another round** is enabled once a comment is
+  written or a comment is open. With the workflow model, where the stage lists approvers,
+  a member who is not one of them sees neither button and neither line. Where the stage
+  lists approvers, the header reads “You approve next” for a member who may approve; any
+  other member reads “Dana approves next”, “Dana or Sam approves next” or “One of 3
+  approvers approves next”, and the step card “Dana approves the proposal or runs
+  another round.”, “Dana or Sam approves the proposal or runs another round.” or “One of
+  the stage's 3 approvers approves the proposal or runs another round.” The Work items
+  list shows the same words on the row, and its **Waiting on you** view, its Approve
+  band's count and the sidebar's count go to the members who may approve, not to an
+  owner who is not listed. Elsewhere the header shows the owner as before, “You approve
+  next” or “Dana approves next”. A member who stopped being an approver after the page
+  showed the gate, and clicks **Run another round**, sees “Ask an approver of Explore to
+  act on it.” under the gate, and no run starts. With the workflow model, where the
+  stage lists approvers, only they approve a gate. Every member answers the questions.
+  The access action `work_item.review_comment` covers the comment on the whole proposal,
+  a reply and a send of the open comments.
+- When **Run another round** or a reply sends nothing, the answers, the comment or the
+  text stay, and the form shows the fix under it: “Send it again when attempt 3 ends.
+  Attempt 3 (Run 14) started first, so nothing was sent.” when another run started
+  first, and the Reply page stays open; “Copy your text if you need it. You can no
+  longer send this reply, because the work item changed.” on that page after an
+  approval, a close or an undo by another member, and that page has no button to send
+  it; “Try again in a minute. The artifact store cannot be reached.”; “Check the page,
+  then send again. The work item changed after the page showed it, so nothing was sent.”
+  (the questions form shows its changed-questions text instead); “Reload the page. Your
+  access or the work item changed, so nothing was sent.”; “Send again. Qory Apiary could
+  not save it.” for any other error. At the run limit, no line shows. **Approve** shows
+  no line when it fails.
+- A comment on the whole proposal shows in the work item's Thread as “Dana wrote a
+  comment on the proposal”, or “You wrote a comment on the proposal”, with its text, and
+  answers sent with a comment as “You answered 1 question and wrote a comment”, and a
+  reply as “Dana replied to a comment”; in Activity as “Wrote a comment on a work item's
+  proposal”, “Answered 2 questions and wrote a comment on a work item”, “Replied to a
+  comment on a work item's proposal” and “Sent 2 comments on a work item's proposal”;
+  and in the Runs list, on the run it started, as “Attempt 2 of 3, after a comment from
+  Dana”. The Thread also shows Explore's runs: “Explore started in attempt 1”, “Explore
+  started again, with the answers, in attempt 2”, “Explore started again, with the
+  comments, in attempt 3” after **Run another round** sends a comment or open comments
+  without answers, “Explore wrote 2 questions, after 30 s”, “Explore wrote a proposal,
+  after 30 s”, with who approves next, as in the header (“… You approve next”), only on
+  the proposal that waits at **Approve**, and “Explore wrote replies to 2 comments,
+  after 30 s”, with the icon of a run that ended well, for a run that wrote only
+  replies. A run that wrote nothing shows “Attempt 2 ended without a result”.
+- While a run that **Run another round** started without answers is queued, the tab
+  shows “Explore is queued again, with your comments (Run 14).” to the member who sent
+  them, else “…with the comments (Run 14).”, over “Attempt 3 starts when the workspace's
+  pool takes it. It reads the ticket, the newest proposal and the comments.” While it
+  runs: “Explore is running again, with your comments (Run 14).” over “Attempt 3 reads
+  the ticket, the newest proposal and your comments, then writes the next proposal and
+  questions.”; for other members both say “the comments”.
 - In **Earlier take ins**, a run's questions are headed “Question” or “Questions”, or
   “Question and answer” or “Questions and answers” where answers show, over “Attempt 1
   (Run 13) wrote this question.” or “Attempt 1 (Run 13) wrote these questions.”
@@ -642,6 +669,25 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   work item whose Explore outcome was stored before this release shows that outcome as
   it was stored.
 - A work item's permanent address, `/work-items/<id>`, opens the work item.
+- Explore's tab has one field, **Comment on the whole proposal**, and one button, **Run
+  another round**. The button sends the answers, the comment and the open comments to
+  one run. A proposal's Background shows its first paragraph, and **Read more** shows
+  the rest. The field replaces the **Add review comment** page; its address,
+  `…/explore?review=new`, opens the **Explore** tab.
+- Explore's tab shows the questions a run chose an option for without a member, as
+  **Decisions**: one line each, with the question, the option the run chose and its
+  reason. Opened, a decision shows the full reason, “Run 2 chose it 25 minutes ago” and
+  the options, with “Chosen by the agent” on the run's option. A member who may answer
+  picks another option or writes one, and **Run another round** sends the change as that
+  member's answer; until then the change shows only to that member, and **Approve** is
+  disabled with “Run another round to apply your change.” A sent change shows
+  **Changed**, the member's option, who changed it and when, and under “Changed from”,
+  the run's option and reason. A note sent with the run's option shows under the
+  options, with who added it and when, and the decision shows no **Changed**. While
+  questions are open, the decisions sit in the questions frame, above the open
+  questions; otherwise in a **Decisions** frame above the comment field. Explore's rows
+  are numbered top to bottom, as they show; **Follows question** and **Asked as
+  question** use those numbers.
 <!-- /feature -->
 - The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
   allows for every run of the workspace, by group, such as **Harness sources**,
@@ -689,6 +735,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   hand: members write them on the **Explore** tab. A type stays on while an artifact of
   the workspace has it, or while the current process or a process version in use includes
   it. A workspace keeps every standard type until a person switches one off.
+- The version page of a questions or review-comments artifact has no **Add a version**
+  button. People answer questions and write comments in the work item's Explore tab.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
 - In the notes for the next run, a comment on Explore's proposal is labelled “Comment ·
@@ -698,9 +746,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of runs and in any round: a stage no longer escalates them at its last round.
 - `GET work-item` returns the run's number in `run.number`.
 <!-- /feature -->
-- A run page shows a run's `push` steps in a section **After the session**, under the
-  timeline, as they happen. A failed push opens its row with the step's output, and it
-  does not count as a failed preparation.
+- The **Run** list in a run's Timeline shows the run's `push` steps under **Outputs
+  saved**, as they happen. A failed push opens its row with the step's output, and it does
+  not count as a failed preparation.
 <!-- feature: factory -->
 - Qory Apiary reads a harness source's templates: `process.yaml` in each of the first 20
   modules that the root `qory.yaml` or `harness.yaml` lists under `exports`, as one of
@@ -710,6 +758,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   page changes.
 - A factory's `process.yaml` can list `artifact_types`; a workspace made from it gets
   those types.
+- **Take in** keeps the comment a member writes as a comment on the ticket, under the
+  member's name, and Explore's input has it. A comment has at most 65,000 characters.
+  Where an adapter sets `comments: true` on its source role, Qory Apiary writes a
+  `comment` entry to the adapter's change feed. The adapter posts the comment on the item
+  at the source and sends it back with its `comment_id`. An adapter that stops trying to
+  post a comment reports it with `POST /v1/work-items/changes/failed`, and the comment is
+  marked not posted with the reason. Posting it again writes a new entry with the same
+  `comment_id`. `GET /v1/work-items/changes` ends a page before its body passes 4 MiB.
 <!-- /feature -->
 - **Instance settings › General** has a **Support address** under Support: an https
   address or an email address where “Contact support” leads for people in an
@@ -719,27 +775,178 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   harness. The first workspace of an organisation starts from that template. A workspace
   with no template uses the `core` stack. Stages and Workflow show the stack: “Harness:
   Qory harness, stack software”.
-- The Qory harness is pinned at harness commit f2b3b4d, which exports the stacks `core`,
-  `software`, and `authoring`, and whose `explore-a-ticket` pushes the proposal, the questions and the
-  replies to review comments as artifacts. On the Qory harness, the Stack select of each
+- The Qory harness exports the stacks `core`, `software`, and `authoring`, and its
+  `explore-a-ticket` pushes the proposal, the questions and the replies in
+  `review-comments` as artifacts. On the Qory harness, the Stack select of each
   repository lists `software`.
 - A workspace made from the software template gets the artifact type `branch`, and every
   standard type stays shown.
 <!-- feature: factory, workflow_model -->
 - Owners and admins can export a workspace's process as process.yaml from the Stages page.
 <!-- /feature -->
+<!-- feature: factory -->
+- A work item whose run waits in the queue while no pool of its workspace is ready
+  shows “Queued: no pool can take the run” in its header. Explore's tab shows why, with
+  the step to take on the Machines page and **Open Machines**, and the step card shows
+  “No pool can take the run.” The page shows the run as queued again once a machine
+  enrols a key that makes a pool ready.
+<!-- /feature -->
+- On a run's page, **Start machine** under **Machine started** shows an instance admin
+  the machine type that the node pool started, such as “Started as (instance admins)
+  example-type”, above the machine log. Nobody else sees it, and the line is absent when
+  the pool reports no type. A pool's starter reports the type as the optional
+  `machine_type` of `POST /v1/dispatches/<dispatch_id>/dispatched`: 1 to 64 printable
+  ASCII characters with no space. Qory Apiary keeps the type from the first `dispatched`
+  of a dispatch. A body with any other value gets `400` `invalid_request`.
+- The **Details** of a run's page show what the run used, after **Duration**: **Peak
+  memory**, the highest peak memory that a session of the run reported, such as
+  “9.8 GiB”, or “9.8 of 16 GiB” for a run on a machine type with 16 GiB; and **CPU
+  time**, the CPU time of the run's sessions added up, written as a duration, such as
+  “12 s”, “41 m 10 s” or “5 h 00 m”. Both cover everything behind the session's wall,
+  such as the agent, a nested Docker daemon and the containers the agent starts.
+  A session's `dev.qory.session.exited` may have both, as the optional
+  `peak_memory_bytes` and `cpu_time_ms`. A row is absent while no session reported its
+  value.
+<!-- feature: factory -->
+- **Instance settings › Machine types** lists the machines that runs start on: each
+  type's name, vCPUs, memory, disk, architecture and virtualization, the workflows that
+  run on it, and the pools that serve it. A new instance has one type, `standard`, the
+  default: 2 vCPUs, 4 GiB, 30 GiB of disk, amd64. An instance admin adds a type with
+  **Add machine type**, edits its spec, makes it the default and deletes it, each after a
+  recent sign-in and each an `instance.configure` entry in the instance's trail. A name
+  has 1 to 64 lowercase letters, digits and hyphens, starts with a letter, is not
+  `default`, and cannot change. The default type, and a type that a workspace's process
+  or a workspace type uses, cannot be deleted; the page lists the workflows that use it.
+<!-- /feature -->
+<!-- feature: factory, workflow_model -->
+- A workflow's **Machine type**, and the **Default machine type** of a workspace and of
+  a workspace type, are lists of the instance's machine types. A save with a type the
+  instance does not have fails with “Choose a machine type from the list.” A harness's
+  `process.yaml` may have only `default` as a machine type; a template with any other
+  is not usable. **Export process.yaml** on Stages writes each machine type as
+  `default`.
+<!-- /feature -->
+<!-- feature: factory -->
+- A run is queued on the type its workflow picks, else on its workspace's default, else
+  on the instance's default, and keeps that type's name and spec, so a later change of
+  the type changes no queued run. A prebuild runs on the default type.
+- A node pool's claim may have `offers`, the machines the pool can start, each a
+  `machine_spec` of the provisioner contract. A pool with offers takes only the runs
+  whose type one of them fits, and its claim answer has the type as `machine` and its
+  spec as `machine_spec`. A pool without offers takes only the runs of the default type,
+  as before, and the runs queued on the type that was the default then, also after
+  another type becomes the default; its answer has neither, as before. Qory Apiary keeps
+  each pool's offers from its latest claim. While any pool has offers, a save on Machine
+  types fails for a type that none of them fits.
+- A work item whose queued run is on a type that no pool of its workspace can start
+  shows “Waiting: no pool can start machine type <name>” in its header.
+- The runs list reads `machine-type:<name>`: the runs queued on that type.
+- On a run's page, **Machine requested** shows the run's type and its spec, such as
+  “large (4 vCPUs, 16 GiB, 60 GiB disk)”, and **Details** show **Machine type** after
+  **Host**.
+<!-- /feature -->
 
 ### Changed
 
+- The run page's **Timeline** shows an overview of the run: its stages, a row for each
+  agent, the agents' messages, the artifact versions the run pushed, failures, denials,
+  and the tool calls that were the only call running when a network connection was made.
+  Each row that has a duration shows it under **Took**, and each row with a line in the
+  **Terminal** links to that line. The **Terminal** lists every tool call.
+- A run's Timeline folds each subagent into one row: its agent type, how long it ran or
+  that it is running, its calls, and the first line of its last message. A finished
+  subagent is closed and a running one is open. The row's chevron shows or hides the
+  subagent's events, which stay in time order among the other agents' events. A link to
+  one of those events, or the subagent's lane button, opens the subagent. The x and
+  Shift+x keys move to the next and previous denied call, including one inside a closed
+  subagent, and open that subagent.
+- A run's Timeline loads more rows only through **Load earlier** and **Load newer**, so j,
+  k and x work on a run with more than 300 items. The buttons count only events, and show
+  no count of 0. The window drops rows only past 600 rows on the page, so **Load newer**
+  skips no row.
+<!-- feature: factory -->
+- The Qory Apiary release contains no copy of the Qory harness. Qory Apiary reads the
+  repository at `QORY_HARNESS_URL`, default `https://github.com/qoryai/harness`, at boot
+  and every 5 minutes, and keeps each commit's files in the database. A test work item
+  reads `examples/hello` on `main` of `QORY_BUILTIN_HARNESS_URL`, default
+  `https://github.com/qoryai/qory`. Allow the server outbound HTTPS to the hosts of both
+  repositories (`guides/install.md`).
+- After a run on the Qory harness is queued, Qory Apiary reads the harness once. If the
+  host is out of reach or returns `502`, `503` or `504`, the read runs again after 10 s
+  and after 30 s, and the third failure ends the run before it starts. Any other failure
+  ends the run at once.
+- When a machine claims a run on the Qory harness, Qory Apiary reads the commit that the
+  branch, tag or commit in the workspace's harness settings is at, and the machine
+  composes the harness at that commit. A run at a full commit id makes no read at claim.
+  A ref the repository does not have ends the run before it starts. If the read times
+  out, finds no address or connection, or the host returns `429`, `500`, `502`, `503` or
+  `504`, the run stays queued, and it ends if the reads still fail 10 minutes after the
+  first failure. A run on a harness repository runs at the commit Qory Apiary read when
+  the run was queued.
+- **Machine requested** on a run's page shows “pool default” only for a run whose pool
+  sent no offers in its claim. A run on a machine type shows the type and its spec.
+- A run's page shows the run's work item first on the line under the title, such as
+  “#1 Add currency to orders”, with a link to the work item's page, as the runs list
+  shows it. That line no longer shows the work item's id as one of the run's subjects;
+  Details still does. For a run with no work item, the line is unchanged.
+<!-- /feature -->
 <!-- feature: workflow_model -->
-- The software workspace type's default stages and texts come from the copy of the Qory
-  harness in the release. Its Explore stage runs `explore-a-ticket` once per run, without
-  a loop of 3 rounds. An instance with no save on Instance settings › Workspace types gets
-  them as one more version of the type. New workspaces copy that version.
+- The hint “It does not choose the machine that runs it.” under **Default machine type**
+  on Stages and on Instance settings › Workspace types is gone. On Stages it reads
+  “Workflows that pick no machine type run on this one. The people who run this Qory
+  Apiary add machine types.” On Workspace types it reads “New workspaces of this type
+  start with this default. Add machine types in Instance settings › Machine types.”
+- The stage form and a member's read-only panel show Inputs, Sequence, Outputs, and Gate in
+  separate boxes, and each workflow's machine type opens from its row. A machine type that
+  a save refuses shows an error on its row.
+- The software workspace type's default stages and texts come from the Qory harness that
+  Qory Apiary reads from its repository. Its Explore stage runs `explore-a-ticket` once
+  per run, without a loop of 3 rounds. An instance with no save on Instance settings ›
+  Workspace types gets them as one more version of the type. New workspaces copy that
+  version.
 - A workspace on a harness repository no longer has `explore-a-ticket` added to the
   workflows it lists: a stack that does not list it gets a cross on Stages, and Explore
   waits. A workspace on the Qory harness gets the same cross when its stack does not
   list it: `core` lists no workflows, so Explore waits there.
+- The copies of the run, explore, diagnostics, integration and provisioner contracts are
+  at integrations commit `e33240a`. A workflow name has at most 55 characters: a
+  lower-case letter, then lower-case letters, digits and hyphens. Stages shows “Write a
+  workflow name of lower-case letters, digits and hyphens that starts with a letter, at
+  most 55 characters.”
+<!-- /feature -->
+<!-- feature: factory -->
+- A run's requests to the run API show the host of `PUBLIC_URL`, such as
+  `qory.example.com`, with no port, in place of `run-api.qory.invalid`: on Network access,
+  on a run's Network access and Timeline, in the runs list's preview, in the workspace
+  overview's To review, and in a repository's “Denied, 14 days”. The `host:` filter, the
+  search and the Host filter find them by either host, and **Copy** copies the host shown.
+<!-- /feature -->
+- An action that starts a run or a build machine opens a confirmation dialog over the
+  page first: the action's name as a question, what starts and whether the run uses
+  model tokens, the action's note where it has one, and Cancel. Run Explore again, the
+  stage card's Run another round and Rebuild open it on every click. Explore's **Run
+  another round** opens it where it sends an answer, a comment or open comments; Run the
+  test opens it for a line that is not blank while no test run is running. Approve,
+  Request changes, Accept as it is, Move back, Check again and Add version open it only
+  where they start a run: a stage with no workflow starts none.
+<!-- feature: factory -->
+- Take in, Take in again and Take in here open a wide dialog before anything starts:
+  the ticket's text and comments on the left, and an optional comment on the right,
+  which is added to the ticket's comments and posted to the ticket at its source where
+  the source takes comments. The work item's Ticket tab shows each such comment as
+  “Posting to <source>”, “Posted to <source>” with a link, or “Not posted to
+  <source>” with the reason and **Post again**, where <source> is the name of the
+  ticket's source. The ticket over the Backlog shows which work item a ticket whose
+  work item ended is, who closed it or undid the take in and when, with **Take in
+  again**; for a work item in another workspace the row reads “In <workspace>” and
+  the button **Take in here**; a person who may not read that workspace sees **Take in
+  here** on the row too, without the workspace. Details no longer has a First
+  instruction row. Beside **Undo**, the work item shows that Qory Apiary removes its
+  label from the ticket, and that the comment of the person who took it in stays,
+  where they wrote one.
+- A person approves a proposal with **Approve**, which replaces **Confirm** on the
+  gate's button, the stage name, the status lines, the Thread, the audit label and the
+  permission.
 <!-- /feature -->
 - A harness document's `bind`, in Workspace settings › Workflow and the set-up's Harness
   step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
@@ -797,7 +1004,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   on a private address, and a host that serves no git repository each fail with a
   separate line: the fix, then the cause. An instance admin allows the Qory Apiary server outbound HTTPS to
   each host the harnesses use, such as `github.com:443`.
-<!-- review: Vito accepts these words before the branch is pushed -->
 - The workspace's **Nodes** page is **Machines**, at `/<organisation>/<workspace>/machines`:
   machines and pools first, then the gateways under the heading **Gateways**. On every
   page a node is a machine, a node pool is a pool, and an instance of a pool is one of
@@ -844,11 +1050,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `dev.qory.session.started` and `dev.qory.session.exited`. A batch with a
   `dev.qory.run.started` whose `opened_by` is absent or `session`, as Forager 0.7.0 sends
   it, gets `400 invalid_request`. Qory Apiary reads runtime events under their
-  `dev.qory.runtime.*` names, and a run's runtime is that of its last session. A run
-  recorded before the upgrade keeps its runtime, cost and log, and its Timeline shows no
-  prompts, turns or results. Do not run `Apiary.Release.rebuild()` after this upgrade: it
-  clears the runtime and cost of those runs, and the command, arguments, folder, image and
-  terminal size.
+  `dev.qory.runtime.*` names, and a run's runtime, command, image and terminal size are
+  those of its last session with a runtime. A run recorded before the upgrade keeps its
+  runtime, cost and log, and its Timeline shows no prompts, turns or results. Do not run
+  `Apiary.Release.rebuild()` after this upgrade: it clears the runtime and cost of those
+  runs, and the command, arguments, folder, image and terminal size.
 - A gateway's address follows the contracts' rule: `https://`, a host name or an IPv6
   address in brackets, an optional port, and nothing after them, at most 300 characters.
   Before, an address could end in a dot and be up to 2,048 characters long. Qory Apiary does
@@ -920,6 +1126,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Account settings, **Connect Qory Apiary**, and Instance settings › Mail and ›
   Configuration accept a sign-in from the last 15 minutes, up from 10: the time a set-up
   pass of the GitHub adapter lasts.
+- A run keeps the runtime, command, image and terminal size of its last session with a
+  runtime when a helper session with no runtime starts or resizes its terminal. A run with
+  only helper sessions shows the values of the first one.
 - A run whose machine never started it stays as a failed run, with its page and id. The
   cause is one of: the pool made no machine, the claim lapsed before the handover, or the
   machine stopped before it started the run. The run page, its preview and the runs list
@@ -930,10 +1139,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the machine (image_unknown).” in place of “did not start: image_unknown”, and for
   `engine_unreachable`, “The machine could not check an earlier run's container
   (engine_unreachable).” Any other code keeps “did not start: <code>”. For a machine of
-  the Qory Pool, the cause line of **Prepare machine** ends with “An instance admin finds
-  the cause in the machine log of the Machine started step.” when the pool made no
-  machine, the machine stopped before it started the run, or the machine did not start the
-  run within 15 minutes.
+  the Qory Pool, the cause line in the **Run** list of the run's Timeline ends with
+  “Contact support with run <id>.” when the pool made no machine, the machine stopped
+  before it started the run, or the machine did not start the run within 15 minutes.
 <!-- feature: factory -->
 - With a private image registry set (`QORY_REGISTRY` and the `registry` feature), Qory
   Apiary sends each prebuild the image address of its target, under the instance and the
@@ -957,13 +1165,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the work item. The upgrade closes every declined work item (Migrations). Activity
   still describes an earlier decline as “Declined a work item”, and its filter no longer
   offers “Work item declined”.
-- At Confirm, the step card shows “Confirm the proposal, or add review comments and send
-  them.” and **Read the proposal**, which opens the **Explore** tab, where **Confirm** is.
-  A reader who may not act reads “You confirm next” or “Dana confirms next”. A person
-  changes a proposal with a comment: **Change**, the edit page with **Confirm changes**,
-  **Show Qory's words**, the caption “Qory shows it as plain text” and the proposal's
-  sections (Complexity, Understanding, In scope, Out of scope, Approach, Not chosen,
-  Facts and sources) are removed. The edit page's address,
+- At Approve, the step card shows “Approve the proposal, or add a comment and run
+  another round.” and **Read the proposal**, which opens the **Explore** tab, where
+  **Approve** is. A reader who may not act reads “You approve next” or “Dana approves
+  next”. A person changes a proposal with a comment: **Change**, the edit page with
+  **Confirm changes**, **Show Qory's words**, the caption “Qory shows it as plain text”
+  and the proposal's sections (Complexity, Understanding, In scope, Out of scope,
+  Approach, Not chosen, Facts and sources) are removed. The edit page's address,
   `/<organisation>/<workspace>/work/<number>/explore/edit`, returns 404. A proposal
   stored before the upgrade has no Markdown text: its frame shows the caption and no
   text.
@@ -975,7 +1183,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The Backlog has two tabs, **Open** and **Taken in**. A ticket closed at its source
   leaves the Backlog: it is in neither tab, and its filter values go with it. Its ticket
   page still opens at its address.
-- Explore's contract follows integrations commit `8c48db84`. A run of Explore returns no
+- Explore's contract follows integrations commit `e33240a`. A run of Explore returns no
   result: `result.schema.json` is removed, and the run pushes `proposal`, `questions` and
   `review-comments` through the run API, where it reads them too. The run's inputs no
   longer have `answers`, `proposal`, `changes` or `run.of`, and `attempt` has no maximum.
@@ -983,14 +1191,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   review comment or a reply. A version of `proposal` is one Markdown file of up to
   256 KiB, PNG, JPEG, GIF, WebP or SVG images, and an optional `sources.json`, at most 10
   files and 5 MiB together; an SVG uses only the elements and attributes that
-  `docs/contract/run-api.md` lists. A question in `questions` has 0 to 4 `options`, each a
-  `title`, an `explanation` and an optional `recommended`, true on at most one option of
-  the question. `questions` and `review-comments` take only the name `main`, and a run's
-  version that changes what members wrote returns `422 invalid_artifact`. A JSON file of a
-  standard type with a key twice in one object returns `422 invalid_artifact`. A push that
-  the end of its run overtakes returns `409 run_ended`, and no version is stored. Explore
-  needs the `workflow_model` feature: without it the run API returns 404, and every run of
-  Explore ends with no result.
+  `docs/contract/run-api.md` lists. A question in `questions` has 0 to 4 `options`, each
+  a `title`, an `explanation` and an optional `recommended`, true on at most one option
+  of the question. `questions` and `review-comments` take only the name `main`, and a
+  run's version that changes what members wrote returns `422 invalid_artifact`. A JSON
+  file of a standard type with a key twice in one object returns `422 invalid_artifact`.
+  A push that the end of its run overtakes returns `409 run_ended`, and no version is
+  stored. Explore needs the `workflow_model` feature: without it the run API returns 404,
+  and every run of Explore ends with no result.
 - The access action `work_item.decline` is removed. **Close work item…** on the run-limit
   card needs `work_item.close`.
 <!-- /feature -->
@@ -1029,6 +1237,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- Where the run's Terminal is hidden from a reader, the run's Timeline, header and
+  Details show no text of the session: no prompt, text, command, argument, tool input or
+  output, subagent message, notification message, or error. Each row keeps its kind,
+  tool, agent, status, times and counts. Before, the run page showed these texts beside
+  the hidden Terminal.
 - A run's page shows “No heartbeat for 47 s”, counted from when the workspace first
   heard of the run, for a running run with no heartbeat after one heartbeat interval.
   Before, the page ended in an Internal Server Error for a run with no event either, and
@@ -1069,6 +1282,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   number, and **Take in again** has the title “Brings back the work item from another
   workspace”. Before, both showed “#” with no number.
 <!-- /feature -->
+- The keyboard shortcuts popover on a run's Timeline tab shows each description beside
+  its key, inside the popover. Before, each description was outside the popover's right
+  edge, one word per line, over the Timeline.
+- The Policy page's Keys panel shows its keys and their descriptions as a plain list, as
+  wide as the panel. Before, the list had a second box inside the panel, with the border,
+  background, shadow and width of the Timeline's keyboard shortcuts popover.
+<!-- feature: factory -->
+- What enforce would deny leaves out a run's requests to the run API, which the gateway
+  handles the same way in observe and enforce. Three places leave them out: the list when
+  you pick enforce on a Policy page, the Policy page's count of attempts with no rule, and
+  **Enforce would deny N destinations** on the Overview. Before, each of the three
+  counted the run API's requests (the host `run-api.qory.invalid`) as a destination
+  enforce would deny.
+<!-- /feature -->
 
 ### Security
 
@@ -1087,15 +1314,74 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   enrolment code's prefix. Before, a token that contained one of them could leave up to
   39 of its 43 characters in the log line.
 - The log filter replaces a run key, `qrk_`, and its signature, and a diagnostics key's
-  enrolment code, `qecd_`. The run page's header and **Prepare machine** show a pool's
-  reason for releasing a machine through the same filter.
+  enrolment code, `qecd_`. The run page's header and the **Run** list in its Timeline
+  show a pool's reason for releasing a machine through the same filter.
 - A prebuild's image is accepted only at the place Qory Apiary sent the prebuild, so one
   organisation's build cannot make another organisation's runs start in its image.
 
 ### Migrations
 
+- `machine_types` (20261107110000): a new table of the instance's machine types, with
+  the type `standard` as the default: 2 vCPUs, 4096 MiB, 30 GiB of disk, amd64, no
+  virtualization.
+- `dispatch_runs`, `dispatches` and `nodes` (20261107110100, 20261107110110 and
+  20261107110120, one table each): nullable columns `dispatch_runs.machine_spec`,
+  `dispatches.machine_type`, `dispatches.machine_spec` and `nodes.offers`. A run queued
+  before them has no spec and runs on the default type. They change no row.
+- `dispatch_runs` (20261107110200): a column `machine_type_was_default`, false by
+  default, true for a run queued on the type that was the default then. It changes no
+  row.
+- `dispatch_runs` and `run_harnesses` (20261107090000): three nullable columns:
+  `dispatch_runs.explore`, whether a queued run is a run of Explore;
+  `run_harnesses.ref_kind`, whether the ref of the run's harness is a branch, a tag or a
+  commit; and `run_harnesses.read_failed_at`, when a claim's read of the run's harness
+  first timed out, found no address or connection, or got `429`, `500`, `502`, `503` or
+  `504`. A check on `ref_kind` scans `run_harnesses` under a lock that blocks reads and
+  writes. It changes no row.
+- `runs` (20261107090010): two nullable columns, `peak_memory_bytes` and `cpu_time_ms`,
+  which the projection fills from each run's session events. It changes no row.
+- `dispatches` (20261107090050 and 20261107090100): a nullable column,
+  `vendor_machine_type`, with a check on its characters. The first migration adds the
+  check without a scan, and the second validates it with a scan that does not block
+  writes. It changes no row.
 - `organisations`: an organisation at the slug `work-items` moves to the first free one of
   `work-items-2`, `work-items-3`, …. A rollback changes no row.
+- `source_item_comments` (20261106130000, 20261106130100 and 20261106130200): four
+  nullable columns for a comment a member writes on a ticket in Qory Apiary: `author_id`,
+  `comment_id` (unique), `post_state` and `post_failure`, with checks on their values and
+  combinations. `external_ref` and `url` may be NULL, for a member's comment not posted at
+  its source. The checks and the key to `users` are added without a scan, and a second
+  migration then validates them with a scan that does not block writes. A third migration
+  builds the two indexes concurrently, outside a transaction and without the migration
+  lock: do not boot two instances at once for this upgrade (Upgrading guide). It changes
+  no existing row. The `down` deletes the members' comments that were never posted at
+  their source.
+- `nodes` (20261106130300): a nullable column, `comments`, which is true when an
+  adapter's source takes the comments members write in Qory Apiary, with a check that
+  scans `nodes` under a lock that blocks reads and writes. It changes no row; each
+  adapter's next start sets it.
+- `adapter_feed` (20261106130400 and 20261106130500): the checks
+  `adapter_feed_kind_check` and `adapter_feed_data_check` take a fifth kind, `comment`,
+  with data up to 400,000 bytes; every other kind keeps the bound of 4,096 bytes. The
+  first migration adds the new checks without a scan, and the second validates them with
+  a scan that does not block writes. It changes no row. To roll back past
+  20261106130400, delete the feed's `comment` entries first: its `down` fails while one
+  exists.
+- `run_steps` (20261106151500 and 20261106151600): the check on `kind` also allows
+  `machine`. The first migration adds the check without a scan, and the second validates
+  it with a scan that does not block writes. It changes no row. A rollback sets `kind` to
+  NULL on each row of kind `machine`.
+- `qory_harness_files` and `qory_harness_heads` (20261106190000): two new tables, with
+  the files of the Qory harness by repository address, commit and path, and the commit
+  each branch or tag was at when it was last read.
+- `stacks` (20261106190100): the check `stacks_version_check` takes `branch`, `tag` and
+  `commit` under both choices, and no longer takes `latest` or `named`. Each saved Qory
+  harness choice at `latest` or `named`, or with no version, becomes the branch `main`,
+  and the `ref` in its document becomes `main`. The document of a target's Qory harness
+  row at `workspace` gets the same `ref`. The new check scans `stacks` under a lock that
+  blocks reads and writes. A rollback turns each Qory harness row at a branch, `main` or
+  another, into `latest`, and the documents keep their `ref`. It stops with an error
+  while a Qory harness row is at a tag or a commit.
 - `runs`: `number` becomes unique per workspace, from a new table `run_counters` with one
   row per workspace that has runs, and the sequence `runs_number_seq` goes. Existing runs
   get new numbers: each workspace's runs are numbered from 1 in the order they were

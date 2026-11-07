@@ -25,8 +25,10 @@ defmodule Apiary.Sources.Backlog do
   # the ticket's organisation, adapter and ref, the key that makes it one per ticket
   # (`work_items` (`organisation_id`, `adapter_id`, `external_ref`)), never the ticket's
   # id: a work item taken in from an earlier record of the same ticket is still its work
-  # item. A work item of another workspace of the organisation shows its state alone, with
-  # no number, page or name of that workspace.
+  # item. A work item of another workspace of the organisation shows its state, and, to a
+  # person who may read the work items there, that workspace's name, its number there and
+  # its page there apart (`elsewhere`), for the Backlog's "In Main" and Take in here; to
+  # anyone else its state alone, with no number, page or name of that workspace.
   #
   # **Views** (`list_tickets/2`): `:open`, the tickets open at their source with no work
   # item, or one undone or closed; `:taken`, the open ones whose work item is live or
@@ -62,7 +64,7 @@ defmodule Apiary.Sources.Backlog do
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Filters
   alias Apiary.Sources.{Comment, Item, Topic}
-  alias Apiary.WorkItems.WorkItem
+  alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
   alias ApiaryWeb.People
 
   # The rows a page holds; the characters a search or a name search holds at most, a
@@ -104,21 +106,45 @@ defmodule Apiary.Sources.Backlog do
   @typedoc """
   The integration a ticket came through, or one the organisation is connected through: its
   adapter's title (`Apiary.Adapters.title/1`) and its public id (`na_…`), the id its
-  page in Organisation settings › Integrations is addressed by.
+  page in Organisation settings › Integrations is addressed by. A ticket's has
+  `comments` too: whether its source takes the comments members write
+  (`Apiary.Nodes.Node`'s `comments`).
   """
-  @type integration :: %{name: String.t(), id: String.t()}
+  @type integration :: %{
+          required(:name) => String.t(),
+          required(:id) => String.t(),
+          optional(:comments) => boolean
+        }
 
   @typedoc """
   A ticket's work item, as a row shows it: its number in the workspace, its state, its
   page in the workspace, and whether it is finished and its ticket has not reopened
-  (`Apiary.WorkItems.Finished`). One of another workspace has its state and `finished`
-  alone.
+  (`Apiary.WorkItems.Finished`). One of another workspace has no number and no page
+  here: `elsewhere` has that workspace's name, the work item's number there and its page
+  there, for a person who may read the work items there (`work_item.read`); nil for one
+  of the scope's workspace, and for one the person may not read. As a ticket opens
+  (`get_ticket/2`), an ended one has `ended`, how it ended (`t:ended/0`); nil for a live
+  one, for one of another workspace the person may not read, and in a row.
   """
   @type work_item :: %{
           number: pos_integer | nil,
           state: Apiary.WorkItems.State.state(),
           path: String.t() | nil,
-          finished: boolean
+          finished: boolean,
+          elsewhere: %{workspace: String.t(), number: pos_integer, path: String.t()} | nil,
+          ended: ended | nil
+        }
+
+  @typedoc """
+  How a ticket's ended work item ended: `:closed` at `at`, by the person `by` where a
+  person closed it (`closed_by_id`), else nil; or `:undone` at `at`, by the person of its
+  latest `:undone` event. A person is their account's id and their short name
+  (`ApiaryWeb.People.short/1`).
+  """
+  @type ended :: %{
+          kind: :closed | :undone,
+          at: DateTime.t() | nil,
+          by: %{id: Ecto.UUID.t(), name: String.t()} | nil
         }
 
   @typedoc "A ticket as the Backlog's list draws it."
@@ -162,17 +188,25 @@ defmodule Apiary.Sources.Backlog do
           truncated: [String.t()]
         }
 
-  @typedoc "A comment as a ticket draws it."
+  @typedoc """
+  A comment as a ticket draws it. A member's comment has its id (`comment_id`, `sc_…`),
+  how far its post at the source is (`post_state`) and why a post failed
+  (`post_failure`), as `Apiary.Sources.Comment` keeps them, and a `url` once posted; a
+  comment the adapter sent has nil for the three.
+  """
   @type comment :: %{
           id: Ecto.UUID.t(),
           author: String.t(),
           author_kind: :person | :bot,
           at: DateTime.t(),
           updated_at: DateTime.t(),
-          url: String.t(),
+          url: String.t() | nil,
           body: String.t(),
           body_format: String.t(),
-          truncated: [String.t()]
+          truncated: [String.t()],
+          comment_id: String.t() | nil,
+          post_state: :posting | :posted | :not_posted | :kept | nil,
+          post_failure: atom | nil
         }
 
   @typedoc "How many tickets each view holds, and in all."
@@ -370,7 +404,7 @@ defmodule Apiary.Sources.Backlog do
     {rows, more} = query |> fetch(sort, :forward, scope) |> Enum.split(@page_size)
 
     %{
-      rows: Enum.map(rows, &row/1),
+      rows: rows(rows, scope),
       next: if(more != [], do: last_cursor(rows, sort)),
       prev: nil,
       first: if(rows == [], do: 0, else: 1)
@@ -392,7 +426,7 @@ defmodule Apiary.Sources.Backlog do
         ahead = count_ahead(query, sort, anchor)
 
         %{
-          rows: Enum.map(rows, &row/1),
+          rows: rows(rows, scope),
           next: if(more != [], do: last_cursor(rows, sort)),
           prev: if(ahead > 0, do: cursor(anchor, sort)),
           first: if(rows == [], do: 0, else: ahead + 1)
@@ -414,7 +448,7 @@ defmodule Apiary.Sources.Backlog do
       last = position(List.last(rows), sort)
 
       %{
-        rows: Enum.map(rows, &row/1),
+        rows: rows(rows, scope),
         next: if(Repo.exists?(beyond(query, sort, :behind, last)), do: cursor(last, sort)),
         prev: cursor(first, sort),
         first: count_ahead(query, sort, first) + 1
@@ -792,7 +826,11 @@ defmodule Apiary.Sources.Backlog do
     path = "/" <> organisation.slug <> "/" <> workspace.slug <> "/work/"
 
     query
-    |> select([item: i, collection: c, adapter: n, work_item: w], %{
+    |> join(:left, [work_item: w], s in Workspace,
+      as: :work_item_workspace,
+      on: s.id == w.workspace_id and s.organisation_id == w.organisation_id
+    )
+    |> select([item: i, collection: c, adapter: n, work_item: w, work_item_workspace: s], %{
       id: i.public_id,
       key: i.key,
       title: i.title,
@@ -801,6 +839,7 @@ defmodule Apiary.Sources.Backlog do
       repository_id: c.id,
       integration_name: coalesce(n.title, n.name),
       integration_id: n.public_id,
+      integration_comments: n.comments,
       filed_by_name: i.filed_by_name,
       filed_by_kind: i.filed_by_kind,
       labels: i.labels,
@@ -814,11 +853,41 @@ defmodule Apiary.Sources.Backlog do
       work_item_number: w.number,
       work_item_state: w.state,
       work_item_finished: finished(w, i),
-      path: ^path
+      work_item_workspace: s.name,
+      work_item_workspace_slug: s.slug,
+      work_item_workspace_id: s.id,
+      path: ^path,
+      organisation_path: ^("/" <> organisation.slug <> "/")
     })
   end
 
-  defp row(selected) do
+  # The rows as a page draws them, with the workspaces whose work items the person may
+  # read read once for all of them (`readable/2`).
+  defp rows(selected, scope) do
+    readable = readable(scope, selected)
+    Enum.map(selected, &row(&1, readable))
+  end
+
+  # The ids of the other workspaces of the rows' work items whose work items the scope's
+  # person may read (`work_item.read`).
+  defp readable(scope, selected) do
+    ids =
+      for %{work_item_here: false, work_item_workspace_id: id} <- selected,
+          is_binary(id),
+          uniq: true,
+          do: id
+
+    if ids == [] do
+      MapSet.new()
+    else
+      from(w in Workspace, where: w.id in ^ids)
+      |> Repo.all()
+      |> Enum.filter(&Access.can?(%{scope | workspace: &1}, :"work_item.read", &1))
+      |> MapSet.new(& &1.id)
+    end
+  end
+
+  defp row(selected, readable) do
     %{
       id: selected.id,
       key: selected.key,
@@ -826,7 +895,11 @@ defmodule Apiary.Sources.Backlog do
       url: selected.url,
       repository: selected.repository,
       repository_id: selected.repository_id,
-      integration: %{name: selected.integration_name, id: selected.integration_id},
+      integration: %{
+        name: selected.integration_name,
+        id: selected.integration_id,
+        comments: selected.integration_comments == true
+      },
       filer: %{name: selected.filed_by_name, kind: kind(selected.filed_by_kind)},
       labels: selected.labels,
       comment_count: selected.comment_count,
@@ -834,28 +907,94 @@ defmodule Apiary.Sources.Backlog do
       updated_at: selected.source_updated_at,
       state: selected.state,
       state_reason: selected.state_reason,
-      work_item: work_item(selected)
+      work_item: work_item(selected, readable)
     }
   end
 
-  defp work_item(%{work_item_id: nil}), do: nil
+  defp work_item(%{work_item_id: nil}, _readable), do: nil
 
-  defp work_item(%{work_item_here: true} = selected) do
+  defp work_item(%{work_item_here: true} = selected, _readable) do
     %{
       number: selected.work_item_number,
       state: selected.work_item_state,
       path: selected.path <> Integer.to_string(selected.work_item_number),
-      finished: selected.work_item_finished
+      finished: selected.work_item_finished,
+      elsewhere: nil,
+      ended: nil
     }
   end
 
-  defp work_item(selected) do
+  # A work item of another workspace: with its page in that workspace for a person who
+  # may read the work items there, else its state alone.
+  defp work_item(selected, readable) do
+    if MapSet.member?(readable, selected.work_item_workspace_id),
+      do: elsewhere(selected),
+      else: %{
+        number: nil,
+        state: selected.work_item_state,
+        path: nil,
+        finished: selected.work_item_finished,
+        elsewhere: nil,
+        ended: nil
+      }
+  end
+
+  defp elsewhere(selected) do
+    number = Integer.to_string(selected.work_item_number)
+
     %{
       number: nil,
       state: selected.work_item_state,
       path: nil,
-      finished: selected.work_item_finished
+      finished: selected.work_item_finished,
+      elsewhere: %{
+        workspace: selected.work_item_workspace,
+        number: selected.work_item_number,
+        path:
+          selected.organisation_path <> selected.work_item_workspace_slug <> "/work/" <> number
+      },
+      ended: nil
     }
+  end
+
+  # How the ended work item `id` ended (`t:ended/0`), read when a ticket opens; nil for a
+  # live one.
+  defp ended(id, :closed) do
+    {at, by_id} =
+      Repo.one(from w in WorkItem, where: w.id == ^id, select: {w.closed_at, w.closed_by_id})
+
+    %{kind: :closed, at: at, by: person(by_id)}
+  end
+
+  defp ended(id, :undone) do
+    event =
+      Repo.one(
+        from e in WorkItemEvent,
+          where: e.work_item_id == ^id and e.kind == :undone,
+          order_by: [desc: e.at, desc: e.id],
+          limit: 1,
+          select: %{at: e.at, actor_kind: e.actor_kind, actor_id: e.actor_id}
+      )
+
+    case event do
+      %{at: at, actor_kind: :person, actor_id: by_id} ->
+        %{kind: :undone, at: at, by: person(by_id)}
+
+      %{at: at} ->
+        %{kind: :undone, at: at, by: nil}
+
+      nil ->
+        %{kind: :undone, at: nil, by: nil}
+    end
+  end
+
+  defp ended(_id, _live), do: nil
+
+  defp person(nil), do: nil
+
+  defp person(id) do
+    name = id |> List.wrap() |> People.accounts() |> People.account(id) |> People.short()
+    %{id: id, name: name}
   end
 
   # The components' word for who wrote it: a person, or a bot for anything else.
@@ -1026,8 +1165,13 @@ defmodule Apiary.Sources.Backlog do
            })
            |> Repo.one() do
       selected
-      |> row()
+      |> row(readable(scope, [selected]))
       |> Map.merge(Map.take(selected, [:body, :body_format, :truncated]))
+      |> Map.update!(:work_item, fn
+        %{number: nil, elsewhere: nil} = work_item -> work_item
+        nil -> nil
+        work_item -> %{work_item | ended: ended(selected.work_item_id, work_item.state)}
+      end)
     else
       _none -> nil
     end
@@ -1065,7 +1209,10 @@ defmodule Apiary.Sources.Backlog do
             url: c.url,
             body: c.body,
             body_format: c.body_format,
-            truncated: c.truncated
+            truncated: c.truncated,
+            comment_id: c.comment_id,
+            post_state: c.post_state,
+            post_failure: c.post_failure
           }
       )
       |> Enum.map(&Map.update!(&1, :author_kind, fn kind -> kind(kind) end))

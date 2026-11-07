@@ -422,6 +422,19 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
+    # The machine types runs start on, with the `factory` feature, as the pool and gateway.
+    # After them, before Diagnostics keys.
+    machine_types =
+      admin? && Apiary.Features.on?(:factory) &&
+        %Entry{
+          section: :instance,
+          key: :machine_types,
+          label: gettext("Machine types"),
+          icon: "hero-cpu-chip",
+          path: ~p"/instance/machine-types",
+          place: :instance
+        }
+
     # The keys that read any run's diagnostics, with the `observability` feature, which the
     # instance has or not, as the adapters. After Nodes, before Mail.
     diagnostics_keys =
@@ -463,7 +476,8 @@ defmodule ApiaryWeb.Layouts do
     for %Entry{} = entry <-
           [general] ++
             ApiaryWeb.Edition.instance_sections(scope) ++
-            [workspace_types, adapters, nodes, diagnostics_keys, mail, configuration],
+            [workspace_types, adapters, nodes, machine_types, diagnostics_keys, mail] ++
+            [configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 

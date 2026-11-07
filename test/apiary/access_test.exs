@@ -25,6 +25,26 @@ defmodule Apiary.AccessTest do
     assert_raise ArgumentError, fn -> Access.action(:"no.such_action") end
   end
 
+  # Every page calls a review comment a "comment"; so do the action's words in the
+  # permission table and its audit note. The action's name stays work_item.review_comment.
+  test "work_item.review_comment is described with comment, the word the pages use" do
+    %{what: what, audited: {:not, note}} = Access.action(:"work_item.review_comment")
+
+    assert what =~ "write a comment on the proposal for a work item, reply to one,"
+    assert note =~ "a comment, a reply and a send each leave the entry of work_item.answer"
+    refute what =~ "review comment"
+    refute note =~ "review comment"
+  end
+
+  test "the approvers' step says comments in the moduledoc and in docs/access.md" do
+    {:docs_v1, _, _, _, %{"en" => moduledoc}, _, _} = Code.fetch_docs(Access)
+
+    assert moduledoc =~ "proposal and the comments on it (`gate.approve`"
+
+    assert File.read!("docs/access.md") =~
+             "the comments on that proposal (`work_item.review_comment`)"
+  end
+
   describe "each actor" do
     setup do: Apiary.AccessCase.setup_actors([Apiary.AccessRows])
 

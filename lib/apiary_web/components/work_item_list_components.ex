@@ -119,7 +119,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   def stage_line(:explore, item_noun),
     do: gettext("Qory reads the %{item}", item: SourceComponents.item(item_noun))
 
-  def stage_line(:confirm, _item_noun), do: gettext("A member confirms what Qory proposes")
+  def stage_line(:confirm, _item_noun), do: gettext("A member approves the proposal")
   def stage_line(:shape, _item_noun), do: gettext("The plan and its acceptance criteria")
 
   @doc """
@@ -390,7 +390,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   def view_note(%{view: :you} = assigns) do
     ~H"""
     <p id="work-items-note" class="q-views-note q-wl-note">
-      {gettext("Work items that wait for you to confirm what Qory proposes. Oldest first.")}
+      {gettext("Work items that wait for you to approve the proposal. Oldest first.")}
     </p>
     """
   end

@@ -1535,6 +1535,7 @@ defmodule ApiaryWeb.RunLive.Index do
   # The filter of a machine or a pool is typed `machine:`; `node:`, its older word, still
   # reads (`Apiary.Runs.Filters`).
   defp qualifier(:node), do: "machine"
+  defp qualifier(:machine_type), do: "machine-type"
   defp qualifier(key), do: Atom.to_string(key)
 
   # The Target section's options in the one notation of a target: its system before its

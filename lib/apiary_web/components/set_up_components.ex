@@ -1243,7 +1243,9 @@ defmodule ApiaryWeb.SetUpComponents do
   set-up step, Name. A type with no card (`card_domains/0`) changes nothing. Where someone else created the organisation's first workspace a moment
   before, or the person may no longer create one, the organisation's overview opens
   again; where the organisation may have no more, the page shows the reason in an
-  information notice (`limit_line/1`), not an error.
+  information notice (`limit_line/1`), not an error. Where the read of the Qory harness
+  failed, an error says to create the workspace again later
+  (ApiaryWeb.HarnessComponents.qory_words/3).
   """
   @spec choose_kind(Phoenix.LiveView.Socket.t(), term, :first | :any) ::
           Phoenix.LiveView.Socket.t()
@@ -1268,6 +1270,13 @@ defmodule ApiaryWeb.SetUpComponents do
 
           {:error, reason} when reason in [:exists, :forbidden, :not_found] ->
             Phoenix.LiveView.push_navigate(socket, to: ~p"/#{organisation}")
+
+          {:error, {:qory, failure}} ->
+            Phoenix.LiveView.put_flash(
+              socket,
+              :error,
+              ApiaryWeb.HarnessComponents.qory_words(failure, :workspace)
+            )
 
           {:error, _changeset} ->
             Phoenix.LiveView.put_flash(socket, :error, gettext("Nothing was changed. Try again."))

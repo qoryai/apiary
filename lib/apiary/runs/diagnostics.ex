@@ -75,7 +75,7 @@ defmodule Apiary.Runs.Diagnostics do
 
   @code ~r/\A[a-z][a-z0-9_]{0,63}\z/
   @step ~r/\A[a-z][a-z_]{0,39}\z/
-  @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  @workflow ~r/\A[a-z][a-z0-9-]{0,54}\z/
   @variable ~r/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
   @place_text ~r/\A[^\x00-\x1f\x7f]{1,256}\z/u
   @int32 -2_147_483_648..2_147_483_647
@@ -315,8 +315,8 @@ defmodule Apiary.Runs.Diagnostics do
     )
   end
 
-  defp output_member(%{text: text, truncated: truncated}),
-    do: %{"text" => text(text), "truncated" => truncated}
+  defp output_member(%{truncated: truncated} = output),
+    do: %{"text" => text(Preparation.output_text(output)), "truncated" => truncated}
 
   defp stopped_member(nil), do: nil
 

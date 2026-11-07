@@ -12,10 +12,14 @@ defmodule Apiary.Dispatches.Dispatch do
   # minutes from the claim in whole seconds, as the claim answer gives it. `dispatched_at`
   # is when the starter said it started the job; `external_type`, `external_ref` and
   # `external_url` are that job at the system that runs it, as the starter named it then:
-  # external, set together or not at all. `handed_over_at` is when it was handed over, at
-  # its first `dispatched` or at the first redemption of its run's code, whichever came
-  # first, before `lease_until`; `stale_at` when its lease lapsed before a handover, at
-  # or after `lease_until`, never both. `ended_at` and `end_cause` are set together
+  # external, set together or not at all. `vendor_machine_type` is the vendor's type of the
+  # machine the starter created, as its first `dispatched` reported it, kept as sent; nil
+  # when it reported none. `machine_type` and `machine_spec` are the machine type and its
+  # spec that the claim answer had, nil for an answer to a claim with no offers, which has
+  # neither. `handed_over_at` is when it was handed over, at its first
+  # `dispatched` or at the first redemption of its run's code, whichever came first,
+  # before `lease_until`; `stale_at` when its lease lapsed before a handover, at or after
+  # `lease_until`, never both. `ended_at` and `end_cause` are set together
   # (`Apiary.Dispatches.DispatchRun.end_causes/0`). `slot_freed_at` is when the slot of the
   # pool's instance limit it took at the claim was freed, once. `release_reason` is the
   # starter's reason of a release, 1 to 200 characters, nil for a dispatch not released
@@ -48,6 +52,9 @@ defmodule Apiary.Dispatches.Dispatch do
     field :external_type, :string
     field :external_ref, :string
     field :external_url, :string
+    field :vendor_machine_type, :string
+    field :machine_type, :string
+    field :machine_spec, :map
     field :handed_over_at, :utc_datetime_usec
     field :stale_at, :utc_datetime_usec
     field :ended_at, :utc_datetime_usec

@@ -31,6 +31,8 @@ defmodule Apiary.Runs.Record do
   @runtime_started "dev.qory.runtime.started"
   @runtime_text "dev.qory.runtime.text"
   @session_started "dev.qory.session.started"
+  @session_exited ~w(dev.qory.session.exited)
+  @session_end_types ~w(dev.qory.runtime.started dev.qory.runtime.result dev.qory.session.exited)
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
   @list_types ["dev.qory.runtime.turn_finished", "dev.qory.runtime.subagent_finished"]
@@ -276,20 +278,28 @@ defmodule Apiary.Runs.Record do
   The index extended by the projected events after `index.through`, up to `last`: the
   range a projection announced. `:stale` when the range reaches below what the index
   holds: an event arrived late, and order is the sequence, so the run is read again.
+  The rows returned also have the session's exits (`dev.qory.session.exited`) from
+  `first` on, which make no item, as the run page reads the **Run** list again at one.
   """
   def extend_timeline(%Scope{} = scope, %Run{} = run, index, first, last)
       when is_integer(first) and is_integer(last) do
     if first <= index.through do
       :stale
     else
-      rows = light(scope, run, index.through, last, true)
+      # A session's exit before `first` was in a range an earlier flush read.
+      rows =
+        scope
+        |> light(run, index.through, last, true, @session_exited)
+        |> Enum.reject(&(&1.type in @session_exited and &1.sequence < first))
+
       {:ok, Timeline.extend(index, rows, alive: run.state in Run.alive_states()), rows}
     end
   end
 
-  # Only projected events: what a projection announces later is then always new.
-  defp light(scope, run, after_sequence, last, tasks?) do
-    types = Timeline.types()
+  # Only projected events: what a projection announces later is then always new. `extra`
+  # are types read with the timeline's that make no item.
+  defp light(scope, run, after_sequence, last, tasks?, extra \\ []) do
+    types = Timeline.types() ++ extra
 
     query =
       from e in events(scope, run),
@@ -302,6 +312,9 @@ defmodule Apiary.Runs.Record do
           tool_use_id: fragment("left(? ->> 'tool_use_id', 255)", e.data),
           agent_id: fragment("left(? ->> 'agent_id', 255)", e.data),
           agent_type: fragment("left(? ->> 'agent_type', 255)", e.data),
+          # True on any event whose `bare` is `true`. The timeline reads it on a session's
+          # start alone, where the fold reads the same value (`Apiary.Runs.Fold`).
+          bare: fragment("? -> 'bare' = 'true'::jsonb", e.data),
           # A text event's kind, "prompt" for a user's text, or "empty" for a block with no
           # text, which makes no item.
           text_kind:
@@ -693,66 +706,97 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The end of the output of the run's step `step`: the last `bytes` bytes of its
-  `dev.qory.run.log` chunks with that `step`, in sequence order, as `%{bytes, total}`,
-  where `total` is the size of the whole output in bytes. `%{bytes: "", total: 0}` for a
-  step without output and for a number outside 1 to #{@max_step}.
+  `dev.qory.run.log` chunks with that `step`, in sequence order, as `%{chunks, total,
+  line_feeds}`. `chunks` are `%{bytes, time}`, oldest first: the part of each chunk that
+  is kept, and the `time` of the chunk's event (`events.time` of the same sequence), nil
+  once retention deleted the run's events. `total` is the size of the whole output in
+  bytes, and `line_feeds` the number of line feeds (`\\n`) in it, so a reader can number
+  the lines of the end. `%{chunks: [], total: 0, line_feeds: 0}` for a step without
+  output and for a number outside 1 to #{@max_step}.
   """
   @spec step_tail(Scope.t(), Run.t(), integer, pos_integer) :: %{
-          bytes: binary,
-          total: non_neg_integer
+          chunks: [%{bytes: binary, time: DateTime.t() | nil}],
+          total: non_neg_integer,
+          line_feeds: non_neg_integer
         }
   def step_tail(scope, run, step, bytes)
 
   def step_tail(%Scope{}, %Run{}, step, _bytes) when step not in 1..@max_step,
-    do: %{bytes: "", total: 0}
+    do: %{chunks: [], total: 0, line_feeds: 0}
 
   def step_tail(%Scope{} = scope, %Run{} = run, step, bytes)
       when is_integer(step) and is_integer(bytes) and bytes > 0 do
     chunks = from l in log_chunks(scope, run), where: l.step == ^step
 
-    total =
-      Repo.one(from l in chunks, select: coalesce(sum(fragment("octet_length(?)", l.bytes)), 0))
-      |> to_integer()
+    # The database counts the line feeds: `escape` writes a zero byte and every byte from
+    # 0x80 as an octal escape and keeps a line feed, so its text has as many as the bytes.
+    # The tail is read through the last sequence counted, so on a live run the count and
+    # the tail are of the same chunks.
+    %{total: total, line_feeds: line_feeds, through: through} =
+      Repo.one(
+        from l in chunks,
+          select: %{
+            total: coalesce(sum(fragment("octet_length(?)", l.bytes)), 0),
+            line_feeds:
+              coalesce(
+                sum(
+                  fragment(
+                    "octet_length(encode(?, 'escape')) - octet_length(replace(encode(?, 'escape'), E'\\n', ''))",
+                    l.bytes,
+                    l.bytes
+                  )
+                ),
+                0
+              ),
+            through: max(l.sequence)
+          }
+      )
 
-    kept = if total == 0, do: [], else: step_tail_pages(chunks, bytes, nil, [])
-    %{bytes: IO.iodata_to_binary(kept), total: total}
+    kept =
+      if is_nil(through),
+        do: [],
+        else: step_tail_pages(scope, run, chunks, bytes, through + 1, [])
+
+    %{chunks: kept, total: to_integer(total), line_feeds: to_integer(line_feeds)}
   end
 
   @step_tail_page 500
 
   # The step's chunks newest first, a page at a time, each cut by the database to what is
   # left of the budget, until the budget is spent or the chunks run out; oldest first.
-  defp step_tail_pages(_chunks, left, _before, acc) when left <= 0, do: acc
+  defp step_tail_pages(_scope, _run, _chunks, left, _before, acc) when left <= 0, do: acc
 
-  defp step_tail_pages(chunks, left, before, acc) do
-    query =
-      from l in chunks,
-        order_by: [desc: l.sequence],
-        limit: @step_tail_page,
-        select:
-          {l.sequence,
-           fragment(
-             "substring(? from greatest(octet_length(?) - ?, 0) + 1)",
-             l.bytes,
-             l.bytes,
-             ^left
-           )}
-
-    query = if before, do: from(l in query, where: l.sequence < ^before), else: query
-    page = Repo.all(query)
+  defp step_tail_pages(scope, run, chunks, left, before, acc) do
+    page =
+      Repo.all(
+        from l in chunks,
+          left_join: e in subquery(events(scope, run)),
+          on: e.sequence == l.sequence,
+          where: l.sequence < ^before,
+          order_by: [desc: l.sequence],
+          limit: @step_tail_page,
+          select:
+            {l.sequence,
+             fragment(
+               "substring(? from greatest(octet_length(?) - ?, 0) + 1)",
+               l.bytes,
+               l.bytes,
+               ^left
+             ), e.time}
+      )
 
     {acc, left} =
-      Enum.reduce_while(page, {acc, left}, fn {_sequence, part}, {acc, left} ->
+      Enum.reduce_while(page, {acc, left}, fn {_sequence, part, time}, {acc, left} ->
         size = byte_size(part)
 
         if size >= left,
-          do: {:halt, {[binary_part(part, size - left, left) | acc], 0}},
-          else: {:cont, {[part | acc], left - size}}
+          do: {:halt, {[%{bytes: binary_part(part, size - left, left), time: time} | acc], 0}},
+          else: {:cont, {[%{bytes: part, time: time} | acc], left - size}}
       end)
 
     if length(page) < @step_tail_page,
       do: acc,
-      else: step_tail_pages(chunks, left, page |> List.last() |> elem(0), acc)
+      else: step_tail_pages(scope, run, chunks, left, page |> List.last() |> elem(0), acc)
   end
 
   @doc """
@@ -768,6 +812,39 @@ defmodule Apiary.Runs.Record do
         limit: 1,
         select: e.time
     )
+  end
+
+  @doc """
+  The run's last `dev.qory.runtime.started`, `dev.qory.runtime.result` and
+  `dev.qory.session.exited`, by type: `%{time, data}` each, where `data` has only the
+  members that the end of a session shows (`state`, `exit_code`, `outcome`, `turns`,
+  `duration_ms`, `cost_usd` and `model`). A type the run has no event of is left out.
+  """
+  @spec session_end(Scope.t(), Run.t()) :: %{String.t() => %{time: DateTime.t(), data: map}}
+  def session_end(%Scope{} = scope, %Run{} = run) do
+    Repo.all(
+      from e in events(scope, run),
+        where: e.type in ^@session_end_types,
+        distinct: e.type,
+        order_by: [asc: e.type, desc: e.sequence],
+        select:
+          {e.type,
+           %{
+             time: e.time,
+             data:
+               fragment(
+                 "jsonb_strip_nulls(jsonb_build_object('state', ? -> 'state', 'exit_code', ? -> 'exit_code', 'outcome', ? -> 'outcome', 'turns', ? -> 'turns', 'duration_ms', ? -> 'duration_ms', 'cost_usd', ? -> 'cost_usd', 'model', ? -> 'model'))",
+                 e.data,
+                 e.data,
+                 e.data,
+                 e.data,
+                 e.data,
+                 e.data,
+                 e.data
+               )
+           }}
+    )
+    |> Map.new()
   end
 
   ## The log
@@ -1099,32 +1176,38 @@ defmodule Apiary.Runs.Record do
   end
 
   @doc """
-  plain_lines/1 is a terminal's bytes as lines of plain text: what is not UTF-8 is replaced,
-  escape sequences (colours, cursor moves, titles) are taken out, a carriage return starts
-  its line over, every other control character but the tab goes, and the empty lines at
-  the end are dropped.
+  plain_lines/1 is a terminal's bytes as lines of plain text: each line as `plain_line/1`
+  has it, and the empty lines at the end dropped.
   """
   @spec plain_lines(binary) :: [String.t()]
   def plain_lines(bytes) when is_binary(bytes) do
+    bytes
+    |> String.split("\n")
+    |> Enum.map(&plain_line/1)
+    |> Enum.reverse()
+    |> Enum.drop_while(&(&1 == ""))
+    |> Enum.reverse()
+  end
+
+  @doc """
+  plain_line/1 is one line of a terminal's bytes, without its line feed, as plain text:
+  what is not UTF-8 is replaced, escape sequences (colours, cursor moves, titles) are taken
+  out, a carriage return starts the line over, every other control character but the tab
+  goes, and the spaces at the end are trimmed.
+  """
+  @spec plain_line(binary) :: String.t()
+  def plain_line(bytes) when is_binary(bytes) do
     bytes
     |> String.replace_invalid()
     # OSC (a title, a link) to its terminator; CSI; the two-byte escapes and a charset.
     |> String.replace(~r/\e\][^\a\e]*(?:\a|\e\\)?/u, "")
     |> String.replace(~r/\e\[[0-?]*[ -\/]*[@-~]/u, "")
     |> String.replace(~r/\e[()*+][0-9A-Za-z]|\e[@-_]?/u, "")
-    |> String.replace("\r\n", "\n")
-    |> String.split("\n")
-    |> Enum.map(fn line ->
-      line
-      |> String.split("\r")
-      |> Enum.reject(&(&1 == ""))
-      |> List.last("")
-      |> String.replace(~r/[\x00-\x08\x0B-\x1F\x7F]/u, "")
-      |> String.trim_trailing()
-    end)
-    |> Enum.reverse()
-    |> Enum.drop_while(&(&1 == ""))
-    |> Enum.reverse()
+    |> String.split("\r")
+    |> Enum.reject(&(&1 == ""))
+    |> List.last("")
+    |> String.replace(~r/[\x00-\x08\x0B-\x1F\x7F]/u, "")
+    |> String.trim_trailing()
   end
 
   defp log_after(scope, run, after_sequence, stream) do

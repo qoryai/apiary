@@ -152,15 +152,26 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :adapter_failure_code, :string
     # Where the run is in its work item's process (`Apiary.Processes`): the version it
     # started under, the stage, the round, the entry of the stage's sequence and, inside a
-    # loop, the entry of the loop's body, the workflow, and the machine type its entry
-    # asked for. Nil for a run the process did not start. No changeset casts them.
+    # loop, the entry of the loop's body, the workflow. Nil for a run the process did not
+    # start. No changeset casts them.
     belongs_to :process_version, Apiary.Processes.Version
     field :stage_id, :string
     field :round, :integer
     field :stage_entry, :integer
     field :loop_entry, :integer
     field :workflow, :string
+    # The machine type the run is queued on, and its spec as the provisioner contract
+    # writes it, both as they were when the run was queued (`Apiary.MachineTypes.resolve/1`),
+    # and whether the type was the default type then: a pool without offers takes such a
+    # run. A run queued before machine types has no spec, and its claim reads it as the
+    # default type. No changeset casts them.
     field :machine_type, :string
+    field :machine_spec, :map
+    field :machine_type_was_default, :boolean, default: false
+    # Whether the run is a run of Explore, as it was when the run was queued, or when a
+    # claim or the stage runner first read it (`Apiary.Stages.known_explore/1`); nil while
+    # that is not known: the run is not claimed, and its end waits.
+    field :explore, :boolean
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

@@ -12,7 +12,7 @@ defmodule Apiary.ModelChoices do
   #   * a target of the scope's workspace (`Apiary.Runs.Target`, level 3), or
   #     `{target, workflow}` (level 2).
   #
-  # A workflow name is a lower-case letter, then up to 63 lower-case letters, digits and
+  # A workflow name is a lower-case letter, then up to 54 lower-case letters, digits and
   # hyphens. A place with a workflow of another form is not found. A run reads the
   # choices of its workflow (`Apiary.Stacks.workflow/2`), the same key as its time limit
   # (`Apiary.TimeLimits`).
@@ -93,7 +93,7 @@ defmodule Apiary.ModelChoices do
   alias ApiaryWeb.Format
 
   # A workflow's name.
-  @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  @workflow ~r/\A[a-z][a-z0-9-]{0,54}\z/
 
   # How many places a refusal names before "and N more".
   @shown 5

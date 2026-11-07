@@ -14,21 +14,7 @@ defmodule ApiaryWeb.TranscriptComponentsTest do
 
   # The items of `events` as the run page builds them, each with `open` as the page sets it.
   defp items(events, open \\ [], lines? \\ false) do
-    light =
-      for %{data: data} = event <- events do
-        %{
-          sequence: event.sequence,
-          type: event.type,
-          time: event.time,
-          tool_use_id: data["tool_use_id"],
-          agent_id: data["agent_id"],
-          agent_type: data["agent_type"],
-          tool: data["tool"],
-          text_kind: text_kind(event.type, data)
-        }
-      end
-
-    index = Timeline.index(light)
+    index = Timeline.index(light(events))
     full = Timeline.full_limit()
     light = if lines?, do: TranscriptComponents.lines(index.items, index.texts), else: index.items
 
@@ -36,6 +22,39 @@ defmodule ApiaryWeb.TranscriptComponentsTest do
     |> Timeline.build(Map.new(events, &{&1.sequence, Timeline.slim(&1, full)}))
     |> Enum.map(&Map.put(&1, :open, &1.sequence in open))
   end
+
+  # The lines of `events` as the Terminal tab shows them, each subagent's under its start
+  # (`TranscriptComponents.arrange/4`): `alive` is whether the record is being written,
+  # `choices` the reader's, `focused` the line `?seq=` points at.
+  defp grouped(events, opts \\ []) do
+    index = Timeline.index(light(events), alive: Keyword.get(opts, :alive, true))
+    subagents = TranscriptComponents.subagents(index.items, index.alive)
+    full = Timeline.full_limit()
+
+    index.items
+    |> TranscriptComponents.lines(index.texts, subagents: true)
+    |> TranscriptComponents.arrange(subagents, Keyword.get(opts, :choices, %{}), opts[:focused])
+    |> Timeline.build(Map.new(events, &{&1.sequence, Timeline.slim(&1, full)}))
+    |> Enum.map(&Map.put(&1, :open, false))
+  end
+
+  defp light(events) do
+    for %{data: data} = event <- events do
+      %{
+        sequence: event.sequence,
+        type: event.type,
+        time: event.time,
+        tool_use_id: data["tool_use_id"],
+        agent_id: data["agent_id"],
+        agent_type: data["agent_type"],
+        tool: data["tool"],
+        text_kind: text_kind(event.type, data)
+      }
+    end
+  end
+
+  # The event `seconds` after the first.
+  defp at(event, seconds), do: %{event | time: DateTime.add(@t0, seconds)}
 
   # The lines of `events` as the Terminal tab shows them (`TranscriptComponents.lines/2`).
   defp lines(events), do: items(events, [], true)
@@ -327,5 +346,198 @@ defmodule ApiaryWeb.TranscriptComponentsTest do
       |> html(results: false)
 
     assert html =~ "Hi, Dana"
+  end
+
+  # Three subagents at once: two Explore that finished, after 51 s and 38 s, and a
+  # general-purpose one that runs. Their calls and results arrive interleaved.
+  defp three_at_once do
+    a1 = %{"agent_id" => "a1", "agent_type" => "Explore"}
+    a2 = %{"agent_id" => "a2", "agent_type" => "Explore"}
+    a3 = %{"agent_id" => "a3", "agent_type" => "general-purpose"}
+
+    [
+      event(1, "prompt_submitted", %{"prompt" => "Explore work item #41"}),
+      started(2, "t1", %{"tool" => "Task", "summary" => "Find where the PDF sets the currency"}),
+      started(3, "t2", %{"tool" => "Task", "summary" => "Check how orders store the currency"}),
+      started(4, "t3", %{"tool" => "Task", "summary" => "Run the invoice tests"}),
+      event(5, "subagent_started", a1),
+      event(6, "subagent_started", a2),
+      event(7, "subagent_started", a3),
+      text(8, "Install the dependencies and run the invoice tests.", Map.put(a3, "role", "user")),
+      started(9, "g1", Map.merge(a1, %{"tool" => "Grep", "summary" => "currency"})),
+      started(10, "r1", Map.merge(a2, %{"tool" => "Read", "summary" => "src/orders/model.ts"})),
+      started(11, "b1", Map.merge(a3, %{"tool" => "Bash", "summary" => "npm ci"})),
+      result(12, "g1", "src/invoices/pdf/template.ts", a1),
+      started(13, "r2", Map.merge(a1, %{"tool" => "Read", "summary" => "template.ts"})),
+      result(14, "b1", "added 1184 packages", a3),
+      started(15, "g2", Map.merge(a2, %{"tool" => "Grep", "summary" => "10482"})),
+      started(16, "r3", Map.merge(a1, %{"tool" => "Read", "summary" => "format.ts"})),
+      event(17, "subagent_finished", Map.put(a2, "message", "Orders store an ISO code."))
+      |> at(38),
+      event(
+        18,
+        "subagent_finished",
+        Map.put(a1, "message", "The PDF falls back to EUR.\nSee template.ts:88.")
+      )
+      |> at(51),
+      started(19, "b2", Map.merge(a3, %{"tool" => "Bash", "summary" => "npm test -- invoices"}))
+    ]
+  end
+
+  defp ids(html), do: html |> query("li") |> LazyHTML.attribute("id")
+
+  test "a subagent is finished, running, or ended without a recorded finish" do
+    index = three_at_once() |> light() |> Timeline.index(alive: true)
+    subagents = TranscriptComponents.subagents(index.items, true)
+
+    assert subagents |> Map.values() |> Enum.sort_by(& &1.seq) == [
+             %{seq: 5, type: "Explore", calls: 3, finished_seq: 18, state: :finished},
+             %{seq: 6, type: "Explore", calls: 2, finished_seq: 17, state: :finished},
+             %{seq: 7, type: "general-purpose", calls: 2, finished_seq: nil, state: :running}
+           ]
+
+    # The record stopped without the finish: the subagent is neither running nor finished.
+    assert TranscriptComponents.subagents(index.items, false)
+           |> Map.values()
+           |> Enum.map(& &1.state)
+           |> Enum.sort() == [:ended, :finished, :finished]
+
+    ended =
+      (three_at_once() ++ [event(20, "ended", %{"reason" => "other"})])
+      |> light()
+      |> Timeline.index(alive: true)
+
+    assert ended.items
+           |> TranscriptComponents.subagents(true)
+           |> Enum.find_value(fn {_lane, sub} -> sub.seq == 7 && sub.state end) == :ended
+  end
+
+  test "a running subagent's lines are grouped under it; a finished one is one line" do
+    html = three_at_once() |> grouped() |> html()
+
+    # The two finished groups are closed; the running one has its lines, in order, under it,
+    # and npm ci's result is under its call again.
+    assert ids(html) == ["e-1", "e-2", "e-3", "e-4", "e-5", "e-6", "e-7", "e-8", "e-11", "e-19"]
+    assert texts(html, "#e-11 .q-tr-ln") == ["added 1184 packages"]
+    assert query(html, ~s(li[data-group="7"].q-tr-sub.q-tr-in)) |> Enum.count() == 3
+    assert query(html, "#e-5.q-tr-sub, #e-5.q-tr-in") |> Enum.count() == 0
+
+    assert texts(html, "#e-5 .q-tr-head") |> Enum.map(&squeeze/1) == [
+             "Explore · finished in 51 s · 3 calls"
+           ]
+
+    assert texts(html, "#e-5 .q-tr-ln") == ["The PDF falls back to EUR.", "See template.ts:88."]
+    assert texts(html, "#e-5 .q-tr-fold") |> Enum.map(&squeeze/1) == ["Show 3 calls"]
+    assert html |> query("#e-5 .q-tr-caret") |> LazyHTML.attribute("aria-expanded") == ["false"]
+    assert texts(html, "#e-5 .q-tr-caret") |> Enum.map(&squeeze/1) == ["▸"]
+
+    assert texts(html, "#e-6 .q-tr-head") |> Enum.map(&squeeze/1) == [
+             "Explore · finished in 38 s · 2 calls"
+           ]
+
+    assert texts(html, "#e-6 .q-tr-fold") |> Enum.map(&squeeze/1) == ["Show 2 calls"]
+
+    assert texts(html, "#e-7 .q-tr-head") |> Enum.map(&squeeze/1) == [
+             "general-purpose · running · 2 calls so far"
+           ]
+
+    assert texts(html, "#e-7 .q-tr-fold") |> Enum.map(&squeeze/1) == ["Hide 2 calls"]
+    assert html |> query("#e-7 .q-tr-caret") |> LazyHTML.attribute("aria-expanded") == ["true"]
+    assert texts(html, "#e-7 .q-tr-caret") |> Enum.map(&squeeze/1) == ["▾"]
+    assert query(html, "#e-7 .q-tr-ln") |> Enum.count() == 0
+
+    assert html |> query("[phx-click=subagent_toggle]") |> LazyHTML.attribute("phx-value-seq") ==
+             ~w(5 5 6 6 7 7)
+  end
+
+  test "the reader's choice opens a finished subagent and closes a running one" do
+    html = three_at_once() |> grouped(choices: %{5 => true, 7 => false}) |> html()
+
+    assert ids(html) == ["e-1", "e-2", "e-3", "e-4", "e-5", "e-9", "e-13", "e-16", "e-6", "e-7"]
+    assert texts(html, "#e-9 .q-tr-ln") == ["src/invoices/pdf/template.ts"]
+    assert texts(html, "#e-5 .q-tr-fold") |> Enum.map(&squeeze/1) == ["Hide 3 calls"]
+    assert texts(html, "#e-7 .q-tr-fold") |> Enum.map(&squeeze/1) == ["Show 2 calls"]
+
+    # A group with the line `?seq=` points at opens, unless the reader closed it.
+    assert three_at_once() |> grouped(focused: 15) |> html() |> ids() |> Enum.member?("e-15")
+
+    refute three_at_once()
+           |> grouped(focused: 15, choices: %{6 => false})
+           |> html()
+           |> ids()
+           |> Enum.member?("e-15")
+  end
+
+  test "a subagent whose finish the record lacks keeps its lines open, with no state" do
+    html = three_at_once() |> grouped(alive: false) |> html()
+
+    assert texts(html, "#e-7 .q-tr-head") |> Enum.map(&squeeze/1) == ["general-purpose · 2 calls"]
+    assert texts(html, "#e-7 .q-tr-fold") |> Enum.map(&squeeze/1) == ["Hide 2 calls"]
+    assert "e-19" in ids(html)
+  end
+
+  test "a subagent's start or finish without an agent id hides no line of the main agent" do
+    explore = %{"agent_type" => "Explore"}
+
+    events = [
+      started(1, "a"),
+      event(2, "subagent_started", explore),
+      started(3, "b", %{"tool" => "Read"}),
+      text(4, "Read it."),
+      event(5, "subagent_finished", Map.put(explore, "message", "Done.")),
+      text(6, "After the finish.")
+    ]
+
+    index = events |> light() |> Timeline.index(alive: true)
+    assert TranscriptComponents.subagents(index.items, true) == %{}
+
+    html = events |> grouped() |> html()
+    assert ids(html) == ["e-1", "e-3", "e-4", "e-6"]
+    assert query(html, "[phx-click=subagent_toggle]") |> Enum.count() == 0
+  end
+
+  test "an agent id started again while it runs keeps its first start, lines and count" do
+    a1 = %{"agent_id" => "a1", "agent_type" => "Explore"}
+
+    events = [
+      started(1, "t1", %{"tool" => "Task"}),
+      event(2, "subagent_started", a1),
+      started(3, "g1", Map.merge(a1, %{"tool" => "Grep"})),
+      event(4, "subagent_started", a1),
+      started(5, "r1", Map.merge(a1, %{"tool" => "Read"}))
+    ]
+
+    html = events |> grouped() |> html()
+    assert ids(html) == ["e-1", "e-2", "e-3", "e-5"]
+    assert query(html, ~s(li[data-group="2"])) |> Enum.count() == 2
+
+    assert texts(html, "#e-2 .q-tr-head") |> Enum.map(&squeeze/1) == [
+             "Explore · running · 2 calls so far"
+           ]
+  end
+
+  test "without subagents the lines are as they were, each at its sequence" do
+    events = [started(1, "a"), text(2, "Reading", %{"agent_id" => "x"}), result(3, "a", "A")]
+    index = events |> light() |> Timeline.index()
+    plain = TranscriptComponents.lines(index.items, index.texts)
+
+    assert TranscriptComponents.arrange(plain, %{}) ==
+             Enum.map(plain, &Map.put(&1, :pos, {&1.seq, &1.seq}))
+  end
+
+  test "the bar counts the subagents and those that run, then Expand all and Collapse all" do
+    html = render_component(&TranscriptComponents.subagents_bar/1, count: 3, running: 1)
+
+    assert texts(html, ".q-tr-subs") |> Enum.map(&squeeze/1) == ["3 subagents, 1 running"]
+
+    assert texts(html, "[phx-click=subagents_all]") |> Enum.map(&squeeze/1) == [
+             "Expand all",
+             "Collapse all"
+           ]
+
+    assert html |> query("[phx-click=subagents_all]") |> LazyHTML.attribute("phx-value-open") == [
+             "true",
+             "false"
+           ]
   end
 end

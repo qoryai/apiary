@@ -62,9 +62,23 @@ defmodule ApiaryWeb.AdapterLive.Show do
   # Whoever may assign them (`collection.assign`, owners and admins) selects rows, of
   # those shown, then picks a workspace from the selection's menu, Assign to workspace,
   # which lists only the workspaces whose domain the adapter serves
-  # (`Apiary.Lingo.Domain.serves?/2`, `Apiary.Adapters.Collections.assign_collections/4`);
+  # (`Apiary.Lingo.Domain.serves?/2`, `Apiary.Adapters.Collections.assign_collections/5`);
   # a flash says what went where,
-  # over the first page of the same view, search and workspace.
+  # over the first page of the same view, search and workspace. For whoever may assign,
+  # each assigned row has Unassign, also on a workspace marked for deletion, whose row
+  # says it is deleted and when it is purged: the row turns into a confirmation in its
+  # place, and its Yes, unassign links the collection to no workspace while it is still
+  # on the workspace the confirmation shows
+  # (`Apiary.Adapters.Collections.assign_collections/5` with none and `from:`, the same
+  # `collection.assign` and its entry); a flash says what left which workspace, over the
+  # same page, its row where it was. The page sorts the collections unassigned on it as
+  # if they were still assigned (`as_assigned`, `sort_as_assigned:`), change notices
+  # included, until a load, another page, view, search or filter, or a successful
+  # assignment from the menu; in a list of one workspace, the row leaves the list. The
+  # focus moves once, by the
+  # `FocusOn` hook (`"run:focus"`): back to the row's Unassign after Cancel or Escape; to
+  # the row's name after Yes, unassign, or once a change closes the confirmation; to the
+  # section's heading where the row has left the page.
   # Before anything is selected, the menu's button shows disabled. While a listing is
   # still arriving, nothing can be selected, and there is no warning, view or filter.
   #
@@ -124,6 +138,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
        may_assign: Access.can?(scope, :"collection.assign", scope.organisation),
        may_set_backlog: Access.can?(scope, :"collection.set_backlog", scope.organisation),
        selected: %{},
+       unassigning: nil,
+       as_assigned: [],
        menu_q: nil,
        late: false,
        timer: nil,
@@ -145,7 +161,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
       workspace: if(is_binary(params["workspace_id"]), do: params["workspace_id"])
     }
 
-    {:noreply, socket |> assign(:query, query) |> listing()}
+    {:noreply, socket |> assign(query: query, as_assigned: []) |> listing()}
   end
 
   defp search_param(value) when is_binary(value) do
@@ -288,8 +304,9 @@ defmodule ApiaryWeb.AdapterLive.Show do
     do: {:noreply, assign(socket, :menu_q, search_param(q))}
 
   # Assigns the selection to the workspace picked from the menu, then says what went
-  # where; a refusal says why nothing was assigned. Either way the page shows the
-  # collections as they now stand.
+  # where, and sorts the rows unassigned on the page as usual again (`as_assigned`); a
+  # refusal says why nothing was assigned, and keeps their places. Either way the page
+  # shows the collections as they now stand.
   def handle_event(
         "assign",
         %{"workspace" => id},
@@ -307,6 +324,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
         socket
         |> put_flash(:info, assigned(socket.assigns.adapter, Map.values(selected), workspace))
         |> update(:query, &%{&1 | page: 1})
+        |> assign(:as_assigned, [])
       else
         false ->
           socket
@@ -321,6 +339,81 @@ defmodule ApiaryWeb.AdapterLive.Show do
       end
 
     {:noreply, socket |> assign(selected: %{}, menu_q: nil) |> reload() |> follow(asked)}
+  end
+
+  # A row's Unassign: the row turns into a confirmation in its place, for whoever may
+  # assign, while the row is assigned; `unassigning` keeps the row's public id and the
+  # workspace the confirmation shows.
+  def handle_event(
+        "ask_unassign",
+        %{"collection" => public_id},
+        %{assigns: %{state: :listed, may_assign: true}} = socket
+      ) do
+    case Enum.find(socket.assigns.rows, &(&1.public_id == public_id and &1.workspace != nil)) do
+      nil ->
+        {:noreply, socket}
+
+      row ->
+        {:noreply,
+         assign(socket, :unassigning, %{collection: public_id, workspace: row.workspace.id})}
+    end
+  end
+
+  # Cancel, or Escape: the row as it was, its Unassign focused.
+  def handle_event("cancel_unassign", _params, %{assigns: %{unassigning: %{} = asked}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:unassigning, nil)
+     |> push_event("run:focus", %{id: "collection-#{asked.collection}-unassign"})}
+  end
+
+  # Yes, unassign, with the id of the workspace the confirmation shows: links the
+  # collection to no workspace while it is still linked to that workspace, then says what
+  # left which workspace, over the same page, its row where it was (`as_assigned`), and
+  # focuses the row. A collection moved or unassigned meanwhile changes nothing: the
+  # confirmation closes and the row shows where it stands, with no flash. A refusal for a
+  # person who may no longer assign says who assigns; a collection or an installation gone
+  # meanwhile shows the page as it now stands.
+  def handle_event(
+        "unassign",
+        %{"workspace" => workspace_id},
+        %{assigns: %{state: :listed, unassigning: %{} = asked, connection: %Connection{}}} =
+          socket
+      )
+      when is_binary(workspace_id) do
+    %{current_scope: scope, connection: connection, adapter: adapter} = socket.assigns
+    row = Enum.find(socket.assigns.rows, &(&1.public_id == asked.collection))
+    page = socket.assigns.query.page
+
+    socket =
+      case row &&
+             Collections.assign_collections(scope, connection, [row.id], nil, from: workspace_id) do
+        nil ->
+          socket
+
+        {:ok, _changed} ->
+          socket
+          |> put_flash(:info, unassigned(adapter, row))
+          |> update(:as_assigned, &Enum.uniq([row.id | &1]))
+
+        {:error, :moved} ->
+          socket
+
+        {:error, :forbidden} ->
+          socket
+          |> assign(:may_assign, false)
+          |> put_flash(:error, refused(socket.assigns, :forbidden))
+
+        {:error, _gone} ->
+          socket
+      end
+
+    {:noreply,
+     socket
+     |> assign(:unassigning, nil)
+     |> reload()
+     |> focus_row(row)
+     |> follow(page)}
   end
 
   # A row's Backlog switch, turned the other way from what the page shows: a flash says
@@ -362,6 +455,22 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
+  # The focus, once, on the row's name, or on the section's heading where the row has left
+  # the page (`FocusOn`). The row's name is drawn only while `:listed`; in any other state
+  # this pushes no focus, and the app moves the lost focus to the page title.
+  defp focus_row(socket, nil), do: socket
+
+  defp focus_row(%{assigns: %{state: :listed, rows: rows}} = socket, %{public_id: public_id}) do
+    id =
+      if Enum.any?(rows, &(&1.public_id == public_id)),
+        do: "collection-#{public_id}-name",
+        else: "collections-heading"
+
+    push_event(socket, "run:focus", %{id: id})
+  end
+
+  defp focus_row(socket, _row), do: socket
+
   defp turned(socket, count, on, name, adapter) do
     case SourceComponents.backlog_turned(
            count,
@@ -391,16 +500,28 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   def handle_info({:connection_changed, %{adapter_id: id}}, socket)
       when id == socket.assigns.adapter.id,
-      do: {:noreply, reload(socket)}
+      do: {:noreply, noticed(socket)}
 
   def handle_info({:collections_changed, %{connection_id: id}}, socket) do
     case socket.assigns.connection do
-      %Connection{id: ^id} -> {:noreply, reload(socket)}
+      %Connection{id: ^id} -> {:noreply, noticed(socket)}
       _other -> {:noreply, socket}
     end
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # A change notice: the page read again; a confirmation the change closed moves the focus
+  # to its row's name, or to the section's heading where the row has left the page, while
+  # the page shows the collections (`focus_row/2`).
+  defp noticed(%{assigns: %{unassigning: %{collection: public_id}}} = socket) do
+    case reload(socket) do
+      %{assigns: %{unassigning: nil}} = socket -> focus_row(socket, %{public_id: public_id})
+      socket -> socket
+    end
+  end
+
+  defp noticed(socket), do: reload(socket)
 
   # The adapter and its connection read again; an adapter deleted meanwhile leaves for the
   # list.
@@ -426,7 +547,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
 
   defp listing(socket), do: socket |> assign(:lead, nil) |> unpicked()
 
-  defp unpicked(socket), do: assign(socket, picks: false, selected: %{})
+  defp unpicked(socket), do: assign(socket, picks: false, selected: %{}, unassigning: nil)
 
   defp rows(socket) do
     %{current_scope: scope, connection: connection, workspaces: workspaces} = socket.assigns
@@ -441,7 +562,14 @@ defmodule ApiaryWeb.AdapterLive.Show do
           do: {key, value}
 
     order = if complete, do: :unassigned_first, else: :title
-    {page, rows, before} = walk(scope, connection, [order: order] ++ opts, query.page)
+
+    {page, rows, before} =
+      walk(
+        scope,
+        connection,
+        [order: order, sort_as_assigned: socket.assigns.as_assigned] ++ opts,
+        query.page
+      )
 
     total =
       cond do
@@ -461,6 +589,7 @@ defmodule ApiaryWeb.AdapterLive.Show do
       query: %{query | page: page},
       rows: rows,
       selected: Map.take(socket.assigns.selected, Map.keys(shown)),
+      unassigning: still_assigned(socket.assigns.unassigning, rows),
       pager: %{
         page: page,
         first: before + 1,
@@ -472,6 +601,18 @@ defmodule ApiaryWeb.AdapterLive.Show do
     )
     |> follow(query.page)
   end
+
+  # The row whose Unassign is confirmed, while it is shown and still on the workspace the
+  # confirmation shows; nil, the confirmation closed, once it is not.
+  defp still_assigned(nil, _rows), do: nil
+
+  defp still_assigned(%{collection: public_id, workspace: workspace_id} = asked, rows) do
+    if Enum.any?(rows, &(&1.public_id == public_id and on?(&1.workspace, workspace_id))),
+      do: asked
+  end
+
+  defp on?(%{id: id}, id), do: true
+  defp on?(_workspace, _id), do: false
 
   # The address patched to the page the query now names, when the one asked for, `asked`,
   # was another: a page past the last one with rows, or one left for the first. Once
@@ -579,6 +720,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
           <h2
             id="collections-heading"
             class="mt-2 mb-1.5 flex items-baseline gap-2 text-sm/5 font-semibold"
+            tabindex="-1"
+            phx-hook="FocusOn"
           >
             {collection_label(@adapter)}
             <span
@@ -829,6 +972,8 @@ defmodule ApiaryWeb.AdapterLive.Show do
             }
             may_set_backlog={@may_set_backlog}
             picks={@picks}
+            unassign={@may_assign}
+            confirming={@unassigning && @unassigning.collection}
             selected={@selected}
             every={
               gettext("Select every %{collection} shown", collection: collection_word(@adapter, 1))
@@ -1051,6 +1196,24 @@ defmodule ApiaryWeb.AdapterLive.Show do
       collections: collection_word(adapter, :other),
       workspace: workspace.name
     )
+  end
+
+  # The flash after an unassign: the collection's name and the workspace it left, and, for
+  # an adapter with items, that its items reach no backlog until it is assigned again.
+  defp unassigned(adapter, row) do
+    words = [
+      name: shown_name(row.name),
+      workspace: row.workspace.name,
+      items: SourceComponents.items(Adapters.item_noun(adapter))
+    ]
+
+    if Adapters.items?(adapter),
+      do:
+        gettext(
+          "Unassigned %{name} from %{workspace}. Its %{items} reach no backlog until you assign it to a workspace.",
+          words
+        ),
+      else: gettext("Unassigned %{name} from %{workspace}.", Keyword.delete(words, :items))
   end
 
   # Whether the workspace's name holds `text`, any case; every one for none.

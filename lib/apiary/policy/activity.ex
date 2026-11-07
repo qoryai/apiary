@@ -14,7 +14,9 @@ defmodule Apiary.Policy.Activity do
   `uncovered` for the workspace counts only the runs of targets that follow the
   workspace's mode, and the runs that name no target: a target that overrides the mode is
   not changed by the workspace's. For a target it counts that target's runs, whatever its
-  mode is now: what enforcing it would start denying.
+  mode is now: what enforcing it would start denying. A request to the run API, which has
+  the wall rule `wall:run-api` (`Apiary.Runs.RunApi`), counts in neither: the mode does
+  not change what the gateway does with it, so enforce adds no block to it.
 
   A connection is held to the effective policy of its run's target, its mode
   included (the baseline
@@ -48,7 +50,7 @@ defmodule Apiary.Policy.Activity do
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{Above, Effective, Grammar, Resolution, Rule}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Target, Run}
+  alias Apiary.Runs.{Connection, RunApi, Target, Run}
 
   @default_cap 20_000
   @top 50
@@ -71,6 +73,8 @@ defmodule Apiary.Policy.Activity do
   defp uncovered_from(%Workspace{id: workspace_id}, rows, policies, target_id) do
     rows
     |> Enum.filter(&(&1.allowed > 0))
+    # The mode does not change what the gateway does with a request to the run API.
+    |> Enum.reject(&RunApi.run_api?(&1.rule))
     # Enforcing the workspace changes nothing for a target with a mode of its own.
     |> Enum.filter(&(target_id != nil or policies[&1.target_id].follows_workspace))
     |> Enum.flat_map(fn row ->
