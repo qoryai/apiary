@@ -1343,7 +1343,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
-- `dispatches` (20261108120000): a nullable column `late_machine_at`, the last time a
+- `dispatches` (20261108130000): a nullable column `late_machine_at`, the last time a
   machine showed up for a claim that takes none. It changes no row.
 - `machine_types` (20261107110000): a new table of the instance's machine types, with
   the type `standard` as the default: 2 vCPUs, 4096 MiB, 30 GiB of disk, amd64, no

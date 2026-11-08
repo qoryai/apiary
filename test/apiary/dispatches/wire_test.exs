@@ -108,7 +108,7 @@ defmodule Apiary.Dispatches.WireTest do
   # Every vendored contract is at the integrations `main` commit that has machine types.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
+          {"provisioner/v1", "ef02d1558f9196fcbc9af5a8befe40101d8824ef"},
           {"run/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"integration/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
