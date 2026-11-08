@@ -6,6 +6,10 @@ defmodule Apiary.Explore.Outcome do
   #     take in that waits for an answer (`Apiary.Explore.Questions.open_in_take_in/2`),
   #     whatever else the run did: open questions come before a proposal and before a run
   #     that stopped. A question left open in an earlier take in does not count;
+  #   * `:none` when the run ended by its exit and its newest `verdict` named `main` is
+  #     `escalate` (`Apiary.Stages.reported_verdict/2`): its stage escalates, so no
+  #     proposal waits for a confirmation, an earlier run's included. A verdict other than
+  #     `escalate` counts as none;
   #   * `:proposal` when a run of its take in, this one or an earlier one, pushed a
   #     version of the work item's `proposal` named `main`, the one Explore reads
   #     (`Apiary.WorkItems.Explore.proposal/2`), and the run did not stop: its registered
@@ -58,6 +62,7 @@ defmodule Apiary.Explore.Outcome do
          {:ok, questions} <- Questions.current(work_item) do
       cond do
         open?(questions, run) -> :questions
+        escalated?(work_item, run) -> :none
         not stopped?(run) and proposal?(run) -> :proposal
         true -> :none
       end
@@ -71,6 +76,9 @@ defmodule Apiary.Explore.Outcome do
     do: Questions.open_in_take_in(document, Questions.take_in_runs(id, take_in)) != []
 
   defp open?(nil, _run), do: false
+
+  defp escalated?(work_item, run),
+    do: match?({:verdict, :escalate, _gaps}, Apiary.Stages.reported_verdict(work_item, run))
 
   defp stopped?(%DispatchRun{id: id}),
     do:

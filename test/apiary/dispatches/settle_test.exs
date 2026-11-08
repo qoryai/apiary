@@ -51,6 +51,20 @@ defmodule Apiary.Dispatches.SettleTest do
   defp questions!(handed, texts \\ ["Which basket?", "Which sale?"]),
     do: push_result!(queue_run!(handed), run!(handed), questions_result(texts))
 
+  # The verdict the run pushes through the run API: `escalate`, with its gaps.
+  defp escalate!(handed) do
+    dispatch_run = queue_run!(handed)
+
+    {:ok, _version} =
+      Apiary.Stages.Artifacts.push_json(
+        {:run, dispatch_run},
+        work_item!(handed),
+        "verdict",
+        %{"verdict" => "escalate", "gaps" => "The ticket describes two baskets."},
+        stage_id: dispatch_run.stage_id
+      )
+  end
+
   defp exited!(handed, sequence, state \\ "succeeded"),
     do:
       event_fixture(handed.run, sequence, "run.exited", %{
@@ -217,6 +231,22 @@ defmodule Apiary.Dispatches.SettleTest do
 
       assert [_] = Settle.sweep(Dispatches.now())
       assert stored(second) == {:none, nil}
+    end
+
+    test "the verdict escalate: none, after open questions", ctx do
+      escalated = handed_over!(ctx)
+      proposal!(escalated)
+      escalate!(escalated)
+      exited!(escalated, 9)
+      project!(escalated)
+      assert stored(escalated) == {:none, nil}
+
+      asked = handed_over!(ctx)
+      questions!(asked)
+      escalate!(asked)
+      exited!(asked, 9)
+      project!(asked)
+      assert stored(asked) == {:questions, nil}
     end
 
     test "the exit folded, its end not yet written: the outcome's end stores it", ctx do
@@ -642,6 +672,35 @@ defmodule Apiary.Dispatches.SettleTest do
                  "1" => "The small one.",
                  "2" => "The spring sale."
                })
+    end
+
+    test "the verdict escalate after a proposal of an earlier run: no result, no confirm",
+         ctx do
+      first = handed_over!(ctx)
+      proposal!(first)
+      questions!(first, ["Which basket?"])
+      exited!(first, 9)
+      project!(first)
+      work_item = work_item!(first)
+
+      assert {:ok, _answered} =
+               WorkItems.answer(ctx.scope, work_item, 1, %{"1" => "The small one."})
+
+      %DispatchRun{} = queued = Repo.get_by!(DispatchRun, work_item_id: work_item.id, attempt: 2)
+      second = handed_over(ctx.scope, ctx.key, queued, %{})
+      escalate!(second)
+      exited!(second, 9)
+      project!(second)
+      assert stored(second) == {:none, nil}
+
+      assert reads(ctx, second, Dispatches.now()) == %{
+               status: :no_result,
+               page: {:no_result, :no_result, :none},
+               sql: :no_result
+             }
+
+      assert {:error, _refused} = WorkItems.confirm(ctx.scope, work_item!(second), 2)
+      refute Repo.get_by(Confirmation, work_item_id: work_item.id)
     end
 
     test "a proposal, then the run lost: lost", ctx do
