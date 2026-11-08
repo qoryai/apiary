@@ -185,16 +185,17 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert %{"type" => "proposal", "name" => "main", "version" => %{"number" => 1}} =
              pushed["artifact"]
 
+    verdict!(ctx, run, %{"verdict" => "passed"})
     end_run!(ctx, run)
 
     work_item = reload(ctx.work_item)
     assert_place(work_item, @explore, :at_gate, 1)
 
-    # A run reads its work item's artifacts after it ends: the proposal it pushed, and no
-    # verdict, which Explore does not give.
+    # A run reads its work item's artifacts after it ends: the proposal it pushed, and its
+    # verdict.
     index = json_response(read!(ctx, run, "/artifacts"), 200)
     assert %{"newest_version" => 1} = artifact(index, "proposal")
-    refute Enum.any?(index["artifacts"], &(&1["type"] == "verdict"))
+    assert %{"newest_version" => 1} = artifact(index, "verdict")
 
     for version <- artifact(index, "proposal")["versions"] do
       assert version["writer"] == %{"kind" => "run", "run_id" => run.run_id}

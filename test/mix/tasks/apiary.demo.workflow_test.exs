@@ -275,7 +275,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       end
 
       assert Enum.map(Artifacts.list(added), & &1.type) |> Enum.sort() ==
-               ["acceptance-criteria", "mockup", "proposal"]
+               ["acceptance-criteria", "mockup", "proposal", "verdict"]
 
       # Shape approved by Dana with Max's criteria: Build has its input and waits at its
       # gate.
