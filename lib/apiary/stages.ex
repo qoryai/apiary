@@ -44,18 +44,20 @@ defmodule Apiary.Stages do
   # questions of the work item with a question of the run's take in that waits for an
   # answer make the stage wait for answers, whatever else the run did
   # (`Apiary.Explore.Questions.open_in_take_in/2`; one left open in an earlier take in
-  # does not count). Otherwise a run of Explore that ended by its exit and pushed the
-  # verdict `escalate` escalates, `escalate`, with the verdict's gaps, as any other
-  # workflow's run does (`reported_verdict/2`); the harness pushes a verdict for Explore
-  # only when it escalates. Otherwise a run of Explore that stopped escalates,
-  # `run_stopped`, with the cause, and any other counts as a run with no verdict. Newest
-  # questions whose file cannot be read raise `Apiary.Stages.QuestionsUnreadable` at
-  # those ends. A refusal or a lost run (`Apiary.Dispatches.RunEnd`) rolls back and
-  # stores nothing, as the run of the queue is still handed over: the lost-run check ends
-  # it again at a later tick (`Apiary.Dispatches.RunEnd.lose/3`). An exit is stored with
-  # no outcome (`Apiary.Dispatches.Settle`); the settle sweep settles it later, and then
-  # the stage acts, unless the file becomes unreadable after Settle read it; then the exit
-  # rolls back and the lost-run check ends it again. A settle that raises rolls back, and
+  # does not count). Otherwise a run of Explore that ended by its exit and whose newest
+  # verdict named `main` is `escalate` escalates, `escalate`, with the verdict's gaps, as
+  # a run of any other workflow does (`reported_verdict/1`). Explore reads only
+  # `escalate`: any other verdict counts as none. Otherwise a run of Explore that stopped
+  # escalates, `run_stopped`, with the cause, and any other counts as a run with no
+  # verdict. Newest questions whose file cannot be read raise
+  # `Apiary.Stages.QuestionsUnreadable` at those ends, and a verdict whose file the store
+  # cannot read raises `Apiary.Stages.VerdictUnreadable`. A refusal or a lost run
+  # (`Apiary.Dispatches.RunEnd`) rolls back and stores nothing, as the run of the queue is
+  # still handed over: the lost-run check ends it again at a later tick
+  # (`Apiary.Dispatches.RunEnd.lose/3`). An exit is stored with no outcome
+  # (`Apiary.Dispatches.Settle`); the settle sweep settles it later, and then the stage
+  # acts, unless the file becomes unreadable after Settle read it; then the exit rolls
+  # back and the lost-run check ends it again. A settle that raises rolls back, and
   # the settle sweep settles the run again. A claim, a failed harness walk and a held run
   # whose build failed store the end and leave the stage as it is
   # (`run_ended_or_later/2`), and the stage sweep acts on the end later (`sweep/3`). Any
@@ -1218,10 +1220,9 @@ defmodule Apiary.Stages do
   # queue: waiting, claimed, handed_over or ended), `end_cause` (why the run of the queue
   # ended, nil while it has not), `verdict` from its verdict artifact
   # (`:passed`; `:failed` for changes-requested or escalate; nil for none), and when it
-  # started and ended, nil for not yet. A run of Explore pushes a verdict only to
-  # escalate: one with no verdict whose outcome is its proposal (`Apiary.Explore.Outcome`)
-  # has the verdict `:passed`, as the work item page showed it when Core wrote that
-  # verdict for it.
+  # started and ended, nil for not yet. A run of Explore with no verdict whose outcome is
+  # its proposal (`Apiary.Explore.Outcome`) has the verdict `:passed`, as the work item
+  # page showed it when Core wrote that verdict for it.
   @doc false
   @spec runs(WorkItem.t()) :: [map]
   def runs(%WorkItem{id: id} = work_item) do
@@ -1673,21 +1674,20 @@ defmodule Apiary.Stages do
   def explore_at_queue(_step, _workflow, _workspace_id), do: false
 
   # Explore: open questions first, then the verdict `escalate` of a run that ended by its
-  # exit (`reported_verdict/2`), then a run that stopped, else a run with no verdict. A
+  # exit (`escalate_verdict/1`), then a run that stopped, else a run with no verdict. A
   # verdict other than `escalate` counts as none. A run whose registered run failed after
   # it pushed a proposal stopped, and its cause shows the proposal's version
   # (`StopCause.failed_after_proposal/1`); where the run pushed none, it reads as any
   # stopped run.
   defp explore_result(work_item, run, context) do
     open = open_questions(work_item, run)
-    verdict = reported_verdict(work_item, run)
 
     cond do
       open != [] ->
         {:questions, question_texts(open)}
 
-      match?({:verdict, :escalate, _gaps}, verdict) ->
-        verdict
+      escalate = escalate_verdict(run) ->
+        escalate
 
       stopped?(run) ->
         case failed_proposal(run) do
@@ -1747,21 +1747,22 @@ defmodule Apiary.Stages do
 
   # A run of a workflow other than Explore: the open questions of the run's take in
   # (`open_questions/2`), else the newest verdict named `main` that the run pushed
-  # (`reported_verdict/2`), else stopped when its registered run failed, was lost or was
+  # (`verdict!/1`), else stopped when its registered run failed, was lost or was
   # cancelled.
   defp reported_result(work_item, run) do
-    verdict = reported_verdict(work_item, run)
-    registered = Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id)
     open = open_questions(work_item, run)
 
     cond do
       open != [] ->
         {:questions, question_texts(open)}
 
-      verdict ->
+      verdict = verdict!(run) ->
         verdict
 
-      match?(%Run{exit_state: state} when state in ["failed", "lost", "cancelled"], registered) ->
+      match?(
+        %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
+        Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id)
+      ) ->
         {:stopped, stop_cause(run, work_item)}
 
       true ->
@@ -1769,30 +1770,47 @@ defmodule Apiary.Stages do
     end
   end
 
-  # reported_verdict/2 is the newest version of the `verdict` named `main` that `run`
+  # reported_verdict/1 is the newest version of the `verdict` named `main` that `run`
   # pushed, where `run` ended by its exit, as the stage runner reads it:
-  # `{:verdict, verdict, gaps}`, with a nil verdict for a value it does not know. nil where
-  # the run pushed none or ended another way. `Apiary.Explore.Outcome` reads it for
-  # Explore's `escalate`.
+  # `{:verdict, verdict, gaps}`, with a nil verdict for a value other than `passed`,
+  # `changes-requested` or `escalate`, or for a file that is not a JSON object;
+  # `{:error, :store_unavailable}` when the store cannot read its file; nil where the run
+  # pushed none or ended another way. `Apiary.Explore.Outcome` reads it for Explore's
+  # `escalate`.
   @doc false
-  @spec reported_verdict(WorkItem.t(), DispatchRun.t()) :: Runner.run_result() | nil
-  def reported_verdict(work_item, %DispatchRun{id: id, end_cause: :run_ended}) do
-    newest =
-      List.first(
-        for artifact <- Artifacts.list(work_item),
-            artifact.type == "verdict" and artifact.name == "main",
-            version <- artifact.versions,
-            version.run_id == id,
-            do: version
-      )
+  @spec reported_verdict(DispatchRun.t()) ::
+          Runner.run_result() | {:error, :store_unavailable} | nil
+  def reported_verdict(%DispatchRun{id: id, end_cause: :run_ended}) do
+    case Artifacts.newest_of_run(id, "verdict", "main") do
+      nil ->
+        nil
 
-    if newest do
-      document = Artifacts.read_json(newest) || %{}
-      {:verdict, verdict(document["verdict"]), document["gaps"]}
+      version ->
+        with {:ok, document} <- Artifacts.stored_json(version) do
+          document = document || %{}
+          {:verdict, verdict(document["verdict"]), document["gaps"]}
+        end
     end
   end
 
-  def reported_verdict(_work_item, %DispatchRun{}), do: nil
+  def reported_verdict(%DispatchRun{}), do: nil
+
+  # The verdict of `run` as `reported_verdict/1` reads it; a verdict whose file the store
+  # cannot read raises, so the end is not read as one with no verdict.
+  defp verdict!(run) do
+    case reported_verdict(run) do
+      {:error, :store_unavailable} -> raise Apiary.Stages.VerdictUnreadable
+      verdict -> verdict
+    end
+  end
+
+  # The verdict of `run` (`verdict!/1`) where it is `escalate`, nil otherwise.
+  defp escalate_verdict(run) do
+    case verdict!(run) do
+      {:verdict, :escalate, _gaps} = verdict -> verdict
+      _other -> nil
+    end
+  end
 
   defp verdict("passed"), do: :passed
   defp verdict("changes-requested"), do: :changes_requested

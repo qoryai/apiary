@@ -7,9 +7,9 @@ defmodule Apiary.Explore.Outcome do
   #     whatever else the run did: open questions come before a proposal and before a run
   #     that stopped. A question left open in an earlier take in does not count;
   #   * `:none` when the run ended by its exit and its newest `verdict` named `main` is
-  #     `escalate` (`Apiary.Stages.reported_verdict/2`): its stage escalates, so no
-  #     proposal waits for a confirmation, an earlier run's included. A verdict other than
-  #     `escalate` counts as none;
+  #     `escalate` (`Apiary.Stages.reported_verdict/1`): its stage escalates, so no
+  #     proposal of the take in waits for a confirmation, also not one an earlier run
+  #     pushed. A verdict other than `escalate` counts as none;
   #   * `:proposal` when a run of its take in, this one or an earlier one, pushed a
   #     version of the work item's `proposal` named `main`, the one Explore reads
   #     (`Apiary.WorkItems.Explore.proposal/2`), and the run did not stop: its registered
@@ -18,10 +18,11 @@ defmodule Apiary.Explore.Outcome do
   #   * `:none` otherwise.
   #
   # nil when the newest questions cannot be read (`Apiary.Explore.Questions.current/1`),
-  # or whether the run is a run of Explore is not known yet
-  # (`Apiary.Stages.known_explore/1`): what the run gave is not known yet, so
-  # `Apiary.Dispatches.Settle` stores nothing and its sweep reads the run again, rather
-  # than keep `proposal` or `none` while questions wait.
+  # when the store cannot read the file of the run's newest verdict
+  # (`Apiary.Stages.reported_verdict/1`), or when whether the run is a run of Explore is
+  # not known yet (`Apiary.Stages.known_explore/1`): what the run gave is not known yet,
+  # so `Apiary.Dispatches.Settle` stores nothing and its sweep reads the run again, rather
+  # than keep `proposal` or `none` while questions wait or a verdict escalates.
   #
   # A run of a workflow other than Explore's (`Apiary.Stages.explore_run?/1`) gives
   # `:none`: its stage reads its artifacts itself. With the workflow model off no run can
@@ -60,12 +61,7 @@ defmodule Apiary.Explore.Outcome do
   defp explore_at_end(run, work_item_id) do
     with %WorkItem{} = work_item <- Repo.get(WorkItem, work_item_id),
          {:ok, questions} <- Questions.current(work_item) do
-      cond do
-        open?(questions, run) -> :questions
-        escalated?(work_item, run) -> :none
-        not stopped?(run) and proposal?(run) -> :proposal
-        true -> :none
-      end
+      if open?(questions, run), do: :questions, else: without_questions(run)
     else
       {:error, :store_unavailable} -> nil
       _other -> :none
@@ -77,8 +73,14 @@ defmodule Apiary.Explore.Outcome do
 
   defp open?(nil, _run), do: false
 
-  defp escalated?(work_item, run),
-    do: match?({:verdict, :escalate, _gaps}, Apiary.Stages.reported_verdict(work_item, run))
+  # What a run with no open question gave: nil where the store cannot read its verdict.
+  defp without_questions(run) do
+    case Apiary.Stages.reported_verdict(run) do
+      {:error, :store_unavailable} -> nil
+      {:verdict, :escalate, _gaps} -> :none
+      _none_or_other -> if not stopped?(run) and proposal?(run), do: :proposal, else: :none
+    end
+  end
 
   defp stopped?(%DispatchRun{id: id}),
     do:

@@ -809,6 +809,126 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{result_outcome: :questions} = newest_run(work_item)
     end
 
+    test "after an escalate, another round with no verdict keeps the proposal's Approve",
+         %{scope: scope} do
+      gaps = "The ticket describes two baskets."
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, understood_result())
+          verdict("escalate", gaps).(run, registered)
+        end)
+
+      assert %Escalation{cause: :escalate, gaps: ^gaps} = escalation(work_item)
+
+      {:ok, _work_item} =
+        Stages.resolve_escalation(scope, work_item, :another_round, nil,
+          expect_stage: work_item.stage_id
+        )
+
+      work_item = end_run!(reload(work_item), nil)
+
+      assert work_item.stage_state == :at_gate
+      refute escalation(work_item)
+
+      assert [%Escalation{resolution: :another_round}] =
+               Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+
+      assert %DispatchRun{attempt: 2, result_outcome: :proposal} = newest_run(work_item)
+      assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
+      assert Stages.status(work_item, scope).gate.approvable?
+    end
+
+    test "a run that pushed escalate, then passed, keeps the proposal's Approve", %{
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> answered_after_proposal!()
+        |> end_run!(fn run, registered ->
+          verdict("escalate", "The ticket is unclear.").(run, registered)
+          verdict("passed").(run, registered)
+        end)
+
+      assert work_item.stage_state == :at_gate
+      refute escalation(work_item)
+      assert %DispatchRun{attempt: 2, result_outcome: :proposal} = newest_run(work_item)
+    end
+
+    test "a run that pushed a proposal and escalate, then exited failed, escalates escalate",
+         %{scope: scope} do
+      gaps = "The ticket describes two baskets. Say which one to change."
+
+      work_item =
+        scope
+        |> answered_after_proposal!()
+        |> end_run!(
+          fn run, registered ->
+            push_result!(run, registered, understood_result(%{"message" => "Version 2."}))
+            verdict("escalate", gaps).(run, registered)
+          end,
+          %{exit_state: "failed", outcome_state: "failed"}
+        )
+
+      assert [%{number: 2}, %{number: 1}] = versions(work_item, "proposal")
+      assert work_item.stage_state == :escalated
+      assert %Escalation{cause: :escalate, gaps: ^gaps} = escalation(work_item)
+      assert %DispatchRun{attempt: 2, result_outcome: :none} = newest_run(work_item)
+    end
+
+    test "a lost run that pushed escalate escalates run_stopped", %{scope: scope} do
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+      registered = %Apiary.Runs.Run{}
+      verdict("escalate", "The ticket is unclear.").(run, registered)
+      run |> Ecto.Changeset.change(state: :ended, end_cause: :lost) |> Repo.update!()
+
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+
+      assert %Escalation{
+               cause: :run_stopped,
+               gaps: "The run stopped reporting and was marked lost."
+             } = escalation(work_item)
+    end
+
+    test "an end whose verdict the store cannot read raises and changes nothing",
+         %{scope: scope} do
+      # Gaps no other test writes, so no other test stores the same file.
+      gaps = "Which basket #{System.unique_integer([:positive])}?"
+      work_item = take_in!(scope) |> end_run!(verdict("escalate", gaps))
+      run = newest_run(work_item)
+      assert %Escalation{cause: :escalate} = escalation(work_item)
+
+      # The end again, as the stage runner reads it, with the verdict's file away.
+      Repo.delete_all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :running]
+        )
+
+      [file] = Stages.Artifacts.newest_of_run(run.id, "verdict", "main").files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      assert Stages.reported_verdict(run) == {:error, :store_unavailable}
+      assert Apiary.Explore.Outcome.at_end(run) == nil
+
+      assert_raise Apiary.Stages.VerdictUnreadable, fn ->
+        Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      end
+
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      refute escalation(work_item)
+
+      # Readable again, the end escalates.
+      File.rename!(path <> ".away", path)
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %Escalation{cause: :escalate, gaps: ^gaps} = escalation(work_item)
+    end
+
     test "an end whose newest questions cannot be read raises and changes nothing, lost or not",
          %{scope: scope} do
       # A question no other test asks, so no other test stores the same file.

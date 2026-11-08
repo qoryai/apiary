@@ -51,18 +51,20 @@ defmodule Apiary.Dispatches.SettleTest do
   defp questions!(handed, texts \\ ["Which basket?", "Which sale?"]),
     do: push_result!(queue_run!(handed), run!(handed), questions_result(texts))
 
-  # The verdict the run pushes through the run API: `escalate`, with its gaps.
-  defp escalate!(handed) do
+  # The verdict `escalate` of the run, with `gaps`, as the run API stores it: the version.
+  defp escalate!(handed, gaps \\ "The ticket describes two baskets.") do
     dispatch_run = queue_run!(handed)
 
-    {:ok, _version} =
+    {:ok, version} =
       Apiary.Stages.Artifacts.push_json(
         {:run, dispatch_run},
         work_item!(handed),
         "verdict",
-        %{"verdict" => "escalate", "gaps" => "The ticket describes two baskets."},
+        %{"verdict" => "escalate", "gaps" => gaps},
         stage_id: dispatch_run.stage_id
       )
+
+    version
   end
 
   defp exited!(handed, sequence, state \\ "succeeded"),
@@ -339,6 +341,31 @@ defmodule Apiary.Dispatches.SettleTest do
       assert Apiary.Runs.StuckLog.lines() == %{}
     end
 
+    test "a run whose verdict the store cannot read is left unset, and settled once it can",
+         ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      # Gaps no other test writes, so no other test stores the same file.
+      escalate!(handed, "Which basket #{System.unique_integer([:positive])}?")
+
+      [file] =
+        Apiary.Stages.Artifacts.newest_of_run(handed.dispatch_run.id, "verdict", "main").files
+
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The end cannot read the verdict: no proposal is kept for good.
+      exited!(handed, 9)
+      ExUnit.CaptureLog.capture_log(fn -> project!(handed) end)
+      assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
+      assert stored(handed) == {nil, nil}
+
+      File.rename!(path <> ".away", path)
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert stored(handed) == {:none, nil}
+    end
+
     test "reads after where the sweep before stopped, so runs left unset fill no batch",
          ctx do
       # Two runs ended with questions, their outcome unset; the first by id cannot have its
@@ -534,6 +561,17 @@ defmodule Apiary.Dispatches.SettleTest do
 
       assert %DispatchRun{end_cause: :lost, result_outcome: nil} = queue_run!(handed)
       assert Settle.settle(handed.dispatch_run.id) == []
+    end
+
+    test "with the verdict escalate and no open question: nothing stored", ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      escalate!(handed)
+      Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+
+      assert %DispatchRun{end_cause: :lost, result_outcome: nil} = queue_run!(handed)
+      assert Settle.settle(handed.dispatch_run.id) == []
+      assert stored(handed) == {nil, nil}
     end
   end
 

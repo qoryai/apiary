@@ -1275,7 +1275,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A run of Explore that pushes the verdict `escalate` escalates its stage with the
   verdict's gaps, as a run of any other workflow does, and its work item offers no
   **Approve**. Before, such a run read as a run with no verdict, and the work item
-  offered **Approve** on the proposal version of an earlier run.
+  offered **Approve** on the newest proposal, also one an earlier run wrote.
 <!-- /feature -->
 <!-- feature: factory -->
 - **Take in again** on a Backlog row brings the work item back and opens its page, or
