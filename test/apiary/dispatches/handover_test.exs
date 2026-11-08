@@ -1561,7 +1561,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       {work_item, queued} = queued!(ctx)
       claimed = claimed!(ctx)
 
-      # An undo works once no claim holds the run: after the release here.
+      # An undo works once no claim has the run: after the release here.
       :ok = Dispatches.release(ctx.key, id(claimed), %{reason: "no capacity"})
       assert {:ok, :ok} = Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
       assert %DispatchRun{state: :ended, end_cause: :undone} = queue_run!(queued)

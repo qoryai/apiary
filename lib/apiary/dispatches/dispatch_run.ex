@@ -232,7 +232,7 @@ defmodule Apiary.Dispatches.DispatchRun do
   def prebuild, do: @prebuild
 
   # machine_lifetime_minutes/1 is the minutes the starter lets the machine of a claim of a
-  # run of the queue of `step` live, as the claim answer's `max_lifetime_minutes` returns
+  # run of the queue of `step` live, as `max_lifetime_minutes` in the claim's response sets
   # it: 90 for a prebuild, which Qory ends 75 minutes after its attach
   # (`Apiary.Dispatches.RunEnd`), and 1470, the contract's most, for any other step. A
   # run's step never changes, so a dispatch's lifetime is read again from its run of the

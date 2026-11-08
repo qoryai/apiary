@@ -1217,7 +1217,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   ended. A close or an undo deletes the run code, so a redemption after one is not
   counted. The 1,530 or 150 minutes are the machine's lifetime (1,470 or 90) plus 60,
   counted from the last `dispatched`, handover, report or late machine, or from the
-  claim when there is none. The answers of the endpoints do not change.
+  claim when there is none. The endpoints' responses do not change.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - On **Work items**, every tab shows a box for each stage of the workspace's process,
