@@ -113,7 +113,7 @@ defmodule Apiary.Dispatches.WireTest do
           {"run/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"integration/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
-          {"diagnostics/v1", "b5bdff55fc549df92d53bae64394412907c9d501"}
+          {"diagnostics/v1", "0682dd47b53de1af9e91bed2a8cb9e48e8f7ff5b"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end
