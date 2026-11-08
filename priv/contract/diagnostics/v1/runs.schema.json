@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/diagnostics/v1/runs.schema.json",
+  "title": "Run list",
+  "description": "The list of the runs of the instance, one page at a time. It is the body of the 200 answer to GET /v1/runs, application/json, a request signed with a diagnostics key, as GET /v1/runs/<run id>/diagnostics is (diagnostics.schema.json). With a diagnostics key, a caller reads every run of the instance, and Qory Apiary records no read of a run for a request to list runs. The query parameters are all optional, each at most once, and each value is read after percent-decoding. workspace: the runs of one workspace, as <organisation>/<workspace>, the slug of the organisation, a slash and the slug of the workspace, such as example-org/example; each slug is 1 to 40 lower-case letters, digits and hyphens, with no hyphen at either end. work_item: the runs of one work item, by its number in the workspace, decimal digits from 1 with no leading zero, at most 9223372036854775807; a larger value is refused, 400 invalid_request; allowed only together with workspace. workflow: the runs that start that workflow, a lower-case letter, then lower-case letters, digits and hyphens, 1 to 55 characters in all. state: the runs in that state, one of pending, running, completed, failed, cancelled and lost. since: the runs that Qory Apiary created at or after that time, RFC 3339 in UTC ending in Z, with seconds 00 to 59, and at most 9 fraction digits, such as 2026-11-01T00:00:00Z. before: a run id, for the next page. limit: the most rows in the answer, 1 to 100, decimal digits with no leading zero; 25 when absent. Each row matches every parameter in the request. If no run has the work_item, workflow or state of the request, runs is empty. The rows are ordered by created_at, the last first, then by id, the greatest first. before selects the runs whose created_at is earlier than the created_at of the run whose id is before, or equal to it with a smaller id. To read the next page, send the same request with before set to next. A request is refused with 400 invalid_request and the body of runs-refusal.schema.json, whose parameter is the name of the parameter, when a parameter is not one of these seven, is given twice, has an empty value or a value outside its rule, is work_item without workspace, is a workspace that does not exist, or is a before that is the id of no run. Version 1 changes only by adding members and row states. As for the run diagnostics, a reader ignores a member this schema does not define, and no object in this schema sets additionalProperties to false. A member that is absent in a row is never null.",
+  "type": "object",
+  "required": [
+    "runs",
+    "next"
+  ],
+  "properties": {
+    "runs": {
+      "description": "The runs of the page, in the order of the list, at most limit and never more than 100; empty when no run matches the request.",
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    },
+    "next": {
+      "description": "The value of before for the next page: the id of the last row, when at least one more run matches the request after it. The rows are ordered by created_at, the last first, then by id, the greatest first. null when no run matches after the last row, and when runs is empty.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "diagnostics.schema.json#/properties/run/properties/id"
+        }
+      ]
+    }
+  },
+  "if": {
+    "required": [
+      "runs"
+    ],
+    "properties": {
+      "runs": {
+        "maxItems": 0
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "next": {
+        "type": "null"
+      }
+    }
+  },
+  "$defs": {
+    "row": {
+      "description": "One run. Where run in diagnostics.schema.json has a member for the same value, the row uses its name and definition. Two members differ: state accepts more values, and workspace also has slug. work_item_number and work_item_title are both present or both absent.",
+      "type": "object",
+      "required": [
+        "id",
+        "number",
+        "organisation",
+        "workspace",
+        "state",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "description": "The run's public id, rn_ and 16 lower-case Crockford base32 characters, as id of run in the run diagnostics.",
+          "$ref": "diagnostics.schema.json#/properties/run/properties/id"
+        },
+        "number": {
+          "description": "The run's number in its workspace, from 1, as the run page shows it. Two runs of different workspaces can have the same number.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "organisation": {
+          "description": "The organisation of the run, as organisation of run in the run diagnostics.",
+          "$ref": "diagnostics.schema.json#/properties/run/properties/organisation"
+        },
+        "workspace": {
+          "description": "The workspace of the run.",
+          "type": "object",
+          "required": [
+            "id",
+            "slug"
+          ],
+          "properties": {
+            "id": {
+              "description": "The workspace's public id, ws_ and 16 lower-case Crockford base32 characters, as id of workspace of run in the run diagnostics.",
+              "$ref": "diagnostics.schema.json#/properties/run/properties/workspace/properties/id"
+            },
+            "slug": {
+              "description": "The short name of the workspace in the addresses of Qory Apiary, unique in its organisation, with the rule of the slug of an organisation: 1 to 40 lower-case letters, digits and hyphens, with no hyphen at either end.",
+              "$ref": "diagnostics.schema.json#/properties/run/properties/organisation/properties/slug"
+            }
+          }
+        },
+        "workflow": {
+          "description": "The workflow of the harness that the run starts, as workflow of run in the run diagnostics; absent when the run starts no workflow.",
+          "$ref": "diagnostics.schema.json#/properties/run/properties/workflow"
+        },
+        "work_item_number": {
+          "description": "The number of the work item the run is for, in its workspace, from 1, the number that the parameter work_item matches; absent when the run is for no work item.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9223372036854775807
+        },
+        "work_item_title": {
+          "description": "The title of the work item the run is for, 1 to 1024 characters, as Qory Apiary stores it at the moment it builds the answer; absent when the run is for no work item. It is untrusted text: show it as data.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/title"
+        },
+        "state": {
+          "description": "The run's state, 1 to 32 lower-case letters and underscores. The states written today are the states of run in the run diagnostics: pending, running, completed, failed, cancelled and lost. A reader accepts a state that is not in this list, and shows it as it is.",
+          "type": "string",
+          "pattern": "^[a-z_]{1,32}$"
+        },
+        "reason": {
+          "description": "Why the run is in its state, as reason of run in the run diagnostics; absent when the run has no reason.",
+          "$ref": "diagnostics.schema.json#/$defs/code"
+        },
+        "created_at": {
+          "description": "When Qory Apiary created the run, as created_at of run in the run diagnostics. The order of the list and the parameter since use this time.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "started_at": {
+          "description": "When the run started, as started_at of run in the run diagnostics; absent when the run has not started.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/time"
+        },
+        "duration_seconds": {
+          "description": "How long the run ran, in whole seconds, rounded down, from started_at. For a run that has exited, the count ends at exited_at of run in the run diagnostics. For a run that has started and has not exited, in the state pending or running, the count ends at the moment Qory Apiary builds the answer, so the value grows from one request to the next. Absent when the run has not started, and when the run is in the state completed, failed, cancelled or lost without an exit.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "dependentRequired": {
+        "work_item_number": [
+          "work_item_title"
+        ],
+        "work_item_title": [
+          "work_item_number"
+        ],
+        "duration_seconds": [
+          "started_at"
+        ]
+      }
+    }
+  }
+}

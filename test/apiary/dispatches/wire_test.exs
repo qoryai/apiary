@@ -105,14 +105,15 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # Every vendored contract is at the integrations `main` commit that has machine types.
+  # Every vendored contract is at the integrations `main` commit that has machine types,
+  # but the diagnostics contract, at the later commit that adds the run list.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"run/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"integration/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
-          {"diagnostics/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"}
+          {"diagnostics/v1", "b5bdff55fc549df92d53bae64394412907c9d501"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end
