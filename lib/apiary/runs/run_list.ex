@@ -27,8 +27,8 @@ defmodule Apiary.Runs.RunList do
 
   **Each row.** `workflow` is the workflow of the run's resolved harness walk, as in the
   run diagnostics (`Apiary.Runs.Diagnostics`), and the work item is the one of the run's
-  row in its workspace's queue; for a run whose start failed, that row is the one of its
-  dispatch, which it left. The work item's number and title are there only while the
+  row in its workspace's queue (`dispatch_run_id`), as there too: a run whose start
+  failed left that row, and has neither. The work item's number and title are there only while the
   work item is in the run's workspace. `duration_seconds` counts whole seconds from
   `started_at` to `exited_at`, or to `now` for a started run that is pending or running
   without an exit. A member the run has not got, or whose value is outside the contract's
@@ -40,7 +40,7 @@ defmodule Apiary.Runs.RunList do
 
   import Ecto.Query, only: [from: 2, where: 3]
 
-  alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
@@ -290,10 +290,8 @@ defmodule Apiary.Runs.RunList do
       on: o.id == r.organisation_id,
       join: ws in Workspace,
       on: ws.id == r.workspace_id,
-      left_join: x in Dispatch,
-      on: x.id == r.dispatch_id,
       left_join: d in DispatchRun,
-      on: d.id == coalesce(r.dispatch_run_id, x.dispatch_run_id),
+      on: d.id == r.dispatch_run_id,
       left_join: h in RunHarness,
       as: :walk,
       on: h.dispatch_run_id == d.id and h.state == :resolved,

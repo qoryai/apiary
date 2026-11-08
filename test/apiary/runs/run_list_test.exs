@@ -404,8 +404,9 @@ defmodule Apiary.Runs.RunListTest do
       end
     end
 
-    test "a run whose start failed keeps the work item of its dispatch's row",
-         %{runs: schema, run: run, dispatch: dispatch, work_item: work_item} do
+    # As in the run diagnostics: the run left its row of the queue, which has both.
+    test "a run whose start failed has neither its workflow nor its work item",
+         %{runs: schema, scope: scope, run: run, dispatch: dispatch, work_item: work_item} do
       run
       |> Ecto.Changeset.change(
         dispatch_run_id: nil,
@@ -421,9 +422,14 @@ defmodule Apiary.Runs.RunListTest do
       assert is_binary(queued)
 
       [row] = page!(schema, "state=failed")["runs"]
-      assert row["work_item_number"] == work_item.number
+      assert row["id"] == run.public_id
       assert row["reason"] == "machine_not_made"
-      assert row["workflow"] == "hello"
+      refute Map.has_key?(row, "workflow")
+      refute Map.has_key?(row, "work_item_number") or Map.has_key?(row, "work_item_title")
+      assert page!(schema, "workflow=hello")["runs"] == []
+
+      workspace = "workspace=#{scope.organisation.slug}%2F#{scope.workspace.slug}"
+      assert page!(schema, workspace <> "&work_item=#{work_item.number}")["runs"] == []
     end
   end
 end
