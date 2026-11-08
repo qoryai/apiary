@@ -546,7 +546,7 @@ defmodule Apiary.WorkItems.WorkList do
          }}
       end
 
-    listed = for {key, stage, at} <- stages, Approvers.listed(stage) != [], do: {key, at}
+    listed = for {key, stage, at} <- stages, [_ | _] <- [Approvers.listed(stage)], do: {key, at}
 
     %{
       reader: scope.user.id,
