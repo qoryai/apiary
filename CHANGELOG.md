@@ -1101,16 +1101,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Where a step of the set-up needs context, its page has a column **About this step**
   beside the form, or under it below 1024 px, that shows what the step does.
 <!-- feature: factory -->
-- A run of a workflow entry outside a loop must push a verdict. A run that ends with no
-  verdict and no open question stops the stage with "The run stopped before its verdict.",
-  **Run another round** and, where an output has a version or no output is required,
-  **Accept as it is**. **Accept as it is** goes on to the next entry. After the last entry
-  the stage reaches its gate. At a gate `none`, it enters the next stage, or closes the work
-  item at the last stage. `changes-requested` goes on. A test work item's run needs no
-  verdict, nor does a run of Explore that pushed its proposal or questions.
-- While the stage card at Explore shows **Waits for a person**, whatever the cause, the page
-  shows no **Confirm**, and a confirmation from a page opened earlier writes nothing.
-  **Confirm** shows again once the stage reaches its gate.
 - **Organisation settings › Model providers**, **Workspace settings › Model** and
   **Workspace settings › Workflow** have a column **About this step** beside the form.
   **Provider**, **Model** and **Source** are choice fields.
@@ -1286,6 +1276,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   verdict's gaps, as a run of any other workflow does, and the work item page shows no
   **Approve**. Before, such a run read as a run with no verdict, and the work item page
   showed **Approve** on the newest proposal, also one an earlier run wrote.
+- Make `qory run verdict passed` the last step of each workflow entry outside a loop. A run
+  of such an entry that ends with no verdict and no open question stops the stage with "The
+  run stopped before its verdict.", **Run another round** and, where an output has a
+  version or no output is required, **Accept as it is**. Before, the stage went on to the
+  next entry. **Accept as it is** goes on to the next entry. After the last entry the stage
+  reaches its gate. At a gate `none`, it enters the next stage, or closes the work item at
+  the last stage. `changes-requested` goes on. A test work item's run needs no verdict. Nor
+  does a run of Explore whose take in has a proposal, or that left open questions.
+- While the stage card at Explore shows **Waits for a person**, whatever the cause, the page
+  shows no **Confirm**, and a confirmation from a page opened earlier writes nothing.
+  **Confirm** shows again once the stage reaches its gate.
 <!-- /feature -->
 <!-- feature: factory -->
 - **Take in again** on a Backlog row brings the work item back and opens its page, or
