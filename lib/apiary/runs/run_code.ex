@@ -59,6 +59,15 @@ defmodule Apiary.Runs.RunCode do
   # claim's lease lapses before the handover, or when the dispatch ends, at a release
   # among others.
   #
+  # **A late machine.** A code refused at step 2 because it expired, its run ended, or
+  # its dispatch is stale, ended or past its lease, whose proof verifies, tells that a
+  # machine came up for a dispatch that takes none: the dispatch the run was registered
+  # for, not handed over, locked `FOR UPDATE` after the run, keeps the time
+  # (`Apiary.Dispatches.Slots.late_machine/2`) and holds its slot of its pool's limit
+  # until the machine is reported `gone`. That write commits, and the answer is still
+  # `{:error, :unauthorized}`. A close deletes the run with its code
+  # (`Apiary.Dispatches.Handover.drop/1`), so a code redeemed after a close finds no run.
+  #
   # The answer is `{:ok, %{run_id: run_id, run_key: run_key, documents: documents}}`, the
   # documents as the claim encoded them (`runs.run_documents`), the same bytes to every
   # redemption. No access key is made, and no public key enters the ledger of access keys. Nothing here logs the code, the proof, a key
@@ -69,7 +78,7 @@ defmodule Apiary.Runs.RunCode do
   alias Apiary.{AccessKeys, Repo, SigningKey}
   alias Apiary.AccessKeys.EnrolmentCode
   alias Apiary.Contract.{Ed25519, Enrolment}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, RunEnd}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, RunEnd, Slots}
   alias Apiary.Organisations.Organisation
   alias Apiary.Runs.{Projector, Registration, Run, RateLimit, RunKey}
 
@@ -147,6 +156,7 @@ defmodule Apiary.Runs.RunCode do
   end
 
   defp broadcast_redeemed({:ok, {answer, nil}}), do: {:ok, answer}
+  defp broadcast_redeemed({:ok, :late_machine}), do: {:error, :unauthorized}
   defp broadcast_redeemed(refused), do: refused
 
   # The run whose code's SHA-256 is the code's, of a workspace and an organisation in use,
@@ -202,8 +212,50 @@ defmodule Apiary.Runs.RunCode do
           {:ok,
            {%{run_id: run.node_run_id, run_key: given(run), documents: run.run_documents}, nil}}
       end
+    else
+      {:late, %Run{} = run} -> late_machine(run, request, now)
+      refused -> refused
     end
   end
+
+  # A code refused as late whose proof verifies: the dispatch the run was registered for,
+  # not handed over, keeps the late machine (the moduledoc), committed, and the answer is
+  # `{:error, :unauthorized}` all the same (`broadcast_redeemed/1`).
+  defp late_machine(%Run{} = run, request, now) do
+    with {:ok, _public_key} <- proven(request),
+         %Dispatch{} = dispatch <- late_dispatch(run) do
+      _held = Slots.late_machine(dispatch, now)
+      {:ok, :late_machine}
+    else
+      _unproven_or_none -> {:error, :unauthorized}
+    end
+  end
+
+  # The dispatch whose claim registered the run, not handed over, locked `FOR UPDATE`: the
+  # one its lapse or its release kept on the run (`dispatch_id`), or the newest of its run
+  # of the queue, whose claim registered the run; none when that one was handed over.
+  defp late_dispatch(%Run{dispatch_id: id}) when is_binary(id) do
+    Repo.one(
+      from d in Dispatch,
+        where: d.id == ^id and is_nil(d.handed_over_at),
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp late_dispatch(%Run{dispatch_run_id: id}) when is_binary(id) do
+    case Repo.one(
+           from d in Dispatch,
+             where: d.dispatch_run_id == ^id,
+             order_by: [desc: d.claimed_at, desc: d.id],
+             limit: 1,
+             lock: "FOR UPDATE"
+         ) do
+      %Dispatch{handed_over_at: nil} = dispatch -> dispatch
+      _handed_over_or_none -> nil
+    end
+  end
+
+  defp late_dispatch(%Run{}), do: nil
 
   # Outstanding, or redeemed by the very public key the request carries (the repeat),
   # with the dispatch the first redemption hands over, nil for one handed over already;
@@ -218,7 +270,7 @@ defmodule Apiary.Runs.RunCode do
         true -> {:error, :unauthorized}
       end
     else
-      _ended_or_lapsed -> {:error, :unauthorized}
+      _ended_or_lapsed -> {:late, run}
     end
   end
 

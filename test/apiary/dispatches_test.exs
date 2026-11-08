@@ -1261,9 +1261,23 @@ defmodule Apiary.DispatchesTest do
       assert Slots.held(ctx.pool.id) == 0
     end
 
-    test "the safety net of a prebuild's machine counts its lifetime of 90 minutes" do
-      assert DispatchRun.machine_lifetime_minutes(DispatchRun.prebuild()) == 90
-      assert DispatchRun.machine_lifetime_minutes("explore") == 1470
+    test "the safety net frees a stale dispatch held again, counted from its late machine",
+         ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      Dispatches.sweep(dispatch.lease_until)
+
+      assert dispatched(ctx.key, dispatch) == {:error, :lease_expired}
+      assert %Dispatch{late_machine_at: late, slot_freed_at: nil} = dispatch!(dispatch)
+      assert DateTime.compare(late, dispatch.claimed_at) == :gt
+
+      Dispatches.sweep(net(dispatch.claimed_at))
+      Dispatches.sweep(DateTime.add(net(late), -1, :microsecond))
+      assert Slots.held(ctx.pool.id) == 1
+
+      Dispatches.sweep(net(late))
+      assert dispatch!(dispatch).slot_freed_at == net(late)
+      assert Slots.held(ctx.pool.id) == 0
     end
   end
 

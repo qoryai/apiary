@@ -218,7 +218,8 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
   end
 
   # The run of the queue and its dispatch ended with `cause`, never handed over, the run
-  # the claim registered deleted, the slot freed once, at the dispatch's end.
+  # the claim registered deleted, the slot freed once at the dispatch's end, or held for a
+  # late machine until it is gone.
   defp ended!(ctx, claimed, cause, dispatch_cause \\ nil) do
     assert %DispatchRun{state: :ended, end_cause: ^cause} =
              Repo.get!(DispatchRun, claimed.dispatch_run.id)
@@ -230,10 +231,20 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
              handed_over_at: nil,
              ended_at: %DateTime{} = ended_at,
              slot_freed_at: freed_at
-           } = Repo.get!(Dispatch, claimed.dispatch.id)
+           } = dispatch = Repo.get!(Dispatch, claimed.dispatch.id)
 
-    assert freed_at && DateTime.compare(freed_at, ended_at) != :gt
     assert runs(claimed) == []
+
+    # A dispatched refused after the end is a late machine: the slot is held until the
+    # machine is reported gone, which this reports.
+    if dispatch.late_machine_at do
+      assert freed_at == nil
+      assert Slots.held(ctx.pool.id) == 1
+      gone!(ctx, claimed)
+    else
+      assert freed_at && DateTime.compare(freed_at, ended_at) != :gt
+    end
+
     assert Slots.held(ctx.pool.id) == 0
   end
 

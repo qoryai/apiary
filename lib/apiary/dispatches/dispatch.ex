@@ -28,7 +28,10 @@ defmodule Apiary.Dispatches.Dispatch do
   # (`Apiary.Dispatches.Release`). `machine_end_state` is what the starter last reported
   # about the removal of the machine it created for the dispatch, `deleting`, `gone` or
   # `delete_failed`, and `machine_end_at` when that report was accepted, set together, nil
-  # until the first report (`Apiary.Dispatches.MachineEnds`). At most one dispatch of a run
+  # until the first report (`Apiary.Dispatches.MachineEnds`). `late_machine_at` is when a
+  # machine last showed up for it too late: a `dispatched` refused, or a redemption of its
+  # run code refused because it was stale or ended; nil until one
+  # (`Apiary.Dispatches.Slots.late_machine/2`). At most one dispatch of a run
   # is live and not stale at a time.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
@@ -65,6 +68,7 @@ defmodule Apiary.Dispatches.Dispatch do
     field :release_reason, :string
     field :machine_end_state, Ecto.Enum, values: [:deleting, :gone, :delete_failed]
     field :machine_end_at, :utc_datetime_usec
+    field :late_machine_at, :utc_datetime_usec
     # The secrets found in the machine log and in the release reason beyond the 1,000 kept
     # for each (`Apiary.Runs.LeakedSecrets`).
     field :machine_log_secrets_omitted, :integer, default: 0

@@ -1511,4 +1511,135 @@ defmodule Apiary.Dispatches.HandoverTest do
   end
 
   defp usec(%DateTime{} = at), do: %{at | microsecond: {0, 6}}
+
+  describe "a late machine" do
+    # The first redemption of the claim's run code, under a fresh key pair, relayed by
+    # the gateway the claim bound it to.
+    defp redeem(%{run_code: code}) do
+      request = run_code_request(code, ed25519_key_pair(), DateTime.utc_now())
+      RunCode.redeem(request, relayed_by: bound_gateway(code))
+    end
+
+    defp gone!(ctx, claimed),
+      do: :ok = Dispatches.report_machine_end(ctx.key, id(claimed), %{state: :gone})
+
+    # A person's close of the work item.
+    defp close!(ctx, %WorkItem{id: id}) do
+      {:ok, _closed} =
+        Repo.transact(fn ->
+          work_item = Repo.one!(from w in WorkItem, where: w.id == ^id, lock: "FOR UPDATE")
+          WorkItems.close_locked([work_item], {:person, ctx.scope.user.id}, Dispatches.now())
+        end)
+    end
+
+    test "a dispatched after a close holds the slot, a claim waits, and gone frees it", ctx do
+      set_node!(ctx.pool, instance_limit: 1)
+      {work_item, _queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      {_other, next} = queued!(ctx)
+
+      close!(ctx, work_item)
+      assert %Dispatch{end_cause: :closed, slot_freed_at: %DateTime{}} = dispatch!(claimed)
+
+      assert dispatched(ctx.key, claimed) == {:error, :gone}
+
+      assert %Dispatch{late_machine_at: %DateTime{}, slot_freed_at: nil} = dispatch!(claimed)
+      assert Slots.held(ctx.pool.id) == 1
+      assert claim(ctx) == {:ok, :none}
+
+      # The sweep keeps it: the late machine is a machine.
+      Dispatches.sweep(Dispatches.now())
+      assert Slots.held(ctx.pool.id) == 1
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+      assert {:ok, %{run: %{id: id}}} = claim(ctx)
+      assert id == next.id
+    end
+
+    test "a redemption after a close finds no run: the close deleted it with its code", ctx do
+      {work_item, _queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      close!(ctx, work_item)
+
+      assert redeem(claimed) == {:error, :unauthorized}
+      assert %Dispatch{late_machine_at: nil, slot_freed_at: %DateTime{}} = dispatch!(claimed)
+    end
+
+    test "a redemption after a release is refused, holds the slot, a claim waits, and gone frees it",
+         ctx do
+      set_node!(ctx.pool, instance_limit: 1)
+      {_work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+
+      :ok = Dispatches.release(ctx.key, id(claimed), %{reason: "no capacity"})
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert redeem(claimed) == {:error, :unauthorized}
+      assert %Dispatch{late_machine_at: %DateTime{}, slot_freed_at: nil} = dispatch!(claimed)
+      assert Slots.held(ctx.pool.id) == 1
+      assert claim(ctx) == {:ok, :none}
+      assert queue_run!(queued).state == :waiting
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+      assert {:ok, %{run: %{id: id}}} = claim(ctx)
+      assert id == queued.id
+    end
+
+    test "a redemption after a lapse is refused and holds the slot; after gone it takes nothing back",
+         ctx do
+      {_work_item, _queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      lapse!(claimed)
+      Dispatches.sweep(Dispatches.now())
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert redeem(claimed) == {:error, :unauthorized}
+      assert %Dispatch{late_machine_at: first, slot_freed_at: nil} = dispatch!(claimed)
+      assert %DateTime{} = first
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+
+      # A later late machine keeps the latest time and takes nothing back.
+      assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
+      assert %Dispatch{late_machine_at: latest, slot_freed_at: %DateTime{}} = dispatch!(claimed)
+      assert DateTime.compare(latest, first) == :gt
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "the net of a prebuild whose dispatched came 70 minutes after its claim counts from that dispatched",
+         ctx do
+      {_collection, _run} = prebuild!(ctx)
+      claimed = claimed!(ctx)
+      now = DateTime.utc_now()
+      claimed_at = DateTime.add(now, -70 * 60, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(d in Dispatch, where: d.id == ^claimed.dispatch.id),
+          set: [
+            claimed_at: claimed_at,
+            lease_until: usec(DateTime.truncate(DateTime.add(claimed_at, 600, :second), :second))
+          ]
+        )
+
+      Dispatches.sweep(Dispatches.now())
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert dispatched(ctx.key, claimed) in [{:error, :lease_expired}, {:error, :gone}]
+      %Dispatch{late_machine_at: late} = dispatch!(claimed)
+      assert DateTime.diff(late, claimed_at, :second) >= 70 * 60
+
+      # 90 + 60 minutes from the claim is too early, and so is a microsecond before the
+      # net counted from the dispatched.
+      net = DateTime.add(late, (90 + 60) * 60, :second)
+      Dispatches.sweep(DateTime.add(claimed_at, (90 + 60) * 60, :second))
+      Dispatches.sweep(DateTime.add(net, -1, :microsecond))
+      assert Slots.held(ctx.pool.id) == 1
+
+      Dispatches.sweep(net)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+  end
 end
