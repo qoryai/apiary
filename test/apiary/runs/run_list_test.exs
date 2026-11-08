@@ -431,5 +431,24 @@ defmodule Apiary.Runs.RunListTest do
       workspace = "workspace=#{scope.organisation.slug}%2F#{scope.workspace.slug}"
       assert page!(schema, workspace <> "&work_item=#{work_item.number}")["runs"] == []
     end
+
+    test "a run whose work item moved to another workspace has no work item",
+         %{runs: schema, scope: scope, run: run, work_item: work_item} do
+      elsewhere = workspace_fixture(scope.organisation)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [workspace_id: elsewhere.id]
+        )
+
+      [row] = page!(schema, "")["runs"]
+      assert row["id"] == run.public_id
+      refute Map.has_key?(row, "work_item_number") or Map.has_key?(row, "work_item_title")
+
+      for workspace <- [elsewhere, scope.workspace] do
+        query = "workspace=#{scope.organisation.slug}%2F#{workspace.slug}"
+        assert page!(schema, query <> "&work_item=#{work_item.number}")["runs"] == [], query
+      end
+    end
   end
 end
