@@ -60,7 +60,7 @@ defmodule Apiary.Runs.RunCode do
   # among others.
   #
   # **A late machine.** A code refused at step 2 because it expired, its run ended, or
-  # its dispatch is stale, ended or past its lease, whose proof verifies, tells that a
+  # its dispatch is stale, ended or past its lease, whose proof verifies, shows that a
   # machine came up for a dispatch that takes none: within the code's limit of step 4,
   # the dispatch the run was registered for, not handed over, locked `FOR UPDATE` after
   # the run, keeps the time

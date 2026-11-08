@@ -42,7 +42,7 @@ defmodule Apiary.Dispatches.Handover do
   # then on the dispatch keeps no lease: it never goes stale, and its slot stays held
   # until its run ends (`Apiary.Dispatches.RunEnd`) and the starter reports its machine
   # `gone` (`Apiary.Dispatches.Slots`). A `dispatched` refused, `gone` or
-  # `lease_expired`, tells that a machine was started all the same: its time is kept in
+  # `lease_expired`, shows that a machine was started all the same: its time is kept in
   # `late_machine_at`, and the slot is taken back until that report
   # (`Apiary.Dispatches.Slots.late_machine/2`).
   # The run counts toward its pool's

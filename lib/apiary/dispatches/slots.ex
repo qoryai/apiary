@@ -7,7 +7,7 @@ defmodule Apiary.Dispatches.Slots do
   # until the starter reports that machine `gone` (`Apiary.Dispatches.MachineEnds`).
   # A dispatch holds its slot while `slot_freed_at` is nil. Every free here sets it only
   # where it is nil, so a second free while the slot is freed changes nothing;
-  # `hold_again/2` sets it back to nil, and the next free writes its own time.
+  # `hold_again/2` sets it back to nil, and the next free writes the time of that free.
   #
   # **The rule, in one place: `due/2`.** A held slot is due to be freed once its dispatch
   # is done, ended or stale, and no machine is left for it: none was made, or the starter
@@ -69,7 +69,7 @@ defmodule Apiary.Dispatches.Slots do
   #   prebuild of a ref its collection no longer has waits again as well: the claim that
   #   takes it ends it, `superseded` (`Apiary.Dispatches`). A dispatch of a run that ends
   #   so ends with it (`run_ended`). A dispatch that ended with its slot still held has it
-  #   freed where `due/2` says so.
+  #   freed where `due/2` returns it.
   #   Whatever the state of the pool or of the key that claimed it: a deleted pool's or a
   #   revoked key's dispatch lapses at its `lease_until` as any other does. Its run then
   #   waits for the workspace's other pools, unless it is a prebuild: a lapsed prebuild
@@ -78,7 +78,7 @@ defmodule Apiary.Dispatches.Slots do
   #   prebuilds `lost` (`Apiary.Dispatches.end_deleted_prebuilds/1`).
   #   It answers the ids of the workspaces whose queue or slots changed, for the caller to
   #   tell once its transaction commits (`Apiary.Dispatches.broadcast/1`).
-  # - `free_slot/2` frees one dispatch's slot where `due/2` says so: for a release, and
+  # - `free_slot/2` frees one dispatch's slot where `due/2` returns it: for a release, and
   #   for a report of `gone`.
   # - `hold_again/2` takes back the slot of one dispatch for which a machine showed up,
   #   and `late_machine/2` writes when a machine showed up too late, then does the same.
@@ -282,8 +282,8 @@ defmodule Apiary.Dispatches.Slots do
     Enum.uniq(lapsed ++ freed)
   end
 
-  # Frees the slot of `dispatch` at `now`, once, where `due/2` says so: `true` when this
-  # call freed it, `false` when it was freed before or is not due.
+  # Frees the slot of `dispatch` at `now`, once, where `due/2` returns it: `true` when
+  # this call freed it, `false` when it was freed before or is not due.
   @doc false
   @spec free_slot(Dispatch.t(), DateTime.t()) :: boolean
   def free_slot(%Dispatch{id: id}, %DateTime{} = now) when is_binary(id) do
@@ -615,7 +615,7 @@ defmodule Apiary.Dispatches.Slots do
     |> of_pool(pool)
   end
 
-  # The held slots of `pool`'s dispatches that `due/2` says are due, freed at `now`: the
+  # The held slots of `pool`'s dispatches that `due/2` returns, freed at `now`: the
   # ids of their workspaces.
   defp free_due(pool, now) do
     {_count, rows} =
