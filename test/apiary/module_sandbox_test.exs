@@ -119,6 +119,10 @@ defmodule Apiary.ModuleSandboxTest do
       assert_raise ArgumentError, ~r/^Make the test sync/, fn ->
         Apiary.DataCase.setup_features(%{async: true, with_features: other})
       end
+
+      assert_raise ArgumentError, ~r/^Correct the test's/, fn ->
+        Apiary.DataCase.setup_features(%{async: true, with_features: [:no_such_feature]})
+      end
     end
   end
 end

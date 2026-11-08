@@ -146,8 +146,8 @@ defmodule Apiary.DataCase do
   switches them must not be async. An async test may list the suite's features, such as
   `with_features: Apiary.Features.all()` in the run with every feature on, and then leaves
   the application environment as it is. An async test that lists other features raises.
-  Its features being its own, `Apiary.TestSetup.start!/1` runs it only where the suite has
-  every feature.
+  The test runs under the features it lists whatever the suite's are, so
+  `Apiary.TestSetup.start!/1` leaves it out of each run with a feature off.
 
   The other tag, `@tag needs: :security` (or `@moduletag`), marks a test that exercises a
   feature; `Apiary.TestSetup.start!/1` leaves it out when the suite runs without that
@@ -165,14 +165,25 @@ defmodule Apiary.DataCase do
     end
 
     if tags[:async] do
+      listed =
+        case Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1)) do
+          {:ok, listed} ->
+            Enum.sort(listed)
+
+          {:error, reason} ->
+            raise ArgumentError,
+                  "Correct the test's with_features: list.\n" <>
+                    "#{inspect(features)} is not a valid QORY_FEATURES list: #{reason}"
+        end
+
       suite = Enum.sort(Apiary.Features.enabled())
 
-      if features(tags) != suite do
+      if listed != suite do
         raise ArgumentError,
-              "Make the test sync, or tag it with the suite's features only: " <>
-                "#{inspect(suite)}. The features are the whole node's, and an async test " <>
-                "runs beside other tests: with_features: #{inspect(features(tags))} " <>
-                "would change them for those tests too"
+              "Make the test sync, or tag it with the suite's features only.\n" <>
+                "An async test runs beside other tests, and the features are the whole " <>
+                "node's: with_features: #{inspect(listed)} differs from the suite's " <>
+                "#{inspect(suite)}"
       end
 
       :ok
