@@ -1,31 +1,29 @@
 defmodule Apiary.AccessCase do
   @moduledoc """
-  AccessCase is the access test as data: every action of `Apiary.Access`, and who may take
-  it, asked of every kind of actor that matters. A module of rows gives, for its edition,
-  its actors, how to make them, and a row per action, `{action, yes: actors}`, with the
-  actors that may; every actor a row does not list is asserted a no. `use`d with the rows
-  modules of the core and of an edition, in that order:
+  AccessCase is the access test's table as data: every action of `Apiary.Access`, and the
+  kinds of actor that matter. A module of rows gives, for its edition, its actors, how to
+  make them, and a row per action, `{action, yes: actors}`, with the actors that may.
+  `use`d with the rows modules of the core and of an edition, in that order:
 
       use Apiary.AccessCase, rows: [Apiary.AccessRows, MyEdition.AccessRows]
 
-  it generates, in a `describe "who may"`, one test per action and actor, which asks
-  `Apiary.Access.can?/3` and `Apiary.Access.authorize/3` and asserts that both give the
-  row's answer, and, where it is no, why: not found or forbidden. Beside them it asserts
-  that every action has a row and every row an action, that every row names only actors
-  of the modules, and that the role table names only actions.
+  it generates three tests: every action has a row and every row an action, every row
+  lists only actors of the modules, and the role table lists only actions. The rules of
+  `Apiary.Access.can?/3` and `Apiary.Access.authorize/3` are tested in a test module that
+  asks each rule once (`test/apiary/access_test.exs` for the core), not every action of
+  every actor.
 
-  `covers:` says which actions the rows must cover: `:all`, the default, every action of
-  `Apiary.Access`; `:core`, the core's own (`actions/1`). The core's own test is `use
-  Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core`: the core's actions, asked
-  of the core's actors. Run with an edition, the rows of the edition's kit
-  (`c:Apiary.EditionKit.access_rows/0`) answer too, where the edition changes what the
-  core's actors may. The edition's own test gives the core's rows and its own, and covers
-  every action: it asks the core's rows again, under the edition, which is how an edition
-  shows that it keeps what the core promises.
+  `covers:` sets which actions the rows must cover: `:all`, the default, every action of
+  `Apiary.Access`; `:core`, the core's actions alone (`actions/1`). The core's test is
+  `use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core`. Run with an edition, the
+  rows of the edition's kit (`c:Apiary.EditionKit.access_rows/0`) answer too, where the
+  edition changes what the core's actors may. The edition's test gives the core's rows and
+  the edition's, and covers every action.
 
-  A test module's own tests may ask the same answers: `answering/1` and `rows/1` for the
+  The tests of a test module may ask the same answers: `answering/1` and `rows/1` for the
   table its rows and the kit's make together, `actions/1` for the actions a file covers,
-  and `refusal/4` for why an actor may not.
+  `setup_actors/1` for the actors, `assert_row/2` to ask one action of one actor as the
+  rows say, and `refusal/4` for why an actor may not.
 
   A rows module implements:
 
@@ -43,26 +41,6 @@ defmodule Apiary.AccessCase do
   - `refusal/3`, why `actor` may not take `action` on `subject`, `:not_found` or
     `:forbidden`, where its edition decides it; nil leaves it to the others. The last
     module to answer wins; with none, it is forbidden.
-
-  `cast:` says how often the actors are made (`setup_actors/1`). `:test`, the default:
-  for each test of `describe "who may"`, in the test's own sandbox. `:module`: once, in
-  the module's `setup_all`, in one sandbox for the whole module
-  (`Apiary.DataCase.setup_module_sandbox/2`); every test of the module finds them in its
-  context, `places` and `scopes`, and runs inside a savepoint that rolls back what it
-  wrote, so the next test finds the actors as they were made. With `:module`:
-
-  - the actors are made under the module's features, every one
-    (`@moduletag with_features:`); a test tagged with other features raises, and belongs
-    in a module of its own on `:test`. The `feature_off` actor takes its feature away
-    inside the test, from the actors as made, and asks the same on either; so does the
-    `hidden` actor, which has the edition hide the feature from people, or the part the
-    action belongs to, of its feature or of none;
-  - what lives in a process is the test's own: `setup_all` runs in a process no test has
-    among its `$callers`, so an edition's stub (`Apiary.Edition.put_test_stub/1`) or
-    another entry of the process dictionary is set in each test's `setup`, never for the
-    module; the features are the whole node's and each test sets them as on `:test`;
-  - a test that commits outside the sandbox, or needs an instance as fresh as a test's
-    own sandbox gives it, stays on `:test`.
   """
 
   use ExUnit.CaseTemplate
@@ -73,37 +51,21 @@ defmodule Apiary.AccessCase do
   alias Apiary.Organisations.Organisation
 
   using opts do
+    opts = Keyword.validate!(opts, [:rows, covers: :all])
     modules = Keyword.fetch!(opts, :rows)
-    covers = Keyword.get(opts, :covers, :all)
-    cast = Keyword.get(opts, :cast, :test)
+    covers = Keyword.fetch!(opts, :covers)
 
-    unless cast in [:test, :module] do
-      raise ArgumentError, "cast: is :test or :module, not #{inspect(cast)}"
-    end
-
-    quote bind_quoted: [modules: modules, covers: covers, cast: cast] do
+    quote bind_quoted: [modules: modules, covers: covers] do
       use Apiary.DataCase, async: false
 
-      # The rows are asked on an instance with every feature, whatever the suite runs
-      # under, except the ones of `feature_off`, which take one away.
+      # The rules are asked on an instance with every feature, whatever the suite runs
+      # under; a test that takes one away is tagged `with_features:`.
       @moduletag with_features: Apiary.Features.all()
 
-      @access_modules modules
       @access_covers covers
       @access_rows Apiary.AccessCase.rows(modules)
-      @access_actors Apiary.AccessCase.actors(modules)
       # Who may, as the modules and the edition's kit say it together.
       @access_answering Apiary.AccessCase.answering(modules)
-      @access_answers Apiary.AccessCase.rows(@access_answering)
-
-      # The actors, made once for the module: each test asks inside a savepoint.
-      if cast == :module do
-        setup_all context do
-          Apiary.DataCase.setup_module_sandbox(context, fn ->
-            Apiary.AccessCase.setup_actors(@access_modules)
-          end)
-        end
-      end
 
       test "every action has a row, and every row an action" do
         assert Enum.sort(Enum.map(@access_rows, &elem(&1, 0))) ==
@@ -120,21 +82,6 @@ defmodule Apiary.AccessCase do
       test "the role table names only actions of the list" do
         for {role, actions} <- Apiary.Access.roles(), action <- actions do
           assert action in Apiary.Access.actions(), "#{role} names #{inspect(action)}"
-        end
-      end
-
-      describe "who may" do
-        if cast == :test do
-          setup do: Apiary.AccessCase.setup_actors(@access_modules)
-        end
-
-        for {action, _row} <- @access_rows, actor <- @access_actors do
-          yes = @access_answers |> List.keyfind(action, 0) |> elem(1) |> Keyword.fetch!(:yes)
-
-          @tag action: action, actor: actor, answer: actor in yes
-          test "#{action}: #{actor} #{if actor in yes, do: "may", else: "may not"}", ctx do
-            Apiary.AccessCase.assert_row(ctx, @access_answering)
-          end
         end
       end
     end
@@ -198,8 +145,9 @@ defmodule Apiary.AccessCase do
   end
 
   @doc """
-  assert_row/2 asks the row of the test's `action` of its `actor` and asserts the answer
-  the row gives, by `can?/3` and `authorize/3` alike, and why not where it is no.
+  assert_row/2 asks the test's `action` of its `actor`, in the places and scopes of
+  `setup_actors/1`, and asserts `answer`, by `can?/3` and `authorize/3` alike, and why not
+  where it is no. `ctx` has `action`, `actor`, `answer`, `places` and `scopes`.
   """
   @spec assert_row(map, [module]) :: :ok
   def assert_row(%{action: action, actor: actor, answer: answer} = ctx, modules) do

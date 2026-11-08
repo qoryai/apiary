@@ -1,7 +1,7 @@
 defmodule Apiary.AuditTest do
   # Not async: the changes are made on an instance with every feature, which is the node's
   # (`Apiary.AuditCase`).
-  use Apiary.AuditCase, changes: [Apiary.AuditChanges], covers: :core
+  use Apiary.AuditCase, changes: [Apiary.AuditChanges], covers: :core, cast: :module
 
   import Apiary.AccessKeysFixtures
   import Apiary.AccountsFixtures, only: [unique_user_email: 0]
