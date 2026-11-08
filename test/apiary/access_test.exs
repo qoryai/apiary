@@ -1,10 +1,13 @@
 defmodule Apiary.AccessTest do
   # Not async: a test of a feature switched off switches the features of the whole node.
-  # Each rule of `Apiary.Access.can?/3` and `authorize/3` is asked once, with its refusal:
-  # the role of each level, a key and the instance; the feature; the edition; the place;
-  # the workspaces a person reaches; the marks for deletion; leaving one's membership,
-  # what a person wrote, and whom an action over people is over. `Apiary.AccessCase` checks
-  # that every core action has a row of `Apiary.AccessRows`.
+  # These tests cover the rules of `Apiary.Access.can?/3` and `authorize/3` once each, with
+  # the refusal: the role of each level, a node's key and the instance; the feature; the
+  # edition; the place; the workspaces a person reaches; the marks for deletion; leaving
+  # one's membership, what a person wrote, and whom an action over people is over. The
+  # rules of the pool, gateway and adapter keys and the dispatch actions are tested in
+  # test/apiary/pool_key_role_test.exs, gateways_instance_test.exs, adapters_test.exs and
+  # adapters/connections_test.exs; the approvers in access_approvers_test.exs.
+  # `Apiary.AccessCase` checks that every core action has a row of `Apiary.AccessRows`.
   use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core
 
   import Apiary.AccessKeysFixtures
@@ -252,11 +255,17 @@ defmodule Apiary.AccessTest do
         assert Access.authorize(scopes[actor], :"node.read", workspace) == :ok
       end
 
+      assert Access.authorize(scopes.instance, :"audit.prune", organisation) == :ok
+
       {:ok, _} = Apiary.Deletion.delete_organisation(ctx.owner, organisation.slug)
 
       for actor <- [:owner, :admin, :member] do
         assert Access.authorize(scopes[actor], :"node.read", workspace) == {:error, :not_found}
       end
+
+      # The instance's scope, loaded before the marking, reads the marks again too.
+      assert Access.authorize(scopes.instance, :"audit.prune", organisation) ==
+               {:error, :not_found}
 
       assert Access.authorize(scopes.owner, :"organisation.rename", organisation) ==
                {:error, :not_found}
@@ -277,12 +286,24 @@ defmodule Apiary.AccessTest do
          ctx do
       %{scopes: scopes, organisation: organisation, workspace: workspace} = ctx
 
+      for actor <- [:owner, :admin, :member] do
+        assert Access.authorize(scopes[actor], :"node.read", workspace) == :ok
+      end
+
+      assert Access.authorize(scopes.instance, :"audit.prune", organisation) == :ok
+
       {:ok, _} =
         Apiary.Deletion.delete_workspace(ctx.owner, workspace.id, workspace.slug)
 
       for actor <- [:owner, :admin, :member] do
         assert Access.authorize(scopes[actor], :"node.read", workspace) == {:error, :not_found}
       end
+
+      # The instance's scope at the workspace, loaded before the marking, reads the marks
+      # again: no action the instance holds is of a workspace but the purge, so it is
+      # checked with one of the organisation, from that scope.
+      assert Access.authorize(scopes.instance, :"audit.prune", organisation) ==
+               {:error, :not_found}
 
       assert Access.authorize(scopes.owner, :"workspace.rename", workspace) ==
                {:error, :not_found}

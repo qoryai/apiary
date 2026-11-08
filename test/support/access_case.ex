@@ -1,29 +1,33 @@
 defmodule Apiary.AccessCase do
   @moduledoc """
   AccessCase is the access test's table as data: every action of `Apiary.Access`, and the
-  kinds of actor that matter. A module of rows gives, for its edition, its actors, how to
-  make them, and a row per action, `{action, yes: actors}`, with the actors that may.
+  kinds of actor that matter. A module of rows defines, for its edition, its actors, how
+  to make them, and a row per action, `{action, yes: actors}`, with the actors that may.
   `use`d with the rows modules of the core and of an edition, in that order:
 
       use Apiary.AccessCase, rows: [Apiary.AccessRows, MyEdition.AccessRows]
 
   it generates three tests: every action has a row and every row an action, every row
-  lists only actors of the modules, and the role table lists only actions. The rules of
-  `Apiary.Access.can?/3` and `Apiary.Access.authorize/3` are tested in a test module that
-  asks each rule once (`test/apiary/access_test.exs` for the core), not every action of
-  every actor.
+  lists only actors of the modules, and the role table lists only actions. Each rule of
+  `Apiary.Access.can?/3` and `Apiary.Access.authorize/3` is tested once, not every action
+  of every actor: in the core, the roles, the feature, the edition, the place, the reach,
+  the marks and the actions over people in `test/apiary/access_test.exs`; the keys and
+  the dispatch actions in `test/apiary/pool_key_role_test.exs`,
+  `test/apiary/gateways_instance_test.exs`, `test/apiary/adapters_test.exs` and
+  `test/apiary/adapters/connections_test.exs`; the approvers in
+  `test/apiary/access_approvers_test.exs`.
 
   `covers:` sets which actions the rows must cover: `:all`, the default, every action of
   `Apiary.Access`; `:core`, the core's actions alone (`actions/1`). The core's test is
   `use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core`. Run with an edition, the
-  rows of the edition's kit (`c:Apiary.EditionKit.access_rows/0`) answer too, where the
-  edition changes what the core's actors may. The edition's test gives the core's rows and
-  the edition's, and covers every action.
+  actors of the edition's kit rows (`c:Apiary.EditionKit.access_rows/0`) count as known
+  actors in the row check. The edition's test uses the core's rows and the edition's, and
+  covers every action.
 
   The tests of a test module may ask the same answers: `answering/1` and `rows/1` for the
   table its rows and the kit's make together, `actions/1` for the actions a file covers,
-  `setup_actors/1` for the actors, `assert_row/2` to ask one action of one actor as the
-  rows say, and `refusal/4` for why an actor may not.
+  `setup_actors/1` for the actors, `assert_row/2` to check one action of one actor as the
+  row lists it, and `refusal/4` for why an actor may not.
 
   A rows module implements:
 

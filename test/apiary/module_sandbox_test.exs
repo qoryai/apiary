@@ -1,6 +1,6 @@
 defmodule Apiary.ModuleSandboxTest do
   # A module's sandbox (`Apiary.DataCase.setup_module_sandbox/2`), which `cast: :module`
-  # of `Apiary.AuditCase` and `ApiaryWeb.RefusalsCase` set up: what the module's
+  # of `ApiaryWeb.RefusalsCase` sets up: what the module's
   # setup_all made, every test finds as it was made; what a test wrote, the next test does
   # not find. Not async, as no module with such a sandbox is.
   use Apiary.DataCase, async: false

@@ -37,16 +37,6 @@ defmodule Apiary.AuditCase do
     not keep;
   - `refuse/2`, given the same, makes the change refused or rolled back, and returns
     `{before, answer}`: the trail before the attempt, and its answer, `{:error, reason}`.
-
-  `cast:` says how often the context of each change (`owner/0`) is made. `:test`, the
-  default: for each test of the two describes, in the test's sandbox. `:module`: once, in
-  the module's `setup_all`, in one sandbox for the whole module
-  (`Apiary.DataCase.setup_module_sandbox/2`); every test of the module finds `owner` and
-  `scope` in its context and runs inside a savepoint that rolls back what it wrote, so the
-  next change finds the owner as they were made. The rules of `cast: :module` of
-  `ApiaryWeb.RefusalsCase` hold: a test tagged with other features than the module's
-  raises; an edition's stub or another entry of the process dictionary is set in each
-  test's `setup`; a change that commits outside the sandbox stays on `:test`.
   """
 
   use ExUnit.CaseTemplate
@@ -61,13 +51,8 @@ defmodule Apiary.AuditCase do
   using opts do
     modules = Keyword.fetch!(opts, :changes)
     covers = Keyword.get(opts, :covers, :all)
-    cast = Keyword.get(opts, :cast, :test)
 
-    unless cast in [:test, :module] do
-      raise ArgumentError, "cast: is :test or :module, not #{inspect(cast)}"
-    end
-
-    quote bind_quoted: [modules: modules, covers: covers, cast: cast] do
+    quote bind_quoted: [modules: modules, covers: covers] do
       # Not async: the changes are made on an instance with every feature, which is the
       # node's.
       use Apiary.DataCase, async: false
@@ -88,14 +73,6 @@ defmodule Apiary.AuditCase do
 
       @audit_changes modules
       @audit_covers covers
-
-      # The owner each change is made by, made once for the module: each test makes its
-      # change inside a savepoint.
-      if cast == :module do
-        setup_all context do
-          Apiary.DataCase.setup_module_sandbox(context, &Apiary.AuditCase.owner/0)
-        end
-      end
 
       test "every action is audited, or says why it is not" do
         covered = Apiary.AccessCase.actions(@audit_covers)
@@ -119,9 +96,7 @@ defmodule Apiary.AuditCase do
       end
 
       describe "each change" do
-        if cast == :test do
-          setup do: Apiary.AuditCase.owner()
-        end
+        setup do: Apiary.AuditCase.owner()
 
         for action <- Apiary.AuditCase.actions(covers) do
           @tag action: action
@@ -132,9 +107,7 @@ defmodule Apiary.AuditCase do
       end
 
       describe "a change that is refused or rolled back" do
-        if cast == :test do
-          setup do: Apiary.AuditCase.owner()
-        end
+        setup do: Apiary.AuditCase.owner()
 
         for action <- Apiary.AuditCase.actions(covers) do
           @tag action: action
