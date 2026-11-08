@@ -132,8 +132,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and, where the run has them, its workflow, work item, reason, start time and duration.
   The query narrows the list to a workspace, such as `workspace=example-org/example`, a
   work item of that workspace, a workflow, a state, or the runs created since a time
-  (`since`). `before`, set to the answer's `next`, reads the next page. A query parameter that is
-  unknown, given twice, empty or outside its rule gets `400` with the parameter's name.
+  (`since`). `before`, set to the answer's `next`, reads the next page. A query gets
+  `400` with the name of the parameter for a parameter that is unknown, given twice,
+  empty or outside its rule, for `work_item` without `workspace`, for a workspace that
+  does not exist, and for a `before` that is the id of no run.
   Qory Apiary records no read of a run for the list.
 - Qory Apiary scans the text a run stores, as it arrives, for keys of a known form: Qory
   Apiary's keys and codes, and Anthropic, OpenAI, GitHub and GitLab tokens. It scans the

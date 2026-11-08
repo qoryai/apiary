@@ -1,8 +1,8 @@
 defmodule Apiary.DiagnosticsSchema do
   @moduledoc """
   The run diagnostics contract's schemas (`priv/contract/diagnostics/v1/`): the document,
-  the run list and its refusal, each built for validation, with the integration and provisioner definitions it refers to, vendored
-  under `test/fixtures/contract/`. Nothing is fetched. Test support.
+  the run list and its refusal, each built for validation, with the integration and
+  provisioner definitions it refers to, vendored under `test/fixtures/contract/`. Nothing is fetched. Test support.
   """
 
   @behaviour JSV.Resolver

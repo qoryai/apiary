@@ -180,7 +180,8 @@ defmodule Apiary.Runs do
   diagnostics key (`Apiary.AccessKeys.diagnostics_scope/1`): `query` is the request's raw
   query string. `{:ok, document}`, the contract's run list, `%{"runs" => rows, "next" =>
   id or nil}`, or `{:error, parameter}` with the name of the parameter the request breaks
-  the rule of (`Apiary.Runs.RunList`). One query reads the page. `opts`: `now`, the time
+  the rule of (`Apiary.Runs.RunList`). One query reads the page's runs, after a query for
+  the workspace and one for `before` when the request has them. `opts`: `now`, the time
   the answer is built (the current time).
   """
   @spec list_instance_runs(String.t(), keyword) :: {:ok, map} | {:error, String.t()}
