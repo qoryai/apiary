@@ -10,12 +10,15 @@ defmodule Apiary.Processes.Version do
     made current.
   - `author_id`: who saved it. On version 1, nil for a copy of the type's default or of
     the Qory template, and the person who made the workspace for a copy of a repository's
-    template.
+    template; nil on a version that the switch Keep the process at the latest saved.
   - `based_on_id`: the version the save started from, nil for version 1.
-  - `template`: what the workspace copied as version 1, on that version alone, nil on the
-    others: `%{"type" => type, "version" => version}` for the type's default, or the keys
-    `source`, `git`, `commit`, `module`, `stack`, `type` and `version` for a template,
-    where `type` is the template file's `type`, the same value as `workspaces.type`.
+  - `template`: what the workspace copied, on version 1 and on each version made from its
+    harness (`Apiary.Processes.HarnessUpdate`), nil on the others: `%{"type" => type,
+    "version" => version}` for the type's default, or the keys `source`, `git`, `commit`,
+    `module`, `stack`, `type` and `version` for a template, where `type` is the template
+    file's `type`, the same value as `workspaces.type`. A version made from the harness
+    also has `ref_kind` (`branch`, `tag` or `commit`) and `ref`, the version of the
+    harness it was read at, and `version` nil.
   - `public_id`: `pv_` and 16 characters (`Apiary.PublicId`).
   """
   use Ecto.Schema

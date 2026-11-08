@@ -22,7 +22,11 @@ defmodule Apiary.Processes do
 
   A save (`save/4`) makes a new current version, and the version before it past; work
   items taken in after it run under it, and every other work item stays on its version
-  (`version_for/1`). A save with `trial: true` makes a trial instead, and leaves the
+  (`version_for/1`). A save of edits turns off the workspace's switch that keeps the
+  process at the latest commit of its harness (`Apiary.Processes.HarnessUpdate`), which
+  saves versions made from the harness (`save_harness/5`). Such a version keeps the
+  record of its harness commit in `template`, as version 1 of a template does; a run of a
+  work item composes the commit of its version (`harness_template/1`). A save with `trial: true` makes a trial instead, and leaves the
   current version as it is: an owner or an admin assigns chosen work items to it
   (`assign/3`), then makes it current (`make_current/2`) or drops it
   (`drop_trial/2`), which moves its work items back to the current version. A work item
@@ -552,7 +556,8 @@ defmodule Apiary.Processes do
            :ok <- known_machine_types(document),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
-           {:ok, version} <- insert_version(scope, workspace, base, document, trial?),
+           {:ok, version} <- insert_version(scope, workspace, base, document, trial?, nil),
+           :ok <- stop_keep_latest(workspace),
            {:ok, _entry} <-
              record(scope, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
                based_on: base.number
@@ -560,6 +565,123 @@ defmodule Apiary.Processes do
         {:ok, version}
       end
     end)
+  end
+
+  # A person's save of edits turns off the switch that keeps the process at the latest
+  # commit of its harness (`Apiary.Processes.HarnessUpdate`).
+  defp stop_keep_latest(%Workspace{id: id}) do
+    {1, _rows} =
+      Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [keep_process_latest: false])
+
+    :ok
+  end
+
+  @doc """
+  save_harness/5 saves `document`, the process of the workspace's harness at a commit, as
+  a version of the workspace, with `template` as its `template`: the record of that
+  commit (`harness_template/1`). `Apiary.Processes.HarnessUpdate` calls it, in its
+  transaction. It saves as `save/4` saves, under `process.edit`, a trial with
+  `trial: true`, and with these differences:
+
+    * `based_on:`, a version of the workspace, is required, and must be the current
+      version still, else `{:error, :stale}`: the version the difference was read
+      against;
+    * the document may be the document of that version, since the commit changes; only
+      the same document at the same commit is `:unchanged`;
+    * the switch that keeps the process at the latest is not changed here;
+    * for the instance's scope (`Apiary.Accounts.Scope.for_instance/2`), with no person,
+      it checks no access: the switch's update, which no person starts. Its version has
+      no author.
+
+  The audit entry is `save` or `save_trial`, with the commit as `harness_commit`.
+  `{:ok, version}`, or `save/4`'s errors.
+  """
+  @spec save_harness(Scope.t(), %Workspace{}, document, map, keyword) ::
+          {:ok, Version.t()} | {:error, [error] | :stale | Access.reason()}
+  def save_harness(%Scope{} = scope, %Workspace{} = workspace, document, template, opts)
+      when is_map(template) do
+    trial? = Keyword.get(opts, :trial, false)
+    document = with_stage_ids(document)
+
+    Repo.transact(fn ->
+      with {:ok, scope, workspace} <- hold(scope, workspace),
+           :ok <- harness_access(scope, workspace),
+           :ok <- validate(document),
+           :ok <- Apiary.MachineTypes.hold(),
+           :ok <- known_machine_types(document),
+           {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
+           :ok <- still_current(workspace, base),
+           :ok <- changed_at(base, document, template),
+           {:ok, version} <- insert_version(scope, workspace, base, document, trial?, template),
+           {:ok, _entry} <-
+             record(scope, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
+               based_on: base.number,
+               harness_commit: template["commit"]
+             }) do
+        {:ok, version}
+      end
+    end)
+  end
+
+  defp harness_access(%Scope{instance: true, user: nil}, _workspace), do: :ok
+  defp harness_access(scope, workspace), do: Access.check(scope, :"process.edit", workspace)
+
+  defp still_current(workspace, %Version{id: id}) do
+    case current_row(workspace, :update) do
+      %Version{id: ^id} -> :ok
+      _other -> {:error, :stale}
+    end
+  end
+
+  defp changed_at(%Version{document: document} = base, document, template) do
+    if harness_template(base)["commit"] == template["commit"],
+      do: {:error, [%{path: "#", error: :unchanged, detail: nil}]},
+      else: :ok
+  end
+
+  defp changed_at(_base, _document, _template), do: :ok
+
+  @doc """
+  harness_template/1 is the record of the harness commit that `version` (a version or its
+  row id) was made from: its `template` where that has a `commit`, else the `template` of
+  the nearest version it was based on (`based_on_id`, then that version's, and so on)
+  that has one. Nil for none, as for a workspace made with no template. A run of a work
+  item on `version` composes that commit, where it is the commit of the harness the run
+  takes (Apiary.Dispatches.HarnessReads).
+  """
+  @spec harness_template(Version.t() | Ecto.UUID.t() | nil) :: map | nil
+  def harness_template(nil), do: nil
+
+  def harness_template(%Version{template: %{"commit" => commit} = template})
+      when is_binary(commit),
+      do: template
+
+  def harness_template(%Version{id: id}), do: harness_template(id)
+
+  def harness_template(id) when is_binary(id) do
+    {:ok, id} = Ecto.UUID.dump(id)
+
+    %{rows: rows} =
+      Repo.query!(
+        """
+        WITH RECURSIVE chain(based_on_id, template, depth) AS (
+          SELECT based_on_id, template, 0 FROM process_versions WHERE id = $1
+          UNION ALL
+          SELECT v.based_on_id, v.template, chain.depth + 1
+          FROM process_versions v JOIN chain ON v.id = chain.based_on_id
+          WHERE chain.template->>'commit' IS NULL AND chain.depth < 10000
+        )
+        SELECT template FROM chain
+        WHERE template->>'commit' IS NOT NULL
+        ORDER BY depth LIMIT 1
+        """,
+        [id]
+      )
+
+    case rows do
+      [[template]] -> template
+      [] -> nil
+    end
   end
 
   @doc """
@@ -612,7 +734,7 @@ defmodule Apiary.Processes do
 
   defp changed(_base, _document), do: :ok
 
-  defp insert_version(scope, workspace, base, document, trial?) do
+  defp insert_version(scope, workspace, base, document, trial?, template) do
     number =
       Repo.one(from v in Version, where: v.workspace_id == ^workspace.id, select: max(v.number))
 
@@ -631,6 +753,7 @@ defmodule Apiary.Processes do
       number: (number || 0) + 1,
       status: status,
       document: document,
+      template: template,
       author_id: scope.user && scope.user.id,
       based_on_id: base.id
     })

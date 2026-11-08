@@ -2276,6 +2276,55 @@ defmodule Apiary.Stacks.Sources do
 
   defp shares_another?(%Stack{}, _base), do: true
 
+  @doc false
+  # put_template_stack/3 sets the stack of `workspace`'s harness to `stack`, the stack of
+  # the template an update from the harness saved (`Apiary.Processes.HarnessUpdate`),
+  # inside the caller's transaction, under the lock of the workspace's saves. With no
+  # row, the workspace takes the Qory harness at `workspaces.qory_stack`, nil for `core`.
+  # The workspace's choice is saved again with the stack in its document, with its choice,
+  # version and owner. The harness the organisation shares sets the stack of every
+  # workspace that takes it, so it is not changed: `{:error, :shared}`. `:ok`, or
+  # `{:error, :invalid}` for a row that fails the save rules.
+  @spec put_template_stack(Scope.t(), Workspace.t(), String.t()) ::
+          :ok | {:error, :shared | :invalid | :forbidden}
+  def put_template_stack(%Scope{} = scope, %Workspace{} = workspace, stack)
+      when is_binary(stack) do
+    lock_saves(workspace)
+
+    case Stacks.choice(workspace) do
+      %Stack{} = row ->
+        version = if row.version_kind, do: {row.version_kind, row.version_name}
+        owner = if row.owner_organisation_id, do: [owner: row.owner_organisation_id], else: []
+        harness = row.harness |> extended() |> Map.put("stack", stack) |> document()
+
+        scope
+        |> Stacks.put_stack(
+          {:workspace, workspace},
+          harness,
+          [choice: row.choice, version: version] ++ owner
+        )
+        |> saved()
+        |> case do
+          {:ok, _row} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      nil ->
+        if Stacks.shared(%Organisation{id: workspace.organisation_id}) do
+          {:error, :shared}
+        else
+          value = if stack == Qory.default_stack(), do: nil, else: stack
+
+          {1, _rows} =
+            Repo.update_all(from(w in Workspace, where: w.id == ^workspace.id),
+              set: [qory_stack: value, updated_at: DateTime.utc_now()]
+            )
+
+          :ok
+        end
+    end
+  end
+
   # A row the save rules refuse: the caller's `{:error, changeset}` is for a workspace's.
   defp saved({:error, %Ecto.Changeset{}}), do: {:error, :invalid}
   defp saved(result), do: result

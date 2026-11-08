@@ -1,0 +1,365 @@
+defmodule Apiary.Processes.HarnessUpdateTest do
+  # Update from harness: the difference between the current version and the Qory
+  # harness's template at the version the workspace follows, its save as a version or a
+  # trial, and the switch Keep the process at the latest, which saves a version at each
+  # commit the refresh of the Qory harness reads. Not async: the tests serve the Qory
+  # harness at other commits, and a refresh reads every workspace.
+  use Apiary.DataCase, async: false
+
+  import Ecto.Query, only: [from: 2]
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.{Artifacts, Processes, Repo, Stacks}
+  alias Apiary.Audit.Entry
+  alias Apiary.Harnesses.{Qory, QoryRefresh}
+  alias Apiary.Organisations.Workspace
+  alias Apiary.Processes.{HarnessUpdate, Version}
+  alias Apiary.QoryHarnessFixture
+  alias Apiary.Stacks.Stack
+
+  @moduletag needs: :workflow_model
+  @moduletag :capture_log
+
+  @process "modules/software-factory/process.yaml"
+  @shape "st_p9w5cvh311"
+  @repository "https://code.example.com/acme/harness"
+
+  # A workspace made from the Qory template at the fixture's commit, by its owner.
+  setup do
+    %{scope: scope, workspace: workspace} = sign_up_fixture()
+    %{scope: scope, workspace: workspace}
+  end
+
+  # The fixture's files with the template's process.yaml changed by `fun`.
+  defp files(fun), do: Map.update!(QoryHarnessFixture.files(), @process, fun)
+
+  # The Qory harness's main moved to a commit of `files`, read as the refresh reads it.
+  defp main_at!(files) do
+    repository = QoryHarnessFixture.serve!(files)
+    assert {:ok, commit} = Qory.read({:branch, "main"})
+    assert commit == repository.commit
+    commit
+  end
+
+  # The template with Shape described, and the custom type spec listed.
+  defp described do
+    files(fn process ->
+      process
+      |> String.replace("      name: Shape\n", "      name: Shape\n      description: Plan it.\n")
+      |> Kernel.<>(
+        "  - name: spec\n    base_view: document\n    size_limit: 65536\n    max_files: 1\n"
+      )
+    end)
+  end
+
+  defp versions(workspace),
+    do: workspace |> Processes.list_versions() |> Enum.sort_by(& &1.number)
+
+  defp keep(workspace),
+    do: Repo.one(from w in Workspace, where: w.id == ^workspace.id, select: w.keep_process_latest)
+
+  # A person's save of edits: Shape renamed Plan.
+  defp edit!(scope, workspace) do
+    document = Processes.current(workspace).document
+
+    stages =
+      Enum.map(document["stages"], fn
+        %{"id" => @shape} = stage -> %{stage | "name" => "Plan"}
+        stage -> stage
+      end)
+
+    {:ok, version} = Processes.save(scope, workspace, %{document | "stages" => stages})
+    version
+  end
+
+  describe "read/2" do
+    test "compares the current version with main's template: stages, types and stack", ctx do
+      v1 = Processes.current(ctx.workspace)
+
+      {1, _rows} =
+        Repo.update_all(from(w in Workspace, where: w.id == ^ctx.workspace.id),
+          set: [
+            shown_standard_types:
+              Artifacts.Type.standard_names() -- ["mockup" | Artifacts.Type.always_on()]
+          ]
+        )
+
+      commit = main_at!(described())
+
+      assert {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert %{
+               source: :qory,
+               version: {:branch, "main"},
+               commit: ^commit,
+               stack: nil,
+               changes: [{:description_changed, @shape, %{from: nil, to: "Plan it."}}]
+             } = update
+
+      assert update.in_use == QoryHarnessFixture.commit()
+      assert update.base.id == v1.id
+
+      assert update.added_types == [
+               %{"name" => "mockup"},
+               %{
+                 "name" => "spec",
+                 "base_view" => "document",
+                 "size_limit" => 65_536,
+                 "max_files" => 1
+               }
+             ]
+
+      assert update.template == %{
+               "source" => "qory",
+               "git" => Qory.git(),
+               "commit" => commit,
+               "module" => "software-factory",
+               "stack" => "software",
+               "type" => "qory.software",
+               "version" => nil,
+               "ref_kind" => "branch",
+               "ref" => "main"
+             }
+    end
+
+    test "lists the stack of the template where it differs from the workspace's", ctx do
+      main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
+
+      assert {:ok, %{stack: %{from: "software", to: "core"}}} =
+               HarnessUpdate.read(ctx.scope, ctx.workspace)
+    end
+
+    test "is no change at the commit the version came from", ctx do
+      assert {:ok, %{changes: [], added_types: [], stack: nil, commit: commit}} =
+               HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert commit == QoryHarnessFixture.commit()
+    end
+
+    test "a member who is no owner or admin reads nothing", ctx do
+      member = member_fixture(ctx.scope).scope
+      assert HarnessUpdate.read(member, ctx.workspace) == {:error, :forbidden}
+    end
+
+    test "a harness repository with no template the process came from has none", ctx do
+      Repo.insert!(%Stack{
+        organisation_id: ctx.workspace.organisation_id,
+        workspace_id: ctx.workspace.id,
+        choice: :repository,
+        version_kind: :branch,
+        version_name: "main",
+        harness: "extends:\n  git: #{@repository}\n  stack: core\n"
+      })
+
+      assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, :no_template}
+    end
+  end
+
+  describe "save/4" do
+    test "saves the template as the current version, with its types and its commit", ctx do
+      commit = main_at!(described())
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert {:ok, %Version{number: 2, status: :current} = version} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      assert version.template["commit"] == commit
+      assert version.author_id == ctx.scope.user.id
+      assert Processes.stage(version, @shape)["description"] == "Plan it."
+      assert Processes.harness_template(version)["commit"] == commit
+      assert %{name: "spec", base_view: :document} = Artifacts.type(ctx.workspace, "spec")
+
+      assert [%Entry{details: %{"change" => "save", "harness_commit" => ^commit}}] =
+               Repo.all(
+                 from e in Entry,
+                   where: e.workspace_id == ^ctx.workspace.id and e.action == "process.edit"
+               )
+    end
+
+    test "drops the edits saved on the Stages page, and turns the switch on again", ctx do
+      edit!(ctx.scope, ctx.workspace)
+      assert keep(ctx.workspace) == false
+      refute HarnessUpdate.keep_latest?(ctx.workspace)
+
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert [{:stage_renamed, @shape, %{from: "Plan", to: "Shape"}}] = update.changes
+
+      assert {:ok, version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+      assert version.document == Qory.template(QoryHarnessFixture.commit()).process
+      assert keep(ctx.workspace) == true
+    end
+
+    test "Try first saves a trial, and leaves the current version and the switch", ctx do
+      edit!(ctx.scope, ctx.workspace)
+      main_at!(described())
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert {:ok, %Version{status: :trial, number: 3}} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+
+      assert Processes.current(ctx.workspace).number == 2
+      assert keep(ctx.workspace) == false
+    end
+
+    test "is stale once another version is current", ctx do
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      main_at!(described())
+      edit!(ctx.scope, ctx.workspace)
+
+      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :stale}
+      assert length(versions(ctx.workspace)) == 2
+    end
+
+    test "the same process at the same commit is unchanged", ctx do
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert {:error, [%{error: :unchanged}]} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+    end
+
+    test "copies the template's stack to the workspace", ctx do
+      main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert {:ok, _version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+      assert Repo.reload!(ctx.workspace).qory_stack == nil
+      assert Workspace.qory_stack(Repo.reload!(ctx.workspace)) == "core"
+    end
+  end
+
+  describe "the switch" do
+    test "is on for the Qory harness, off for a harness repository, and absent when pinned",
+         ctx do
+      assert HarnessUpdate.following(ctx.workspace) == {:qory, "main"}
+      assert HarnessUpdate.keep_latest?(ctx.workspace)
+
+      assert %{following: "main", keep_latest: true, number: 1, head: head, in_use: in_use} =
+               HarnessUpdate.status(ctx.workspace)
+
+      assert head == QoryHarnessFixture.commit()
+      assert in_use == head
+
+      row =
+        Repo.insert!(%Stack{
+          organisation_id: ctx.workspace.organisation_id,
+          workspace_id: ctx.workspace.id,
+          choice: :repository,
+          version_kind: :branch,
+          version_name: "main",
+          harness: "extends:\n  git: #{@repository}\n  stack: core\n"
+        })
+
+      assert HarnessUpdate.following(ctx.workspace) == {:repository, "main"}
+      refute HarnessUpdate.keep_latest?(ctx.workspace)
+      assert %{keep_latest: false, in_use: nil, head: nil} = HarnessUpdate.status(ctx.workspace)
+
+      Repo.update!(Ecto.Changeset.change(row, version_kind: :tag, version_name: "v2.4.0"))
+
+      assert HarnessUpdate.following(ctx.workspace) == nil
+      refute HarnessUpdate.keep_latest?(ctx.workspace)
+      assert %{keep_latest: nil, version: {:tag, "v2.4.0"}} = HarnessUpdate.status(ctx.workspace)
+
+      assert HarnessUpdate.set_keep_latest(ctx.scope, ctx.workspace, true) == {:error, :pinned}
+    end
+
+    test "a person turns it off and on, with an audit entry each", ctx do
+      assert {:ok, _workspace} = HarnessUpdate.set_keep_latest(ctx.scope, ctx.workspace, false)
+      refute HarnessUpdate.keep_latest?(ctx.workspace)
+      assert {:ok, _workspace} = HarnessUpdate.set_keep_latest(ctx.scope, ctx.workspace, true)
+      assert HarnessUpdate.keep_latest?(ctx.workspace)
+
+      assert [false, true] =
+               Repo.all(
+                 from e in Entry,
+                   where: e.workspace_id == ^ctx.workspace.id and e.action == "process.edit",
+                   order_by: [asc: e.inserted_at, asc: e.id],
+                   select: e.details["on"]
+               )
+
+      member = member_fixture(ctx.scope).scope
+      assert HarnessUpdate.set_keep_latest(member, ctx.workspace, false) == {:error, :forbidden}
+    end
+
+    test "the refresh saves a version at main's commit, with no author", ctx do
+      commit = main_at!(described())
+
+      assert :ok = QoryRefresh.perform(nil, %Oban.Job{args: %{}})
+
+      assert [_v1, %Version{number: 2, status: :current, author_id: nil} = v2] =
+               versions(ctx.workspace)
+
+      assert %{"commit" => ^commit, "ref_kind" => "branch", "ref" => "main"} = v2.template
+      assert Processes.stage(v2, @shape)["description"] == "Plan it."
+      assert Artifacts.type(ctx.workspace, "spec")
+
+      # Read again at the same commit: nothing is due.
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 2
+    end
+
+    test "a commit that leaves the process unchanged is a version too", ctx do
+      commit = main_at!(Map.put(QoryHarnessFixture.files(), "README.yaml", "a: 1\n"))
+      assert :ok = HarnessUpdate.follow_all()
+
+      assert [v1, v2] = versions(ctx.workspace)
+      assert v2.template["commit"] == commit
+      assert Processes.diff(v1, v2) == []
+    end
+
+    test "edits saved on the Stages page stop it", ctx do
+      edit!(ctx.scope, ctx.workspace)
+      main_at!(described())
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 2
+
+      assert %{keep_latest: false, in_use: in_use, head: head} =
+               HarnessUpdate.status(ctx.workspace)
+
+      assert in_use == QoryHarnessFixture.commit()
+      assert head != in_use
+    end
+
+    test "a template that fails a check saves nothing", ctx do
+      main_at!(files(&String.replace(&1, "type: qory.software\n", "type: qory.other\n")))
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "a workspace made with no template is not updated", ctx do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
+
+      {:ok, workspace} =
+        Apiary.Organisations.create_workspace(ctx.scope, %{
+          "name" => "Data",
+          "domain" => "software"
+        })
+
+      main_at!(described())
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(workspace)) == 1
+      assert length(versions(ctx.workspace)) == 2
+    end
+
+    @tag with_features: [:observability, :security, :secrets, :factory]
+    test "does nothing with the feature workflow_model off", ctx do
+      main_at!(described())
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(Repo.all(from v in Version, where: v.workspace_id == ^ctx.workspace.id)) == 1
+    end
+
+    test "a stack to copy into the harness the organisation shares fails the save", ctx do
+      Stacks.put_stack(
+        ctx.scope,
+        {:organisation, %Apiary.Organisations.Organisation{id: ctx.workspace.organisation_id}},
+        ~s(extends:\n  git: "#{Qory.git()}"\n  ref: "main"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:branch, "main"}
+      )
+
+      main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :shared}
+      assert length(versions(ctx.workspace)) == 1
+    end
+  end
+end
