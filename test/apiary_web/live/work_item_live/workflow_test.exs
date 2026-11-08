@@ -3635,6 +3635,35 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-escalation-another")
     end
 
+    test "a stage with no outputs, escalated by the migration: Run another round only", %{
+      conn: conn,
+      scope: scope
+    } do
+      document =
+        Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+          Enum.map(stages, fn
+            %{"id" => @explore} = stage -> Map.put(stage, "outputs", [])
+            stage -> stage
+          end)
+        end)
+
+      save!(scope, document)
+      work_item = scope |> taken_in_fixture() |> end_run!(nil)
+
+      # As the migration placed it: no escalation row, and a run with no stage.
+      Repo.update_all(from(r in DispatchRun, where: r.work_item_id == ^work_item.id),
+        set: [stage_id: nil, round: nil, stage_entry: nil, workflow: nil]
+      )
+
+      Repo.delete_all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+      assert %{escalation: %{cause: :run_stopped, gaps: nil}} = Stages.status(work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-stage-escalation-cause")
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      assert has_element?(view, "#work-item-stage-escalation-another")
+    end
+
     test "no result: no Accept as it is, and a sent accept is refused", %{
       conn: conn,
       scope: scope
