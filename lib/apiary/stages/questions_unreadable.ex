@@ -1,6 +1,6 @@
 defmodule Apiary.Stages.QuestionsUnreadable do
-  # Raised when the stage runner reads a run of Explore's end and the newest questions of
-  # its work item cannot be read (`Apiary.Explore.Questions.current/1`). A refusal or a
+  # Raised when the stage runner reads a run's end and the newest questions of its work
+  # item cannot be read (`Apiary.Explore.Questions.current/1`). A refusal or a
   # lost run rolls back, and the lost-run check tries it again
   # (`Apiary.Dispatches.RunEnd.lose/3`). An exit is stored with no outcome
   # (`Apiary.Dispatches.Settle`); the settle sweep settles it later, and then the stage

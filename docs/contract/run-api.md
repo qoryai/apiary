@@ -349,19 +349,37 @@ Checks, in order, after the checks of every request:
    declares a prefix, or `xmlns`, twice is not well-formed XML and gets the "Make
    checkout.svg a well-formed SVG file …" message.
 7. A version of `questions` or `review-comments` that changes what members wrote,
-   compared with the newest version: `422` `invalid_artifact`, with the file in `names`
+   compared with the newest version, or a version of `questions` that breaks one of the
+   `decision` rules of this check: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id` and the
    `asked` and `follows` of each question, keeps the questions of the newest version
    first, in the same order, and adds new questions after them, adds no `answer` and
    changes none, keeps each `history`, keeps `question`, `context` and `options` of each
    question that stays `answered`, each option's `recommended` included, moves the
-   answer of a question it reopens unchanged
-   to the end of its `history` with `reopened.run` set to its `run.number`, and adds
-   each question `open` with `asked.run` set to its `run.number` and with `follows`, if
-   any, set to ids of questions before it in the version; an absent `follows` and an
-   empty one are the same. In `review-comments`, the run keeps every review comment and
-   every earlier reply unchanged, adds no review comment, and adds at most one reply to
-   an open review comment, by `{"run": <run.number>}`, which it closes; a reply with the
+   answer of a question it reopens unchanged to the end of its `history` with
+   `reopened.run` set to its `run.number`, and adds each question with `asked.run` set
+   to its `run.number` and with `follows`, if any, set to ids of questions before it in
+   the version; an absent `follows` and an empty one are the same.
+
+   The `decision` rules:
+
+   - A version may add a question as `open`, without a `decision`, or as `decided`,
+     with its `decision`.
+   - A question that the newest version has does not change to `decided`: a run
+     records a decision only on a question it adds.
+   - A question that the version adds as `decided` has the title of one of its
+     `options` in `decision.option`, and its `asked.run` in `decision.run`. The JSON
+     Schema of the format cannot check this.
+   - The run keeps the `decision` of each question that the newest version has,
+     unchanged, also when it withdraws or reopens the question, and adds a `decision`
+     to none of them.
+   - The run keeps `question` and `options` of each question that has a `decision`, in
+     every state, each option's `recommended` included, and its `context` while it
+     stays `decided` or `answered`.
+
+   In `review-comments`, the run keeps every review comment and every earlier reply
+   unchanged, adds no review comment, and adds at most one reply to an open review
+   comment, by `{"run": <run.number>}`, which it closes; a reply with the
    outcome `asked` has in `question` the id of a question of the newest version of
    `questions` stored when the run pushes `review-comments`, so the run pushes its
    questions first. Numbers compare by value, as the schemas' integers do: `4.0` is `4`.
@@ -409,7 +427,7 @@ is `400` `invalid_request`.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, or a run's version of `questions` or `review-comments` changes what members wrote |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, or a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision` |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
@@ -469,3 +487,24 @@ The messages:
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review
     comment you reply to in review-comments.json."
+  - For a version of `questions` that breaks one of the `decision` rules of check 7, the
+    message of the rule, in the order of the rules:
+    - A question added open with a decision: "Add each question in questions.json as
+      open, with no decision, or as decided, with its decision."
+    - A question of the newest version set to decided: "Record each decision in
+      questions.json on a question you add, and set no question already in it to
+      decided."
+    - A decision whose option is not one of the question's option titles: "Set
+      decision.option of each question in questions.json to the title of one of the
+      question's options."
+    - A decision whose run is not the question's asked.run: "Set decision.run of each
+      question in questions.json to the question's asked.run: only the run that asked a
+      question records a decision on it."
+    - A decision changed, dropped or added later: "Leave the decision of each question in
+      questions.json as the newest version of questions has it, and add none: only the
+      run that adds a question records its decision."
+    - The question or options of a question with a decision changed, or its context
+      while it stays decided or answered: "Leave question and options of each question
+      with a decision in questions.json as the newest version of questions has them, and
+      its context while it stays decided or answered: to change them, withdraw the
+      question and add a new one."

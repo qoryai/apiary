@@ -736,6 +736,29 @@ defmodule Apiary.Dispatches.SchemaTest do
       end
     end
 
+    test "keeps the vendor's machine type once dispatched, 1 to 64 printable ASCII characters",
+         %{scope: scope} do
+      dispatch = claimed!(scope, queued!(scope), pool!(scope))
+      set_type = "vendor_machine_type = $2"
+
+      refused("dispatches_vendor_machine_type_check", fn ->
+        update!("dispatches", dispatch.id, set_type, ["example-type"])
+      end)
+
+      assert %{num_rows: 1} = update!("dispatches", dispatch.id, "dispatched_at = now()")
+
+      for type <- ["example-type", "!", String.duplicate("~", 64)],
+          do: assert(%{num_rows: 1} = update!("dispatches", dispatch.id, set_type, [type]))
+
+      for type <- ["", "example type", "example-typé", "example\u007f", String.duplicate("x", 65)] do
+        refused("dispatches_vendor_machine_type_check", fn ->
+          update!("dispatches", dispatch.id, set_type, [type])
+        end)
+      end
+
+      assert %{num_rows: 1} = update!("dispatches", dispatch.id, "vendor_machine_type = NULL")
+    end
+
     test "is handed over before its lease, dispatched or not, and never once stale",
          %{scope: scope} do
       dispatch = claimed!(scope, queued!(scope), pool!(scope))
@@ -1060,9 +1083,14 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @machine_end_version, @machine_end, @options)
     assert :ok = Ecto.Migrator.up(Repo, @declined_version, @declined, @options)
 
-    # `DispatchRun` writes `image_requeue`, of the migration left down, on every insert.
+    # `DispatchRun` writes `image_requeue` and `machine_type_was_default`, of migrations
+    # left down, on every insert.
     Repo.query!(
       "ALTER TABLE dispatch_runs ADD COLUMN image_requeue boolean NOT NULL DEFAULT false"
+    )
+
+    Repo.query!(
+      "ALTER TABLE dispatch_runs ADD COLUMN machine_type_was_default boolean NOT NULL DEFAULT false"
     )
   end
 

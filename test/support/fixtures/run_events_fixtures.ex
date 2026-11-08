@@ -313,6 +313,52 @@ defmodule Apiary.RunEventsFixtures do
     ]
   end
 
+  @doc """
+  The events of the step of the kind `machine` that `qory run` sends right after it
+  redeems the run's code: its start, named `start machine`, one `run.log` line per part of
+  the machine's start, `<name>  <seconds> s`, each at the part's start, and its exit. From
+  `sequence` on, as step `step`, the first part starting at `at`. `parts` are `{name,
+  seconds}`, by default the five parts of a start; `same_time: true` gives every line the
+  time of the step's start.
+
+  Forager's contract has no fixture of this kind at this commit: these events follow the
+  shape `qory run` sends. When the contract has one, it replaces this.
+  """
+  def machine_step_events(sequence, step, at, opts \\ []) do
+    parts =
+      Keyword.get(opts, :parts, [
+        {"boot", 14.8},
+        {"read start data", 0.1},
+        {"set firewall", 1.4},
+        {"start Docker", 3.2},
+        {"write run code", 0.1}
+      ])
+
+    {lines, ended} =
+      Enum.map_reduce(Enum.with_index(parts, 1), at, fn {{name, seconds}, n}, part_at ->
+        time = if opts[:same_time], do: at, else: part_at
+        data = step_log_data(step, "#{name}  #{seconds} s\n")
+
+        {{sequence + n, "run.log", data, time: time},
+         DateTime.add(part_at, round(seconds * 1000), :millisecond)}
+      end)
+
+    [
+      {sequence, "run.step_started",
+       %{"step" => step, "name" => "start machine", "kind" => "machine"}, time: at}
+      | lines
+    ] ++
+      [
+        {sequence + length(parts) + 1, "run.step_exited",
+         %{
+           "step" => step,
+           "state" => "succeeded",
+           "exit_code" => 0,
+           "duration_ms" => DateTime.diff(ended, at, :millisecond)
+         }, time: ended}
+      ]
+  end
+
   @doc "The data of a `run.log` line of step `step`, on stderr, as the host work writes it."
   def step_log_data(step, line),
     do: %{"stream" => "stderr", "bytes" => Base.encode64(line), "step" => step}

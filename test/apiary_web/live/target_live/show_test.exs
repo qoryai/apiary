@@ -207,6 +207,54 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     refute view |> element("#target-denied") |> render() =~ "\u202E"
   end
 
+  test "a denied request to the run API shows the instance's host, no port, then its path",
+       %{conn: conn, scope: scope} do
+    run_api = %{
+      "decision" => "denied",
+      "outcome" => "refused",
+      "host" => "run-api.qory.invalid",
+      "port" => 80,
+      "rule" => "wall:run-api"
+    }
+
+    started_run(scope, repo("github.example", "acme/billing"),
+      egress: [
+        Map.merge(run_api, %{"method" => "HTTP", "request_method" => "POST", "path" => "outside"}),
+        Map.merge(run_api, %{"port" => 443}),
+        %{"decision" => "denied", "outcome" => "refused", "host" => "files.cdn.example"}
+      ]
+    )
+
+    billing = Targets.get(scope, "github.example", "acme/billing")
+    view = open(conn, TargetComponents.target_path(scope, billing))
+    instance = Apiary.Instance.host()
+
+    rows =
+      view
+      |> element("#target-denied")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("li")
+      |> Enum.map(fn li ->
+        part =
+          &(li
+            |> LazyHTML.query(".q-tgt-dn-dest > #{&1}")
+            |> Enum.map(fn e -> LazyHTML.text(e) end))
+
+        {LazyHTML.attribute(li, "title"), part.("bdi"), part.(".text-faint"),
+         part.(".text-muted")}
+      end)
+      |> Enum.sort()
+
+    # The host, then its port or, for the run API, its path, with a space between them in
+    # the title. The denied CONNECT has no path; another host keeps its port.
+    assert rows == [
+             {["files.cdn.example:443"], ["files.cdn.example"], [":443"], []},
+             {[instance], [instance], [], []},
+             {["#{instance} outside"], [instance], [], ["outside"]}
+           ]
+  end
+
   test "a path no other target has: named by the path alone, and the lists are narrowed to it",
        %{conn: conn, scope: scope} do
     started_run(scope, repo("github.example", "acme/billing"),

@@ -12,6 +12,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   import Apiary.Midnight
 
   alias Apiary.Policy
+  alias Apiary.Runs.RunApi
   alias ApiaryWeb.PolicyComponents
 
   setup :register_and_log_in_user
@@ -720,6 +721,31 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert own(scope, target, "flags.example")
       assert text(view, "#mode-would-n") == "4 destinations"
       assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
+    end
+
+    test "what enforce would deny here leaves out the run API",
+         %{conn: conn, path: path, scope: scope} do
+      run_api = %{
+        "host" => RunApi.placeholder(),
+        "port" => 80,
+        "decision" => "allowed",
+        "rule" => RunApi.rule()
+      }
+
+      started_run(scope, shop(),
+        egress: [
+          run_api,
+          run_api,
+          %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, path)
+      pick_mode(view, "enforce")
+
+      assert text(view, "#mode-would-n") == "1 destination"
+      assert text(view, "#mode-would") =~ "files.cdn.example"
+      refute text(view, "#mode-would") =~ RunApi.placeholder()
     end
 
     test "what enforce would deny here cleans and isolates each host, so nothing is reordered",

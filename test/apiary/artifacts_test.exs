@@ -1037,6 +1037,47 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 2
     end
 
+    test "takes a question the run adds decided, and refuses a decision on another option",
+         %{run: run} = context do
+      push =
+        &Artifacts.push({:run, run}, context.work_item, "questions", [
+          json("questions.json", %{"questions" => &1})
+        ])
+
+      options = [
+        %{"title" => "Redis", "explanation" => "The store the other services use."},
+        %{"title" => "Postgres", "explanation" => "The database of the storefront."}
+      ]
+
+      question = Map.put(asked(run, "q1", "Which store keeps the baskets?"), "options", options)
+
+      decided =
+        Map.merge(question, %{
+          "state" => "decided",
+          "decision" => %{
+            "option" => "Redis",
+            "reason" => "The other services use Redis.",
+            "run" => question["asked"]["run"],
+            "at" => "2026-11-04T10:05:00Z"
+          }
+        })
+
+      assert push.([put_in(decided, ["decision", "option"], "Memcached")]) ==
+               {:error, {:invalid, {:kept, 0, :decision_option}}}
+
+      assert push.([put_in(decided, ["decision", "run"], question["asked"]["run"] + 1)]) ==
+               {:error, {:invalid, {:kept, 0, :decision_run}}}
+
+      assert count(Version) == 0
+      assert {:ok, %Version{number: 1}} = push.([decided, Map.put(question, "id", "q2")])
+
+      # The open question q2 of the newest version does not change to decided.
+      assert push.([decided, Map.put(decided, "id", "q2")]) ==
+               {:error, {:invalid, {:kept, 0, :decided_not_new}}}
+
+      assert count(Version) == 1
+    end
+
     test "a refused or normalised version of the questions keeps no file without a version",
          %{run: run, root: root} = context do
       push =

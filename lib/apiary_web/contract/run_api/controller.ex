@@ -402,7 +402,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   end
 
   # A run's version of the questions or the review comments that changes what members
-  # wrote (`Apiary.Artifacts.push/5`): the rule it breaks.
+  # wrote, or of the questions with a decision that does not match its question
+  # (`Apiary.Artifacts.push/5`): the rule it breaks.
   defp refused({:invalid, {:kept, index, reason}}, push) when is_integer(index) do
     filename = Enum.at(push.filenames, index) || "files[#{index}]"
     {:error, {:invalid_artifact, "files[#{index}]", kept(push.name, reason, filename)}}
@@ -435,7 +436,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp schema_of("proposal", "sources.json"), do: "the format of proposal sources"
   defp schema_of(type, _filename), do: "the format of #{type}"
 
-  # The message of a run's version that changes what members wrote, by the rule it breaks
+  # The message of a run's version that changes what members wrote, or has a decision that
+  # does not match its question, by the rule it breaks
   # (`Apiary.Explore.Questions`, `Apiary.Explore.ReviewComments`).
   defp kept("questions", reason, filename) do
     case reason do
@@ -476,7 +478,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           "#{filename} as the newest version of questions has them."
 
       :new_not_open ->
-        "Set the state of each question you add in #{filename} to open."
+        "Add each question in #{filename} as open, with no decision, or as decided, " <>
+          "with its decision."
 
       :asked_run ->
         "Set asked.run of each question you add in #{filename} to this run's number."
@@ -484,6 +487,28 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       :follows_unknown ->
         "Set follows of each question you add in #{filename} to ids of questions " <>
           "before it in #{filename}."
+
+      :decision_option ->
+        "Set decision.option of each question in #{filename} to the title of one of " <>
+          "the question's options."
+
+      :decided_not_new ->
+        "Record each decision in #{filename} on a question you add, and set no " <>
+          "question already in it to decided."
+
+      :decided_changed ->
+        "Leave question and options of each question with a decision in #{filename} " <>
+          "as the newest version of questions has them, and its context while it stays " <>
+          "decided or answered: to change them, withdraw the question and add a new one."
+
+      :decision_changed ->
+        "Leave the decision of each question in #{filename} as the newest version of " <>
+          "questions has it, and add none: only the run that adds a question records " <>
+          "its decision."
+
+      :decision_run ->
+        "Set decision.run of each question in #{filename} to the question's asked.run: " <>
+          "only the run that asked a question records a decision on it."
     end
   end
 

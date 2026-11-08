@@ -24,6 +24,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   alias Apiary.Stacks
   alias Apiary.Stacks.Sources
   alias Apiary.PublicGitServer
+  alias Apiary.QoryHarnessFixture
 
   @moduletag needs: :factory
   @moduletag with_features: Apiary.Features.all() -- [:workflow_model]
@@ -721,14 +722,14 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute render(view) =~ adapter.host
     end
 
-    test "without a choice: the Qory harness at Always the latest version, with Change and no Update",
+    test "without a choice: the Qory harness on main, with Change and no Update",
          %{conn: conn, path: path} do
       view = open(conn, path)
 
       assert has_element?(view, "#workflow-harness", "Harness")
 
       assert words(view, "#harness-line") ==
-               "Qory harness, stack software Always the latest version"
+               "Qory harness, stack software main"
 
       refute render(view) =~ "fe3b3ab"
       assert has_element?(view, "#workflow-harness-change", "Change")
@@ -736,21 +737,21 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       refute render(view) =~ "Update"
     end
 
-    test "Change opens the two choices; the Qory harness saves at Always the latest version", %{
-      conn: conn,
-      path: path,
-      scope: scope
-    } do
+    test "Change opens the two choices; the Qory harness saves on main, the branch it starts on",
+         %{
+           conn: conn,
+           path: path,
+           scope: scope
+         } do
       view = conn |> open(path) |> change_harness()
 
       refute has_element?(view, "#harness-intro")
       assert has_element?(view, "#harness-choice-qory-radio[checked]")
       assert words(view, "#harness-choice-qory") == "Qory harness"
-      assert has_element?(view, "#harness-qory-version-latest[checked]")
-      assert has_element?(view, "#harness-qory-version-named[disabled]")
-
-      assert words(view, "#harness-qory-version-none") ==
-               "Named versions come with the first release of the Qory harness."
+      assert has_element?(view, "#harness-qory-version-branch[checked]")
+      assert has_element?(view, ~s(#harness-qory-branch[value="main"]))
+      refute has_element?(view, "#harness-qory-version-fixed[checked]")
+      refute has_element?(view, "#harness-qory-version-fixed[disabled]")
 
       refute render(view) =~ "fe3b3ab"
       refute has_element?(view, "#harness-choice-target_file")
@@ -761,17 +762,112 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> form("#workflow-harness-form", harness: %{choice: "qory"})
       |> render_submit()
 
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software Always the latest version"
+      render_async(view, 2_000)
+      assert words(view, "#harness-line") == "Qory harness, stack software main"
 
       refute has_element?(view, "#workflow-harness-form")
-      assert %{choice: :qory, version_kind: :latest} = Stacks.choice(scope.workspace)
+
+      assert %{choice: :qory, version_kind: :branch, version_name: "main"} =
+               Stacks.choice(scope.workspace)
+
       refute has_element?(view, "#workflow-file-first")
 
       # Cancel closes the choices with nothing saved.
       change_harness(view)
       view |> element("#workflow-harness-cancel") |> render_click()
       refute has_element?(view, "#workflow-harness-form")
+    end
+
+    test "the Qory harness at a tag or a commit: A fixed version, read before the save", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      repository = QoryHarnessFixture.serve!(QoryHarnessFixture.files(), tags: ["v1.0.0"])
+      view = conn |> open(path) |> change_harness()
+
+      view
+      |> form("#workflow-harness-form",
+        harness: %{choice: "qory", qory_version: "fixed", qory_fixed: "v1.0.0"}
+      )
+      |> render_submit()
+
+      render_async(view, 2_000)
+      assert words(view, "#harness-line") == "Qory harness, stack software v1.0.0"
+      assert %{version_kind: :tag, version_name: "v1.0.0"} = Stacks.choice(scope.workspace)
+
+      view = conn |> open(path) |> change_harness()
+      assert has_element?(view, "#harness-qory-version-fixed[checked]")
+      assert has_element?(view, ~s(#harness-qory-fixed[value="v1.0.0"]))
+
+      view
+      |> form("#workflow-harness-form",
+        harness: %{choice: "qory", qory_version: "fixed", qory_fixed: repository.commit}
+      )
+      |> render_submit()
+
+      render_async(view, 2_000)
+
+      assert words(view, "#harness-line") ==
+               "Qory harness, stack software #{String.slice(repository.commit, 0, 7)}"
+
+      assert %{version_kind: :commit, version_name: commit} = Stacks.choice(scope.workspace)
+      assert commit == repository.commit
+    end
+
+    test "the Qory harness on a branch it does not have: the words of the missing ref, and nothing saved",
+         %{conn: conn, path: path, scope: scope} do
+      view = conn |> open(path) |> change_harness()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "qory", qory_branch: "no-such-branch"})
+      |> render_submit()
+
+      render_async(view, 2_000)
+
+      assert words(view, "#workflow-harness-refusal") ==
+               "Set a branch, tag or commit that exists. " <>
+                 "https://github.com/qoryai/harness has no branch no-such-branch."
+
+      assert Stacks.choice(scope.workspace) == nil
+    end
+
+    test "the Qory harness at a fixed version it does not have: the words of a missing tag or commit, and nothing saved",
+         %{conn: conn, path: path, scope: scope} do
+      view = conn |> open(path) |> change_harness()
+
+      view
+      |> form("#workflow-harness-form",
+        harness: %{choice: "qory", qory_version: "fixed", qory_fixed: "v9.9.9"}
+      )
+      |> render_submit()
+
+      render_async(view, 2_000)
+
+      assert words(view, "#workflow-harness-refusal") ==
+               "Set a branch, tag or commit that exists. " <>
+                 "https://github.com/qoryai/harness has no tag or commit v9.9.9."
+
+      assert Stacks.choice(scope.workspace) == nil
+    end
+
+    test "the Qory harness whose host fails: save again later, why, and nothing saved",
+         %{conn: conn, path: path, scope: scope} do
+      PublicGitServer.serve(%{}, answer: fn conn -> Plug.Conn.send_resp(conn, 429, "") end)
+      view = conn |> open(path) |> change_harness()
+
+      view
+      |> form("#workflow-harness-form", harness: %{choice: "qory"})
+      |> render_submit()
+
+      render_async(view, 2_000)
+
+      assert words(view, "#workflow-harness-refusal") ==
+               "Save again later. Reading the harness from https://github.com/qoryai/harness " <>
+                 "failed: the host returned 429 Too Many Requests. If it fails again, " <>
+                 "contact support."
+
+      assert Stacks.choice(scope.workspace) == nil
     end
 
     test "a workspace with no template shows the stack core", %{
@@ -787,7 +883,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       view = open(conn, path)
 
-      assert words(view, "#harness-line") == "Qory harness, stack core Always the latest version"
+      assert words(view, "#harness-line") == "Qory harness, stack core main"
     end
 
     test "without a choice of the workspace: the shared harness and its version as a line, with no version field",
@@ -796,8 +892,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
       view = open(conn, path)
 
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software Always the latest version"
+      assert words(view, "#harness-line") == "Qory harness, stack software main"
 
       refute has_element?(view, "#harness-qory-version")
       refute has_element?(view, "#harness-version")
@@ -1036,7 +1131,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
                  "qory-stack.yaml. Add that file."
 
       assert words(view, "#harness-line") ==
-               "Qory harness, stack software Always the latest version"
+               "Qory harness, stack software main"
 
       assert Stacks.choice(scope.workspace) == nil
     end
@@ -1063,7 +1158,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
                "acme/harness has no branch, tag or commit named v9. Correct the version."
 
       assert words(view, "#harness-line") ==
-               "Qory harness, stack software Always the latest version"
+               "Qory harness, stack software main"
 
       assert Stacks.choice(scope.workspace) == nil
     end
@@ -1138,15 +1233,16 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       assert row_options(view, destination) == [
                {"Workspace's harness", "default"},
-               {"core · Qory harness · latest", "workspace:core"},
-               {"software · Qory harness · latest", "workspace:software"},
+               {"core · Qory harness · main", "workspace:core"},
+               {"software · Qory harness · main", "workspace:software"},
+               {"authoring · Qory harness · main", "workspace:authoring"},
                {"A stack of another repository…", "other"}
              ]
 
       assert row_chosen(view, destination) == "Workspace's harness"
 
       pick_row(view, destination, "workspace:core")
-      assert row_chosen(view, destination) == "core · Qory harness · latest"
+      assert row_chosen(view, destination) == "core · Qory harness · main"
 
       assert %{choice: :qory, version_kind: :workspace} =
                Stacks.target_choice(scope.workspace, target_of(destination))

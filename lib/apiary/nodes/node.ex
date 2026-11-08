@@ -93,6 +93,10 @@ defmodule Apiary.Nodes.Node do
     field :instance_ids_over_bound, :integer, default: 0
     field :instance_ids_over_bound_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
+    # A node pool's alone: the machines it offered in its latest claim, each a spec as the
+    # provisioner contract writes it; nil when that claim had none, or before its first
+    # (`Apiary.MachineTypes`). Qory writes it at each claim; no changeset casts it.
+    field :offers, {:array, :map}
     # An adapter's alone (`nodes_adapter_check`): the address a person is sent to when they
     # connect it, and its periodic check's intervals, in seconds, as it declares them and
     # as a person sets it.
@@ -125,6 +129,13 @@ defmodule Apiary.Nodes.Node do
     # credential only from a collection of an adapter with true; a prebuild takes its
     # collection's (`Apiary.Runs.RunCredentials`).
     field :targets, :boolean
+    # An adapter's alone (`nodes_comments_check`): whether its source takes the comments
+    # members write in Qory Apiary, from `comments` in the source role of its latest
+    # start's description: true where it is set to true, false where it is absent; nil
+    # before its first start and on every other node. Set at each start
+    # (`source_role_changeset/2`) and never cast. A take in writes a `comment` entry to
+    # its feed only where it is true (`Apiary.WorkItems.Moves`).
+    field :comments, :boolean
     # An adapter's alone (`nodes_collection_noun_check`): its description's source role's
     # words for one collection and for many, both or neither (nil for the default,
     # "collection" and "collections"), beside `items` false too.
@@ -441,7 +452,8 @@ defmodule Apiary.Nodes.Node do
   # and its collections (`Apiary.Integrations.Description.item_noun/1`, `items?/1`,
   # `collection_noun/1` and `access/1`, which the description's schema has checked): its
   # words for one item and for many, or none, whether it reports items, whether its
-  # collections can have a target (`Apiary.Integrations.Description.targets?/1`), its
+  # collections can have a target (`Apiary.Integrations.Description.targets?/1`), whether
+  # its source takes members' comments (`Apiary.Integrations.Description.comments?/1`), its
   # words for one collection and for many, or none, and its line on how to change, at
   # the source, which collections it reaches, and the names of the secrets it stores in
   # Qory Apiary
@@ -450,11 +462,11 @@ defmodule Apiary.Nodes.Node do
   # (`Apiary.Integrations.Description.source_apply/1` and `exact_egress_hosts/1`, nil for
   # none), and its guide (`Apiary.Integrations.Description.source_guide/1`, nil for none).
   # A description with no source role gives the defaults: no words, items, no targets, no
-  # line, no names, no apply items and no guide. The database holds the words and items
-  # to the same (`nodes_items_check`, `nodes_collection_noun_check`), and the targets,
-  # the line, the names, the apply items and the guide to adapters
-  # (`nodes_targets_check`, `nodes_source_access_check`, `nodes_secret_names_check`,
-  # `nodes_source_apply_check`, `nodes_source_guide_check`).
+  # comments, no line, no names, no apply items and no guide. Database checks limit the
+  # words and items to the same (`nodes_items_check`, `nodes_collection_noun_check`), and
+  # the targets, the comments, the line, the names, the apply items and the guide to
+  # adapters (`nodes_targets_check`, `nodes_comments_check`, `nodes_source_access_check`,
+  # `nodes_secret_names_check`, `nodes_source_apply_check`, `nodes_source_guide_check`).
   # `Apiary.Adapters.declare/2` calls it at each start, on
   # the changeset of the declaration, so the latest start's description replaces what an
   # earlier one said; given an adapter, it starts from the adapter's changeset. A change of
@@ -479,6 +491,7 @@ defmodule Apiary.Nodes.Node do
       item_noun_other: item_noun && item_noun.other,
       items: Description.items?(description),
       targets: Description.targets?(description),
+      comments: Description.comments?(description),
       collection_noun_one: collection_noun && collection_noun.one,
       collection_noun_other: collection_noun && collection_noun.other,
       source_access: Description.access(description),
@@ -489,6 +502,7 @@ defmodule Apiary.Nodes.Node do
     )
     |> check_constraint(:items, name: :nodes_items_check)
     |> check_constraint(:targets, name: :nodes_targets_check)
+    |> check_constraint(:comments, name: :nodes_comments_check)
     |> check_constraint(:secret_names, name: :nodes_secret_names_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
     |> check_constraint(:source_access, name: :nodes_source_access_check)

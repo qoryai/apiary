@@ -21,7 +21,7 @@
     "collection": "Campaigns"
   },
   "instruction": {
-    "text": "Look at the budget settings first.",
+    "text": "Look at the budget settings first.\n\tThen compare the bids of 2026-10-14 and 2026-10-15.\r\nKeep the daily budget at 100.",
     "by": {
       "name": "Sam Example"
     },

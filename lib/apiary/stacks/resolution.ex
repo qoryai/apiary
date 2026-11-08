@@ -56,7 +56,9 @@ defmodule Apiary.Stacks.Resolution do
   the `level` and the `owner`, and `harness_hidden`. `ref` is the version a run reads the
   document's base at, which `Apiary.Stacks.chosen_for/4` sets from the row's version
   (`Apiary.Stacks.version_ref/3`); nil for the document's `ref` as written, which
-  `resolve/1` gives.
+  `resolve/1` gives; `ref_kind` is whether that `ref` is a `:branch`, a `:tag` or a
+  `:commit`, nil where the row's version does not set it. `qory` is whether the row is a choice of the Qory harness, which
+  `chosen_for/4` sets too.
   """
   @type t :: %__MODULE__{
           harness: String.t(),
@@ -65,11 +67,23 @@ defmodule Apiary.Stacks.Resolution do
           level: level,
           owner: owner,
           harness_hidden: boolean,
-          ref: String.t() | {:missing, String.t()} | nil
+          ref: String.t() | nil,
+          ref_kind: :branch | :tag | :commit | nil,
+          qory: boolean
         }
 
   @enforce_keys [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden]
-  defstruct [:harness, :stack_id, :workflow, :level, :owner, :harness_hidden, ref: nil]
+  defstruct [
+    :harness,
+    :stack_id,
+    :workflow,
+    :level,
+    :owner,
+    :harness_hidden,
+    ref: nil,
+    ref_kind: nil,
+    qory: false
+  ]
 
   @doc false
   # resolve/1 is what `input` comes to: `{:ok, resolution}`, or `:none` where no level

@@ -37,6 +37,8 @@ defmodule Apiary.Runs.FoldTest do
     lost_at: nil,
     refused_at: nil,
     cost_usd: nil,
+    peak_memory_bytes: nil,
+    cpu_time_ms: nil,
     terminal_cols: nil,
     terminal_rows: nil
   }
@@ -105,6 +107,14 @@ defmodule Apiary.Runs.FoldTest do
 
   defp resized(sequence, cols, rows),
     do: event(sequence, "run.resized", %{"cols" => cols, "rows" => rows})
+
+  defp resized(sequence, cols, rows, session),
+    do: event(sequence, "run.resized", %{"cols" => cols, "rows" => rows, "session" => session})
+
+  defp permutations([]), do: [[]]
+
+  defp permutations(list),
+    do: for(item <- list, rest <- permutations(list -- [item]), do: [item | rest])
 
   defp heartbeat(sequence, elapsed, interval \\ 30, seconds \\ nil),
     do:
@@ -283,8 +293,8 @@ defmodule Apiary.Runs.FoldTest do
         assert run.host == "dev-laptop"
       end
 
-      %{run: run, latest: latest} = Fold.fold(@run, [started(2), second])
-      %{run: run} = Fold.fold(run, [first], latest)
+      %{run: run} = Fold.fold(@run, [started(2), second])
+      %{run: run} = Fold.fold(run, [first], %{}, %{starts: [second]})
       assert run.runtime == "codex"
     end
 
@@ -309,14 +319,297 @@ defmodule Apiary.Runs.FoldTest do
       end
     end
 
-    test "its ranks are its type's and the terminal's" do
-      assert Fold.ranks("dev.qory.session.started") == ["dev.qory.session.started", "terminal"]
+    test "it has no rank, and started events have theirs" do
+      assert Fold.ranks("dev.qory.session.started") == []
       assert Fold.ranks("dev.qory.run.started") == ["dev.qory.run.started", "forager_version"]
     end
   end
 
+  describe "a bare dev.qory.session.started" do
+    # A session the shape of Forager's `fixtures/link/link-batch-session-bare.json`.
+    defp bare(sequence, extra \\ %{}) do
+      event(
+        sequence,
+        "session.started",
+        Map.merge(
+          %{
+            "session" => 2,
+            "runtime" => "git",
+            "bare" => true,
+            "command" => "git",
+            "args" => ["status"],
+            "dir" => "/home/dev/app",
+            "interactive" => false
+          },
+          extra
+        )
+      )
+    end
+
+    defp agent(sequence, name \\ "claude", extra \\ %{}) do
+      session_started(sequence, Map.merge(%{"runtime" => name, "command" => name}, extra))
+    end
+
+    defp shown(run),
+      do:
+        {run.runtime, run.runtime_version, run.command, run.args, run.dir, run.interactive,
+         run.image}
+
+    defp shown_as(event) do
+      %{run: run} = Fold.fold(@run, [%{event | data: Map.delete(event.data, "bare")}])
+      shown(run)
+    end
+
+    defp size(run), do: {run.terminal_cols, run.terminal_rows}
+
+    # Folds each pass in turn, with what the projector reads for it from the events of the
+    # passes before it.
+    defp arrive(passes) do
+      {run, _projected} =
+        Enum.reduce(passes, {@run, []}, fn pass, {run, projected} ->
+          starts = Enum.filter(projected, &(&1.type == "dev.qory.session.started"))
+          in_pass = Enum.filter(pass, &(&1.type == "dev.qory.session.started"))
+          uncounted = Fold.uncounted_sessions(starts ++ in_pass)
+
+          resize =
+            projected
+            |> Enum.filter(&(&1.type == "dev.qory.run.resized"))
+            |> Enum.filter(&Fold.resize_size(&1.data, uncounted))
+            |> Enum.max_by(& &1.sequence, fn -> nil end)
+
+          resize =
+            resize &&
+              %{sequence: resize.sequence, size: Fold.resize_size(resize.data, uncounted)}
+
+          %{run: run} = Fold.fold(run, pass, %{}, %{starts: starts, resize: resize})
+          {run, pass ++ projected}
+        end)
+
+      run
+    end
+
+    # Every order of arrival, as one pass each, and split into two passes at every point.
+    defp every_arrival(events) do
+      for order <- permutations(events),
+          passes <- [
+            Enum.map(order, &[&1])
+            | for(at <- 0..length(order), do: Enum.split(order, at) |> Tuple.to_list())
+          ],
+          do: passes
+    end
+
+    defp assert_every_arrival(events, members, terminal) do
+      for passes <- every_arrival(events) do
+        run = arrive(passes)
+        order = passes |> Enum.map(fn pass -> Enum.map(pass, & &1.sequence) end) |> inspect()
+        assert shown(run) == members, "members after #{order}"
+        assert size(run) == terminal, "terminal after #{order}"
+      end
+    end
+
+    test "an agent's session, then a bare one: the agent's fields stay" do
+      agent = agent(2, "claude", pty(120, 40))
+      assert_every_arrival([agent, bare(5, pty(80, 24))], shown_as(agent), {120, 40})
+    end
+
+    test "a bare session, then an agent's with a higher sequence: the agent's fields win" do
+      agent = agent(5, "claude", pty(120, 40))
+      assert_every_arrival([bare(2, pty(80, 24)), agent], shown_as(agent), {120, 40})
+    end
+
+    test "a bare session arrives first with the higher sequence: the agent's fields show" do
+      agent = agent(2, "claude", pty(120, 40))
+      helper = bare(5, pty(80, 24))
+      %{run: run} = Fold.fold(@run, [helper])
+      assert run.runtime == "git"
+      assert size(run) == {80, 24}
+
+      %{run: run} = Fold.fold(run, [agent], %{}, %{starts: [helper]})
+      assert shown(run) == shown_as(agent)
+      assert size(run) == {120, 40}
+    end
+
+    test "a bare session on pipes leaves an agent's terminal, and the other way round" do
+      on_pty = agent(2, "claude", pty(120, 40))
+      assert_every_arrival([on_pty, bare(5)], shown_as(on_pty), {120, 40})
+
+      on_pipes = agent(2)
+      assert_every_arrival([on_pipes, bare(5, pty(80, 24))], shown_as(on_pipes), {nil, nil})
+    end
+
+    test "a run whose only session is bare shows it" do
+      event = bare(3, pty(80, 24))
+      %{run: run} = Fold.fold(@run, [event])
+      assert shown(run) == {"git", nil, "git", ["status"], "/home/dev/app", true, nil}
+      assert size(run) == {80, 24}
+
+      assert shown_as(event) == shown(run)
+    end
+
+    test "of two bare sessions, the first by sequence shows" do
+      first = bare(2, pty(80, 24)) |> put_in([:data, "command"], "sh")
+      second = bare(5, pty(100, 30))
+      assert_every_arrival([first, second], shown_as(first), {80, 24})
+    end
+
+    test "of two agents' sessions, the last shows, as without a bare one" do
+      first = agent(2, "claude", pty(120, 40))
+      last = agent(5, "codex", pty(100, 30))
+      assert_every_arrival([first, last], shown_as(last), {100, 30})
+      assert_every_arrival([first, bare(3, pty(80, 24)), last], shown_as(last), {100, 30})
+      assert_every_arrival([first, last, bare(7, pty(80, 24))], shown_as(last), {100, 30})
+      assert_every_arrival([bare(1, pty(80, 24)), first, last], shown_as(last), {100, 30})
+    end
+
+    test "a resize competes with the start that counts, and never with one that does not" do
+      on_pty = agent(2, "claude", pty(120, 40))
+
+      # The agent's, a resize, then the bare start.
+      assert_every_arrival([on_pty, resized(3, 90, 30), bare(5, pty(80, 24))], shown_as(on_pty), {
+        90,
+        30
+      })
+
+      # The bare start has the highest sequence and does not count, and a resize below it
+      # still beats the agent's start below that.
+      assert_every_arrival([on_pty, resized(4, 90, 30), bare(5, pty(80, 24))], shown_as(on_pty), {
+        90,
+        30
+      })
+
+      # The agent's start after the resize: its size, in any order.
+      later = agent(6, "claude", pty(120, 40))
+
+      assert_every_arrival([bare(2, pty(80, 24)), resized(4, 90, 30), later], shown_as(later), {
+        120,
+        40
+      })
+
+      # A bare start replaced by a lower one, with a resize between the two.
+      lower = bare(2, pty(80, 24))
+
+      assert_every_arrival([lower, resized(3, 90, 30), bare(5, pty(100, 30))], shown_as(lower), {
+        90,
+        30
+      })
+
+      # A bare start replaced by a lower one, with a resize below both.
+      assert_every_arrival([resized(1, 90, 30), lower, bare(5, pty(100, 30))], shown_as(lower), {
+        80,
+        24
+      })
+
+      # Only a bare session: it counts against a resize, whichever is later.
+      assert_every_arrival([resized(1, 90, 30), lower], shown_as(lower), {80, 24})
+      assert_every_arrival([lower, resized(3, 90, 30)], shown_as(lower), {90, 30})
+    end
+
+    test "a resize that is not a size takes no part when a start replaces a bare one" do
+      on_pty = agent(2, "claude", pty(120, 40))
+      invalid = event(6, "run.resized", %{"cols" => 0, "rows" => 24})
+      assert_every_arrival([on_pty, invalid, bare(5, pty(80, 24))], shown_as(on_pty), {120, 40})
+    end
+
+    test "any other value of bare is no mark: the highest sequence decides, as without it" do
+      for value <- [false, "true", 1, nil, %{}, [true]] do
+        first = agent(2, "claude", pty(120, 40))
+        last = agent(5, "git", Map.merge(pty(80, 24), %{"bare" => value}))
+        assert_every_arrival([first, last], shown_as(last), {80, 24})
+        assert_every_arrival([bare(1), first, last], shown_as(last), {80, 24})
+      end
+    end
+
+    test "a helper's resize leaves the agent's size, in any order of arrival" do
+      on_pty = agent(2, "claude", pty(120, 40))
+      helper = bare(5, pty(80, 24))
+      assert_every_arrival([on_pty, helper, resized(6, 100, 30, 2)], shown_as(on_pty), {120, 40})
+
+      # The agent's resize stands, before the helper and after it.
+      assert_every_arrival(
+        [on_pty, resized(3, 90, 30, 1), helper, resized(6, 100, 30, 2)],
+        shown_as(on_pty),
+        {90, 30}
+      )
+
+      assert_every_arrival(
+        [on_pty, helper, resized(6, 100, 30, 2), resized(7, 90, 30, 1)],
+        shown_as(on_pty),
+        {90, 30}
+      )
+
+      # A resize with no `session` counts.
+      assert_every_arrival([on_pty, helper, resized(6, 100, 30)], shown_as(on_pty), {100, 30})
+    end
+
+    test "a helper's resize shows no size on an agent on pipes" do
+      on_pipes = agent(2)
+
+      assert_every_arrival(
+        [on_pipes, bare(5, pty(80, 24)), resized(6, 100, 30, 2)],
+        shown_as(on_pipes),
+        {nil, nil}
+      )
+    end
+
+    test "with only helpers, the resizes of the one the run shows count" do
+      first = bare(2, Map.merge(pty(80, 24), %{"session" => 1}))
+      second = bare(5, Map.merge(pty(100, 30), %{"session" => 2}))
+
+      assert_every_arrival(
+        [first, resized(3, 90, 30, 1), second, resized(6, 70, 20, 2)],
+        shown_as(first),
+        {90, 30}
+      )
+
+      assert_every_arrival([first, second, resized(6, 70, 20, 2)], shown_as(first), {80, 24})
+      assert_every_arrival([first, second, resized(6, 70, 20, 1)], shown_as(first), {70, 20})
+      assert_every_arrival([first, second, resized(6, 70, 20)], shown_as(first), {70, 20})
+
+      # An agent replaces the first helper: its resizes then count no more.
+      on_pty = agent(9, "claude", Map.merge(pty(120, 40), %{"session" => 3}))
+      assert_every_arrival([first, resized(10, 90, 30, 1), on_pty], shown_as(on_pty), {120, 40})
+    end
+
+    test "a `session` that is not a number is no session: the resize counts" do
+      on_pty = agent(2, "claude", pty(120, 40))
+
+      for session <- ["2", 0, 2.0, nil] do
+        resize = event(6, "run.resized", %{"cols" => 100, "rows" => 30, "session" => session})
+        assert_every_arrival([on_pty, bare(5), resize], shown_as(on_pty), {100, 30})
+      end
+
+      # With the same value on the bare start, the fold sets no number for that start.
+      for session <- ["2", 0, 2.0] do
+        helper = bare(5, %{"session" => session})
+        resize = event(6, "run.resized", %{"cols" => 100, "rows" => 30, "session" => session})
+        assert_every_arrival([on_pty, helper, resize], shown_as(on_pty), {100, 30})
+      end
+    end
+
+    test "the sessions whose resizes do not count" do
+      start = fn sequence, data -> %{sequence: sequence, data: data} end
+
+      assert Fold.uncounted_sessions([]) == MapSet.new()
+
+      assert Fold.uncounted_sessions([
+               start.(2, %{"session" => 1}),
+               start.(5, %{"session" => 2, "bare" => true}),
+               start.(7, %{"session" => 3, "bare" => true}),
+               start.(8, %{"bare" => true})
+             ]) == MapSet.new([2, 3])
+
+      assert Fold.uncounted_sessions([
+               start.(5, %{"session" => 2, "bare" => true}),
+               start.(7, %{"session" => 3, "bare" => true})
+             ]) == MapSet.new([3])
+
+      assert Fold.uncounted_sessions([start.(5, %{"session" => 2, "bare" => "true"})]) ==
+               MapSet.new()
+    end
+  end
+
   describe "dev.qory.session.exited" do
-    test "is folded into nothing, a refused join's alone included" do
+    test "without what the session used is folded into nothing, a refused join's included" do
       refused = %{
         "session" => 1,
         "state" => "failed",
@@ -341,6 +634,61 @@ defmodule Apiary.Runs.FoldTest do
 
       assert {run.state, run.exited_at, run.exit_code, run.reason} ==
                {"running", nil, nil, nil}
+    end
+
+    defp used(sequence, extra) do
+      data = %{"session" => sequence, "state" => "succeeded", "exit_code" => 0}
+      event(sequence, "session.exited", Map.merge(data, extra))
+    end
+
+    test "keeps the highest peak memory and the sum of the CPU time, in any order" do
+      events = [
+        used(4, %{"peak_memory_bytes" => 10_522_669_875, "cpu_time_ms" => 2_460_000}),
+        used(7, %{"peak_memory_bytes" => 4_294_967_296, "cpu_time_ms" => 60_000}),
+        used(9, %{"cpu_time_ms" => 1})
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        %{run: run} = Fold.fold(@run, order)
+        assert {run.peak_memory_bytes, run.cpu_time_ms} == {10_522_669_875, 2_520_001}
+      end
+
+      # One pass or three, the values are the same: an event is folded once.
+      run =
+        Enum.reduce(events, @run, fn event, run -> Fold.fold(run, [event]).run end)
+
+      assert {run.peak_memory_bytes, run.cpu_time_ms} == {10_522_669_875, 2_520_001}
+    end
+
+    test "a zero is a value that was reported; a session that reported none changes nothing" do
+      %{run: run} =
+        Fold.fold(@run, [used(4, %{"peak_memory_bytes" => 0, "cpu_time_ms" => 0}), used(5, %{})])
+
+      assert {run.peak_memory_bytes, run.cpu_time_ms} == {0, 0}
+
+      %{run: run} = Fold.fold(@run, [used(4, %{"cpu_time_ms" => 12})])
+      assert {run.peak_memory_bytes, run.cpu_time_ms} == {nil, 12}
+    end
+
+    test "a value that is not an integer from 0 to the largest bigint is absent" do
+      for value <- [-1, 9_223_372_036_854_775_808, 1.5, "1024", nil, true, %{}] do
+        %{run: run} =
+          Fold.fold(@run, [used(4, %{"peak_memory_bytes" => value, "cpu_time_ms" => value})])
+
+        assert {run.peak_memory_bytes, run.cpu_time_ms} == {nil, nil}, inspect(value)
+      end
+    end
+
+    test "a sum of CPU time past the largest bigint stays at it" do
+      largest = 9_223_372_036_854_775_807
+
+      %{run: run} =
+        Fold.fold(@run, [
+          used(4, %{"cpu_time_ms" => largest}),
+          used(5, %{"cpu_time_ms" => 1})
+        ])
+
+      assert run.cpu_time_ms == largest
     end
   end
 
@@ -706,16 +1054,16 @@ defmodule Apiary.Runs.FoldTest do
 
       # The session's start and an earlier resize arrive after: neither takes the size back.
       %{run: run} =
-        Fold.fold(run, [session_started(2, pty(120, 40)), resized(6, 100, 30)], %{
-          "terminal" => 9
+        Fold.fold(run, [session_started(2, pty(120, 40)), resized(6, 100, 30)], %{}, %{
+          resize: %{sequence: 9, size: {80, 24}}
         })
 
       assert {run.terminal_cols, run.terminal_rows} == {80, 24}
       assert run.interactive == true
     end
 
-    test "a resize that is not a size changes nothing, and does not take the rank" do
-      %{run: run, latest: latest} =
+    test "a resize that is not a size changes nothing" do
+      %{run: run} =
         Fold.fold(@run, [
           session_started(2, pty(120, 40)),
           resized(6, 0, 30),
@@ -723,18 +1071,12 @@ defmodule Apiary.Runs.FoldTest do
         ])
 
       assert {run.terminal_cols, run.terminal_rows} == {120, 40}
-      assert latest["terminal"] == 2
+
+      assert %{run: ^run} = Fold.fold(run, [resized(8, 0, 30)], %{}, %{starts: []})
     end
 
-    test "its ranks are the terminal's, shared with a session's start" do
-      assert Fold.ranks("dev.qory.run.resized") == ["terminal"]
-      assert "terminal" in Fold.ranks("dev.qory.session.started")
-      refute "terminal" in Fold.ranks("dev.qory.run.started")
-
-      assert Fold.rank_types("terminal") == [
-               "dev.qory.session.started",
-               "dev.qory.run.resized"
-             ]
+    test "it has no rank" do
+      assert Fold.ranks("dev.qory.run.resized") == []
     end
   end
 
@@ -1140,7 +1482,7 @@ defmodule Apiary.Runs.FoldTest do
       assert %{1 => %{kind: nil, state: "failed"}, 2 => %{kind: nil, state: "failed"}} = steps
       assert %{3 => %{state: "failed"}} = steps
 
-      for kind <- ~w(fetch compose image build setup join wall push) do
+      for kind <- ~w(fetch compose image build setup join wall push machine) do
         assert %{1 => %{kind: ^kind}} =
                  Fold.fold(@run, [step_started(2, 1, %{"kind" => kind})]).steps
       end
@@ -1851,11 +2193,6 @@ defmodule Apiary.Runs.FoldTest do
 
       assert Fold.outcome(@run) == @run
     end
-
-    defp permutations([]), do: [[]]
-
-    defp permutations(list),
-      do: for(item <- list, rest <- permutations(list -- [item]), do: [item | rest])
   end
 
   describe "dev.qory.runtime.result" do

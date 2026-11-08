@@ -6,16 +6,16 @@ defmodule Apiary.Processes.TypeTemplate do
 
   - `type`: the key of the type's definition (`Apiary.Lingo.Domain.Definition`), such as
     `qory.software`.
-  - `author_id`: the instance admin who saved it; nil for a copy of the default the
-    release ships.
-  - `release`: the version of the release's default this row copies; nil for an instance
-    admin's save.
+  - `author_id`: the instance admin who saved it; nil for a copy of the process of the
+    Qory harness's template.
+  - `release`: for a copy of the Qory harness's process, the count of such copies of the
+    type, 1 for the first; nil for an instance admin's save.
   - `based_on`: the number of the version the save started from; nil for a copy of the
-    release's default.
+    Qory harness's process.
   - `name`, `summary` and `description`: the type's name, its one or two sentences on
     New workspace, and its "How it works" text, at most `limits/0` characters each, and
-    the description at most `word_limit/0` words. Nil
-    shows the text the release ships in code, translated (`Apiary.Processes.type_texts/1`).
+    the description at most `word_limit/0` words. Nil shows the default
+    (`Apiary.Processes.type_texts/1`).
   """
   use Ecto.Schema
 

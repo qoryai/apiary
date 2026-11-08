@@ -8,6 +8,8 @@ import assert from "node:assert/strict"
 import {
   MOST_LINES_MOVED,
   MOST_REPEATS,
+  SUBAGENT_BUTTONS,
+  Terminal,
   fill,
   openingView,
   transcriptFollowing,
@@ -86,4 +88,76 @@ test("the Transcript's end button reads Following only on a live run read at its
   assert.equal(transcriptFollowing(true, true), true)
   assert.equal(transcriptFollowing(true, false), false)
   assert.equal(transcriptFollowing(false, true), false)
+})
+
+// A Transcript box at y 100 of the page, scrolled `scrollTop` into 2000 px of lines.
+const fakeLine = (id, top) => ({
+  id,
+  top,
+  getBoundingClientRect() {
+    return {top: this.top, bottom: this.top + 20}
+  },
+})
+
+const fakeHook = lines => {
+  const transcript = {
+    scrollTop: 400,
+    scrollHeight: 2000,
+    getBoundingClientRect: () => ({top: 100}),
+    querySelector: selector => lines.find(line => selector === `[id="${line.id}"]`) || null,
+    querySelectorAll: selector => (selector === "ol > li" ? lines : []),
+  }
+  return Object.assign(Object.create(Terminal), {
+    transcript,
+    view: "transcript",
+    live: true,
+    transcriptAtEnd: true,
+    held: null,
+    trEndButton: null,
+  })
+}
+
+const click = (line, matches = true) => {
+  const button = {closest: selector => (selector === "li" ? line : null)}
+  return {target: {closest: selector => (matches && selector === SUBAGENT_BUTTONS ? button : null)}}
+}
+
+test("a subagent's caret stops following the end and keeps its head where it was", () => {
+  const head = fakeLine("e-5", 300)
+  const hook = fakeHook([fakeLine("e-3", 260), head])
+
+  hook.holdLine(click(head))
+  assert.equal(hook.transcriptAtEnd, false)
+
+  // The lines open: the patch moved the head 150 px down; the box scrolls it back.
+  head.top = 450
+  hook.placeTranscript()
+  assert.equal(hook.transcript.scrollTop, 550)
+
+  // A later patch that leaves the head where it was writes nothing.
+  hook.transcript.scrollTop = 1234
+  head.top = 300
+  hook.placeTranscript()
+  assert.equal(hook.transcript.scrollTop, 1234)
+})
+
+test("Expand all keeps the first line on screen where it was", () => {
+  const above = fakeLine("e-3", 60)
+  const first = fakeLine("e-4", 110)
+  const hook = fakeHook([above, first])
+
+  hook.holdLine({target: {closest: s => (s === SUBAGENT_BUTTONS ? {closest: () => null} : null)}})
+  first.top = 90
+  hook.placeTranscript()
+  assert.equal(hook.transcript.scrollTop, 380)
+})
+
+test("another click leaves the Transcript following its end", () => {
+  const head = fakeLine("e-5", 300)
+  const hook = fakeHook([head])
+
+  hook.holdLine(click(head, false))
+  assert.equal(hook.transcriptAtEnd, true)
+  hook.placeTranscript()
+  assert.equal(hook.transcript.scrollTop, 2000)
 })

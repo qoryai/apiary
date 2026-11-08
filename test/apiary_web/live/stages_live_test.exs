@@ -16,6 +16,7 @@ defmodule ApiaryWeb.StagesLiveTest do
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.HarnessReadsFixtures
+  import Apiary.MachineTypesFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -184,6 +185,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert explore == %{
                "id" => id_of("Explore"),
                "name" => "Explore",
+               "description" => nil,
                "label" => "Explore. explore-a-ticket. Gate: a member approves",
                "sequence" => [%{"workflow" => "explore-a-ticket"}],
                "gate" => "Gate: a member approves",
@@ -206,6 +208,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       path: path,
       scope: scope
     } do
+      machine_type_fixture(name: "large")
       {:ok, view, _html} = live(conn, path)
       view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
 
@@ -269,10 +272,77 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute has_element?(view, "#stages-dirty")
     end
 
+    test "the entries under Sequence, Inputs and Outputs sit in their box's body, apart from its heading",
+         %{
+           conn: conn,
+           path: path
+         } do
+      {:ok, view, _html} = live(conn, path)
+
+      # Shape has no workflow and no input: "No workflow" and "None" are in the bodies.
+      select(view, "Shape")
+      assert has_element?(view, "#stage-sequence > div > p", "No workflow")
+      assert has_element?(view, "#stage-inputs > div > p", "None")
+
+      # A workflow, a loop, an input and an output are in the bodies too.
+      view |> element("#stage-add-entry") |> render_click()
+      view |> element("#stage-add-loop") |> render_click()
+      view |> element("#stage-add-inputs") |> render_click()
+      view |> element("#stage-add-outputs") |> render_click()
+
+      assert has_element?(view, "#stage-sequence > div > #stage-entry-0")
+      assert has_element?(view, "#stage-sequence > div > #stage-loop-1")
+      assert has_element?(view, "#stage-inputs > div > #stage-inputs-0")
+      assert has_element?(view, "#stage-outputs > div > #stage-outputs-0")
+
+      # The headings and the Add buttons stay in the box's header, outside the body.
+      for key <- ~w(sequence inputs outputs) do
+        assert has_element?(view, "#stage-#{key} > header h3")
+        refute has_element?(view, "#stage-#{key} > div [id^=stage-add-]")
+      end
+
+      assert has_element?(view, "#stage-sequence > header #stage-add-entry")
+      assert has_element?(view, "#stage-sequence > header #stage-add-loop")
+      assert has_element?(view, "#stage-inputs > header #stage-add-inputs")
+      assert has_element?(view, "#stage-outputs > header #stage-add-outputs")
+    end
+
+    test "keeps an entry's machine type default, shown as Default (standard)", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      document =
+        put_in(
+          Processes.current(scope.workspace).document,
+          ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+          "default"
+        )
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      selected = "select#stage-entry-0-machine option[value=default][selected]"
+      assert has_element?(view, selected, "Default (standard)")
+
+      assert has_element?(
+               view,
+               "select#stage-entry-0-machine option[value='']",
+               "Workspace default (standard)"
+             )
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "default"}}})
+      |> render_change()
+
+      assert has_element?(view, selected, "Default (standard)")
+    end
+
     test "edits a sequence: a workflow, a loop with its rounds, and a machine type", %{
       conn: conn,
       path: path
     } do
+      machine_type_fixture(name: "large")
       {:ok, view, _html} = live(conn, path)
       select(view, "Build")
 
@@ -299,15 +369,16 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert Enum.at(card(view, "Build")["sequence"], 1)["loop"] == "at most 10 rounds"
       refute has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
-      assert has_element?(view, "#stage-entry-0-machine[value=large]")
+      assert has_element?(view, "select#stage-entry-0-machine option[value=large][selected]")
 
       # The machine help text, once, under the default machine type only, on Details.
       hint =
-        "Qory Apiary stores the machine type with each run of the workflow. It does not choose the machine that runs it."
+        "Workflows that pick no machine type run on this one. The people who run this Qory Apiary add machine types."
 
-      refute has_element?(view, "#stage-panel", "Qory Apiary stores the machine type")
+      refute has_element?(view, "#stage-panel", "Workflows that pick no machine type")
       details(view, path)
       assert has_element?(view, "#stages-process-form", hint)
+      refute render(view) =~ "It does not choose the machine that runs it."
       stages_tab(view, path)
 
       view |> element(~s(#stage-loop-1 button[phx-click="remove_loop"])) |> render_click()
@@ -356,7 +427,7 @@ defmodule ApiaryWeb.StagesLiveTest do
                ~s{datalist#stage-entry-0-workflow-names option[value="capture-demo"]}
              )
 
-      refute has_element?(view, "#stage-sequence select")
+      refute has_element?(view, "select#stage-entry-0-workflow")
 
       view |> element("#stage-add-inputs") |> render_click()
       details(view, path)
@@ -546,6 +617,77 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute has_element?(view, "#stages-notice")
       assert has_element?(view, "#stages-save-note", "Nothing to save")
       assert has_element?(view, "#stages-version-1", "past")
+    end
+
+    test "a stage's description: the form, the card, a save, and an empty field removes it", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Shape")
+
+      assert has_element?(view, ~s(#stage-form label[for="stage-description"]), "Description")
+      assert has_element?(view, ~s(textarea#stage-description[maxlength="500"]))
+      refute has_element?(view, "#stage-description-hint")
+
+      # A browser sends a textarea's line breaks as CRLF.
+      view
+      |> form("#stage-form",
+        stage: %{description: "Turn the ticket into a plan.\r\nKeep it short."}
+      )
+      |> render_change()
+
+      text = "Turn the ticket into a plan.\nKeep it short."
+      assert card(view, "Shape")["description"] == text
+
+      assert card(view, "Shape")["label"] =~
+               "Shape. Turn the ticket into a plan.\nKeep it short. "
+
+      assert card(view, "Explore")["description"] == nil
+      assert has_element?(view, "textarea#stage-description", "Keep it short.")
+
+      # More than 500 characters keeps the first 500.
+      view
+      |> form("#stage-form", stage: %{description: String.duplicate("a", 501)})
+      |> render_change()
+
+      assert card(view, "Shape")["description"] == String.duplicate("a", 500)
+
+      # The cut counts code points, as the schema's maxLength does, and keeps whole
+      # graphemes: "é" written as "e" and a combining accent is one grapheme of two.
+      accent = "e\u0301"
+
+      view
+      |> form("#stage-form", stage: %{description: "a" <> String.duplicate(accent, 300)})
+      |> render_change()
+
+      cut = card(view, "Shape")["description"]
+      assert cut == "a" <> String.duplicate(accent, 249)
+      assert length(String.codepoints(cut)) == 499
+
+      view |> form("#stage-form", stage: %{description: text}) |> render_change()
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version 2.")
+
+      assert Processes.stage(Processes.current(scope.workspace), id_of("Shape"))["description"] ==
+               text
+
+      # The page opened again shows the saved description.
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Shape")
+      assert card(view, "Shape")["description"] == text
+      assert has_element?(view, "textarea#stage-description", "Keep it short.")
+
+      view |> form("#stage-form", stage: %{description: "  \r\n "}) |> render_change()
+      assert card(view, "Shape")["description"] == nil
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version 3.")
+
+      refute Map.has_key?(
+               Processes.stage(Processes.current(scope.workspace), id_of("Shape")),
+               "description"
+             )
     end
 
     test "a save of a stage without a name is refused", %{conn: conn, path: path} do
@@ -873,6 +1015,1021 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "a refused save's banner, for a stage's sequence and lists" do
+    defp save(view) do
+      view |> element("#stages-save") |> render_click()
+
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("[data-save-error]")
+      |> LazyHTML.text()
+    end
+
+    # A page that lists `gone` and `gone-too`, both removed after it read the list, so a save
+    # with either is refused.
+    setup %{conn: conn, path: path} do
+      machine_type_fixture(name: "gone")
+      machine_type_fixture(name: "gone-too")
+      {:ok, view, _html} = live(conn, path)
+      remove_machine_types(~w(gone gone-too))
+      %{view: view}
+    end
+
+    test "a refused machine type: the banner points at the marked field", %{view: view} do
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
+      |> render_change()
+
+      assert save(view) =~ "Explore: fix the fields marked below."
+      assert has_element?(view, "#stage-entry-0 summary [data-machine-error]")
+    end
+
+    test "a refused default machine type: its line above the canvas", %{view: view, path: path} do
+      details(view, path)
+      view |> form("#stages-process-form", process: %{machine: "gone"}) |> render_change()
+
+      assert save(view) == "Choose a machine type from the list."
+      refute has_element?(view, "[data-machine-error]")
+    end
+
+    test "a refused machine type in a loop: the same", %{view: view} do
+      view |> element("#stage-add-loop") |> render_click()
+
+      view
+      |> form("#stage-form",
+        stage: %{sequence: %{"1" => %{body: %{"0" => %{machine: "gone"}}}}}
+      )
+      |> render_change()
+
+      assert save(view) =~ "Explore: fix the fields marked below."
+      assert has_element?(view, "#stage-entry-1-0 summary [data-machine-error]")
+    end
+
+    test "a corrected machine type takes its stage's line away", %{view: view} do
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
+      |> render_change()
+
+      assert save(view) =~ "Explore: fix the fields marked below."
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "standard"}}})
+      |> render_change()
+
+      refute has_element?(view, "[data-machine-error]")
+      refute has_element?(view, "[data-save-error]")
+
+      # By value, as the row's mark is: the same value in an `edit_stage` event, as one sent
+      # before the page's patch arrives, shows both again. The picker no longer offers it.
+      render_hook(view, "edit_stage", %{
+        "stage" => %{"id" => id_of("Explore"), "sequence" => %{"0" => %{"machine" => "gone"}}}
+      })
+
+      assert has_element?(view, "[data-machine-error]")
+      assert has_element?(view, "[data-save-error]", "Explore: fix the fields marked below.")
+    end
+
+    test "each stage with a mark has one line, with the stage's name today", %{view: view} do
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
+      |> render_change()
+
+      select(view, "Build")
+      view |> element("#stage-add-entry") |> render_click()
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone-too"}}})
+      |> render_change()
+
+      banner = save(view)
+      assert banner =~ "Explore: fix the fields marked below."
+      assert banner =~ "Build: fix the fields marked below."
+
+      view |> form("#stage-form", stage: %{name: "Plan"}) |> render_change()
+      assert has_element?(view, "[data-save-error]", "Plan: fix the fields marked below.")
+      refute has_element?(view, "[data-save-error]", "Build:")
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: ""}}})
+      |> render_change()
+
+      refute has_element?(view, "[data-save-error]", "Plan:")
+      assert has_element?(view, "[data-save-error]", "Explore: fix the fields marked below.")
+    end
+
+    test "more than 20 workflows: no field to mark", %{view: view} do
+      for _i <- 1..20, do: view |> element("#stage-add-entry") |> render_click()
+
+      assert save(view) =~ "Explore: keep at most 20 entries in each list."
+    end
+
+    test "more than 20 inputs: no field to mark", %{view: view} do
+      add = ~s(button[phx-click="add_artifact"][phx-value-key="inputs"])
+      for _i <- 1..21, do: view |> element(add) |> render_click()
+
+      assert save(view) =~ "Explore: keep at most 20 entries in each list."
+    end
+
+    test "more than 10 workflows in a loop: no field to mark", %{view: view} do
+      view |> element("#stage-add-loop") |> render_click()
+
+      for _i <- 1..10 do
+        view |> element(~s(#stage-loop-1 button[phx-click="add_entry"])) |> render_click()
+      end
+
+      assert save(view) == "Explore: keep at most 10 workflows in a loop."
+    end
+
+    test "a loop of 10 workflows is saved", %{view: view} do
+      view |> element("#stage-add-loop") |> render_click()
+
+      for _i <- 1..9 do
+        view |> element(~s(#stage-loop-1 button[phx-click="add_entry"])) |> render_click()
+      end
+
+      assert save(view) == ""
+      assert has_element?(view, "#stages-notice")
+    end
+
+    test "a loop too long with a refused machine type: both lines", %{view: view} do
+      view |> element("#stage-add-loop") |> render_click()
+
+      for _i <- 1..10 do
+        view |> element(~s(#stage-loop-1 button[phx-click="add_entry"])) |> render_click()
+      end
+
+      # A stored document or a recovered form can have a value that breaks the schema's pattern.
+      # Validation fails on the loop first, so the instance's list is not read.
+      body = Map.new(0..10, &{"#{&1}", if(&1 == 0, do: %{"machine" => "not valid"}, else: %{})})
+
+      render_hook(view, "edit_stage", %{
+        "stage" => %{
+          "id" => id_of("Explore"),
+          "sequence" => %{"0" => %{}, "1" => %{"body" => body}}
+        }
+      })
+
+      banner = save(view)
+      assert banner =~ "Explore: keep at most 10 workflows in a loop."
+      assert banner =~ "Explore: fix the fields marked below."
+    end
+
+    test "a refusal selects the stage with the refused value, with another stage selected", %{
+      view: view
+    } do
+      inputs = ~s(button[phx-click="add_artifact"][phx-value-key="inputs"])
+      for _i <- 1..21, do: view |> element(inputs) |> render_click()
+      select(view, "Build")
+
+      assert save(view) == "Explore: keep at most 20 entries in each list."
+      assert canvas_view(view)["selected"] == id_of("Explore")
+    end
+
+    test "a refusal keeps the selected stage if the refused value is in it", %{view: view} do
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
+      |> render_change()
+
+      select(view, "Build")
+      view |> element("#stage-add-entry") |> render_click()
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone-too"}}})
+      |> render_change()
+
+      assert save(view) =~ "Build: fix the fields marked below."
+      assert canvas_view(view)["selected"] == id_of("Build")
+      assert has_element?(view, ~s{#stage-entry-0 summary [data-machine-error]})
+    end
+
+    # Explore and Build saved with a row at place 0 and a loop at place 1, then a bad workflow
+    # name and bad rounds typed on Build. Explore, selected after `load/2`, has valid values
+    # at both places.
+    defp bad_values_on_build(view) do
+      view |> element("#stage-add-loop") |> render_click()
+      select(view, "Build")
+      view |> element("#stage-add-entry") |> render_click()
+      view |> element("#stage-add-loop") |> render_click()
+      save(view)
+      select(view, "Build")
+
+      view
+      |> form("#stage-form",
+        stage: %{
+          name: "Assemble",
+          sequence: %{"0" => %{workflow: "Bad_Name"}, "1" => %{rounds: "40"}}
+        }
+      )
+      |> render_change()
+
+      assert has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
+      assert has_element?(view, "#stage-panel", "Write a workflow name")
+    end
+
+    defp no_errors_by_place_on_explore(view) do
+      assert canvas_view(view)["selected"] == id_of("Explore")
+      assert has_element?(view, "#stage-loop-1")
+      refute has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
+      refute has_element?(view, "#stage-panel", "Write a workflow name")
+    end
+
+    test "a successful save drops the errors by place", %{view: view} do
+      bad_values_on_build(view)
+      assert save(view) == ""
+      assert has_element?(view, "#stages-notice")
+      no_errors_by_place_on_explore(view)
+    end
+
+    test "Discard drops the errors by place", %{view: view} do
+      bad_values_on_build(view)
+      view |> element("#stages-discard") |> render_click()
+      no_errors_by_place_on_explore(view)
+    end
+
+    test "a refusal that selects another stage drops the errors by place", %{view: view} do
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
+      |> render_change()
+
+      view |> element("#stage-add-loop") |> render_click()
+
+      select(view, "Build")
+      view |> element("#stage-add-entry") |> render_click()
+      view |> element("#stage-add-loop") |> render_click()
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"1" => %{rounds: "40"}}})
+      |> render_change()
+
+      assert has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
+
+      save(view)
+
+      assert canvas_view(view)["selected"] == id_of("Explore")
+      refute has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
+    end
+  end
+
+  describe "a form's values after a reconnect" do
+    # A reconnect mounts the page with the first stage selected, then LiveView's form recovery
+    # sends the form as it stood. These tests send that event with Explore selected.
+    setup %{conn: conn, path: path} do
+      machine_type_fixture(name: "gpu-large")
+      {:ok, view, _html} = live(conn, path)
+      %{view: view}
+    end
+
+    test "go to the stage in the form's id, which becomes the selected stage", %{view: view} do
+      before = canvas_view(view)["stages"]
+      assert canvas_view(view)["selected"] == id_of("Explore")
+
+      render_hook(view, "edit_stage", %{
+        "stage" => %{"id" => id_of("Release"), "name" => "Ship"}
+      })
+
+      assert names(view) ==
+               Enum.map(before, &if(&1["name"] == "Release", do: "Ship", else: &1["name"]))
+
+      assert ids(view) == Enum.map(before, & &1["id"])
+      assert canvas_view(view)["selected"] == id_of("Release")
+      assert has_element?(view, "#stage-panel-title", "Edit Ship")
+      assert has_element?(view, ~s(#stage-form-id[value="#{id_of("Release")}"]))
+      assert card(view, "Explore")["sequence"] == Enum.at(before, 0)["sequence"]
+    end
+
+    # Saves Build with `rows`, the form's values for the rows that `make` adds with the buttons,
+    # and returns a new page on the saved version, as after a reconnect.
+    defp saved_build(view, conn, path, make, rows) do
+      select(view, "Build")
+      make.(view)
+      view |> form("#stage-form", stage: rows) |> render_change()
+      save(view)
+      {:ok, page, _html} = live(conn, path)
+      page
+    end
+
+    defp add(view, selector), do: view |> element(selector) |> render_click()
+
+    defp recover(page, form) do
+      id = card(page, "Build")["id"]
+
+      render_hook(page, "edit_stage", %{
+        "stage" => Map.merge(%{"id" => id, "name" => "Build"}, form)
+      })
+    end
+
+    test "after an unsaved Remove, the stage's rows stay", %{view: view, conn: conn, path: path} do
+      page =
+        saved_build(
+          view,
+          conn,
+          path,
+          fn view ->
+            add(view, "#stage-add-entry")
+            add(view, "#stage-add-entry")
+          end,
+          %{
+            sequence: %{
+              "0" => %{workflow: "review-notes"},
+              "1" => %{workflow: "check-links", machine: "gpu-large"}
+            }
+          }
+        )
+
+      recover(page, %{
+        "sequence" => %{"0" => %{"workflow" => "check-links", "machine" => "gpu-large"}}
+      })
+
+      assert card(page, "Build")["sequence"] == [
+               %{"workflow" => "review-notes"},
+               %{"workflow" => "check-links"}
+             ]
+
+      refute has_element?(page, ~s(#stage-entry-0-machine option[value="gpu-large"][selected]))
+      assert has_element?(page, ~s(#stage-entry-1-machine option[value="gpu-large"][selected]))
+    end
+
+    test "after an unsaved Remove loop, the stage's rows stay", %{
+      view: view,
+      conn: conn,
+      path: path
+    } do
+      page =
+        saved_build(
+          view,
+          conn,
+          path,
+          fn view ->
+            add(view, "#stage-add-entry")
+            add(view, "#stage-add-loop")
+            add(view, ~s(#stage-loop-1 button[phx-click="add_entry"]))
+            add(view, "#stage-add-entry")
+          end,
+          %{
+            sequence: %{
+              "0" => %{workflow: "first-step"},
+              "1" => %{body: %{"0" => %{workflow: "loop-a"}, "1" => %{workflow: "loop-b"}}},
+              "2" => %{workflow: "last-step"}
+            }
+          }
+        )
+
+      saved = card(page, "Build")["sequence"]
+      assert List.last(saved) == %{"workflow" => "last-step"}
+
+      recover(page, %{
+        "sequence" => %{
+          "0" => %{"workflow" => "first-step"},
+          "1" => %{"workflow" => "loop-a", "rounds" => "99"},
+          "2" => %{"workflow" => "loop-b"},
+          "3" => %{"workflow" => "last-step"}
+        }
+      })
+
+      assert card(page, "Build")["sequence"] == saved
+      refute has_element?(page, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
+    end
+
+    test "after an unsaved Remove on inputs or outputs, those rows stay", %{
+      view: view,
+      conn: conn,
+      path: path
+    } do
+      inputs = ~s(button[phx-click="add_artifact"][phx-value-key="inputs"])
+
+      page =
+        saved_build(
+          view,
+          conn,
+          path,
+          fn view ->
+            add(view, inputs)
+            add(view, inputs)
+          end,
+          %{}
+        )
+
+      select(page, "Build")
+      rows = page |> element("#stage-inputs") |> render()
+      assert rows =~ ~s(id="stage-inputs-1-required")
+
+      recover(page, %{"inputs" => %{"0" => %{"required" => "false"}}})
+
+      assert page |> element("#stage-inputs") |> render() == rows
+    end
+
+    test "on rows of the same shape, the form's values replace the stage's", %{
+      view: view,
+      conn: conn,
+      path: path
+    } do
+      page =
+        saved_build(view, conn, path, &add(&1, "#stage-add-entry"), %{
+          sequence: %{"0" => %{workflow: "review-notes"}}
+        })
+
+      recover(page, %{
+        "name" => "Ship",
+        "sequence" => %{"0" => %{"workflow" => "check-links", "machine" => "gpu-large"}}
+      })
+
+      assert card(page, "Ship")["sequence"] == [%{"workflow" => "check-links"}]
+      assert has_element?(page, ~s(#stage-entry-0-machine option[value="gpu-large"][selected]))
+    end
+
+    test "after an unsaved Remove, the name still goes to the stage", %{
+      view: view,
+      conn: conn,
+      path: path
+    } do
+      page =
+        saved_build(
+          view,
+          conn,
+          path,
+          fn view ->
+            add(view, "#stage-add-entry")
+            add(view, "#stage-add-entry")
+          end,
+          %{sequence: %{"0" => %{workflow: "review-notes"}, "1" => %{workflow: "check-links"}}}
+        )
+
+      recover(page, %{"name" => "Ship", "sequence" => %{"0" => %{"workflow" => "check-links"}}})
+
+      assert card(page, "Ship")["sequence"] == [
+               %{"workflow" => "review-notes"},
+               %{"workflow" => "check-links"}
+             ]
+    end
+
+    test "are ignored without a stage of that id in the draft", %{view: view} do
+      before = names(view)
+
+      for params <- [%{"id" => "st_0000000000", "name" => "Ship"}, %{"name" => "Ship"}] do
+        render_hook(view, "edit_stage", %{"stage" => params})
+        assert names(view) == before
+        assert canvas_view(view)["selected"] == id_of("Explore")
+      end
+    end
+  end
+
+  describe "the stage form's boxes and folds" do
+    # Build, with a workflow, then a loop of the workflows `names`.
+    defp build_with_loop(view, names) do
+      select(view, "Build")
+      view |> element("#stage-add-entry") |> render_click()
+      view |> element("#stage-add-loop") |> render_click()
+
+      for _name <- tl(names) do
+        view |> element(~s(#stage-loop-1 button[phx-click="add_entry"])) |> render_click()
+      end
+
+      body = names |> Enum.with_index() |> Map.new(fn {n, j} -> {"#{j}", %{workflow: n}} end)
+      view |> form("#stage-form", stage: %{sequence: %{"1" => %{body: body}}}) |> render_change()
+    end
+
+    defp offsets(html, markers), do: Enum.map(markers, &(:binary.match(html, &1) |> elem(0)))
+
+    defp fold(view, entry) do
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(~s{details[id^="#{entry}-settings-"]})
+    end
+
+    test "the boxes come in the order a stage works, each with a heading under the panel's", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      form_html = view |> element("#stage-form") |> render()
+
+      inputs_sequence_outputs_gate = ~w(id="stage-inputs" id="stage-sequence"
+                                        id="stage-outputs" id="stage-gate")
+
+      assert offsets(form_html, ["id=\"stage-name\"" | inputs_sequence_outputs_gate]) ==
+               Enum.sort(offsets(form_html, ["id=\"stage-name\"" | inputs_sequence_outputs_gate]))
+
+      for {box, title} <- [
+            {"inputs", "Inputs"},
+            {"sequence", "Sequence"},
+            {"outputs", "Outputs"},
+            {"gate", "Gate"}
+          ] do
+        assert has_element?(view, "section#stage-#{box}.q-sect-side > header h3", title)
+      end
+
+      # Each Add sits on the heading row of its box, and the gate's choices stay a group.
+      assert has_element?(view, "#stage-inputs > header #stage-add-inputs")
+      assert has_element?(view, "#stage-sequence > header #stage-add-entry")
+      assert has_element?(view, "#stage-sequence > header #stage-add-loop")
+      assert has_element?(view, "#stage-outputs > header #stage-add-outputs")
+      assert has_element?(view, "#stage-gate fieldset > legend.sr-only", "Gate")
+      refute has_element?(view, "#stage-panel [role=dialog]")
+      refute has_element?(view, "#stage-panel dialog")
+    end
+
+    test "a row's fold starts closed in a native summary, with Change and Close for each state",
+         %{
+           conn: conn,
+           path: path
+         } do
+      {:ok, view, _html} = live(conn, path)
+      explore = id_of("Explore")
+      details = ~s{details#stage-entry-0-settings-#{explore}}
+
+      # Closed, and the fold's id includes the stage's, so an open state stays with its stage.
+      assert has_element?(view, details <> ".q-tool.group:not([open])")
+      assert has_element?(view, details <> " > summary", "Machine type: default")
+
+      # The summary is the control: native, so a key and a tap work, with no hover. Each word
+      # shows in one state only.
+      assert has_element?(view, details <> " > summary .group-open\\:hidden", "Change")
+      assert has_element?(view, details <> " > summary .hidden.group-open\\:inline", "Close")
+
+      # The canvas's pan key is Space. Without this class, Space did nothing in a browser.
+      assert has_element?(view, details <> " > summary.nokey")
+
+      # A patch leaves `open` as the browser has it, so a change elsewhere keeps a row open.
+      assert fold(view, "stage-entry-0") |> LazyHTML.attribute("phx-mounted") |> hd() =~
+               "ignore_attrs"
+
+      # Inside the fold: the field and the words for the check.
+      assert has_element?(view, details <> " #stage-entry-0-machine")
+      assert has_element?(view, details <> ~s{ [data-mark="listed"]}, "A stage can run it")
+
+      # On the row, the check alone, with its words for a screen reader and as a title. A
+      # phone reaches the words by opening the row.
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0-workflow-mark[data-mark="listed"][title="A stage can run it"] .sr-only},
+               "A stage can run it"
+             )
+
+      refute has_element?(view, details <> " #stage-entry-0-workflow-mark")
+
+      # Another stage has other folds.
+      select(view, "Build")
+      view |> element("#stage-add-entry") |> render_click()
+      refute has_element?(view, details)
+      assert has_element?(view, ~s{details#stage-entry-0-settings-#{id_of("Build")}})
+    end
+
+    test "a row's fold has the picker: the default, then the instance's types", %{
+      conn: conn,
+      path: path
+    } do
+      machine_type_fixture(name: "large")
+      {:ok, view, _html} = live(conn, path)
+      picker = ~s{details[id^="stage-entry-0-settings-"] select#stage-entry-0-machine}
+
+      assert has_element?(view, picker <> " option[value='']", "Workspace default (standard)")
+      assert has_element?(view, picker <> " option[value=standard]", "standard: 2 vCPUs, 4 GiB")
+      assert has_element?(view, picker <> " option[value=large]", "large: 4 vCPUs, 16 GiB")
+    end
+
+    test "the closed line shows the row's machine type, else the stage's default", %{
+      conn: conn,
+      path: path
+    } do
+      machine_type_fixture(name: "large")
+      machine_type_fixture(name: "medium")
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "large"}}})
+      |> render_change()
+
+      assert has_element?(
+               view,
+               ~s{details[id^="stage-entry-0-settings-"] > summary},
+               "Machine type: large"
+             )
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: ""}}})
+      |> render_change()
+
+      assert has_element?(
+               view,
+               ~s{details[id^="stage-entry-0-settings-"] > summary},
+               "Machine type: default"
+             )
+
+      details(view, path)
+      view |> form("#stages-process-form", process: %{machine: "medium"}) |> render_change()
+      stages_tab(view, path)
+
+      assert has_element?(
+               view,
+               ~s{details[id^="stage-entry-0-settings-"] > summary},
+               "Machine type: medium"
+             )
+    end
+
+    test "a type of 64 characters beside an empty stage name has no mark", %{
+      conn: conn,
+      path: path
+    } do
+      long = String.duplicate("a", 64)
+      machine_type_fixture(name: long)
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> form("#stage-form", stage: %{name: "", sequence: %{"0" => %{machine: long}}})
+      |> render_change()
+
+      view |> element("#stages-save") |> render_click()
+
+      assert has_element?(view, "#stage-panel", "Give every stage a name")
+      refute has_element?(view, "[data-machine-error]")
+    end
+
+    test "a stored type that breaks the schema's pattern is marked on its closed row", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      version = Processes.current(scope.workspace)
+
+      document =
+        put_in(
+          version.document,
+          ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+          "gpu.large"
+        )
+
+      version |> Ecto.Changeset.change(document: document) |> Repo.update!()
+      {:ok, view, _html} = live(conn, path)
+
+      view |> form("#stage-form", stage: %{name: "Explore two"}) |> render_change()
+      view |> element("#stages-save") |> render_click()
+
+      assert has_element?(view, "[data-save-error]", "Explore two: fix the fields marked below.")
+      refute has_element?(view, "[data-save-error]", "a value is not valid")
+
+      assert has_element?(
+               view,
+               ~s{details[id^="stage-entry-0-settings-"]:not([open]) > summary [data-machine-error]},
+               "Choose a machine type from the list."
+             )
+    end
+
+    test "a default picked on a document with no machine stays in the draft", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      machine_type_fixture(name: "large")
+
+      document =
+        scope.workspace
+        |> Processes.current()
+        |> Map.fetch!(:document)
+        |> Map.delete("machine")
+        |> put_in(["stages", Access.at(0), "description"], "No default machine type.")
+
+      {:ok, version} = Processes.save(scope, scope.workspace, document)
+      refute Map.has_key?(version.document, "machine")
+
+      {:ok, view, _html} = live(conn, path)
+      details(view, path)
+      view |> form("#stages-process-form", process: %{machine: "large"}) |> render_change()
+
+      assert has_element?(view, "#stages-machine option[value=large][selected]")
+    end
+
+    test "after a refusal the picker offers a removed type only on the row that has it", %{
+      conn: conn,
+      path: path
+    } do
+      machine_type_fixture(name: "gone")
+      {:ok, view, _html} = live(conn, path)
+      remove_machine_types(~w(gone))
+      view |> element("#stage-add-entry") |> render_click()
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
+      |> render_change()
+
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stage-entry-0-machine option[value=gone][selected]")
+      assert has_element?(view, "#stage-entry-1-machine")
+      refute has_element?(view, "#stage-entry-1-machine option[value=gone]")
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "standard"}}})
+      |> render_change()
+
+      refute has_element?(view, "#stage-entry-0-machine option[value=gone]")
+    end
+
+    test "a refused machine type shows on a closed row and at its field, until the value changes",
+         %{conn: conn, path: path} do
+      machine_type_fixture(name: "gone")
+      machine_type_fixture(name: "large")
+      {:ok, view, _html} = live(conn, path)
+      remove_machine_types(~w(gone))
+      build_with_loop(view, ~w(explore-a-ticket explore-a-ticket))
+      error = "Choose a machine type from the list."
+
+      view
+      |> form("#stage-form",
+        stage: %{sequence: %{"1" => %{body: %{"1" => %{machine: "gone"}}}}}
+      )
+      |> render_change()
+
+      # Before a save, as before: the form takes the value.
+      refute has_element?(view, "[data-machine-error]")
+
+      view |> element("#stages-save") |> render_click()
+
+      # Above the canvas, as before, and on the summary line, which a closed fold shows.
+      assert has_element?(view, "[data-save-error]")
+
+      assert has_element?(
+               view,
+               ~s{details[id^="stage-entry-1-1-settings-"]:not([open]) > summary [data-machine-error]},
+               error
+             )
+
+      # At the field, for an open fold.
+      assert has_element?(view, ~s(#stage-entry-1-1-machine[aria-invalid="true"]))
+      assert has_element?(view, "#stage-entry-1-1-machine-error", error)
+
+      # On no other row.
+      refute has_element?(view, ~s{details[id^="stage-entry-1-0-settings-"] [data-machine-error]})
+      refute has_element?(view, ~s{details[id^="stage-entry-0-settings-"] [data-machine-error]})
+
+      # A change of the value ends the row's error.
+      view
+      |> form("#stage-form", stage: %{sequence: %{"1" => %{body: %{"1" => %{machine: "large"}}}}})
+      |> render_change()
+
+      refute has_element?(view, "[data-machine-error]")
+      refute has_element?(view, "#stage-entry-1-1-machine-error")
+    end
+
+    test "a machine type shows as refused only after a save refused it, on any stage", %{
+      conn: conn,
+      path: path
+    } do
+      machine_type_fixture(name: "gone")
+      {:ok, view, _html} = live(conn, path)
+      remove_machine_types(~w(gone))
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
+      |> render_change()
+
+      select(view, "Build")
+      view |> element("#stage-add-entry") |> render_click()
+      view |> element("#stages-save") |> render_click()
+
+      # The selected stage, Build, has no such row, so the stage that has one is selected.
+      assert canvas_view(view)["selected"] == id_of("Explore")
+      assert has_element?(view, ~s{#stage-entry-0 summary [data-machine-error]})
+
+      # Discard forgets the refused value: the same value in an `edit_stage` event, as one sent
+      # before the page's patch arrives, shows nothing before a save.
+      view |> element("#stages-discard") |> render_click()
+
+      render_hook(view, "edit_stage", %{
+        "stage" => %{"id" => id_of("Explore"), "sequence" => %{"0" => %{"machine" => "gone"}}}
+      })
+
+      refute has_element?(view, "[data-machine-error]")
+    end
+
+    test "errors on the fields of a row stay visible: a workflow's name and a loop's rounds", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      build_with_loop(view, ~w(explore-a-ticket explore-a-ticket))
+
+      view
+      |> form("#stage-form",
+        stage: %{
+          sequence: %{
+            "0" => %{workflow: "Not Valid"},
+            "1" => %{rounds: "40", body: %{"0" => %{workflow: "Not Valid"}}}
+          }
+        }
+      )
+      |> render_change()
+
+      # Outside any fold.
+      assert has_element?(view, "#stage-entry-0 > div:first-child", "Write a workflow name")
+      assert has_element?(view, "#stage-entry-1-0 > div:first-child", "Write a workflow name")
+      assert has_element?(view, "#stage-loop-1 .q-stage-rounds", "Give the loop 1 to 10 rounds.")
+    end
+
+    test "every field of the form reaches the saved document", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      for name <- ~w(small medium large), do: machine_type_fixture(name: name)
+      {:ok, view, _html} = live(conn, path)
+      build_with_loop(view, ~w(explore-a-ticket explore-a-ticket))
+      view |> element("#stage-add-inputs") |> render_click()
+      view |> element("#stage-add-outputs") |> render_click()
+
+      [type | _rest] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#stage-outputs-0-type option")
+        |> LazyHTML.attribute("value")
+
+      view
+      |> form("#stage-form",
+        stage: %{
+          name: "Make",
+          sequence: %{
+            "0" => %{workflow: "explore-a-ticket", machine: "small"},
+            "1" => %{
+              rounds: "5",
+              body: %{
+                "0" => %{machine: "medium"},
+                "1" => %{workflow: "explore-a-ticket", machine: "large"}
+              }
+            }
+          },
+          inputs: %{"0" => %{type: type, required: "false"}},
+          outputs: %{"0" => %{type: type, required: "true"}},
+          gate: %{kind: "none"}
+        }
+      )
+      |> render_change()
+
+      assert has_element?(view, "#stages-dirty", "Unsaved changes")
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version 2.")
+
+      saved = Processes.current(scope.workspace).document
+      stage = Enum.find(saved["stages"], &(&1["name"] == "Make"))
+
+      assert stage["sequence"] == [
+               %{"workflow" => "explore-a-ticket", "machine" => "small"},
+               %{
+                 "loop" => %{
+                   "rounds" => 5,
+                   "body" => [
+                     %{"workflow" => "explore-a-ticket", "machine" => "medium"},
+                     %{"workflow" => "explore-a-ticket", "machine" => "large"}
+                   ]
+                 }
+               }
+             ]
+
+      assert [%{"type" => ^type, "required" => false}] = stage["inputs"]
+      assert [%{"type" => ^type, "required" => true}] = stage["outputs"]
+      assert stage["gate"]["kind"] == "none"
+
+      # The form adds no image field, at any level of the document or on the page.
+      refute saved |> Jason.encode!() |> String.contains?("image")
+      select(view, "Make")
+      html = view |> element("#stage-panel") |> render()
+      refute html =~ "[image]"
+      refute html =~ "Browser image"
+    end
+
+    test "one workflow has one row, with one fold and Remove", %{conn: conn, path: path} do
+      {:ok, view, _html} = live(conn, path)
+
+      assert has_element?(view, "#stage-entry-0")
+      refute has_element?(view, "#stage-entry-1")
+      refute has_element?(view, "#stage-entry-0.border-t")
+      assert fold(view, "stage-entry-0") |> Enum.count() == 1
+      assert has_element?(view, ~s(#stage-entry-0 button[phx-click="remove_entry"]), "Remove")
+
+      # The field keeps its name for a screen reader, with no visible label.
+      assert has_element?(view, ~s(#stage-entry-0-workflow[aria-label="Workflow"]))
+      refute has_element?(view, ~s(#stage-entry-0 label[for="stage-entry-0-workflow"]))
+    end
+
+    test "a loop of several: a row and a fold each, and adding and removing keep working", %{
+      conn: conn,
+      path: path
+    } do
+      machine_type_fixture(name: "large")
+      {:ok, view, _html} = live(conn, path)
+      build_with_loop(view, ~w(explore-a-ticket explore-a-ticket explore-a-ticket))
+
+      for j <- 0..2 do
+        assert fold(view, "stage-entry-1-#{j}") |> Enum.count() == 1
+
+        assert has_element?(
+                 view,
+                 ~s(#stage-loop-1 #stage-entry-1-#{j} button[phx-click="remove_entry"])
+               )
+      end
+
+      refute has_element?(view, "#stage-entry-1-0.border-t")
+      assert has_element?(view, "#stage-entry-1-1.border-t")
+
+      # A picked machine type stays through an add, and a remove moves its row up.
+      view
+      |> form("#stage-form", stage: %{sequence: %{"1" => %{body: %{"2" => %{machine: "large"}}}}})
+      |> render_change()
+
+      view |> element(~s(#stage-loop-1 button[phx-click="add_entry"])) |> render_click()
+      assert has_element?(view, "#stage-entry-1-2-machine option[value=large][selected]")
+      assert has_element?(view, "#stage-entry-1-3")
+
+      view
+      |> element(~s(#stage-entry-1-0 button[phx-click="remove_entry"]))
+      |> render_click()
+
+      assert has_element?(view, "#stage-entry-1-1-machine option[value=large][selected]")
+      refute has_element?(view, "#stage-entry-1-3")
+
+      for j <- [1, 1] do
+        view
+        |> element(~s(#stage-entry-1-#{j} button[phx-click="remove_entry"]))
+        |> render_click()
+      end
+
+      # A loop of one shows no Remove on its row. Remove loop keeps the workflow.
+      refute has_element?(view, ~s(#stage-entry-1-0 button[phx-click="remove_entry"]))
+      view |> element(~s(#stage-loop-1 button[phx-click="remove_loop"])) |> render_click()
+      refute has_element?(view, "#stage-loop-1")
+      assert has_element?(view, "#stage-entry-1")
+      assert has_element?(view, "#stage-entry-1.border-t")
+    end
+
+    test "a workflow that the harness does not list keeps its words on the row", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{workflow: "not-in-the-list"}}})
+      |> render_change()
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0 > div:first-child [data-mark="missing"].w-full},
+               "Not in the harness"
+             )
+
+      refute has_element?(view, ~s{#stage-entry-0-workflow-mark .sr-only})
+      refute has_element?(view, ~s{details[id^="stage-entry-0-settings-"] [data-mark]})
+    end
+
+    test "a stage with no workflow shows No workflow, and offers the Add buttons", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      assert has_element?(view, "#stage-sequence", "No workflow")
+      assert has_element?(view, "#stage-sequence #stage-add-entry")
+      refute has_element?(view, "#stage-sequence details")
+    end
+  end
+
+  describe "a member's panel" do
+    setup %{scope: scope} do
+      %{user: user} = member_fixture(scope)
+      %{member: log_in_user(build_conn(), user)}
+    end
+
+    test "has the same four boxes in the same order, with no field", %{member: conn, path: path} do
+      {:ok, view, _html} = live(conn, path)
+      html = view |> element("#stage-panel") |> render()
+
+      markers = ~w(id="stage-inputs" id="stage-sequence" id="stage-outputs" id="stage-gate")
+      assert offsets(html, markers) == Enum.sort(offsets(html, markers))
+
+      for {box, title} <- [
+            {"inputs", "Inputs"},
+            {"sequence", "Sequence"},
+            {"outputs", "Outputs"},
+            {"gate", "Gate"}
+          ] do
+        assert has_element?(view, "section#stage-#{box}.q-sect-side > header h3", title)
+      end
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "explore-a-ticket, machine type Workspace default (standard)"
+             )
+
+      assert has_element?(view, "#stage-gate", "A member approves")
+      refute has_element?(view, "#stage-panel input")
+      refute has_element?(view, "#stage-panel select")
+      refute has_element?(view, "#stage-panel details")
+      refute has_element?(view, "#stage-panel button")
+    end
+  end
+
   describe "a member" do
     setup %{scope: scope} do
       %{user: user} = member_fixture(scope)
@@ -891,7 +2048,12 @@ defmodule ApiaryWeb.StagesLiveTest do
       details(view, path)
       assert has_element?(view, "#stages-harness", "Harness: Qory harness, stack software")
       refute has_element?(view, "#stages-harness-change")
-      assert has_element?(view, "#stages-machine-read", "Default machine type: default")
+
+      assert has_element?(
+               view,
+               "#stages-machine-read",
+               "Default machine type: Default (standard)"
+             )
 
       for selector <- ~w(#stages-process-form #stages-trial #stages-save) do
         refute has_element?(view, selector), selector
@@ -904,10 +2066,16 @@ defmodule ApiaryWeb.StagesLiveTest do
       # Focus, for a member too.
       assert canvas_data(view, "data-words")["focus"] == "Focus"
       assert has_element?(view, "#stage-panel-title", "Explore")
-      assert has_element?(view, "#stage-panel", "explore-a-ticket, machine type default")
+
+      assert has_element?(
+               view,
+               "#stage-panel",
+               "explore-a-ticket, machine type Workspace default (standard)"
+             )
+
       assert has_element?(view, "#stages-version", "Version 1, current.")
       refute has_element?(view, "#stages-version", "Editing")
-      assert has_element?(view, "#stage-panel dd", "A member approves")
+      assert has_element?(view, "#stage-gate", "A member approves")
       refute has_element?(view, "#stage-panel", "Gate: a member approves")
 
       for selector <-
@@ -920,6 +2088,39 @@ defmodule ApiaryWeb.StagesLiveTest do
       # A click or Enter on a card opens it, read-only.
       select(view, "Build")
       assert has_element?(view, "#stage-panel-title", "Build")
+    end
+
+    test "reads a stage's description in full, with its line breaks; a stage without one has no row",
+         %{member: conn, path: path, scope: scope} do
+      text = "Turn the proposal into a plan for the storefront.\nA member checks the plan."
+      document = Processes.default_document("software")
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"name" => "Shape"} = stage -> Map.put(stage, "description", text)
+          stage -> stage
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+      {:ok, view, _html} = live(conn, path)
+
+      # Explore, first and selected, has none.
+      assert has_element?(view, "#stage-panel-title", "Explore")
+      refute has_element?(view, "#stage-panel-description")
+      refute has_element?(view, "#stage-panel dt", "Description")
+
+      select(view, "Shape")
+      assert has_element?(view, "#stage-panel dt", "Description")
+
+      [row] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#stage-panel-description.whitespace-pre-line")
+        |> Enum.to_list()
+
+      # The whole text, its line break kept, with no white space around it.
+      assert LazyHTML.text(row) == text
     end
 
     test "a save, an assign, a make current and a drop are refused", %{
@@ -1273,6 +2474,51 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "a workspace on a tag of the Qory harness, with no workflows of its stack" do
+    test "a new entry starts with the first name of the tag, not of main", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      files =
+        Map.update!(
+          Apiary.QoryHarnessFixture.files(),
+          "stacks/software/qory-stack.yaml",
+          fn stack ->
+            String.replace(
+              stack,
+              "  explore-a-ticket: {access: read}\n",
+              "  chart-a-ticket: {access: read}\n  explore-a-ticket: {access: read}\n"
+            )
+          end
+        )
+
+      Apiary.QoryHarnessFixture.serve!(files, tags: ["v1.0.0"])
+      {:ok, _commit} = Apiary.Harnesses.Qory.read({:tag, "v1.0.0"})
+
+      # A choice of the tag whose document has no stack: the page lists no workflow of it.
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: scope.workspace.organisation_id,
+        workspace_id: scope.workspace.id,
+        choice: :qory,
+        version_kind: :tag,
+        version_name: "v1.0.0",
+        harness: "extends:\n  git: #{Apiary.Harnesses.Qory.git()}\n  ref: v1.0.0\n"
+      })
+
+      :ok = Processes.record_declared(scope.workspace, [])
+      assert Processes.declared_workflows(scope.workspace) == []
+
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+      select(view, "Shape")
+
+      view |> element("#stage-add-entry") |> render_click()
+
+      assert card(view, "Shape")["sequence"] == [%{"workflow" => "chart-a-ticket"}]
+    end
+  end
+
   describe "the workflow's name and its mark" do
     setup %{scope: scope} do
       # Build runs explore-a-ticket, then a loop of it, then capture-demo.
@@ -1300,7 +2546,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert hd(card(view, "Build")["sequence"]) == %{"workflow" => "triage-bugs"}
       refute has_element?(view, "#stage-entry-0", "Write a workflow name")
 
-      for refused <- ["Triage", "triage bugs", "-triage", "", String.duplicate("a", 65)] do
+      for refused <- ["Triage", "triage bugs", "-triage", "", String.duplicate("a", 56)] do
         view
         |> form("#stage-form", stage: %{sequence: %{"0" => %{workflow: refused}}})
         |> render_change()
@@ -1310,7 +2556,7 @@ defmodule ApiaryWeb.StagesLiveTest do
         assert has_element?(
                  view,
                  "#stage-entry-0",
-                 "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 64 characters."
+                 "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 55 characters."
                ),
                refused
 
@@ -1325,6 +2571,15 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stage-entry-1-0", "Write a workflow name")
 
       assert Enum.at(card(view, "Build")["sequence"], 1)["workflows"] == ["explore-a-ticket"]
+
+      # A name of 55 characters, the most a workflow name has, is the entry's workflow.
+      longest = "triage-" <> String.duplicate("a", 48)
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{workflow: longest}}})
+      |> render_change()
+
+      assert hd(card(view, "Build")["sequence"]) == %{"workflow" => longest}
 
       # A save sends the typed name, which no harness lists.
       view |> element("#stages-save") |> render_click()
@@ -1426,8 +2681,18 @@ defmodule ApiaryWeb.StagesLiveTest do
       select(member, "Build")
 
       assert card(member, "Build")["marks"]["capture-demo"]["listed"] == false
-      assert has_element?(member, ~s{#stage-panel dd [data-mark="missing"]}, "Not in the harness")
-      assert has_element?(member, ~s{#stage-panel dd [data-mark="listed"]}, "A stage can run it")
+
+      assert has_element?(
+               member,
+               ~s{#stage-sequence li [data-mark="missing"]},
+               "Not in the harness"
+             )
+
+      assert has_element?(
+               member,
+               ~s{#stage-sequence li [data-mark="listed"]},
+               "A stage can run it"
+             )
     end
 
     test "on the Qory harness, before its workflows are recorded: no marks, the Qory line, and no workflow listed as missing",
@@ -1479,10 +2744,41 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       lines = for change <- Processes.diff(old, new), do: Words.change(change, old, new)
 
-      assert "Changed the default machine type from default to large." in lines
+      assert "Changed the default machine type from Default to large." in lines
       assert "Renamed the stage Shape to Plan." in lines
       assert "Changed the sequence of Build." in lines
       assert Enum.any?(lines, &(&1 =~ ~r/^Moved (Release|Verify) from place \d to place \d\.$/))
+    end
+
+    test "a change of the default machine type reads Default with no type name, also after the instance default changes" do
+      large = machine_type_fixture(name: "large")
+      none = Processes.default_document("software") |> Map.delete("machine")
+      on_large = Map.put(none, "machine", "large")
+      on_default = Map.put(none, "machine", "default")
+
+      line = fn older, newer ->
+        [line] =
+          for change <- Processes.diff(older, newer), do: Words.change(change, older, newer)
+
+        line
+      end
+
+      from_default = "Changed the default machine type from Default to large."
+      to_default = "Changed the default machine type from large to Default."
+
+      assert line.(none, on_large) == from_default
+      assert line.(on_large, on_default) == to_default
+
+      # No machine and `default` run on the same type: a change between them has no line.
+      assert Processes.diff(none, on_default) == []
+      assert Processes.diff(on_default, none) == []
+
+      # A version does not record which type was the default when it was saved: a later
+      # change of the instance's default changes no line.
+      make_default!(large)
+
+      assert line.(none, on_large) == from_default
+      assert line.(on_large, on_default) == to_default
     end
 
     test "a person who left reads Former member at the start of a line, else a former member" do
@@ -1508,7 +2804,14 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert Words.refusal(
                %{path: "#/stages/0/sequence/0/loop/rounds", error: :schema, detail: :maximum},
                doc
-             ) =~ "Explore: give every loop 1 to 10 rounds"
+             ) == "Explore: a value is not valid. Check the stage, then save again."
+
+      for list <- ~w(sequence inputs outputs) do
+        assert Words.refusal(
+                 %{path: "#/stages/0/#{list}", error: :schema, detail: :maxItems},
+                 doc
+               ) == "Explore: keep at most 20 entries in each list."
+      end
     end
   end
 end

@@ -135,6 +135,10 @@ export const stopAt = (at, length, mark) =>
 // Whether the Transcript's end button reads "Following": a live run, read at its end.
 export const transcriptFollowing = (live, atEnd) => live && atEnd
 
+// The buttons that open or close subagents' lines in the Transcript: a head's caret, its
+// Show or Hide, and Expand all and Collapse all in the bar.
+export const SUBAGENT_BUTTONS = "[phx-click=subagent_toggle], [phx-click=subagents_all]"
+
 export const openingView = (initial, stored, choice, targeted = false) => {
   if (targeted) return "transcript"
   if (!choice || initial === "raw") return initial
@@ -508,6 +512,12 @@ export const Terminal = {
       this.toLine(Number(link.dataset.session), Number(link.dataset.rawLine))
     })
     this.transcriptAtEnd = this.live
+    // A click that opens or closes subagents' lines keeps a line where it is on screen
+    // (`holdLine`), until the reader scrolls, presses a key or clicks again.
+    this.held = null
+    this.el.addEventListener("click", e => this.holdLine(e))
+    for (const type of ["pointerdown", "wheel", "touchstart", "keydown"])
+      this.transcript.addEventListener(type, () => (this.held = null), {passive: true})
     this.transcript.addEventListener("scroll", () => {
       const {scrollTop, scrollHeight, clientHeight} = this.transcript
       this.transcriptAtEnd = scrollHeight - scrollTop - clientHeight <= NEAR_END
@@ -556,12 +566,38 @@ export const Terminal = {
         return
       }
     }
+    if (this.held && !this.transcriptAtEnd) {
+      const line = this.transcript.querySelector(`[id="${this.held.id}"]`)
+      if (!line) return
+      const top = line.getBoundingClientRect().top - this.transcript.getBoundingClientRect().top
+      if (top !== this.held.top) this.transcript.scrollTop += top - this.held.top
+      return
+    }
     if (this.transcriptAtEnd) this.transcript.scrollTop = this.transcript.scrollHeight
+  },
+
+  // A click on a subagent's caret, Show or Hide, or on Expand all or Collapse all: the end
+  // is no longer followed, and the line clicked in, or the first line on screen for the
+  // bar's buttons, stays at its offset in the box while the lines open or close.
+  holdLine(e) {
+    const button = e.target && e.target.closest && e.target.closest(SUBAGENT_BUTTONS)
+    if (!button || this.view !== "transcript") return
+    const boxTop = this.transcript.getBoundingClientRect().top
+    const line =
+      button.closest("li") ||
+      [...this.transcript.querySelectorAll("ol > li")].find(
+        li => li.getBoundingClientRect().bottom > boxTop,
+      )
+    if (!line) return
+    this.held = {id: line.id, top: line.getBoundingClientRect().top - boxTop}
+    this.transcriptAtEnd = false
+    this.showTranscriptEnd()
   },
 
   // The Transcript's end: the lines after the window are loaded first, and the end is
   // followed from then on, until the reader scrolls away from it.
   transcriptToEnd() {
+    this.held = null
     if (this.transcript.querySelector("[data-later]")) this.pushEvent("show_new", {})
     this.transcriptAtEnd = true
     this.transcript.scrollTop = this.transcript.scrollHeight

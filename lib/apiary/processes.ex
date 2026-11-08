@@ -1,6 +1,7 @@
 defmodule Apiary.Processes do
   @moduledoc """
-  A workspace's process: its stages in order, each with its inputs, its sequence of
+  A workspace's process: its stages in order, each with its name, an optional
+  description (plain text, at most 500 characters), its inputs, its sequence of
   workflows, its outputs and its gate, as one document of
   `priv/schemas/process/v1.schema.json` (`validate/1`). Each save is a new version
   (`Apiary.Processes.Version`), numbered within the workspace.
@@ -58,10 +59,9 @@ defmodule Apiary.Processes do
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Harnesses.QoryCopy
+  alias Apiary.Harnesses.Qory
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.{Export, TypeTemplate, TypeTemplates, Version}
   alias Apiary.Stacks.{Sources, Stack}
@@ -73,11 +73,8 @@ defmodule Apiary.Processes do
   # They leave room for the fields the schema does not list, which a save keeps.
   @limits [list: 64, members: 64, nodes: 20_000, string: 4_096, depth: 16]
 
-  # The version of the default process, the copied template (`Apiary.Harnesses.QoryCopy`):
-  # a type's versions keep it (`Apiary.Processes.TypeTemplates`), and a higher one here
-  # adds the changed default as a new version of each type no instance admin has saved.
-  # Raise it when a copy changes the template's process.
-  @template_version 3
+  # The most code points of a stage's description (`priv/schemas/process/v1.schema.json`).
+  @description_limit 500
 
   # Crockford base32 without i, l, o and u, as `Apiary.PublicId` writes its ids.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"
@@ -132,19 +129,29 @@ defmodule Apiary.Processes do
 
   @doc """
   default_document/1 is the default process of a workspace type, given as its domain
-  (`Apiary.Lingo.Domain`, a module or its name) or a workspace: the process of the copied
-  template (Apiary.Harnesses.QoryCopy.template/0). Every domain takes that one.
+  (`Apiary.Lingo.Domain`, a module or its name) or a workspace: the process of the
+  template of the Qory harness (Apiary.Harnesses.Qory.template/1), as its stored files
+  have it, at the commit of `main` for a domain, and at the commit the workspace's
+  harness settings choose for a workspace (Apiary.Harnesses.Qory.workspace_commit/1).
+  Every domain takes that one. Nil where the files of that commit are not kept.
   """
-  @spec default_document(module | String.t() | %Workspace{}) :: document
-  def default_document(_domain_or_workspace), do: QoryCopy.template().process
+  @spec default_document(module | String.t() | %Workspace{}) :: document | nil
+  def default_document(%Workspace{} = workspace),
+    do: template_process(Qory.workspace_commit(workspace))
+
+  def default_document(_domain), do: template_process(Qory.current())
 
   @doc """
-  default_version/1 is the version of the default process the release ships for the
-  domain `domain` (a module or its name): `Apiary.Processes.TypeTemplates` adds a higher
-  one as a new version of the type.
+  template_process/1 is the process of the template of the Qory harness at `commit`, nil
+  for a commit whose files are not kept.
   """
-  @spec default_version(module | String.t()) :: pos_integer
-  def default_version(_domain), do: @template_version
+  @spec template_process(String.t() | nil) :: document | nil
+  def template_process(commit) do
+    case Qory.template(commit) do
+      %{process: process} -> process
+      nil -> nil
+    end
+  end
 
   @doc """
   template/1 is what a workspace of the domain `domain` (a module, or a workspace) keeps
@@ -174,12 +181,14 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  type_text_defaults/1 is the texts the release ships for the workspace type with the key
-  `type`, translated in the locale of the caller's process: the copied template's texts
-  for its type (Apiary.Harnesses.QoryCopy.texts/0). Another domain's name is its
-  `c:Apiary.Lingo.Domain.type_name/0` and its summary its
-  `c:Apiary.Lingo.Domain.type_line/0`, with no description. For a key no type has, the
-  name is the key, with no summary or description.
+  type_text_defaults/1 is the texts of the workspace type with the key `type` where no
+  version has texts saved: the texts of the template of the Qory harness at the commit of
+  `main` (Apiary.Harnesses.Qory.texts/1), in English, for the template's type. Another
+  domain, and the template's before the Qory harness is first read, has its
+  `c:Apiary.Lingo.Domain.type_name/0` as its name and its
+  `c:Apiary.Lingo.Domain.type_line/0` as its summary, translated in the locale of the
+  caller's process, with no description. For a key no type has, the name is the key, with
+  no summary or description.
   """
   @spec type_text_defaults(String.t()) :: %{TypeTemplate.text() => String.t() | nil}
   def type_text_defaults(type) when is_binary(type) do
@@ -188,36 +197,41 @@ defmodule Apiary.Processes do
         %{name: type, summary: nil, description: nil}
 
       domain ->
-        if type == QoryCopy.template().type,
-          do: QoryCopy.texts(),
-          else: %{name: domain.type_name(), summary: domain.type_line(), description: nil}
+        case Qory.template(Qory.current()) do
+          %{type: ^type} = template -> Map.take(template, [:name, :summary, :description])
+          _other -> %{name: domain.type_name(), summary: domain.type_line(), description: nil}
+        end
     end
   end
 
   @doc """
-  qory_workflows/0 is the workflows of the copied `software` stack of the Qory harness
-  (Apiary.Harnesses.QoryCopy.workflows/1), the stack of the type's template: for what
-  has no workspace, and for the name that makes a run Explore
-  (Apiary.Stages.explore_workflow/0). A workspace's marks read `qory_workflows/1`.
-  """
-  @spec qory_workflows() :: [String.t()]
-  def qory_workflows, do: QoryCopy.workflows("software")
+  qory_workflows/1 is the workflows the stack of the template of the Qory harness lists
+  at `commit` (Apiary.Harnesses.Qory.workflows/2), as the stored files have it: for what
+  has no workspace, at the commit of `main`, and for the name that makes a run Explore
+  (Apiary.Stages.explore_workflow/1), at the workspace's commit. Empty for a commit whose
+  files are not kept. A workspace's marks read `qory_workflows/1` with its harness
+  choice.
 
-  @doc """
-  qory_workflows/1 is the workflows the stack of a workspace on the Qory harness lists,
-  given the harness as Apiary.Stacks.Sources.chosen/1 returns it: the stack its runs
-  compose. With no row that is `Workspace.qory_stack/1`, and `core` lists none. With a
-  row, it is the stack of the row's document, which a harness the organisation shares
-  sets for every workspace. A stack the copy does not have lists none.
+  Given the harness as Apiary.Stacks.Sources.chosen/1 returns it, it is the workflows the
+  stack of a workspace on the Qory harness lists, at the version the choice has: the
+  stack its runs compose. With no row that is `Workspace.qory_stack/1`, and `core` lists
+  none. With a row, it is the stack of the row's document, which a harness the
+  organisation shares sets for every workspace. A stack the harness does not export
+  lists none.
   """
-  @spec qory_workflows(%{choice: :qory, stack: String.t() | nil}) :: [String.t()]
-  def qory_workflows(%{choice: :qory, stack: stack}) when is_binary(stack) do
-    if QoryCopy.file("stacks/#{stack}/qory-stack.yaml"),
-      do: QoryCopy.workflows(stack),
-      else: []
-  end
+  @spec qory_workflows(String.t() | nil | %{choice: :qory, stack: String.t() | nil}) ::
+          [String.t()]
+  def qory_workflows(%{choice: :qory, stack: stack} = chosen) when is_binary(stack),
+    do: Qory.workflows(Qory.chosen_commit(chosen), stack)
 
   def qory_workflows(%{choice: :qory}), do: []
+
+  def qory_workflows(commit) do
+    case Qory.template(commit) do
+      %{stack: stack} -> Qory.workflows(commit, stack)
+      nil -> []
+    end
+  end
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
@@ -282,6 +296,72 @@ defmodule Apiary.Processes do
     <<bits::50, _rest::6>> = :crypto.strong_rand_bytes(7)
     "st_" <> for(<<(chunk::5 <- <<bits::50>>)>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
   end
+
+  @doc """
+  description_limit/0 is the most code points of a stage's `description`, the schema's
+  `maxLength`.
+  """
+  @spec description_limit() :: pos_integer
+  def description_limit, do: @description_limit
+
+  @doc """
+  description/1 is `text` as a stage's `description`: each CRLF and each lone CR as LF,
+  no white space at the start or the end, and at most `description_limit/0` code points,
+  of whole graphemes. JSON Schema and JSV count `maxLength` in code points, so the text
+  fits the schema's `maxLength`. A first grapheme over the limit leaves the empty text.
+  The cut stops at the first grapheme over the limit.
+  """
+  @spec description(String.t()) :: String.t()
+  def description(text) when is_binary(text) do
+    text = text |> with_line_breaks() |> String.trim_leading()
+
+    text
+    |> binary_part(0, description_bytes(text, @description_limit, 0))
+    |> String.trim_trailing()
+  end
+
+  # The bytes of `text`'s first graphemes that together have at most `left` code points.
+  defp description_bytes(text, left, bytes) do
+    case String.next_grapheme(text) do
+      {grapheme, rest} ->
+        size = length(String.codepoints(grapheme))
+
+        if size > left,
+          do: bytes,
+          else: description_bytes(rest, left - size, bytes + byte_size(grapheme))
+
+      nil ->
+        bytes
+    end
+  end
+
+  @doc """
+  with_description_line_breaks/1 is `document` with each CRLF and each lone CR in a stage's
+  `description` as LF, and the description without leading or trailing white space, as the
+  stage form saves it; a stage with a blank description has no `description` key. Every
+  other value is as it is. For a process read from a template file, whose double-quoted
+  YAML may write `\\r`.
+  """
+  @spec with_description_line_breaks(term) :: term
+  def with_description_line_breaks(%{"stages" => stages} = document) when is_list(stages) do
+    stages =
+      Enum.map(stages, fn
+        %{"description" => text} = stage when is_binary(text) ->
+          case text |> with_line_breaks() |> String.trim() do
+            "" -> Map.delete(stage, "description")
+            text -> %{stage | "description" => text}
+          end
+
+        stage ->
+          stage
+      end)
+
+    %{document | "stages" => stages}
+  end
+
+  def with_description_line_breaks(document), do: document
+
+  defp with_line_breaks(text), do: String.replace(text, ~r/\r\n?/, "\n")
 
   @doc """
   stage/2 is the stage with the id `stage_id` of `document`, or of a version's document,
@@ -358,27 +438,29 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  copy_qory_template/1 inserts version 1 of `workspace`, made from the Qory template, with
-  no author: the newest version of its type's default process, and the record of the
-  template (the moduledoc). Called where the workspace is created, in that transaction.
-  `{:ok, version}`.
+  copy_qory_template/2 inserts version 1 of `workspace`, made from the Qory template at
+  `commit`, whose files are kept (Apiary.Harnesses.Qory.read/1), with no author: the
+  newest version of its type's default process, once a copy of the template at `commit`
+  where no instance admin has saved one (Apiary.Processes.TypeTemplates.newest/2), and
+  the record of the template (the moduledoc). Called where the workspace is created, in
+  that transaction. `{:ok, version}`.
   """
-  @spec copy_qory_template(%Workspace{}) :: {:ok, Version.t()} | {:error, term}
-  def copy_qory_template(%Workspace{} = workspace) do
+  @spec copy_qory_template(%Workspace{}, String.t()) :: {:ok, Version.t()} | {:error, term}
+  def copy_qory_template(%Workspace{} = workspace, commit) when is_binary(commit) do
     key = Domain.definition(Domain.for_workspace(workspace)).key
-    newest = TypeTemplates.newest(key)
-    harness = Definition.qory_harness()
+    newest = TypeTemplates.newest(key, commit)
+    template = Qory.template(commit)
 
     insert_first(
       workspace,
       newest.document,
       %{
         "source" => "qory",
-        "git" => harness.git,
-        "commit" => harness.latest,
-        "module" => QoryCopy.template_module(),
+        "git" => Qory.git(),
+        "commit" => commit,
+        "module" => Qory.template_module(),
         "stack" => Workspace.qory_stack(workspace),
-        "type" => QoryCopy.template().type,
+        "type" => template.type,
         "version" => newest.number
       },
       []
@@ -450,8 +532,9 @@ defmodule Apiary.Processes do
   version of the workspace, is the version the save starts from, the current one by
   default. A stage with no `id` is given a new one (`new_stage_id/0`).
 
-  `{:ok, version}`; `{:error, errors}` (`t:error/0`) for a document `validate/1` refuses
-  or that is the document of the version the save starts from; or a reason of
+  `{:ok, version}`; `{:error, errors}` (`t:error/0`) for a document `validate/1` refuses,
+  one with a machine type the instance does not have (`known_machine_types/1`), or one
+  that is the document of the version the save starts from; or a reason of
   `Apiary.Access`.
   """
   @spec save(Scope.t(), %Workspace{}, term, keyword) ::
@@ -464,6 +547,8 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, workspace),
            :ok <- Access.check(scope, :"process.edit", workspace),
            :ok <- validate(document),
+           :ok <- Apiary.MachineTypes.hold(),
+           :ok <- known_machine_types(document),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
            {:ok, version} <- insert_version(scope, workspace, base, document, trial?),
@@ -474,6 +559,23 @@ defmodule Apiary.Processes do
         {:ok, version}
       end
     end)
+  end
+
+  @doc """
+  known_machine_types/1 is `:ok` when every machine type of `document`, its `machine` and
+  each workflow entry's, is absent, `default`, or a type of the instance
+  (`Apiary.MachineTypes`); else `{:error, errors}`, each `:unknown_machine_type` at its
+  place.
+  """
+  @spec known_machine_types(map) :: :ok | {:error, [error]}
+  def known_machine_types(document) do
+    case Apiary.MachineTypes.unknown(document) do
+      [] ->
+        :ok
+
+      paths ->
+        {:error, for(path <- paths, do: %{path: path, error: :unknown_machine_type, detail: nil})}
+    end
   end
 
   @doc false
@@ -737,7 +839,8 @@ defmodule Apiary.Processes do
   Each change is `{kind, stage_id, detail}`: `%{name, position}` for an added stage
   (position from 0), `%{name}` for a removed one, `%{from, to}` for the rest, the value
   before and after (a position for a move, the document's machine for
-  `:machine_changed`, whose stage id is nil).
+  `:machine_changed`, whose stage id is nil). A document with no `machine` and one with
+  `default` run on the same type: between them there is no `:machine_changed`.
   """
   @spec diff(Version.t() | document | nil, Version.t() | document) :: [change]
   def diff(%Version{document: older}, newer), do: diff(older, newer)
@@ -752,9 +855,10 @@ defmodule Apiary.Processes do
     moved = moved(Enum.map(old_stages, & &1["id"]), Enum.map(new_stages, & &1["id"]))
 
     machine =
-      if older != %{"stages" => []} and older["machine"] != newer["machine"],
-        do: [{:machine_changed, nil, %{from: older["machine"], to: newer["machine"]}}],
-        else: []
+      if older != %{"stages" => []} and
+           (older["machine"] || "default") != (newer["machine"] || "default"),
+         do: [{:machine_changed, nil, %{from: older["machine"], to: newer["machine"]}}],
+         else: []
 
     changed =
       new_stages

@@ -36,7 +36,11 @@ defmodule ApiaryWeb.Contract.SourceItemCommentsTest do
 
     # The items the contract's bodies name, of collections linked to the scope's
     # workspace.
-    for {collection_ref, refs} <- [{"TRK", ~w(TRK-1 TRK-3 TRK-9)}, {"R_1001", ~w(I_2001)}] do
+    for {collection_ref, refs} <- [
+          {"TRK", ~w(TRK-1 TRK-3 TRK-9)},
+          {"R_1001", ~w(I_2001)},
+          {"acme/shop", ~w(acme/shop#12)}
+        ] do
       source_collection_fixture(scope, connection, %{external_ref: collection_ref})
 
       {:ok, :accepted} =
@@ -115,6 +119,38 @@ defmodule ApiaryWeb.Contract.SourceItemCommentsTest do
       assert [%Comment{external_ref: "C-91", truncated: ["body"]}] = comments_of("TRK-9")
       assert [%Comment{external_ref: "IC_3001", deleted_at: %DateTime{}}] = comments_of("I_2001")
       assert comments_of("TRK-3") == []
+
+      # A comment_id of no member's comment of the item: kept as any comment.
+      assert [%Comment{external_ref: "C-31", comment_id: nil, post_state: nil}] =
+               comments_of("acme/shop#12")
+    end
+
+    test "code-host-comment-id.json matches the member's comment with its comment_id", ctx do
+      item = Repo.get_by!(Item, external_ref: "acme/shop#12")
+
+      {:ok, member} =
+        %Comment{organisation_id: item.organisation_id, item_id: item.id}
+        |> Comment.member_changeset(
+          %{
+            body: "Checkout fails only with a saved card.",
+            author_name: "Dana Example",
+            post_state: :posting
+          },
+          DateTime.utc_now()
+        )
+        |> Ecto.Changeset.force_change(:comment_id, "sc_7k2m9q4v1x8z3c5d")
+        |> Repo.insert()
+
+      conn = send_post(ctx, fresh("source-item-comments/code-host-comment-id.json"))
+      assert conn.status == 204
+      assert signed_answer?(conn)
+
+      assert [%Comment{} = matched] = comments_of("acme/shop#12")
+      assert {matched.id, matched.post_state} == {member.id, :posted}
+      assert matched.external_ref == "C-31"
+      assert matched.url == "https://code.example.com/acme/shop/items/12#C-31"
+      assert matched.body == "Checkout fails only with a saved card."
+      assert matched.source_updated_at == ~U[2026-10-15 12:00:05Z]
     end
 
     test "each invalid one is 400 invalid_request, signed, before its time is read", ctx do

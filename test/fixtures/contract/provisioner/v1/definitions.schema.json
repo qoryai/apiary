@@ -18,6 +18,54 @@
       "description": "The name of the system that runs a job, as the starter names it, such as example-ci, stored as data and never parsed: a lower-case ASCII letter, then lower-case ASCII letters, digits, spaces and hyphens, 1 to 40 characters in all.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9 -]{0,39}$"
+    },
+    "machine_spec": {
+      "description": "The size and kind of a machine: what a node pool offers in a claim, and what an instance admin defines for a machine type in the control plane. A machine fits a spec when its vcpus, memory_mib and disk_gib are each at least the spec's, its arch is the spec's, and its virtualization is true when the spec's is true.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vcpus",
+        "memory_mib",
+        "disk_gib",
+        "arch",
+        "virtualization"
+      ],
+      "properties": {
+        "vcpus": {
+          "description": "The number of virtual CPUs: an integer from 1 to 1024.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "memory_mib": {
+          "description": "The memory in MiB: an integer from 512 to 8388608.",
+          "type": "integer",
+          "minimum": 512,
+          "maximum": 8388608
+        },
+        "disk_gib": {
+          "description": "The disk in GiB: an integer from 1 to 65536.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "arch": {
+          "description": "The CPU architecture: amd64 or arm64.",
+          "enum": [
+            "amd64",
+            "arm64"
+          ]
+        },
+        "virtualization": {
+          "description": "Whether the machine can run virtual machines inside it. On Linux, such a machine has /dev/kvm.",
+          "type": "boolean"
+        }
+      }
+    },
+    "machine_type": {
+      "description": "The vendor's type of the machine, a name such as example-type, stored as data and never parsed: 1 to 64 printable ASCII characters with no space.",
+      "type": "string",
+      "pattern": "^[!-~]{1,64}$"
     }
   }
 }

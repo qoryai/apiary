@@ -74,12 +74,12 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       html = strip(exploring: 26, waiting: %{count: 3, for: :you}, ready: 8)
 
       assert attr(html, "nav", "aria-label") == ["Stages"]
-      assert texts(html, ".q-wl-st-name") == ["Explore", "Confirm", "Shape"]
+      assert texts(html, ".q-wl-st-name") == ["Explore", "Approve", "Shape"]
       assert texts(html, ".q-wl-st-n") == ["34", "15", "8"]
 
       assert texts(html, ".q-wl-st-what") == [
                "Qory reads the ticket",
-               "A member confirms what Qory proposes",
+               "A member approves the proposal",
                "The plan and its acceptance criteria"
              ]
 
@@ -252,7 +252,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
 
     test "the views' notes" do
       assert render_component(&L.view_note/1, view: :you) =~
-               "Work items that wait for you to confirm what Qory proposes. Oldest first."
+               "Work items that wait for you to approve the proposal. Oldest first."
 
       for view <- [:open, :closed],
           do: assert(render_component(&L.view_note/1, view: view) |> String.trim() == "")
@@ -339,8 +339,8 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       assert text(html, ".q-wl-tk") == "G #1204"
       assert attr(html, ".q-wl-tk .q-bl-tile", "aria-label") == ["GitHub"]
       assert attr(html, ".q-wl-tk span[title]", "title") == ["#1204"]
-      assert text(html, ".q-wl-nx") == "You confirm next"
-      assert text(html, ".q-wl-sub") == "#88 · You confirm next"
+      assert text(html, ".q-wl-nx") == "You approve next"
+      assert text(html, ".q-wl-sub") == "#88 · You approve next"
       assert count(html, ".q-wl-row-hot") == 1
       assert attr(html, ".q-wl-own", "title") == []
       assert attr(html, ".q-wl-own", "aria-label") == ["Owner: dana@example.com"]
@@ -369,8 +369,8 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
       for {overrides, words} <- [
             {%{status: :queued}, "Explore is queued"},
             {%{status: :running}, "Explore is running"},
-            {%{status: :confirm}, "You confirm next"},
-            {%{status: :confirm, owner: @priya}, "Priya confirms next"},
+            {%{status: :confirm}, "You approve next"},
+            {%{status: :confirm, owner: @priya}, "Priya approves next"},
             {%{status: :shape}, "Ready for Shape"},
             {%{status: :closed, ended_by: @priya}, "Closed by Priya"},
             {%{status: :closed, ended_by: @dana}, "Closed by you"}
@@ -379,7 +379,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
         assert text(html, ".q-wl-nx") == words
 
         assert count(html, ".q-wl-row-hot") ==
-                 if(words == "You confirm next", do: 1, else: 0)
+                 if(words == "You approve next", do: 1, else: 0)
       end
     end
 
@@ -464,18 +464,18 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
           all_path: "/8wonders/main/work?stage=confirm"
         )
 
-      assert attr(html, "#work-items-confirm-fold", "aria-label") == ["Fold Confirm"]
+      assert attr(html, "#work-items-confirm-fold", "aria-label") == ["Fold Approve"]
       assert attr(html, "#work-items-confirm-fold", "aria-expanded") == ["true"]
 
       assert attr(html, "#work-items-confirm-fold", "aria-controls") == [
                "work-items-confirm-rows"
              ]
 
-      assert text(html, "h2") == "Confirm"
+      assert text(html, "h2") == "Approve"
       assert text(html, ".q-band-n") == "15"
-      assert text(html, ".q-wl-what") == "A member confirms what Qory proposes"
+      assert text(html, ".q-wl-what") == "A member approves the proposal"
       assert text(html, ".q-wl-band-attn") == "3 wait for you"
-      assert text(html, "#work-items-confirm-all") == "Show all 15 in Confirm"
+      assert text(html, "#work-items-confirm-all") == "Show all 15 in Approve"
 
       assert attr(html, "#work-items-confirm-all", "href") == [
                "/8wonders/main/work?stage=confirm"

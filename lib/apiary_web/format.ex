@@ -199,17 +199,32 @@ defmodule ApiaryWeb.Format do
   end
 
   @doc """
-  A time of day: "14:03", or "14:03:11" with `seconds: true`. With `zone: true` it names
-  the time zone: "14:03 UTC".
+  A time of day: "14:03", "14:03:11" with `seconds: true`, or "14:03:11.4" with `tenths:
+  true`, the seconds with their tenths. With `zone: true` the time zone follows: "14:03
+  UTC".
   """
   @spec time(moment() | nil, keyword()) :: String.t() | nil
   def time(at, opts \\ [])
   def time(nil, _opts), do: nil
 
   def time(at, opts) do
-    style = if opts[:seconds], do: :medium, else: :short
     local = local(at)
-    text = Cldr.Time.to_string!(local, backend: Backend, locale: locale(), format: style)
+
+    {local, format} =
+      cond do
+        opts[:tenths] ->
+          # A whole second has no fraction to show and CLDR's formatter would fail on it.
+          %DateTime{microsecond: {us, _precision}} = local
+          {%{local | microsecond: {us, 6}}, fraction_pattern(locale(), "S")}
+
+        opts[:seconds] ->
+          {local, :medium}
+
+        true ->
+          {local, :short}
+      end
+
+    text = Cldr.Time.to_string!(local, backend: Backend, locale: locale(), format: format)
     if opts[:zone], do: with_zone(text, local), else: text
   end
 
@@ -237,7 +252,7 @@ defmodule ApiaryWeb.Format do
 
     time_format =
       cond do
-        opts[:milliseconds] -> milliseconds_pattern(locale)
+        opts[:milliseconds] -> fraction_pattern(locale, "SSS")
         opts[:seconds] -> :medium
         true -> :short
       end
@@ -372,21 +387,22 @@ defmodule ApiaryWeb.Format do
   defp utc(%NaiveDateTime{} = at), do: DateTime.from_naive!(at, "Etc/UTC")
 
   # CLDR has no skeleton for fractions of a second; TR35 appends them to the seconds
-  # field with the language's decimal mark, so the medium time's pattern is extended.
-  defp milliseconds_pattern(locale) do
+  # field with the language's decimal mark, so the medium time's pattern is extended by
+  # `fraction`, one `S` for each digit.
+  defp fraction_pattern(locale, fraction) do
     {:ok, %{medium: id}} = Cldr.DateTime.Format.time_formats(locale, :gregorian, Backend)
     {:ok, formats} = Cldr.DateTime.Format.date_time_available_formats(locale, :gregorian, Backend)
     {:ok, %{latn: symbols}} = Cldr.Number.Symbol.number_symbols_for(locale, Backend)
 
     case Map.fetch(formats, id) do
-      {:ok, %{unicode: pattern}} -> with_fraction(pattern, symbols)
-      {:ok, pattern} when is_binary(pattern) -> with_fraction(pattern, symbols)
+      {:ok, %{unicode: pattern}} -> with_fraction(pattern, symbols, fraction)
+      {:ok, pattern} when is_binary(pattern) -> with_fraction(pattern, symbols, fraction)
       _other -> :medium
     end
   end
 
-  defp with_fraction(pattern, symbols) do
-    String.replace(pattern, "ss", "ss" <> symbols.decimal.standard <> "SSS", global: false)
+  defp with_fraction(pattern, symbols, fraction) do
+    String.replace(pattern, "ss", "ss" <> symbols.decimal.standard <> fraction, global: false)
   end
 
   defp with_zone(text, local) do

@@ -152,7 +152,8 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
 
   defp titles(range), do: for(n <- range, do: "acme/repo-" <> String.pad_leading("#{n}", 3, "0"))
 
-  # Each row's words, a space between the parts of a cell, as the screen shows them apart.
+  # Each row's words, a space between the parts of a cell, as the screen shows them apart;
+  # the last column, Unassign, is left out (tested in `ShowUnassignTest`).
   defp rows(lv) do
     lv
     |> render()
@@ -161,7 +162,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
     |> LazyHTML.query("#collections-table tr")
     |> Enum.map(fn row ->
       row
-      |> LazyHTML.query("th, td")
+      |> LazyHTML.query("th:not(.q-int-act), td:not(.q-int-act)")
       |> Enum.map_join(" ", &LazyHTML.text/1)
       |> String.split()
       |> Enum.join(" ")

@@ -498,6 +498,47 @@ defmodule Apiary.Sources.IngestTest do
       assert Repo.all(from c in Comment, where: is_nil(c.deleted_at)) == []
     end
 
+    test "complete never marks a comment a member wrote, posted or not, with no comments or some",
+         ctx do
+      members =
+        for {state, ref} <- [posting: nil, kept: nil, posted: "POSTED"] do
+          %Comment{
+            organisation_id: ctx.scope.organisation.id,
+            item_id: ctx.item.id,
+            author_id: ctx.scope.user.id
+          }
+          |> Comment.member_changeset(
+            %{body: "Start with the basket.", author_name: "dana", post_state: :posting},
+            later(-600)
+          )
+          |> Ecto.Changeset.change(
+            post_state: state,
+            external_ref: ref,
+            url: ref && "https://forge.example.com/acme/shop/issues/12#posted"
+          )
+          |> Repo.insert!()
+        end
+
+      {:ok, :accepted} = post_comments(ctx, "R", [comment("OLD"), comment("NAMED")])
+
+      # A body with some comments, the posted one not among them: the others are marked,
+      # and no member's comment is.
+      assert post_comments(ctx, "R", [comment("NAMED")], since: later(600)) == {:ok, :accepted}
+      assert %DateTime{} = comment_of(ctx.item, "OLD").deleted_at
+
+      for member <- members,
+          do:
+            assert(%Comment{deleted_at: nil, deleted_by_complete_at: nil} = Repo.reload!(member))
+
+      # No comments: every one the adapter sent is marked, and no member's comment is.
+      assert post_comments(ctx, "R", [], since: later(1000)) == {:ok, :accepted}
+      assert %DateTime{} = comment_of(ctx.item, "NAMED").deleted_at
+
+      for member <- members,
+          do:
+            assert(%Comment{deleted_at: nil, deleted_by_complete_at: nil} = Repo.reload!(member))
+    end
+
     test "complete's mark counts as a write at since: only a write at or after it brings one back",
          ctx do
       since = later(600)

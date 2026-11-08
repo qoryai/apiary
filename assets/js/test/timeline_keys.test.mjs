@@ -95,7 +95,8 @@ const timeline = (isolate, lanes) => {
 globalThis.MutationObserver = FakeObserver
 globalThis.document = {getElementById: () => null, activeElement: null}
 
-const {TimelineKeys} = await import("../hooks/timeline_keys.js")
+const TimelineKeysModule = await import("../hooks/timeline_keys.js")
+const {TimelineKeys, TimelinePush} = TimelineKeysModule
 
 const mount = el => {
   queue = []
@@ -163,4 +164,177 @@ test("leaving the lane wakes every item, and settles", () => {
     LANES.map(() => false),
   )
   assert.ok(el.children.every(li => !li.classList.contains("q-ti-off")))
+})
+
+// Enter and Space on an item (`key`): a tool call's <details> opens and closes in the
+// browser; a subagent's head has no <details>, and its chevron is clicked, which sends
+// `subagent_toggle` to the server.
+
+// Presses `key` on `li` and returns whether the hook took the key.
+const pressed = (hook, li, key) => {
+  let prevented = false
+  hook.key({key, target: li, defaultPrevented: false, preventDefault: () => (prevented = true)})
+  return prevented
+}
+
+// An item that has `inside`, by selector, and is no field.
+const keyItem = inside => {
+  const li = item("e-9", "agent-a1")
+  li.matches = selector => selector === "li.q-ti"
+  li.closest = () => null
+  li.querySelector = selector => inside[selector] || null
+  return li
+}
+
+// Single-key shortcuts on, as `shortcuts.js` reads them from <html>.
+globalThis.document.documentElement = {getAttribute: () => null}
+
+test("Enter on a subagent's head clicks its chevron", () => {
+  const {SUBAGENT_TOGGLE} = TimelineKeysModule
+  let clicks = 0
+  const li = keyItem({[SUBAGENT_TOGGLE]: {click: () => clicks++}})
+  const hook = mount(timeline(undefined, []))
+  assert.ok(pressed(hook, li, "Enter"))
+  assert.ok(pressed(hook, li, " "))
+  assert.equal(clicks, 2)
+})
+
+test("Enter on a tool call opens its details, and clicks nothing", () => {
+  const {SUBAGENT_TOGGLE} = TimelineKeysModule
+  let clicks = 0
+  const details = {open: false}
+  const li = keyItem({details, [SUBAGENT_TOGGLE]: {click: () => clicks++}})
+  const hook = mount(timeline(undefined, []))
+  assert.ok(pressed(hook, li, "Enter"))
+  assert.equal(details.open, true)
+  assert.equal(clicks, 0)
+})
+
+// x and Shift+x (`denied`): the denied calls in time order, those of a closed subagent
+// included. Its head has their sequences in `data-hidden-denied`; the hook sends
+// `subagent_open` for one, and moves to the call when the reply comes.
+
+globalThis.matchMedia = () => ({matches: true})
+
+// Items by sequence, each with `data` for its dataset; `focused` is where focus is.
+const deniedTimeline = (rows, until) => {
+  const el = timeline(undefined, [])
+  el.dataset.until = until
+  el.children = rows.map(([seq, data]) => {
+    const li = item(`e-${seq}`, "main")
+    Object.assign(li.dataset, {seq: String(seq)}, data)
+    li.parentElement = el
+    li.closest = selector => (selector === "li.q-ti" ? li : null)
+    li.matches = selector => selector === "li.q-ti"
+    li.querySelector = () => null
+    li.focus = () => (globalThis.document.activeElement = li)
+    li.scrollIntoView = () => {}
+    li.getBoundingClientRect = () => ({top: 100, bottom: 120})
+    return li
+  })
+  el.firstElementChild = el.children[0]
+  return el
+}
+
+const ROWS = [
+  [2, {}],
+  [3, {hiddenDenied: "5 7"}],
+  [6, {denied: "1"}],
+  [9, {denied: "1"}],
+  [11, {}],
+]
+
+// The list is `#timeline`; its events leave from `#timeline-push`, beside it, which has the
+// `TimelinePush` hook. `hook.pushed` collects what that element sends. The list's hook has
+// a `pushEvent` that fails the test: LiveView would lock the list, the stream container.
+const pusher = () => {
+  const listeners = {}
+  const el = {
+    addEventListener: (type, fn) => (listeners[type] = fn),
+    dispatchEvent: e => listeners[e.type](e),
+  }
+  const hook = Object.assign(Object.create(TimelinePush), {el})
+  hook.mounted()
+  return hook
+}
+
+const {getElementById} = globalThis.document
+
+const deniedHook = (t, el) => {
+  t.after(() => (globalThis.document.getElementById = getElementById))
+  el.id = "timeline"
+  const hook = mount(el)
+  const push = pusher()
+  hook.pushed = []
+  push.pushEvent = (event, payload, reply) => hook.pushed.push({event, payload, reply})
+  hook.pushEvent = event => assert.fail(`${event} pushed from the list`)
+  globalThis.document.getElementById = id => (id === "timeline-push" ? push.el : null)
+  return hook
+}
+
+const at = (el, seq) => el.children.find(li => li.dataset.seq === String(seq))
+
+test("x opens a closed subagent for its denied call, in time order with the others", t => {
+  const el = deniedTimeline(ROWS)
+  const hook = deniedHook(t, el)
+  at(el, 2).focus()
+
+  assert.ok(pressed(hook, at(el, 2), "x"))
+  assert.deepEqual(hook.pushed.map(p => [p.event, p.payload]), [["subagent_open", {seq: "5"}]])
+
+  // The reply comes after the patch that put the call on the page: focus moves to it.
+  const call = deniedTimeline([[5, {denied: "1"}]]).children[0]
+  globalThis.document.getElementById = id => (id === "e-5" ? call : null)
+  hook.pushed[0].reply()
+  assert.equal(globalThis.document.activeElement, call)
+})
+
+test("Shift+x goes back the same way, and x skips a call after the window's last item", t => {
+  const el = deniedTimeline(ROWS)
+  const hook = deniedHook(t, el)
+  at(el, 11).focus()
+
+  assert.ok(pressed(hook, at(el, 11), "X"))
+  assert.equal(globalThis.document.activeElement, at(el, 9))
+  assert.deepEqual(hook.pushed, [])
+
+  // Before 9, the subagent's call at 7 comes after the item at 6.
+  pressed(hook, at(el, 9), "X")
+  at(el, 6).focus()
+  pressed(hook, at(el, 6), "X")
+  assert.deepEqual(hook.pushed.map(p => p.payload), [{seq: "7"}, {seq: "5"}])
+
+  // Items follow the window's last item, 6: the subagent's call at 7 is past the page.
+  const cut = deniedTimeline(ROWS.slice(0, 3), "6")
+  const cutHook = deniedHook(t, cut)
+  at(cut, 6).focus()
+  pressed(cutHook, at(cut, 6), "x")
+  assert.deepEqual(cutHook.pushed, [])
+  at(cut, 2).focus()
+  pressed(cutHook, at(cut, 2), "x")
+  assert.deepEqual(cutHook.pushed.map(p => p.payload), [{seq: "5"}])
+})
+
+test("x and Shift+x from a Pushed row, which has no sequence, go to the calls after and before it", t => {
+  const el = deniedTimeline([
+    [2, {}],
+    [6, {denied: "1"}],
+    [8, {}],
+    [9, {denied: "1"}],
+  ])
+  // A Pushed row after the item at 6 (`push-<id>`, no `data-seq`).
+  const pushedRow = deniedTimeline([[0, {}]]).children[0]
+  pushedRow.id = "push-vr_1"
+  delete pushedRow.dataset.seq
+  pushedRow.parentElement = el
+  el.children.splice(2, 0, pushedRow)
+  const hook = deniedHook(t, el)
+
+  pushedRow.focus()
+  assert.ok(pressed(hook, pushedRow, "x"))
+  assert.equal(globalThis.document.activeElement, at(el, 9))
+
+  pushedRow.focus()
+  assert.ok(pressed(hook, pushedRow, "X"))
+  assert.equal(globalThis.document.activeElement, at(el, 6))
 })

@@ -145,7 +145,8 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
       assert words(list, work_row(work_item) <> " .q-wl-nx") == "Closed by you"
     end
 
-    test "open, closed in another workspace: Open, with Take in again and no number", ctx do
+    test "open, closed in another workspace the reader may read: Open, and where it is",
+         ctx do
       {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
       {:ok, _closed} = WorkItems.close(ctx.scope, work_item)
       other = Apiary.OrganisationsFixtures.workspace_fixture(ctx.scope.organisation, "Second")
@@ -156,7 +157,8 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
         )
 
       assert {:open, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
-      assert again_title(view, ctx.ticket) == "Brings back the work item from another workspace"
+      refute has_element?(view, again_button(ctx.ticket))
+      assert words(view, "#ticket-#{ctx.ticket.public_id}-elsewhere") == "In Second"
     end
 
     test "open, at a stage in another workspace: Taken in, with no number and no link", ctx do
@@ -235,6 +237,7 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
       assert words(list, work_row(work_item) <> " .q-wl-nx") == "Every stage done"
 
       view |> element(again_button(ctx.ticket)) |> render_click()
+      confirm_take_in(view)
       assert_redirect(view, work_path(ctx.scope, work_item.number))
 
       assert %WorkItem{state: :exploring, take_in: 2, stage_state: :running} =
@@ -313,10 +316,11 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
       {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
       {:ok, _closed} = WorkItems.close(ctx.scope, work_item)
       {:ok, view, _html} = live(ctx.conn, backlog(ctx.scope, "open"))
+      view |> element(again_button(ctx.ticket)) |> render_click()
 
+      # The ticket was taken in again while the dialog was open.
       {:ok, _again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
-      # The row changed under the press: the page is sent what it drew.
-      render_click(view, "take_in_again", %{"id" => ctx.ticket.public_id})
+      confirm_take_in(view)
 
       assert render(view) =~
                "Someone took this ticket in already, as work item ##{work_item.number}."

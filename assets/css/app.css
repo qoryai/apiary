@@ -1020,7 +1020,9 @@
   }
 }
 
-/* Qory's own classes. Unlayered, so they hold against the overrides above. */
+/* The classes of Qory Apiary, in the layer `qory`. That layer comes after `utilities`,
+   so its rules win over the daisyUI overrides in `@layer utilities` and over Tailwind's
+   utility classes. */
 @layer qory {
   /* Vocabulary: a word of Qory's carries its standard term on hover and focus. */
   .term {
@@ -2996,6 +2998,146 @@
     color: var(--q-muted);
     font-size: 0.8125rem;
     line-height: 1.25rem;
+  }
+
+  /* ---- The confirmation before an action that spends (ApiaryWeb.SpendDialog): a box
+     500 px wide over the page on the overlay. The dialog's style sets the box's distance
+     from the top: `top` of `frame/1`, 170 px unless set. Its note field has 3 rows of
+     20 px and 10 px of padding. ---- */
+  .q-spend {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 1rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+  }
+  .q-spend[open] {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .q-spend::backdrop {
+    background-color: var(--q-overlay);
+  }
+  .q-spend-box {
+    display: flex;
+    width: min(500px, 100%);
+    max-height: 100%;
+    flex-direction: column;
+    gap: 16px;
+    overflow: auto;
+    padding: 24px;
+    border-radius: 12px;
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-modal);
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+  }
+  .q-spend-t {
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.5rem;
+  }
+  .q-spend-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .q-spend-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .q-spend textarea {
+    min-height: 0;
+    padding: 10px 12px;
+    font-size: 0.875rem;
+    line-height: 20px;
+  }
+  /* The wide dialog (`SpendDialog.frame/1` with a side): almost as tall as the window, a
+     head with the title and ×, two columns edge to edge that scroll apart, and a foot
+     with the line on what starts beside the buttons. */
+  .q-spend-wide {
+    padding-bottom: 44px;
+  }
+  .q-spend-wide .q-spend-box {
+    height: 100%;
+    gap: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+  .q-spend-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 14px 24px;
+    border-bottom: 1px solid var(--q-border-subtle);
+  }
+  .q-spend-cols {
+    display: grid;
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+  }
+  .q-spend-col {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 24px 24px;
+  }
+  .q-spend-side {
+    display: flex;
+    flex-direction: column;
+    padding-top: 16px;
+    border-left: 1px solid var(--q-border-subtle);
+  }
+  .q-spend-side > .fieldset {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+  .q-spend-wide textarea.q-ti-box {
+    min-height: 160px;
+    flex: 1 1 auto;
+    resize: none;
+  }
+  .q-spend-wide .q-spend-foot {
+    flex: none;
+    align-items: center;
+    padding: 12px 24px;
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-spend-line {
+    min-width: 0;
+    margin-right: auto;
+  }
+  @media (max-width: 767.98px) {
+    .q-spend-wide {
+      padding: 0;
+    }
+    .q-spend-wide .q-spend-box {
+      border-radius: 0;
+    }
+    .q-spend-cols {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .q-spend-side {
+      border-top: 1px solid var(--q-border-subtle);
+      border-left: 0;
+    }
+    .q-spend-wide .q-spend-foot {
+      flex-wrap: wrap;
+    }
   }
 
   /* ---- Search or jump to: the palette ---- */
@@ -5397,6 +5539,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* A request to the run API: the instance's host is short, and the method and path
+     stay on the line under it, where they were under the longer placeholder host. */
+  .q-cx-t.q-cx-runapi .q-cx-path {
+    flex-basis: 100%;
+  }
   .q-cxt-ws .q-dest-tool {
     display: block;
     color: var(--color-base-content);
@@ -6221,6 +6368,15 @@
     left: -11px;
     color: var(--q-faint);
   }
+  /* The run's work item, first on the line: a link to its page. */
+  .q-run-about .q-run-wi {
+    color: var(--color-base-content);
+  }
+  .q-run-about .q-run-wi:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-field);
+    text-underline-offset: 3px;
+  }
   .q-run-sub {
     display: flex;
     align-items: flex-start;
@@ -6639,7 +6795,25 @@
   .q-keys dt {
     white-space: nowrap;
   }
-  .q-keys kbd {
+  /* The popover is as wide as its longest line, so each key and its description fit on
+     one line. On a narrow screen it is at most the screen less 2rem wide, and a long
+     description wraps inside it. */
+  .dropdown > .q-keys {
+    width: max-content;
+    max-width: min(26rem, calc(100vw - 2rem));
+  }
+  /* The popover's right edge is the lane row's right edge, not the "?" button's. The row
+     wraps, and the button can sit near the left of the screen; the popover then still
+     fits on the screen. */
+  .q-tl-bar {
+    position: relative;
+  }
+  .q-tl-bar > .dropdown {
+    position: static;
+  }
+  /* A key, in the popover and in the policy page's list of keys. */
+  .q-keys kbd,
+  .q-keylist kbd {
     display: inline-block;
     min-width: 18px;
     padding: 0 4px;
@@ -6871,6 +7045,28 @@
   .q-to-term:hover {
     text-decoration: underline;
   }
+  /* The Terminal link in a row's end, in the row's type, not the times' monospace. */
+  .q-t .q-to-term {
+    font-family: var(--font-sans);
+  }
+  /* A row's Took cell: below the width of the time columns, an empty one takes no gap. */
+  .q-tct:not(:has(*)) {
+    display: none;
+  }
+  /* A call that was the only open call at a connection: the note under its tool and
+     summary. */
+  .q-hd:has(.q-only-open) {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .q-only-open {
+    order: 9;
+    flex-basis: 100%;
+    padding-left: 20px;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 18px;
+  }
   .q-s-mono {
     color: var(--color-base-content);
     font-family: var(--font-mono);
@@ -6952,6 +7148,46 @@
   }
   .q-tool[open] > summary .q-chev {
     transform: rotate(90deg);
+  }
+  /* A call's Terminal link is outside its summary: a line laid over the summary's first
+     line has the link where the summary keeps an empty place for it, and the cells before
+     and after it, hidden, so that the two wrap alike and meet. Only the link takes the
+     pointer. */
+  .q-tool-box {
+    position: relative;
+  }
+  .q-to-term-place {
+    visibility: hidden;
+  }
+  .q-tool-over {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    pointer-events: none;
+  }
+  .q-tool-over > :not(.q-t),
+  .q-tool-over .q-t > :not(.q-to-term) {
+    visibility: hidden;
+  }
+  .q-tool-over .q-to-term {
+    pointer-events: auto;
+  }
+  /* A subagent's head on the Timeline: the chevron that opens or closes its items, then
+     its type and words, which wrap as one row's label and words do. */
+  .q-sub-caret {
+    display: inline-flex;
+    flex: none;
+    align-self: center;
+    padding: 0;
+    border-radius: var(--radius-selector);
+    cursor: pointer;
+  }
+  .q-sub-caret[aria-expanded="true"] .q-chev {
+    transform: rotate(90deg);
+  }
+  .q-sub-said {
+    display: contents;
   }
   /* An open item: a rule in its state's colour under the chevron, the content indented
      beside it; inside, only text and code, no row tints, borders or boxes. */
@@ -7057,6 +7293,45 @@
     font-size: 0.78125rem;
     line-height: 1.25rem;
     tab-size: 2;
+  }
+  /* A step's log: each line's number, its time and its text in columns. The box scrolls
+     past 220px, as a step's output did. It is a well's div, so it sets what `.q-well > div`
+     sets for a well's heading. */
+  .q-well > .q-log {
+    display: grid;
+    max-height: 220px;
+    gap: 0;
+    margin: 0;
+    overflow: auto;
+    padding: 8px 12px;
+    border-radius: var(--radius-field);
+    background-color: var(--q-code-bg);
+    color: inherit;
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    line-height: 1.25rem;
+    grid-template-columns: max-content minmax(0, 1fr);
+    tab-size: 2;
+  }
+  .q-well > .q-log-timed {
+    grid-template-columns: max-content max-content minmax(0, 1fr);
+  }
+  .q-log-ln {
+    display: contents;
+  }
+  .q-log-n,
+  .q-log-t {
+    padding-right: 16px;
+    color: var(--q-faint);
+    white-space: nowrap;
+    user-select: none;
+  }
+  .q-log-n {
+    text-align: right;
+  }
+  .q-log-x {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
   }
   .q-well-err > div {
     color: var(--q-error-soft-content);
@@ -7292,6 +7567,19 @@
   .q-term-grow {
     flex: 1;
   }
+  /* The Transcript's subagents: how many run, then Expand all and Collapse all. */
+  .q-term-subs {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+  }
+  .q-tr-subs {
+    color: var(--q-term-dim);
+    font-family: var(--font-mono);
+    font-size: 0.71875rem;
+    white-space: nowrap;
+  }
   .q-term-sep {
     width: 1px;
     height: 16px;
@@ -7388,6 +7676,22 @@
   /* A subagent's lines, under the tool call that started it. */
   .q-tr-sub {
     margin-left: 2.2em;
+  }
+  /* On the Terminal tab, under the subagent's start, which heads them. */
+  .q-tr-sub.q-tr-in {
+    margin-left: 4em;
+  }
+  /* The head's caret opens and closes the subagent's lines. */
+  button.q-tr-caret {
+    justify-self: start;
+    color: var(--q-term-dim);
+    cursor: pointer;
+  }
+  button.q-tr-caret:hover {
+    color: var(--q-term-fg);
+  }
+  span.q-tr-caret {
+    color: var(--q-term-dim);
   }
   .q-tr-row {
     display: grid;
@@ -7602,7 +7906,8 @@
   @container (max-width: 640px) {
     .q-tseg:not(.q-tview),
     .q-term-sep,
-    .q-term-px {
+    .q-term-px,
+    .q-tr-subs {
       display: none;
     }
   }
@@ -7754,6 +8059,25 @@
       min-height: 40px;
       align-items: center;
     }
+    /* The line over a summary of one line is as tall; over a summary of more lines, it
+       is the first line. */
+    .q-tool-over {
+      align-items: center;
+    }
+    .q-tool-box:not(:has(.q-only-open)) > .q-tool-over {
+      min-height: 40px;
+    }
+    .q-sub-caret {
+      min-width: 24px;
+      min-height: 40px;
+      justify-content: center;
+    }
+  }
+  /* Narrow, the words of a call's summary are on a separate line. */
+  @media (pointer: coarse) and (max-width: 767.98px) {
+    .q-tool-box:not(:has(.q-only-open)) > .q-tool-over {
+      min-height: 0;
+    }
   }
 
   /* From the width the rail stands beside the column, the times sit in two fixed columns,
@@ -7783,6 +8107,24 @@
     }
     .q-tc2 {
       width: var(--q-tc2);
+    }
+    /* The Timeline's Took column, between Since run start and Event; a connection's
+       columns leave its width free. */
+    .q-tct {
+      flex: none;
+      width: 4.25rem;
+      text-align: right;
+    }
+    .q-tct:not(:has(*)) {
+      display: inline-block;
+    }
+    .q-took .q-tl .q-cx {
+      grid-template-columns:
+        16px minmax(0, 1.1fr) minmax(0, 1.4fr) auto var(--q-tc1)
+        calc(var(--q-tc2) + 4.25rem + var(--q-tc-gap));
+    }
+    .q-took .q-tl .q-cx-sum .q-cx-at {
+      margin-right: calc(var(--q-tc2) + 4.25rem + 2 * var(--q-tc-gap));
     }
     .q-tlegend {
       display: flex;
@@ -8461,14 +8803,25 @@
     padding: 12px 16px;
     border-bottom: 1px solid var(--q-border-subtle);
   }
-  .q-sect > header h2 {
+  .q-sect > header :is(h2, h3) {
     font-size: 0.9375rem;
     font-weight: 600;
     line-height: 22px;
     letter-spacing: -0.006em;
   }
-  .q-sect-side > header h2 {
+  .q-sect-side > header :is(h2, h3) {
     font-size: 0.84375rem;
+  }
+  /* A loop's rounds: the label beside its field, an error on a line under both. */
+  .q-stage-rounds > .fieldset {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 8px;
+    padding-block: 0;
+  }
+  .q-stage-rounds > .fieldset > p {
+    flex-basis: 100%;
   }
   /* A section's link to a page of its own, such as Network access from the policy's. */
   .q-sect-link {
@@ -8992,13 +9345,19 @@
   .q-link-xs {
     font-size: 0.75rem;
   }
-  .q-keys {
+  /* The policy page's list of keys, a `dl` inside the panel `#policy-keys`. The panel has
+     the border and background, and the list has none. Its keys share the rule of the
+     timeline popover's keys. */
+  .q-keylist {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 8px 14px;
     align-items: baseline;
   }
-  .q-keys dd {
+  .q-keylist dt {
+    white-space: nowrap;
+  }
+  .q-keylist dd {
     color: var(--q-muted);
   }
   .q-line {
@@ -12356,6 +12715,33 @@
     font-size: 0.875rem;
     line-height: 1.375rem;
   }
+  /* A member's comment: how far its post at the source is, after its time, and, where it
+     was not posted, why, with Post again, under its text. */
+  .q-cmt-post {
+    color: var(--q-faint);
+  }
+  .q-cmt-posted {
+    color: var(--color-accent);
+  }
+  .q-cmt-failed {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 8px 8px 8px 12px;
+    border-radius: 8px;
+    background-color: var(--color-base-200);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-cmt-failed b {
+    font-weight: 600;
+  }
+  /* The take in's dialog: the ticket, read beside the comment box. */
+  .q-ti-read > .q-bl-tb {
+    margin-top: 16px;
+  }
 
   /* ---- Take in: at the top of the panel and the dialog, under the title; under the facts
      on the sheet; and in the full ticket's side column. Take in and its hint, or why the
@@ -12366,6 +12752,22 @@
     align-items: center;
     gap: 8px 12px;
     margin-top: 18px;
+  }
+  /* Take in again and Take in here: which work item the ticket is and how it ended, then
+     the button, and its hint under it. */
+  .q-bl-ti-again > :is(.q-bl-ti-fact, .q-bl-ti-hint) {
+    flex-basis: 100%;
+  }
+  .q-bl-ti-fact {
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-bl-ti-fact a {
+    color: var(--color-accent);
+  }
+  .q-bl-ti-open {
+    display: block;
+    font-weight: 500;
   }
 
   /* ---- The full ticket: a page of the Backlog; the text and comments on the left, the
@@ -12496,6 +12898,13 @@
   .q-int-cb input {
     margin: 0;
     vertical-align: middle;
+  }
+  /* The last column, Unassign on each assigned row, as narrow as its button. */
+  .q-int-pick :is(th, td).q-int-act {
+    width: 1%;
+    padding-block: 0;
+    text-align: right;
+    white-space: nowrap;
   }
   /* A repository with no workspace: the word Unassigned, behind a warning mark. */
   .q-int-un {
@@ -14208,6 +14617,81 @@
   .q-xp-said {
     color: var(--color-base-content);
   }
+  /* A run's decision, folded: the run's reason on a second line, cut to one line; open,
+     the reason in full in the text colour. A changed decision's head is one line: the
+     question whole, then Changed and the member's option, cut with "…". */
+  .q-xp-decs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .q-xp-dec-why {
+    flex-basis: 100%;
+    min-width: 0;
+    padding-left: calc(0.875rem + 8px);
+    overflow: hidden;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .q-xp-closed > details[open] > summary > .q-xp-dec-why {
+    display: none;
+  }
+  .q-xp-closed > details > summary:has(.q-xp-dec-chg) {
+    flex-wrap: nowrap;
+  }
+  .q-xp-closed > details > summary:has(.q-xp-dec-chg) > .q-xp-wrap {
+    flex: none;
+  }
+  .q-xp-dec-chg {
+    display: inline-flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .q-xp-it.q-xp-dec-chg::before {
+    margin-right: 2px;
+  }
+  .q-xp-dec-chg > .badge {
+    flex: none;
+  }
+  .q-xp-dec-said {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .q-xp-inner > p.q-xp-dec-r {
+    color: var(--color-base-content);
+    font-size: 0.84375rem;
+    line-height: 1.25rem;
+  }
+  .q-xp-inner > .q-xp-dec-r + .q-xp-cm-m {
+    margin-top: -8px;
+  }
+  .q-xp-inner > textarea.q-xp-dec-note {
+    display: block;
+    width: 100%;
+    min-height: 64px;
+    padding: 8px 10px;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    field-sizing: content;
+    resize: vertical;
+  }
+  .q-xp-inner > textarea.q-xp-dec-note:focus {
+    outline: 2px solid var(--q-ring);
+    outline-offset: -1px;
+  }
+  .q-xp-inner > textarea.q-xp-dec-note[aria-invalid="true"] {
+    border-color: var(--color-error);
+  }
   .q-xp-qt {
     margin: 0;
     line-height: 1.375rem;
@@ -14284,6 +14768,63 @@
     .q-xp-sources > .q-xp-inner {
       padding: 0 12px 14px;
     }
+  }
+
+  /* The proposal's Background: its first paragraph, the rest folded behind Read more.
+     Open, the fold has no toggle. */
+  .q-xp-more > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 2px 0 6px;
+    font-size: 0.84375rem;
+    font-weight: 500;
+    list-style: none;
+    cursor: pointer;
+  }
+  .q-xp-more > summary::-webkit-details-marker {
+    display: none;
+  }
+  .q-xp-more[open] > summary {
+    display: none;
+  }
+  .q-xp-more > :not(summary) + :not(summary) {
+    margin-top: 12px;
+  }
+
+  /* The comment on the whole proposal: under the questions, or above the gate's
+     buttons. */
+  .q-xp-comment {
+    display: grid;
+    gap: 8px;
+    margin-top: 20px;
+  }
+  .q-xp-comment > label {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .q-xp-comment textarea {
+    display: block;
+    width: 100%;
+    min-height: 64px;
+    padding: 8px 10px;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    field-sizing: content;
+    resize: vertical;
+  }
+  .q-xp-comment textarea:focus {
+    outline: 2px solid var(--q-ring);
+    outline-offset: -1px;
+  }
+  .q-xp-reply .q-xp-comment {
+    display: grid;
+    margin-top: 0;
   }
 
   /* Review comments: cards in the rail from 1024 px, at the top of the proposal's text
@@ -14574,8 +15115,9 @@
     height: var(--q-canvas-height, 11rem);
   }
 
-  /* The filling box: one column below 1024 px, the canvas 70 % of the window tall and the
-     side under it; the page's edges, with no frame. */
+  /* The filling box: one column below 1024 px (below 1328 px on Workspace settings ›
+     Stages and Instance settings › Workspace types), the canvas 70 % of the window tall
+     and the side under it; the page's edges, with no frame. */
   .q-canvas-fill {
     display: grid;
     min-width: 0;
@@ -14602,38 +15144,102 @@
   /* From 1024 px the page is the window's height: every element from the page down to the
      box is a column whose last part stretches, and the box takes what the parts above it
      leave, never under 380 px. The side is 30rem wide (`--q-canvas-side` changes it) and
-     scrolls; the canvas scrolls its column. */
+     scrolls; the canvas scrolls its column. The two blocks below set the same rules: from
+     1328 px for Workspace settings › Stages (`#stages-editor`) and Instance settings ›
+     Workspace types (`#type-editor`), and from 1024 px for every other box (a workspace
+     type's page). `:where()` keeps each selector's weight as without the ids, so Focus
+     and Full screen still win over these rules. */
   @media (min-width: 1024px) {
-    .q-page:has(.q-canvas-fill) {
+    .q-page:has(.q-canvas-fill:not(:where(#stages-editor, #type-editor))) {
       display: flex;
       height: calc(100dvh - var(--q-bar));
       flex-direction: column;
       padding-bottom: 0;
     }
-    .q-page:has(> * > .q-canvas-fill:first-child) {
+    .q-page:has(> * > .q-canvas-fill:not(:where(#stages-editor, #type-editor)):first-child) {
       padding-top: 0;
     }
     /* A box under the shell's notices, while no notice shows, starts at the bar too: it
        rises by the page's top padding. */
-    .q-page > * > #shell-notices:first-child:not(:has(*)) + .q-canvas-fill {
+    .q-page > * > #shell-notices:first-child:not(:has(*)) + .q-canvas-fill:not(:where(#stages-editor, #type-editor)) {
       margin-top: -1.5rem;
     }
-    .q-page:has(.q-canvas-fill) :has(.q-canvas-fill) {
+    .q-page:has(.q-canvas-fill:not(:where(#stages-editor, #type-editor))) :has(.q-canvas-fill) {
       display: flex;
       min-height: 0;
       max-width: none;
       flex: 1 1 0;
       flex-direction: column;
     }
-    .q-canvas-fill {
+    .q-canvas-fill:not(:where(#stages-editor, #type-editor)) {
       min-height: 380px;
       flex: 1 1 0;
       grid-template-columns: minmax(0, 1fr) auto;
     }
-    .q-canvas-fill > .q-canvas {
+    .q-canvas-fill:not(:where(#stages-editor, #type-editor)) > .q-canvas {
       height: auto;
     }
-    .q-canvas-side {
+    :where(.q-canvas-fill:not(#stages-editor, #type-editor)) > .q-canvas-side {
+      width: var(--q-canvas-side, 30rem);
+      overflow-y: auto;
+      padding: 20px 20px 24px;
+      border-top: 0;
+      border-left: 1px solid var(--q-border-subtle);
+    }
+    /* Focus and Full screen hide the sidebar and the settings menu, so on Stages and
+       Workspace types the side fits beside the canvas from 1024 px too. Focus sets the
+       box's size, so these rules leave out `min-height`. */
+    html.q-canvas-focus .q-canvas-fill:where(#stages-editor, #type-editor),
+    .q-canvas-fill:where(#stages-editor, #type-editor):fullscreen {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    html.q-canvas-focus .q-canvas-fill:where(#stages-editor, #type-editor) > .q-canvas,
+    .q-canvas-fill:where(#stages-editor, #type-editor):fullscreen > .q-canvas {
+      height: auto;
+    }
+    html.q-canvas-focus :where(#stages-editor, #type-editor) > .q-canvas-side,
+    :where(#stages-editor, #type-editor):fullscreen > .q-canvas-side {
+      width: var(--q-canvas-side, 30rem);
+      overflow-y: auto;
+      padding: 20px 20px 24px;
+      border-top: 0;
+      border-left: 1px solid var(--q-border-subtle);
+    }
+  }
+  /* Workspace settings › Stages and Instance settings › Workspace types: 1328 px is the
+     sidebar (240 px), the settings menu (216 px), a card of 360 px with 16 px at each side,
+     and the side (480 px). */
+  @media (min-width: 1328px) {
+    .q-page:has(.q-canvas-fill:where(#stages-editor, #type-editor)) {
+      display: flex;
+      height: calc(100dvh - var(--q-bar));
+      flex-direction: column;
+      padding-bottom: 0;
+    }
+    .q-page:has(> * > .q-canvas-fill:where(#stages-editor, #type-editor):first-child) {
+      padding-top: 0;
+    }
+    /* A box under the shell's notices, while no notice shows, starts at the bar too: it
+       rises by the page's top padding. */
+    .q-page > * > #shell-notices:first-child:not(:has(*)) + .q-canvas-fill:where(#stages-editor, #type-editor) {
+      margin-top: -1.5rem;
+    }
+    .q-page:has(.q-canvas-fill:where(#stages-editor, #type-editor)) :has(.q-canvas-fill) {
+      display: flex;
+      min-height: 0;
+      max-width: none;
+      flex: 1 1 0;
+      flex-direction: column;
+    }
+    .q-canvas-fill:where(#stages-editor, #type-editor) {
+      min-height: 380px;
+      flex: 1 1 0;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .q-canvas-fill:where(#stages-editor, #type-editor) > .q-canvas {
+      height: auto;
+    }
+    :where(#stages-editor, #type-editor) > .q-canvas-side {
       width: var(--q-canvas-side, 30rem);
       overflow-y: auto;
       padding: 20px 20px 24px;

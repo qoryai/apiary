@@ -29,6 +29,11 @@
           "pattern": "^st_[0-9a-hjkmnp-tv-z]{10}$"
         },
         "name": {"type": "string", "minLength": 1, "maxLength": 60, "pattern": "\\S"},
+        "description": {
+          "description": "Optional. A description of the stage in plain text, at most 500 characters. Line breaks are allowed; pages show the text as it is, without Markdown.",
+          "type": "string",
+          "maxLength": 500
+        },
         "inputs": {
           "type": "array",
           "maxItems": 20,
@@ -147,7 +152,7 @@
     },
     "workflow_name": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+      "pattern": "^[a-z][a-z0-9-]{0,54}$"
     },
     "artifact_type": {
       "type": "string",
@@ -158,10 +163,9 @@
       "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
     "machine": {
+      "description": "A machine type of the instance, by its name, or default, the instance's default type.",
       "type": "string",
-      "minLength": 1,
-      "maxLength": 63,
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
     }
   }
 }

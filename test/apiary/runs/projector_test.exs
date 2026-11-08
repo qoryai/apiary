@@ -6,7 +6,7 @@ defmodule Apiary.Runs.ProjectorTest do
   import ExUnit.CaptureLog
 
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, LogChunk, Projector, Target, Run}
+  alias Apiary.Runs.{Connection, Event, LogChunk, Projector, Record, Target, Run}
 
   setup do
     scope = scope_fixture()
@@ -277,6 +277,35 @@ defmodule Apiary.Runs.ProjectorTest do
       before = projection(run)
       {:ok, _rebuilt} = Projector.rebuild(run)
       assert projection(run) == before
+    end
+
+    test "writes what the sessions used, once each across passes, and a rebuild writes the same",
+         %{run: run} do
+      exited = %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 900}
+
+      event_fixture(
+        run,
+        1,
+        "session.exited",
+        Map.merge(exited, %{"peak_memory_bytes" => 2_048, "cpu_time_ms" => 1_500})
+      )
+
+      {:ok, run} = Projector.project(run)
+      assert {run.peak_memory_bytes, run.cpu_time_ms} == {2_048, 1_500}
+
+      event_fixture(
+        run,
+        2,
+        "session.exited",
+        Map.merge(exited, %{"session" => 2, "peak_memory_bytes" => 1_024, "cpu_time_ms" => 500})
+      )
+
+      {:ok, run} = Projector.project(run)
+      {:ok, run} = Projector.project(run)
+      assert {run.peak_memory_bytes, run.cpu_time_ms} == {2_048, 2_000}
+
+      {:ok, rebuilt} = Projector.rebuild(run)
+      assert {rebuilt.peak_memory_bytes, rebuilt.cpu_time_ms} == {2_048, 2_000}
     end
 
     test "the run counts its denied egress events, once each, and a rebuild counts the same",
@@ -695,6 +724,248 @@ defmodule Apiary.Runs.ProjectorTest do
     test "a run that is gone is not found", %{run: run} do
       Repo.delete!(run)
       assert {:error, :not_found} = Projector.project(run)
+    end
+  end
+
+  describe "a bare session" do
+    @agent session_started_data(%{"terminal" => %{"cols" => 120, "rows" => 40}})
+    # The members of Forager's `fixtures/link/link-batch-session-bare.json`.
+    @helper %{
+      "session" => 2,
+      "runtime" => "git",
+      "bare" => true,
+      "command" => "git",
+      "args" => ["status"],
+      "dir" => "/home/dev/app",
+      "interactive" => false
+    }
+
+    defp members(%Run{} = run) do
+      {run.runtime, run.command, run.args, run.dir, run.interactive, run.image, run.terminal_cols,
+       run.terminal_rows}
+    end
+
+    defp orders([]), do: [[]]
+    defp orders(events), do: for(e <- events, rest <- orders(events -- [e]), do: [e | rest])
+
+    # Every order of arrival, one pass per event, then a rebuild of the last run.
+    defp assert_arrivals(scope, events, expected) do
+      for order <- orders(events) do
+        run = run_fixture(scope)
+
+        for event <- order do
+          events_fixture(run, [event])
+          {:ok, _run} = Projector.project(run)
+        end
+
+        sequences = Enum.map(order, &elem(&1, 0))
+        assert members(Repo.get!(Run, run.id)) == expected, "after #{inspect(sequences)}"
+
+        {:ok, rebuilt} = Projector.rebuild(run)
+        assert members(rebuilt) == expected, "rebuilt after #{inspect(sequences)}"
+      end
+    end
+
+    @agent_members {"claude", "claude", ["-p", "fix the build"], "/work", false, nil, 120, 40}
+    @helper_members {"git", "git", ["status"], "/home/dev/app", false, nil, nil, nil}
+
+    test "leaves the agent's fields, in any order of arrival", %{scope: scope} do
+      # The agent first by sequence, and last.
+      assert_arrivals(
+        scope,
+        [{2, "session.started", @agent}, {5, "session.started", @helper}],
+        @agent_members
+      )
+
+      assert_arrivals(
+        scope,
+        [{5, "session.started", @agent}, {2, "session.started", @helper}],
+        @agent_members
+      )
+    end
+
+    test "shows when it is the only session, and the first of two", %{scope: scope} do
+      assert_arrivals(scope, [{3, "session.started", @helper}], @helper_members)
+
+      sh = Map.merge(@helper, %{"runtime" => "sh", "command" => "sh", "args" => []})
+
+      assert_arrivals(
+        scope,
+        [{3, "session.started", @helper}, {6, "session.started", sh}],
+        @helper_members
+      )
+    end
+
+    test "the last agent's session still wins", %{scope: scope} do
+      codex = session_started_data(%{"runtime" => "codex", "command" => "codex"})
+
+      assert_arrivals(
+        scope,
+        [
+          {2, "session.started", @agent},
+          {4, "session.started", @helper},
+          {6, "session.started", codex}
+        ],
+        {"codex", "codex", ["-p", "fix the build"], "/work", false, nil, nil, nil}
+      )
+    end
+
+    test "a projected resize stands when an agent's start replaces the bare one",
+         %{scope: scope} do
+      on_pty = Map.merge(@helper, %{"terminal" => %{"cols" => 80, "rows" => 24}})
+
+      assert_arrivals(
+        scope,
+        [
+          {2, "session.started", @agent},
+          {3, "run.resized", %{"cols" => 100, "rows" => 30}},
+          {5, "session.started", on_pty}
+        ],
+        put_elem(put_elem(@agent_members, 6, 100), 7, 30)
+      )
+    end
+
+    test "a helper's resize leaves the agent's size, in any order of arrival", %{scope: scope} do
+      on_pty = Map.merge(@helper, %{"terminal" => %{"cols" => 80, "rows" => 24}})
+
+      assert_arrivals(
+        scope,
+        [
+          {2, "session.started", @agent},
+          {5, "session.started", on_pty},
+          {6, "run.resized", %{"cols" => 100, "rows" => 30, "session" => 2}}
+        ],
+        @agent_members
+      )
+
+      # The resize before its bare start, as two arrivals alone, with the agent projected.
+      for order <- [[:resize, :helper], [:helper, :resize]] do
+        run = run_fixture(scope)
+        events_fixture(run, [{2, "session.started", @agent}])
+        {:ok, _run} = Projector.project(run)
+
+        for step <- order do
+          events_fixture(run, [
+            case step do
+              :helper -> {5, "session.started", on_pty}
+              :resize -> {6, "run.resized", %{"cols" => 100, "rows" => 30, "session" => 2}}
+            end
+          ])
+
+          {:ok, _run} = Projector.project(run)
+        end
+
+        assert members(Repo.get!(Run, run.id)) == @agent_members, inspect(order)
+      end
+
+      # The number of the agent, and no number, still count.
+      for extra <- [%{"session" => 1}, %{}] do
+        resize = Map.merge(%{"cols" => 100, "rows" => 30}, extra)
+
+        assert_arrivals(
+          scope,
+          [
+            {2, "session.started", @agent},
+            {5, "session.started", on_pty},
+            {6, "run.resized", resize}
+          ],
+          put_elem(put_elem(@agent_members, 6, 100), 7, 30)
+        )
+      end
+    end
+
+    test "an agent on pipes shows no size after a helper's resize", %{scope: scope} do
+      on_pipes = Map.drop(@agent, ["terminal"])
+      on_pty = Map.merge(@helper, %{"terminal" => %{"cols" => 80, "rows" => 24}})
+
+      assert_arrivals(
+        scope,
+        [
+          {2, "session.started", on_pipes},
+          {5, "session.started", on_pty},
+          {6, "run.resized", %{"cols" => 100, "rows" => 30, "session" => 2}}
+        ],
+        {"claude", "claude", ["-p", "fix the build"], "/work", false, nil, nil, nil}
+      )
+    end
+
+    test "a helper with the run to show has its resizes count", %{scope: scope} do
+      first = Map.merge(@helper, %{"session" => 1, "terminal" => %{"cols" => 80, "rows" => 24}})
+      second = Map.merge(@helper, %{"session" => 2, "terminal" => %{"cols" => 70, "rows" => 20}})
+
+      assert_arrivals(
+        scope,
+        [
+          {2, "session.started", first},
+          {3, "run.resized", %{"cols" => 100, "rows" => 30, "session" => 1}},
+          {5, "session.started", second},
+          {6, "run.resized", %{"cols" => 60, "rows" => 10, "session" => 2}}
+        ],
+        put_elem(put_elem(@helper_members, 6, 100), 7, 30)
+      )
+    end
+
+    test "the last resize that counts is read past a malformed one", %{scope: scope} do
+      on_pty = Map.merge(@helper, %{"terminal" => %{"cols" => 80, "rows" => 24}})
+      run = run_fixture(scope)
+
+      for event <- [
+            {5, "session.started", on_pty},
+            {3, "run.resized", %{"cols" => 100, "rows" => 30}},
+            {4, "run.resized", %{"cols" => 0, "rows" => 30}},
+            {2, "session.started", @agent}
+          ] do
+        events_fixture(run, [event])
+        {:ok, _run} = Projector.project(run)
+      end
+
+      assert members(Repo.get!(Run, run.id)) == put_elem(put_elem(@agent_members, 6, 100), 7, 30)
+    end
+
+    test "the timeline reads a mark as the fold does: only `true`", %{scope: scope} do
+      for {value, shown} <- [{true, 2}, {"true", 5}, {1, 5}, {false, 5}] do
+        run = run_fixture(scope)
+
+        events_fixture(run, [
+          {1, "run.started", started_data()},
+          {2, "session.started", @agent},
+          {5, "session.started", Map.put(@helper, "bare", value)}
+        ])
+
+        {:ok, run} = Projector.project(run)
+        assert [%{kind: :run_started, session_seq: ^shown}] = Record.timeline(scope, run).items
+      end
+    end
+
+    test "a value of bare other than true is no mark", %{scope: scope} do
+      for value <- [false, "true", 1] do
+        marked = Map.put(@helper, "bare", value)
+
+        assert_arrivals(
+          scope,
+          [{2, "session.started", @agent}, {5, "session.started", marked}],
+          @helper_members
+        )
+      end
+    end
+
+    test "its log chunk is projected, and the timeline shows the agent", %{scope: scope} do
+      run = run_fixture(scope)
+      log = %{"stream" => "stdout", "bytes" => Base.encode64("x"), "session" => 2}
+
+      events_fixture(run, [
+        {1, "run.started", started_data()},
+        {2, "session.started", @agent},
+        {4, "session.started", @helper},
+        {5, "run.log", log}
+      ])
+
+      {:ok, run} = Projector.project(run)
+
+      assert run.runtime == "claude"
+      assert Repo.get_by!(LogChunk, run_id: run.id).sequence == 5
+      assert Record.session_started_at(scope, run) == at(2)
+      assert [%{kind: :run_started, session_seq: 2}] = Record.timeline(scope, run).items
     end
   end
 

@@ -49,13 +49,12 @@ defmodule Apiary.Stacks do
   # ## Refused on save
   #
   # `harness`: a harness document under the save rules of `Apiary.Stacks.Document`, or
-  # nil at a place with a workflow. `workflow`: a lower-case letter, then up to 63
+  # nil at a place with a workflow. `workflow`: a lower-case letter, then up to 54
   # lower-case letters, digits and hyphens. `access`: `:read` or `:write` at a place with
   # a workflow, nil at any place. `choice`: `:qory` or `:repository` at a place with no
   # workflow and with a document, nil at any place. `version_kind`: only with a choice,
-  # `:latest` and `:named` under `:qory`, `:branch`, `:tag` and `:commit` under
-  # `:repository`, `:workspace` only at a target; `version_name` with `:named`,
-  # `:branch`, `:tag` and `:commit` alone. Each refusal is a changeset error on its
+  # `:branch`, `:tag` and `:commit` under either choice, `:workspace` only at a target;
+  # `version_name` with `:branch`, `:tag` and `:commit` alone. Each refusal is a changeset error on its
   # field.
   #
   # ## Locks
@@ -71,12 +70,12 @@ defmodule Apiary.Stacks do
   alias Apiary.{Edition, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Harnesses.Reader
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
   alias Apiary.Runs.Target
   alias Apiary.Stacks.{Document, Resolution, Stack}
 
-  @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  @workflow ~r/\A[a-z][a-z0-9-]{0,54}\z/
   @access_without_workflow "is recorded only at a place with a workflow"
 
   @typedoc """
@@ -274,14 +273,18 @@ defmodule Apiary.Stacks do
         operated: Edition.operated?(organisation)
       })
 
-    ref = if row.version_kind, do: version_ref(row, workspace, organisation)
-    %{resolution | ref: ref}
+    {ref, kind} =
+      if row.version_kind,
+        do: {version_ref(row, workspace, organisation), ref_kind(row, workspace, organisation)},
+        else: {nil, nil}
+
+    %{resolution | ref: ref, ref_kind: kind, qory: row.choice == :qory}
   end
 
   @doc false
   # workspace_harness/2 is the row of the harness of `workspace`: its choice, else the
   # harness `organisation` shares; nil for none, where its runs take the Qory harness at
-  # the newest version the release ships. Read without a lock.
+  # its default branch. Read without a lock.
   @spec workspace_harness(Workspace.t(), Organisation.t()) :: Stack.t() | nil
   def workspace_harness(%Workspace{} = workspace, %Organisation{} = organisation),
     do: choice(workspace) || shared(organisation)
@@ -291,28 +294,18 @@ defmodule Apiary.Stacks do
   # version (`Apiary.Stacks.Stack`), for a run of `workspace` of `organisation`:
   #
   #   * no version: the document's `ref`, nil for a document with no base or no `ref`;
-  #   * `:latest`: the full commit id of the newest version of the Qory harness the
-  #     release ships (`Apiary.Lingo.Domain.Definition.qory_commit/1`);
-  #   * `:named`: the full commit id of that name, `{:missing, name}` for a name the
-  #     release does not ship;
   #   * `:branch`, `:tag` and `:commit`: the name, or the full commit id;
   #   * `:workspace`: the `ref` of the workspace's harness (`workspace_harness/2`), that
-  #     of the Qory harness at `:latest` for none. A row whose choice and address differ
+  #     of the Qory harness at its default branch for none
+  #     (`Apiary.Harnesses.Qory.default_branch/0`). A row whose choice and address differ
   #     from those of the workspace's harness reads its document's `ref`: a save that
   #     wrote it while the workspace changed harness wrote the old harness.
   #
   # Read without a lock.
-  @spec version_ref(Stack.t(), Workspace.t(), Organisation.t()) ::
-          String.t() | {:missing, String.t()} | nil
+  @spec version_ref(Stack.t(), Workspace.t() | nil, Organisation.t() | nil) :: String.t() | nil
   def version_ref(%Stack{version_kind: kind, harness: harness}, _workspace, _organisation)
       when kind == nil,
       do: document_ref(harness)
-
-  def version_ref(%Stack{version_kind: :latest}, _workspace, _organisation),
-    do: Definition.qory_commit(:latest)
-
-  def version_ref(%Stack{version_kind: :named, version_name: name}, _workspace, _organisation),
-    do: Definition.qory_commit(name) || {:missing, name}
 
   def version_ref(%Stack{version_kind: kind, version_name: name}, _workspace, _organisation)
       when kind in [:branch, :tag, :commit],
@@ -326,16 +319,36 @@ defmodule Apiary.Stacks do
         # A workspace's or an organisation's row has no `:workspace` version.
         %Stack{version_kind: :workspace} -> nil
         %Stack{} -> version_ref(harness, workspace, organisation)
-        nil -> Definition.qory_commit(:latest)
+        nil -> Qory.default_branch()
       end
     else
       document_ref(row.harness)
     end
   end
 
+  # Whether the `ref` that `version_ref/3` gives for `row` is a `:branch`, a `:tag` or a
+  # `:commit`, by the same steps; nil where that `ref` is the document's.
+  defp ref_kind(%Stack{version_kind: kind}, _workspace, _organisation)
+       when kind in [:branch, :tag, :commit],
+       do: kind
+
+  defp ref_kind(%Stack{version_kind: :workspace} = row, workspace, organisation) do
+    harness = workspace_harness(workspace, organisation)
+
+    if harness_repository(row) == harness_repository(harness) do
+      case harness do
+        %Stack{version_kind: :workspace} -> nil
+        %Stack{} -> ref_kind(harness, workspace, organisation)
+        nil -> :branch
+      end
+    end
+  end
+
+  defp ref_kind(%Stack{}, _workspace, _organisation), do: nil
+
   # The choice and the address of the harness a row's document extends, the Qory
   # harness for no row.
-  defp harness_repository(nil), do: {:qory, Definition.qory_harness().git}
+  defp harness_repository(nil), do: {:qory, Qory.git()}
 
   defp harness_repository(%Stack{choice: choice, harness: harness}) do
     case is_binary(harness) && Reader.document(harness) do
@@ -556,9 +569,7 @@ defmodule Apiary.Stacks do
     valid? =
       case kind do
         nil -> not named?
-        :latest -> choice == :qory and not named?
-        :named -> choice == :qory and named?
-        kind when kind in [:branch, :tag, :commit] -> choice == :repository and named?
+        kind when kind in [:branch, :tag, :commit] -> choice != nil and named?
         :workspace -> workspace_version?(changeset, choice, named?)
       end
 

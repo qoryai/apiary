@@ -19,6 +19,13 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
 
   setup :register_and_log_in_user
 
+  # A ready pool, for the tests that read a queued run's words: without one, the page
+  # shows that no pool can take the run (`ApiaryWeb.WorkItemLive.NoPoolTest`).
+  defp ready_pool(%{scope: scope}) do
+    _place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope)
+    :ok
+  end
+
   defp list(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/work"
 
   defp page(scope, number, tail \\ ""),
@@ -80,6 +87,8 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
   end
 
   describe "its page" do
+    setup :ready_pool
+
     test "opens on Explore's tab, with the mark Test and no Ticket tab", %{
       conn: conn,
       scope: scope
@@ -122,10 +131,10 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       refute has_element?(view, "#work-item-explore", "the code")
       no_ticket!(view)
 
-      # Details: no ticket and no collection; the line is its first instruction.
+      # Details: no ticket, no collection and no first instruction.
       refute has_element?(view, "#work-item-details-ticket")
       refute has_element?(view, "#work-item-details-repository")
-      assert has_element?(view, "#work-item-details-instruction", @line)
+      refute has_element?(view, "#work-item-details-instruction")
     end
 
     test "shows its run, with a link to the run's page, and its result", %{
@@ -144,6 +153,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       no_ticket!(view)
 
       view |> element("#work-item-step-again") |> render_click()
+      confirm_spend(view)
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
     end
 
@@ -185,7 +195,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
       assert has_element?(
                view,
                "#work-item-explore-questions-cap",
-               "Run with answers starts the next run. That run reads your answers and updates the proposal."
+               "Run another round starts the next run. That run reads your answers and updates the proposal."
              )
 
       refute has_element?(view, "#work-item-explore-questions", "ticket")

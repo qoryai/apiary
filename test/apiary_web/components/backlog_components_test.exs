@@ -174,13 +174,18 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       end
     end
 
-    test "an ended work item of another workspace: Take in again, its title with no number" do
-      work_item = %{number: nil, state: :closed, path: nil, finished: false}
-      html = row(ticket(%{work_item: work_item}))
+    test "an ended work item of another workspace the reader may not read: Take in here, with no workspace" do
+      work_item = %{number: nil, state: :closed, path: nil, finished: false, elsewhere: nil}
+      html = row(ticket(%{work_item: work_item}), workspace: "Shop ops")
+
+      assert text(html, ".q-bl-act button") == "Take in here"
 
       assert attr(html, ".q-bl-act button", "title") == [
-               "Brings back the work item from another workspace"
+               "Take in here moves the work item to Shop ops, with a Shop ops number."
              ]
+
+      assert attr(html, ".q-bl-act button", "phx-value-return") == ["ticket-tk_01-here"]
+      assert count(html, ".q-bl-wi") == 0
     end
 
     for {state, finished} <- [exploring: false, closed: true] do

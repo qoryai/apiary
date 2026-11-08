@@ -13,7 +13,7 @@ defmodule Apiary.Stages.StopCause do
   alias Apiary.Adapters.Collection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Gateways
-  alias Apiary.Harnesses.{RunHarness, Walk, WorkflowGap}
+  alias Apiary.Harnesses.{Qory, RunHarness, Walk, WorkflowGap}
   alias Apiary.Integrations.ApplyTemplates
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
@@ -26,7 +26,7 @@ defmodule Apiary.Stages.StopCause do
   @prebuild "prebuild"
 
   # The walk failures whose fix is on the set-up step Harness.
-  @harness_step_failures ~w(no_harness scp_form credential_in_address too_many)
+  @harness_step_failures ~w(no_harness scp_form credential_in_address too_many ref_missing)
 
   @typedoc "What a claim knew when it ended a run: its gateway and the gateway's keys."
   @type context :: %{optional(:gateway) => Node.t(), optional(:keys) => [map]}
@@ -106,6 +106,8 @@ defmodule Apiary.Stages.StopCause do
 
   def set_up_step(%DispatchRun{end_cause: :harness_unresolved, id: id}) do
     case Repo.get_by(RunHarness, dispatch_run_id: id) do
+      # The built-in harness is set on no step (`Apiary.Harnesses.Builtin`).
+      %RunHarness{failure_rule: %{"values" => %{"builtin" => true}}} -> nil
       %RunHarness{failure: failure} when failure in @harness_step_failures -> :harness
       _other -> nil
     end
@@ -486,6 +488,29 @@ defmodule Apiary.Stages.StopCause do
 
   defp harness_reason("adapter_unavailable", _walk, n),
     do: {"three calls to read it failed", support(n)}
+
+  # The claim's read of the Qory harness, or of the built-in one, failed
+  # (`Apiary.Dispatches.Handover`): the words of the run's page, cause first.
+  defp harness_reason(
+         "ref_missing",
+         %RunHarness{failure_rule: %{"values" => %{"builtin" => true} = values}},
+         _n
+       ),
+       do:
+         {:line,
+          "Reading the harness from #{values["url"]} failed: the repository has no branch #{values["ref"]}.",
+          "Contact support."}
+
+  defp harness_reason("ref_missing", %RunHarness{failure_rule: %{"values" => values}}, _n),
+    do:
+      {:line, "#{values["url"]} has no #{values["ref"]}.",
+       "Set a branch, tag or commit that exists in the workspace's harness settings."}
+
+  defp harness_reason("harness_unreadable", %RunHarness{failure_rule: %{"values" => values}}, _n),
+    do:
+      {:line,
+       "Reading the harness from #{values["url"]} failed: #{Qory.cause_words(Qory.cause_of(values["cause"]))}.",
+       "Start the run again later. If it fails again, contact support."}
 
   defp harness_reason("walk_error", _walk, n),
     do: {"the harness walk stopped on an error in Qory Apiary", support(n)}

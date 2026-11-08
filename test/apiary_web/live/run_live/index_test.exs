@@ -999,6 +999,26 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert to == runs(scope)
     end
 
+    test "machine-type: narrows the list to the runs queued on a machine type", %{
+      conn: conn,
+      scope: scope
+    } do
+      large = started_run(scope, %{}, ago: 30)
+      queue_run!(scope, large, queued: [machine_type: "large"])
+      standard = started_run(scope, %{}, ago: 20)
+      queue_run!(scope, standard, queued: [machine_type: "standard"])
+      direct = started_run(scope, %{}, ago: 10)
+      view = open(conn, scope)
+
+      view |> form("#runs-query", %{"q" => "machine-type:large"}) |> render_submit()
+      assert_patch(view, runs(scope, "?machine_type=large"))
+      render_async(view)
+      assert has_element?(view, row(large))
+      refute has_element?(view, row(standard))
+      refute has_element?(view, row(direct))
+      assert token(view, "machine_type") == "machine-type:large"
+    end
+
     test "the header says what the list shows; a card on a phone is the row's cells", %{
       conn: conn,
       scope: scope
@@ -2437,6 +2457,34 @@ defmodule ApiaryWeb.RunLive.IndexTest do
         |> String.replace(~r{<[^>]*>}, " ")
 
       refute outside =~ "\u202E"
+    end
+
+    test "a denied request to the run API: in the preview the instance's host, no port", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        started_run(scope, shop(),
+          about: %{"title" => "refused"},
+          egress: [
+            %{
+              "decision" => "denied",
+              "rule" => "wall:run-api",
+              "host" => "run-api.qory.invalid",
+              "port" => 80,
+              "method" => "HTTP",
+              "request_method" => "POST",
+              "path" => "outside"
+            }
+          ]
+        )
+
+      view = open(conn, runs(scope, "?run=#{run.number}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      dest = view |> element("#runs-preview-denials .q-pv-dest") |> render()
+      assert dest |> LazyHTML.from_fragment() |> LazyHTML.text() == Apiary.Instance.host()
     end
 
     test "a denied host is isolated in the preview, so a bidi override reorders nothing", %{

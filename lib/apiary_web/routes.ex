@@ -273,11 +273,13 @@ defmodule ApiaryWeb.Routes do
         get "/runs/:run_id/diagnostics", DiagnosticsController, :show
       end
 
-      # An adapter's read of its change feed, after a cursor.
+      # An adapter's read of its change feed, after a cursor, and its report that it
+      # stopped trying to post the comment of one of the feed's entries.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_adapter
 
         get "/work-items/changes", ChangesController, :index
+        post "/work-items/changes/failed", ChangesFailedController, :create
       end
 
       # An adapter's requests: its declaration as it starts, and the secrets it stores in
@@ -578,6 +580,16 @@ defmodule ApiaryWeb.Routes do
                  :revoke
 
             live "/instance/qory-pool-and-gateway/:node_id/settings", InstanceLive.Node, :settings
+
+            # Instance settings › Machine types, with the `factory` feature, for the
+            # instance's admins: the machine types runs start on, Add machine type
+            # (`…/new`), a type's Edit (`…/:name/edit`) and its Delete, confirmed in its row
+            # (`…/:name/delete`), by the type's name. The fixed path goes first, so that
+            # `:name` never takes it.
+            live "/instance/machine-types", InstanceLive.MachineTypes, :index
+            live "/instance/machine-types/new", InstanceLive.MachineTypes, :new
+            live "/instance/machine-types/:name/edit", InstanceLive.MachineTypes, :edit
+            live "/instance/machine-types/:name/delete", InstanceLive.MachineTypes, :delete
 
             # Instance settings › Diagnostics keys, with the `observability` feature, for
             # the instance's admins: the keys that read any run's diagnostics, the command

@@ -127,12 +127,13 @@ defmodule Apiary.Kinds.Schema do
   code_point_lengths/1 is `schema`, a decoded JSON Schema, with each object that has an
   integer `minLength` or `maxLength` given the bounds as a pattern instead,
   `^[\\s\\S]{min,max}$`, which PCRE in UTF mode counts in code points:
-  `%{"allOf" => [rest, %{"pattern" => ...}]}`. JSV counts both keywords in graphemes, and
-  a contract counts code points, as JSON Schema does: a text of 2002 code points written
-  as 1001 letters with a combining accent would pass a `maxLength` of 2000. Both keywords
-  and the pattern apply to strings only, so nothing else changes. The members of `const`,
-  `enum`, `default` and `examples` are data and stay as they are. Give it to `file!/2` as
-  the schema's `adjust`.
+  `%{"allOf" => [rest, %{"pattern" => ...}]}`. A contract counts code points, as JSON
+  Schema does, and so does JSV since 0.26.2, so the pattern accepts the same texts as
+  JSV's two keywords: a text of 2002 code points written as 1001 letters with a
+  combining accent fails a `maxLength` of 2000 either way. Both keywords and the pattern
+  apply to strings only, so nothing else changes. The members of `const`, `enum`,
+  `default` and `examples` are data and stay as they are. Give it to `file!/2` as the
+  schema's `adjust`.
   """
   @spec code_point_lengths(term) :: term
   def code_point_lengths(schema) when is_map(schema) do

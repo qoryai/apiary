@@ -52,6 +52,7 @@ defmodule ApiaryWeb.RunComponents do
   alias Apiary.Dispatches.Dispatch
   alias Apiary.Harnesses.WorkflowGap
   alias Apiary.Runs.Run
+  alias Apiary.Runs.RunApi
   alias Phoenix.LiveView.JS
 
   @outcome_tip gettext_noop(
@@ -64,6 +65,10 @@ defmodule ApiaryWeb.RunComponents do
   # Where an element sits in a translated sentence: the binding's value, which `spliced/1`
   # cuts the sentence at. It never reaches the page.
   @hole "\u0000"
+
+  # The run API's rule, which heads of `shown_host/2` and `reason_kind/1` match on. A
+  # function head cannot call `RunApi.rule/0`, so the rule is set here at compile time.
+  @run_api_rule RunApi.rule()
 
   ## Run state
 
@@ -2360,24 +2365,61 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  # The work item of a row of the runs list: "#3 Say hello", a link to its page where the
-  # reader may follow one; its title alone, with no link, where it moved to another
-  # workspace, whose number it has now; for a run with none, the title the run gave
-  # (`shown_run_title/1`); else "No work item".
+  # The work item of a row of the runs list (`work_item_name/1`); for a run with none, the
+  # title the run gave (`shown_run_title/1`), else "No work item".
   attr :scope, :map, required: true
   attr :run, :map, required: true
   attr :work_item, :map, default: nil
   attr :link, :boolean, required: true
 
-  defp work_item_cell(%{work_item: %{here: false} = work_item} = assigns) do
-    assigns = assign(assigns, :title, shown_sent(work_item.title))
-
+  defp work_item_cell(%{work_item: %{}} = assigns) do
     ~H"""
-    <span class="q-rl-wi-text" title={@title}><.external_text text={@title} /></span>
+    <.work_item_name
+      scope={@scope}
+      work_item={@work_item}
+      link={@link}
+      link_class="q-rl-wi-link"
+      text_class="q-rl-wi-text"
+    />
     """
   end
 
-  defp work_item_cell(%{work_item: %{} = work_item} = assigns) do
+  defp work_item_cell(assigns) do
+    assigns = assign(assigns, :title, shown_run_title(assigns.run))
+
+    ~H"""
+    <span :if={@title} class="q-rl-wi-text" title={@title}><.external_text text={@title} /></span>
+    <span :if={!@title} class="q-rl-wi-none">{gettext("No work item")}</span>
+    """
+  end
+
+  @doc """
+  A run's work item, as the runs list and the run page's header show it
+  (`Apiary.Runs.list_facts/2`'s `work_item`): "#3 Say hello", a link to its page where
+  `link` is set, else text; its title alone, with no number and no link, where it moved to
+  another workspace, whose number it has now. The words are its tooltip too. The inner
+  block, an icon, say, comes first, inside the link.
+  """
+  attr :scope, :map, required: true
+  attr :work_item, :map, required: true
+  attr :link, :boolean, required: true, doc: "whether the reader may read the work item"
+  attr :id, :string, default: nil
+  attr :link_class, :any, default: nil
+  attr :text_class, :any, default: nil
+  slot :inner_block
+
+  def work_item_name(%{work_item: %{here: false} = work_item} = assigns) do
+    assigns = assign(assigns, :title, shown_sent(work_item.title))
+
+    ~H"""
+    <span id={@id} class={@text_class} title={@title}>
+      {render_slot(@inner_block)}
+      <.external_text text={@title} />
+    </span>
+    """
+  end
+
+  def work_item_name(%{work_item: work_item} = assigns) do
     assigns =
       assign(assigns,
         text: gettext("#%{number} %{title}", number: work_item.number, title: hole()),
@@ -2393,21 +2435,14 @@ defmodule ApiaryWeb.RunComponents do
       )
 
     ~H"""
-    <.link :if={@path} navigate={@path} class="q-rl-wi-link" title={@full}>
+    <.link :if={@path} id={@id} navigate={@path} class={@link_class} title={@full}>
+      {render_slot(@inner_block)}
       <.spliced text={@text}><.external_text text={@title} /></.spliced>
     </.link>
-    <span :if={!@path} class="q-rl-wi-text" title={@full}>
+    <span :if={!@path} id={@id} class={@text_class} title={@full}>
+      {render_slot(@inner_block)}
       <.spliced text={@text}><.external_text text={@title} /></.spliced>
     </span>
-    """
-  end
-
-  defp work_item_cell(assigns) do
-    assigns = assign(assigns, :title, shown_run_title(assigns.run))
-
-    ~H"""
-    <span :if={@title} class="q-rl-wi-text" title={@title}><.external_text text={@title} /></span>
-    <span :if={!@title} class="q-rl-wi-none">{gettext("No work item")}</span>
     """
   end
 
@@ -2673,7 +2708,7 @@ defmodule ApiaryWeb.RunComponents do
             <span
               :for={d <- @preview.denials}
               class="q-pv-dest"
-            ><bdi>{shown_host(d.host, d[:rule])}</bdi>:{d.port}</span>
+            ><bdi>{shown_host(d.host, d[:rule])}</bdi>{if !RunApi.run_api?(d[:rule]), do: ":#{d.port}"}</span>
             <span :if={@preview.more_denials > 0} class="q-pv-more">
               {ngettext("and %{number} more", "and %{number} more", @preview.more_denials,
                 number: Format.number(@preview.more_denials)
@@ -3119,7 +3154,7 @@ defmodule ApiaryWeb.RunComponents do
           class="q-expander"
           phx-click={@toggle}
           phx-value-host={@c.raw_host}
-          phx-value-port={@c.port}
+          phx-value-port={@c.raw_port}
           phx-value-path={@c.raw_path}
           aria-expanded={to_string(@open != nil)}
           aria-controls={"#{@id}-runs"}
@@ -3265,7 +3300,7 @@ defmodule ApiaryWeb.RunComponents do
             class="q-link q-hits-more"
             phx-click={@more}
             phx-value-host={@c.raw_host}
-            phx-value-port={@c.port}
+            phx-value-port={@c.raw_port}
             phx-value-path={@c.raw_path}
           >
             {ngettext(
@@ -3311,7 +3346,9 @@ defmodule ApiaryWeb.RunComponents do
   # is its host, path and rule as sent (`raw_host`, `raw_path`, `raw_rule`), and so is
   # which case a row is and which words it says: its reason, its tool and whether it is a
   # tool invocation are decided by what was sent (`raw_path_rule`, `raw_tool`), never by
-  # what is left to show.
+  # what is left to show. A request to the run API shows the instance's host, with no port
+  # (`port` nil), and copies it (`copy_host`); it is still found and acted on by what was
+  # sent (`raw_host`, `raw_port`).
   defp normalise(connection) do
     get = fn keys -> Enum.find_value(keys, &Map.get(connection, &1)) end
     tool = blank(get.([:tool, :last_tool]))
@@ -3320,11 +3357,15 @@ defmodule ApiaryWeb.RunComponents do
     path = get.([:path]) || ""
     rule = blank(get.([:rule, :last_rule]))
     path_rule = blank(get.([:path_rule, :last_path_rule]))
+    run_api = RunApi.run_api?(rule)
 
     %{
       host: shown_host(host, rule),
       raw_host: host,
-      port: get.([:port]),
+      copy_host: if(run_api, do: RunApi.host(), else: host),
+      run_api: run_api,
+      port: if(run_api, do: nil, else: get.([:port])),
+      raw_port: get.([:port]),
       path: shown_path(path, path_rule),
       raw_path: path,
       method: shown_sent(get.([:method])),
@@ -3366,8 +3407,9 @@ defmodule ApiaryWeb.RunComponents do
     do: Apiary.ExternalText.present(text) || Apiary.ExternalText.marked(text)
 
   # A connection's host as a row shows it, in `<bdi>` (`shown_sent/1`), marked where the
-  # wall refused it for its form.
+  # wall refused it for its form, and the instance's for a request to the run API.
   defp shown_host(host, "wall:host-form"), do: Apiary.ExternalText.marked(host)
+  defp shown_host(_host, @run_api_rule), do: RunApi.host()
   defp shown_host(host, _rule), do: shown_sent(host)
 
   # Its path the same, marked where the wall refused it as one that reads two ways; ""
@@ -3439,11 +3481,11 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <span
-      class="q-dest q-cx-t"
+      class={["q-dest q-cx-t", @c.run_api && "q-cx-runapi"]}
       title={destination_title_words(@c)}
       data-request-id={@c.request_id}
     >
-      <span class="q-cx-h"><bdi>{@c.host}</bdi><span class="q-cx-p">:{@c.port}</span><.host_copy
+      <span class="q-cx-h"><bdi>{@c.host}</bdi><span :if={@c.port} class="q-cx-p">:{@c.port}</span><.host_copy
         :if={@copy_id}
         id={@copy_id}
         c={@c}
@@ -3456,11 +3498,12 @@ defmodule ApiaryWeb.RunComponents do
   attr :id, :string, required: true
   attr :c, :map, required: true
 
-  # The host's copy icon, on its line: it copies the host as sent, which Allow, Deny and
-  # the `host:` filter act on, and its name and hint say so, with the host as the row
-  # shows it. "Copied" is said in the shell's one announcer, never in a live region of
-  # each row (docs/ui.md). Its empty title keeps the destination's title from showing
-  # over its hint.
+  # The host's copy icon, on its line. It copies the host the `host:` filter finds the
+  # row by: the host as sent, which Allow and Deny act on too, or, for a request to the
+  # run API, the instance's host, which the row shows (`copy_host`). Its name and hint
+  # have the host as the row shows it. "Copied" is said in the shell's one announcer,
+  # never in a live region of each row (docs/ui.md). Its empty title keeps the
+  # destination's title from showing over its hint.
   defp host_copy(assigns) do
     ~H"""
     <button
@@ -3468,7 +3511,7 @@ defmodule ApiaryWeb.RunComponents do
       id={@id}
       phx-hook="CopyToClipboard"
       class="copy-btn q-cx-copy row-reveal tooltip tooltip-right"
-      data-copy={@c.raw_host}
+      data-copy={@c.copy_host}
       data-copied-words={gettext("Copied")}
       data-tip={gettext("Copy %{host}", host: @c.host)}
       aria-label={gettext("Copy %{host}", host: @c.host)}
@@ -3480,8 +3523,12 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  defp destination_title_words(%{path: ""} = c), do: "#{c.host}:#{c.port}"
-  defp destination_title_words(c), do: "#{c.host}:#{c.port} #{c.path}"
+  defp destination_title_words(%{path: ""} = c), do: host_port(c)
+  defp destination_title_words(c), do: "#{host_port(c)} #{c.path}"
+
+  # The host and its port as a row shows them: no port for a request to the run API.
+  defp host_port(%{port: nil} = c), do: "#{c.host}"
+  defp host_port(c), do: "#{c.host}:#{c.port}"
 
   # The reason as words alone, for the title that shows a cut reason whole: the sentences
   # `reason/1` shows for a row of the workspace, in the same order and the same tense.
@@ -3509,6 +3556,9 @@ defmodule ApiaryWeb.RunComponents do
             gettext("The path can be read two ways."),
             gettext("The wall denies it in either mode.")
           ]
+
+        :run_api ->
+          [rule_words(c) <> ".", gettext("The wall denies it in either mode.")]
 
         :denied_no_rule ->
           [no_rule_sentence(past), mode_sentence(c.mode, :denies, past)]
@@ -3588,7 +3638,7 @@ defmodule ApiaryWeb.RunComponents do
     >
       <.tool_mark name={@c.tool} />
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
-      <span class="q-on"><bdi>{@c.host}</bdi>:{@c.port}</span>
+      <span class="q-on"><bdi>{@c.host}</bdi>{@c.port && ":#{@c.port}"}</span>
     </span>
     """
   end
@@ -3598,7 +3648,7 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <span class="q-dest" title={destination_title(@c, @line)} data-request-id={@c.request_id}>
-      <bdi>{@c.host}</bdi><span class="text-faint">:{@c.port}</span>
+      <bdi>{@c.host}</bdi><span :if={@c.port} class="text-faint">:{@c.port}</span>
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
     </span>
     """
@@ -3608,7 +3658,7 @@ defmodule ApiaryWeb.RunComponents do
   # the row is one request (the timeline's).
   defp destination_title(c, line) do
     whole =
-      [c.invocation && c.tool, "#{c.host}:#{c.port}", line]
+      [c.invocation && c.tool, host_port(c), line]
       |> Enum.reject(&(&1 in [nil, false, ""]))
       |> Enum.join(" ")
 
@@ -3672,6 +3722,14 @@ defmodule ApiaryWeb.RunComponents do
           "path"
         )}
         <.rule value={@c.path_rule} /></span>
+      <% :run_api -> %>
+        {gettext("Rule")}
+        <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.raw_path_rule}>, {gettext(
+          "path"
+        )}
+        <.rule value={@c.path_rule} /></span>. {gettext(
+          "The wall denies it in either mode."
+        )}
       <% :tool_by_rule -> %>
         <.rich text={handed_sentence(@c)}>
           <:part name={:rule}><.rule value={@c.rule} path={@rule_path} id={@rule_id} /></:part>
@@ -3710,6 +3768,10 @@ defmodule ApiaryWeb.RunComponents do
 
   defp reason_kind(%{decision: "denied", raw_path_rule: "wall:ambiguous-path"}),
     do: :ambiguous_path
+
+  # A request to the run API the wall kept, outside the run API's route, or a tunnel to
+  # its host: the wall's rule, in either mode, never a missing path rule.
+  defp reason_kind(%{decision: "denied", raw_rule: @run_api_rule}), do: :run_api
 
   defp reason_kind(%{decision: "denied", raw_rule: nil}), do: :denied_no_rule
 

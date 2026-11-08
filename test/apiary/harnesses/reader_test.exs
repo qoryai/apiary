@@ -302,6 +302,30 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert {:ok, %{process: %{"machine" => "default"}}} = Reader.template(text)
     end
 
+    test "refuses a machine type other than default, the process's or an entry's" do
+      text = String.replace(source(@template), "  stages:\n", "  machine: large\n  stages:\n")
+      assert Reader.template(text) == {:error, :invalid_template}
+
+      text =
+        String.replace(
+          source(@template),
+          "- workflow: draft-an-answer\n",
+          "- workflow: draft-an-answer\n          machine: large\n"
+        )
+
+      assert text != source(@template)
+      assert Reader.template(text) == {:error, :invalid_template}
+
+      text =
+        String.replace(
+          source(@template),
+          "- workflow: draft-an-answer\n",
+          "- workflow: draft-an-answer\n          machine: default\n"
+        )
+
+      assert {:ok, _template} = Reader.template(text)
+    end
+
     test "refuses a file without each key" do
       for key <- ~w(apiVersion name summary description type stack process),
           do: assert(Reader.template(without(key)) == {:error, :invalid_template}, key)

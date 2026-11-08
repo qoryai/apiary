@@ -221,8 +221,24 @@ page and an Instance page, the one the person came from (Two levels, below).
 
 ## No modals
 
-Nothing opens over a page but **Search or jump to**, the palette (above), the one overlay
-the console keeps. Every other act happens on a page, in place:
+Nothing opens over a page but **Search or jump to**, the palette (above), and the
+confirmation before an act that spends (below). Every other act happens on a page, in
+place:
+
+- **An act that spends is confirmed in a dialog over the page** (`ApiaryWeb.SpendDialog`):
+  each act that starts a run, which uses a machine and model tokens, or a build machine.
+  Its title is the act's name as a question ("Run another round?"), then one line on what
+  starts ("Starts a run of `explore-a-ticket` on a machine of build-eu. The run uses
+  model tokens."), the act's fields where it has them, such as its note, and Cancel with
+  the act's name. Focus goes to Cancel, not to the act's button, so an Enter held down
+  on the button that opened the dialog starts nothing. For a dialog whose first focus
+  belongs on a field, set `focus` on `ApiaryWeb.SpendDialog.frame/1` to the field's id.
+  Use a textarea or another control where Enter does not submit: Enter in a single-line
+  input confirms the spend. Focus stays in the dialog; Cancel, Escape and a click outside
+  close it, change nothing and keep what was typed on the page, and focus goes back to
+  the button that opened it. An act that starts a run only in some states (Confirm,
+  Approve, Request changes, Accept as it is, Move back, Check again, Add version) opens
+  the dialog only where it starts one, and acts at once otherwise.
 
 - **A form is a page** of its section at a separate path, never a dialog over a list:
   Invite people, New machine, a policy's New rule and Edit rule,
@@ -355,6 +371,28 @@ replaces the navigation it is in.
   Anyone else is answered not found. The sidebar stays the one
   the person came from, and the sections are the second column (`#instance-tabs`,
   `instance-tab-<key>`).
+- **Instance settings › Machine types** (`/instance/machine-types`,
+  `ApiaryWeb.InstanceLive.MachineTypes`, with the feature `factory`, after Nodes) lists
+  the instance's machine types (`Apiary.MachineTypes`) for its admins: Name, with the
+  badge Default on the default, vCPUs, Memory, Disk, Architecture, Virtualization, Used
+  by ("3 workflows", the workflow entries that run on it, in each workspace's current and
+  trial process and in each workspace type's newest one, as a deletion counts them; an
+  entry set to `default` runs on the default), and Pools, the pools that serve it, "None"
+  for none. A pool with offers in its latest claim serves the types that one of them
+  fits; a pool without serves the default, and takes the runs of the default type and
+  the runs queued on the type that was the default then. The row menu has Edit, Make
+  default (not on the default) and Delete…, confirmed in the row:
+  "Delete large?" and "Workflows can no longer pick this type. You cannot undo this."
+  **Add machine type** (`…/new`) and Edit (`…/:name/edit`) open the form: Name (on Add
+  only; a name cannot change), vCPUs and Memory (GiB), Disk (GiB) and Architecture, Needs
+  virtualization and Default, each with its hint, then the line on how a pool picks a
+  machine, and Add or Save beside Cancel. A field's refusal is under it, such as "Choose
+  another name: default means the default type." or, while a pool has offers, "No pool
+  offers a machine that fits this type." under vCPUs. A deletion that fails leaves a line
+  under the table: the default, or the workflows that use the type, such as "large cannot
+  be deleted: these workflows use it: Main: explore-a-ticket." A change needs a recent
+  sign-in, and the page leads to the log-in page otherwise; anyone else gets a page not
+  found.
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one
@@ -612,8 +650,8 @@ version in force is exported; another version's path sends on to it.
   screen reader hears what a view, a filter or a search left; an empty list says its
   empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
-  (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `item:3` (a work item's
-  number, `item:#3` too), `started:>2026-09-01`, `denied:yes`;
+  (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `machine-type:large`
+  (the runs queued on that machine type), `item:3` (a work item's number, `item:#3` too), `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
   as tokens, and the other words are the free text, `q`, matched as text without regard to
   case (a run's id, title or target; a destination's host or path). A run's id is the start
@@ -867,7 +905,7 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   and, with `security`, `…/policy` with the policy's paths after it (`/history`,
   `/document`, `/versions/:n`, `/export`, `/rules/new`, `/rules/:id/edit`). An id the
   workspace does not have, and a tab the reader may not read, are not found. The header
-  names the target in its notation (its path, its system before it only where two
+  shows the target in its notation (its path, its system before it only where two
   targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it overrides the workspace's) and Open on the
   system when the system is a host name; the breadcrumb ends with the section, a link to the
@@ -1707,7 +1745,7 @@ not fill fails until it is filled there.
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
 width, and from 1280 px the **Details rail** (280 px, sticky under the top bar, scrolling
 separately) sits beside it on every tab, Terminal too; below 1280 px Details is a button
-under the header. The Timeline tab's content, Prepare machine included, stops at 72rem,
+under the header. The Timeline tab's content, the Run list included, stops at 72rem,
 left aligned, so a row's time stays near it; the Details rail, the header and the tabs stay
 where they are, and Network access and Terminal keep the column's whole width. The terminal
 takes the whole window through Focus (The terminal, below). The top bar's breadcrumb ends with Runs, a link to the list,
@@ -1768,7 +1806,13 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   again when the session starts, whatever the tab.
 - **The Details rail** is key and value lines under small headings (About, Run, Labels,
   Command, Record, Policy in force), no chip, and no card in the right column; the run's labels are its
-  identifiers, in mono, and one that names the target leads to its page.
+  identifiers, in mono, and the target's label links to the target's page. Run has Peak
+  memory and CPU time after Duration, each only once a session reported it: the peak,
+  "9.8 GiB", or "9.8 of 16 GiB" with the memory of the run's machine type, both in GiB to
+  a tenth; the CPU time as a duration, "12 s", "41 m 10 s", "5 h 00 m". When
+  sessions of one run overlap, Peak memory shows the highest single peak. Both cover
+  everything behind the session's wall. Run has Machine type after Host, the type the
+  claim answer had, absent for an answer without one.
 - **About** is the rail's first section, shown when the run names a kind, a subject or
   details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
   its title muted under it, cut to a line and whole on hover; then the details in mono, by
@@ -1785,105 +1829,192 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   Overview's rows, Network access's hits and ⌘K's results), in a
   sentence too (`{:bdi, title}` of `ApiaryWeb.RichText`); a tooltip, the page's `<title>`,
   an `aria-label` and an announcement hold them as plain text.
+- **The Timeline is an overview of the run** (`Apiary.Runs.Record.Overview`). It lists
+  the run's and the session's events, one row per agent, the agents' texts, the artifact
+  versions the run pushed, failures and denials, and each tool call that was the only
+  open call at a connection. A routine tool call, one that finished or still runs with
+  no connection and no denied connection inside, is in the Terminal only. A call that
+  failed or was denied, that has a connection or a denied connection inside, or that has
+  no end after its session or the run ended, is listed. A call to the subagent tool
+  (`Task` or `Agent`) follows the same rule, as its subagent has a row. Thinking has no
+  row.
 - **The Timeline's rows are one line each.** A tool row is the tool and the first line
   of its `summary`, the part of its input Forager selects, never words Qory Apiary makes
-  from a tool's name; a denied tool reads "Not run: denied" in place of its duration. A
-  text of the session is a **Text** row: its first line with words, without Markdown
-  marks (a heading's `#`, a quote's `>`, a bullet or number, emphasis, code and a link's
-  address), and **Terminal ›**, a link to the text in the Terminal tab's Transcript for
-  a reader who may read the log. Thinking has no row. **Turn finished** and **Result**
-  show no text: the Text row before them has it; Result keeps its outcome, turns,
-  duration and cost (`success · 6 turns · 14 s · $0.09`).
-- **Connections inline.** The switch above the Timeline (`?cx=1`) shows the allowed
-  connections, each under the tool call that made it; it is off when the page opens. A
-  denied connection shows next to its tool call whether the switch is on or off, so a
-  denial is always beside its cause. Network access shows every connection.
+  from a tool's name; a denied tool reads "Not run: denied"; a call with connections
+  inside reads "only open call at a connection" under it. A text of the session is a
+  **Text** row: its first line, without Markdown marks (a heading's `#`, a quote's `>`, a
+  bullet or number, emphasis, code and a link's address). **Main session** follows the
+  main agent's first prompt, with the prompt's event number: how many tool calls the
+  main agent made, routine ones included, and the first line of its last text. Its Took
+  is the sum of the durations of the main agent's results, and is empty while the run
+  is live and has no result. Each subagent is one row, its start, which opens to the
+  subagent's rows. A **Pushed** row is a version the run pushed
+  (`Pushed proposal/main version 2`: the artifact's type and name, and the version's
+  number), placed by the time it was pushed among the rows, before the first or after Run
+  ended too, with no event number; a version pushed while the page is open shows with no
+  reload. **Turn finished** and **Result** show no text: the Text row before them has it;
+  Result keeps its outcome, turns and cost (`success · 6 turns · $0.09`).
+- **Terminal ›** ends each row that has a line in the Terminal tab's Transcript, for a
+  reader who may read the log: a prompt, a text, a tool call, a result, a subagent's
+  start, and Turn finished in a run recorded before Forager sent texts. The Main session
+  row links to its last text. A `?seq=` of a routine call's event goes to that call's line
+  in the Terminal for a reader who may read the log, and to the nearest row before it
+  for any other reader. A `?seq=` of any other event with no row, such as thinking or an
+  allowed connection while Connections inline is off, shows the first row after it, or
+  the last row when none follows.
+- **The Timeline tab's count** is how many rows the Timeline lists with every subagent
+  open, Main session and Pushed rows included, and the same on every tab. An allowed
+  connection outside a call counts only while Connections inline is on. The Run list's
+  rows do not count.
+- **For a reader who may not read the log** the Timeline lists the same rows, with the
+  same count, by their labels: no Terminal ›, and no text of the session, such as a
+  prompt, a text, a call's summary, input or output, a subagent's message, the Main
+  session's last text or a notification's message.
+- **Connections inline.** The switch above the Timeline (`?cx=1`) lists the allowed
+  connections outside a call as rows, and shows those inside a call under it; it is off
+  when the page opens. A denied connection shows whether the switch is on or off, next to
+  its tool call when it was the only open call, so a denial is always beside its cause.
+  Network access shows every connection.
 - **The timeline's open items are flat**: a rule in the item's state's colour under the
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
 - **The time columns.** From 1280 px the Timeline has two fixed, right-aligned columns in
-  tabular numbers, so Prepare machine's rows, the run's rows and the connection rows line
-  up: a preparation row's start time and duration, and a run item's offset and number. A
-  tool's duration stays left of the columns. A small faint legend labels them, at the right
-  above Prepare machine's rows ("Started", "Took") and above the run's ("Since run start",
-  "Event"). A faint band
+  tabular numbers, so the Run list's rows, the run's rows and the connection rows line
+  up: a Run list row's start time and duration, and a run row's offset, how long it took
+  and its number. Every duration of a run row is in Took, never beside its label. A small
+  faint legend labels them, at the right above the Run list's rows ("Started", "Took") and
+  above the run's ("Since run start", "Took", "Event"). A faint band
   covers the row under the pointer, so the eye can follow it to the time. Below 1280 px a
   row sets out its times without columns or a legend.
-- **Prepare machine** is the Timeline's first section (`ApiaryWeb.PreparationComponents`,
-  from `Apiary.Runs.Preparation`), above the run's first event, and the Timeline's whole
-  content while a pending run has no event. One row per step, in the order the steps ran:
-  Machine requested (the claim, with the pool and the machine type, "pool default" while
-  the claim answer has none; its duration runs to the starter's `dispatched`, and is
-  empty without one) and Machine started (from the starter's `dispatched` to the
-  redemption of the run's code) for a run a pool claimed; then the run's steps, each
-  with qory's name, its first letter in upper case, or "Step" and its number when only its
-  exit is recorded; then Session started. Each row but Clean up has its state, its start
-  time and its duration; while the run is alive, a running row has the word Running, a
-  mark that pulses (still under `prefers-reduced-motion`), and in place of its duration a
-  clock that ticks in the browser (`<.duration elapsed_seconds= elapsed_at= id=>`), from
-  the row's start, or, for Machine started before the starter's `dispatched`, from the
-  claim. A run's exit closes a step without an exit as Cancelled; on a lost run such a
-  step keeps the word Running, with no clock and no pulse. Each row but Clean up opens on
-  a click: a step to its output, the last 64 KiB as plain text, for a reader who may read
-  the run's log (`run.read_log`), or the run's log-pruned sentence with its date once
-  retention deleted the log lines; Machine started to the machine log for an instance
-  admin, and "The instance admin can read the machine's log." for anyone else. With no
-  machine log recorded, an instance admin reads "No machine log has arrived." until a day
-  has passed since the claim (the least the machine logs' retention can be set to, under
-  which a prune can have deleted the log), and then
-  "Machine logs are kept for 30 days. This machine has none.", with the retention's
-  days in force. A step that exits with code -1 has no exit status, and its line
-  shows no code. A failed row is open, with one cause line under its output that shows
-  the cause, then who fixes it; once retention deleted the run's log lines, "The step's
-  output was deleted under the workspace's log retention, so the cause is no longer
-  shown." in place of who fixes it. Under Machine started the line shows only who fixes
-  it, as the header shows the cause: for the instance's pool, "An instance admin finds
-  the cause in the machine log of the Machine started step."; for any other pool, that
-  its admins read why in the pool's log on its host. The section's duration runs from its first row to
-  the session's start, or to the failed row's end. While the preparation of a live run goes
-  on, a row running or the machine started with no step yet, the heading has the time so
-  far, ticking from its first row. With neither a session's start nor a failed row, and no
-  row running, the duration runs to the end of the last row that ended: between two steps,
-  and after the last step of a runtime with no session event. The page reads the
-  preparation again at each flush until it has settled: until the session's first item,
-  or until the session started with no step running. After that it reads the preparation
-  at each `dev.qory.run.step_started`, `dev.qory.run.step_exited` and
-  `dev.qory.run.exited`, so a later session's join shows on an open page. The starter's
-  `dispatched` and the redemption of the run's code are broadcast on the run's topic, so
-  they show at once. On the Timeline tab
-  the page also reads them at each quiet tick (5 s) while Machine started is running.
-  The last row, Clean up, shows what the pool's starter reported about the removal of the
-  machine (`PreparationComponents.clean_up/3`): "Machine removed", "Machine removal
-  requested" or "Removal failed: the machine still exists", with the report's time, as soon
-  as a report exists. With no report, a run that has ended and whose dispatch was handed
-  over shows "Waiting for a report" for 15 minutes after the run ended, counted at render,
-  and then "No removal report"; an open page changes at the 15 minutes without a reload. A
-  run on a permanent machine shows "Machine stays registered" once it has ended. A run that
-  goes on with no report, or whose dispatch was released before a machine existed, has no
-  such row. A report reaches an open page on the run's topic, settled section or not. The
-  Clean up row has a mark, its text and, for a report, the report's time: no duration, and
-  it opens on no click. On a page whose section had settled while the run was alive, the
-  run's exit reads the preparation, so the row that it brings ("Waiting for a report" or
-  "Machine stays registered") shows with no reload; for a run that ended with no exit, such
-  as a lost run, the row shows after a reload of the page. A run on a permanent machine
-  with no step shows the section once it has ended: Session started, when its session
-  started, and the Clean up row.
-- **After the session** follows the timeline on the Timeline tab
-  (`PreparationComponents.after_session/1`, from `after_session` of
-  `Apiary.Runs.Preparation`), above the line at the end of the record, once the window
-  reaches the run's end. It lists the run's `push` steps, the host work that a run does
-  after its last session and before its exit, and there is no section for a run with none.
-  Each row is a step's row of Prepare machine: state, start time, duration, output, and
-  open when failed. The section has no total, no cause line and no Clean up row. A failed
-  push is no failed preparation: it adds no cause line, no reason in the run's header, no
-  note above the timeline, and no time to Prepare machine. Under How it ended, a run with
-  a failed push shows only a failed result or failed turn that is the newest of its
-  results and failed turns; a failed tool or an earlier failure does not show. An open page shows a push step's
-  start, its end, and the Cancelled of a run's exit with no reload; its output shows at
-  the step's end. A row that fails on an open page opens, as its `id` changes to a new
-  one that ends in `-failed`, so the page mounts it again; a person's open or close of a
-  row stays until then.
+- **The Run list** is the Timeline's first section (`ApiaryWeb.PreparationComponents`,
+  from `Apiary.Runs.Preparation`), headed "Run", and the Timeline's whole content while a
+  pending run has no event. It is there for a run with a machine of a node pool, a step,
+  or an artifact version it pushed, and for a run on a permanent machine once it ended;
+  any other run has its timeline alone. The whole list shows even when the loaded events
+  start later in the run, such as for a `?seq=` link to a late event. One row per phase
+  of the run, in time order, and only the phases that happened. Each row has its state,
+  its start time under Started and its duration under Took; no duration sits beside a
+  name.
+  1. **Queued**, for a run a pool claimed: from the queueing this claim came from to the
+     claim. That is the queue (`dispatch_runs.queued_at`), or, for a run of the queue
+     lapsed or released and claimed again, the moment the dispatch that put it back in
+     the queue lapsed (`dispatches.stale_at`) or ended (`dispatches.ended_at`). It does
+     not open.
+  2. **Machine requested**: from the claim to the starter's `dispatched`, empty without
+     one. It opens to the pool and the machine type with its spec, "large (4 vCPUs,
+     16 GiB, 60 GiB disk)", or "pool default" while the claim answer has none.
+  3. **Machine started**: from `dispatched` to the redemption of the run's code. It opens
+     to Start machine, with the same times. A step of kind `machine` (the parts of the
+     machine's start that `qory run` sends, such as `start Docker  3.2 s`) is no row: its
+     lines are Start machine's, after a first line, `create machine  14.8 s`, at the time
+     of `dispatched`, with the seconds from `dispatched` to that step's start, written only
+     when the step started no later than the redemption. Start machine is failed once that
+     step failed. Start machine also has, for an instance admin, the machine type the pool
+     started, "Started as (instance admins)" and the type its starter reported, absent
+     while it reported none, then the machine log, numbered with no times; anyone else
+     sees neither. With no machine log recorded, an instance admin reads "No machine log has arrived." until a day has passed since the
+     claim (the least the machine logs' retention can be set to, under which a prune can
+     have deleted the log), and then "Machine logs are kept for 30 days. This machine has
+     none.", with the retention's days in force.
+  4. **Prepare**: the run's steps that started before the first session, every step while
+     no session has started, in order, for a run a pool claimed or not. Its duration runs
+     from its first step's start to the end of its last step; on a live run it is running
+     until the first session starts or the preparation stops, and between two steps it
+     has the word Running and no clock. A step of kind `fetch` is Clone repository,
+     `image` Pull images, `setup` Set up dev container and `join` Start agent; a step of
+     any other kind has qory's name, its first letter in upper case, or "Step" and its
+     number when only its exit is recorded.
+  5. **Session started**: from the first `dev.qory.session.started` to the last
+     `dev.qory.session.exited`, with the exit's state. It opens to the run's timeline,
+     Run started, Policy applied and Run ended included. It is open when it appears on a
+     live run, where its duration counts up, and closed on a run that ended. It opens for
+     a `?seq=` link to an event inside it, for j or k with focus on its row (j moves to
+     the first event, k to the last), for g e, the live end, and for the new-events pill.
+     A run that ended with no session exit shows it Cancelled.
+  6. **Session finished**: from the runtime's last `dev.qory.runtime.result` to the
+     session's exit; from the exit alone, with no duration, for a session with no result.
+     It opens to Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84" (an exit code
+     of -1 is no exit status and is left out), and Model, from the last
+     `dev.qory.runtime.started`.
+  7. **Outputs saved**: the artifact versions the run pushed, by their run of the queue
+     (`runs.dispatch_run_id`), such as "proposal Version 3", and the run's `push` steps,
+     the host work a run does after its last session. It starts at the first push's start
+     and ends at the end of the last push; with no push step, it runs from the first
+     version pushed to the last. A failed push is no failed preparation: it adds no cause
+     line, no reason in the run's header and no note above the timeline. Under How it
+     ended, a run with a failed push shows only a failed result or failed turn that is the
+     newest of its results and failed turns; a failed tool or an earlier failure does not
+     show.
+  8. **Machine removed**, last, shows what the pool's starter reported about the removal
+     of the machine (`PreparationComponents.clean_up/3`). It starts at the end of the
+     run's dispatch, or the run's end, and takes the time to the starter's `gone` report.
+     It opens to Cause, "Run ended" for a run that exited or "Keep-alive lost" for a run
+     that was lost (`runs.lost_at`), and Alive, from `dispatched` to the `gone` report;
+     each is left out when it does not apply. A report that is no `gone` shows "Machine
+     removal requested" or "Removal failed: the machine still exists" beside the name,
+     with no duration. With no report, a run that has ended and whose dispatch was handed
+     over shows "Waiting for a report" for 15 minutes after the run ended, counted at
+     render, and then "No removal report", with no duration; an open page changes at the
+     15 minutes without a reload. A run that goes on with no report, or whose dispatch was
+     released before a machine existed, has no such row. A report reaches an open page on
+     the run's topic. A run on a permanent machine (a node of kind `node`) that ended has
+     **Machine stays registered** as its last row in place of Machine removed, with no
+     time, as the machine is not removed.
+
+  A later session's steps, such as its join, are rows after Session started, placed by
+  time with Session finished and Outputs saved. While the run is alive, a running row has
+  the word Running, a mark that pulses (still under `prefers-reduced-motion`), and in
+  place of its duration a clock that ticks in the browser
+  (`<.duration elapsed_seconds= elapsed_at= id=>`), from the row's start, or, for Machine
+  started and Start machine before the starter's `dispatched`, from the claim. A run's
+  exit closes a step without an exit as Cancelled; on a lost run such a step keeps the
+  word Running, with no clock and no pulse. A step's row opens on a click to its output,
+  for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
+  sentence with its date once retention deleted the log lines. The output is its last
+  lines, at most 64 KiB and 2,500 lines, each with its number in the step's whole output
+  and its time to a tenth of a second ("00:33:07.6", the time of the event the line began
+  in), in a box that scrolls; a note above the lines shows that the start is cut. A step
+  that exits with code -1 has no exit status, and its line shows no code. A running or
+  failed row is open when it appears, Start machine also while its `machine` step runs or
+  once that step failed, and Machine started and Prepare while they are running or
+  failed; the others are closed, and a person's open or close stays. A push step's row,
+  and Outputs saved, open when the push fails on an open page, as their `id` changes to a
+  new one that ends in `-failed`, so the page mounts them again.
+
+  A failed row has one cause line under its output that shows the cause, then who fixes
+  it. The cause line starts with the step's label; when the name qory or Forager sent for
+  the step has more than its label, the rest follows in parentheses, as sent, with a
+  set-up command in code font: "Set up dev container failed with exit code 1
+  (postCreateCommand: `npm ci`)." A join and a step whose name is one word, such as
+  qory's `prepare`, have no parentheses: "Set up dev container failed with exit code 1."
+  For an image step named by its image reference alone, the parentheses contain that
+  reference: "Pull images failed (registry.example.com/acme/storefront-dev:1)." Once
+  retention deleted the run's log lines, "The step's output was deleted under the
+  workspace's log retention, so the cause is no longer shown." is in place of who fixes
+  it. Under Start machine, for a machine that did not start, the line shows only who
+  fixes it, as the header shows the cause: for the instance's pool, "Contact support
+  with run <id>."; for any other pool, that its admins read why in the pool's log on its
+  host. A run that stopped before its session started has a note above the Timeline,
+  "The run stopped before its session started, at the step Set up dev container.", with
+  the row's name, or Start machine for a machine that did not start.
+
+  The heading's time runs from the first row's start, Queued's for a run a pool claimed,
+  to the end of the last row: the `gone` report, else the latest end of the dispatch, the
+  machine's start, a step, the session or a push. While the run is alive it counts up
+  from the first row's start, "4 m 13 s so far". The page reads the run's preparation
+  again at each flush until it has settled: until the session's first item, or until the
+  session started with no step running. After that it reads it at each
+  `dev.qory.run.step_started`, `dev.qory.run.step_exited`, `dev.qory.runtime.result`,
+  `dev.qory.session.exited` and `dev.qory.run.exited`, so a later session's join, the
+  session's end and a push show on an open page. It also reads it when a version is
+  pushed to the run's work item (the work item's artifacts topic), so a version pushed
+  with no push step shows at once. The starter's `dispatched` and the
+  redemption of the run's code are broadcast on the run's topic, so they show at once. On
+  the Timeline tab the page also reads them at each quiet tick (5 s) while Machine
+  started is running. When the session starts on an open page, the timeline moves into
+  Session started, and the page sends its loaded events again and keeps the count of new
+  events.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's
@@ -2045,11 +2176,13 @@ Flow (`assets/js/canvas.js`, a separate bundle loaded on first mount). Workspace
 Stages, Instance settings › Workspace types and a workspace type's page use it.
 
 - **The column.** The stages lie top to bottom on a dotted ground (dots 20 px apart, the
-  theme's text colour at 22 %), each a 360 px card with its name (18 px), its workflows and
-  loops (16 px; a loop is a dashed box inside the card, labelled with its rounds), its gate
-  line and its alert lines, joined to the next card by an arrow. The cards are drawn at
-  zoom 1; a pinch or the zoom buttons zoom from 0.75 to 1.5. You reach stages out of view
-  by scrolling the canvas; there is no "more" control.
+  theme's text colour at 22 %), each a 360 px card with its name (18 px), its description
+  where it has one (14 px, muted, plain text with its line breaks, wrapped and cut to
+  three lines, in full in its title; a read-only stage panel shows it whole), its
+  workflows and loops (16 px; a loop is a dashed box inside the card, labelled with its
+  rounds), its gate line and its alert lines, joined to the next card by an arrow. The
+  cards are drawn at zoom 1; a pinch or the zoom buttons zoom from 0.75 to 1.5. You
+  reach stages out of view by scrolling the canvas; there is no "more" control.
 - **Edit mode** (`mode={:edit}`): a "+" above the first card, between two cards and below
   the last adds a stage there. You drag a card to a new place, or move it one place with
   the up and down arrow keys; Enter opens it in the inspector beside the canvas.
@@ -2074,13 +2207,34 @@ Stages, Instance settings › Workspace types and a workspace type's page use it
   `.q-canvas-fill` box, right under the tabs; **Details**, at `?tab=details`, starts with
   the page's sentence, then every other setting (on Workspace types the type's Name,
   Summary and How it works first) and the history. The version line, **Save**, **Save
-  as trial** (Workspace settings only) and **Discard changes** are at the right end of the tabs' row
-  on both tabs: one draft has the edits of both, and a switch of tabs keeps it. Workspace
-  settings adds a row under the tabs for owners and admins (`process.edit`), on both tabs:
+  as trial** (Workspace settings only) and **Discard changes** are at the right end of the
+  tabs' row on both tabs: one draft has the edits of both, and a switch of tabs keeps it.
+  Details' **Default machine type** and a workflow's **Machine type** in the inspector are
+  selects of the instance's machine types ("large: 4 vCPUs, 16 GiB"): the default's first,
+  "Default (standard)", and a workflow's "Workspace default (standard)", with "Default
+  (standard)" also for a workflow set to `default`. A value that no type has stays as one
+  more option. A member who cannot edit reads the default's words and a type's name, such
+  as "large", in Details and in the stage's Sequence. Its hint on Stages is "Workflows that
+  pick no machine type run on this one. The people who run this Qory Apiary add machine
+  types."; on Workspace types, "New workspaces of this type start with this default. Add
+  machine types in Instance settings › Machine types.", with a link. The page exists
+  wherever this one does, because `workflow_model` needs `factory`.
+  Workspace settings adds a row under the tabs for owners and admins (`process.edit`), on
+  both tabs:
   **Export process.yaml** downloads the current version, with no draft or trial. The text
   beside the button is "Commit this file to a harness repository. Only new workspaces made
   from it use it.", and "Gates that list people export as all members." follows it when a
-  gate of the current version lists people.
+  gate of the current version lists people. The file has `default` for each machine type,
+  with no line about it.
+- **The inspector.** A stage's form has fields for the stage's name and description. A
+  member's read-only panel has the stage's name and, when the stage has one, its
+  description. Both then have four boxes (`sect/1`, `q-sect-side`) in the order a stage
+  works: Inputs, Sequence, Outputs and Gate.
+  Each workflow is a row with its name, then one line in a native `<details>`: **Machine
+  type: default**, ending in **Change**, or **Close** while open. Its fields stay in the
+  form while closed. A refused machine type shows on that line while the fold is closed.
+  The check's words are in the fold, and on the row for a screen reader and as a title;
+  the cross keeps its words on the row.
 
 ## Words
 

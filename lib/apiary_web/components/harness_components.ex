@@ -11,10 +11,10 @@ defmodule ApiaryWeb.HarnessComponents do
   # harness's versions; the stacks a harness source exports; and the two kinds of version.
   #
   # `choices/1` is the two choices, the fields of the form `harness`: `choice`, `qory`
-  # or `repository`. The Qory harness shows no address and no commit. Chosen, it shows
-  # Version: `qory_version` `latest`, or `named` with `qory_name`, a name the release
-  # lists (`Apiary.Lingo.Domain.Definition.qory_harness/0`); with no name listed, A fixed
-  # version is disabled, with the line about named versions under it. A harness repository
+  # or `repository`. The Qory harness shows no address. Chosen, it shows Version as a
+  # harness repository does: `version` `branch`, with `branch`, the branch whose newest
+  # commit each run reads, `main` by default, or `fixed`, with `fixed`, a tag or a full
+  # commit id. A harness repository
   # shows the connected repositories (`Apiary.Stacks.Sources.repositories/1`) under one
   # choice with a search box, `source`, with Reading… until they are listed, and before
   # any pick a line for each adapter of connected repositories whose call address Qory
@@ -48,7 +48,7 @@ defmodule ApiaryWeb.HarnessComponents do
   @moduledoc false
   use ApiaryWeb, :html
 
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
   alias Apiary.Stacks.Document
 
   @short 7
@@ -72,9 +72,7 @@ defmodule ApiaryWeb.HarnessComponents do
       )}
     </p>
     <p id="harness-about-qory">
-      {gettext(
-        "The Qory harness is the harness Qory publishes. Always the latest version uses the newest version this Qory Apiary ships, and moves on when Qory Apiary is upgraded."
-      )}
+      {gettext("The Qory harness is the harness at %{url}.", url: Qory.git())}
     </p>
     <p id="harness-about-exports">
       {gettext(
@@ -83,7 +81,7 @@ defmodule ApiaryWeb.HarnessComponents do
     </p>
     <p id="harness-about-versions">
       {gettext(
-        "Always the latest: each run uses the newest version when it starts. A fixed version uses that version."
+        "Always the latest: a run uses the newest version. On the Qory harness, that is the version when a machine claims the run. On a harness source, it is the version when the run is queued. A fixed version uses that version."
       )}
     </p>
     """
@@ -129,7 +127,6 @@ defmodule ApiaryWeb.HarnessComponents do
       assign(assigns,
         choice: assigns.form[:choice].value,
         source: source(assigns.linked, assigns.form[:source].value),
-        named: Definition.qory_harness().named,
         group: group,
         shared_title: group && choice_title(:repository),
         shared_line: group && chosen_line(shared),
@@ -183,46 +180,13 @@ defmodule ApiaryWeb.HarnessComponents do
       </label>
     </fieldset>
 
-    <fieldset :if={@choice == "qory"} id="harness-qory-version" class="fieldset grid gap-2">
-      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Version")}</legend>
-      <label for="harness-qory-version-latest" class="flex items-center gap-2 text-[13.5px]/5">
-        <input
-          type="radio"
-          id="harness-qory-version-latest"
-          name={@form[:qory_version].name}
-          value="latest"
-          checked={@form[:qory_version].value != "named"}
-          disabled={@disabled}
-          class="radio radio-sm radio-primary"
-        />
-        {gettext("Always the latest version")}
-      </label>
-      <label for="harness-qory-version-named" class="flex items-center gap-2 text-[13.5px]/5">
-        <input
-          type="radio"
-          id="harness-qory-version-named"
-          name={@form[:qory_version].name}
-          value="named"
-          checked={@named != [] and @form[:qory_version].value == "named"}
-          disabled={@disabled or @named == []}
-          aria-describedby={@named == [] && "harness-qory-version-none"}
-          class="radio radio-sm radio-primary"
-        />
-        {gettext("A fixed version")}
-      </label>
-      <p :if={@named == []} id="harness-qory-version-none" class="pl-6 text-[13px]/5 text-muted">
-        {gettext("Named versions come with the first release of the Qory harness.")}
-      </p>
-      <.input
-        :if={@named != [] and @form[:qory_version].value == "named"}
-        field={@form[:qory_name]}
-        id="harness-qory-name"
-        type="select"
-        aria-label={gettext("A fixed version")}
-        options={Enum.map(@named, & &1.name)}
-        disabled={@disabled}
-      />
-    </fieldset>
+    <.version
+      :if={@choice == "qory"}
+      id="harness-qory"
+      fields="qory_"
+      form={@form}
+      disabled={@disabled}
+    />
 
     <div :if={@choice == "repository"} id="harness-repository" class="grid gap-4">
       <.input
@@ -303,11 +267,13 @@ defmodule ApiaryWeb.HarnessComponents do
   end
 
   attr :id, :string, required: true, doc: "the prefix of the fields' ids"
+  attr :fields, :string, default: "", doc: "the prefix of the fields' names"
   attr :form, Phoenix.HTML.Form, required: true
   attr :disabled, :boolean, default: false
 
-  # A harness repository's version: Always the latest on a branch, or A fixed version, a
-  # tag or a commit.
+  # A harness's version: Always the latest on a branch, or A fixed version, a tag or a
+  # commit. The names of the Qory harness's fields start with `qory_`, so a version
+  # typed for a harness repository does not show at the Qory harness, nor the reverse.
   defp version(assigns) do
     ~H"""
     <fieldset id={"#{@id}-version"} class="fieldset grid gap-2">
@@ -317,9 +283,9 @@ defmodule ApiaryWeb.HarnessComponents do
           <input
             type="radio"
             id={"#{@id}-version-branch"}
-            name={@form[:version].name}
+            name={@form[@fields <> "version"].name}
             value="branch"
-            checked={@form[:version].value != "fixed"}
+            checked={@form[@fields <> "version"].value != "fixed"}
             disabled={@disabled}
             class="radio radio-sm radio-primary"
           />
@@ -328,8 +294,8 @@ defmodule ApiaryWeb.HarnessComponents do
         <input
           type="text"
           id={"#{@id}-branch"}
-          name={@form[:branch].name}
-          value={@form[:branch].value}
+          name={@form[@fields <> "branch"].name}
+          value={@form[@fields <> "branch"].value}
           aria-label={gettext("Always the latest on")}
           disabled={@disabled}
           autocomplete="off"
@@ -342,9 +308,9 @@ defmodule ApiaryWeb.HarnessComponents do
           <input
             type="radio"
             id={"#{@id}-version-fixed"}
-            name={@form[:version].name}
+            name={@form[@fields <> "version"].name}
             value="fixed"
-            checked={@form[:version].value == "fixed"}
+            checked={@form[@fields <> "version"].value == "fixed"}
             disabled={@disabled}
             class="radio radio-sm radio-primary"
           />
@@ -353,8 +319,8 @@ defmodule ApiaryWeb.HarnessComponents do
         <input
           type="text"
           id={"#{@id}-fixed"}
-          name={@form[:fixed].name}
-          value={@form[:fixed].value}
+          name={@form[@fields <> "fixed"].name}
+          value={@form[@fields <> "fixed"].value}
           placeholder={gettext("tag or version")}
           aria-label={gettext("A fixed version")}
           disabled={@disabled}
@@ -369,8 +335,8 @@ defmodule ApiaryWeb.HarnessComponents do
 
   attr :chosen, :map, required: true, doc: "the choice, `t:Apiary.Stacks.Sources.chosen/0`"
 
-  # The choice and its version: "Qory harness, stack software", then "Always the latest
-  # version"; a harness repository, then its stack, repository and version.
+  # The choice and its version: "Qory harness, stack software", then its version, such as
+  # "main"; a harness repository, then its stack, repository and version.
   def line(assigns) do
     ~H"""
     <span id="harness-line" class="grid gap-0.5">
@@ -399,8 +365,7 @@ defmodule ApiaryWeb.HarnessComponents do
   @doc false
   # chosen_line/1 is a stack as a page shows it, "%{stack} · %{harness} · %{version}":
   # its stack, else the folder it narrows to, else its root's `qory-stack.yaml`; the Qory
-  # harness or its repository; and its version (`version_line/1`), the Qory harness's
-  # newest as "latest".
+  # harness or its repository; and its version (`version_line/1`).
   @spec chosen_line(map) :: String.t()
   def chosen_line(chosen) do
     narrowing = Map.get(chosen, :narrowing, %{})
@@ -408,7 +373,7 @@ defmodule ApiaryWeb.HarnessComponents do
     gettext("%{stack} · %{harness} · %{version}",
       stack: chosen[:stack] || narrowing["path"] || "qory-stack.yaml",
       harness: harness_words(chosen),
-      version: if(chosen[:version] == :latest, do: gettext("latest"), else: version_line(chosen))
+      version: version_line(chosen)
     )
   end
 
@@ -420,9 +385,7 @@ defmodule ApiaryWeb.HarnessComponents do
   def harness_words(%{git: git}), do: repository(git)
 
   # A version as a page shows it: a branch or a tag by its name, a commit by its first 7
-  # characters, the Qory harness's newest as "Always the latest version", a named one by
-  # its name; a row saved with no version, by its pin.
-  defp version_line(%{version: :latest}), do: gettext("Always the latest version")
+  # characters; a row saved with no version, by its pin.
   defp version_line(%{version: {:commit, id}}), do: short(id)
   defp version_line(%{version: {_kind, name}}) when is_binary(name), do: name
 
@@ -1266,39 +1229,45 @@ defmodule ApiaryWeb.HarnessComponents do
 
   @doc false
   # form_params/2 is the form's values for the saved choice `chosen`, among the connected
-  # repositories `linked`, nil while they are listed: the Qory harness's version; a
-  # harness repository's connected repository, its stack and its version, a row saved
-  # with no version as a fixed version at its pin; else no repository and `main`.
+  # repositories `linked`, nil while they are listed: the version, of the Qory harness or
+  # of a harness repository, a row saved with no version as a fixed version at its pin,
+  # else `main`; a harness repository's connected repository and its stack, else none.
   @spec form_params(map, [map] | nil) :: map
   def form_params(chosen, linked) do
     repository? = chosen.choice == :repository
     saved = repository? && Enum.find(linked || [], &(&1.git == chosen.git))
 
     {version, branch, fixed} =
-      case repository? && chosen.version do
+      case chosen.version do
         {:branch, name} -> {"branch", name, ""}
         {kind, name} when kind in [:tag, :commit] -> {"fixed", "main", name}
         nil when is_binary(chosen.pin) -> {"fixed", "main", chosen.pin}
         _other -> {"branch", "main", ""}
       end
 
+    # The version of the saved choice shows at that choice only; the other has `main`.
+    {qory, other} =
+      if chosen.choice == :qory,
+        do: {{version, branch, fixed}, {"branch", "main", ""}},
+        else: {{"branch", "main", ""}, {version, branch, fixed}}
+
     %{
       "choice" => Atom.to_string(chosen.choice),
-      "qory_version" => if(match?({:named, _}, chosen.version), do: "named", else: "latest"),
-      "qory_name" =>
-        case chosen.version do
-          {:named, name} -> name
-          _other -> ""
-        end,
       "source" => (saved && saved.id) || "",
-      "stack" => (repository? && chosen.stack) || "",
-      "version" => version,
-      "branch" => branch,
-      "fixed" => fixed
+      "stack" => (repository? && chosen.stack) || ""
     }
+    |> Map.merge(version_params("", other))
+    |> Map.merge(version_params("qory_", qory))
   end
 
-  @fields ~w(qory_version qory_name source stack version branch fixed)
+  defp version_params(prefix, {version, branch, fixed}),
+    do: %{
+      (prefix <> "version") => version,
+      (prefix <> "branch") => branch,
+      (prefix <> "fixed") => fixed
+    }
+
+  @fields ~w(source stack version branch fixed qory_version qory_branch qory_fixed)
 
   @doc false
   # fill/3 is the form's `params` with the values of `form_params/2` where `params` has
@@ -1325,18 +1294,14 @@ defmodule ApiaryWeb.HarnessComponents do
   @doc false
   # choice/3 is the choice the form's `params` come to, among `linked` and the stacks
   # `exports` of the chosen repository, for `Apiary.Stacks.Sources.choose/3`: the Qory
-  # harness at its newest version, or at a name the release lists; a stack of a harness
-  # repository at its version; nil for a harness repository without a source, a stack
-  # it exports or a version, and for any other value.
+  # harness at its version; a stack of a harness repository at its version; nil for a
+  # version with no name, a harness repository without a source or a stack it exports,
+  # and for any other value.
   @spec choice(map, [map] | nil, term) :: Apiary.Stacks.Sources.choice() | nil
   def choice(%{"choice" => "qory"} = params, _linked, _exports) do
-    case params["qory_version"] do
-      "named" ->
-        name = params["qory_name"]
-        if Definition.qory_commit(name || ""), do: {:qory, name}
-
-      _latest ->
-        {:qory, :latest}
+    case version(params["qory_version"], params["qory_branch"], params["qory_fixed"]) do
+      {_kind, _name} = version -> {:qory, version}
+      nil -> nil
     end
   end
 
@@ -1356,9 +1321,7 @@ defmodule ApiaryWeb.HarnessComponents do
   # unchanged?/2 is whether `choice` is the saved choice `chosen`: the Qory harness at the
   # same version, or the same repository, stack and version.
   @spec unchanged?(Apiary.Stacks.Sources.choice() | nil, map) :: boolean
-  def unchanged?({:qory, :latest}, %{saved: true, choice: :qory, version: :latest}), do: true
-
-  def unchanged?({:qory, name}, %{saved: true, choice: :qory, version: {:named, name}}),
+  def unchanged?({:qory, version}, %{saved: true, choice: :qory, version: version}),
     do: true
 
   def unchanged?({:repository, source, stack, version}, %{saved: true} = chosen),
@@ -1373,7 +1336,13 @@ defmodule ApiaryWeb.HarnessComponents do
   # refused, in the words of Workflow's reads of a source; nil for a refusal those words
   # do not cover. A ref the walk could not read (`ref_words/3`) gets the words of a
   # version: none of that name, or one in a form a read does not take.
-  @spec refusal_words(term, map | nil, String.t() | nil, String.t()) :: String.t() | list | nil
+  @spec refusal_words(
+          term,
+          map | nil,
+          String.t() | Apiary.Stacks.Sources.version() | nil,
+          String.t()
+        ) ::
+          String.t() | list | nil
   def refusal_words({:limited, seconds}, source, _ref, _organisation),
     do: limited_words(seconds, source)
 
@@ -1386,13 +1355,37 @@ defmodule ApiaryWeb.HarnessComponents do
   def refusal_words({:walk, failure}, source, ref, _organisation),
     do: ref_words(failure, source, ref) || walk_words(failure, source)
 
+  # A version of the Qory harness its repository does not have, on the page of its
+  # fields: a tag or commit of "A fixed version", else the branch of "Always the latest
+  # on" (`refused/1`).
+  def refusal_words({:qory, {:ref_missing, missing}}, _source, {kind, _name}, _organisation)
+      when kind in [:tag, :commit],
+      do:
+        gettext("Set a version that exists. %{url} has no tag or version %{ref}.",
+          url: Qory.git(),
+          ref: missing
+        )
+
+  def refusal_words({:qory, {:ref_missing, missing}}, _source, _ref, _organisation),
+    do:
+      gettext("Set a version that exists. %{url} has no version %{ref}.",
+        url: Qory.git(),
+        ref: missing
+      )
+
   def refusal_words(_reason, _source, _ref, _organisation), do: nil
 
   @doc false
   # refusal_words/5 is `refusal_words/4` for the workspace named `workspace`, with the
-  # words of a public repository's host that failed.
-  @spec refusal_words(term, map | nil, String.t() | nil, String.t(), String.t() | nil) ::
+  # words of a public repository's host that failed. A failed read of the Qory harness
+  # asks for the save again later, with why the read failed (`Qory.cause_words/1`).
+  @spec refusal_words(
+          term,
+          map | nil,
+          String.t() | Apiary.Stacks.Sources.version() | nil,
+          String.t(),
           String.t() | nil
+        ) :: String.t() | list | nil
   def refusal_words({:walk, %{failure: failure} = walk}, source, _ref, organisation, workspace)
       when failure in [
              :too_large,
@@ -1407,15 +1400,74 @@ defmodule ApiaryWeb.HarnessComponents do
           fetch_names(walk.rule, walk.source || label(source), organisation, workspace)
         )
 
+  def refusal_words({:qory, {:unreadable, cause, _hop}}, _source, _ref, _organisation, _ws),
+    do:
+      rich_gettext(
+        "Save again later. Reading the harness from %{url} failed: %{cause}. If it fails again, %{contact_support}.",
+        url: Qory.git(),
+        cause: Qory.cause_words(cause),
+        contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
+      )
+
   def refusal_words(reason, source, ref, organisation, _workspace),
     do: refusal_words(reason, source, ref, organisation)
 
   @doc false
+  # qory_words/3 is why a read of the Qory harness at `url` failed
+  # (`t:Apiary.Harnesses.Qory.failure/0`), the fix first: for `:run`, a run that did not
+  # start; for `:workspace`, a workspace that was not created, in plain text. A ref the
+  # repository does not have has the same words for both; for `:builtin`, a run of the
+  # built-in harness, it has other words, with no setting to change.
+  @spec qory_words(Qory.failure(), :run | :workspace | :builtin, String.t()) ::
+          String.t() | list
+  def qory_words(failure, use, url \\ Qory.git())
+
+  # The built-in harness at a branch its repository does not have: only whoever runs
+  # Qory Apiary sets its address (`Apiary.Harnesses.Builtin`), so no setting fixes it.
+  def qory_words({:ref_missing, ref}, :builtin, url),
+    do:
+      rich_gettext(
+        "%{contact_support}. Reading the harness from %{url} failed: the source has no version %{ref}.",
+        contact_support: ApiaryWeb.Support.rich(),
+        url: url,
+        ref: ref
+      )
+
+  def qory_words({:ref_missing, ref}, _use, url),
+    do:
+      gettext(
+        "Set a version that exists in the workspace's harness settings. %{url} has no %{ref}.",
+        url: url,
+        ref: ref
+      )
+
+  def qory_words({:unreadable, cause, _hop}, :run, url),
+    do:
+      rich_gettext(
+        "Start the run again later. Reading the harness from %{url} failed: %{cause}. If it fails again, %{contact_support}.",
+        url: url,
+        cause: Qory.cause_words(cause),
+        contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
+      )
+
+  # Plain text: a flash shows it.
+  def qory_words({:unreadable, cause, _hop}, :workspace, url),
+    do:
+      gettext(
+        "Create the workspace again later. Reading the harness from %{url} failed: %{cause}. If it fails again, %{contact_support}.",
+        url: url,
+        cause: Qory.cause_words(cause),
+        contact_support: ApiaryWeb.Support.plain(mid_sentence: true)
+      )
+
+  @doc false
   # refused/1 is the source and the version name of a refused save of `choice`, as
-  # `refusal_words/4` takes them; nil and nil for a choice with no source.
-  @spec refused(term) :: {map | nil, String.t() | nil}
+  # `refusal_words/4` takes them; for the Qory harness, no source and its version
+  # (`t:Apiary.Stacks.Sources.version/0`); nil and nil for a choice with no source.
+  @spec refused(term) :: {map | nil, String.t() | Apiary.Stacks.Sources.version() | nil}
   def refused({:repository, source, _stack, {_kind, name}}), do: {source, name}
   def refused({:stack, source, _stack, ref}), do: {source, ref}
+  def refused({:qory, {_kind, _name} = version}), do: {nil, version}
   def refused(_choice), do: {nil, nil}
 
   # The save rules' words for an address (`Apiary.Stacks.Document.source_error/2`), each

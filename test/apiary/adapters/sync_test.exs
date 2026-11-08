@@ -467,6 +467,44 @@ defmodule Apiary.Adapters.SyncTest do
       end
     end
 
+    test "stores whether the adapter's source takes comments at each start, on an adapter alone",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      # Before its first start, nil.
+      assert reload(adapter).comments == nil
+
+      # A description with no `comments`: false.
+      assert {:ok, declared} = Adapters.declare(key_scope, declaration())
+      assert declared.comments == false
+      assert reload(adapter).comments == false
+
+      # A description with `comments: true`, which the contract's check accepts.
+      commenting = read_description("example-source-comments.json")
+
+      assert {:ok, declared} =
+               Adapters.declare(key_scope, %{declaration() | description: commenting})
+
+      assert declared.comments == true
+      assert reload(adapter).comments == true
+
+      # The next start replaces it.
+      assert {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert reload(adapter).comments == false
+
+      # It is no part of the trail's entries.
+      for entry <- entries(:"adapter.declare") do
+        refute Map.has_key?(entry.after, "comments")
+      end
+
+      # Only an adapter has one (`nodes_comments_check`).
+      for other <- [pool_fixture(scope), node_fixture(scope)] do
+        assert reload(other).comments == nil
+
+        assert_raise Postgrex.Error, ~r/nodes_comments_check/, fn ->
+          Repo.update_all(from(n in Node, where: n.id == ^other.id), set: [comments: false])
+        end
+      end
+    end
+
     test "a start that changes the access line or a word tells each connected organisation once",
          %{scope: scope, adapter: adapter, key_scope: key_scope} do
       %{scope: other} = sign_up_fixture()

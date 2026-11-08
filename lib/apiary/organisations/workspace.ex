@@ -9,7 +9,7 @@ defmodule Apiary.Organisations.Workspace do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.Slug
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -105,10 +105,10 @@ defmodule Apiary.Organisations.Workspace do
   @doc """
   qory_stack/1 is the stack of the Qory harness `workspace` uses: the stack recorded when it
   was made from the Qory template, else the stack of a workspace with no template, `core`
-  (`Apiary.Lingo.Domain.Definition.qory_harness/0`).
+  (Apiary.Harnesses.Qory.default_stack/0).
   """
   @spec qory_stack(%__MODULE__{}) :: String.t()
-  def qory_stack(%__MODULE__{qory_stack: nil}), do: Definition.qory_harness().stack
+  def qory_stack(%__MODULE__{qory_stack: nil}), do: Qory.default_stack()
   def qory_stack(%__MODULE__{qory_stack: stack}), do: stack
 
   @doc """
@@ -116,7 +116,7 @@ defmodule Apiary.Organisations.Workspace do
   (`qory_stack/1`).
   """
   def put_qory_stack(changeset, stack) do
-    if stack == Definition.qory_harness().stack,
+    if stack == Qory.default_stack(),
       do: changeset,
       else: put_change(changeset, :qory_stack, stack)
   end

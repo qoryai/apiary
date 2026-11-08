@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "pool_id": "np_f1xt0re000000000",
+  "wait_seconds": 0,
+  "offers": [
+    {
+      "vcpus": 1,
+      "memory_mib": 512,
+      "disk_gib": 1,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 1024,
+      "memory_mib": 8388608,
+      "disk_gib": 65536,
+      "arch": "arm64",
+      "virtualization": true
+    }
+  ]
+}

@@ -17,6 +17,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # `ApiaryWeb.WorkItemLive.View` turns them into what the components draw. A number that
   # names no work item the reader may read is not found.
   #
+  # **A member's comment** on the ticket shows on the Ticket tab with how far its post at
+  # the source is (`ApiaryWeb.BacklogComponents.post_state/1`, `post_failure/1`). One not
+  # posted has Post again (`"post_again"`, `Apiary.Sources.post_again/2`) for whoever may
+  # take the workspace's tickets in; the page reads everything again after it. Post again
+  # starts no run, so it opens no dialog.
+  #
   # **A test work item** has no ticket and no integration: no Ticket tab (its address
   # patches to Explore's tab), no ticket in the header, Details or the Thread, and no
   # Take in again. Its parts call the line it was made from "the line", where they call
@@ -26,36 +32,51 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`Apiary.WorkItems.subscribe/1`) and reads everything again when a message names its
   # work item; a work item that moved to another workspace is then not found here. While
   # Explore's run is running, it also listens on that run (`Apiary.Runs.subscribe/2`), and
-  # only the dot of that run changes (`follow_run/1`).
+  # only the dot of that run changes (`follow_run/1`). While the latest run waits in the
+  # queue and no pool can take it (`no_pool/2`), the header shows that at any stage, and
+  # so do Explore's tab and, where the page has it, the step card for a run of Explore. A
+  # later stage's run has no block that shows a queued run, so it has the header's words
+  # alone. While pools serve the workspace's runs and none can start the queued run's
+  # machine type (`no_fit/3`), the header has the type's name. The page reads everything
+  # again when a machine enrols a key on a pool that serves the workspace's runs, or on
+  # the gateway such a pool's choice leads to (`listen_to_pools/1`).
   #
-  # **What a reader does.** Undo, Close, Run Explore again, Run with answers, Confirm,
-  # Send review comments, and a review comment or a reply on its form page (`?review=new`,
-  # `?reply=<id>`), each sent with the work item the page last read and the attempt of its
-  # latest run, so an action from a page that read an earlier state fails
-  # (`Apiary.WorkItems.Moves`). Run with answers with every answer blank, from a reader
-  # who may send review comments (`work_item.review_comment`), sends the open review
-  # comments (`Apiary.WorkItems.send_review_comments/3`); with none open, or from any
-  # other member, it shows under the form that no answer was given. Undo, Close, Run
+  # **What a reader does.** Undo, Close, Run Explore again, Run another round, Confirm,
+  # and a reply to a review comment on its form page (`?reply=<id>`), each
+  # sent with the work item the page last read and the attempt of its latest run, so an
+  # action from a page that read an earlier state fails (`Apiary.WorkItems.Moves`). Run
+  # another round, from the questions form or the gate, sends the answers given, the
+  # comment on the whole proposal and the open review comments in one move, which starts
+  # one run (`Apiary.WorkItems.another_round/4`); the open review comments and the comment
+  # go only from a reader who may send review comments (`work_item.review_comment`). With
+  # nothing to send it shows under the form that no answer was given. Undo, Close, Run
   # Explore again and Confirm show no words when they fail: the page reads the work item
-  # again and draws where it stands now. A send of Run with answers, Send review comments,
-  # a review comment or a reply that writes nothing shows why under its form, with the
-  # draft kept (`ApiaryWeb.WorkItemComponents.send_error/1`): the artifact store out of
+  # again and draws where it stands now. A send of Run another round or a reply that
+  # writes nothing shows why under its form, with the drafts kept
+  # (`ApiaryWeb.WorkItemComponents.send_error/1`): the artifact store out of
   # reach, a run of the page's attempt that started first, a work item that changed after
   # the page showed it, which the page reads again (the questions form shows that its
   # questions changed), the reader's access or the work item changed, or any other error.
   # At the run limit the page reads the work item again and shows no line. A form whose
   # fields are wrong shows why under its fields, as does the form page of a reader who is
   # not an approver of the stage. A form page stays open with its draft while a run that
-  # started after it opened runs, with that run's line under the field. A reader who is
-  # not an approver of the stage sees no gate. Where the page has a stage card, Send
-  # review comments at the gate and Run with answers with every answer blank show the
-  # stage runner's line, under the gate or the form, only where the page counted the
-  # reader as an approver and the send's `Apiary.Access` check does not: the approver list
-  # or the reader's role changed after the page read the work item. With no stage card, no
-  # line shows. The questions form's draft is kept as the reader writes
-  # (`"answer_draft"`): each question's option and note, as the form has them; so is a
-  # form page's text (`"page_draft"`). An event with another number than the page's does
-  # nothing.
+  # started after it opened runs, with that run's line under the field. A reader who may
+  # not approve, send or change a decision sees no gate. Where the page has a stage card,
+  # Run another round shows the stage runner's line, under the gate or the form, only where
+  # the page counted the reader as an approver and the send's `Apiary.Access` check does
+  # not: the approver list or the reader's role changed after the page read the work
+  # item. With no stage card, no line shows. The questions form's draft is kept as the
+  # reader writes (`"answer_draft"`): each question's option and note, and the comment,
+  # as the form or the gate has them; so is a form page's text (`"page_draft"`). An event
+  # with another number than the page's does nothing.
+  #
+  # **A spend is confirmed first.** A click that starts a run opens the spend's dialog
+  # (`ApiaryWeb.SpendDialog`, `spend/3`) and does nothing else; its Confirm acts, checked
+  # again as a click is. Run Explore again and the stage card's Run another round open
+  # it on every click; Explore's Run another round opens it where it sends an answer, a
+  # comment or the open review comments. Confirm, Approve, Request changes,
+  # Accept as it is, Move back and Check again open it only where the stage runner finds
+  # that they start a run (`Apiary.Stages.starts/2`), and act at once otherwise.
   #
   # **People's comments** (`ApiaryWeb.WorkItemLive.Comments`) are in the Thread, in the
   # order they were written among its events, with the composer under it for a reader
@@ -87,10 +108,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   import ApiaryWeb.WorkItemComponents
 
-  alias Apiary.{Access, Artifacts, Processes, Runs, WorkItems}
+  alias Apiary.{Access, AccessKeys, Artifacts, Edition, Gateways, Processes, Runs, Stages}
+  alias Apiary.{WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.ExploreView
-  alias ApiaryWeb.{ArtifactComponents, HarnessComponents, UserAuth}
+  alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SpendDialog, UserAuth}
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, View, Workflow}
 
   @comment_events Comments.events() -- ["cancel_question"]
@@ -104,9 +126,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     {:at_gate, :confirm}
   ]
 
-  @actions ~w(undo ask_close close explore_again answer_draft answer confirm run_with_comments review_comment reply page_draft open_fold)
-  # The statuses where no run runs, so a member may write review comments
-  # (`Apiary.WorkItems.Moves.review_comment/4`).
+  @actions ~w(undo ask_close close explore_again answer_draft answer confirm reply page_draft open_fold)
+  # The statuses where no run runs, so the page shows Reply and its form page
+  # (`can_review?/3`).
   @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
   # The statuses of today's Explore (`Apiary.WorkItems.explore/3`) while the work item is
   # at Explore, its gate included.
@@ -153,7 +175,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
       <.review_page
         :if={@page}
-        kind={elem(@page, 0)}
         number={@number}
         comment={elem(@page, 1)}
         value={@page_value}
@@ -171,7 +192,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             }
             can_close={@can.close}
             can_act={@can.act}
-            stage_status={head_status(@flow, @item)}
+            stage_status={head_status(@flow, @item, @no_pool, @no_fit)}
           >
             <:track :if={@flow}>
               <StageComponents.process_track id="work-item-head-stages" page={@flow} />
@@ -229,6 +250,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             item_noun={@source.item_noun}
             now={@now}
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
+            no_pool={@no_pool}
+            commenting={@can.send and @proposal != nil}
           >
             <:badge :if={one_card?(@flow, @item)}>
               <StageComponents.stage_badge page={@flow} quiet={@item[:run][:liveness] == :quiet} />
@@ -302,6 +325,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             uninstalled={@source.uninstalled}
             item_noun={@source.item_noun}
             now={@now}
+            post_again={@may_post_again && "post_again"}
           />
           <.explore_tab
             :if={@tab == :explore}
@@ -314,16 +338,18 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             review_comments={@review_comments}
             can_act={@can.act}
             can_send={@can.send}
-            review_path={@can_review && review_path(@current_scope, @number)}
+            can_change={@can.change}
             reply_path={@can_review && (&reply_path(@current_scope, @number, &1))}
             backlog_off={@backlog_off}
             answers={@answers}
+            comment={@comment}
             errors={@errors}
             form_error={@form_error}
             submits={@submits}
             move_error={@move_error}
             item_noun={@source.item_noun}
             now={@now}
+            no_pool={@no_pool}
           >
             <:artifacts :if={@flow && @flow.explore}>
               <section
@@ -376,6 +402,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           />
         </:body>
       </.work_item_frame>
+      <SpendDialog.dialog :if={@spend} spend={@spend} />
     </Layouts.app>
     """
   end
@@ -409,6 +436,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            all_comments: false,
            comment_count: 0,
            answers: %{},
+           comment: "",
            errors: %{},
            form_error: nil,
            submits: 0,
@@ -431,7 +459,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            stage_notice: nil,
            move_error: nil,
            followed_run: nil,
-           quiet_timer: nil
+           quiet_timer: nil,
+           no_pool: nil,
+           no_fit: nil,
+           pool_listened: MapSet.new(),
+           spend: nil,
+           may_post_again: Access.can?(scope, :"work_item.take_in", scope.workspace)
          )}
     end
   end
@@ -447,9 +480,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
      |> ticketed()}
   end
 
-  # The form page of an address on Explore's tab: `?review=new` for Add review
-  # comment, `?reply=<id>` for Reply to that review comment; nil for none.
-  defp asked_page(:explore, %{"review" => "new"}), do: :comment
+  # The form page of an address on Explore's tab: `?reply=<id>` for Reply to that review
+  # comment; nil for none.
   defp asked_page(:explore, %{"reply" => id}) when is_binary(id), do: {:reply, id}
   defp asked_page(_tab, _params), do: nil
 
@@ -467,12 +499,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       )
 
   # The form page as the work item stands: one the reader may use now, else none, and
-  # the address patches back to Explore's tab. Add review comment needs a proposal to
-  # comment on. A form page already open stays open with its draft for a reader who may
-  # still write: while a run runs, with the line that the run started first under the
-  # field (`{:running, run}`). After a confirm, a close or an undo, it stays open with
-  # the line that nothing can be sent (`:changed`). Once the reader can send again, that
-  # line goes.
+  # the address patches back to Explore's tab. A form page already open stays open with
+  # its draft for a reader who may still write: while a run runs, with the line that the
+  # run started first under the field (`{:running, run}`). After a confirm, a close or an
+  # undo, it stays open with the line that nothing can be sent (`:changed`). Once the
+  # reader can send again, that line goes.
   defp form_page(%{assigns: %{asked_page: nil}} = socket), do: assign(socket, :page, nil)
 
   defp form_page(%{assigns: %{can_review: false, page: {_kind, _comment}}} = socket) do
@@ -505,11 +536,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp form_page(socket), do: open_page(socket)
 
-  defp open_page(%{assigns: %{asked_page: :comment, proposal: nil}} = socket), do: back(socket)
-
-  defp open_page(%{assigns: %{asked_page: :comment}} = socket),
-    do: assign(socket, :page, {:comment, nil})
-
   defp open_page(%{assigns: %{asked_page: {:reply, id}}} = socket) do
     case Enum.find(socket.assigns.review_comments, &(&1.id == id)) do
       nil -> back(socket)
@@ -523,7 +549,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     |> push_patch(to: tab_path(scope(socket), socket.assigns.number, :explore))
   end
 
-  defp page_title({:comment, _comment}), do: gettext("Add review comment")
   defp page_title({:reply, _comment}), do: gettext("Reply")
 
   # The address with no tab shows the tab the work item opens on. A later read leaves the
@@ -564,7 +589,57 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def handle_event(event, params, socket) when event in @comment_events,
     do: Comments.handle_event(event, params, socket)
 
-  def handle_event(event, %{"number" => number} = params, socket) when event in @actions do
+  def handle_event(event, %{"number" => _number} = params, socket) when event in @actions,
+    do: action(event, params, socket, :ask)
+
+  def handle_event(event, %{"number" => _number} = params, socket) when event in @stage_events,
+    do: stage_action(event, params, socket, :ask)
+
+  # Confirm in the spend's dialog: the action of the click that opened it, with the
+  # dialog's note, checked again as a click is (`ApiaryWeb.SpendDialog`).
+  def handle_event("spend_confirm", params, socket) do
+    case SpendDialog.take(socket.assigns.spend, params) do
+      nil ->
+        {:noreply, socket}
+
+      {event, params} when event in @actions ->
+        action(event, params, assign(socket, :spend, nil), :act)
+
+      {event, params} ->
+        stage_action(event, params, assign(socket, :spend, nil), :act)
+    end
+  end
+
+  def handle_event("spend_cancel", _params, socket), do: {:noreply, assign(socket, :spend, nil)}
+
+  def handle_event("show_earlier_comments", _params, socket),
+    do: {:noreply, socket |> assign(:all_comments, true) |> load()}
+
+  # Post again on a member's comment not posted: the page read again; for a person who may
+  # not take tickets in, who may, in a flash. A comment posted or gone meanwhile shows as
+  # it is.
+  def handle_event("post_again", %{"comment" => comment_id}, socket)
+      when is_binary(comment_id) do
+    scope = scope(socket)
+
+    case Apiary.Sources.post_again(scope, comment_id) do
+      {:error, :forbidden} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, ApiaryWeb.BacklogComponents.take_in_who_may(scope))
+         |> load()}
+
+      _posting_or_not ->
+        {:noreply, load(socket)}
+    end
+  end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # An action of the page, with `:ask` from a click: where it starts a run, the spend's
+  # dialog opens and nothing else happens (`spend/3`); with `:act`, from the dialog's
+  # Confirm, it acts.
+  defp action(event, %{"number" => number} = params, socket, mode) do
     # While the stage runner holds an escalation, Run another round on its card runs
     # Explore again.
     held? =
@@ -572,20 +647,232 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         escalated?(socket.assigns[:flow], status(socket.assigns[:item]))
 
     if number == Integer.to_string(socket.assigns.number) and not held?,
-      do: act(event, params, assign(socket, :move_error, nil)),
+      do: ask_or(mode, event, params, assign(socket, :move_error, nil), &act/3),
       else: {:noreply, socket}
   end
 
-  def handle_event(event, %{"number" => number} = params, socket) when event in @stage_events do
+  defp action(_event, _params, socket, _mode), do: {:noreply, socket}
+
+  defp stage_action(event, %{"number" => number} = params, socket, mode) do
     if number == Integer.to_string(socket.assigns.number) and socket.assigns.flow,
-      do: stage_act(event, params, socket),
+      do: ask_or(mode, event, params, socket, &stage_act/3),
       else: {:noreply, socket}
   end
 
-  def handle_event("show_earlier_comments", _params, socket),
-    do: {:noreply, socket |> assign(:all_comments, true) |> load()}
+  defp stage_action(_event, _params, socket, _mode), do: {:noreply, socket}
 
-  def handle_event(_event, _params, socket), do: {:noreply, socket}
+  defp ask_or(:act, event, params, socket, act), do: act.(event, params, socket)
+
+  defp ask_or(:ask, event, params, socket, act) do
+    case spend(event, params, socket) do
+      nil -> act.(event, params, socket)
+      spend -> {:noreply, socket |> kept(event, params) |> assign(:spend, spend)}
+    end
+  end
+
+  # The answers and the comment as the click sent them, kept while the dialog is open.
+  defp kept(socket, "answer", params), do: drafts(socket, params)
+  defp kept(socket, _event, _params), do: socket
+
+  ## The spends
+
+  # The dialog a click of `event` opens before it acts, or nil where the click starts no
+  # run. Run Explore again and the stage card's Run another round start one on every
+  # click, and Explore's Run another round where it sends something (`round_sends?/3`).
+  # Confirm, Approve, Request changes, Accept as it is, Move back and Check again start
+  # one where the stage they enter or run again starts a run, as the stage runner finds
+  # it at the click (`Apiary.Stages.starts/2`): a stage with no workflow starts none. A
+  # click that acts on nothing, as a questions form with an error, opens none.
+  defp spend("explore_again", params, socket) do
+    SpendDialog.ask("explore_again", params,
+      title: gettext("Run Explore again?"),
+      action: gettext("Run Explore again"),
+      line: run_line(socket, :next_run),
+      return_to: "work-item-step-again"
+    )
+  end
+
+  defp spend("answer", params, socket) do
+    if round_sends?(socket, drafted(params), comment_of(params)) do
+      SpendDialog.ask("answer", params,
+        title: gettext("Run another round?"),
+        action: gettext("Run another round"),
+        line: run_line(socket, :next_run),
+        return_to:
+          if(status(socket.assigns.item) == :confirm,
+            do: "work-item-explore-gate-send",
+            else: "work-item-explore-questions-go"
+          )
+      )
+    end
+  end
+
+  defp spend("confirm", params, socket) do
+    ask_if_run("confirm", params, socket, :approve,
+      title: gettext("Confirm?"),
+      action: gettext("Confirm"),
+      return_to: "work-item-explore-gate-go"
+    )
+  end
+
+  # A click on a stage the work item has left opens none: the act shows the notice.
+  defp spend(event, params, socket) when event in @stage_events do
+    seen = text(params["seen"])
+
+    if seen == current_stage(socket) and Stages.at_stage?(socket.assigns.row, seen),
+      do: stage_spend(event, params, socket)
+  end
+
+  defp spend(_event, _params, _socket), do: nil
+
+  defp stage_spend("stage_approve", params, socket) do
+    stage = socket.assigns.flow.stage.name
+
+    ask_if_run("stage_approve", params, socket, :approve,
+      title: gettext("Approve %{stage}?", stage: stage),
+      action: gettext("Approve %{stage}", stage: stage),
+      return_to: "work-item-stage-gate-approve-go"
+    )
+  end
+
+  defp stage_spend("stage_request_changes", params, socket) do
+    if note(params) do
+      ask_if_run("stage_request_changes", params, socket, :request_changes,
+        title: gettext("Request changes?"),
+        action: gettext("Request changes"),
+        return_to: "work-item-stage-gate-changes-go",
+        note: [optional: false]
+      )
+    end
+  end
+
+  defp stage_spend("stage_resolve", %{"how" => "accept"} = params, socket) do
+    ask_if_run("stage_resolve", params, socket, :accept,
+      title: gettext("Accept as it is?"),
+      action: gettext("Accept as it is"),
+      return_to: "work-item-stage-escalation-accept",
+      note: escalation_note()
+    )
+  end
+
+  defp stage_spend("stage_resolve", %{"how" => "another_round"} = params, socket) do
+    SpendDialog.ask("stage_resolve", params,
+      title: gettext("Run another round?"),
+      action: gettext("Run another round"),
+      line: run_line(socket, :another_round),
+      return_to: "work-item-stage-escalation-another",
+      note: escalation_note()
+    )
+  end
+
+  defp stage_spend("stage_resolve", %{"how" => "move_back", "stage" => stage} = params, socket)
+       when is_binary(stage) do
+    ask_if_run("stage_resolve", params, socket, {:move, stage},
+      title: gettext("Move back?"),
+      action: gettext("Move back"),
+      return_to: "work-item-stage-escalation-move",
+      note: escalation_note()
+    )
+  end
+
+  defp stage_spend("stage_move", %{"stage" => stage} = params, socket) when is_binary(stage) do
+    ask_if_run("stage_move", params, socket, {:move, stage},
+      title: gettext("Move back?"),
+      action: gettext("Move back"),
+      return_to: "work-item-stage-move-go",
+      note: []
+    )
+  end
+
+  defp stage_spend("stage_check", params, socket) do
+    words =
+      if match?({:failed, _message}, socket.assigns.stage_check),
+        do: {gettext("Try again?"), gettext("Try again")},
+        else: {gettext("Check again?"), gettext("Check again")}
+
+    ask_if_run("stage_check", params, socket, :found,
+      title: elem(words, 0),
+      action: elem(words, 1),
+      return_to: "work-item-stage-check-go"
+    )
+  end
+
+  defp stage_spend(_event, _params, _socket), do: nil
+
+  # The note of the escalation card, which goes to the next run.
+  defp escalation_note,
+    do: [hint: gettext("A note you add goes to the next run as work item data.")]
+
+  # The dialog of `event` where `act` starts a run, named by its workflow; else nil.
+  defp ask_if_run(event, params, socket, act, opts) do
+    case Stages.starts(socket.assigns.row, act) do
+      {:run, workflow} ->
+        line = SpendDialog.run_line({:workflow, workflow}, scope(socket).workspace)
+        SpendDialog.ask(event, params, [line: line] ++ opts)
+
+      :none ->
+        nil
+    end
+  end
+
+  # What `act` starts: a run of its workflow where the stage runner finds it, else the
+  # next run of the work item's stage, or of Explore with no stage.
+  defp run_line(socket, act) do
+    what =
+      case Stages.starts(socket.assigns.row, act) do
+        {:run, workflow} -> {:workflow, workflow}
+        :none -> {:stage, stage_now(socket.assigns.flow)}
+      end
+
+    SpendDialog.run_line(what, scope(socket).workspace)
+  end
+
+  defp stage_now(%{stage: %{name: name}}) when is_binary(name), do: name
+  defp stage_now(_flow), do: gettext("Explore")
+
+  # Whether Run another round sends anything: an answer, a changed decision, the
+  # comment, or, with none, the open review comments (`comments_only?/1`).
+  defp round_sends?(socket, draft, comment) do
+    case draft_answers(socket, draft) do
+      {:ok, [_ | _]} -> true
+      {:ok, []} -> comment != nil or comments_only?(socket)
+      {:error, _errors} -> false
+    end
+  end
+
+  defp draft_answers(socket, draft) do
+    answers(
+      draft,
+      socket.assigns.questions,
+      status(socket.assigns.item),
+      socket.assigns.can.change
+    )
+  end
+
+  @doc false
+  # answers/4 is the answers the page sends for `draft`, Run another round's draft
+  # (`answer_list/2`). It reads the draft for these questions: the open questions, only
+  # where the questions wait (`status` `:questions`), and the decided questions, where
+  # the questions or the proposal wait (`:confirm`), for a reader who may change them
+  # (`can_change`, `can/4`). `answer_list/2` keeps a decided question only where the
+  # draft changes it.
+  @spec answers(map, [map], atom, boolean) ::
+          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => atom}}
+  def answers(draft, questions, status, can_change) do
+    open = if status == :questions, do: Enum.filter(questions, &(&1.state == :open)), else: []
+
+    decided =
+      if status in [:questions, :confirm] and can_change,
+        do: Enum.filter(questions, &decided?/1),
+        else: []
+
+    answer_list(draft, open ++ decided)
+  end
+
+  defp comments_only?(socket),
+    do:
+      socket.assigns.can.send and
+        Enum.any?(socket.assigns.review_comments, &(&1.state == :open))
 
   defp act("ask_close", _params, socket), do: {:noreply, assign(socket, :asking, :close)}
 
@@ -601,77 +888,41 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end)
   end
 
-  # The questions form as the reader changes it.
-  defp act("answer_draft", params, socket),
-    do: {:noreply, assign(socket, :answers, drafted(params))}
+  # The questions form, or the gate's comment, as the reader changes it.
+  defp act("answer_draft", params, socket), do: {:noreply, drafts(socket, params)}
 
-  # Run with answers: the answers given, each question with an option, Give your own
-  # option, or a note; a question with neither stays open. With every answer blank, the
-  # open review comments go to the next run, as from the gate, where the reader may send
-  # them (`work_item.review_comment`, `can/4`); with none open, or for any other reader,
-  # nothing is sent.
+  # Run another round, from the questions form or the gate: in one move
+  # (`Apiary.WorkItems.another_round/4`), the answers given, each question with an
+  # option, Give your own option, or a note, and the comment on the whole proposal; the
+  # next run reads them with every open review comment. A question with neither stays
+  # open. With no answer and no comment, the open review comments go alone, where the
+  # reader may send them (`work_item.review_comment`, `can/4`); under the questions, with
+  # none open, or for any other reader, nothing is sent; at the gate the move refuses it.
   defp act("answer", params, socket) do
     draft = drafted(params)
-    open = Enum.filter(socket.assigns.questions, &(&1.state == :open))
+    comment = comment_of(params)
+    socket = assign(socket, :comment, params["comment"] || socket.assigns.comment)
 
-    case answer_list(draft, open) do
+    case draft_answers(socket, draft) do
       {:error, errors} ->
         {:noreply, refused_answers(socket, draft, errors, nil)}
 
-      {:ok, []} ->
-        if socket.assigns.can.send and
-             Enum.any?(socket.assigns.review_comments, &(&1.state == :open)),
-           do: comments_only(socket, draft),
-           else: {:noreply, refused_answers(socket, draft, %{}, :blank)}
+      {:ok, []} when comment == nil ->
+        if status(socket.assigns.item) == :questions and not comments_only?(socket),
+          do: blank_round(socket, draft),
+          else: another_round(socket, draft, [], nil)
 
       {:ok, answers} ->
-        with_attempt(socket, fn attempt ->
-          scope = scope(socket)
-
-          case WorkItems.answer(scope, socket.assigns.row, attempt, answers) do
-            {:ok, _work_item} ->
-              {:noreply, socket |> assign(answers: %{}, errors: %{}, form_error: nil) |> load()}
-
-            {:error, {:invalid, %{} = errors}} ->
-              {:noreply, refused_by_id(socket, draft, errors)}
-
-            {:error, reason} when reason in [{:invalid, :form}, :stale, :not_waiting] ->
-              {:noreply, socket |> refused_answers(draft, %{}, :stale) |> refresh()}
-
-            {:error, reason} ->
-              {:noreply, refused_send(socket, draft, reason)}
-          end
-        end)
+        another_round(socket, draft, answers, comment)
     end
   end
 
+  # Approve is disabled while a changed decision is a draft; a click that reaches the
+  # page then does nothing.
   defp act("confirm", _params, socket) do
-    with_attempt(socket, fn attempt ->
-      done(socket, WorkItems.confirm(scope(socket), socket.assigns.row, attempt))
-    end)
-  end
-
-  # Send review comments: the next run, with every open review comment.
-  defp act("run_with_comments", _params, socket) do
-    with_attempt(socket, fn attempt ->
-      case WorkItems.send_review_comments(scope(socket), socket.assigns.row, attempt) do
-        {:ok, _work_item} = sent -> done(socket, sent)
-        {:error, :not_approver} -> {:noreply, not_approver(socket)}
-        {:error, reason} -> {:noreply, refused_send(socket, nil, reason)}
-      end
-    end)
-  end
-
-  defp act("review_comment", params, socket) do
-    text = text_of(params)
-
-    with_attempt(socket, fn attempt ->
-      written(
-        socket,
-        text,
-        WorkItems.review_comment(scope(socket), socket.assigns.row, attempt, text)
-      )
-    end)
+    if changed_decision?(socket),
+      do: {:noreply, socket},
+      else: confirm(socket)
   end
 
   # A reply goes to the review comment of the open Reply page; a `"reply"` with the id of
@@ -685,8 +936,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           written(
             socket,
             text,
-            WorkItems.reply(scope(socket), socket.assigns.row, attempt, id, text),
-            :reply_blank
+            WorkItems.reply(scope(socket), socket.assigns.row, attempt, id, text)
           )
         end)
 
@@ -720,11 +970,25 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # A review comment or a reply as the reader writes it, on its form page.
+  # A reply as the reader writes it, on its form page.
   defp act("page_draft", params, socket),
     do: {:noreply, assign(socket, :page_value, text_of(params))}
 
   defp act(_event, _params, socket), do: {:noreply, socket}
+
+  defp confirm(socket) do
+    with_attempt(socket, fn attempt ->
+      done(socket, WorkItems.confirm(scope(socket), socket.assigns.row, attempt))
+    end)
+  end
+
+  defp changed_decision?(socket) do
+    socket.assigns.can.change and
+      Enum.any?(
+        socket.assigns.questions,
+        &decision_changed?(&1, socket.assigns.answers[&1.id])
+      )
+  end
 
   # The workflow model's actions. Each form sends the stage the reader saw (`seen`); the
   # page reads the work item again and acts only while it is still in that stage, asked
@@ -980,12 +1244,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
 
-  # Send review comments at the gate, or Run with answers with every answer blank, where
-  # the page counted the reader as an approver (`can/4`) and the send's `Apiary.Access`
+  # Run another round, at the gate or under the questions, where the page counted the
+  # reader as an approver (`can/4`) and the send's `Apiary.Access`
   # check does not, as when the approver list or the reader's role changed after the page
   # read the work item: the page read again, with the stage runner's line for that error
   # (`refused/2`) under the gate or the questions form, where the page has a stage card
-  # (`flow`); with none, no line shows. A reader who is not an approver sees no gate.
+  # (`flow`); with none, no line shows. A reader who may not approve, send or change a
+  # decision sees no gate.
   defp not_approver(socket) do
     socket = refresh(socket)
 
@@ -999,8 +1264,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # A send of Run with answers or Send review comments that wrote nothing, for `reason`:
-  # the line for it under the gate or the questions form (`move_error`, `send_error/1`),
+  # A send of Run another round that wrote nothing, for `reason`: the line for it under
+  # the gate or the questions form (`move_error`, `send_error/1`),
   # and the questions form's `draft` kept (nil for none). The page keeps what it drew for
   # an artifact store out of reach (`:store_unavailable`), where reading the work item
   # again would need the store; for a run of the page's attempt that started first
@@ -1031,17 +1296,36 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # Run with answers with every answer blank: the next run, with every open review
-  # comment, and the questions left open. An error shows as for Send review comments.
-  defp comments_only(socket, draft) do
+  # Run another round's move, with the answers and the comment (nil for none); the
+  # drafts stay where it writes nothing. A refused comment shows its line under the
+  # form or the gate, a refused answer under its question. Where answers were sent, a
+  # refusal of the form or a work item that changed shows that the questions changed;
+  # without answers, a refusal shows as `refused_send/3` words it.
+  defp another_round(socket, draft, answers, comment) do
     with_attempt(socket, fn attempt ->
-      case WorkItems.send_review_comments(scope(socket), socket.assigns.row, attempt) do
+      round = %{answers: answers, comment: comment}
+
+      case WorkItems.another_round(scope(socket), socket.assigns.row, attempt, round) do
         {:ok, _work_item} ->
-          {:noreply, socket |> assign(answers: %{}, errors: %{}, form_error: nil) |> load()}
+          {:noreply,
+           socket |> assign(answers: %{}, comment: "", errors: %{}, form_error: nil) |> load()}
+
+        {:error, {:invalid, %{comment: error}}} ->
+          {:noreply,
+           socket
+           |> assign(answers: draft, errors: %{}, form_error: nil)
+           |> assign(:move_error, comment_error(error, :comment))}
+
+        {:error, {:invalid, %{} = errors}} ->
+          {:noreply, refused_by_id(socket, draft, errors)}
 
         {:error, :not_approver} ->
           {:noreply,
            socket |> assign(answers: draft, errors: %{}, form_error: nil) |> not_approver()}
+
+        {:error, reason}
+        when answers != [] and reason in [{:invalid, :form}, :stale, :not_waiting] ->
+          {:noreply, socket |> refused_answers(draft, %{}, :stale) |> refresh()}
 
         {:error, reason} ->
           {:noreply, refused_send(socket, draft, reason)}
@@ -1049,56 +1333,62 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end)
   end
 
-  # A review comment or a reply written: back to Explore's tab. Otherwise the draft stays
-  # in the field, with why under it: a text that fails the check (`blank` is the error for
-  # an empty one), a reader who is not an approver of the stage, and the refusals of
-  # `refused_send/3`, read again as there. At the run limit (`:used_up`) no line shows.
-  defp written(socket, text, result, blank \\ :blank)
+  # Run another round with nothing to send: the line under the questions form.
+  defp blank_round(socket, draft), do: {:noreply, refused_answers(socket, draft, %{}, :blank)}
 
-  defp written(socket, _text, {:ok, _work_item}, _blank) do
+  # The drafts of the questions form and of the comment, as the reader changes them.
+  defp drafts(socket, params) do
+    socket
+    |> assign(:answers, drafted(params))
+    |> assign(:comment, if(is_binary(params["comment"]), do: params["comment"], else: ""))
+  end
+
+  # The comment on the whole proposal as the form sent it; nil for none or a blank one.
+  defp comment_of(params), do: text(params["comment"])
+
+  # A reply written: back to Explore's tab. Otherwise the draft stays in the field, with
+  # why under it: a text that fails the check (`:reply_blank` for an empty one), a reader
+  # who is not an approver of the stage, and the refusals of `refused_send/3`, read again
+  # as there. At the run limit (`:used_up`) no line shows.
+  defp written(socket, _text, {:ok, _work_item}) do
     socket = assign(socket, page_value: "", page_error: nil, asked_page: nil, page: nil)
     {:noreply, push_patch(socket, to: tab_path(scope(socket), socket.assigns.number, :explore))}
   end
 
-  defp written(socket, text, {:error, {:invalid, %{comment: error}}}, blank),
-    do: {:noreply, page_refused(socket, text, if(error == :blank, do: blank, else: error))}
+  defp written(socket, text, {:error, {:invalid, %{comment: error}}}),
+    do: {:noreply, page_refused(socket, text, if(error == :blank, do: :reply_blank, else: error))}
 
   # On a form page kept after a confirm (`:changed`), the Copy line stays: at that status
   # an approver's send is refused too. No read again here: at a status in `@no_run` it
   # would go back to the tab and lose the text.
-  defp written(
-         %{assigns: %{page_error: :changed}} = socket,
-         text,
-         {:error, :not_approver},
-         _blank
-       ),
-       do: {:noreply, page_refused(socket, text, :changed)}
+  defp written(%{assigns: %{page_error: :changed}} = socket, text, {:error, :not_approver}),
+    do: {:noreply, page_refused(socket, text, :changed)}
 
-  defp written(socket, text, {:error, :not_approver}, _blank),
+  defp written(socket, text, {:error, :not_approver}),
     do: {:noreply, page_refused(socket, text, :not_approver)}
 
-  defp written(socket, text, {:error, :store_unavailable}, _blank),
+  defp written(socket, text, {:error, :store_unavailable}),
     do: {:noreply, page_refused(socket, text, :store_unavailable)}
 
-  defp written(socket, text, {:error, :running}, _blank),
+  defp written(socket, text, {:error, :running}),
     do: {:noreply, page_refused(socket, text, {:running, socket.assigns.item.run})}
 
-  defp written(socket, text, {:error, :used_up}, _blank),
+  defp written(socket, text, {:error, :used_up}),
     do: {:noreply, socket |> assign(page_value: text, page_error: nil) |> refresh()}
 
-  defp written(socket, text, {:error, reason}, _blank) when reason in [:stale, :not_waiting],
+  defp written(socket, text, {:error, reason}) when reason in [:stale, :not_waiting],
     do: {:noreply, socket |> page_refused(text, :stale) |> refresh()}
 
   # The page reads the work item again, so the open form page has the line that nothing
   # can be sent, which a reload would lose with the text.
-  defp written(socket, text, {:error, :not_live}, _blank) do
+  defp written(socket, text, {:error, :not_live}) do
     {:noreply, socket |> UserAuth.reload_scope() |> page_refused(text, :not_live) |> refresh()}
   end
 
-  defp written(socket, text, {:error, reason}, _blank) when reason in [:forbidden, :not_found],
+  defp written(socket, text, {:error, reason}) when reason in [:forbidden, :not_found],
     do: {:noreply, socket |> UserAuth.reload_scope() |> page_refused(text, reason)}
 
-  defp written(socket, text, {:error, _refused}, _blank),
+  defp written(socket, text, {:error, _refused}),
     do: {:noreply, page_refused(socket, text, :not_saved)}
 
   defp page_refused(socket, text, error) do
@@ -1187,13 +1477,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # nil, "note" => text or nil}]}`. An option picked is its title, with the note where
   # one is written; Give your own option (`"own"`) is a nil option and needs a note; a
   # note alone is a nil option with it. A question with nothing picked and an empty field
-  # is left out, and stays open. `{:error, errors}` by question id, `:note_required` for
-  # Give your own option with an empty field.
+  # is left out, and stays open. A decided question (with a `:decision`) is left out
+  # where the draft does not change it: the run's option, or nothing, picked, and an
+  # empty field (`ApiaryWeb.WorkItemComponents.decision_changed?/2`). `{:error, errors}`
+  # by question id, `:note_required` for Give your own option with an empty field.
   @spec answer_list(map, [map]) ::
           {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => atom}}
   def answer_list(draft, open) when is_map(draft) and is_list(open) do
     checked =
-      for %{id: id, options: options} <- open do
+      for %{id: id, options: options} = question <- open,
+          not decided?(question) or decision_changed?(question, draft[id]) do
         given = Map.get(draft, id, %{})
         note = if blank?(given["note"]), do: nil, else: given["note"]
 
@@ -1211,6 +1504,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       errors -> {:error, errors}
     end
   end
+
+  defp decided?(question), do: question[:state] == :decided and question[:decision] != nil
 
   # The option of a choice: `:own`, an option's title by its place from 1, or nil.
   defp picked("own", _options), do: :own
@@ -1244,6 +1539,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   def handle_info({:artifact_pushed, _work_item_id, _version_id}, socket) do
     if socket.assigns.flow,
+      do: {:noreply, changed(socket)},
+      else: {:noreply, socket}
+  end
+
+  # A machine enrolled a key on a pool that serves the workspace's runs, or on its
+  # gateway, while no pool could take the queued run.
+  def handle_info({:key_enrolled, %{node_id: _node_id}}, socket) do
+    if socket.assigns.no_pool,
       do: {:noreply, changed(socket)},
       else: {:noreply, socket}
   end
@@ -1361,7 +1664,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         previous: explore.previous,
         explore: read,
         names: names,
-        item: with_confirmers(page.work_item, confirmers),
+        item:
+          page.work_item
+          |> with_confirmers(confirmers)
+          |> Map.put(
+            :taken_in_comment,
+            explore.status == :queued and WorkItems.taken_in_comment?(scope, row)
+          ),
         work_item: row,
         earlier_runs: page.earlier_runs,
         earlier_take_ins: page.earlier_take_ins,
@@ -1377,10 +1686,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         deleting_comment: Comments.still_asking(socket.assigns.deleting_comment, thread),
         can: can(scope, row, explore.status, flow),
         flow: flow,
-        artifacts: if(flow, do: Artifacts.list(row), else: [])
+        artifacts: if(flow, do: Artifacts.list(row), else: []),
+        no_pool: no_pool(scope, page.work_item),
+        no_fit: no_fit(scope, row, page.work_item)
       )
       |> form_page()
       |> follow_run()
+      |> listen_to_pools()
     else
       _gone -> gone(socket)
     end
@@ -1487,17 +1799,28 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # What the reader may do here: undo, close, and act at the step it stands at. While the
   # stage runner holds an escalation, its card offers Run another round and Close in
   # place of the step card's Run Explore again and Close work item…
-  # The head's status under the workflow model: nil keeps the words of the work item's
-  # status, for one that ended, and at Explore while a run, its questions or its gate
-  # are what the stage is at; anywhere else, the stage and its state.
-  defp head_status(nil, _item), do: nil
-  defp head_status(%{ended: true}, _item), do: nil
+  # The head's status: while no pool can take the queued run, that, at Explore and at a
+  # later stage alike; while pools serve the workspace's runs and none of them can start
+  # the run's machine type, that type. Else, under the workflow model: nil keeps the
+  # words of the work item's status, for one that ended, and at Explore while a run, its questions or its
+  # gate are what the stage is at; anywhere else, the stage and its state.
+  defp head_status(_flow, _item, %{}, _no_fit), do: no_pool_status()
 
-  defp head_status(%{at_explore: true, state: state}, %{status: status})
+  defp head_status(_flow, _item, nil, name) when is_binary(name),
+    do: %{
+      words: gettext("Waiting: no pool can start machine type %{name}", name: name),
+      mark: :err
+    }
+
+  defp head_status(nil, _item, nil, nil), do: nil
+  defp head_status(%{ended: true}, _item, nil, nil), do: nil
+
+  defp head_status(%{at_explore: true, state: state}, %{status: status}, nil, nil)
        when state in [:running, :waiting_answers, :at_gate] and status in @explore_statuses,
        do: nil
 
-  defp head_status(flow, _item), do: flow |> StageComponents.head_status() |> head_run_link(flow)
+  defp head_status(flow, _item, nil, nil),
+    do: flow |> StageComponents.head_status() |> head_run_link(flow)
 
   # While the stage runs, the header's status links the run it is about, where that run
   # has a path: only Explore's runs do, at Explore (`Workflow.page/2`). The Work items list
@@ -1527,6 +1850,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       send:
         live? and status in [:questions, :confirm] and
           Access.can?(scope, :"work_item.review_comment", row),
+      change:
+        live? and status in [:questions, :confirm] and
+          Access.can?(scope, :"work_item.answer", row),
       act:
         live? and not is_nil(action) and not escalated?(flow, status) and
           Access.can?(scope, action, row)
@@ -1618,6 +1944,84 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp with_confirmers(%{kind: _other} = event, _confirmers), do: event
   defp with_confirmers(work_item, confirmers), do: Map.put(work_item, :confirmers, confirmers)
 
+  # While the work item's latest run waits in the queue, before a pool claims it (no state
+  # yet), whatever Explore's status (a run after a move back to Explore, or a later
+  # stage's run, follows a confirmation), and no pool that serves the workspace's runs is
+  # ready by the Machines set-up step's rule (`c:Apiary.Edition.machines_ready/1`): the
+  # step's lines of those pools (`Apiary.WorkspaceSetup.pools/1`), each with the reason it
+  # is not ready, the workspace's name, and its Machines page for a reader who may open it
+  # (`node.read`). Else nil. The take in's first run before it is queued (`workspace_id`
+  # nil) is not in the queue.
+  defp no_pool(scope, %{run: %{place: :queued, state: nil, workspace_id: id}})
+       when is_binary(id) do
+    workspace = scope.workspace
+
+    if is_nil(Edition.machines_ready(workspace)) do
+      %{
+        pools: WorkspaceSetup.pools(workspace),
+        workspace: workspace.name,
+        path:
+          if(Access.can?(scope, :"node.read", workspace),
+            do: ~p"/#{scope.organisation}/#{workspace}/machines"
+          )
+      }
+    end
+  end
+
+  defp no_pool(_scope, _item), do: nil
+
+  # While the work item's latest run waits in the queue, and no pool that serves the
+  # workspace's runs can start its machine type, the type's name
+  # (`Apiary.MachineTypes.unserved/2`).
+  defp no_fit(scope, %{id: id}, %{run: %{place: :queued, state: nil, workspace_id: ws}})
+       when is_binary(ws),
+       do: Apiary.MachineTypes.unserved(scope.workspace, id)
+
+  defp no_fit(_scope, _row, _item), do: nil
+
+  # While no pool can take the queued run, the page listens to the access keys of each
+  # pool that serves the workspace's runs and of the gateway its choice leads to
+  # (`Apiary.Gateways.chosen/1`), once per node (`Apiary.AccessKeys.subscribe/2`), as the
+  # Machines set-up step listens to its pools, and reads everything again when a machine
+  # enrols a key on one. A topic the scope may not read is not listened to: the instance's
+  # pool's and gateway's for anyone but an instance admin, and a node of another
+  # organisation. No other change of a pool or a gateway sends a message. Before the
+  # browser connects, the page reads no gateway and listens to nothing.
+  defp listen_to_pools(%{assigns: %{no_pool: %{pools: lines}}} = socket) do
+    if connected?(socket), do: listen_to(socket, lines), else: socket
+  end
+
+  defp listen_to_pools(socket), do: socket
+
+  defp listen_to(socket, lines) do
+    scope = scope(socket)
+    nodes = for %{pool: %{} = pool} <- lines, node <- [pool, Gateways.chosen(pool)], do: node
+
+    listened =
+      for %{id: id} = node <- nodes,
+          id not in socket.assigns.pool_listened,
+          listenable?(scope, node),
+          reduce: socket.assigns.pool_listened do
+        acc ->
+          case AccessKeys.subscribe(scope, node) do
+            :ok -> MapSet.put(acc, id)
+            {:error, _refused} -> acc
+          end
+      end
+
+    assign(socket, :pool_listened, listened)
+  end
+
+  # The nodes whose topic `Apiary.AccessKeys.subscribe/2` has a clause for: of the
+  # scope's workspace, a gateway of its organisation, or a node of the instance.
+  defp listenable?(%{workspace: %{id: id}}, %{workspace_id: id}), do: true
+
+  defp listenable?(%{organisation: %{id: id}}, %{workspace_id: nil, organisation_id: id}),
+    do: true
+
+  defp listenable?(_scope, %{workspace_id: nil, organisation_id: nil}), do: true
+  defp listenable?(_scope, _node), do: false
+
   # Details' Runs under the workflow model, while the newest run waits for a machine and
   # none has started: that run, in place of None yet; nil for a run without its attempt.
   defp queued_run(%{runs: [%{shows: :queued} | _]}, %{run: %{attempt: attempt} = run})
@@ -1666,19 +2070,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp scope(socket), do: socket.assigns.current_scope
 
-  # Whether the page shows Add review comment, Reply and their form pages: while no run
-  # runs, to a reader `Apiary.Access` allows `work_item.review_comment`, which only the
-  # stage's approvers have where it lists them. The move
-  # (`Apiary.WorkItems.Moves.review_comment/4`) checks the same action, so a page read
-  # before the reader lost it shows `{:error, :not_approver}` on the send.
+  # Whether the page shows Reply and its form page: while no run runs, to a reader
+  # `Apiary.Access` allows `work_item.review_comment`, which only the stage's approvers
+  # have where it lists them. The move (`Apiary.WorkItems.Moves.reply/5`) checks the
+  # same action, so a page read before the reader lost it shows
+  # `{:error, :not_approver}` on the send.
   defp can_review?(scope, row, status),
     do: status in @no_run and Access.can?(scope, :"work_item.review_comment", row)
 
   defp running?(%{status: status}), do: status in [:queued, :running]
   defp running?(_item), do: false
-
-  defp review_path(scope, number),
-    do: tab_path(scope, number, :explore) <> "?" <> URI.encode_query(review: "new")
 
   defp reply_path(scope, number, id),
     do: tab_path(scope, number, :explore) <> "?" <> URI.encode_query(reply: id)

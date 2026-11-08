@@ -7,7 +7,9 @@ defmodule Apiary.PublicGitServer do
   version=2`, else version 0.
 
   A request no stub answers gets a `404` (`Apiary.PublicGitStub`): a repository that is
-  not public.
+  not public. The Qory harness's address is the exception: every test, with or without a
+  stub, reads it from the fixture repository (`Apiary.QoryHarnessFixture`), unless the
+  test serves that address itself.
   """
 
   import ExUnit.Callbacks, only: [on_exit: 1]
@@ -28,9 +30,17 @@ defmodule Apiary.PublicGitServer do
   branches at it.
   """
   def repository!(files, opts \\ []) do
+    repository = build!(files, opts)
+    on_exit(fn -> File.rm_rf!(repository.dir) end)
+    repository
+  end
+
+  @doc """
+  build!/2 is `repository!/2` outside a test: the caller removes the folder, `dir`.
+  """
+  def build!(files, opts \\ []) do
     dir = Path.join(System.tmp_dir!(), "public-git-#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
-    on_exit(fn -> File.rm_rf!(dir) end)
 
     git!(dir, ["init", "-q", "-b", "main"])
     git!(dir, ["config", "uploadpack.allowAnySHA1InWant", "true"])
@@ -67,11 +77,7 @@ defmodule Apiary.PublicGitServer do
   def serve(repositories, opts \\ []) do
     test = self()
 
-    folders =
-      Map.new(repositories, fn {address, dir} ->
-        uri = URI.parse(address)
-        {{uri.host, String.trim_trailing(uri.path, "/")}, dir}
-      end)
+    folders = Map.merge(Apiary.QoryHarnessFixture.folders(), folders(repositories))
 
     Req.Test.stub(Apiary.Harnesses.PublicGit, fn conn ->
       [host] = Plug.Conn.get_req_header(conn, "host")
@@ -85,7 +91,22 @@ defmodule Apiary.PublicGitServer do
     end)
   end
 
-  defp answer(conn, folders, host, opts) do
+  @doc """
+  folders/1 is the folders of `repositories`, a map of `"https://host/path"` to a
+  repository's folder, by host and path, as `serve/2` and `answer/4` take them.
+  """
+  def folders(repositories) do
+    Map.new(repositories, fn {address, dir} ->
+      uri = URI.parse(address)
+      {{uri.host, String.trim_trailing(uri.path, "/")}, dir}
+    end)
+  end
+
+  @doc """
+  answer/4 answers a git request to a repository of `folders` (`folders/1`) at `host`,
+  as `serve/2` does, else `404`.
+  """
+  def answer(conn, folders, host, opts) do
     version =
       if opts[:version] != 0 and
            Plug.Conn.get_req_header(conn, "git-protocol") == ["version=2"],
@@ -157,7 +178,9 @@ defmodule Apiary.PublicGitStub do
   @moduledoc """
   PublicGitStub is the plug `Apiary.Harnesses.PublicGit`'s requests reach in the tests:
   the `Req.Test` stub of `Apiary.Harnesses.PublicGit` where the test set one
-  (`Apiary.PublicGitServer.serve/2`), else a `404`, a repository that is not public.
+  (`Apiary.PublicGitServer.serve/2`), else the fixture repository of the Qory harness at
+  its address (`Apiary.QoryHarnessFixture`), and a `404`, a repository that is not
+  public, at any other.
   """
 
   @behaviour Plug
@@ -170,8 +193,13 @@ defmodule Apiary.PublicGitStub do
     Req.Test.call(conn, Apiary.Harnesses.PublicGit)
   rescue
     error in RuntimeError ->
-      if error.message =~ ~r/cannot find mock\/stub|no mock or stub/,
-        do: Plug.Conn.send_resp(conn, 404, ""),
-        else: reraise(error, __STACKTRACE__)
+      if error.message =~ ~r/cannot find mock\/stub|no mock or stub/ do
+        [host] = Plug.Conn.get_req_header(conn, "host")
+        host = host |> String.split(":") |> hd()
+
+        Apiary.PublicGitServer.answer(conn, Apiary.QoryHarnessFixture.folders(), host, [])
+      else
+        reraise(error, __STACKTRACE__)
+      end
   end
 end

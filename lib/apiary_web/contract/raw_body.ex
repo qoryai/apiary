@@ -45,8 +45,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   # The integration contract's signed paths served here, read the same way where
   # `served?/1` holds, as below: `POST /v1/adapter`, `POST /v1/source-collections`,
   # `POST /v1/source-items`, `POST /v1/sources/disconnect`,
-  # `POST /v1/source-items/comments`, `POST /v1/adapter/secrets`, `POST /v1/grants` and
-  # `POST /v1/grants/end`.
+  # `POST /v1/source-items/comments`, `POST /v1/adapter/secrets`, `POST /v1/grants`,
+  # `POST /v1/grants/end` and `POST /v1/work-items/changes/failed`.
   @adapter_paths [
     ["v1", "adapter"],
     ["v1", "source-collections"],
@@ -59,6 +59,7 @@ defmodule ApiaryWeb.Contract.RawBody do
     ["v1", "adapter", "secrets"],
     ["v1", "grants", "end"]
   ]
+  @adapter_four_paths [["v1", "work-items", "changes", "failed"]]
   # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
   # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/release`, `/machine-log` and
@@ -157,7 +158,13 @@ defmodule ApiaryWeb.Contract.RawBody do
     end
   end
 
-  defp kept([_, _, _, _] = path_info), do: path_info |> Enum.map(&decode/1) |> of_a_run()
+  defp kept([_, _, _, _] = path_info) do
+    case Enum.map(path_info, &decode/1) do
+      path when path in @adapter_four_paths -> :adapter
+      path -> of_a_run(path)
+    end
+  end
+
   defp kept(_path_info), do: nil
 
   defp of_a_run(["v1", "runs", _run_id, "attach"]), do: :attach

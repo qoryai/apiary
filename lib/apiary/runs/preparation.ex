@@ -1,24 +1,29 @@
 defmodule Apiary.Runs.Preparation do
   @moduledoc """
-  How a run's machine was prepared, from the machine request to the start of its session,
-  as the run page's Prepare machine section and the run's diagnostics show it, and the
-  run's push steps, which the run page shows after the session. Read from records Qory
-  Apiary keeps for every run: the run's dispatch, its steps (`Apiary.Runs.Step`) with their
-  log lines, and its first `dev.qory.session.started`.
+  How a run went from its queue to the removal of its machine, as the **Run** list in the
+  run's Timeline and the run's diagnostics show it: how its machine was prepared, from
+  the machine request to the start of its session, how the session ended, what the run
+  pushed, and the removal of the machine. Read from records Qory Apiary keeps for every
+  run: the run's dispatch and its run of the queue, its steps (`Apiary.Runs.Step`) with
+  their log lines, its first `dev.qory.session.started` and the events that end its
+  session, and the artifact versions it pushed.
 
-  `read/2` returns a map with six members:
+  `read/2` returns a map with eight members:
 
     * `machine`: the dispatch whose claim registered the run, nil for a run no node
-      pool claimed. `requested_at` is the claim, and `requested_ms` the time from the
-      claim to the starter's `dispatched`; `started` spans from that `dispatched` to the
-      redemption of the run's code, or to the failure that ended the attempt; `end` is
-      what the pool's starter last reported about the removal of the machine, nil while
-      it has reported nothing (`t:machine/0`).
+      pool claimed. `queued_at` is when the run of the queue began to wait for this
+      claim, `requested_at` the claim, and `requested_ms` the time from the claim to the
+      starter's `dispatched`; `started_as` is the vendor's type of the machine that
+      `dispatched` reported, for an instance admin alone; `started` spans from that
+      `dispatched` to the redemption of the run's code, or to the failure that ended the
+      attempt; `end` is what the pool's starter last reported about the removal of the
+      machine, nil while it has reported nothing; `removal_cause` is why the machine was
+      removed (`t:machine/0`).
     * `steps`: the run's steps of every kind but `push`, by number, each with its output:
-      the last 64 KiB of its log lines as plain text
-      (`Apiary.Runs.Record.plain_lines/1`), and whether that is cut (`t:step/0`). The
-      output is nil for a reader who may not read the run's log (`run.read_log`), and
-      empty once retention deleted the run's log lines.
+      its last log lines as plain text (`Apiary.Runs.Record.plain_line/1`), at most 64 KiB
+      and 2,500 lines, each with its number in the step and its time, and whether that is
+      cut (`t:output/0`). The output is nil for a reader who may not read the run's log
+      (`run.read_log`), and empty once retention deleted the run's log lines.
     * `after_session`: the run's `push` steps by number, in the same shape. A push runs
       after the last session, so it is no part of the preparation: `machine` and `stopped`
       are read from `steps` alone, and a failed push is no failed preparation.
@@ -26,6 +31,10 @@ defmodule Apiary.Runs.Preparation do
       nil while they are kept.
     * `session_started_at`: the time of the run's first `dev.qory.session.started`; nil
       before the session starts and once retention deleted the run's events.
+    * `session_end`: how the session ended, from the run's last `dev.qory.runtime.result`
+      and `dev.qory.session.exited`; nil while it has neither (`t:session_end/0`).
+    * `outputs`: the artifact versions the run pushed, in the order they were pushed
+      (`t:output_version/0`).
     * `stopped`: why the preparation failed, nil while it has not (`t:stopped/0`).
 
   Every read is scoped as `Apiary.Runs.Record` scopes it: the scope's organisation and
@@ -38,18 +47,22 @@ defmodule Apiary.Runs.Preparation do
 
   alias Apiary.{Access, ExternalText, Repo, SecretLogFilter}
   alias Apiary.Accounts.Scope
+  alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.Dispatch
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
   alias Apiary.Runs.{Record, Run, Step}
 
-  # The most of a step's output that is kept, in bytes of UTF-8.
+  # The most of a step's output that is kept, in bytes of UTF-8, and in lines: the page
+  # draws about 330 bytes of markup for each line, so 2,500 lines and their 64 KiB stay
+  # under 1 MB.
   @output_bytes 65_536
+  @output_lines 2_500
 
   # The kinds of step whose failure lies on the pool's machine. A failure of any other step
   # lies in the workspace: its targets, harness, build and set-up, and a kind outside the
   # contract's list counts as the workspace's.
-  @pool_kinds ~w(image join wall)
+  @pool_kinds ~w(image join wall machine)
 
   @typedoc "Where the cause of a failure lies, by who can fix it."
   @type fixer :: :support | :operator_admin | :workspace_admin
@@ -80,27 +93,45 @@ defmodule Apiary.Runs.Preparation do
   @type machine_end :: %{state: :deleting | :gone | :delete_failed, at: DateTime.t()}
 
   @typedoc """
-  The machine part. `dispatch_id` is the dispatch's public id, `dp_…`. `machine_type` is
-  nil while the claim answer has no machine type. `requested_ms` is nil while the
-  dispatch has no `dispatched`. `release_reason` is the starter's reason of a release,
-  nil for any other dispatch. `started.state` is `running`, `succeeded`, `failed` or
-  `cancelled`, as a step's. `handed_over_at` is when the dispatch was handed over, so a
-  machine existed for it, nil for a dispatch never handed over. `ended_at` is when the
-  dispatch ended with its run; for a run that ended before its dispatch did, the run's
-  exit, loss or failed start, or else its last change; nil while both go on. `end` is
-  the starter's last report about the removal of the machine, nil before the first
-  (`t:machine_end/0`).
+  Why the machine was removed: `:keep_alive_lost` for a run that was lost
+  (`runs.lost_at`), `:run_ended` for a run that exited (`runs.exited_at`), nil for any
+  other run.
+  """
+  @type removal_cause :: :keep_alive_lost | :run_ended | nil
+
+  @typedoc """
+  The machine part. `dispatch_id` is the dispatch's public id, `dp_…`. `queued_at` is when
+  the dispatch's run of the queue began to wait for this claim: its `queued_at`, or when
+  an earlier dispatch of it that put it back in the queue was released or lapsed;
+  nil for a dispatch with no run of the queue. `machine_type` is the machine type the
+  claim answer had, its name and its spec as the provisioner contract writes it; nil for
+  an answer to a claim with no offers, which has none. `requested_ms` is nil while the
+  dispatch has no `dispatched`. `started_as` is the vendor's type of the machine the
+  starter created, as its first `dispatched` reported it, for a reader who is an instance
+  admin (`Apiary.Access.instance_admin?/1`); nil for anyone else, and while the starter
+  reported none. `release_reason` is the starter's reason of a release, nil for any
+  other dispatch. `started.state` is `running`, `succeeded`, `failed` or `cancelled`, as
+  a step's. `handed_over_at` is when the dispatch was handed over, so a machine existed
+  for it, nil for a dispatch never handed over. `ended_at` is when the dispatch ended
+  with its run; for a run that ended before its dispatch did, the run's exit, loss or
+  failed start, or else its last change; nil while both go on. `end` is the starter's
+  last report about the removal of the machine, nil before the first
+  (`t:machine_end/0`), and `removal_cause` why the machine was removed
+  (`t:removal_cause/0`).
   """
   @type machine :: %{
           dispatch_id: String.t(),
           pool: pool,
-          machine_type: String.t() | nil,
+          queued_at: DateTime.t() | nil,
+          machine_type: %{name: String.t(), spec: map} | nil,
           requested_at: DateTime.t(),
           requested_ms: non_neg_integer | nil,
+          started_as: String.t() | nil,
           release_reason: String.t() | nil,
           handed_over_at: DateTime.t() | nil,
           ended_at: DateTime.t() | nil,
           end: machine_end | nil,
+          removal_cause: removal_cause,
           started: %{
             state: String.t(),
             started_at: DateTime.t() | nil,
@@ -110,32 +141,83 @@ defmodule Apiary.Runs.Preparation do
         }
 
   @typedoc """
+  One line of a step's output: its number in the step, from 1; its time, the time of the
+  `dev.qory.run.log` event the line began in, nil once retention deleted the run's events;
+  and its text.
+  """
+  @type line :: %{number: pos_integer, at: DateTime.t() | nil, text: String.t()}
+
+  @typedoc """
+  A step's output: `lines`, the last lines with their numbers and times, at most 64 KiB
+  joined by line feeds and at most 2,500 lines; `truncated`, whether the start of the
+  output is cut; and `lines_cut`, whether the cut is the one of 2,500 lines.
+  """
+  @type output :: %{lines: [line], truncated: boolean, lines_cut: boolean}
+
+  @typedoc """
   One step. `name` is qory's name with its first letter in upper case, nil when only the
-  step's exit is recorded, as `started_at` is.
+  step's exit is recorded, as `started_at` is; `sent_name` is the name as qory or Forager
+  sent it, for `step_detail/1`.
   """
   @type step :: %{
           number: pos_integer,
           name: String.t() | nil,
+          sent_name: String.t() | nil,
           kind: String.t() | nil,
           state: String.t(),
           exit_code: integer | nil,
           started_at: DateTime.t() | nil,
           exited_at: DateTime.t() | nil,
           duration_ms: non_neg_integer | nil,
-          output: %{text: String.t(), truncated: boolean} | nil
+          output: output | nil
         }
 
   @typedoc """
   Why the preparation failed: the cause, the number of the failed step for `:step_failed`
   (nil for any other cause), who can fix it, and the cause line: `text`, what happened
-  and who fixes it, and `fix`, its second sentence alone.
+  and who fixes it, `what`, its first sentence alone, and `fix`, its second. `detail` is
+  the part of qory's step name that the step's label leaves out (`step_detail/1`), in
+  parentheses at the end of `what`; nil when there is none.
   """
   @type stopped :: %{
           cause: cause,
           step: pos_integer | nil,
           fixer: fixer,
           text: String.t(),
-          fix: String.t()
+          what: String.t(),
+          fix: String.t(),
+          detail: String.t() | nil
+        }
+
+  @typedoc """
+  How the session ended. `result_at` is the time of the run's last
+  `dev.qory.runtime.result`, and `outcome`, `turns`, `duration_ms` and `cost_usd` are
+  from it, nil without one. `exited_at` is the time of the run's last
+  `dev.qory.session.exited`, and `state` and `exit_code` are from it, nil without one.
+  `model` is the model of the run's last `dev.qory.runtime.started`, nil without one.
+  """
+  @type session_end :: %{
+          result_at: DateTime.t() | nil,
+          outcome: String.t() | nil,
+          turns: integer | nil,
+          duration_ms: integer | nil,
+          cost_usd: number | nil,
+          exited_at: DateTime.t() | nil,
+          state: String.t() | nil,
+          exit_code: integer | nil,
+          model: String.t() | nil
+        }
+
+  @typedoc """
+  An artifact version the run pushed: its artifact's type and name, its number, when it
+  was pushed, and the version's public id.
+  """
+  @type output_version :: %{
+          type: String.t(),
+          name: String.t(),
+          number: pos_integer,
+          at: DateTime.t(),
+          public_id: String.t()
         }
 
   @type t :: %{
@@ -144,6 +226,8 @@ defmodule Apiary.Runs.Preparation do
           after_session: [step],
           log_pruned_at: DateTime.t() | nil,
           session_started_at: DateTime.t() | nil,
+          session_end: session_end | nil,
+          outputs: [output_version],
           stopped: stopped | nil
         }
 
@@ -166,7 +250,7 @@ defmodule Apiary.Runs.Preparation do
     every = for step <- Record.steps(scope, run), do: step(scope, run, step, log?, kept?)
     {after_session, steps} = Enum.split_with(every, &(&1.kind == "push"))
     session_started_at = Record.session_started_at(scope, run)
-    machine = machine(run, attempt, steps, session_started_at)
+    machine = machine(scope, run, attempt, steps, session_started_at)
 
     %{
       machine: machine,
@@ -174,6 +258,8 @@ defmodule Apiary.Runs.Preparation do
       after_session: after_session,
       log_pruned_at: run.log_pruned_at,
       session_started_at: session_started_at,
+      session_end: session_end(scope, run),
+      outputs: outputs(scope, run),
       stopped:
         stopped(
           scope,
@@ -189,6 +275,9 @@ defmodule Apiary.Runs.Preparation do
   @doc "The most of a step's output a preparation keeps, in bytes: #{@output_bytes}."
   def output_bytes, do: @output_bytes
 
+  @doc "The most of a step's output a preparation keeps, in lines: #{@output_lines}."
+  def output_lines, do: @output_lines
+
   ## The dispatch
 
   # The run's dispatch, with its pool, and how the attempt failed, if it did. This
@@ -201,8 +290,38 @@ defmodule Apiary.Runs.Preparation do
   # `start_failed_at`, or `code_not_redeemed` for a run lost with its code never redeemed.
   defp attempt(scope, %Run{} = run) do
     case dispatch(scope, run) do
-      %Dispatch{} = dispatch -> %{dispatch: dispatch, failure: failure(run)}
-      nil -> %{dispatch: nil, failure: nil}
+      %Dispatch{} = dispatch ->
+        %{dispatch: dispatch, failure: failure(run), queued_at: queued_at(scope, dispatch)}
+
+      nil ->
+        %{dispatch: nil, failure: nil, queued_at: nil}
+    end
+  end
+
+  # When the run of the queue began to wait for this dispatch's claim. A lapsed lease
+  # makes a dispatch stale (`stale_at`) and a release ends it (`ended_at`), and either puts
+  # its run of the queue back in the queue with the same `queued_at`. So after an earlier
+  # dispatch of it lapsed or ended before this claim, it is the latest of those times;
+  # else the run of the queue's `queued_at`. A stale dispatch gets `ended_at` too, when
+  # its run of the queue ends, after this claim, so `stale_at` comes first.
+  defp queued_at(_scope, %Dispatch{dispatch_run: nil}), do: nil
+
+  defp queued_at(
+         %Scope{organisation: organisation, workspace: workspace},
+         %Dispatch{dispatch_run: %{queued_at: queued_at}} = dispatch
+       ) do
+    requeued =
+      Repo.one(
+        from d in Dispatch,
+          where: d.organisation_id == ^organisation.id and d.workspace_id == ^workspace.id,
+          where: d.dispatch_run_id == ^dispatch.dispatch_run_id and d.id != ^dispatch.id,
+          where: coalesce(d.stale_at, d.ended_at) <= ^dispatch.claimed_at,
+          select: type(max(coalesce(d.stale_at, d.ended_at)), :utc_datetime_usec)
+      )
+
+    case requeued do
+      %DateTime{} = at -> if DateTime.after?(at, queued_at), do: at, else: queued_at
+      nil -> queued_at
     end
   end
 
@@ -223,7 +342,7 @@ defmodule Apiary.Runs.Preparation do
   defp dispatches(%Scope{organisation: organisation, workspace: workspace}) do
     from d in Dispatch,
       where: d.organisation_id == ^organisation.id and d.workspace_id == ^workspace.id,
-      preload: [pool: :organisation]
+      preload: [:dispatch_run, pool: :organisation]
   end
 
   defp failure(%Run{start_failure: "machine_not_made", start_failed_at: at}),
@@ -250,9 +369,15 @@ defmodule Apiary.Runs.Preparation do
 
   ## The machine
 
-  defp machine(_run, %{dispatch: nil}, _steps, _session_started_at), do: nil
+  defp machine(_scope, _run, %{dispatch: nil}, _steps, _session_started_at), do: nil
 
-  defp machine(run, %{dispatch: dispatch, failure: failure}, steps, session_started_at) do
+  defp machine(
+         scope,
+         run,
+         %{dispatch: dispatch, failure: failure, queued_at: queued_at},
+         steps,
+         session_started_at
+       ) do
     started_at = dispatch.dispatched_at
 
     {state, ended_at} =
@@ -272,13 +397,22 @@ defmodule Apiary.Runs.Preparation do
     %{
       dispatch_id: dispatch.public_id,
       pool: pool(dispatch.pool, run),
-      machine_type: nil,
+      queued_at: queued_at,
+      machine_type:
+        if(dispatch.machine_type,
+          do: %{name: dispatch.machine_type, spec: dispatch.machine_spec}
+        ),
       requested_at: dispatch.claimed_at,
       requested_ms: between(dispatch.claimed_at, started_at),
+      started_as:
+        if(dispatch.vendor_machine_type && Access.instance_admin?(scope),
+          do: dispatch.vendor_machine_type
+        ),
       release_reason: dispatch.release_reason,
       handed_over_at: dispatch.handed_over_at,
       ended_at: dispatch.ended_at || run_ended_at(run),
       end: machine_end(dispatch),
+      removal_cause: removal_cause(run),
       started: %{
         state: state,
         started_at: started_at,
@@ -294,6 +428,10 @@ defmodule Apiary.Runs.Preparation do
     if state not in Run.alive_states(),
       do: run.exited_at || run.lost_at || run.start_failed_at || run.updated_at
   end
+
+  defp removal_cause(%Run{lost_at: %DateTime{}}), do: :keep_alive_lost
+  defp removal_cause(%Run{exited_at: %DateTime{}}), do: :run_ended
+  defp removal_cause(%Run{}), do: nil
 
   defp machine_end(%Dispatch{machine_end_state: nil}), do: nil
 
@@ -323,6 +461,85 @@ defmodule Apiary.Runs.Preparation do
 
   defp between(_from, _to), do: nil
 
+  ## The end of the session
+
+  defp session_end(scope, run) do
+    events = Record.session_end(scope, run)
+    result = events["dev.qory.runtime.result"]
+    exited = events["dev.qory.session.exited"]
+
+    if result || exited do
+      result_data = (result && result.data) || %{}
+      exited_data = (exited && exited.data) || %{}
+      started_data = (events["dev.qory.runtime.started"] || %{data: %{}}).data
+
+      %{
+        result_at: result && result.time,
+        outcome: text(result_data["outcome"]),
+        turns: integer(result_data["turns"]),
+        duration_ms: integer(result_data["duration_ms"]),
+        cost_usd: if(is_number(result_data["cost_usd"]), do: result_data["cost_usd"]),
+        exited_at: exited && exited.time,
+        state: text(exited_data["state"]),
+        exit_code: integer(exited_data["exit_code"]),
+        model: text(started_data["model"])
+      }
+    end
+  end
+
+  defp text(value) when is_binary(value), do: value
+  defp text(_value), do: nil
+
+  defp integer(value) when is_integer(value), do: value
+  defp integer(_value), do: nil
+
+  ## What the run pushed
+
+  # The versions a run of the queue wrote, through the run's `dispatch_run_id`; none for a
+  # run no queue started.
+  defp outputs(%Scope{organisation: organisation, workspace: workspace}, %Run{
+         dispatch_run_id: id
+       })
+       when is_binary(id) do
+    Repo.all(
+      from v in Version,
+        join: a in assoc(v, :artifact),
+        where: v.organisation_id == ^organisation.id and v.workspace_id == ^workspace.id,
+        where: v.writer == :run and v.run_id == ^id,
+        order_by: [asc: v.inserted_at, asc: v.number],
+        select: %{
+          type: a.type,
+          name: a.name,
+          number: v.number,
+          at: v.inserted_at,
+          public_id: v.public_id
+        }
+    )
+  end
+
+  defp outputs(_scope, _run), do: []
+
+  # work_item/2 is the work item of the run's run of the queue, whose artifacts the run
+  # pushes: nil for a run no queue started, or a run of the queue with no work item.
+  # Scoped to the scope's organisation and workspace. `Apiary.WorkItems.WorkItem` is
+  # hidden from the docs, so this function is too.
+  @doc false
+  @spec work_item(Scope.t(), Run.t()) :: Apiary.WorkItems.WorkItem.t() | nil
+  def work_item(%Scope{organisation: organisation, workspace: workspace}, %Run{
+        dispatch_run_id: id
+      })
+      when is_binary(id) do
+    Repo.one(
+      from w in Apiary.WorkItems.WorkItem,
+        join: d in Apiary.Dispatches.DispatchRun,
+        on: d.work_item_id == w.id,
+        where: d.id == ^id,
+        where: d.organisation_id == ^organisation.id and d.workspace_id == ^workspace.id
+    )
+  end
+
+  def work_item(_scope, _run), do: nil
+
   ## The steps
 
   # A step's output is read while the run's log lines are kept (`kept?`), and is empty
@@ -331,6 +548,7 @@ defmodule Apiary.Runs.Preparation do
     %{
       number: step.step,
       name: name(step.name),
+      sent_name: step.name,
       kind: step.kind,
       state: step.state,
       exit_code: step.exit_code,
@@ -351,31 +569,81 @@ defmodule Apiary.Runs.Preparation do
     end
   end
 
-  # The step's output as plain text, at most #{@output_bytes} bytes: the end of it when it
-  # is longer, without the line the cut fell in, unless that line is all there is.
-  defp output(_scope, _run, _number, false), do: %{text: "", truncated: false}
+  @doc "The text of a step's `output`: its lines joined by line feeds."
+  @spec output_text(output) :: String.t()
+  def output_text(%{lines: lines}), do: Enum.map_join(lines, "\n", & &1.text)
+
+  # The step's output as plain lines, at most #{@output_bytes} bytes and #{@output_lines}
+  # lines: the end of it when it is longer, without the line the cut fell in, unless that
+  # line is all there is. Each line has its number in the whole output and the time of the
+  # chunk it began in.
+  defp output(_scope, _run, _number, false), do: %{lines: [], truncated: false, lines_cut: false}
 
   defp output(scope, run, number, true) do
-    %{bytes: bytes, total: total} = Record.step_tail(scope, run, number, @output_bytes)
-    cut? = total > byte_size(bytes)
-    lines = Record.plain_lines(bytes)
+    %{chunks: chunks, total: total, line_feeds: feeds} =
+      Record.step_tail(scope, run, number, @output_bytes)
+
+    raw = raw_lines(chunks)
+    cut? = total > Enum.sum_by(chunks, &byte_size(&1.bytes))
+    # The first raw line is the one after all but `length(raw) - 1` of the output's line
+    # feeds.
+    first = max(feeds - length(raw) + 2, 1)
+
+    lines =
+      raw
+      |> Enum.with_index(first)
+      |> Enum.map(fn {{bytes, at}, n} -> %{number: n, at: at, text: Record.plain_line(bytes)} end)
+      |> Enum.reverse()
+      |> Enum.drop_while(&(&1.text == ""))
+      |> Enum.reverse()
+
     lines = if cut? and length(lines) > 1, do: tl(lines), else: lines
-    whole = Enum.join(lines, "\n")
-    text = last_bytes(whole, @output_bytes)
-    %{text: text, truncated: cut? or text != whole}
+    {lines, budget_cut?} = within_bytes(lines, @output_bytes)
+    lines_cut? = length(lines) > @output_lines
+    lines = if lines_cut?, do: Enum.take(lines, -@output_lines), else: lines
+    %{lines: lines, truncated: cut? or budget_cut? or lines_cut?, lines_cut: lines_cut?}
   end
 
-  # The last `limit` bytes of `text` at most, starting at a character.
-  defp last_bytes(text, limit) when byte_size(text) <= limit, do: text
+  # The chunks' bytes as raw lines split at each line feed, in order, each with the time of
+  # the chunk it began in. A line begins after a line feed, or, after one that ends its
+  # chunk, in the next chunk. The last line is what follows the last line feed: empty, with
+  # no time, when the output ends with one.
+  defp raw_lines(chunks) do
+    {done, part, at} =
+      Enum.reduce(chunks, {[], [], :none}, fn %{bytes: bytes, time: time}, {done, part, at} ->
+        [first | rest] = :binary.split(bytes, "\n", [:global])
+        at = if at == :none and (first != "" or rest != []), do: time, else: at
+        line_ends(rest, time, {done, [part | first], at})
+      end)
 
-  defp last_bytes(text, limit) do
-    tail = binary_part(text, byte_size(text) - limit, limit)
-    drop_partial(tail)
+    Enum.reverse([{IO.iodata_to_binary(part), begun(at)} | done])
   end
 
-  defp drop_partial(<<_::utf8, _::binary>> = text), do: text
-  defp drop_partial(<<_byte, rest::binary>>), do: drop_partial(rest)
-  defp drop_partial(<<>>), do: ""
+  defp line_ends([], _time, acc), do: acc
+
+  defp line_ends([piece | rest], time, {done, part, at}) do
+    done = [{IO.iodata_to_binary(part), begun(at)} | done]
+    at = if piece == "" and rest == [], do: :none, else: time
+    line_ends(rest, time, {done, piece, at})
+  end
+
+  defp begun(:none), do: nil
+  defp begun(at), do: at
+
+  # The last lines whose texts, joined by line feeds, take at most `limit` bytes, and
+  # whether a line was left out. Replaced bytes that were not UTF-8 can make the text
+  # longer than the bytes it came from.
+  defp within_bytes(lines, limit) do
+    {kept, _size} =
+      lines
+      |> Enum.reverse()
+      |> Enum.reduce_while({[], -1}, fn line, {kept, size} ->
+        size = size + 1 + byte_size(line.text)
+        if size > limit, do: {:halt, {kept, size}}, else: {:cont, {[line | kept], size}}
+      end)
+
+    {kept, length(kept) < length(lines)}
+  end
 
   ## Why it stopped
 
@@ -383,7 +651,16 @@ defmodule Apiary.Runs.Preparation do
     {fixer, who} = pool_fixer(scope, machine.pool, run)
     machine = %{machine | release_reason: reason(machine.release_reason, release_reason)}
     {what, fix} = machine_line(cause, machine, who, log_place(machine.pool))
-    %{cause: cause, step: nil, fixer: fixer, text: what <> " " <> fix, what: what, fix: fix}
+
+    %{
+      cause: cause,
+      step: nil,
+      fixer: fixer,
+      text: what <> " " <> fix,
+      what: what,
+      fix: fix,
+      detail: nil
+    }
   end
 
   defp stopped(scope, run, _attempt, machine, steps, _release_reason) do
@@ -405,7 +682,8 @@ defmodule Apiary.Runs.Preparation do
           fixer: fixer,
           text: what <> " " <> fix,
           what: what,
-          fix: fix
+          fix: fix,
+          detail: step_detail(step)
         }
     end
   end
@@ -446,16 +724,31 @@ defmodule Apiary.Runs.Preparation do
   defp reads_why(who, place),
     do: gettext("%{who} reads why in %{place}.", who: who, place: place)
 
-  # An exit code of -1 is no exit status (the Forager contract's `dev.qory.run.step_exited`),
-  # so the line shows none.
-  defp step_line(%{exit_code: code} = step, who, pruned_at)
-       when is_integer(code) and code != -1 do
-    {gettext("%{step} failed with exit code %{code}.", step: step_name(step), code: code),
-     reads_cause(who, pruned_at)}
+  # The step by its row's name (`row_name/1`), with qory's detail in parentheses when the
+  # label leaves it out (`step_detail/1`). An exit code of -1 is no exit status (the
+  # Forager contract's `dev.qory.run.step_exited`), so the line shows none.
+  defp step_line(step, who, pruned_at), do: {step_what(step), reads_cause(who, pruned_at)}
+
+  defp step_what(%{exit_code: code} = step) when is_integer(code) and code != -1 do
+    case step_detail(step) do
+      nil ->
+        gettext("%{step} failed with exit code %{code}.", step: row_name(step), code: code)
+
+      detail ->
+        gettext("%{step} failed with exit code %{code} (%{detail}).",
+          step: row_name(step),
+          code: code,
+          detail: detail
+        )
+    end
   end
 
-  defp step_line(step, who, pruned_at),
-    do: {gettext("%{step} failed.", step: step_name(step)), reads_cause(who, pruned_at)}
+  defp step_what(step) do
+    case step_detail(step) do
+      nil -> gettext("%{step} failed.", step: row_name(step))
+      detail -> gettext("%{step} failed (%{detail}).", step: row_name(step), detail: detail)
+    end
+  end
 
   # Once retention deleted the run's log lines, the step's output is gone.
   defp reads_cause({:support, line}, nil), do: line
@@ -478,15 +771,62 @@ defmodule Apiary.Runs.Preparation do
   def step_name(%{number: number}), do: gettext("Step %{number}", number: number)
 
   @doc """
-  The step a preparation stopped at, as the run page names it: Machine started for a
-  cause of the machine, else the failed step's name (`step_name/1`); nil while it has not
+  What a row of the preparation calls a step of `kind`: Clone repository for `fetch`,
+  Pull images for `image`, Set up dev container for `setup` and Start agent for `join`;
+  nil for any other kind, whose row has the step's name (`step_name/1`).
+  """
+  @spec step_label(map) :: String.t() | nil
+  # A fetch clones a repository in a workspace of any domain, so the label is the same in
+  # every domain: the plain context (docs/lingo.md).
+  def step_label(%{kind: "fetch"}), do: pgettext("plain", "Clone repository")
+  def step_label(%{kind: "image"}), do: gettext("Pull images")
+  def step_label(%{kind: "setup"}), do: gettext("Set up dev container")
+  def step_label(%{kind: "join"}), do: gettext("Start agent")
+  def step_label(_step), do: nil
+
+  @doc "The name of a step's row: its label (`step_label/1`), else its name (`step_name/1`)."
+  @spec row_name(map) :: String.t()
+  def row_name(step), do: step_label(step) || step_name(step)
+
+  @doc """
+  The part of a step's name that its label leaves out, nil when there is none. It reads
+  the name as qory or Forager sent it (`sent_name`): without its first word when that
+  word is the step's kind, as in "postCreateCommand: npm ci" for
+  "setup postCreateCommand: npm ci", else the whole name. Nil for a step with no label,
+  with no name, with a name of one word (qory's "prepare"), or whose name is its label,
+  and for a `join`, whose name has the session's number alone. An `image` step whose name
+  is one word, its image reference, has that name, unless the word is the kind.
+  """
+  @spec step_detail(map) :: String.t() | nil
+  def step_detail(%{kind: "join"}), do: nil
+
+  def step_detail(%{kind: kind, sent_name: sent_name} = step) when is_binary(sent_name) do
+    label = step_label(step)
+    name = String.trim(sent_name)
+
+    detail =
+      case String.split(name, " ", parts: 2) do
+        [first, rest] -> if String.downcase(first) == kind, do: String.trim(rest), else: name
+        [one] -> if kind == "image" and String.downcase(one) != kind, do: one
+      end
+
+    if label != nil and detail not in [nil, ""] and
+         String.downcase(detail) != String.downcase(label),
+       do: detail
+  end
+
+  def step_detail(_step), do: nil
+
+  @doc """
+  The step a preparation stopped at, as the run page names it: Start machine for a cause
+  of the machine, else the failed step's row name (`row_name/1`); nil while it has not
   stopped.
   """
   @spec stopped_step(t) :: String.t() | nil
-  def stopped_step(%{stopped: %{step: nil}}), do: gettext("Machine started")
+  def stopped_step(%{stopped: %{step: nil}}), do: gettext("Start machine")
 
   def stopped_step(%{stopped: %{step: number}, steps: steps}),
-    do: steps |> Enum.find(&(&1.number == number)) |> step_name()
+    do: steps |> Enum.find(&(&1.number == number)) |> row_name()
 
   def stopped_step(_preparation), do: nil
 

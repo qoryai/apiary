@@ -6,13 +6,15 @@ defmodule Apiary.Runs.Step do
   the run from 1. A projection: rebuilt from `events`.
 
   `name`, `kind`, `started_sequence` and `started_at` are the start's, nil until the start
-  is folded; `kind` is `fetch`, `compose`, `image`, `build`, `setup`, `join`, `wall` or
-  `push`, nil for any other value. `exit_code`, `duration_ms`, `exited_sequence` and
-  `exited_at` are the exit's, nil until the exit is folded. `state` is `running` until
-  then, and the exit's `succeeded`, `failed` or `cancelled` after. A step whose run's
-  `dev.qory.run.exited` is folded without the step's exit is `cancelled` and keeps no exit
-  (`Apiary.Runs.Projector`). The step's log lines are the run's log chunks with its number
-  as `step` (`Apiary.Runs.Record.step_log/4`).
+  is folded; `kind` is `fetch`, `compose`, `image`, `build`, `setup`, `join`, `wall`,
+  `push` or `machine`, nil for any other value. A `machine` step is the start of the run's
+  machine, which `qory run` sends after the redemption, one line per part of the start.
+  `exit_code`, `duration_ms`, `exited_sequence` and `exited_at` are the exit's, nil until
+  the exit is folded. `state` is `running` until then, and the exit's `succeeded`,
+  `failed` or `cancelled` after. A step whose run's `dev.qory.run.exited` is folded
+  without the step's exit is `cancelled` and keeps no exit (`Apiary.Runs.Projector`). The
+  step's log lines are the run's log chunks with its number as `step`
+  (`Apiary.Runs.Record.step_log/4`).
   """
   use Ecto.Schema
 
@@ -20,12 +22,12 @@ defmodule Apiary.Runs.Step do
   @type t :: %__MODULE__{}
 
   @states ~w(running succeeded failed cancelled)
-  @kinds ~w(fetch compose image build setup join wall push)
+  @kinds ~w(fetch compose image build setup join wall push machine)
 
   @doc "The states a step can be in."
   def states, do: @states
 
-  @doc "The kinds of step the contract lists."
+  @doc "The kinds of step kept: the contract's eight and `machine`."
   def kinds, do: @kinds
 
   @primary_key {:id, :binary_id, autogenerate: true}

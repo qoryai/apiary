@@ -36,7 +36,7 @@ defmodule Apiary.Runs do
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
-  alias Apiary.Runs.{Connection, Filters, ListFacts, Target, Run}
+  alias Apiary.Runs.{Connection, Filters, ListFacts, RunApi, Target, Run}
   alias Apiary.WorkItems.WorkItem
 
   @default_limit 50
@@ -233,7 +233,7 @@ defmodule Apiary.Runs do
   the name of the workflow the run's claim handed to its machine, `:prebuild` for a run
   that builds an environment, or nil where the run was handed none; `stage` the stage of
   the workspace's process that placed it, `%{name:, round:}`, where its name adds to the
-  workflow's, else nil; `work_item` its work item, `%{number:, title:, here:,
+  workflow's, else nil; `work_item` its work item, `%{number:, public_id:, title:, here:,
   target_system:, target_path:}`, where the work item moved to another workspace `here`
   false and the number and the target nil, else nil; `started_by` how it started: `:direct` (a run of no queue),
   `:image_requeue`, `:process` (any other run the stage runner placed), `{:test_run, person}`,
@@ -244,6 +244,13 @@ defmodule Apiary.Runs do
   """
   @spec list_facts(Scope.t(), [Run.t()]) :: %{Ecto.UUID.t() => map}
   def list_facts(%Scope{} = scope, runs) when is_list(runs), do: ListFacts.of(scope, runs)
+
+  @doc """
+  The work item of `run`, the `work_item` of `list_facts/2` for the run alone, in one read:
+  nil for a run of no work item and for a run of another workspace.
+  """
+  @spec work_item(Scope.t(), Run.t()) :: map | nil
+  def work_item(%Scope{} = scope, %Run{} = run), do: ListFacts.work_item(scope, run)
 
   @doc false
   def page_runs_query(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()),
@@ -876,6 +883,7 @@ defmodule Apiary.Runs do
     |> where_text(:runtime, f.runtime)
     |> where_host(f.host)
     |> where_node(scope, f.node)
+    |> where_machine_type(f.machine_type)
     |> where_item(scope, f.item)
     |> where_query(f.q)
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
@@ -924,6 +932,14 @@ defmodule Apiary.Runs do
         select: n.id
 
     where(query, [r], r.node_id in subquery(nodes))
+  end
+
+  # A machine type by its name: the runs whose run of the queue was queued on it.
+  defp where_machine_type(query, nil), do: query
+
+  defp where_machine_type(query, name) do
+    queued = from d in DispatchRun, where: d.machine_type == ^name, select: d.id
+    where(query, [r], r.dispatch_run_id in subquery(queued))
   end
 
   # A work item by its number in the scope's workspace: the runs of its runs of the queue,
@@ -1371,7 +1387,8 @@ defmodule Apiary.Runs do
   destinations, as the rail counts it (`destination_target_counts/3`), a host in runs;
   `narrow:` as there. `decided: true` keeps the hosts to those of the destinations the
   filters' `decision` lists, as the list itself does (the query field's suggestions); the
-  Filter menu's hosts do not.
+  Filter menu's hosts do not. A host is the one the row shows: the instance's for a request
+  to the run API (`Apiary.Runs.RunApi`).
   """
   def destination_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
@@ -1403,8 +1420,49 @@ defmodule Apiary.Runs do
   defp destination_host_facet(scope, filters, now, narrow, limit, decided) do
     base = connections_in(scope, %{filters | host: nil}, now)
     like = like(narrow)
-    grouped = from c in base, group_by: c.host
-    grouped = if like, do: where(grouped, [c], ilike(c.host, ^like)), else: grouped
+
+    instance = RunApi.host()
+    placeholder = RunApi.placeholder()
+
+    # The host a row is listed under, as the `host:` filter finds it: the instance's for its
+    # rows in any case and for the run API's requests, the placeholder for its rows in any
+    # case, else the host as recorded.
+    shown =
+      from c in base,
+        select: %{
+          host:
+            fragment(
+              "CASE WHEN ? = ? OR lower(?) = ? THEN ? WHEN lower(?) = ? THEN ? ELSE ? END",
+              c.last_rule,
+              ^RunApi.rule(),
+              c.host,
+              ^instance,
+              ^instance,
+              c.host,
+              ^placeholder,
+              ^placeholder,
+              c.host
+            ),
+          recorded: c.host,
+          run_id: c.run_id,
+          allowed: c.allowed,
+          denied: c.denied
+        }
+
+    grouped = from c in subquery(shown), group_by: c.host
+
+    # The box finds a host by what the row shows or by what was recorded, so the run API's
+    # entry by either host.
+    grouped =
+      if like,
+        do:
+          having(
+            grouped,
+            [c],
+            ilike(c.host, ^like) or fragment("bool_or(? ILIKE ?)", c.recorded, ^like)
+          ),
+        else: grouped
+
     grouped = if decided, do: having_decision(grouped, filters.decision), else: grouped
 
     rows =
@@ -1423,19 +1481,36 @@ defmodule Apiary.Runs do
     options = Enum.take(rows, limit)
 
     options =
-      if is_binary(filters.host) and not Enum.any?(options, &(elem(&1, 1) == filters.host)) do
-        n =
-          Repo.one(
-            from c in base, where: c.host == ^filters.host, select: count(c.run_id, :distinct)
-          )
+      cond do
+        RunApi.either_host?(filters.host) ->
+          chosen_run_api_host(base, filters.host, options)
 
-        [{filters.host, filters.host, n} | options]
-      else
-        options
+        is_binary(filters.host) and not Enum.any?(options, &(elem(&1, 1) == filters.host)) ->
+          [{filters.host, filters.host, chosen_runs(base, filters.host)} | options]
+
+        true ->
+          options
       end
 
     %{options: options, total: total}
   end
+
+  # The instance's host or the placeholder, chosen in any case, is the one entry of that
+  # host: chosen by the text the filter has, counting the runs the filter finds, in place
+  # of the entry in that host's lower case, or first where the list has none.
+  defp chosen_run_api_host(base, chosen, options) do
+    host = if RunApi.host?(chosen), do: RunApi.host(), else: RunApi.placeholder()
+    entry = {host, chosen, chosen_runs(base, chosen)}
+
+    case Enum.find_index(options, fn {_label, value, _n} -> value in [host, chosen] end) do
+      nil -> [entry | options]
+      index -> List.replace_at(options, index, entry)
+    end
+  end
+
+  defp chosen_runs(base, host),
+    do:
+      Repo.one(from c in base, where: ^connection_host(host), select: count(c.run_id, :distinct))
 
   # The workspace's connection rows of one channel under the filters, joined to their run
   # (for the target). The destinations, their counts, facets and rule options read the
@@ -1462,7 +1537,7 @@ defmodule Apiary.Runs do
 
     scope
     |> Edition.client_reads(:workspace_connections, nil, connections)
-    |> where_if(f.host, dynamic([c], c.host == ^f.host))
+    |> where_if(f.host, connection_host(f.host))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))
     |> where_target(scope, f.target)
@@ -1470,13 +1545,43 @@ defmodule Apiary.Runs do
     |> where_tools(f.tools)
   end
 
-  # The free text of the connections: a destination whose host or path holds it.
+  # The rows of a host: those recorded with it. The instance's host finds its rows in any
+  # case and the requests to the run API, which the rows show with it; the placeholder
+  # finds its rows in any case, those requests among them (`Apiary.Runs.RunApi`).
+  defp connection_host(nil), do: nil
+
+  defp connection_host(host) do
+    cond do
+      RunApi.host?(host) ->
+        dynamic(
+          [c],
+          fragment("lower(?)", c.host) == ^RunApi.host() or c.last_rule == ^RunApi.rule()
+        )
+
+      RunApi.either_host?(host) ->
+        dynamic([c], fragment("lower(?)", c.host) == ^RunApi.placeholder())
+
+      true ->
+        dynamic([c], c.host == ^host)
+    end
+  end
+
+  # The free text of the connections: a destination whose host or path contains it, the
+  # host as recorded or, for a request to the run API, the instance's.
   defp where_destination_text(query, nil), do: query
 
   defp where_destination_text(query, q) do
     case like(q) do
-      nil -> query
-      pattern -> where(query, [c], ilike(c.host, ^pattern) or ilike(c.path, ^pattern))
+      nil ->
+        query
+
+      pattern ->
+        where(
+          query,
+          [c],
+          ilike(c.host, ^pattern) or ilike(c.path, ^pattern) or
+            (c.last_rule == ^RunApi.rule() and ilike(^RunApi.host(), ^pattern))
+        )
     end
   end
 

@@ -197,6 +197,29 @@ defmodule Apiary.Stages.StopCauseTest do
       assert StopCause.set_up_step(%DispatchRun{end_cause: :provider_gone}) == nil
     end
 
+    test "a built-in harness at a branch its repository does not have: contact support, and no set-up step" do
+      %{scope: scope} = sign_up_fixture()
+      url = Apiary.Harnesses.Builtin.git()
+      {run, work_item} = walk_failed(scope, "ref_missing", url)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+          set: [
+            failure_rule: %{
+              "rule" => "claim",
+              "values" => %{"url" => url, "ref" => "gone", "builtin" => true}
+            }
+          ]
+        )
+
+      assert StopCause.text(run, work_item) ==
+               "Reading the harness from #{url} failed: the repository has no branch gone.\n" <>
+                 "Contact support."
+
+      assert StopCause.set_up_step(run) == nil
+    end
+
     test "with no source shown, the line starts with a capital and the fix does not" do
       %{scope: scope} = sign_up_fixture()
       org = scope.organisation.name

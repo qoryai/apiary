@@ -42,7 +42,7 @@ defmodule ApiaryWeb.RunLive.Show do
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
   import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 2]
-  import ApiaryWeb.PreparationComponents, only: [after_session: 1, prepare_machine: 1]
+  import ApiaryWeb.PreparationComponents, only: [run_list: 1]
 
   alias Apiary.Access
   alias Apiary.Dispatches
@@ -53,8 +53,9 @@ defmodule ApiaryWeb.RunLive.Show do
   alias Apiary.Runs
   alias Apiary.Runs.{Preparation, Record, Run}
   alias Apiary.Targets
-  alias Apiary.Runs.Record.Timeline
+  alias Apiary.Runs.Record.{Overview, Timeline}
   alias ApiaryWeb.ConnectionLive.Rules
+  alias ApiaryWeb.RunLive.Concealed
   alias ApiaryWeb.PreparationComponents
   alias ApiaryWeb.TranscriptComponents
 
@@ -66,8 +67,11 @@ defmodule ApiaryWeb.RunLive.Show do
   @announce_every_ms 10_000
   @max_versions 20
   # What changes a settled preparation: a step's start or exit, as a step can run after
-  # the session, and the run's exit, which cancels a step left open.
-  @preparation_events ~w(dev.qory.run.step_started dev.qory.run.step_exited dev.qory.run.exited)
+  # the session; the session's result and exit, for Session finished; and the run's exit,
+  # which cancels a step left open. The session's exit makes no timeline item, so
+  # `Record.extend_timeline/5` adds it to the rows a flush reads.
+  @preparation_events ~w(dev.qory.run.step_started dev.qory.run.step_exited dev.qory.run.exited
+                           dev.qory.runtime.result dev.qory.session.exited)
   @impl true
   def render(%{run: nil} = assigns) do
     ~H"""
@@ -134,7 +138,12 @@ defmodule ApiaryWeb.RunLive.Show do
           <p :if={shown_run_title(@run)} id="run-given-title" class="q-run-about">
             <.external_text text={shown_run_title(@run)} />
           </p>
-          <.about_header run={@run} />
+          <.about_header
+            run={@run}
+            scope={@current_scope}
+            work_item={@work_item}
+            work_item_link={Access.can?(@current_scope, :"work_item.read", @current_scope.workspace)}
+          />
           <div class="q-run-sub">
             <div class="q-run-meta-wrap">
               <p id="run-meta" class="q-run-meta">
@@ -211,7 +220,7 @@ defmodule ApiaryWeb.RunLive.Show do
               </p>
               <p :if={@ending} id="run-why" class="q-run-why">
                 <span class="q-run-why-k">{gettext("How it ended")}</span>
-                <span class="q-run-why-t" title={@ending.text}>{@ending.text}</span>
+                <span :if={@ending.text} class="q-run-why-t" title={@ending.text}>{@ending.text}</span>
                 <.link
                   id="run-why-jump"
                   patch={
@@ -334,6 +343,7 @@ defmodule ApiaryWeb.RunLive.Show do
           digests={@digests}
           security={@security}
           instance={@instance}
+          machine_type={@preparation && @preparation.machine && @preparation.machine.machine_type}
         />
 
         <%!-- A thing's tabs (`page_tabs/1`), each `run-tab-<key>`. --%>
@@ -342,7 +352,7 @@ defmodule ApiaryWeb.RunLive.Show do
             key={:timeline}
             patch={tab_path(@current_scope, @run, :timeline, @timeline_query)}
             icon="hero-queue-list"
-            count={if @index.session_items > 0, do: @index.session_items}
+            count={timeline_count(@overview)}
           >
             {gettext("Timeline")}
           </:tab>
@@ -377,8 +387,8 @@ defmodule ApiaryWeb.RunLive.Show do
                 <span :for={width <- ~w(w-2/3 w-1/2 w-3/5 w-2/5 w-1/2)} class={["q-skel", width]}></span>
               </div>
             <% @run.state == "pending" and @index.items == [] and @tab == :timeline and
-                 (PreparationComponents.shown?(@preparation) or @clean_up != nil) -> %>
-              <.prepare_machine
+                 PreparationComponents.shown?(@preparation, @clean_up) -> %>
+              <.run_list
                 preparation={@preparation}
                 machine_log={@machine_log}
                 alive={alive?(@run)}
@@ -402,6 +412,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 earlier={@earlier}
                 later={@later}
                 target={@focused && "e-#{@focused}"}
+                subagents={TranscriptComponents.subagents(@index.items, @index.alive)}
               />
             <% @tab == :connections -> %>
               <.connections_tab
@@ -552,7 +563,6 @@ defmodule ApiaryWeb.RunLive.Show do
     <div
       id="run-timeline"
       class="q-run-tl grid gap-4"
-      phx-hook="LiveEnd"
       data-live={to_string(alive?(@run))}
     >
       <div class="q-tl-bar" role="group" aria-label={gettext("Lanes")}>
@@ -619,39 +629,27 @@ defmodule ApiaryWeb.RunLive.Show do
         step={Preparation.stopped_step(@preparation)}
       />
 
-      <.background_tasks background={@index.background} ended={!alive?(@run)} />
+      <.background_tasks
+        background={concealed_tasks(@index.background, @current_scope, @run)}
+        ended={!alive?(@run)}
+      />
 
-      <.prepare_machine
-        :if={@earlier == 0 and (PreparationComponents.shown?(@preparation) or @clean_up != nil)}
+      <.run_list
+        :if={PreparationComponents.shown?(@preparation, @clean_up)}
         preparation={@preparation}
         machine_log={@machine_log}
         alive={alive?(@run)}
         clean_up={@clean_up}
-      />
+        session_open={@focused != nil}
+      >
+        <:session :if={PreparationComponents.session_group?(@preparation, @clean_up)}>
+          <.timeline_list {assigns} />
+        </:session>
+      </.run_list>
 
-      <.timeline
-        id="timeline"
-        stream={@streams.items}
-        rails={@index.rails}
-        started_at={@run.started_at}
-        seq_path={&tab_path(@current_scope, @run, :timeline, Map.put(@timeline_query, "seq", &1))}
-        target={@focused && "e-#{@focused}"}
-        isolate={@lane}
-        connections={@cx}
-        terminal_path={
-          Access.can?(@current_scope, :"run.read_log", @run) &&
-            (&tab_path(@current_scope, @run, :terminal, %{"seq" => &1}))
-        }
-        earlier={@earlier}
-        later={max(@later - @new_count, 0)}
-        security={@security}
-        legend={@index.items != []}
-      />
-
-      <.after_session
-        :if={@later == 0 and PreparationComponents.after_session?(@preparation)}
-        preparation={@preparation}
-        alive={alive?(@run)}
+      <.timeline_list
+        :if={!PreparationComponents.session_group?(@preparation, @clean_up)}
+        {assigns}
       />
 
       <.live_end
@@ -663,12 +661,46 @@ defmodule ApiaryWeb.RunLive.Show do
 
       <.new_items
         id="new-events"
-        count={@new_count}
+        count={@new_events}
         noun="event"
         target="#timeline"
         on_click="show_new"
       />
     </div>
+    """
+  end
+
+  # The Timeline tab's count: the rows the Timeline lists with every subagent open
+  # (`assign_overview/1`), the allowed connections only while Connections inline is on. It
+  # is the same on every tab; none while the Timeline lists no row.
+  defp timeline_count([]), do: nil
+  defp timeline_count(rows), do: length(rows)
+
+  # The run's Timeline: inside Session started of the **Run** list once the session started
+  # (`ApiaryWeb.PreparationComponents.session_group?/2`), else after the list.
+  defp timeline_list(assigns) do
+    ~H"""
+    <.timeline
+      id="timeline"
+      stream={@streams.items}
+      rails={@index.rails}
+      started_at={@run.started_at}
+      seq_path={&tab_path(@current_scope, @run, :timeline, Map.put(@timeline_query, "seq", &1))}
+      target={@focused && "e-#{@focused}"}
+      isolate={@lane}
+      connections={@cx}
+      terminal_path={
+        Access.can?(@current_scope, :"run.read_log", @run) &&
+          (&tab_path(@current_scope, @run, :terminal, %{"seq" => &1}))
+      }
+      earlier={@earlier}
+      later={max(@later - if(@new_events > 0, do: @new_count, else: 0), 0)}
+      earlier_events={@earlier_events}
+      later_events={max(@later_events - @new_events, 0)}
+      until={if @later > 0, do: until_seq(@win_last)}
+      security={@security}
+      legend={@index.items != []}
+    />
     """
   end
 
@@ -719,6 +751,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :earlier, :integer, required: true
   attr :later, :integer, required: true
   attr :target, :string, default: nil
+  attr :subagents, :map, default: %{}, doc: "the run's subagents, by lane"
 
   # The Transcript, drawn from the run's events, and Raw, the log. Pruning removes the log
   # before the events, so a Transcript can outlive its Raw: the box then has the
@@ -759,6 +792,12 @@ defmodule ApiaryWeb.RunLive.Show do
         cols={@run.terminal_cols}
         rows={@run.terminal_rows}
       >
+        <:subagents :if={@lines > 0 and map_size(@subagents) > 0}>
+          <TranscriptComponents.subagents_bar
+            count={map_size(@subagents)}
+            running={Enum.count(@subagents, fn {_lane, sub} -> sub.state == :running end)}
+          />
+        </:subagents>
         <:transcript :if={@lines > 0}>
           <TranscriptComponents.transcript
             id="transcript"
@@ -937,6 +976,10 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :security, :boolean, required: true
   attr :instance, :any, default: nil, doc: "the run's instance's row, for its name"
 
+  attr :machine_type, :map,
+    default: nil,
+    doc: "the machine type the claim answer had, its name and spec (`Apiary.Runs.Preparation`)"
+
   defp details_rail(assigns) do
     assigns =
       assign(assigns,
@@ -945,7 +988,10 @@ defmodule ApiaryWeb.RunLive.Show do
         image_source: image_source(assigns.scope, assigns.run),
         # The terminal's size is the log's, as the Terminal tab is.
         terminal_size:
-          assigns.run.terminal_cols && Access.can?(assigns.scope, :"run.read_log", assigns.run)
+          assigns.run.terminal_cols && Access.can?(assigns.scope, :"run.read_log", assigns.run),
+        # The command and its arguments are shown only to a reader of the log, as the
+        # Terminal is.
+        command_shown: Access.can?(assigns.scope, :"run.read_log", assigns.run)
       )
 
     ~H"""
@@ -974,6 +1020,16 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={!Run.refused?(@run)}>
             <.run_duration id="rail-duration" run={@run} quiet={@quiet} />
           </dd>
+          <%!-- What the run's sessions reported they used; nothing while none did. The peak
+          is of the memory of the machine type the claim answer had, when it had one. --%>
+          <dt :if={@run.peak_memory_bytes}>{gettext("Peak memory")}</dt>
+          <dd :if={@run.peak_memory_bytes} id="rail-peak-memory" class="tabular-nums">
+            {peak_memory(@run.peak_memory_bytes, @machine_type)}
+          </dd>
+          <dt :if={@run.cpu_time_ms}>{gettext("CPU time")}</dt>
+          <dd :if={@run.cpu_time_ms} id="rail-cpu-time" class="tabular-nums">
+            {cpu_time(@run.cpu_time_ms)}
+          </dd>
           <dt>{gettext("Runtime")}</dt>
           <dd>
             <.external_text text={@run.runtime} />{if !@run.runtime, do: na()}
@@ -992,6 +1048,8 @@ defmodule ApiaryWeb.RunLive.Show do
             <% nil -> %>
               <dd id="rail-host" class="font-mono">{na()}</dd>
           <% end %>
+          <dt :if={@machine_type}>{gettext("Machine type")}</dt>
+          <dd :if={@machine_type} id="rail-machine-type">{@machine_type.name}</dd>
           <dt>
             <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
           </dt>
@@ -1099,11 +1157,13 @@ defmodule ApiaryWeb.RunLive.Show do
         <h3 id="rail-command">{gettext("Command")}</h3>
         <dl class="q-rail-kv">
           <dt>{gettext("Command")}</dt>
-          <dd class="font-mono">
+          <dd :if={!@command_shown} id="run-command">{na()}</dd>
+          <dd :if={@command_shown} id="run-command" class="font-mono">
             <.external_text text={@run.command} />{if !@run.command, do: na()}
           </dd>
           <dt>{gettext("Arguments")}</dt>
-          <dd class="font-mono">
+          <dd :if={!@command_shown} id="run-args">{na()}</dd>
+          <dd :if={@command_shown} id="run-args" class="font-mono">
             <span :if={@run.args == []} class="font-sans text-faint">{gettext("none")}</span>
             <span
               :for={arg <- Enum.take(@run.args, 64)}
@@ -1495,22 +1555,31 @@ defmodule ApiaryWeb.RunLive.Show do
        decision: nil,
        timeline_query: %{},
        new_count: 0,
+       new_events: 0,
        earlier: 0,
        later: 0,
+       earlier_events: 0,
+       later_events: 0,
        tab_count: 0,
        unread: 0,
        limit: nil,
        win_first: nil,
        win_last: nil,
+       sub_choices: %{},
+       timeline_choices: %{},
+       opened_for: {nil, nil},
        preparation: nil,
        preparation_settled: false,
+       outputs: [],
+       overview: [],
+       overview_cx: false,
        machine_log: :hidden,
        clean_up: nil,
        clean_up_timer: nil
      )
      |> stream_configure(:items, dom_id: & &1.id)
      |> stream(:items, [])
-     |> ApiaryWeb.UserAuth.on_membership_change(&leave_terminal/1)}
+     |> ApiaryWeb.UserAuth.on_membership_change(&(&1 |> leave_terminal() |> conceal_timeline()))}
   end
 
   @impl true
@@ -1564,6 +1633,24 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp leave_terminal(socket), do: socket
 
+  # An open Timeline whose reader may no longer read the log builds its rows again in
+  # place, and the header's ending, so that no text of the session stays on the page.
+  defp conceal_timeline(%{assigns: %{tab: :timeline, run: %Run{}, window_loaded: true}} = socket) do
+    if read_log?(socket) do
+      socket
+    else
+      %{win_first: first, win_last: last} = socket.assigns
+      shown = Enum.filter(tab_items(socket), &(first && last && within?(pos(&1), first, last)))
+      socket = assign(socket, full: MapSet.new())
+
+      socket
+      |> stream(:items, build(socket, shown))
+      |> assign_ending()
+    end
+  end
+
+  defp conceal_timeline(socket), do: socket
+
   # The run row is read for the first, static render too: it says found or not found, and
   # gives the header. Everything else waits for the socket, so that opening the page reads
   # the record once, not twice.
@@ -1574,7 +1661,12 @@ defmodule ApiaryWeb.RunLive.Show do
       {:ok, run} ->
         socket =
           socket
-          |> assign(loaded_id: Integer.to_string(run.number), new_count: 0, ending: nil)
+          |> assign(
+            loaded_id: Integer.to_string(run.number),
+            new_count: 0,
+            new_events: 0,
+            ending: nil
+          )
           |> assign(
             :target_shared,
             run.target_id != nil and Targets.shared?(scope, run.target_path)
@@ -1586,6 +1678,7 @@ defmodule ApiaryWeb.RunLive.Show do
         if connected?(socket) do
           # Subscribed before the read, so nothing projected after it is missed.
           Runs.subscribe(scope, run)
+          subscribe_outputs(scope, run)
           Process.send_after(self(), :quiet_tick, @quiet_tick_ms)
 
           security = socket.assigns.security
@@ -1595,6 +1688,9 @@ defmodule ApiaryWeb.RunLive.Show do
             loaded: true,
             window_loaded: false,
             full: MapSet.new(),
+            sub_choices: %{},
+            timeline_choices: %{},
+            opened_for: {nil, nil},
             policy: if(security, do: Record.policy(scope, run)),
             counts: Record.connection_counts(scope, run),
             session_id: Record.session_id(scope, run),
@@ -1608,6 +1704,7 @@ defmodule ApiaryWeb.RunLive.Show do
           |> assign_policy_facts()
           |> assign(preparation: nil, preparation_settled: false, machine_log: :hidden)
           |> assign_preparation()
+          |> refresh_outputs()
           |> assign_ending()
         else
           socket
@@ -1619,12 +1716,28 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp assign_run(socket, %Run{} = run) do
-    assign(socket,
+    socket
+    |> assign_work_item(run)
+    |> assign(
       run: run,
       quiet_for: quiet_for(run),
       page_title: run_title(run, socket.assigns.tab)
     )
   end
+
+  # The run's work item, from its run of the queue, as the runs list reads it
+  # (`Apiary.Runs.work_item/2`), not from the subjects the run reports. It is read when
+  # the page loads the run, and again only when the run's link to its queue changes: a
+  # projection of the run's events changes neither, and reads nothing for it.
+  defp assign_work_item(
+         %{assigns: %{run: %Run{id: id} = old, work_item: _work_item}} = socket,
+         %Run{id: id} = run
+       )
+       when old.dispatch_run_id == run.dispatch_run_id and old.dispatch_id == run.dispatch_id,
+       do: socket
+
+  defp assign_work_item(socket, %Run{} = run),
+    do: assign(socket, :work_item, Runs.work_item(socket.assigns.current_scope, run))
 
   # The window's title: the run, and the tab when it is not the timeline, so a reader with
   # several tabs of one run open tells them apart.
@@ -1641,14 +1754,61 @@ defmodule ApiaryWeb.RunLive.Show do
   # Every parameter is validated against the record; what is not valid is dropped and the
   # URL is rewritten without it.
   defp apply_params(socket, params) do
-    %{index: index, run: run, tab: tab, live_action: action} = socket.assigns
-
+    %{index: index, tab: tab} = socket.assigns
     seq = tab in [:timeline, :terminal] && sequence(params["seq"])
-    focused = seq && index.by_seq[seq]
-    lane = tab == :timeline && Timeline.lane(index, params["lane"])
     # Allowed connections are inline only on the reader's word (`?cx=1`); a denied one is
     # inline always.
     cx = tab == :timeline and params["cx"] == "1"
+
+    # The overview's rows with Connections inline as the Timeline has it after these
+    # parameters: read again only when that changes.
+    overview_cx = if tab == :timeline, do: cx, else: socket.assigns.overview_cx
+
+    rows =
+      if overview_cx == socket.assigns.overview_cx,
+        do: socket.assigns.overview,
+        else: overview_rows(index, overview_cx, socket.assigns.outputs)
+
+    overview = {rows, overview_cx}
+
+    # On the Timeline, a routine tool call's sequence is the Terminal's line for a reader
+    # of the log, else the nearest row before it; any other sequence with no row shows the
+    # row after it (`Overview.focus/3`).
+    focus =
+      with true <- tab == :timeline,
+           item_seq when is_integer(item_seq) <- seq && index.by_seq[seq],
+           %{} = item <- Enum.find(index.items, &(&1.seq == item_seq)) do
+        Overview.focus(rows, item, read_log?(socket))
+      else
+        _ -> :as_is
+      end
+
+    case focus do
+      {:terminal, _item_seq} ->
+        push_patch(socket,
+          to:
+            tab_path(socket.assigns.current_scope, socket.assigns.run, :terminal, %{
+              "seq" => Integer.to_string(seq)
+            }),
+          replace: true
+        )
+
+      # The address keeps a sequence of the row's item, else it moves to the row's.
+      {:row, row} ->
+        seq = if row.seq == index.by_seq[seq], do: seq, else: row.seq
+        apply_params(socket, params, seq, row.seq, cx, overview)
+
+      nil ->
+        apply_params(socket, params, seq, nil, cx, overview)
+
+      as_is when as_is in [:as_is, :unlisted] ->
+        apply_params(socket, params, seq, seq && index.by_seq[seq], cx, overview)
+    end
+  end
+
+  defp apply_params(socket, params, seq, focused, cx, {rows, overview_cx}) do
+    %{index: index, run: run, tab: tab, live_action: action} = socket.assigns
+    lane = tab == :timeline && Timeline.lane(index, params["lane"])
 
     decision =
       tab == :connections && params["decision"] in ~w(allowed denied) && params["decision"]
@@ -1660,6 +1820,8 @@ defmodule ApiaryWeb.RunLive.Show do
       |> put_if("lane", lane && lane.id)
       |> put_if("cx", if(cx, do: "1"))
 
+    %{cx: old_cx, overview: old_rows} = socket.assigns
+
     socket =
       socket
       |> assign(
@@ -1667,8 +1829,11 @@ defmodule ApiaryWeb.RunLive.Show do
         lane: (lane && lane.id) || nil,
         cx: cx,
         decision: decision || nil,
-        timeline_query: keep_timeline_query(socket, tab, timeline_query)
+        timeline_query: keep_timeline_query(socket, tab, timeline_query),
+        overview: rows,
+        overview_cx: overview_cx
       )
+      |> relist(old_cx, old_rows)
       |> read_tab(tab, decision || nil, page)
 
     canonical =
@@ -1698,7 +1863,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # What a tab shows is read when the tab opens, and only then.
   defp read_tab(socket, :timeline, _decision, _page),
-    do: socket |> ensure_window() |> assign_window_counts()
+    do: socket |> open_for_params() |> ensure_window() |> assign_window_counts()
 
   # The Transcript is the window of the Terminal tab, as the Timeline's is of its tab.
   defp read_tab(socket, :terminal, _decision, _page) do
@@ -1732,6 +1897,37 @@ defmodule ApiaryWeb.RunLive.Show do
     )
     |> assign_acts()
   end
+
+  # Connections inline turned on or off on an open Timeline: the allowed connections
+  # outside a call come into the window, or leave it, at their places
+  # (`redraw_window/5`), from `old_rows`, the overview's rows before. The window keeps its
+  # start, and its end, or the list's end when it reached it, so that a reader at the live
+  # end keeps following the events that arrive.
+  defp relist(%{assigns: %{cx: cx}} = socket, cx, _old_rows), do: socket
+
+  defp relist(
+         %{assigns: %{tab: :timeline, window_tab: :timeline, window_loaded: true}} = socket,
+         _old_cx,
+         old_rows
+       ) do
+    %{index: index, win_first: first, win_last: last} = socket.assigns
+
+    if is_tuple(first) and is_tuple(last) do
+      old = tab_items(index, :timeline, %{socket.assigns | overview: old_rows})
+      new = tab_items(socket)
+      at_end = old != [] and last == pos(List.last(old))
+      to_last = if at_end and new != [], do: pos(List.last(new)), else: last
+
+      {socket, _in_window, _removed} =
+        redraw_window(socket, old, new, fn _ -> false end, {first, to_last})
+
+      socket |> assign(win_last: to_last) |> fit_window(new)
+    else
+      socket
+    end
+  end
+
+  defp relist(socket, _old_cx, _old_rows), do: socket
 
   # The other tabs link back to the timeline as the reader left it.
   defp keep_timeline_query(_socket, :timeline, query), do: query
@@ -1846,29 +2042,118 @@ defmodule ApiaryWeb.RunLive.Show do
     %{focused: focused, window_loaded: loaded?, tab: tab} = socket.assigns
 
     cond do
-      not loaded? or socket.assigns.window_tab != tab -> reset_window(socket, focused)
-      focused && not in_window?(socket, focused) -> reset_window(socket, focused)
-      true -> socket
+      not loaded? or socket.assigns.window_tab != tab ->
+        reset_window(socket, focused)
+
+      focused && not in_window?(socket, shown_seq(tab_items(socket), tab, focused)) ->
+        reset_window(socket, focused)
+
+      true ->
+        socket
     end
   end
 
-  defp in_window?(%{assigns: %{win_first: first, win_last: last}}, seq)
-       when is_integer(first) and is_integer(last),
-       do: seq >= first and seq <= last
+  # The sequence of the row the tab shows for `seq`. On the Timeline, `apply_params/2`
+  # sets `focused` to a listed row (`Overview.focus/3`); for a sequence no row has, the
+  # row is the first after it, else the last one. A row with no sequence is never that
+  # row. Every other tab shows the sequence as it is.
+  defp shown_seq(_items, _tab, nil), do: nil
+
+  defp shown_seq(items, :timeline, seq) do
+    numbered = Enum.filter(items, &is_integer(&1.seq))
+
+    case Enum.find(numbered, &(&1.seq >= seq)) || List.last(numbered) do
+      nil -> seq
+      item -> item.seq
+    end
+  end
+
+  defp shown_seq(_items, _tab, seq), do: seq
+
+  # Whether the item with this sequence is in the window. A sequence that is no item of the
+  # tab is compared as `{seq, seq}`.
+  defp in_window?(%{assigns: %{win_first: first, win_last: last}} = socket, seq)
+       when is_tuple(first) and is_tuple(last) do
+    case Enum.find(tab_items(socket), &(&1.seq == seq)) do
+      nil -> within?({seq, seq}, first, last)
+      item -> within?(pos(item), first, last)
+    end
+  end
 
   defp in_window?(_socket, _seq), do: false
 
-  # The items of the index a tab shows. The Timeline leaves thinking out; the Transcript
-  # shows the session, with a result after the lines of another agent that came before it
-  # as a line apart (`ApiaryWeb.TranscriptComponents.lines/2`).
-  defp tab_items(index, :terminal), do: TranscriptComponents.lines(index.items, index.texts)
+  # An item's place in its tab, which the window's ends are: the Transcript groups a
+  # subagent's lines under its start (`ApiaryWeb.TranscriptComponents.arrange/4`), so a
+  # line's place there is `{head, seq}`; anywhere else it is `{seq, seq}`.
+  defp pos(%{pos: pos}), do: pos
+  defp pos(%{seq: seq}), do: {seq, seq}
 
-  defp tab_items(index, _tab), do: Enum.reject(index.items, &(&1.kind == :thinking))
+  defp within?(pos, first, last), do: pos >= first and pos <= last
 
-  defp tab_items(socket), do: tab_items(socket.assigns.index, socket.assigns.tab)
+  # The sequence of the window's last item, for `data-until`: a Transcript line's
+  # `{head, seq}` has it second; a row with no sequence (`Overview.list/2`) comes right
+  # after the row of the sequence its place starts with.
+  defp until_seq({_head, seq}) when is_integer(seq), do: seq
+  defp until_seq({after_seq, {_seq, _k}}), do: after_seq
+  defp until_seq(_last), do: nil
+
+  # A light item's DOM id, which its built item has (`Timeline.build/3`): `e-` and its
+  # sequence, or the `id` of a row with no sequence (`Overview.list/2`).
+  defp row_id(%{id: id}) when is_binary(id), do: id
+  defp row_id(%{seq: seq}), do: "e-#{seq}"
+
+  # Whether an item comes after `last`, the window's end, or nil for a window with none.
+  defp after?(_item, nil), do: true
+  defp after?(item, last), do: pos(item) > last
+
+  # The items of the index a tab shows. The Timeline lists the overview's rows of the
+  # index (`overview`, `assign_overview/1`), with each subagent folded into its start, open
+  # or closed as the reader chose (`timeline_choices`,
+  # `ApiaryWeb.RunPageComponents.fold/3`). The Transcript shows the session, with a result
+  # after the lines of another agent that came before it as a line apart
+  # (`ApiaryWeb.TranscriptComponents.lines/2`), and each subagent's lines under its start,
+  # open or closed as the reader chose (`sub_choices`).
+  defp tab_items(index, :timeline, assigns) do
+    subagents = TranscriptComponents.subagents(index.items, index.alive)
+    fold(assigns.overview, subagents, assigns.timeline_choices)
+  end
+
+  defp tab_items(index, :terminal, assigns) do
+    subagents = TranscriptComponents.subagents(index.items, index.alive)
+
+    index.items
+    |> TranscriptComponents.lines(index.texts, subagents: true)
+    |> TranscriptComponents.arrange(subagents, assigns.sub_choices, assigns.focused)
+  end
+
+  defp tab_items(index, _tab, _assigns), do: Enum.reject(index.items, &(&1.kind == :thinking))
+
+  defp tab_items(socket),
+    do: tab_items(socket.assigns.index, socket.assigns.tab, socket.assigns)
+
+  # The Timeline's rows of the index with every subagent open (`Overview.list/2`), each with
+  # `terminal_seq`, its line in the Terminal or nil: the allowed connections only with
+  # Connections inline on (`cx`), and a Pushed row for each version the run pushed
+  # (`outputs`).
+  defp overview_rows(index, cx, outputs) do
+    line? = &TranscriptComponents.line?(&1, index.texts)
+
+    index.items
+    |> Overview.list(connections: cx, versions: outputs)
+    |> Enum.map(&Map.put(&1, :terminal_seq, Overview.terminal_seq(&1, line?)))
+  end
+
+  # The overview's rows, read once for each change of the index, of the pushed versions,
+  # or of Connections inline as the Timeline has it (`overview_cx`, set by
+  # `apply_params/2`): the Timeline's window, the tab's count and `?seq=` read them.
+  defp assign_overview(socket) do
+    %{index: index, overview_cx: cx, outputs: outputs} = socket.assigns
+    assign(socket, overview: overview_rows(index, cx, outputs))
+  end
 
   defp reset_window(socket, around) do
     items = tab_items(socket)
+    around = shown_seq(items, socket.assigns.tab, around)
 
     start =
       case around && Enum.find_index(items, &(&1.seq == around)) do
@@ -1887,29 +2172,83 @@ defmodule ApiaryWeb.RunLive.Show do
     put_window(socket, Enum.take(tab_items(socket), -@window))
   end
 
-  defp put_window(socket, light) do
+  defp put_window(socket, light, keep_opened \\ false) do
+    socket = if keep_opened, do: socket, else: assign(socket, opened: MapSet.new())
+
     socket
     |> stream(:items, build(socket, light), reset: true)
     |> assign(
       window_loaded: true,
       window_tab: socket.assigns.tab,
-      opened: MapSet.new(),
-      win_first: light |> List.first() |> then(&(&1 && &1.seq)),
-      win_last: light |> List.last() |> then(&(&1 && &1.seq)),
-      new_count: 0
+      win_first: light |> List.first() |> then(&(&1 && pos(&1))),
+      win_last: light |> List.last() |> then(&(&1 && pos(&1))),
+      new_count: 0,
+      new_events: 0
     )
   end
 
+  # The items of `light` as the page shows them, in the order of `light`. A row with no
+  # sequence, the Main session or a Pushed row, is made by `Overview.build/2`, as
+  # `Timeline.build/3` skips it; the Main session row reads its last text and result,
+  # which are built for it when the window does not have them. A row keeps its
+  # `terminal_seq`.
   defp build(socket, light) do
-    %{current_scope: scope, run: run, full: full, opened: opened} = socket.assigns
+    %{current_scope: scope, run: run, full: full, opened: opened, index: index} = socket.assigns
+    {numbered, rows} = Enum.split_with(light, &is_integer(&1.seq))
 
-    scope
-    |> Record.items(run, light, full: MapSet.to_list(full))
-    |> with_versions(socket)
-    |> with_pool(run)
-    |> with_dispatch_run(run)
+    needed =
+      for %{kind: :main_session, seqs: seqs} <- rows, seq <- seqs, into: MapSet.new(), do: seq
+
+    numbered_seqs = MapSet.new(numbered, & &1.seq)
+
+    extra =
+      if MapSet.size(needed) == 0,
+        do: [],
+        else:
+          Enum.filter(
+            index.items,
+            &(MapSet.member?(needed, &1.seq) and not MapSet.member?(numbered_seqs, &1.seq))
+          )
+
+    built =
+      scope
+      |> Record.items(run, numbered ++ extra, full: MapSet.to_list(full))
+      |> with_versions(socket)
+      |> with_pool(run)
+      |> with_dispatch_run(run)
+
+    by_seq = Map.new(built, &{&1.seq, &1})
+
+    light
+    |> Enum.flat_map(fn
+      %{seq: nil} = row ->
+        [Overview.build(row, built)]
+
+      row ->
+        case by_seq[row.seq] do
+          nil -> []
+          item -> [Map.put(item, :terminal_seq, row[:terminal_seq])]
+        end
+    end)
+    |> conceal(Access.can?(scope, :"run.read_log", run))
     |> Enum.map(&Map.put(&1, :open, MapSet.member?(opened, &1.seq)))
   end
+
+  # The session's texts are the Terminal's: for a reader who may not read the log, an item
+  # loses every text the run produced before it is rendered (`ApiaryWeb.RunLive.Concealed`).
+  defp conceal(items, true), do: items
+  defp conceal(items, false), do: Enum.map(items, &Concealed.item/1)
+
+  defp concealed_tasks(background, scope, run) do
+    if Access.can?(scope, :"run.read_log", run),
+      do: background,
+      else: Concealed.tasks(background)
+  end
+
+  defp read_log?(%{assigns: %{current_scope: scope, run: %Run{} = run}}),
+    do: Access.can?(scope, :"run.read_log", run)
+
+  defp read_log?(_socket), do: false
 
   # The run's end item reads the words of `workflow_not_in_harness` from the run of the
   # queue `Record.fetch_run/2` loaded with it (`Apiary.Harnesses.WorkflowGap.preload/1`).
@@ -1924,8 +2263,8 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp transcript_fold(socket, seq, open?) do
     with seq when is_integer(seq) <- sequence(seq),
-         true <- in_window?(socket, seq),
-         %{} = light <- Enum.find(tab_items(socket), &(&1.seq == seq)) do
+         %{} = light <- Enum.find(tab_items(socket), &(&1.seq == seq)),
+         true <- in_window?(socket, seq) do
       %{full: full, opened: opened} = socket.assigns
 
       socket =
@@ -1999,7 +2338,8 @@ defmodule ApiaryWeb.RunLive.Show do
   # leave the items, and every sequence that points at one leaves `by_seq`, so neither a
   # window nor a `?seq=` can reach one. The index's own state keeps them, so the next
   # extension folds the record as it always does.
-  defp put_index(%{assigns: %{security: true}} = socket, index), do: assign(socket, index: index)
+  defp put_index(%{assigns: %{security: true}} = socket, index),
+    do: socket |> assign(index: index) |> assign_overview()
 
   defp put_index(socket, index) do
     {policy, items} = Enum.split_with(index.items, &(&1.kind == :policy_applied))
@@ -2010,7 +2350,9 @@ defmodule ApiaryWeb.RunLive.Show do
         do: index.by_seq,
         else: Map.reject(index.by_seq, fn {_seq, item_seq} -> item_seq in dropped end)
 
-    assign(socket, index: %{index | items: items, by_seq: by_seq})
+    socket
+    |> assign(index: %{index | items: items, by_seq: by_seq})
+    |> assign_overview()
   end
 
   # Why a run that ended badly ended so, said in its header: for a run of the queue
@@ -2047,13 +2389,16 @@ defmodule ApiaryWeb.RunLive.Show do
     if state in Run.ended_badly_states() do
       candidates = ending_candidates(index, socket.assigns.preparation)
 
+      scope = socket.assigns.current_scope
+      log? = Access.can?(scope, :"run.read_log", run)
+
       ending =
         if candidates != [],
           do:
-            socket.assigns.current_scope
+            scope
             |> Record.items(run, candidates)
             |> Enum.reverse()
-            |> Enum.find_value(&ending_of/1)
+            |> Enum.find_value(&ending_of(&1, log?))
 
       assign(socket, ending: ending)
     else
@@ -2094,6 +2439,19 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp ending_of(_item), do: nil
 
+  # For a reader who may not read the log, the ending is chosen as for any reader and keeps
+  # its item, but none of the session's text: a failed tool keeps its name, a result or a
+  # failed turn only the way to it (`ApiaryWeb.RunLive.Concealed`).
+  defp ending_of(item, true), do: ending_of(item)
+
+  defp ending_of(item, false) do
+    case ending_of(item) do
+      nil -> nil
+      _ending when item.kind == :tool -> item |> Concealed.item() |> ending_of()
+      ending -> %{ending | text: nil}
+    end
+  end
+
   # The item's words are texts the runtime sent, shown as one is
   # (`Apiary.ExternalText.lines/1`), on one line. Words with nothing left to show are
   # marked (`Apiary.ExternalText.marked/1`), since the item sent them: the ending names
@@ -2123,40 +2481,57 @@ defmodule ApiaryWeb.RunLive.Show do
     items = tab_items(socket)
 
     {earlier, later} =
-      if is_integer(first),
-        do: {Enum.count(items, &(&1.seq < first)), Enum.count(items, &(&1.seq > last))},
+      if is_tuple(first),
+        do: {Enum.count(items, &(pos(&1) < first)), Enum.count(items, &(pos(&1) > last))},
         else: {0, length(items)}
+
+    # The words of Load earlier and Load newer count events: the rows with a sequence.
+    {earlier_events, later_events} =
+      if is_tuple(first),
+        do:
+          {Enum.count(items, &(pos(&1) < first and is_integer(&1.seq))),
+           Enum.count(items, &(pos(&1) > last and is_integer(&1.seq)))},
+        else: {0, Enum.count(items, &is_integer(&1.seq))}
+
+    # `new_count` is the rows that wait at the end, the pill's events those with a sequence.
+    new_count = min(socket.assigns.new_count, later)
+    new_events = items |> Enum.take(-new_count) |> Enum.count(&is_integer(&1.seq))
 
     assign(socket,
       tab_count: length(items),
       earlier: earlier,
       later: later,
-      new_count: min(socket.assigns.new_count, later),
+      earlier_events: earlier_events,
+      later_events: later_events,
+      new_count: new_count,
+      new_events: new_events,
       unread: max(run.event_count - projected_count(run), 0),
       limit: limit_reason(run, index)
     )
   end
 
-  # The window after items were added at one end: the DOM keeps #{@max_dom}, so the other
-  # end moves in.
+  # The window after items were added at one end: the rows on the page are the window's,
+  # from `win_first` through `win_last`. The DOM keeps #{@max_dom}: past that, the other
+  # end moves in, and only then.
   defp trim_window(socket, :after_append) do
-    %{win_last: last} = socket.assigns
-    kept = socket |> tab_items() |> Enum.filter(&(&1.seq <= last)) |> Enum.take(-@max_dom)
-    assign(socket, win_first: kept |> List.first() |> then(&(&1 && &1.seq)))
+    kept = socket |> shown_items() |> Enum.take(-@max_dom)
+    assign(socket, win_first: kept |> List.first() |> then(&(&1 && pos(&1))))
   end
 
   defp trim_window(socket, :after_prepend) do
-    %{win_first: first} = socket.assigns
-    kept = socket |> tab_items() |> Enum.filter(&(&1.seq >= first)) |> Enum.take(@max_dom)
-    assign(socket, win_last: kept |> List.last() |> then(&(&1 && &1.seq)))
+    kept = socket |> shown_items() |> Enum.take(@max_dom)
+    assign(socket, win_last: kept |> List.last() |> then(&(&1 && pos(&1))))
   end
+
+  defp shown_items(%{assigns: %{win_first: first, win_last: last}} = socket),
+    do: socket |> tab_items() |> Enum.filter(&within?(pos(&1), first, last))
 
   defp append(socket, light) do
     socket
     |> stream(:items, build(socket, light), at: -1, limit: -@max_dom)
     |> assign(
-      win_last: List.last(light).seq,
-      win_first: socket.assigns.win_first || hd(light).seq
+      win_last: pos(List.last(light)),
+      win_first: socket.assigns.win_first || pos(hd(light))
     )
     |> trim_window(:after_append)
   end
@@ -2207,8 +2582,8 @@ defmodule ApiaryWeb.RunLive.Show do
 
   @impl true
   def handle_event("load_earlier", _params, %{assigns: %{win_first: first}} = socket)
-      when is_integer(first) do
-    light = socket |> tab_items() |> Enum.filter(&(&1.seq < first)) |> Enum.take(-@page)
+      when is_tuple(first) do
+    light = socket |> tab_items() |> Enum.filter(&(pos(&1) < first)) |> Enum.take(-@page)
 
     socket =
       if light == [] do
@@ -2217,7 +2592,7 @@ defmodule ApiaryWeb.RunLive.Show do
         socket
         # Prepending one by one reverses a list, so it is handed over reversed.
         |> stream(:items, socket |> build(light) |> Enum.reverse(), at: 0, limit: @max_dom)
-        |> assign(win_first: hd(light).seq)
+        |> assign(win_first: pos(hd(light)))
         |> trim_window(:after_prepend)
         |> announce(
           ngettext(
@@ -2235,14 +2610,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
   def handle_event("load_later", _params, %{assigns: %{window_loaded: true}} = socket) do
     %{win_last: last} = socket.assigns
-    light = socket |> tab_items() |> Enum.filter(&(&1.seq > (last || 0))) |> Enum.take(@page)
+    light = socket |> tab_items() |> Enum.filter(&after?(&1, last)) |> Enum.take(@page)
     socket = if light == [], do: socket, else: append(socket, light)
     {:noreply, assign_window_counts(socket)}
   end
 
   def handle_event("show_new", _params, %{assigns: %{window_loaded: true}} = socket) do
     %{win_last: last} = socket.assigns
-    tail = socket |> tab_items() |> Enum.filter(&(&1.seq > (last || 0)))
+    tail = socket |> tab_items() |> Enum.filter(&after?(&1, last))
     first_new = tail |> Enum.take(-max(socket.assigns.new_count, 1)) |> List.first()
 
     socket =
@@ -2256,17 +2631,20 @@ defmodule ApiaryWeb.RunLive.Show do
      socket
      |> assign(new_count: 0)
      |> assign_window_counts()
-     |> push_event("timeline:end", %{focus: first_new && "e-#{first_new.seq}"})}
+     |> push_event("timeline:end", %{focus: first_new && row_id(first_new)})}
   end
 
   def handle_event("live_end", %{"at_end" => at_end}, socket) when is_boolean(at_end) do
     {:noreply, assign(socket, at_end: at_end)}
   end
 
+  # Show all reads a whole payload, which only a reader of the log may see: for any other
+  # reader the event changes nothing. So does a Transcript's result that opens.
   def handle_event("show_all", %{"seq" => seq}, %{assigns: %{window_loaded: true}} = socket) do
-    with seq when is_integer(seq) <- sequence(seq),
-         true <- in_window?(socket, seq),
-         %{} = light <- Enum.find(tab_items(socket), &(&1.seq == seq)) do
+    with true <- read_log?(socket),
+         seq when is_integer(seq) <- sequence(seq),
+         %{} = light <- Enum.find(tab_items(socket), &(&1.seq == seq)),
+         true <- in_window?(socket, seq) do
       socket = assign(socket, full: MapSet.put(socket.assigns.full, seq))
       {:noreply, stream(socket, :items, build(socket, [light]))}
     else
@@ -2281,7 +2659,7 @@ defmodule ApiaryWeb.RunLive.Show do
         %{"seq" => seq},
         %{assigns: %{window_loaded: true}} = socket
       ),
-      do: {:noreply, transcript_fold(socket, seq, true)}
+      do: {:noreply, if(read_log?(socket), do: transcript_fold(socket, seq, true), else: socket)}
 
   def handle_event(
         "transcript_close",
@@ -2289,6 +2667,66 @@ defmodule ApiaryWeb.RunLive.Show do
         %{assigns: %{window_loaded: true}} = socket
       ),
       do: {:noreply, transcript_fold(socket, seq, false)}
+
+  # A subagent's lines open or close, as the reader chose: the choice stays as it is while
+  # lines arrive, and after the subagent's finish.
+  def handle_event(
+        "subagent_toggle",
+        %{"seq" => seq},
+        %{assigns: %{window_loaded: true}} = socket
+      ) do
+    with seq when is_integer(seq) <- sequence(seq),
+         %{sub: %{open: open?}} <- Enum.find(tab_items(socket), &(&1.seq == seq and &1[:sub])) do
+      case socket.assigns.tab do
+        :timeline ->
+          choices = Map.put(socket.assigns.timeline_choices, seq, not open?)
+          {:noreply, socket |> refold(choices) |> assign_window_counts()}
+
+        _terminal ->
+          {:noreply, regroup(socket, Map.put(socket.assigns.sub_choices, seq, not open?))}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  # `x` or `Shift+x` reached a denied call of a closed subagent (`TimelineKeys`): the
+  # subagent opens, as for a link to the call, and the call is inside the window for the
+  # hook to move to. The key closes nothing.
+  def handle_event(
+        "subagent_open",
+        %{"seq" => seq},
+        %{assigns: %{window_loaded: true, tab: :timeline}} = socket
+      ) do
+    with seq when is_integer(seq) <- sequence(seq),
+         %{lane: %{index: lane}} when is_integer(lane) <-
+           Enum.find(socket.assigns.index.items, &(&1.seq == seq)),
+         %{sub: %{open: false, seq: head}} <-
+           Enum.find(tab_items(socket), &(&1[:sub] && &1.lane[:index] == lane)) do
+      socket = refold(socket, Map.put(socket.assigns.timeline_choices, head, true), seq)
+      {:noreply, assign_window_counts(socket)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("subagent_open", _params, socket), do: {:noreply, socket}
+
+  def handle_event(
+        "subagents_all",
+        %{"open" => open},
+        %{assigns: %{window_loaded: true}} = socket
+      )
+      when open in ["true", "false"] do
+    %{index: index} = socket.assigns
+
+    choices =
+      index.items
+      |> TranscriptComponents.subagents(index.alive)
+      |> Map.new(fn {_lane, sub} -> {sub.seq, open == "true"} end)
+
+    {:noreply, regroup(socket, choices)}
+  end
 
   # A line of the Transcript in Raw: the byte of the log at which the session's output line
   # `line` starts, in the stream Raw shows (`Apiary.Runs.Record.log_offset/5`). Nil when the
@@ -2818,17 +3256,26 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # The pool's starter reported about the removal of the run's machine: the preparation is
-  # read again, settled or not, so the Clean up row shows the report.
+  # read again, settled or not, so the Machine removed row shows the report.
   def handle_info(
         {:machine_end_changed, %Run{id: id}},
         %{assigns: %{run: %Run{id: id}}} = socket
       ),
-      do: {:noreply, assign_preparation(socket)}
+      do: {:noreply, socket |> assign_preparation() |> refresh_outputs()}
 
-  # The Clean up row waited 15 minutes after the run ended: the preparation is read again,
-  # and the row shows the report that came, or that none came.
+  # A version was pushed to the run's work item: the preparation is read again, settled or
+  # not, so Outputs saved shows a version the run pushed with no push step too, and the
+  # Timeline its Pushed row.
+  def handle_info(
+        {:artifact_pushed, _work_item, _version},
+        %{assigns: %{run: %Run{}, loaded: true}} = socket
+      ),
+      do: {:noreply, socket |> assign_preparation() |> refresh_outputs()}
+
+  # The Machine removed row waited 15 minutes after the run ended: the preparation is read
+  # again, and the row shows the report that came, or that none came.
   def handle_info(:clean_up_due, %{assigns: %{run: %Run{}, loaded: true}} = socket),
-    do: {:noreply, assign_preparation(socket)}
+    do: {:noreply, socket |> assign_preparation() |> refresh_outputs()}
 
   # Quiet is the server's word: recomputed on a timer and on every batch, never by the page.
   def handle_info(:quiet_tick, socket) do
@@ -3007,7 +3454,9 @@ defmodule ApiaryWeb.RunLive.Show do
   # announced and what the open tab shows of it: never the run again, whatever its size.
   # The one exception is an event that arrived below what the page holds.
   defp flush(%{assigns: %{run: %Run{} = run, loaded: true}} = socket) do
-    %{current_scope: scope, index: old, range: range, tab: tab} = socket.assigns
+    %{current_scope: scope, index: old, overview: old_rows, range: range, tab: tab} =
+      socket.assigns
+
     socket = assign(socket, range: nil)
 
     {index, rows} =
@@ -3058,13 +3507,14 @@ defmodule ApiaryWeb.RunLive.Show do
             else: &1
           )
         )
-        |> flush_tab(tab, old, types, range)
+        |> flush_tab(tab, %{index: old, overview: old_rows}, types, range)
     end
+    |> refresh_outputs()
   end
 
   defp flush(socket), do: assign(socket, range: nil)
 
-  ## The Prepare machine section
+  ## The **Run** list
 
   # The run's preparation (`Apiary.Runs.Preparation`), read again at each flush until it
   # is settled (`ApiaryWeb.PreparationComponents.settled?/2`) or the timeline has a
@@ -3072,6 +3522,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # `@preparation_events`; and its machine log for an instance admin, read until it has
   # arrived.
   defp assign_preparation(%{assigns: %{run: %Run{} = run, current_scope: scope}} = socket) do
+    was = grouped?(socket.assigns)
     preparation = Preparation.read(scope, run)
 
     socket
@@ -3083,9 +3534,69 @@ defmodule ApiaryWeb.RunLive.Show do
       machine_log: machine_log(scope, preparation, socket.assigns.machine_log)
     )
     |> assign_clean_up()
+    |> resend_window(was)
   end
 
-  # The Clean up row as it is now (`ApiaryWeb.PreparationComponents.clean_up/3`), and,
+  # The versions the run pushed, which the Timeline lists as Pushed rows, from the
+  # preparation. They are taken apart from `assign_preparation/1`, after the window
+  # follows the index (`flush/1`), so that the window follows one change at a time: a
+  # new version's row is inserted at its place, as an item that arrived is.
+  defp refresh_outputs(%{assigns: %{preparation: preparation, outputs: outputs}} = socket) do
+    versions = (preparation && Map.get(preparation, :outputs)) || []
+
+    case socket.assigns do
+      _assigns when versions == outputs ->
+        socket
+
+      %{tab: :timeline, window_tab: :timeline, window_loaded: true} ->
+        old = tab_items(socket)
+        socket = socket |> assign(outputs: versions) |> assign_overview()
+
+        socket
+        |> follow_items(old, tab_items(socket), fn _item -> false end)
+        |> assign_window_counts()
+
+      _assigns ->
+        socket |> assign(outputs: versions) |> assign_overview()
+    end
+  end
+
+  # The artifacts topic of the run's work item (`Apiary.Artifacts`), so that a version the
+  # run pushes reaches Outputs saved with no step or exit event; none for a run with no
+  # work item, or for a reader who may not read it.
+  defp subscribe_outputs(scope, run) do
+    case Preparation.work_item(scope, run) do
+      nil -> :ok
+      work_item -> Apiary.Artifacts.subscribe(scope, work_item)
+    end
+  end
+
+  # Whether the Timeline is drawn inside Session started of the **Run** list
+  # (`ApiaryWeb.PreparationComponents.session_group?/2`).
+  defp grouped?(%{preparation: preparation, clean_up: clean_up}),
+    do: PreparationComponents.session_group?(preparation, clean_up)
+
+  defp grouped?(_assigns), do: false
+
+  # Once the session started, or once the list appears around a session that started, the
+  # Timeline is drawn inside Session started, so the stream's container is a new element
+  # and has none of the items sent before: the window is sent again as it is, with the
+  # count of new items kept. `was` is whether the Timeline was inside it before.
+  defp resend_window(%{assigns: %{tab: :timeline, window_loaded: true}} = socket, was) do
+    %{win_first: first, win_last: last} = socket.assigns
+
+    if was != grouped?(socket.assigns) and is_tuple(first) do
+      %{new_count: count, new_events: events} = socket.assigns
+      light = socket |> tab_items() |> Enum.filter(&within?(pos(&1), first, last))
+      socket |> put_window(light, true) |> assign(new_count: count, new_events: events)
+    else
+      socket
+    end
+  end
+
+  defp resend_window(socket, _was), do: socket
+
+  # The Machine removed row as it is now (`ApiaryWeb.PreparationComponents.clean_up/3`), and,
   # while it waits for a report, one timer for the moment it no longer does, which reads
   # the preparation again. The timer before is cancelled.
   defp assign_clean_up(%{assigns: %{preparation: preparation, run: run}} = socket) do
@@ -3140,7 +3651,7 @@ defmodule ApiaryWeb.RunLive.Show do
        )
        when started.state == "running" do
     case Record.reload(socket.assigns.current_scope, socket.assigns.run) do
-      %Run{} = run -> socket |> follow_run(run) |> assign_preparation()
+      %Run{} = run -> socket |> follow_run(run) |> assign_preparation() |> refresh_outputs()
       nil -> socket
     end
   end
@@ -3241,64 +3752,272 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp flush_tab(socket, _tab, _old, _types, _range), do: socket
 
-  # New and changed items of the tab, after the index was extended. The Transcript is
-  # followed while its window ends at the record's end; the Timeline while the reader is
-  # at its live end too, else a pill counts what arrived.
-  defp follow_timeline(socket, old_index) do
-    %{index: index, win_first: first, win_last: last, tab: tab} = socket.assigns
-    old = tab_items(old_index, tab)
-    new = tab_items(index, tab)
-    old_last = old |> List.last() |> then(&((&1 && &1.seq) || 0))
+  # New and changed items of the tab, after the index was extended from `old`, the index
+  # and the overview's rows before. The Transcript is followed while its window ends at
+  # the record's end; the Timeline while the reader is at its live end too, else a pill
+  # counts what arrived.
+  defp follow_timeline(socket, %{index: old_index, overview: old_rows}) do
+    %{index: index, tab: tab} = socket.assigns
+    # A result is drawn again when the Transcript's choice of texts changes: it shows its
+    # text only in a run with neither texts nor turn ends.
+    fallback_changed = tab == :terminal and fallback(old_index) != fallback(index)
+    again? = &(fallback_changed and &1.kind == :result)
+
+    follow_items(
+      socket,
+      tab_items(old_index, tab, %{socket.assigns | overview: old_rows}),
+      tab_items(index, tab, socket.assigns),
+      again?
+    )
+  end
+
+  # The tab's items were `old` and are `new`; `again?` picks the items drawn again even
+  # when they did not change.
+  defp follow_items(socket, old, new, again?) do
+    %{win_first: first, win_last: last, tab: tab} = socket.assigns
+    old_last = old |> List.last() |> then(&(&1 && pos(&1)))
     at_end = tab == :terminal or (socket.assigns.at_end and socket.assigns.new_count == 0)
 
     if is_nil(first) do
       # Nothing was on the page yet: the window starts with what arrived.
       reset_window(socket, socket.assigns.focused)
     else
-      old_in_window =
-        for item <- old,
-            item.seq >= first and item.seq <= last,
-            into: %{},
-            do: {item.seq, item}
-
-      # A result is drawn again when the Transcript's choice of texts changes: it shows its
-      # text only in a run with neither texts nor turn ends.
-      fallback_changed = tab == :terminal and fallback(old_index) != fallback(index)
-
-      changed =
-        for item <- new,
-            item.seq >= first and item.seq <= last,
-            old_in_window[item.seq] != item or (fallback_changed and item.kind == :result),
-            do: item
-
       # An item the tab no longer shows leaves the window: on the Terminal tab, a turn's end
-      # once a text of the run arrived, which has the turn's message.
-      shown = MapSet.new(new, & &1.seq)
-      removed = for {seq, _item} <- old_in_window, seq not in shown, do: seq
+      # once a text of the run arrived, which has the turn's message; on either tab, the
+      # items of a subagent that finished, which close.
+      {socket, in_window, removed} = redraw_window(socket, old, new, again?, nil)
 
-      appended = Enum.drop_while(new, &(&1.seq <= old_last))
-
-      socket = Enum.reduce(removed, socket, &stream_delete(&2, :items, %{id: "e-#{&1}"}))
-      socket = if changed == [], do: socket, else: stream(socket, :items, build(socket, changed))
+      appended = Enum.filter(new, &after?(&1, old_last))
 
       cond do
+        # Every line of the window left (a subagent's, closed): the window is drawn again
+        # at the end.
+        in_window == [] and removed != [] ->
+          put_window(socket, Enum.take(new, -@window), true)
+
         appended == [] ->
-          socket
+          fit_window(socket, new)
 
         last == old_last and at_end ->
           append(socket, appended)
 
+        # The pill counts the events among the rows that wait, and a Main session or
+        # Pushed row is none.
         true ->
+          events = Enum.count(appended, &is_integer(&1.seq))
+
           socket
+          |> fit_window(new)
           |> assign(new_count: socket.assigns.new_count + length(appended))
-          |> announce(
-            ngettext("%{number} new event.", "%{number} new events.", length(appended),
-              number: Format.number(length(appended))
-            ),
-            :throttled
-          )
+          |> then(fn socket ->
+            if events == 0,
+              do: socket,
+              else:
+                announce(
+                  socket,
+                  ngettext("%{number} new event.", "%{number} new events.", events,
+                    number: Format.number(events)
+                  ),
+                  :throttled
+                )
+          end)
       end
     end
+  end
+
+  # The window drawn again from the tab's items before (`old`) and after (`new`) a change,
+  # with its ends at `bounds`, or where they were for nil: the items that were inside it
+  # and that the tab no longer shows leave it, the items that changed, or that `again?`
+  # picks, are drawn again, and the items that came into it are inserted at their places.
+  # Returns the socket, the items now inside the window and the sequences that left it.
+  defp redraw_window(socket, old, new, again?, bounds) do
+    %{win_first: first, win_last: last} = socket.assigns
+    {to_first, to_last} = bounds || {first, last}
+
+    old_in_window =
+      for item <- old, within?(pos(item), first, last), into: %{}, do: {row_id(item), item}
+
+    in_window = Enum.filter(new, &within?(pos(&1), to_first, to_last))
+
+    changed =
+      for item <- in_window,
+          id = row_id(item),
+          is_map_key(old_in_window, id),
+          old_in_window[id] != item or again?.(item),
+          do: item
+
+    shown = MapSet.new(in_window, &row_id/1)
+    removed = for {id, _item} <- old_in_window, id not in shown, do: id
+
+    socket = Enum.reduce(removed, socket, &stream_delete(&2, :items, %{id: &1}))
+    socket = if changed == [], do: socket, else: stream(socket, :items, build(socket, changed))
+    {insert_inside(socket, in_window, old_in_window), in_window, removed}
+  end
+
+  # The Timeline after the reader opened or closed subagents (`choices`): the items of a
+  # subagent that opened are inserted at their places in time, among the other agents'
+  # items, and those of one that closed leave; the rows whose rails changed are drawn
+  # again. The window keeps its start, and its end, or the tab's end when it reached it;
+  # it has a whole window at least, while items follow that the pill does not count, and
+  # at most what the page keeps. When that leaves out the row shown for `keep`
+  # (`shown_seq/3`), the window is drawn around that row instead: a stream's reset keeps
+  # the inserts made before it in the same render, so the two cannot follow each other.
+  defp refold(socket, choices, keep \\ nil)
+
+  defp refold(%{assigns: %{win_first: first, win_last: last}} = socket, choices, keep)
+       when is_tuple(first) and is_tuple(last) do
+    old = tab_items(socket)
+    at_end = last == old |> List.last() |> then(&(&1 && pos(&1)))
+    socket = assign(socket, timeline_choices: choices)
+    new = tab_items(socket)
+    from = Enum.drop_while(new, &(pos(&1) < first))
+    inside = if at_end, do: from, else: Enum.take_while(from, &(pos(&1) <= last))
+
+    # The new events the pill counts wait for it: the window fills up to them.
+    waiting =
+      if socket.assigns.new_count > 0,
+        do: old |> Enum.take(-socket.assigns.new_count) |> hd() |> pos()
+
+    fill = if waiting, do: Enum.take_while(from, &(pos(&1) < waiting)), else: from
+
+    light =
+      if length(inside) < @window,
+        do: Enum.take(fill, @window),
+        else: Enum.take(inside, @max_dom)
+
+    case light do
+      [] ->
+        put_window(socket, Enum.take(new, -@window), true)
+
+      _light ->
+        bounds = {pos(hd(light)), pos(List.last(light))}
+        shown = shown_seq(new, :timeline, keep)
+        kept = shown && Enum.find(new, &(&1.seq == shown))
+
+        if kept && not within?(pos(kept), elem(bounds, 0), elem(bounds, 1)) do
+          reset_window(socket, keep)
+        else
+          {socket, _in_window, _removed} =
+            redraw_window(socket, old, new, fn _item -> false end, bounds)
+
+          assign(socket, win_first: elem(bounds, 0), win_last: elem(bounds, 1))
+        end
+    end
+  end
+
+  defp refold(socket, choices, _keep), do: assign(socket, timeline_choices: choices)
+
+  # A `?seq=` that points at an item of a closed subagent, or a `?lane=` that keeps a closed
+  # subagent's lane, opens that subagent on the Timeline. Only a new `?seq=` or `?lane=`
+  # does (`opened_for`, what the last address had): a subagent the reader closed stays
+  # closed while another parameter changes.
+  defp open_for_params(socket) do
+    %{index: index, focused: focused, lane: lane, timeline_choices: choices} = socket.assigns
+    {was_focused, was_lane} = socket.assigns.opened_for
+    socket = assign(socket, opened_for: {focused, lane})
+
+    # The heads of the closed subagents, by their lane's index.
+    closed =
+      for %{sub: %{open: false, seq: seq}} = item <- tab_items(index, :timeline, socket.assigns),
+          into: %{},
+          do: {item.lane.index, seq}
+
+    focused_lane =
+      focused != was_focused && focused &&
+        Enum.find_value(index.items, &(&1.seq == focused && &1.lane[:index]))
+
+    lane_index = lane != was_lane && lane && (Timeline.lane(index, lane) || %{})[:index]
+
+    opened =
+      for {i, except} <- [{focused_lane, focused}, {lane_index, nil}],
+          head = closed[i],
+          head != nil and head != except,
+          into: choices,
+          do: {head, true}
+
+    cond do
+      opened == choices -> socket
+      socket.assigns.window_tab == :timeline -> refold(socket, opened, focused)
+      true -> assign(socket, timeline_choices: opened)
+    end
+  end
+
+  # The lines that arrived inside the window, each at its place: a subagent's line under
+  # its start, before the lines that came after the start. They are inserted in order, so
+  # each one's index is its place in the window. Past what the page keeps, the window is
+  # drawn again at its end.
+  defp insert_inside(socket, in_window, old_in_window) do
+    inside =
+      in_window
+      |> Enum.with_index()
+      |> Enum.reject(fn {item, _at} -> is_map_key(old_in_window, row_id(item)) end)
+
+    cond do
+      inside == [] ->
+        socket
+
+      length(in_window) > @max_dom ->
+        put_window(socket, Enum.take(in_window, -@max_dom), true)
+
+      true ->
+        built = socket |> build(Enum.map(inside, &elem(&1, 0))) |> Map.new(&{&1.id, &1})
+
+        Enum.reduce(inside, socket, fn {item, at}, socket ->
+          case built[row_id(item)] do
+            nil -> socket
+            full -> stream_insert(socket, :items, full, at: at)
+          end
+        end)
+    end
+  end
+
+  # The window's ends, moved to the first and last items still inside them: lines that
+  # left (a subagent's, closed) can have been one.
+  defp fit_window(%{assigns: %{win_first: first, win_last: last}} = socket, items)
+       when is_tuple(first) and is_tuple(last) do
+    case Enum.filter(items, &within?(pos(&1), first, last)) do
+      [] -> socket
+      inside -> assign(socket, win_first: pos(hd(inside)), win_last: pos(List.last(inside)))
+    end
+  end
+
+  defp fit_window(socket, _items), do: socket
+
+  # The Transcript after the reader opened or closed subagents' lines: the window from the
+  # start of the group its first line is in, which can have closed, through its last line
+  # and the lines of a group whose start is in it, or through the end when the window was
+  # at the end; a whole window at least, filled from before that start when too few lines
+  # follow it. Results the reader opened stay open.
+  defp regroup(socket, choices) do
+    %{win_first: first, win_last: last} = socket.assigns
+    old = tab_items(socket)
+    at_end = is_nil(last) or last == old |> List.last() |> then(&(&1 && pos(&1)))
+    socket = assign(socket, sub_choices: choices)
+    new = tab_items(socket)
+
+    rest =
+      if is_tuple(first),
+        do: Enum.drop_while(new, &(pos(&1) < {elem(first, 0), elem(first, 0)})),
+        else: new
+
+    inside =
+      if at_end,
+        do: rest,
+        else:
+          Enum.take_while(rest, fn item ->
+            pos(item) <= last or (item[:group] != nil and {item.group, item.group} <= last)
+          end)
+
+    light =
+      cond do
+        length(inside) >= @window -> Enum.take(inside, @max_dom)
+        length(rest) >= @window -> Enum.take(rest, @window)
+        true -> Enum.take(new, -@window)
+      end
+
+    socket
+    |> put_window(light, true)
+    |> assign_window_counts()
   end
 
   # Whether the Transcript shows turn ends and result texts in place of texts: none in a run
@@ -3310,8 +4029,29 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp alive?(%Run{state: state}), do: state in Run.alive_states()
   # A run whose exit was recorded, whatever its state: one that ended Lost by its exit too.
-  # A run Apiary marked lost by its own check, and one that did not start, have no exit.
+  # A run that Qory Apiary marked lost after its keep-alive stopped, and one that did not
+  # start, have no exit.
   defp exited?(%Run{exited_at: exited_at}), do: exited_at != nil
+
+  # CPU time as a duration, to the second, a half second rounded up: "12 s",
+  # "41 m 10 s", "5 h 00 m" (`ApiaryWeb.RunComponents.format_seconds/1`).
+  defp cpu_time(ms), do: ApiaryWeb.RunComponents.format_seconds(div(ms + 500, 1000))
+
+  # The peak alone, "9.8 GiB", or, with the machine type's memory, both in GiB to a tenth:
+  # "9.8 of 16 GiB".
+  defp peak_memory(bytes, %{spec: %{"memory_mib" => mib}}) when is_integer(mib),
+    do: gettext("%{peak} of %{memory} GiB", peak: gib(bytes), memory: gib(mib * 1_048_576))
+
+  defp peak_memory(bytes, _machine_type), do: ApiaryWeb.ArtifactComponents.size(bytes)
+
+  # Bytes in GiB to a tenth, a half rounded up: "9.8", "16".
+  defp gib(bytes) do
+    tenths = div(bytes * 10 + 536_870_912, 1_073_741_824)
+
+    if rem(tenths, 10) == 0,
+      do: Format.number(div(tenths, 10)),
+      else: Format.number(tenths / 10, digits: 1)
+  end
 
   # The program's exit as recorded, whatever the run's state. `-1` with no signal is the
   # gateway's placeholder for an exit it wrote: the program's exit code was not

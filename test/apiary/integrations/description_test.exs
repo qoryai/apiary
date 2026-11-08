@@ -31,15 +31,16 @@ defmodule Apiary.Integrations.DescriptionTest do
                ~w(acme-chat.json acme-cloud.json acme-models.json acme-tracker.json
                   example-gateway.json example-projects.json example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
-                  example-source-guide.json example-source-targets.json example-tracker.json
-                  github.json unknown-role.json)
+                  example-source-comments.json example-source-guide.json
+                  example-source-targets.json example-tracker.json github.json
+                  unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 112
+      assert length(names) == 114
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -58,7 +59,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 47
+      assert length(names) == 49
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -101,6 +102,7 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"guide-steps-11", :maxItems, "#/roles/source/guide/connect/steps"},
             {"guide-steps-empty", :minItems, "#/roles/source/guide/connect/steps"},
             {"guide-undefined-member", :additionalProperties, "#/roles/source/guide/setup"},
+            {"comments-false", :const, "#/roles/source/comments"},
             {"targets-false", :const, "#/roles/source/targets"},
             {"targets-string", :const, "#/roles/source/targets"}
           ] do
@@ -148,6 +150,19 @@ defmodule Apiary.Integrations.DescriptionTest do
         assert Description.item_noun(description) == nil, name
         assert Description.items?(description), name
         assert Description.collection_noun(description) == nil, name
+      end
+    end
+
+    test "whether a source role takes comments: true only where it is set to true" do
+      assert {:ok, commenting} = parse_fixture("example-source-comments.json")
+      assert Description.comments?(commenting)
+      refute Description.targets?(commenting)
+
+      # A source role with no `comments`, and no source role: no comments.
+      for name <- ~w(example-tracker.json example-source-targets.json acme-tracker.json
+                     unknown-role.json) do
+        assert {:ok, description} = parse_fixture(name)
+        refute Description.comments?(description), name
       end
     end
 
@@ -286,12 +301,12 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "3fc796d01e551d7e966be99bd109239ca9806a7c"
+  @integrations_ref "e33240a984c5dd1a94270f3269b16c5b354dd768"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "f5c147113eec95832c102971165afa3308ce2f969b7351555392db1ad1e2a70b",
+      "a1bdeaa7f9638216ecf0f967937296dfd55a6a282e03557670666eb40a9d122f",
     "priv/contract/integration/definitions.schema.json" =>
-      "6198a125d943ac8b8d3f27d757b6d77696171009d6bf218cfd527eacdc0288b8",
+      "1cec0e11d03f689ac5857ba5508c9552b3283964e91bdfc8d02a2605fa8c468f",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "04f85c67a8f04e06c925ce61b5210c7141aec7453b3e645a298f075b06491c1b",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
@@ -302,12 +317,14 @@ defmodule Apiary.Integrations.DescriptionTest do
       "1f41df7746990683f8f23217275531a446aaa11a58e723a0eefd72cd23ceaf57",
     "priv/contract/integration/descriptions/openrouter.json" =>
       "f77a4df6d8115eb3030a2053e8c97f87aef2a8e0566b629673d618cefb28d7bb",
+    "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
+      "5eb6e1b3a917e5a17c806521155f75216004ac572e67d6dce6d9a7e7ff594f8b",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "5225414a3b7024dfedccb6af46e2583f5d670132b838764501fd1bd2fe995393",
+      "fd322a6c16fc28bb94dda3e50b0715c49a68b457933260470a2b11437bf9cddc",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "6198a125d943ac8b8d3f27d757b6d77696171009d6bf218cfd527eacdc0288b8",
+      "1cec0e11d03f689ac5857ba5508c9552b3283964e91bdfc8d02a2605fa8c468f",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "7557e6a7159b3ab7c5e9b249d9cfee9040dcaed7906c1d4c86a0d484ad975a9b"
+      "c3959f0698b7140dad73d55115cb880e18a825c2d6bcb102802152c6b3f0a1a6"
   }
 
   @root Path.expand("../../..", __DIR__)
@@ -1066,11 +1083,10 @@ defmodule Apiary.Integrations.DescriptionTest do
     # budget, measured: 1.2 s to 1.7 s at 20 levels of allOf and for 1000 patterns against
     # 1024 strings, 5 s to 5.7 s and 1.19 GB at 20 levels of allOf whose leaf refuses the
     # value, 5.6 s at 20 levels of anyOf, 33 s at 24 levels of allOf and over 30 s in
-    # draft-07; 24 s to 28 s for 1000 backtracking patterns against a string of 60001
-    # bytes, 15 s against 128 settings, 9.5 s against a list of 100 strings, and 13.3 s for
-    # 1000 email formats against a string of 60 KB. With it, each ran out within 350 ms.
-    # The reason is asserted and the time is not: a check its time stopped, 10 s, would log
-    # `reason=time`.
+    # draft-07, and 13.3 s for 1000 email formats against a string of 60 KB. With it, each
+    # ran out within 350 ms. The reason is asserted and the time is not: a check its time
+    # stopped, 10 s, would log `reason=time`. A backtracking pattern ends the check before
+    # the budget: JSV stops the match at a step limit, and the settings are invalid.
 
     defp with_settings_schema(schema) do
       assert {:ok, description} = parse(tracker_description(%{"settings" => schema}))
@@ -1118,8 +1134,28 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert caller < 1_000_000, "#{caller} reductions in the caller"
     end
 
-    # 1000 backtracking patterns, each spending the pattern budget of JSV on a value.
-    defp backtracking, do: %{"anyOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
+    # `settings` refused before the budget, at JSV's step limit for a pattern match: invalid
+    # settings without `budget: :exceeded`, no warning, and little work in the caller.
+    defp refused_at_step_limit(description, settings) do
+      {{caller, result}, log} =
+        with_log(fn ->
+          reductions(fn -> Description.check_settings(description, settings) end)
+        end)
+
+      assert result == {:error, {:integration_settings_invalid, %{valid: false}}}
+      refute log =~ "settings check was stopped"
+      assert caller < 1_000_000, "#{caller} reductions in the caller"
+    end
+
+    # 1000 backtracking patterns in `keyword`. JSV stops a match after a number of
+    # backtracking steps that grows with the length of the value, and ends the check with
+    # one error, `indeterminate_pattern`: the match against `value` reaches that limit.
+    defp backtracking(value, keyword \\ "anyOf") do
+      assert {:error, %JSV.ValidationError{errors: [%{kind: :indeterminate_pattern}]}} =
+               JSV.validate(value, JSV.build!(%{"pattern" => "^(a+)+$"}))
+
+      %{keyword => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
+    end
 
     test "a schema that doubles its work at each of 20 or 24 levels runs out of reductions" do
       over_budget(doubling(20), %{"a" => "s"}, "reductions")
@@ -1159,43 +1195,57 @@ defmodule Apiary.Integrations.DescriptionTest do
       over_budget(description, %{"x" => List.duplicate("a", 1024)}, "heap")
     end
 
-    test "1000 backtracking patterns run out of reductions on a long setting, 128, a list" do
+    test "1000 backtracking patterns end the check of a long setting, 128, a list at JSV's step limit" do
+      long = String.duplicate("a", 60_000) <> "!"
+
       one =
         with_settings_schema(%{
           "type" => "object",
           "properties" => %{"s1" => %{"$ref" => "#/$defs/p"}},
-          "$defs" => %{"p" => backtracking()}
+          "$defs" => %{"p" => backtracking(long)}
         })
 
-      over_budget(one, %{"s1" => String.duplicate("a", 60_000) <> "!"}, "reductions")
+      refused_at_step_limit(one, %{"s1" => long})
+
+      short = String.duplicate("a", 60) <> "!"
 
       many =
         with_settings_schema(%{
           "type" => "object",
           "properties" => Map.new(1..128, &{"s#{&1}", %{"$ref" => "#/$defs/p"}}),
-          "$defs" => %{"p" => backtracking()}
+          "$defs" => %{"p" => backtracking(short)}
         })
 
-      over_budget(
-        many,
-        Map.new(1..128, &{"s#{&1}", String.duplicate("a", 60) <> "!"}),
-        "reductions"
-      )
+      refused_at_step_limit(many, Map.new(1..128, &{"s#{&1}", short}))
+
+      item = String.duplicate("a", 24) <> "!"
 
       list =
         with_settings_schema(%{
           "type" => "object",
-          "properties" => %{"l" => %{"type" => "array", "items" => backtracking()}}
+          "properties" => %{"l" => %{"type" => "array", "items" => backtracking(item)}}
         })
 
-      over_budget(
-        list,
-        %{"l" => List.duplicate(String.duplicate("a", 24) <> "!", 100)},
-        "reductions"
-      )
+      refused_at_step_limit(list, %{"l" => List.duplicate(item, 100)})
     end
 
-    # Without the budget, each of the next three checks passed 2000000000 reductions
+    test "1000 backtracking patterns in items.oneOf end the check of 1024 strings at JSV's step limit" do
+      item = String.duplicate("a", 59) <> "!"
+
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{
+            "x" => %{"type" => "array", "items" => backtracking(item, "oneOf")}
+          }
+        })
+
+      settings = %{"x" => List.duplicate(item, 1024)}
+      assert byte_size(Apiary.Kinds.CanonicalJSON.encode!(settings)) in 60_000..65_536
+      refused_at_step_limit(description, settings)
+    end
+
+    # Without the budget, each of the next two checks passed 2000000000 reductions
     # unfinished.
 
     test "a $ref chain that doubles at each of 40 levels runs out of reductions" do
@@ -1222,23 +1272,6 @@ defmodule Apiary.Integrations.DescriptionTest do
       # `t` refuses, so each level tries both branches.
       settings = %{"t" => Enum.reduce(1..62, [1], fn _, inner -> [inner] end)}
       over_budget(description, settings, "heap")
-    end
-
-    test "1000 backtracking patterns in items.oneOf against 1024 strings run out of reductions" do
-      description =
-        with_settings_schema(%{
-          "type" => "object",
-          "properties" => %{
-            "x" => %{
-              "type" => "array",
-              "items" => %{"oneOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
-            }
-          }
-        })
-
-      settings = %{"x" => List.duplicate(String.duplicate("a", 59) <> "!", 1024)}
-      assert byte_size(Apiary.Kinds.CanonicalJSON.encode!(settings)) in 60_000..65_536
-      over_budget(description, settings, "reductions")
     end
 
     test "1000 email formats against a string of 60 KB run out of heap" do

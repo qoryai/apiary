@@ -346,15 +346,14 @@ later.
    model key.
 4. **Harness.** **Which harness do runs in Main use?** has two choices:
    - **Qory harness**, `github.com/qoryai/harness`, the choice when you have made none.
-     Under **Version**, **Always the latest version** uses the newest version this Qory
-     Apiary ships, and moves on when Qory Apiary is upgraded. **A fixed version** cannot
-     be selected until the first release of the Qory harness: the step shows "Named
-     versions come with the first release of the Qory harness." under it.
+     Under **Version**, keep **Always the latest on** with a branch, `main` unless you
+     change it. Each run uses the commit the branch is at when a machine claims the run.
+     To fix the version, choose **A fixed version** with a tag or commit.
    - **A harness repository**: in **Repository**, choose a repository linked to Acme, and
      in **Stack**, one of the stacks it exports. Under **Version**, keep **Always the
-     latest on** with a branch, where each run uses the branch's newest commit when it
-     starts, or choose **A fixed version** with a tag or commit. **Continue** saves the
-     choice; the step shows why a read or a save failed.
+     latest on** with a branch, where each run uses the branch's newest commit when the
+     run is queued, or choose **A fixed version** with a tag or commit. **Continue** saves
+     the choice; the step shows why a read or a save failed.
 
    Under **Repositories**, each of Main's repositories from **Destinations** has a
    **Stack** choice. In **Stack**, choose **Workspace's harness** or one of its stacks;
@@ -367,11 +366,12 @@ later.
    **Repositories**; the harness you choose here; the harness your organisation shares;
    the **Qory harness**.
    Keep **Qory harness** and select **Continue**. The test run uses a built-in harness
-   whatever you choose. **Workspace settings › Workflow** shows the choice with its pin,
-   and **Change** there opens the same two choices. With the `workflow_model` feature,
-   the settings list **Stages** in place of **Workflow**: the **Details** tab of
-   **Workspace settings › Stages** shows the harness, and **Change** beside the harness
-   opens the harness's page. Only owners and admins save a harness choice.
+   whatever you choose. **Workspace settings › Workflow** shows the choice with its
+   branch, tag or commit, and **Change** there opens the same two choices. With the
+   `workflow_model` feature, the settings list **Stages** in place of **Workflow**: the
+   **Details** tab of **Workspace settings › Stages** shows the harness, and **Change**
+   beside the harness opens the harness's page. Only owners and admins save a harness
+   choice.
 5. **Machines.** **Which machines run the runs in Main?** shows the pools that
    serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
    shows **Ready** with its gateway, or **Not ready** with the reason. While Main has no

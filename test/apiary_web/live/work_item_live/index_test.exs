@@ -222,8 +222,8 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
             {ctx.running, "Explore is running"},
             {ctx.questions, "Needs answers"},
             {ctx.used_up, "Explore used its 3 runs"},
-            {ctx.mine, "You confirm next"},
-            {ctx.theirs, "#{name(ctx.member)} confirms next"},
+            {ctx.mine, "You approve next"},
+            {ctx.theirs, "#{name(ctx.member)} approves next"},
             {ctx.shape, "Ready for Shape"}
           ] do
         assert words(view, row(work_item) <> " .q-wl-nx") == status
@@ -295,7 +295,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
       assert rows(view) == ids([ctx.older, ctx.newer])
 
       assert words(view, "#work-items-note") ==
-               "Work items that wait for you to confirm what Qory proposes. Oldest first."
+               "Work items that wait for you to approve the proposal. Oldest first."
 
       for other <- [ctx.theirs, ctx.questions, ctx.shape],
           do: refute(has_element?(view, row(other)))
@@ -863,7 +863,7 @@ defmodule ApiaryWeb.WorkItemLive.IndexTest do
         {:work_items_changed, [work_item.public_id]}
       )
 
-      assert words(view, row(work_item) <> " .q-wl-nx") == "You confirm next"
+      assert words(view, row(work_item) <> " .q-wl-nx") == "You approve next"
       assert words(view, "#nav-work_items .q-nav-count") == "1"
       assert words(view, "#work-items-views") == "Open 1 Waiting on you 1 Closed 0"
     end

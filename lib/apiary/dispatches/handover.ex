@@ -32,16 +32,17 @@ defmodule Apiary.Dispatches.Handover do
   #
   # ## `dispatched/3`
   #
-  # Then a dispatch handed over is `:ok`: the first `dispatched` sets `dispatched_at` and
-  # the job's `external_*`, when the body has them, and a later one changes nothing,
-  # whatever the clock. A dispatch not handed over whose lease lapsed, `stale_at` set or
-  # the clock at or past `lease_until`, is `{:error, :lease_expired}`. Else the
-  # `dispatched` sets `dispatched_at` and the job's `external_*`, and hands the dispatch
-  # over: `handed_over_at` the clock, the run of the queue `handed_over`. From then on the
-  # dispatch keeps no lease: it never goes stale, and its slot stays held until its run
-  # ends (`Apiary.Dispatches.RunEnd`). The run counts toward its pool's limit by its
-  # dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`). Once the first
-  # `dispatched` commits, the run the claim registered is broadcast as changed
+  # Then a dispatch handed over is `:ok`: the first `dispatched` sets `dispatched_at`, the
+  # job's `external_*` and `vendor_machine_type`, the vendor's type of the machine, when
+  # the body has them, and a later one changes nothing, whatever the clock. A dispatch
+  # not handed over whose lease lapsed, `stale_at` set or the clock at or past
+  # `lease_until`, is `{:error, :lease_expired}`. Else the `dispatched` sets
+  # `dispatched_at`, the job's `external_*` and `vendor_machine_type`, and hands the
+  # dispatch over: `handed_over_at` the clock, the run of the queue `handed_over`. From
+  # then on the dispatch keeps no lease: it never goes stale, and its slot stays held
+  # until its run ends (`Apiary.Dispatches.RunEnd`). The run counts toward its pool's
+  # limit by its dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`). Once
+  # the first `dispatched` commits, the run the claim registered is broadcast as changed
   # (`Apiary.Runs.broadcast_changed/1`).
   #
   # ## At the claim: `register/2`
@@ -63,7 +64,9 @@ defmodule Apiary.Dispatches.Handover do
   #      `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one
   #      (`Apiary.Lingo.Domain.target_required?/1`) and is no test work item,
-  #      `inputs_invalid`; an explore run whose model choice cannot be formed
+  #      `inputs_invalid`; an explore run of the Qory harness or of the built-in one,
+  #      whose read of the harness for the claim failed (`at_claim/4`),
+  #      `harness_unresolved`; an explore run whose model choice cannot be formed
   #      (`Apiary.Dispatches.RunSettings`):
   #      `provider_gone`, `runtime_unserved`, `key_gone` or `model_gone`; and, checked
   #      last, with the features `factory` and `secrets` on, an explore run whose model
@@ -121,6 +124,14 @@ defmodule Apiary.Dispatches.Handover do
   # that 201 measured with a run key of the run's grant, less 1,024 bytes. The claim
   # encodes the documents once and keeps the bytes on the registered run
   # (`runs.run_documents`), which every redemption answers as they are.
+  #
+  # An explore run of the Qory harness (`Apiary.Harnesses.Qory`), or of the built-in one,
+  # has in its documents the harness at the commit its `ref` is at when the claim reads it,
+  # with one live read of the repository before the claim's transaction
+  # (`Apiary.Dispatches.HarnessReads`), never from the commits Qory Apiary keeps; its
+  # walk's pin records that commit. An explore run of a
+  # harness repository on a branch or at a tag has in its documents the commit its walk's
+  # pin records, read when the run was queued.
   #
   # **The registered run lives as long as the claim.** While its run of the queue is
   # claimed, a registered run has neither attached nor had its code redeemed. When the run
@@ -181,7 +192,7 @@ defmodule Apiary.Dispatches.Handover do
     Slots
   }
 
-  alias Apiary.Harnesses.RunHarness
+  alias Apiary.Harnesses.{Qory, RunHarness}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
@@ -200,6 +211,7 @@ defmodule Apiary.Dispatches.Handover do
     Target
   }
 
+  alias Apiary.Stacks.Document
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.Contract.DispatchAnswer
 
@@ -247,17 +259,20 @@ defmodule Apiary.Dispatches.Handover do
   def unformed, do: @unformed
 
   # dispatched/3 records that the starter started the machine for the dispatch
-  # `dispatch_id` of the pool of `access_key`, with the job's `external` (nil for none):
-  # the moduledoc.
+  # `dispatch_id` of the pool of `access_key`, with the job's `external` and the vendor's
+  # `machine_type` (nil for none): the moduledoc.
   @doc false
-  @spec dispatched(AccessKey.t(), term, %{external: map | nil}) ::
+  @spec dispatched(AccessKey.t(), term, %{
+          :external => map | nil,
+          optional(:machine_type) => String.t() | nil
+        }) ::
           :ok | {:error, refusal}
   def dispatched(%AccessKey{key_id: key_id}, dispatch_id, %{} = meta) do
     if Dispatch.public_id?(dispatch_id) do
       key_id
       |> transact(dispatch_id, :"dispatch.dispatched", nil, fn locked ->
         with :ok <- not_ended(locked) do
-          record_dispatched(locked, meta[:external])
+          record_dispatched(locked, meta)
         end
       end)
       |> answered()
@@ -599,9 +614,9 @@ defmodule Apiary.Dispatches.Handover do
   # A dispatch handed over keeps no lease: its first `dispatched` is recorded, and a
   # later one changes nothing, whatever the clock. The value is `{:dispatched, id}`, the
   # id of the dispatch's run of the queue, when the dispatch changed, else `:ok`.
-  defp record_dispatched(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}} = locked, external) do
+  defp record_dispatched(%{dispatch: %Dispatch{handed_over_at: %DateTime{}}} = locked, meta) do
     if is_nil(locked.dispatch.dispatched_at) do
-      set_dispatched(locked, external)
+      set_dispatched(locked, meta)
       {:done, {:dispatched, locked.run.id}, []}
     else
       {:done, :ok, []}
@@ -609,9 +624,9 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # The first `dispatched` of a claimed dispatch, within its lease, hands it over.
-  defp record_dispatched(locked, external) do
+  defp record_dispatched(locked, meta) do
     with :ok <- lease_held(locked) do
-      set_dispatched(locked, external)
+      set_dispatched(locked, meta)
       :ok = hand_over(locked.run, locked.dispatch, locked.now)
       {:done, {:dispatched, locked.run.id}, [locked.dispatch.workspace_id]}
     end
@@ -636,9 +651,9 @@ defmodule Apiary.Dispatches.Handover do
 
   defp broadcast_dispatched(answer), do: answer
 
-  defp set_dispatched(%{dispatch: dispatch, now: now}, external) do
+  defp set_dispatched(%{dispatch: dispatch, now: now}, meta) do
     external =
-      case external do
+      case meta[:external] do
         %{type: type, ref: ref, url: url} ->
           [external_type: type, external_ref: ref, external_url: url]
 
@@ -648,7 +663,9 @@ defmodule Apiary.Dispatches.Handover do
 
     {1, _rows} =
       Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
-        set: [dispatched_at: now, updated_at: now] ++ external
+        set:
+          [dispatched_at: now, updated_at: now, vendor_machine_type: meta[:machine_type]] ++
+            external
       )
   end
 
@@ -751,7 +768,7 @@ defmodule Apiary.Dispatches.Handover do
   # a domain that requires a target ends `inputs_invalid`, except a test work item
   # (`Apiary.WorkItems.WorkItem.test_changeset/2`), which has no target in any domain and
   # so no run variables, labels, prebuilt image or work credential. Its harness members
-  # come from its harness walk (`harness/2`). Its run settings come next
+  # come from its harness walk (`harness/4`). Its run settings come next
   # (`Apiary.Dispatches.RunSettings`), which can end it with one of the causes
   # `RunSettings.causes/0` lists, or refuse the claim. The run's documents and the input
   # get the same target and the same domain, and the input the bytes of the documents'
@@ -759,9 +776,10 @@ defmodule Apiary.Dispatches.Handover do
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = target(work_item)
-    harness = dispatch_run |> harness(target) |> lowered_access(dispatch_run)
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
+         {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
+         harness = lowered_access(harness, dispatch_run),
          {:ok, settings} <- RunSettings.build(held) do
       formed(dispatch_run, workspace, target, work_item, settings, harness, fn domain ->
         rest = %{
@@ -810,24 +828,131 @@ defmodule Apiary.Dispatches.Handover do
   # version at which the walk read the target's harness file, while the run has its
   # target; `workflow` and `harness_hidden`; `access`, the level the walk resolved; and
   # `harness`, the document of a harness choice or of the Qory harness, for a walk of the
-  # origin `:setting`, or the built-in one of a test work item's run (`:builtin`). nil for a run
-  # with no workflow, and for a run with no walk, queued before walks were kept: such a
-  # run reads (`ApiaryWeb.Contract.DispatchAnswer.access/1`).
-  defp harness(%DispatchRun{id: id}, target) do
+  # origin `:setting`, or the built-in one of a test work item's run (`:builtin`), at the
+  # commit the claim read (`at_claim/4`). `{:ok, nil}` for a run with no workflow, and
+  # for a run with no walk, queued before walks were kept: such a run reads
+  # (`ApiaryWeb.Contract.DispatchAnswer.access/1`). `{:end, cause}` where the claim's
+  # read failed. `read` is that read (`Apiary.Dispatches.HarnessReads.at_claim/3`).
+  defp harness(%DispatchRun{id: id}, target, read, now) do
     case Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id) do
       %RunHarness{state: :resolved, origin: origin} = walk
       when origin in [:file, :setting, :builtin] ->
-        %{
-          target_version: if(target, do: walk.target_version),
-          workflow: walk.workflow,
-          harness_hidden: walk.harness_hidden,
-          access: walk.access_level,
-          harness: if(origin in [:setting, :builtin], do: walk.document)
-        }
+        with {:ok, document} <- at_claim(walk, origin, read, now) do
+          {:ok,
+           %{
+             target_version: if(target, do: walk.target_version),
+             workflow: walk.workflow,
+             harness_hidden: walk.harness_hidden,
+             access: walk.access_level,
+             harness: document
+           }}
+        end
 
       _none ->
-        nil
+        {:ok, nil}
     end
+  end
+
+  # The document the machine composes, nil for a walk of the target's harness file. The
+  # Qory harness (`Apiary.Harnesses.Qory.git/0`) and the built-in harness are read live
+  # for the claim, never from a stored commit (`Apiary.Dispatches.HarnessReads`): with
+  # `read` `{:ok, commit}`, the document's `ref`, a branch, a tag or a commit, `main` for
+  # none, becomes that commit, and the walk's pin of that source records the same commit.
+  # The walk at the queue read it too, as an early check. A read that failed fails the
+  # walk (`claim_failed/5`). Any other document's base is at the commit of its pin
+  # (`pinned/2`).
+  defp at_claim(%RunHarness{document: document}, :setting, _read, _now)
+       when not is_map_key(document, "extends"),
+       do: {:ok, document}
+
+  defp at_claim(%RunHarness{document: document} = walk, origin, read, now)
+       when origin in [:setting, :builtin] do
+    base = document["extends"]
+    git = base["git"]
+    ref = base["ref"] || Qory.default_branch()
+
+    case read do
+      {:ok, commit} ->
+        pins =
+          Enum.map(walk.pins, fn
+            %{"git" => ^git, "ref" => ^ref} = pin -> %{pin | "at" => commit}
+            pin -> pin
+          end)
+
+        {:ok, _walk} = walk |> Ecto.Changeset.change(pins: pins) |> Repo.update()
+        {:ok, %{document | "extends" => Map.put(base, "ref", commit)}}
+
+      {:error, failure} ->
+        claim_failed(walk, git, ref, failure, now)
+
+      :none ->
+        {:ok, pinned(document, walk.pins)}
+    end
+  end
+
+  defp at_claim(_walk, :file, _read, _now), do: {:ok, nil}
+
+  # A harness repository's document at the commit the walk's pin of its base records, in
+  # place of a branch or a tag, so the machine composes the commit the run's record has,
+  # whatever the branch moved to since. A base already at a commit, or with no pin at a
+  # commit, is as the walk resolved it.
+  defp pinned(%{"extends" => %{"git" => git, "ref" => ref} = base} = document, pins) do
+    at =
+      Enum.find_value(pins, fn
+        %{"git" => ^git, "ref" => ^ref, "at" => at} -> at
+        _pin -> nil
+      end)
+
+    if Qory.commit?(at) and not Qory.commit?(ref),
+      do: %{document | "extends" => %{base | "ref" => at}},
+      else: document
+  end
+
+  defp pinned(document, _pins), do: document
+
+  # The claim's read of the harness failed: the walk failed, with the code `ref_missing`
+  # for a ref the repository does not have, else `harness_unreadable`, and the rule
+  # `claim`, with the address, the ref, `builtin` for the built-in harness, and the cause
+  # and hop of a failed read; the run ends `harness_unresolved` with that code
+  # (`end_claimed/3`).
+  defp claim_failed(walk, git, ref, failure, now) do
+    {code, values} =
+      case failure do
+        {:ref_missing, _ref} ->
+          {:ref_missing, %{}}
+
+        {:unreadable, cause, hop} ->
+          {host, port} = hop || {nil, nil}
+
+          {:harness_unreadable,
+           %{"cause" => Qory.cause_value(cause), "host" => host, "port" => port}}
+      end
+
+    Logger.warning(
+      "a claim could not read a run's harness, so the run ended before it started " <>
+        "end_cause=harness_unresolved failure=#{code} git=#{git} ref=#{ref} " <>
+        "cause=#{inspect(failure)}"
+    )
+
+    values = if walk.origin == :builtin, do: Map.put(values, "builtin", true), else: values
+
+    {:ok, _walk} =
+      walk
+      |> Ecto.Changeset.change(
+        state: :failed,
+        origin: nil,
+        document: nil,
+        failure: Atom.to_string(code),
+        failed_source: Document.shown(git),
+        failure_rule: %{
+          "rule" => "claim",
+          "values" => Map.merge(%{"url" => git, "ref" => ref}, values)
+        },
+        updated_at: now
+      )
+      |> Repo.update()
+
+    {:end, {:harness_unresolved, code}}
   end
 
   # Hand-over: with the workflow model, a run the stage runner queued with the access
@@ -902,7 +1027,7 @@ defmodule Apiary.Dispatches.Handover do
   # target image's name is made from the target's public id, so the target is made in the
   # workspace first where the workspace has no row of it, as an assign makes it
   # (`Apiary.Runs.Target.insert_new/3`). A claim takes a prebuild only on an instance with
-  # a registry (`Apiary.Dispatches.waiting_query/1`); the instance's registry name is
+  # a registry (`Apiary.Dispatches.waiting_query/2`); the instance's registry name is
   # made here where it is not yet (`Apiary.InstanceConfig.registry_instance/0`). Where it
   # cannot be, on a schema whose migration of it has not run, `:no_destination`, and the
   # claim is refused, rolled back. The registered run keeps the documents
@@ -1041,11 +1166,23 @@ defmodule Apiary.Dispatches.Handover do
   # write (`Apiary.Dispatches.Settle`). The workspaces whose queue or slots changed.
   # Inside the transaction that holds the run of the queue.
   @doc false
-  @spec end_claimed(DispatchRun.t(), atom, DateTime.t()) :: [Ecto.UUID.t()]
+  @spec end_claimed(DispatchRun.t(), atom | {:harness_unresolved, atom}, DateTime.t()) ::
+          [Ecto.UUID.t()]
   def end_claimed(%DispatchRun{id: id, workspace_id: workspace_id} = run, cause, now) do
+    {cause, ended} =
+      case cause do
+        # A harness the claim could not read (`claim_failed/5`): the walk's code is the
+        # end's detail, and the run gave an error.
+        {:harness_unresolved, code} ->
+          {:harness_unresolved, [end_detail: Atom.to_string(code), result_outcome: :error]}
+
+        cause ->
+          {cause, gave(run, cause)}
+      end
+
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
-        set: [state: :ended, end_cause: cause, updated_at: now] ++ gave(run, cause)
+        set: [state: :ended, end_cause: cause, updated_at: now] ++ ended
       )
 
     {_count, _rows} =

@@ -24,8 +24,9 @@ defmodule Apiary.Explore.Given do
   # oldest first, gave the first of the question's `history`, oldest first, and the
   # question's `answer` is the last (a run that reopens a question moves its answer to
   # the end of its `history`). A move with no answer at its place gives no entry. An
-  # entry whose text no newest version has is left out. A send of the review comments
-  # gives nothing to read.
+  # entry whose text no newest version has is left out. A send of the open review comments
+  # alone gives nothing to read; Run another round with a comment on the whole proposal
+  # (`Apiary.WorkItems.another_round/4`) gives the comment, after the move's answers.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -87,10 +88,11 @@ defmodule Apiary.Explore.Given do
   defp document(nil), do: nil
 
   # The entries of one move, with `counts`, the number of earlier moves that answered
-  # each question, for the next.
-  defp entries(%{data: %{"questions" => ids}} = event, questions, _comments, counts)
+  # each question, for the next. A move of Run another round with answers and a comment
+  # gives the answers, then the comment.
+  defp entries(%{data: %{"questions" => ids}} = event, questions, comments, counts)
        when is_list(ids) do
-    entries =
+    answers =
       for id <- ids,
           %{} = question <- [Questions.entry(questions, id)],
           %{} = answer <- [answer(question, Map.get(counts, id, 0))] do
@@ -105,21 +107,23 @@ defmodule Apiary.Explore.Given do
         })
       end
 
-    {entries, Enum.reduce(ids, counts, &Map.update(&2, &1, 1, fn n -> n + 1 end))}
+    {answers ++ comment(event, comments),
+     Enum.reduce(ids, counts, &Map.update(&2, &1, 1, fn n -> n + 1 end))}
   end
 
-  defp entries(%{data: %{"review_comment" => id} = data} = event, _questions, comments, counts)
-       when is_binary(id) do
+  defp entries(event, _questions, comments, counts), do: {comment(event, comments), counts}
+
+  # The review comment or the reply of a move, where its event has one.
+  defp comment(%{data: %{"review_comment" => id} = data} = event, comments) when is_binary(id) do
     with %{} = comment <- Enum.find(ReviewComments.entries(comments), &(&1["id"] == id)),
          {kind, text} when is_binary(text) <- comment_text(comment, data["reply"]) do
-      {[Map.merge(base(event, kind, id), %{text: text, on: get_in(comment, ["on", "version"])})],
-       counts}
+      [Map.merge(base(event, kind, id), %{text: text, on: get_in(comment, ["on", "version"])})]
     else
-      _none -> {[], counts}
+      _none -> []
     end
   end
 
-  defp entries(_event, _questions, _comments, counts), do: {[], counts}
+  defp comment(_event, _comments), do: []
 
   defp comment_text(comment, position) when is_integer(position) do
     case Enum.at(comment["replies"] || [], position - 1) do

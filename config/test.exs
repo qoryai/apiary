@@ -135,6 +135,11 @@ config :apiary, Apiary.Adapters.Installer, enabled: false
 # queue, peer or plugin starts.
 config :apiary, Oban, testing: :manual
 
+# No refresh of the Qory harness at boot: the suite's fixture reads and keeps its files
+# (`Apiary.QoryHarnessFixture`), and a job inserted at boot would be committed under every
+# test.
+config :apiary, Apiary.Harnesses.QoryRefresh, at_boot: false
+
 # An integration's release is never fetched over the network in a test: the requests go
 # to the `Req.Test` stub of `Apiary.Integrations.Fetch`, and names resolve by the test
 # resolver's rule (`Apiary.FetchStub`), which a test may override with its own.
@@ -144,7 +149,9 @@ config :apiary, Apiary.Integrations.Fetch,
 
 # A public harness repository is never read over the network in a test: its requests go
 # to `Apiary.PublicGitStub`, which answers with the `Req.Test` stub of
-# `Apiary.Harnesses.PublicGit` a test set (`Apiary.PublicGitServer`), else `404`.
+# `Apiary.Harnesses.PublicGit` a test set (`Apiary.PublicGitServer`), else with the
+# fixture repository of the Qory harness at its address (`Apiary.QoryHarnessFixture`),
+# else `404`.
 config :apiary, Apiary.Harnesses.PublicGit, req_options: [plug: Apiary.PublicGitStub]
 
 # Qory Apiary's calls to an adapter resolve its host by the test resolver's rule too

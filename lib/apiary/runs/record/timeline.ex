@@ -25,7 +25,9 @@ defmodule Apiary.Runs.Record.Timeline do
   agent's turn ends, its subagent finishes, the session ends or starts again, or the run
   exits: from there on a connection is a separate item. Heartbeats, log chunks, the
   ping, a session's start and end, and types this module has not heard of are not
-  items; the run's start shows the runtime of the last session's start.
+  items; the run's start shows the runtime of the session that the fold takes the run's
+  runtime from: the last start without `bare`, else the first bare one
+  (`Apiary.Runs.Fold`).
 
   Everything that comes out of an event is Forager's input and is treated as such:
   strings are bounded, what one item loads is bounded (#{100} connections inside a call),
@@ -129,7 +131,8 @@ defmodule Apiary.Runs.Record.Timeline do
   Lays the run out. `events` are light events in sequence order, maps with `:sequence`,
   `:type`, `:time` and, where the event has them, `:tool_use_id`, `:agent_id`,
   `:agent_type`, `:text_kind` (on a text event: its `kind`, `"prompt"` for a text whose
-  `role` is `user`, or `"empty"` for a block with no text), `:background_tasks` (a list,
+  `role` is `user`, or `"empty"` for a block with no text), `:bare` (true on a session's
+  start whose `bare` is `true`), `:background_tasks` (a list,
   or nil when the event has none), `:host`, `:port`, `:decision` and, on an egress event
   that has one, `:tool`, the tool whose host it was for; with `:decision` allowed it is a
   tool invocation (`Apiary.Runs.tool_invocation?/2`). `alive:` is whether the record
@@ -138,10 +141,12 @@ defmodule Apiary.Runs.Record.Timeline do
 
   Returns a map:
 
-    * `:items`: the light items in order, each `%{seq, kind, seqs, end_seq, inner,
+    * `:items`: the light items in order, each `%{seq, kind, at, seqs, end_seq, inner,
       inner_count, tool_state, lane, rails, link, who, open_calls}`; `seq` is the item's
-      id, the sequence of its first event, and `seqs` the sequences `build/3` needs for
-      it, at most #{@max_inner + 2};
+      id, the sequence of its first event, `at` that event's time, and `seqs` the
+      sequences `build/3` needs for it, at most #{@max_inner + 2}. A tool call's item
+      also has `end_type`, the type of the call's end: `:finished`, `:failed` or
+      `:denied`, nil while the record has no end;
     * `:by_seq`: every sequence that belongs to an item, to that item's `seq`;
     * `:lanes`: the first #{@lane_key} lanes beside main, `%{index, id, type, rail, color,
       started_seq, finished_seq}`, main first; `:lane_count` says how many there are, and
@@ -153,7 +158,8 @@ defmodule Apiary.Runs.Record.Timeline do
       reported its text, whose Transcript then takes the text of each turn's end;
     * `:background`: `%{tasks: [...], count: n}`, the tasks of the last list the runtime
       gave, each with the sequence it was first listed at;
-    * `:through`: the highest sequence folded.
+    * `:through`: the highest sequence folded;
+    * `:alive`: the `alive:` it was folded with.
   """
   def index(events, opts \\ []), do: extend(new(), events, opts)
 
@@ -232,7 +238,7 @@ defmodule Apiary.Runs.Record.Timeline do
       tasks: [],
       # the sequence of the last policy applied, for the reload that follows it
       policy_seq: nil,
-      # the item seq of the run's start, and the sequence of the last session's start
+      # the item seq of the run's start, and the sequence of the session's start it shows
       run_started_seq: nil,
       session_seq: nil,
       through: 0
@@ -262,7 +268,8 @@ defmodule Apiary.Runs.Record.Timeline do
       hook_events: state.hook_events,
       texts: state.texts,
       background: outstanding(state),
-      through: state.through
+      through: state.through,
+      alive: alive?
     }
   end
 
@@ -322,7 +329,9 @@ defmodule Apiary.Runs.Record.Timeline do
     cond do
       not is_binary(id) ->
         # Nothing can end a call without an id: it is an item, and never open.
-        state |> push(:tool, event) |> update_item(event.sequence, &%{&1 | no_end: true})
+        state
+        |> push(:tool, event, %{end_type: nil})
+        |> update_item(event.sequence, &%{&1 | no_end: true})
 
       is_map_key(state.open_tools, id) ->
         # The same call started twice: one item, not a second that nothing would close.
@@ -338,7 +347,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
       true ->
         agent = agent_key(event)
-        state = push(state, :tool, event, %{start_seq: event.sequence})
+        state = push(state, :tool, event, %{start_seq: event.sequence, end_type: nil})
 
         %{
           state
@@ -381,8 +390,7 @@ defmodule Apiary.Runs.Record.Timeline do
                 # An end without its start: the record lacks it, so the item is the end
                 # alone, and a later start or result joins it.
                 state
-                |> push(:tool, event)
-                |> update_item(event.sequence, &%{&1 | end_seq: event.sequence})
+                |> push(:tool, event, %{end_seq: event.sequence, end_type: end_type(event)})
                 |> then(fn state ->
                   if is_binary(id),
                     do: %{state | calls: Map.put(state.calls, id, event.sequence)},
@@ -512,7 +520,7 @@ defmodule Apiary.Runs.Record.Timeline do
     end
   end
 
-  # The run's start, with the last session's start folded so far: a later one replaces it
+  # The run's start, with the session's start it shows so far: a later one can replace it
   # (`run_started/2`).
   defp place(state, :run_started, event) do
     state
@@ -532,9 +540,16 @@ defmodule Apiary.Runs.Record.Timeline do
 
   defp end_call(state, seq, event) do
     state
-    |> update_item(seq, &%{&1 | end_seq: event.sequence, no_end: false})
+    |> update_item(
+      seq,
+      &%{&1 | end_seq: event.sequence, end_type: end_type(event), no_end: false}
+    )
     |> also(seq, event.sequence)
   end
+
+  defp end_type(%{type: @prefix <> "runtime.tool_failed"}), do: :failed
+  defp end_type(%{type: @prefix <> "runtime.tool_denied"}), do: :denied
+  defp end_type(%{type: @prefix <> "runtime.tool_finished"}), do: :finished
 
   # Runs of allowed connections to one host with nothing between them read as one row.
   # A denied connection is never folded away, a request refused before it reached a tool
@@ -595,6 +610,7 @@ defmodule Apiary.Runs.Record.Timeline do
         %{
           seq: event.sequence,
           kind: kind,
+          at: event[:time],
           end_seq: nil,
           no_end: false,
           inner: [],
@@ -755,8 +771,14 @@ defmodule Apiary.Runs.Record.Timeline do
 
   ## The run's start
 
-  # A session's start is kept as the last one, and the run's start item, when there is one,
-  # links to it: the item changes, so a page that shows it builds it again.
+  # A session's start is kept as the one to show, and the run's start item, when there is
+  # one, links to it: the item changes, so a page that shows it builds it again. Events come
+  # in sequence order, so a bare start replaces nothing that a start before it set, and a
+  # start that is not bare replaces every one before it (`Apiary.Runs.Fold`).
+  defp run_started(%{session_seq: seq} = state, %{type: @prefix <> @session_started, bare: true})
+       when not is_nil(seq),
+       do: state
+
   defp run_started(state, %{type: @prefix <> @session_started, sequence: sequence}) do
     state = %{state | session_seq: sequence}
 
@@ -792,7 +814,8 @@ defmodule Apiary.Runs.Record.Timeline do
   The full items of `light` items, from `events`, a map of sequence to the slim event
   (see `slim/2`). An item whose first event is missing is left out. A light item's
   `:part`, which the Transcript sets on a call drawn apart from its result
-  (`ApiaryWeb.TranscriptComponents.lines/2`), is kept.
+  (`ApiaryWeb.TranscriptComponents.lines/2`), is kept, and so are the `:sub` and `:group`
+  of its subagents' groups (`ApiaryWeb.TranscriptComponents.arrange/4`).
 
   `full:` is a list of item sequences whose events were read with the larger cap.
 
@@ -819,7 +842,9 @@ defmodule Apiary.Runs.Record.Timeline do
         :open_calls,
         :end_seq,
         :tool_state,
-        :part
+        :part,
+        :sub,
+        :group
       ])
       |> Map.merge(%{
         id: "e-#{item.seq}",
@@ -894,8 +919,8 @@ defmodule Apiary.Runs.Record.Timeline do
   @doc "The sequences `build/3` needs for these light items: at most #{@max_inner + 2} each."
   def needed(light), do: light |> Enum.flat_map(& &1.seqs) |> Enum.uniq()
 
-  # The host and the wall are the run's start's; the runtime and its version are the last
-  # session's start's, nil before a session started.
+  # The host and the wall are the run's start's; the runtime and its version are those of
+  # the session's start it shows (`run_started/2`), nil before a session started.
   defp body(%{kind: :run_started} = item, event, events, _limit) do
     session = (item.session_seq && events[item.session_seq]) || %{}
 
@@ -1000,14 +1025,28 @@ defmodule Apiary.Runs.Record.Timeline do
   defp body(%{kind: kind} = item, event, events, limit)
        when kind in [:subagent_started, :subagent_finished] do
     started = item.started_seq && events[item.started_seq]
+    # For a start that heads its subagent's lines in the Transcript, the body reads the
+    # finish event too.
+    finished = get_in(item, [:sub, :finished_seq]) |> then(&(&1 && events[&1]))
 
     %{
       agent_id: event.agent_id,
       agent_type: event.agent_type,
-      # The lane's length, from the two events' own times.
-      duration_ms: started && DateTime.diff(event.time, started.time, :millisecond)
+      # The lane's length, from the two events' times.
+      duration_ms:
+        cond do
+          started -> DateTime.diff(event.time, started.time, :millisecond)
+          is_map(finished) -> DateTime.diff(finished.time, event.time, :millisecond)
+          true -> nil
+        end
     }
-    |> Map.merge(if kind == :subagent_finished, do: text(event, limit), else: %{})
+    |> Map.merge(
+      cond do
+        kind == :subagent_finished -> text(event, limit)
+        is_map(finished) -> text(finished, limit)
+        true -> %{}
+      end
+    )
   end
 
   defp body(%{kind: :notification}, event, _events, _limit),

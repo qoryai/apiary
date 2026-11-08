@@ -19,6 +19,26 @@ defmodule Apiary.Adapters.FeedTest do
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
+  # The fixtures that match `pattern`, each by its path under the fixtures, in order.
+  defp fixtures(pattern) do
+    @fixtures
+    |> Path.join(pattern)
+    |> Path.wildcard()
+    |> Enum.map(&Path.relative_to(&1, @fixtures))
+    |> Enum.sort()
+  end
+
+  # The contract's refused answers whose entries an answer never has: every one but the
+  # one without `revision`, whose entries are good, and the failure reports, which are no
+  # answer.
+  defp refused_entries do
+    Enum.reject(
+      fixtures("invalid/changes-*.json"),
+      &(String.starts_with?(&1, "invalid/changes-failed-") or
+          &1 == "invalid/changes-without-revision.json")
+    )
+  end
+
   # A change as the contract writes it, as `append/2` takes it.
   defp entry(%{} = change), do: Map.new(change, fn {k, v} -> {String.to_existing_atom(k), v} end)
 
@@ -44,8 +64,13 @@ defmodule Apiary.Adapters.FeedTest do
     test "every change of changes/ is appended and read back as written, in order", %{
       adapter: adapter
     } do
-      for path <- ~w(changes/feed.json changes/feed-loopback.json changes/grants.json
-                     changes/empty.json) do
+      paths = fixtures("changes/*.json")
+
+      assert paths ==
+               ~w(changes/comment.json changes/empty.json changes/feed-loopback.json
+                  changes/feed.json changes/grants.json)
+
+      for path <- paths do
         adapter = if path == "changes/feed.json", do: adapter, else: adapter_fixture()
         %{"changes" => changes} = fixture(path)
 
@@ -61,11 +86,13 @@ defmodule Apiary.Adapters.FeedTest do
     test "the entries of the refused fixtures are refused, and nothing is written", %{
       adapter: adapter
     } do
-      for path <- ~w(invalid/changes-sync-interval-30.json invalid/changes-unknown-kind.json
-                     invalid/changes-work-item-status-linked.json
-                     invalid/changes-work-item-url-http.json
-                     invalid/changes-grant-status-taken-in.json
-                     invalid/changes-grant-without-connection-id.json) do
+      paths = refused_entries()
+      assert length(paths) == 15
+      assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
+
+      for path <- paths do
+        assert [_ | _] = fixture(path)["changes"], path
+
         for change <- fixture(path)["changes"] do
           entry = Map.new(change, fn {k, v} -> {String.to_atom(k), v} end)
           raises(adapter, entry)
@@ -108,12 +135,35 @@ defmodule Apiary.Adapters.FeedTest do
             %{kind: "sync", interval: 60},
             %{kind: "sync", interval: 86_400},
             %{kind: "grant", connection_id: @connection, grant_ref: ref, status: "linked"},
-            %{kind: "grant", connection_id: @connection, grant_ref: "G_1", status: "unlinked"}
+            %{kind: "grant", connection_id: @connection, grant_ref: "G_1", status: "unlinked"},
+            %{
+              kind: "comment",
+              comment_id: "sc_0123456789abcdef",
+              ref: ref,
+              author_name: String.duplicate("é", 100),
+              body: String.duplicate("é", 65_000)
+            },
+            # The most a comment entry takes as text: each character of its body and ref a
+            # control character, written as six.
+            %{
+              kind: "comment",
+              comment_id: "sc_0123456789abcdef",
+              ref: String.duplicate("\u0001", 200),
+              author_name: String.duplicate("\u{1D11E}", 100),
+              body: String.duplicate("\u0001", 65_000)
+            },
+            %{
+              kind: "comment",
+              comment_id: "sc_ghjkmnpqrstvwxyz",
+              ref: "r",
+              author_name: "\u3000a\u200D",
+              body: "a"
+            }
           ] do
         assert is_integer(append!(adapter, entry))
       end
 
-      assert length(Feed.entries(adapter)) == 10
+      assert length(Feed.entries(adapter)) == 13
     end
 
     test "refuses a member missing, extra or out of range", %{adapter: adapter} do
@@ -177,7 +227,73 @@ defmodule Apiary.Adapters.FeedTest do
         raises(adapter, bad)
       end
 
+      comment = %{
+        kind: "comment",
+        comment_id: "sc_0123456789abcdef",
+        ref: "TRK-1",
+        author_name: "Dana Example",
+        body: "Start with the basket."
+      }
+
+      for bad <- [
+            Map.delete(comment, :body),
+            Map.put(comment, :extra, 1),
+            %{comment | comment_id: "sc_0123456789ABCDEF"},
+            %{comment | comment_id: "sc_0123456789abcdeu"},
+            %{comment | comment_id: "sc_0123456789abcde"},
+            %{comment | comment_id: "cm_0123456789abcdef"},
+            %{comment | comment_id: nil},
+            %{comment | ref: ""},
+            %{comment | ref: String.duplicate("a", 201)},
+            %{comment | author_name: ""},
+            %{comment | author_name: String.duplicate("a", 101)},
+            %{comment | author_name: " \u00A0\u1680\u2000\u200A\u202F\u205F\u3000"},
+            %{comment | author_name: "\t "},
+            %{comment | author_name: "Dana\nExample"},
+            %{comment | author_name: "Dana\u0085Example"},
+            %{comment | author_name: "Dana \u202Eelpmaxe"},
+            %{comment | author_name: "Dana\u2028Example"},
+            %{comment | author_name: "Dana\u200BExample"},
+            %{comment | author_name: <<0xFF>>},
+            %{comment | author_name: nil},
+            %{comment | body: ""},
+            %{comment | body: String.duplicate("a", 65_001)},
+            %{comment | body: "a" <> <<0>>},
+            %{comment | body: <<0xFF>>},
+            %{comment | body: nil}
+          ] do
+        raises(adapter, bad)
+      end
+
       assert Feed.entries(adapter) == []
+    end
+
+    test "the table takes a comment entry's data up to 400,000 bytes, any other up to 4,096",
+         %{adapter: adapter} do
+      insert = fn seq, kind, data ->
+        Repo.transaction(fn ->
+          Repo.insert_all("adapter_feed", [
+            %{
+              id: Ecto.UUID.bingenerate(),
+              adapter_id: Ecto.UUID.dump!(adapter.id),
+              seq: seq,
+              kind: kind,
+              data: data,
+              inserted_at: DateTime.utc_now()
+            }
+          ])
+        end)
+      end
+
+      # `{"b": "…"}` as text is 9 bytes more than its value.
+      assert {:ok, {1, _}} = insert.(1, "comment", %{"b" => String.duplicate("a", 399_991)})
+      assert {:ok, {1, _}} = insert.(2, "sync", %{"b" => String.duplicate("a", 4087)})
+
+      for {seq, kind, size} <- [{3, "comment", 399_992}, {4, "sync", 4088}, {5, "note", 1}] do
+        assert_raise Postgrex.Error, ~r/adapter_feed_(data|kind)_check/, fn ->
+          insert.(seq, kind, %{"b" => String.duplicate("a", size)})
+        end
+      end
     end
 
     test "writes only inside a transaction, and only to an adapter's feed", %{adapter: adapter} do
@@ -218,6 +334,80 @@ defmodule Apiary.Adapters.FeedTest do
       assert %{seq: 5, changes: [%{"interval" => 64}]} = read!(adapter, 4, limit: 2)
       assert read!(adapter, 5, limit: 2) == %{seq: 5, changes: []}
       assert Feed.page_size() == 100
+    end
+
+    test "ends a page before its body passes 4 MiB, the longest cursor counted", %{
+      adapter: adapter
+    } do
+      other = adapter_fixture()
+
+      comment = fn body ->
+        %{
+          kind: "comment",
+          comment_id: "sc_0123456789abcdef",
+          ref: "TRK-1",
+          author_name: "Dana Example",
+          body: body
+        }
+      end
+
+      for feed <- [adapter, other],
+          _n <- 1..64,
+          do: append!(feed, comment.(String.duplicate("a", 65_000)))
+
+      {:ok, %{seq: 64, changes: [first | _] = written}} = Feed.read(adapter, 0, 1)
+      used = Enum.sum_by(written, &byte_size(Jason.encode!(&1))) + 63
+      # The body with no entry and a cursor of eighteen digits, the longest one.
+      envelope = byte_size(Feed.body(1, %{seq: 999_999_999_999_999_999, changes: []}))
+      room = Feed.max_body() - envelope
+      # What an entry takes besides its body's characters.
+      shape = byte_size(Jason.encode!(first)) - 65_000
+      # The 65th entry, with its comma, fills the room to its last byte.
+      fits = room - used - 1 - shape
+      assert fits in 1..65_000
+
+      append!(adapter, comment.(String.duplicate("a", fits)))
+      append!(adapter, comment.("a"))
+      append!(other, comment.(String.duplicate("a", fits + 1)))
+      append!(other, comment.("a"))
+
+      assert {:ok, %{seq: 65, changes: changes} = page} = Feed.read(adapter, 0, 1)
+      assert length(changes) == 65
+      assert byte_size(Feed.body(1, page)) <= Feed.max_body()
+      assert byte_size(Feed.body(1, %{page | seq: 999_999_999_999_999_999})) == Feed.max_body()
+      assert %{seq: 66, changes: [%{"body" => "a"}]} = read!(adapter, 65)
+
+      # One byte more, and the page ends before it; the next page starts with it.
+      assert {:ok, %{seq: 64, changes: changes}} = Feed.read(other, 0, 1)
+      assert length(changes) == 64
+      assert %{seq: 66, changes: [%{"body" => body}, %{"body" => "a"}]} = read!(other, 64)
+      assert byte_size(body) == fits + 1
+    end
+
+    test "counts the bytes of a character, not the character", %{
+      adapter: adapter
+    } do
+      # 65,000 characters of four bytes each: 16 entries fit in 4 MiB, the 17th does not.
+      body = String.duplicate("\u{1D11E}", 65_000)
+      append!(adapter, %{kind: "sync", interval: 60})
+
+      for _n <- 1..17 do
+        append!(adapter, %{
+          kind: "comment",
+          comment_id: "sc_0123456789abcdef",
+          ref: "TRK-1",
+          author_name: "Dana Example",
+          body: body
+        })
+      end
+
+      assert {:ok, %{seq: 17, changes: [%{} = sync | comments]} = page} = Feed.read(adapter, 0, 1)
+      assert Jason.encode!(sync) == ~s({"kind":"sync","interval":60})
+      assert length(comments) == 16
+      assert byte_size(Feed.body(1, page)) <= Feed.max_body()
+
+      assert {:ok, %{seq: 18, changes: [%{} = last]}} = Feed.read(adapter, 17, 1)
+      assert byte_size(Jason.encode!(last)) > 4 * 65_000
     end
 
     test "an empty feed reads as nothing from the start; any cursor past the end is stale", %{

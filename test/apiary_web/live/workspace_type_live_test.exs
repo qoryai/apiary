@@ -196,6 +196,32 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
     assert has_element?(view, "#breadcrumb [aria-current=page]", "Software factory")
   end
 
+  test "a stage's description shows on its card; a stage without one shows none", %{
+    conn: conn,
+    user: user,
+    path: path
+  } do
+    newest = TypeTemplates.newest("qory.software")
+    text = "Turn the ticket into a plan for the storefront.\nA member approves the plan."
+
+    document =
+      Map.update!(newest.document, "stages", fn [explore, shape | rest] ->
+        [explore, Map.put(shape, "description", text) | rest]
+      end)
+
+    {:ok, _version} =
+      TypeTemplates.save(instance_admin_scope(), "qory.software", document,
+        based_on: newest.number
+      )
+
+    {:ok, view, _html} = conn |> log_in_user(user) |> live(path)
+
+    assert [explore, shape | rest] = canvas_view(view)["stages"]
+    assert shape["name"] == "Shape"
+    assert shape["description"] == text
+    assert Enum.all?([explore | rest], &is_nil(&1["description"]))
+  end
+
   test "shows the name, summary and description an instance admin saved", %{
     conn: conn,
     user: user,

@@ -225,14 +225,19 @@ defmodule Apiary.StacksTest do
     end
 
     test "refuses a workflow that is not a name", ctx do
-      assert {:error, changeset} =
-               Stacks.put_stack(
-                 ctx.scope,
-                 {:workspace, ctx.scope.workspace, "Explore"},
-                 doc("core")
-               )
+      for workflow <- ["Explore", "a" <> String.duplicate("b", 55)] do
+        assert {:error, changeset} =
+                 Stacks.put_stack(
+                   ctx.scope,
+                   {:workspace, ctx.scope.workspace, workflow},
+                   doc("core")
+                 )
 
-      assert changeset.errors[:workflow]
+        assert changeset.errors[:workflow], workflow
+      end
+
+      longest = "a" <> String.duplicate("b", 54)
+      assert put!(ctx, {:workspace, ctx.scope.workspace, longest}, nil).workflow == longest
     end
   end
 
@@ -1067,8 +1072,6 @@ defmodule Apiary.StacksTest do
         Stacks.chosen_for(ctx.scope.organisation, ctx.scope.workspace, target, "explore")
       end
 
-      latest = Apiary.Lingo.Domain.Definition.qory_commit(:latest)
-
       choose!(ctx, {:workspace, ctx.scope.workspace}, doc("workspace"), :repository)
       assert {:chosen, %Resolution{ref: nil}} = chosen.()
 
@@ -1094,7 +1097,7 @@ defmodule Apiary.StacksTest do
       {:ok, _stack} = Stacks.delete_stack({:workspace, ctx.scope.workspace})
       assert {:chosen, %Resolution{level: :target, ref: "main"}} = chosen.()
 
-      # A row of the Qory harness that follows the workspace's: the newest version.
+      # A row of the Qory harness that follows the workspace's: the branch `main`.
       qory =
         "extends:\n  git: \"https://github.com/qoryai/harness\"\n" <>
           "  ref: \"#{String.duplicate("0a", 20)}\"\n  stack: \"core\"\n"
@@ -1105,15 +1108,15 @@ defmodule Apiary.StacksTest do
           version: {:workspace, nil}
         )
 
-      assert {:chosen, %Resolution{level: :target, ref: ^latest}} = chosen.()
+      assert {:chosen, %Resolution{level: :target, ref: "main"}} = chosen.()
 
       {:ok, _stack} =
         Stacks.put_stack(ctx.scope, {:target, ctx.target}, doc("target"),
           choice: :qory,
-          version: {:named, "v0.1"}
+          version: {:tag, "v0.1"}
         )
 
-      assert {:chosen, %Resolution{ref: {:missing, "v0.1"}}} = chosen.()
+      assert {:chosen, %Resolution{ref: "v0.1"}} = chosen.()
     end
 
     test "the target's resolution has the target's row", ctx do

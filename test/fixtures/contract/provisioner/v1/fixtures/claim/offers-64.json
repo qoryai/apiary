@@ -1,0 +1,456 @@
+{
+  "version": 1,
+  "time": "2026-10-15T12:00:00Z",
+  "pool_id": "np_f1xt0re000000000",
+  "wait_seconds": 0,
+  "offers": [
+    {
+      "vcpus": 1,
+      "memory_mib": 2048,
+      "disk_gib": 20,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 2,
+      "memory_mib": 4096,
+      "disk_gib": 40,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 3,
+      "memory_mib": 6144,
+      "disk_gib": 60,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 4,
+      "memory_mib": 8192,
+      "disk_gib": 80,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 5,
+      "memory_mib": 10240,
+      "disk_gib": 100,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 6,
+      "memory_mib": 12288,
+      "disk_gib": 120,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 7,
+      "memory_mib": 14336,
+      "disk_gib": 140,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 8,
+      "memory_mib": 16384,
+      "disk_gib": 160,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 9,
+      "memory_mib": 18432,
+      "disk_gib": 180,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 10,
+      "memory_mib": 20480,
+      "disk_gib": 200,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 11,
+      "memory_mib": 22528,
+      "disk_gib": 220,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 12,
+      "memory_mib": 24576,
+      "disk_gib": 240,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 13,
+      "memory_mib": 26624,
+      "disk_gib": 260,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 14,
+      "memory_mib": 28672,
+      "disk_gib": 280,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 15,
+      "memory_mib": 30720,
+      "disk_gib": 300,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 16,
+      "memory_mib": 32768,
+      "disk_gib": 320,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 17,
+      "memory_mib": 34816,
+      "disk_gib": 340,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 18,
+      "memory_mib": 36864,
+      "disk_gib": 360,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 19,
+      "memory_mib": 38912,
+      "disk_gib": 380,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 20,
+      "memory_mib": 40960,
+      "disk_gib": 400,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 21,
+      "memory_mib": 43008,
+      "disk_gib": 420,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 22,
+      "memory_mib": 45056,
+      "disk_gib": 440,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 23,
+      "memory_mib": 47104,
+      "disk_gib": 460,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 24,
+      "memory_mib": 49152,
+      "disk_gib": 480,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 25,
+      "memory_mib": 51200,
+      "disk_gib": 500,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 26,
+      "memory_mib": 53248,
+      "disk_gib": 520,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 27,
+      "memory_mib": 55296,
+      "disk_gib": 540,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 28,
+      "memory_mib": 57344,
+      "disk_gib": 560,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 29,
+      "memory_mib": 59392,
+      "disk_gib": 580,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 30,
+      "memory_mib": 61440,
+      "disk_gib": 600,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 31,
+      "memory_mib": 63488,
+      "disk_gib": 620,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 32,
+      "memory_mib": 65536,
+      "disk_gib": 640,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 33,
+      "memory_mib": 67584,
+      "disk_gib": 660,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 34,
+      "memory_mib": 69632,
+      "disk_gib": 680,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 35,
+      "memory_mib": 71680,
+      "disk_gib": 700,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 36,
+      "memory_mib": 73728,
+      "disk_gib": 720,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 37,
+      "memory_mib": 75776,
+      "disk_gib": 740,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 38,
+      "memory_mib": 77824,
+      "disk_gib": 760,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 39,
+      "memory_mib": 79872,
+      "disk_gib": 780,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 40,
+      "memory_mib": 81920,
+      "disk_gib": 800,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 41,
+      "memory_mib": 83968,
+      "disk_gib": 820,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 42,
+      "memory_mib": 86016,
+      "disk_gib": 840,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 43,
+      "memory_mib": 88064,
+      "disk_gib": 860,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 44,
+      "memory_mib": 90112,
+      "disk_gib": 880,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 45,
+      "memory_mib": 92160,
+      "disk_gib": 900,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 46,
+      "memory_mib": 94208,
+      "disk_gib": 920,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 47,
+      "memory_mib": 96256,
+      "disk_gib": 940,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 48,
+      "memory_mib": 98304,
+      "disk_gib": 960,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 49,
+      "memory_mib": 100352,
+      "disk_gib": 980,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 50,
+      "memory_mib": 102400,
+      "disk_gib": 1000,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 51,
+      "memory_mib": 104448,
+      "disk_gib": 1020,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 52,
+      "memory_mib": 106496,
+      "disk_gib": 1040,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 53,
+      "memory_mib": 108544,
+      "disk_gib": 1060,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 54,
+      "memory_mib": 110592,
+      "disk_gib": 1080,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 55,
+      "memory_mib": 112640,
+      "disk_gib": 1100,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 56,
+      "memory_mib": 114688,
+      "disk_gib": 1120,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 57,
+      "memory_mib": 116736,
+      "disk_gib": 1140,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 58,
+      "memory_mib": 118784,
+      "disk_gib": 1160,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 59,
+      "memory_mib": 120832,
+      "disk_gib": 1180,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 60,
+      "memory_mib": 122880,
+      "disk_gib": 1200,
+      "arch": "arm64",
+      "virtualization": true
+    },
+    {
+      "vcpus": 61,
+      "memory_mib": 124928,
+      "disk_gib": 1220,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 62,
+      "memory_mib": 126976,
+      "disk_gib": 1240,
+      "arch": "arm64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 63,
+      "memory_mib": 129024,
+      "disk_gib": 1260,
+      "arch": "amd64",
+      "virtualization": false
+    },
+    {
+      "vcpus": 64,
+      "memory_mib": 131072,
+      "disk_gib": 1280,
+      "arch": "arm64",
+      "virtualization": true
+    }
+  ]
+}

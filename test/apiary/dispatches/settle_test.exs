@@ -210,9 +210,9 @@ defmodule Apiary.Dispatches.SettleTest do
       project!(second)
       assert stored(second) == {:proposal, nil}
 
-      # A run of another workflow reads its artifacts itself: none.
+      # A run of another workflow, queued as such, reads its artifacts itself: none.
       Repo.update_all(from(d in DispatchRun, where: d.id == ^second.dispatch_run.id),
-        set: [result_outcome: nil, workflow: "review"]
+        set: [result_outcome: nil, workflow: "review", explore: false]
       )
 
       assert [_] = Settle.sweep(Dispatches.now())

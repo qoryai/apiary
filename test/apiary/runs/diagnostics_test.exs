@@ -14,6 +14,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
   import Apiary.RunEventsFixtures
 
   alias Apiary.{DiagnosticsSchema, Dispatches, Repo}
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Runs.{Diagnostics, LogChunk, Run}
 
   @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
@@ -48,7 +49,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       dir = DiagnosticsSchema.fixtures_dir()
       valid = Path.wildcard(Path.join(dir, "diagnostics/*.json"))
       invalid = Path.wildcard(Path.join(dir, "invalid/*.json"))
-      assert length(valid) == 4 and length(invalid) == 16
+      assert length(valid) == 4 and length(invalid) == 17
 
       for file <- valid do
         assert DiagnosticsSchema.validate(schema, file |> File.read!() |> Jason.decode!()) ==
@@ -364,7 +365,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
                }
              } = document["preparation"]
 
-      assert text =~ "Setup failed with exit code 2."
+      assert text =~ "Set up dev container failed with exit code 2."
     end
 
     test "lists every step in number order, a push step too, and a failed push is no stop",
@@ -601,6 +602,22 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert Map.has_key?(document, "log")
     end
 
+    test "has the run's workflow up to 55 characters, and leaves out a longer one",
+         %{schema: schema, scope: scope, run: run} = ctx do
+      longest = "a" <> String.duplicate("b", 54)
+
+      for {workflow, shown} <- [{longest, longest}, {longest <> "c", nil}] do
+        {1, _} =
+          Repo.update_all(
+            from(h in RunHarness, where: h.dispatch_run_id == ^ctx.dispatch_run.id),
+            set: [state: :resolved, workflow: workflow]
+          )
+
+        document = valid!(schema, Jason.decode!(Diagnostics.encode(run, scope)))
+        assert document["run"]["workflow"] == shown
+      end
+    end
+
     test "a run whose start failed has the dispatch it keeps, with the release reason",
          %{schema: schema, run: run, dispatch: dispatch} do
       {1, _} =
@@ -628,7 +645,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert id == dispatch.public_id
       refute Map.has_key?(document, "queue")
 
-      # Why the preparation stopped, as the run page's Prepare machine section says it.
+      # Why the preparation stopped, as the run page's Run list shows it.
       assert %{"cause" => "machine_not_made", "text" => text} =
                document["preparation"]["stopped"]
 

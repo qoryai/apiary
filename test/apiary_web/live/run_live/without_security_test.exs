@@ -82,8 +82,9 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       run: run,
       scope: scope
     } do
+      # The allowed connections are rows with Connections inline on.
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}?cx=1")
 
       refute_policy(render(lv))
 

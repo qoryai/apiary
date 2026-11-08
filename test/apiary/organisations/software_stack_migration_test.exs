@@ -98,10 +98,11 @@ defmodule Apiary.Organisations.SoftwareStackMigrationTest do
       workspace_id: workspace_id,
       target_id: place[:target] && place[:target].id,
       choice: :qory,
-      version_kind: :latest,
+      version_kind: :branch,
+      version_name: "main",
       harness:
         "extends:\n  git: \"https://github.com/qoryai/harness\"\n" <>
-          "  ref: \"#{String.duplicate("f2", 20)}\"\n  stack: \"#{stack}\"\n"
+          "  ref: \"main\"\n  stack: \"#{stack}\"\n"
     })
   end
 

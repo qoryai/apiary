@@ -448,8 +448,8 @@ action and the subject first, and returns what it answers:
   is in lists approvers the person is not among.
 
 The last step, after the role, is the stage's approvers. It applies to approving a
-stage's gate (`gate.approve`), confirming Explore's proposal (`work_item.confirm`) and
-the review comments on that proposal (`work_item.review_comment`), asked of a work item.
+stage's gate (`gate.approve`), approving Explore's proposal (`work_item.confirm`) and
+the comments on that proposal (`work_item.review_comment`), asked of a work item.
 Every person the role allows may take them with the workflow model off, on a work item
 the runner did not place, and at a stage that lists no approvers; an answer to the
 questions (`work_item.answer`) stays every member's. Asked of a workspace, as a page asks

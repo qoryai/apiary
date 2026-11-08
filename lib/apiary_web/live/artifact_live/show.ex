@@ -8,8 +8,10 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   #
   # Every member who may read the work item reads it (`work_item.read`); a number, or a
   # version id, of no work item or version the reader may read is not found. A reader who
-  # may add a version (`artifact.write`) has Add a version, which opens the add page with
-  # the type and the name filled in (`ApiaryWeb.ArtifactLive.New`).
+  # may add a version (`artifact.write`) has Add a version on a version of a type the add
+  # page lists (`Apiary.Artifacts.person_types/1`), so not on the questions or the review
+  # comments, which members write through Explore's actions. Add a version opens the add
+  # page with the type and the name filled in (`ApiaryWeb.ArtifactLive.New`).
   #
   # **Live.** The page listens on its work item's artifacts topic
   # (`Apiary.Artifacts.subscribe/2`) and reads the history again on
@@ -170,7 +172,9 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          content: if(connected?(socket), do: Load.content(type, version), else: :pending),
          stage: Load.stage_name(work_item, version.stage_id),
          note: Apiary.ExternalText.present_lines(version.note),
-         writes: Access.can?(scope, :"artifact.write", work_item),
+         writes:
+           Access.can?(scope, :"artifact.write", work_item) and
+             person_type?(scope, version.artifact.type),
          page_title: ArtifactComponents.title(version.artifact, version)
        )
        |> load_history()}
@@ -221,6 +225,11 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # True for exactly the types of `Artifacts.person_types/1`, without its 2 queries:
+  # `Artifacts.type/2` returns a type for exactly the names in `Artifacts.types/1`.
+  defp person_type?(scope, name),
+    do: name not in Artifacts.member_types() and Artifacts.type(scope.workspace, name) != nil
 
   defp add_path(scope, number, artifact),
     do:

@@ -32,6 +32,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.InstanceLive.Adapter,
     ApiaryWeb.InstanceLive.Nodes,
     ApiaryWeb.InstanceLive.Node,
+    ApiaryWeb.InstanceLive.MachineTypes,
     ApiaryWeb.BacklogLive.Index,
     ApiaryWeb.BacklogLive.Ticket,
     ApiaryWeb.WorkItemLive.Index,
@@ -65,7 +66,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.InstanceLive.Adapter,
     ApiaryWeb.AdapterLive.AccessKey,
     ApiaryWeb.InstanceLive.Nodes,
-    ApiaryWeb.InstanceLive.Node
+    ApiaryWeb.InstanceLive.Node,
+    ApiaryWeb.InstanceLive.MachineTypes
   ]
 
   # A workspace's set-up is finished: a link to it leads to its first page.
@@ -85,6 +87,7 @@ defmodule ApiaryWeb.FactoryShellTest do
   # a made-up id for the rest. The signed requests of an adapter and of a node pool's
   # starter are no page of the shell: `ApiaryWeb.Contract.AdapterRequestTest`,
   # `ApiaryWeb.Contract.ChangesControllerTest`,
+  # `ApiaryWeb.Contract.ChangesFailedControllerTest`,
   # `ApiaryWeb.Contract.SourceCollectionsControllerTest`,
   # `ApiaryWeb.Contract.SourceItemsTest`, `ApiaryWeb.Contract.SourceItemCommentsTest`,
   # `ApiaryWeb.Contract.AppValuesControllerTest`,
@@ -97,6 +100,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.Contract.SecretsController,
     ApiaryWeb.Contract.AdapterController,
     ApiaryWeb.Contract.ChangesController,
+    ApiaryWeb.Contract.ChangesFailedController,
     ApiaryWeb.Contract.SourceCollectionsController,
     ApiaryWeb.Contract.SourcesDisconnectController,
     ApiaryWeb.Contract.SourceItemsController,
@@ -210,6 +214,12 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "/instance/qory-pool-and-gateway/x1/keys"},
                  {:get, "/instance/qory-pool-and-gateway/x1/keys/x1/revoke"},
                  {:get, "/instance/qory-pool-and-gateway/x1/settings"},
+                 # The instance's machine types: the list, Add machine type, and a type's
+                 # Edit and Delete….
+                 {:get, "/instance/machine-types"},
+                 {:get, "/instance/machine-types/new"},
+                 {:get, "/instance/machine-types/x1/edit"},
+                 {:get, "/instance/machine-types/x1/delete"},
                  # The organisation's model providers: the list, New model provider and a
                  # provider's page; and a workspace's Model.
                  {:get, "#{org}/settings/model-providers"},
@@ -419,7 +429,7 @@ defmodule ApiaryWeb.FactoryShellTest do
       assert {"work_item.undo", "Take in undone"} in options
       assert {"work_item.close", "Work item closed"} in options
       assert {"work_item.answer", "Work item questions answered"} in options
-      assert {"work_item.confirm", "Work item proposal confirmed"} in options
+      assert {"work_item.confirm", "Work item proposal approved"} in options
       assert {"work_item.explore_again", "Work item explored again"} in options
       assert {"work_item.comment", "Work item comment added"} in options
       assert {"work_item.comment_delete", "Work item comment deleted"} in options
@@ -493,7 +503,7 @@ defmodule ApiaryWeb.FactoryShellTest do
          %{scope: scope, adapter: adapter} do
       admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
       routes = instance_routes(scope, adapter)
-      assert length(routes) == 15
+      assert length(routes) == 19
 
       keys = "/instance/adapters/#{adapter.public_id}/keys"
 
@@ -510,6 +520,12 @@ defmodule ApiaryWeb.FactoryShellTest do
           # No such node of the instance.
           String.starts_with?(path, "/instance/qory-pool-and-gateway/") ->
             assert_raise ApiaryWeb.NotFound, fn -> live(admin_conn, path) end
+
+          # No such machine type: the page leads to the list.
+          String.starts_with?(path, "/instance/machine-types/x1/") ->
+            assert {:error, {:live_redirect, %{to: "/instance/machine-types"}}} =
+                     live(admin_conn, path),
+                   path
 
           # No code just made, no such key, no such code: the page leads to the tab.
           path in [keys <> "/new-code", keys <> "/x1/revoke", keys <> "/codes/x1/revoke"] ->
@@ -595,8 +611,11 @@ defmodule ApiaryWeb.FactoryShellTest do
       admin = instance_admin_scope()
       keys = for entry <- Layouts.instance_sections(admin), do: entry.key
 
-      # Diagnostics keys, of the observability feature, come between Nodes and Mail.
-      assert [:adapters, :nodes | rest] = Enum.drop_while(keys, &(&1 != :adapters))
+      # Machine types follow Nodes. Diagnostics keys, of the observability feature, come
+      # between them and Mail.
+      assert [:adapters, :nodes, :machine_types | rest] =
+               Enum.drop_while(keys, &(&1 != :adapters))
+
       assert rest in [[:mail, :configuration], [:diagnostics_keys, :mail, :configuration]]
 
       assert %{

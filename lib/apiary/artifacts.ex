@@ -108,7 +108,8 @@ defmodule Apiary.Artifacts do
   #
   # In the transaction, under the work item's lock, a version a run pushes of the
   # questions or the review comments keeps what members wrote in the artifact's newest
-  # version (`Apiary.Explore.Questions.check_run/3`,
+  # version, and each decision in a version of the questions matches its question
+  # (`Apiary.Explore.Questions.check_run/3`,
   # `Apiary.Explore.ReviewComments.check_run/4`), else
   # `{:invalid, {:kept, 0, reason}}`, with the rule it breaks; a newest version whose file
   # cannot be read is `{:error, :store_unavailable}`. Numbers compare by value there.

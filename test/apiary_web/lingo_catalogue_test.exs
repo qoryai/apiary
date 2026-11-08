@@ -7,20 +7,30 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   """
   # The sentences a software workspace says in its words, with no engine word in them: the
   # policy file's place, outside the checkout, and the harness choice's repository and its
-  # branch, tag or commit, the version's name among them.
+  # branch, tag or commit, the version's name among them, and why a read of the Qory
+  # harness failed.
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+    "%{contact_support}. Reading the harness from %{url} failed: the source has no version %{ref}.",
     "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source.",
     "%{source} has no version named %{ref}. Correct the version.",
     "%{source} has no version yet. Add a version with a qory.yaml or harness.yaml at its root that lists the stack under exports.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
-    "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
+    "Always the latest: a run uses the newest version. On the Qory harness, that is the version when a machine claims the run. On a harness source, it is the version when the run is queued. A fixed version uses that version.",
     "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",
     "Keep a policy file outside the folder the runs work in.",
-    "tag or version"
+    "Set a version that exists in the workspace's harness settings. %{url} has no %{ref}.",
+    "Set a version that exists. %{url} has no tag or version %{ref}.",
+    "Set a version that exists. %{url} has no version %{ref}.",
+    "The Qory harness is the harness at %{url}.",
+    "tag or version",
+    "the host does not have the version",
+    "the host returned something other than a git source over HTTPS",
+    "the host serves nothing public at that address",
+    "the source is larger than 16 MiB, or a harness file is larger than 0.25 MiB"
   ]
 
   use ApiaryWeb.LingoCatalogueCase,

@@ -9,6 +9,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   import ApiaryWeb.RichText, only: [rich_gettext: 2]
 
   alias Apiary.Processes
+  alias ApiaryWeb.StagesLive.Draft
 
   # A stage's gate, with each named approver by name: `people` maps a person's user id,
   # as the document keeps it, to the name the page shows. The id is never shown.
@@ -67,8 +68,8 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
-  # The words a screen reader reads for a card: its name, its workflows and loops, its
-  # gate, each in full.
+  # The words a screen reader reads for a card: its name, its description, its workflows
+  # and loops, its gate, each in full.
   @doc false
   def card_label(stage, people) do
     sequence =
@@ -89,7 +90,37 @@ defmodule ApiaryWeb.StagesLive.Words do
           end)
       end
 
-    Enum.join([stage["name"] | sequence] ++ [gate_line(stage, people)], ". ")
+    rest = Enum.join(sequence ++ [gate_line(stage, people)], ". ")
+
+    case label_description(stage) do
+      nil -> stage["name"] <> ". " <> rest
+      text -> stage["name"] <> ". " <> text <> rest
+    end
+  end
+
+  # The stage's description as the document has it, plain text; nil for none or a blank one.
+  @doc false
+  def description(%{"description" => text}) when is_binary(text),
+    do: if(String.trim(text) == "", do: nil, else: text)
+
+  def description(_stage), do: nil
+
+  # The description in the card's label, with the ". " that joins the label's parts: one
+  # final full stop of the text ends it, and after a final "?" or "!" a space alone.
+  defp label_description(stage) do
+    case description(stage) do
+      nil ->
+        nil
+
+      text ->
+        text = String.trim(text)
+
+        cond do
+          String.ends_with?(text, ".") -> text <> " "
+          String.ends_with?(text, ["?", "!"]) -> text <> " "
+          true -> text <> ". "
+        end
+    end
   end
 
   # The label of the "+" after a stage on the canvas.
@@ -194,7 +225,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def workflow_refused,
     do:
       gettext(
-        "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 64 characters."
+        "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 55 characters."
       )
 
   @doc false
@@ -269,12 +300,18 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
+  # The document's "Default machine type" before and after: "Default" for `default` or
+  # none, else the type's name. The line has no type name for "Default": a version does
+  # not record which type was the default when it was saved.
   def change({:machine_changed, _id, %{from: from, to: to}}, _older, _newer, _people),
     do:
       gettext("Changed the default machine type from %{from} to %{to}.",
-        from: from || gettext("default"),
-        to: to || gettext("default")
+        from: machine_words(from),
+        to: machine_words(to)
       )
+
+  defp machine_words(value) when value in [nil, "", "default"], do: gettext("Default")
+  defp machine_words(value), do: value
 
   defp name(doc, id), do: (Processes.stage(doc, id) || %{})["name"]
 
@@ -299,8 +336,9 @@ defmodule ApiaryWeb.StagesLive.Words do
   def refusal(%{error: :duplicate_stage_id}, _doc),
     do: gettext("Two stages have the same id. Reload the page, then make the change again.")
 
-  def refusal(%{error: error, path: path}, doc) do
+  def refusal(%{error: error, path: path} = refused, doc) do
     {stage, field} = place(path, doc)
+    error_detail = refused[:detail]
 
     cond do
       error == :duplicate_stage_name ->
@@ -312,20 +350,18 @@ defmodule ApiaryWeb.StagesLive.Words do
         gettext("Give every stage a name of 1 to 60 characters.")
 
       String.contains?(path, "machine") ->
-        gettext(
-          "Write a machine type with letters, digits, dots, hyphens and underscores, starting with a letter or a digit."
-        )
+        machine_refused()
 
       String.contains?(path, "approvers") ->
         gettext("%{stage}: choose at least one member who approves, or let any member approve.",
           stage: stage
         )
 
-      field in ["sequence", "inputs", "outputs"] ->
-        gettext(
-          "%{stage}: give every loop 1 to 10 rounds and at least one workflow, and keep at most 20 entries in each list.",
-          stage: stage
-        )
+      field in ["sequence", "inputs", "outputs"] and error_detail == :maxItems ->
+        gettext("%{stage}: keep at most 20 entries in each list.", stage: stage)
+
+      field == "sequence" and Draft.loop_too_long?(Draft.entry_at(doc, path)) ->
+        gettext("%{stage}: keep at most 10 workflows in a loop.", stage: stage)
 
       true ->
         gettext("%{stage}: a value is not valid. Check the stage, then save again.",
@@ -333,6 +369,19 @@ defmodule ApiaryWeb.StagesLive.Words do
         )
     end
   end
+
+  # The banner's line for a stage with rows that show a refused machine type
+  # (`Editor.banner/1`).
+  @doc false
+  def fields_marked(name) do
+    name = if String.trim(name) != "", do: name, else: gettext("A stage")
+    gettext("%{stage}: fix the fields marked below.", stage: name)
+  end
+
+  # A machine type that the schema's pattern or the instance's list does not take, for the
+  # default's and a workflow's.
+  @doc false
+  def machine_refused, do: gettext("Choose a machine type from the list.")
 
   # A loop's rounds outside 1 to 10, under the field.
   @doc false

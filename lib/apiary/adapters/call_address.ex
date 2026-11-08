@@ -135,7 +135,7 @@ defmodule Apiary.Adapters.CallAddress do
   @doc false
   # The host of the instance's public address, `PUBLIC_URL`'s.
   @spec instance_host() :: String.t() | nil
-  def instance_host, do: URI.parse(ApiaryWeb.Endpoint.url()).host
+  def instance_host, do: Apiary.Instance.host()
 
   # Every address the host resolves to must be one a call may reach, not only the first,
   # the one connected to, since which one a lookup puts first is the name's owner's to

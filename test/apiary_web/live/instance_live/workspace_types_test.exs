@@ -8,9 +8,11 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
   # shares, and each test sets the instance's features.
   use ApiaryWeb.ConnCase, async: false
 
+  import Apiary.MachineTypesFixtures
   import Phoenix.LiveViewTest
 
-  alias Apiary.Harnesses.QoryCopy
+  alias Apiary.Harnesses.Qory
+  alias Apiary.QoryHarnessFixture
   alias Apiary.Processes
   alias Apiary.Processes.TypeTemplates
 
@@ -19,7 +21,6 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
   @type_key "qory.software"
   @index "/instance/workspace-types"
   @edit "/instance/workspace-types/qory.software"
-  @template_key {QoryCopy, :template}
   @custom_type "web-shop-brief"
 
   setup do
@@ -28,14 +29,43 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
   defp details(view), do: render_patch(view, @edit <> "?tab=details")
 
+  defp canvas_stages(view) do
+    [json] =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#type-canvas")
+      |> LazyHTML.attribute("data-view")
+
+    Jason.decode!(json)["stages"]
+  end
+
+  defp form_stage_id(view) do
+    [id] =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#stage-form-id")
+      |> LazyHTML.attribute("value")
+
+    id
+  end
+
   defp history(view, number),
     do: view |> element("#type-version-#{number}") |> render() |> LazyHTML.from_fragment()
 
-  # The copied template with `listed` as its types, until the test ends.
+  # A commit of the Qory harness whose template lists `listed` as its types, read as
+  # main's.
   defp put_template_types(listed) do
-    shipped = QoryCopy.template()
-    :persistent_term.put(@template_key, %{shipped | artifact_types: listed})
-    on_exit(fn -> :persistent_term.put(@template_key, shipped) end)
+    QoryHarnessFixture.files()
+    |> Map.update!("modules/software-factory/process.yaml", fn process ->
+      [kept, _types] = String.split(process, "\nartifact_types:\n", parts: 2)
+      kept <> "\nartifact_types: " <> Jason.encode!(listed) <> "\n"
+    end)
+    |> QoryHarnessFixture.serve!()
+
+    {:ok, commit} = Qory.read("main")
+    assert Qory.template(commit).artifact_types == listed
   end
 
   # The type options of an output added to Explore, whose one output is at 0.
@@ -223,8 +253,134 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
              )
 
       assert has_element?(view, ~s(#type-description[maxlength="1200"]), "You connect:")
-      assert has_element?(view, "#type-machine")
+      # The default machine type is a picker of the instance's types, with a link to them.
+      assert has_element?(
+               view,
+               ~s(select#type-machine option[value="default"]),
+               "Default (standard)"
+             )
+
+      assert has_element?(
+               view,
+               ~s(select#type-machine option[value="standard"]),
+               "standard: 2 vCPUs, 4 GiB"
+             )
+
+      assert has_element?(
+               view,
+               "#type-machine-hint",
+               "New workspaces of this type start with this default. Add machine types in Instance settings › Machine types."
+             )
+
+      assert has_element?(view, ~s(#type-machine-hint a[href="/instance/machine-types"]))
+      refute render(view) =~ "It does not choose the machine that runs it."
       assert has_element?(view, "#type-version-1", "The first version.")
+    end
+
+    test "a form's values after a reconnect go to the stage in the form's id", %{conn: conn} do
+      {:ok, view, _html} = live(conn, @edit)
+      first = form_stage_id(view)
+
+      other =
+        Enum.find(canvas_stages(view), &(&1["id"] != first))
+
+      render_hook(view, "edit_stage", %{"stage" => %{"id" => other["id"], "name" => "Ship"}})
+
+      assert form_stage_id(view) == other["id"]
+      assert has_element?(view, "#stage-panel-title", "Edit Ship")
+
+      names = Map.new(canvas_stages(view), &{&1["id"], &1["name"]})
+      assert names[other["id"]] == "Ship"
+      refute names[first] == "Ship"
+    end
+
+    test "Discard and a save drop the errors by place", %{conn: conn} do
+      {:ok, view, _html} = live(conn, @edit)
+      first = form_stage_id(view)
+      other = Enum.find(canvas_stages(view), &(&1["sequence"] == []))
+      add = fn selector -> view |> element(selector) |> render_click() end
+
+      # The first stage and `other`, each with a row at place 0 and a loop at place 1, and a
+      # bad workflow name and bad rounds typed on `other`.
+      bad_values = fn ->
+        render_hook(view, "select", %{"id" => other["id"]})
+
+        view
+        |> form("#stage-form",
+          stage: %{
+            name: "Assemble",
+            sequence: %{"0" => %{workflow: "Bad_Name"}, "1" => %{rounds: "40"}}
+          }
+        )
+        |> render_change()
+
+        assert has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
+        assert has_element?(view, "#stage-panel", "Write a workflow name")
+      end
+
+      valid_first_stage = fn ->
+        assert form_stage_id(view) == first
+        assert has_element?(view, "#stage-loop-1")
+        refute has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
+        refute has_element?(view, "#stage-panel", "Write a workflow name")
+      end
+
+      add.("#stage-add-loop")
+      render_hook(view, "select", %{"id" => other["id"]})
+      add.("#stage-add-entry")
+      add.("#stage-add-loop")
+      add.("#type-save")
+
+      bad_values.()
+      add.("#type-discard")
+      valid_first_stage.()
+
+      bad_values.()
+      add.("#type-save")
+      assert has_element?(view, "#type-notice")
+      valid_first_stage.()
+    end
+
+    test "a refused machine type shows on its closed row, until Discard", %{conn: conn} do
+      machine_type_fixture(name: "gone")
+      {:ok, view, _html} = live(conn, @edit)
+      remove_machine_types(~w(gone))
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
+      |> render_change()
+
+      view |> element("#type-save") |> render_click()
+
+      assert has_element?(view, "[data-save-error]", "fix the fields marked below.")
+
+      assert has_element?(
+               view,
+               ~s{details[id^="stage-entry-0-settings-"]:not([open]) > summary [data-machine-error]},
+               "Choose a machine type from the list."
+             )
+
+      assert has_element?(view, ~s(#stage-entry-0-machine[aria-invalid="true"]))
+
+      # Discard forgets the refused value: the same value in an `edit_stage` event, as one sent
+      # before the page's patch arrives, shows nothing before a save. The picker no longer
+      # offers it.
+      view |> element("#type-discard") |> render_click()
+      refute has_element?(view, "[data-machine-error]")
+      refute has_element?(view, "[data-save-error]")
+
+      [stage_id] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#stage-form-id")
+        |> LazyHTML.attribute("value")
+
+      render_hook(view, "edit_stage", %{
+        "stage" => %{"id" => stage_id, "sequence" => %{"0" => %{"machine" => "gone"}}}
+      })
+
+      refute has_element?(view, "[data-machine-error]")
     end
 
     test "a switch of tabs keeps the draft; a save keeps the stages and the texts", %{
@@ -304,6 +460,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
       render_hook(view, "edit_stage", %{
         "stage" => %{
+          "id" => form_stage_id(view),
           "gate" => %{"kind" => "person", "approvers" => "named", "named" => [user.id]}
         }
       })
@@ -327,7 +484,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
       # Another tab saves version 2.
       newest = TypeTemplates.newest(@type_key)
-      other = put_in(newest.document, ["machine"], "large")
+      other = put_in(newest.document, ["machine"], "standard")
       {:ok, _version} = TypeTemplates.save(scope, @type_key, other, based_on: 1)
 
       view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
@@ -379,7 +536,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
              )
     end
 
-    test "offers the standard types and the copy's custom type as shipped", %{conn: conn} do
+    test "offers the standard types and the Qory harness's custom type", %{conn: conn} do
       {:ok, view, _html} = live(conn, @edit)
 
       assert new_output_options(view) == standard_names() ++ ["branch"]

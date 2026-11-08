@@ -8,6 +8,10 @@ defmodule Apiary.Sources do
   #     `Apiary.Sources.Wire.items/1` decoded it, from the adapter's key of `key_scope`;
   #   * `post_comments/2` takes the body of `POST /v1/source-items/comments`, as
   #     `Apiary.Sources.Wire.comments/1` decoded it;
+  #   * `comment_failed/2` takes the body of `POST /v1/work-items/changes/failed`, as
+  #     `Apiary.Sources.Wire.failed/1` decoded it: the adapter stopped trying to post a
+  #     member's comment (`Apiary.Sources.Posts`);
+  #   * `post_again/2` posts a member's comment again after such a report;
   #   * `purge_listings/1` deletes the bookkeeping of items listings a day after their
   #     first part (`Apiary.Adapters.SeenRequestsPurge` runs it).
   #
@@ -24,12 +28,14 @@ defmodule Apiary.Sources do
   # its collections that the post wrote, ended or closed, or whose comments it changed,
   # each once. Ids only: a reader loads what it may see. A collection linked to no
   # workspace is told nothing; a post that changed nothing sends nothing.
+  # `comment_failed/2` and `post_again/2` send the same message, with the ticket of the
+  # comment they changed (`Apiary.Sources.Posts`).
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
   alias Apiary.Accounts.Scope
-  alias Apiary.Sources.{Ingest, Topic, Wire}
+  alias Apiary.Sources.{Comment, Ingest, Posts, Topic, Wire}
 
   @doc false
   # post_items/2 keeps the items of one collection, as the module says.
@@ -44,6 +50,22 @@ defmodule Apiary.Sources do
           {:ok, :accepted} | {:error, Ingest.refusal()}
   def post_comments(key_scope, %{item_ref: _, comments: _, complete: _} = comments),
     do: key_scope |> Ingest.comments(comments) |> broadcast()
+
+  @doc false
+  # comment_failed/2 keeps an adapter's report that it stopped trying to post a member's
+  # comment: `{:ok, :accepted}`, or `{:error, :forbidden}` for a key that may not post
+  # comments (`source_item.post`).
+  @spec comment_failed(Scope.t() | nil, Wire.failed()) ::
+          {:ok, :accepted} | {:error, :forbidden}
+  defdelegate comment_failed(key_scope, report), to: Posts, as: :failed
+
+  @doc false
+  # post_again/2 posts again the member's comment `comment_id`, marked not posted, for a
+  # person with `work_item.take_in` in the scope's workspace: `{:ok, comment}`, or
+  # `{:error, :not_found | :forbidden | :not_failed}`.
+  @spec post_again(Scope.t(), String.t()) ::
+          {:ok, Comment.t()} | {:error, :not_found | :forbidden | :not_failed}
+  defdelegate post_again(scope, comment_id), to: Posts
 
   @doc false
   # purge_listings/1 deletes the bookkeeping of items listings whose first part arrived

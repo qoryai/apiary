@@ -15,10 +15,15 @@ defmodule Apiary.Dispatches.Wire do
   #
   # - `claim/1`, `POST /v1/pools/claim` (`claim.schema.json`): `version` (1), `time`,
   #   `wait_seconds`, an integer from 0 to 25, and, optionally, `pool_id`, a node pool's
-  #   id (`np_` and 16 lower-case Crockford base32 characters).
+  #   id (`np_` and 16 lower-case Crockford base32 characters), and `offers`, 1 to 64
+  #   machine specs (`$defs/machine_spec`): each exactly `vcpus` 1 to 1024, `memory_mib`
+  #   512 to 8388608, `disk_gib` 1 to 65536, `arch` `amd64` or `arm64`, and
+  #   `virtualization`, a boolean; nil for a claim without them.
   # - `dispatched/1`, `POST /v1/dispatches/<dispatch_id>/dispatched`
   #   (`dispatched.schema.json`): `version` (1), `time` and, optionally, `external`, which
-  #   holds exactly `type` (`$defs/job_system`), `ref`, 1 to 200 characters, and `url`.
+  #   has exactly `type` (`$defs/job_system`), `ref`, 1 to 200 characters, and `url`,
+  #   and `machine_type` (`$defs/machine_type`), 1 to 64 printable ASCII characters with no
+  #   space, read as text: its characters are checked, and nothing else.
   # - `release/1`, `POST /v1/dispatches/<dispatch_id>/release` (`release.schema.json`):
   #   exactly `version` (1), `time` and `reason`, 1 to 200 characters.
   # - `machine_log/1`, `POST /v1/dispatches/<dispatch_id>/machine-log`
@@ -46,22 +51,28 @@ defmodule Apiary.Dispatches.Wire do
 
   @pool_id ~r/\Anp_[0-9a-hjkmnp-tv-z]{16}\z/
   @job_system ~r/\A[a-z][a-z0-9 -]{0,39}\z/
+  @machine_type ~r/\A[!-~]{1,64}\z/
   @max_bytes 1024 * 1024
   @max_wait_seconds 25
   @max_ref 200
   @max_reason 200
   @max_log 786_432
   # The bytes a string of the contract's may take at most: `pool_id` is ASCII, of a fixed
-  # length; `time` is ASCII, `2026-10-15T12:00:00Z`; `type` is ASCII, at most 40; a string
-  # of at most 200 characters takes at most 800 bytes (`Apiary.Adapters.Wire.text?/3`).
+  # length; `time` is ASCII, `2026-10-15T12:00:00Z`; `type` is ASCII, at most 40;
+  # `machine_type` is ASCII, at most 64; a string of at most 200 characters takes at most
+  # 800 bytes (`Apiary.Adapters.Wire.text?/3`).
   @pool_id_bytes 19
   @time_bytes 20
   @max_job_system_bytes 40
+  @max_machine_type_bytes 64
 
   @claim_required ~w(time version wait_seconds)
-  @claim_optional ~w(pool_id)
+  @claim_optional ~w(pool_id offers)
+  @spec_keys ~w(arch disk_gib memory_mib vcpus virtualization)
+  @max_offers 64
+  @arches ~w(amd64 arm64)
   @dispatched_required ~w(time version)
-  @dispatched_optional ~w(external)
+  @dispatched_optional ~w(external machine_type)
   @external_keys ~w(ref type url)
   @release_keys ~w(reason time version)
   @machine_log_required ~w(log time version)
@@ -73,9 +84,19 @@ defmodule Apiary.Dispatches.Wire do
     "delete_failed" => :delete_failed
   }
 
-  @type claim :: %{time: DateTime.t(), pool_id: String.t() | nil, wait_seconds: 0..25}
+  @type claim :: %{
+          time: DateTime.t(),
+          pool_id: String.t() | nil,
+          wait_seconds: 0..25,
+          offers: [machine_spec] | nil
+        }
+  @type machine_spec :: %{String.t() => pos_integer | String.t() | boolean}
   @type external :: %{type: String.t(), ref: String.t(), url: String.t()}
-  @type dispatched :: %{time: DateTime.t(), external: external | nil}
+  @type dispatched :: %{
+          time: DateTime.t(),
+          external: external | nil,
+          machine_type: String.t() | nil
+        }
   @type release :: %{time: DateTime.t(), reason: String.t()}
   @type machine_log :: %{time: DateTime.t(), log: String.t(), truncated: boolean}
   @type machine_end :: %{time: DateTime.t(), state: :deleting | :gone | :delete_failed}
@@ -102,8 +123,9 @@ defmodule Apiary.Dispatches.Wire do
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
          wait when is_integer(wait) and wait in 0..@max_wait_seconds <- body["wait_seconds"],
-         {:ok, pool_id} <- optional_pool_id(body) do
-      {:ok, %{time: time, pool_id: pool_id, wait_seconds: wait}}
+         {:ok, pool_id} <- optional_pool_id(body),
+         {:ok, offers} <- optional_offers(body) do
+      {:ok, %{time: time, pool_id: pool_id, wait_seconds: wait, offers: offers}}
     else
       _ -> :error
     end
@@ -118,8 +140,9 @@ defmodule Apiary.Dispatches.Wire do
     with true <- members?(body, @dispatched_required, @dispatched_optional),
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
-         {:ok, external} <- optional_external(body) do
-      {:ok, %{time: time, external: external}}
+         {:ok, external} <- optional_external(body),
+         {:ok, machine_type} <- optional_machine_type(body) do
+      {:ok, %{time: time, external: external, machine_type: machine_type}}
     else
       _ -> :error
     end
@@ -204,6 +227,25 @@ defmodule Apiary.Dispatches.Wire do
 
   defp optional_pool_id(_body), do: {:ok, nil}
 
+  defp optional_offers(%{"offers" => offers})
+       when is_list(offers) and offers != [] and length(offers) <= @max_offers do
+    if Enum.all?(offers, &machine_spec?/1), do: {:ok, offers}, else: :error
+  end
+
+  defp optional_offers(%{"offers" => _other}), do: :error
+  defp optional_offers(_body), do: {:ok, nil}
+
+  # A machine spec as `$defs/machine_spec` bounds it: exactly its five members.
+  defp machine_spec?(%{} = spec) do
+    members?(spec, @spec_keys, []) and bounded?(spec["vcpus"], 1, 1024) and
+      bounded?(spec["memory_mib"], 512, 8_388_608) and bounded?(spec["disk_gib"], 1, 65_536) and
+      spec["arch"] in @arches and is_boolean(spec["virtualization"])
+  end
+
+  defp machine_spec?(_spec), do: false
+
+  defp bounded?(value, low, high), do: is_integer(value) and value >= low and value <= high
+
   defp optional_external(%{"external" => %{} = external}) do
     with true <- members?(external, @external_keys, []),
          type when is_binary(type) and byte_size(type) <= @max_job_system_bytes <-
@@ -221,4 +263,12 @@ defmodule Apiary.Dispatches.Wire do
 
   defp optional_external(%{"external" => _other}), do: :error
   defp optional_external(_body), do: {:ok, nil}
+
+  defp optional_machine_type(%{"machine_type" => type})
+       when is_binary(type) and byte_size(type) <= @max_machine_type_bytes do
+    if Regex.match?(@machine_type, type), do: {:ok, type}, else: :error
+  end
+
+  defp optional_machine_type(%{"machine_type" => _other}), do: :error
+  defp optional_machine_type(_body), do: {:ok, nil}
 end

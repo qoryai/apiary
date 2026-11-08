@@ -29,7 +29,7 @@ defmodule ApiaryWeb.ActivityWorkItemExploreTest do
 
     assert Enum.map(@actions, &Core.label/1) == [
              "Work item questions answered",
-             "Work item proposal confirmed",
+             "Work item proposal approved",
              "Work item explored again"
            ]
 
@@ -53,13 +53,34 @@ defmodule ApiaryWeb.ActivityWorkItemExploreTest do
     comment = entry(:"work_item.answer", %{"take_in" => 1, "attempt" => 1, "comment" => true}, id)
 
     assert Core.sentence(:"work_item.answer", comment, %{}) ==
-             "Wrote a review comment on a work item's proposal"
+             "Wrote a comment on a work item's proposal"
+
+    # Run another round with answers and a comment: the questions answered and the
+    # review comment the comment was kept as.
+    round =
+      &entry(
+        :"work_item.answer",
+        %{
+          "take_in" => 1,
+          "attempt" => 1,
+          "count" => &1,
+          "questions" => Enum.map(1..&1, fn n -> "q#{n}" end),
+          "review_comment" => "c1"
+        },
+        id
+      )
+
+    assert Core.sentence(:"work_item.answer", round.(1), %{}) ==
+             "Answered 1 question and wrote a comment on a work item"
+
+    assert Core.sentence(:"work_item.answer", round.(2), %{}) ==
+             "Answered 2 questions and wrote a comment on a work item"
 
     # A reply has what a review comment has, and the reply's position.
     reply = %{comment | details: Map.put(comment.details, "reply", 2)}
 
     assert Core.sentence(:"work_item.answer", reply, %{}) ==
-             "Replied to a review comment on a work item's proposal"
+             "Replied to a comment on a work item's proposal"
 
     # Send review comments: the count and the ids of the open review comments sent.
     sent =
@@ -70,21 +91,21 @@ defmodule ApiaryWeb.ActivityWorkItemExploreTest do
       )
 
     assert Core.sentence(:"work_item.answer", sent.(["c1"]), %{}) ==
-             "Sent 1 review comment on a work item's proposal"
+             "Sent 1 comment on a work item's proposal"
 
     assert Core.sentence(:"work_item.answer", sent.(["c1", "c2", "c3"]), %{}) ==
-             "Sent 3 review comments on a work item's proposal"
+             "Sent 3 comments on a work item's proposal"
 
     confirmed =
       entry(:"work_item.confirm", %{"take_in" => 1, "attempt" => 1, "changed" => []}, id)
 
     assert Core.sentence(:"work_item.confirm", confirmed, %{}) ==
-             "Confirmed a work item's proposal"
+             "Approved a work item's proposal"
 
     changed = %{confirmed | details: %{confirmed.details | "changed" => ["approach"]}}
 
     assert Core.sentence(:"work_item.confirm", changed, %{}) ==
-             "Changed a work item's proposal and confirmed it"
+             "Changed a work item's proposal and approved it"
 
     again = entry(:"work_item.explore_again", %{"take_in" => 1, "attempt" => 2}, id)
 

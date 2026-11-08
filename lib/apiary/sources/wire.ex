@@ -20,8 +20,13 @@ defmodule Apiary.Sources.Wire do
   # (`source-item-comments.schema.json`): exactly `version` (1), `time`, `item_ref` and
   # `comments`, and `complete` when given, which holds exactly `since`. Without `complete`
   # the body names 1 to 100 comments; with it, 0 to 100. Each comment holds exactly `ref`,
-  # `url`, `author`, `body`, `body_format`, `created_at` and `updated_at`, and `deleted`
-  # (only `true`) and `truncated` when given.
+  # `url`, `author`, `body`, `body_format`, `created_at` and `updated_at`, and
+  # `comment_id` (a member's comment's id, `sc_` and sixteen lowercase Crockford base32
+  # characters), `deleted` (only `true`) and `truncated` when given.
+  #
+  # `failed/1` reads the body of `POST /v1/work-items/changes/failed`
+  # (`changes-failed.schema.json`): exactly `version` (1), `time`, `comment_id` and
+  # `reason`, one of `item_gone`, `not_permitted`, `too_long` and `unreachable`.
   #
   # Every bound of the contract holds, and past one the body is refused: nothing is cut.
   # A count is bounded before the elements it counts are read, and an object's members
@@ -38,6 +43,7 @@ defmodule Apiary.Sources.Wire do
   # `updated_at` wins when it is stored. The entries keep the order they were named in.
 
   alias Apiary.Adapters.Wire
+  alias Apiary.Sources.Comment
 
   @max_bytes 1024 * 1024
   @max_entries 100
@@ -63,7 +69,14 @@ defmodule Apiary.Sources.Wire do
   @comments_required ~w(comments item_ref time version)
   @comments_optional ~w(complete)
   @comment_required ~w(author body body_format created_at ref updated_at url)
-  @comment_optional ~w(deleted truncated)
+  @comment_optional ~w(comment_id deleted truncated)
+  @failed_keys ~w(comment_id reason time version)
+  @failed_reasons %{
+    "item_gone" => :item_gone,
+    "not_permitted" => :not_permitted,
+    "too_long" => :too_long,
+    "unreachable" => :unreachable
+  }
   @comment_truncated ["body", "author.name"]
 
   @person_keys ~w(kind name)
@@ -112,8 +125,15 @@ defmodule Apiary.Sources.Wire do
           body_format: String.t(),
           created_at: DateTime.t(),
           updated_at: DateTime.t(),
+          comment_id: String.t() | nil,
           deleted: boolean,
           truncated: [String.t()]
+        }
+
+  @type failed :: %{
+          time: DateTime.t(),
+          comment_id: String.t(),
+          reason: :item_gone | :not_permitted | :too_long | :unreachable
         }
 
   @type comments :: %{
@@ -169,6 +189,25 @@ defmodule Apiary.Sources.Wire do
   end
 
   def comments(_body), do: :error
+
+  # The body of `POST /v1/work-items/changes/failed`: `{:ok, failed}` or `:error`.
+  @doc false
+  @spec failed(term) :: {:ok, failed} | :error
+  def failed(raw) when is_binary(raw), do: with({:ok, body} <- decode(raw), do: failed(body))
+
+  def failed(%{} = body) do
+    with true <- members?(body, @failed_keys, []),
+         true <- body["version"] === 1,
+         {:ok, time} <- Wire.time(body["time"]),
+         true <- Comment.comment_id?(body["comment_id"]),
+         {:ok, reason} <- Map.fetch(@failed_reasons, body["reason"]) do
+      {:ok, %{time: time, comment_id: body["comment_id"], reason: reason}}
+    else
+      _ -> :error
+    end
+  end
+
+  def failed(_body), do: :error
 
   defp decode(raw) when byte_size(raw) <= @max_bytes, do: Wire.decode(raw)
   defp decode(_raw), do: :error
@@ -284,6 +323,7 @@ defmodule Apiary.Sources.Wire do
          true <- word?(comment["body_format"], @body_format_pattern),
          {:ok, created_at} <- Wire.time(comment["created_at"]),
          {:ok, updated_at} <- Wire.time(comment["updated_at"]),
+         {:ok, comment_id} <- optional(comment, "comment_id", &Comment.comment_id?/1),
          {:ok, deleted} <- optional(comment, "deleted", &(&1 === true)),
          {:ok, truncated} <- truncated(comment, @comment_truncated) do
       {:ok,
@@ -295,6 +335,7 @@ defmodule Apiary.Sources.Wire do
          body_format: comment["body_format"],
          created_at: created_at,
          updated_at: updated_at,
+         comment_id: comment_id,
          deleted: deleted == true,
          truncated: truncated
        }}

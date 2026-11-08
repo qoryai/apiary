@@ -62,8 +62,9 @@ defmodule Apiary.Runs.Run do
     field :about_title, :string
     field :about_subjects, {:array, :map}, default: []
     field :about_details, :map
-    # What the run runs, from its last `session.started` (`Apiary.Runs.Fold`): `runtime`,
-    # `runtime_version`, `command`, `args`, `dir`, `interactive` and `image`.
+    # What the run runs, from one `session.started`: its last one that is not bare, else,
+    # with only bare sessions, its first (`Apiary.Runs.Fold`): `runtime`, `runtime_version`,
+    # `command`, `args`, `dir`, `interactive` and `image`.
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string
@@ -72,9 +73,9 @@ defmodule Apiary.Runs.Run do
     field :args, {:array, :string}, default: []
     field :dir, :string
     field :interactive, :boolean
-    # The pseudo-terminal's size as the record last said it: the later by sequence of the
-    # last `session.started`'s `terminal` and the last `run.resized`. Null on pipes, and
-    # when Forager reported no size.
+    # The pseudo-terminal's size: the later by sequence of the `terminal` of that same
+    # `session.started` and the last `run.resized` that counts (`Apiary.Runs.Fold`). Null on
+    # pipes, and when Forager reported no size.
     field :terminal_cols, :integer
     field :terminal_rows, :integer
     field :host, :string
@@ -119,6 +120,13 @@ defmodule Apiary.Runs.Run do
     # The cost the run reported: the sum of `cost_usd` over its session result events
     # (`Apiary.Runs.Fold`). Null until a result carried one; never zero for "unknown".
     field :cost_usd, :decimal
+
+    # What the run's sessions used, from their `dev.qory.session.exited`
+    # (`Apiary.Runs.Fold`), measured over everything behind each session's wall: the
+    # highest peak memory, in bytes, and the sum of the CPU time, in milliseconds. Null
+    # until a session reported one.
+    field :peak_memory_bytes, :integer
+    field :cpu_time_ms, :integer
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

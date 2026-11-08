@@ -25,6 +25,7 @@ defmodule Apiary.Harnesses.WalkTest do
   alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Stacks.{Document, Sources}
   alias Apiary.PublicGitServer
+  alias Apiary.QoryHarnessFixture
 
   @moduletag needs: :factory
   @moduletag :capture_log
@@ -109,14 +110,16 @@ defmodule Apiary.Harnesses.WalkTest do
     })
   end
 
-  # The workspace's harness choice, the Qory harness with `document`, saved by the scope's
-  # person, which applies where the target's file does not; and, where the workspace has
-  # no workflow, its row for `explore` with no document. The choice's row.
+  # The workspace's harness choice, a harness repository with `document`, saved by the
+  # scope's person, which applies where the target's file does not; and, where the
+  # workspace has no workflow, its row for `explore` with no document. The choice's row.
   defp setting(scope, document) do
     if Stacks.workflow_for(scope.workspace, nil) == nil,
       do: {:ok, _row} = Stacks.put_stack(scope, {:workspace, scope.workspace, "explore"}, nil)
 
-    {:ok, stack} = Stacks.put_stack(scope, {:workspace, scope.workspace}, document, choice: :qory)
+    {:ok, stack} =
+      Stacks.put_stack(scope, {:workspace, scope.workspace}, document, choice: :repository)
+
     stack
   end
 
@@ -845,7 +848,9 @@ defmodule Apiary.Harnesses.WalkTest do
 
     test "a run whose workflow no row has any longer gets read", ctx do
       {:ok, _stack} =
-        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting, choice: :qory)
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting,
+          choice: :repository
+        )
 
       serve([ctx.run],
         covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
@@ -2446,7 +2451,9 @@ defmodule Apiary.Harnesses.WalkTest do
     # base's stack declaring `declared`.
     defp declared!(ctx, declared) do
       {:ok, _stack} =
-        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting, choice: :qory)
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting,
+          choice: :repository
+        )
 
       serve([ctx.run],
         covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
@@ -2724,7 +2731,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
   describe "a test work item's run" do
     @builtin_git "https://github.com/qoryai/qory"
-    @builtin_ref "fd0a7da85ca956469a0113daeb4b44f938d82019"
+    @builtin_ref "main"
     @builtin "extends: {git: \"#{@builtin_git}\", ref: \"#{@builtin_ref}\", path: examples/hello}\n"
 
     defp test_run!(scope) do
@@ -2746,7 +2753,7 @@ defmodule Apiary.Harnesses.WalkTest do
       serve([ctx.run, instance], covered: covered, files: @base_files)
     end
 
-    test "is the hello example at its commit, a document the save rules take" do
+    test "is the hello example on main, a document the save rules take" do
       assert Builtin.workflow() == "hello"
 
       assert Builtin.document() == %{
@@ -2854,6 +2861,15 @@ defmodule Apiary.Harnesses.WalkTest do
     test "any other document with the built-in source has it looked up at the adapters",
          ctx do
       covering_builtin!(ctx)
+
+      # The built-in source's host does not serve it to anyone here, so the walk reads it
+      # through a grant only.
+      PublicGitServer.serve(%{},
+        answer: fn conn ->
+          if String.starts_with?(conn.request_path, "/qoryai/qory/"),
+            do: Plug.Conn.send_resp(conn, 404, "")
+        end
+      )
 
       module =
         "  - source: {git: \"#{@builtin_git}\", ref: \"#{@builtin_ref}\", path: examples/hello}\n"
@@ -3104,7 +3120,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
   describe "the harness choices" do
     @qory_git "https://github.com/qoryai/harness"
-    @qory_ref "f2b3b4d3f1f764ec7e0f3ff3709eade08a22d6eb"
+    @qory_ref "main"
     @pin String.duplicate("c3", 20)
 
     # A harness repository whose root is its stack, with a local module.
@@ -3130,7 +3146,7 @@ defmodule Apiary.Harnesses.WalkTest do
     # A document that extends the stack `web` of `@harness`, with `name`.
     defp named(name), do: "name: #{name}\n" <> @setting
 
-    test "none: the target's file, else the Qory harness of the workspace's type at its pin, with the target's version; the workflow row's document is not read",
+    test "none: the target's file, else the Qory harness of the workspace's type on main, with the target's version; the workflow row's document is not read",
          ctx do
       workflow_row!(ctx)
 
@@ -3145,7 +3161,7 @@ defmodule Apiary.Harnesses.WalkTest do
                  choice: :qory,
                  git: @qory_git,
                  stack: "software",
-                 version: :latest,
+                 version: {:branch, "main"},
                  pin: @qory_ref,
                  saved: false,
                  shared: false
@@ -3161,8 +3177,11 @@ defmodule Apiary.Harnesses.WalkTest do
 
       assert %{target_version: "c-R_app", stack_id: nil, owner_organisation_id: nil} = walked
       refute walked.harness_hidden
-      # No adapter covers it: pinned at its commit, with no link, and not read.
-      assert walked.pins == [%{"git" => @qory_git, "ref" => @qory_ref, "at" => @qory_ref}]
+      # No adapter covers it: read from its host, with no link, at main's commit.
+      assert walked.pins == [
+               %{"git" => @qory_git, "ref" => @qory_ref, "at" => QoryHarnessFixture.commit()}
+             ]
+
       assert walked.harness_links == []
 
       calls = calls()
@@ -3203,7 +3222,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, %{document: %{"extends" => ^core}}} = Walk.run(input)
     end
 
-    test "the Qory harness: saved at latest with no read; the target's file first, else its row's document at the newest version",
+    test "the Qory harness: saved on main with no call to an adapter; the target's file first, else its row's document on main",
          ctx do
       serve([ctx.run], covered: covering(ctx), files: @base_files)
       workflow_row!(ctx)
@@ -3219,7 +3238,7 @@ defmodule Apiary.Harnesses.WalkTest do
                  choice: :qory,
                  git: @qory_git,
                  stack: "software",
-                 version: :latest,
+                 version: {:branch, "main"},
                  pin: @qory_ref,
                  saved: true,
                  shared: false
@@ -3416,7 +3435,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
       shared = choose.({:organisation, ctx.scope.organisation}, "shared", :repository)
       workspace = choose.({:workspace, ctx.scope.workspace}, "workspace", :repository)
-      by_target = choose.({:target, target}, "target", :qory)
+      by_target = choose.({:target, target}, "target", :repository)
 
       # 1. The target's file, then 2. a target's stack.
       assert [%{stack_id: id}, %{stack_id: id}] = applies.("target")
@@ -3433,7 +3452,13 @@ defmodule Apiary.Harnesses.WalkTest do
       assert [%{stack_id: id}, _walked] = applies.("shared")
       assert id == shared.id
 
-      shared = choose.({:organisation, ctx.scope.organisation}, "shared", :qory)
+      # A row of the Qory harness's choice extends the Qory harness.
+      qory =
+        "name: shared\nextends: {git: \"#{Apiary.Harnesses.Qory.git()}\", ref: main, stack: software}\n"
+
+      {:ok, shared} =
+        Stacks.put_stack(ctx.scope, {:organisation, ctx.scope.organisation}, qory, choice: :qory)
+
       assert [%{stack_id: id}, _walked] = applies.("shared")
       assert id == shared.id
 

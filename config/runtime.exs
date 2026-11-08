@@ -207,6 +207,30 @@ if config_env() != :test do
   config :apiary, :machine_logs_dir, System.get_env("APIARY_MACHINE_LOGS_DIR")
 end
 
+# QORY_HARNESS_URL is the address of the Qory harness's git repository, which a workspace
+# of a Qory type starts with and reads at the branch, tag or commit its harness settings
+# choose (`Apiary.Harnesses.Qory`): an https address of a repository its host serves to
+# anyone. Unset or blank, it is https://github.com/qoryai/harness. Read in every
+# environment.
+config :apiary, Apiary.Harnesses.Qory,
+  url:
+    (case String.trim(System.get_env("QORY_HARNESS_URL") || "") do
+       "" -> "https://github.com/qoryai/harness"
+       url -> url
+     end)
+
+# QORY_BUILTIN_HARNESS_URL is the address of the git repository of the built-in harness,
+# whose hello example on `main` the run of a test work item composes
+# (`Apiary.Harnesses.Builtin`): an https address of a repository its host serves to
+# anyone. Unset or blank, it is https://github.com/qoryai/qory. Read in every
+# environment.
+config :apiary, Apiary.Harnesses.Builtin,
+  url:
+    (case String.trim(System.get_env("QORY_BUILTIN_HARNESS_URL") || "") do
+       "" -> "https://github.com/qoryai/qory"
+       url -> url
+     end)
+
 # QORY_ARTIFACTS_DIR is the folder where the content of artifacts is kept, one file per
 # content, named by its SHA-256 digest (`Apiary.Artifacts.Store.Volume`). Unset or blank,
 # it is /var/lib/apiary/artifacts in a release, beside the keys in /var/lib/apiary/keys,

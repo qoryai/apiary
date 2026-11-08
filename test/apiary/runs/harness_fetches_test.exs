@@ -10,7 +10,6 @@ defmodule Apiary.Runs.HarnessFetchesTest do
   import Apiary.SealedRunsFixtures
 
   alias Apiary.Harnesses.RunHarness
-  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Runs
   alias Apiary.Runs.{Filters, Projector}
 
@@ -47,7 +46,7 @@ defmodule Apiary.Runs.HarnessFetchesTest do
     walk(run, %{
       pins: [
         %{"git" => "https://code.example/acme/tools.git", "ref" => "main", "at" => "x"},
-        %{"git" => Definition.qory_harness().git, "ref" => "main", "at" => "y"}
+        %{"git" => Apiary.Harnesses.Qory.git(), "ref" => "main", "at" => "y"}
       ]
     })
 

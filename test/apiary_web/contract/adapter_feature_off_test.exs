@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.Contract.AdapterFeatureOffTest do
-  # Seven of an adapter's signed POST routes where the feature is off, by their paths and by
+  # Eight of an adapter's signed POST routes where the feature is off, by their paths and by
   # paths with a character escaped, which the router decodes: an unsigned request is
   # answered exactly as a path the router does not know, whatever its body, as its body is
   # parsed as any request's is (`ApiaryWeb.Contract.RawBody`) and its route is found as the
@@ -25,7 +25,8 @@ defmodule ApiaryWeb.Contract.AdapterFeatureOffTest do
     "/v1/sources/disconnect",
     "/v1/source-items/comments",
     "/v1/grants",
-    "/v1/grants/end"
+    "/v1/grants/end",
+    "/v1/work-items/changes/failed"
   ]
   # The same routes, a character of each escaped, as the router decodes them, with the
   # route each names.
@@ -39,11 +40,14 @@ defmodule ApiaryWeb.Contract.AdapterFeatureOffTest do
     {"/v1/source-items/%63omments", "/v1/source-items/comments"},
     {"/v1/source%2Ditems/comments", "/v1/source-items/comments"},
     {"/v1/gr%61nts", "/v1/grants"},
-    {"/v1/grants/%65nd", "/v1/grants/end"}
+    {"/v1/grants/%65nd", "/v1/grants/end"},
+    {"/v1/work-items/changes/%66ailed", "/v1/work-items/changes/failed"},
+    {"/v1/work%2Ditems/changes/failed", "/v1/work-items/changes/failed"}
   ]
-  # Paths the router does not know, of two segments and of three.
+  # Paths the router does not know, of two segments, of three and of four.
   @unknown_two "/v1/source-unknown"
   @unknown_three "/v1/source-items/unknown"
+  @unknown_four "/v1/work-items/changes/unknown"
 
   # The adapter and its key are made while the feature is on.
   setup do
@@ -91,6 +95,7 @@ defmodule ApiaryWeb.Contract.AdapterFeatureOffTest do
     case String.split(path, "/", trim: true) do
       [_, _] -> @unknown_two
       [_, _, _] -> @unknown_three
+      [_, _, _, _] -> @unknown_four
     end
   end
 

@@ -33,7 +33,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
 
   alias Apiary.{Access, Artifacts, Stages}
   alias Apiary.Artifacts.Type
-  alias ApiaryWeb.ArtifactComponents
+  alias ApiaryWeb.{ArtifactComponents, SpendDialog}
   alias ApiaryWeb.ArtifactLive.{Load, UploadWriter}
 
   @impl true
@@ -161,6 +161,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
 
           <.page_form_foot cancel={work_item_path(@current_scope, @number)}>
             <.button
+              id="artifact-save"
               type="submit"
               variant="primary"
               loading_text={gettext("Adding")}
@@ -171,6 +172,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
           </.page_form_foot>
         </.form>
       </.page_form>
+      <SpendDialog.dialog :if={@spend} spend={@spend} />
     </Layouts.app>
     """
   end
@@ -194,6 +196,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
          type: type,
          error: nil,
          file_errors: [],
+         spend: nil,
          page_title: gettext("Add a version")
        )
        |> assign_form(%{"type" => type.name, "name" => name, "note" => ""}, [])
@@ -258,14 +261,46 @@ defmodule ApiaryWeb.ArtifactLive.New do
   def handle_event("remove", %{"ref" => ref}, socket),
     do: {:noreply, socket |> cancel_upload(:files, ref) |> follow_type() |> check_files()}
 
-  def handle_event("save", %{"artifact" => params}, socket) do
+  def handle_event("save", %{"artifact" => params}, socket), do: save(socket, params, :ask)
+
+  # Confirm in the spend's dialog of Add version (`ApiaryWeb.SpendDialog`).
+  def handle_event("spend_confirm", dialog, socket) do
+    case SpendDialog.take(socket.assigns.spend, dialog) do
+      {"save", %{"artifact" => params}} -> save(assign(socket, :spend, nil), params, :act)
+      nil -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("spend_cancel", _params, socket), do: {:noreply, assign(socket, :spend, nil)}
+
+  # Add version: from a click (`:ask`), where the version would start a run of the stage
+  # (`Apiary.Stages.starts/2`), the spend's dialog opens and nothing is stored; else, and
+  # from its Confirm (`:act`), the version is pushed.
+  defp save(socket, params, mode) do
     socket = socket |> assign(:error, nil) |> assign_form(params, []) |> check_files()
 
-    if socket.assigns.file_errors == [] do
-      push(socket, params)
-    else
-      {:noreply, socket}
+    cond do
+      socket.assigns.file_errors != [] ->
+        {:noreply, socket}
+
+      mode == :ask and is_binary(params["type"]) ->
+        case Stages.starts(socket.assigns.work_item, {:version_added, params["type"]}) do
+          {:run, workflow} -> {:noreply, assign(socket, :spend, spend(socket, params, workflow))}
+          :none -> push(socket, params)
+        end
+
+      true ->
+        push(socket, params)
     end
+  end
+
+  defp spend(socket, params, workflow) do
+    SpendDialog.ask("save", %{"artifact" => params},
+      title: gettext("Add version?"),
+      action: gettext("Add version"),
+      line: SpendDialog.run_line({:workflow, workflow}, socket.assigns.current_scope.workspace),
+      return_to: "artifact-save"
+    )
   end
 
   # Push with the uploaded files where LiveView keeps them; the entries stay until the
