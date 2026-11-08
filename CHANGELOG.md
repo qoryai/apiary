@@ -126,6 +126,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the computer makes the key and sends Qory Apiary only its public half. Each key shows
   who made it, when, when it was last used, and **Revoke…**. An instance has at most 20
   diagnostics keys. The audit log records each code, each key added and each key revoked.
+- A diagnostics key also lists the runs of the instance at `GET /v1/runs`, in a request
+  signed with the key, 25 runs to a page by default and 100 at most, the last created
+  first. Each run shows its id, number, organisation, workspace, state and creation time,
+  and, where the run has them, its workflow, work item, reason, start time and duration.
+  The query narrows the list to a workspace, such as `workspace=example-org/example`, a
+  work item of that workspace, a workflow, a state, or the runs created since a time
+  (`since`). `before`, set to the answer's `next`, reads the next page. A query parameter that is
+  unknown, given twice, empty or outside its rule gets `400` with the parameter's name.
+  Qory Apiary records no read of a run for the list.
 - Qory Apiary scans the text a run stores, as it arrives, for keys of a known form: Qory
   Apiary's keys and codes, and Anthropic, OpenAI, GitHub and GitLab tokens. It scans the
   run's output, its events, its machine log and the reason its machine was released. It

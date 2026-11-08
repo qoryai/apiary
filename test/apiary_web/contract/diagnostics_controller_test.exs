@@ -310,7 +310,7 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       routes =
         for %{verb: verb, path: path, plug: plug} <- Phoenix.Router.routes(ApiaryWeb.Router),
             String.starts_with?(path, "/v1/") or path == "/.well-known/qory-configuration",
-            path != "/v1/runs/:run_id/diagnostics",
+            {verb, path} not in [{:get, "/v1/runs/:run_id/diagnostics"}, {:get, "/v1/runs"}],
             do: {verb, path, plug}
 
       assert length(routes) > 20
@@ -369,6 +369,207 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
         contract_key_fixture(scope, node: gateway)
 
       assert {:ok, %AccessKey{}} = relayed.(gateway_key.key_id, gateway_seed)
+    end
+  end
+
+  describe "GET /v1/runs" do
+    setup %{admin: admin} do
+      %{key: key, seed: seed} = diagnostics_key!(admin)
+      %{scope: scope} = sign_up_fixture()
+      %{scope: other} = sign_up_fixture()
+      %{key: key, seed: seed, scope: scope, other: other}
+    end
+
+    defp list(key, seed, query, opts \\ []) do
+      target = if query == "", do: "/v1/runs", else: "/v1/runs?" <> query
+      signed_get(build_conn(), key.key_id, seed, target, opts)
+    end
+
+    # The answer's page, signed and valid under the run list's schema.
+    defp page!(conn) do
+      assert conn.status == 200, conn.resp_body
+      assert signed_answer?(conn)
+      assert [<<"application/json", _::binary>>] = get_resp_header(conn, "content-type")
+      page = Jason.decode!(conn.resp_body)
+      assert DiagnosticsSchema.validate(DiagnosticsSchema.runs(), page) == :ok
+      page
+    end
+
+    # A refusal of the query, signed and valid under the refusal's schema.
+    defp refused!(conn, parameter) do
+      assert conn.status == 400, conn.resp_body
+      assert signed_answer?(conn)
+      body = Jason.decode!(conn.resp_body)
+      assert DiagnosticsSchema.validate(DiagnosticsSchema.runs_refusal(), body) == :ok
+      assert body == %{"error" => "invalid_request", "parameter" => parameter}
+    end
+
+    defp ids(page), do: Enum.map(page["runs"], & &1["id"])
+
+    defp run_at!(scope, at, attrs \\ %{}) do
+      run_fixture(scope, Map.merge(%{public_id: Run.new_public_id(), inserted_at: at}, attrs))
+    end
+
+    defp workspace(scope), do: "workspace=#{scope.organisation.slug}%2F#{scope.workspace.slug}"
+
+    test "lists the runs of every organisation, signed, and records only the key's use",
+         %{key: key, seed: seed, scope: scope, other: other} do
+      first = run_at!(scope, ~U[2026-11-01 08:00:00.000000Z])
+      second = run_at!(other, ~U[2026-11-01 09:00:00.000000Z], %{state: "running"})
+      entries = Repo.aggregate(Entry, :count)
+
+      page = page!(list(key, seed, "", user_agent: "qory/0.9.0"))
+      assert ids(page) == [second.public_id, first.public_id]
+      assert page["next"] == nil
+
+      assert [%{"organisation" => %{"slug" => slug}, "workspace" => workspace} | _] =
+               page["runs"]
+
+      assert slug == other.organisation.slug
+      assert workspace == %{"id" => other.workspace.public_id, "slug" => other.workspace.slug}
+      assert %DateTime{} = Repo.get!(AccessKey, key.id).last_used_at
+      # No read of a run is recorded.
+      assert Repo.aggregate(Entry, :count) == entries
+    end
+
+    test "filters by workspace, state and since",
+         %{key: key, seed: seed, scope: scope, other: other} do
+      a = run_at!(scope, ~U[2026-11-01 08:00:00.000000Z], %{state: "completed"})
+      b = run_at!(scope, ~U[2026-11-01 09:00:00.000000Z], %{state: "failed"})
+      c = run_at!(other, ~U[2026-11-01 10:00:00.000000Z], %{state: "failed"})
+
+      assert ids(page!(list(key, seed, workspace(scope)))) == [b.public_id, a.public_id]
+      assert ids(page!(list(key, seed, "state=failed"))) == [c.public_id, b.public_id]
+
+      assert ids(page!(list(key, seed, workspace(other) <> "&state=failed"))) ==
+               [c.public_id]
+
+      assert ids(page!(list(key, seed, "since=2026-11-01T09:00:00Z"))) ==
+               [c.public_id, b.public_id]
+
+      assert ids(page!(list(key, seed, "since=2026-11-01T09:00:00.000000001Z"))) ==
+               [c.public_id]
+
+      # A state no run has is an empty page.
+      assert page!(list(key, seed, "state=cancelled")) == %{"runs" => [], "next" => nil}
+    end
+
+    @tag needs: :factory
+    test "filters by workflow and work item", %{key: key, seed: seed, scope: scope} do
+      place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope)
+
+      %{run: run, dispatch_run: queued} =
+        Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, place.key)
+
+      {1, _} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^queued.id),
+          set: [state: :resolved, origin: :none, workflow: "hello"]
+        )
+
+      number = Repo.get!(Apiary.WorkItems.WorkItem, queued.work_item_id).number
+      _plain = run_at!(scope, DateTime.add(run.inserted_at, 1, :second))
+
+      assert ids(page!(list(key, seed, "workflow=hello"))) == [run.public_id]
+      assert page!(list(key, seed, "workflow=other"))["runs"] == []
+
+      assert [row] = page!(list(key, seed, workspace(scope) <> "&work_item=#{number}"))["runs"]
+      assert row["id"] == run.public_id
+      assert row["workflow"] == "hello"
+      assert row["work_item_number"] == number
+      assert is_binary(row["work_item_title"])
+
+      assert page!(list(key, seed, workspace(scope) <> "&work_item=#{number + 1}"))["runs"] ==
+               []
+    end
+
+    test "pages with before and next across runs created at the same time",
+         %{key: key, seed: seed, scope: scope, other: other} do
+      at = ~U[2026-11-01 10:00:00.123456Z]
+      run_at!(scope, at, %{public_id: "rn_000000000000000a"})
+      run_at!(other, at, %{public_id: "rn_000000000000000b"})
+      run_at!(scope, at, %{public_id: "rn_000000000000000c"})
+      earlier = run_at!(other, DateTime.add(at, -1, :second))
+
+      first = page!(list(key, seed, "limit=2"))
+      assert ids(first) == ["rn_000000000000000c", "rn_000000000000000b"]
+      assert first["next"] == "rn_000000000000000b"
+
+      second = page!(list(key, seed, "limit=2&before=" <> first["next"]))
+      assert ids(second) == ["rn_000000000000000a", earlier.public_id]
+      assert second["next"] == nil
+    end
+
+    test "has 25 rows by default and 100 at most", %{key: key, seed: seed, scope: scope} do
+      now = DateTime.utc_now()
+      for n <- 1..101, do: run_at!(scope, DateTime.add(now, -n, :second))
+
+      default = page!(list(key, seed, ""))
+      assert length(default["runs"]) == 25
+      assert default["next"] == List.last(default["runs"])["id"]
+
+      most = page!(list(key, seed, "limit=100"))
+      assert length(most["runs"]) == 100
+      assert most["next"] == List.last(most["runs"])["id"]
+
+      refused!(list(key, seed, "limit=101"), "limit")
+    end
+
+    test "refuses each parameter that breaks its rule, with its name",
+         %{key: key, seed: seed, scope: scope} do
+      run_at!(scope, DateTime.utc_now())
+
+      for {query, parameter} <- [
+            {"status=running", "status"},
+            {"state=running&state=failed", "state"},
+            {"limit=", "limit"},
+            {"=1", ""},
+            {"limit=0", "limit"},
+            {"work_item=7", "work_item"},
+            {workspace(scope) <> "&work_item=9223372036854775808", "work_item"},
+            {"workspace=example", "workspace"},
+            {"workspace=#{scope.organisation.slug}%2Fno-such-workspace", "workspace"},
+            {"workflow=Hello", "workflow"},
+            {"state=waiting", "state"},
+            {"since=2026-11-01T00:00:60Z", "since"},
+            {"before=rn_short", "before"},
+            {"before=" <> Run.new_public_id(), "before"},
+            {"a%01b=1", "a\u{FFFD}b"}
+          ] do
+        refused!(list(key, seed, query), parameter)
+      end
+    end
+
+    test "refuses every other kind of key, and a revoked diagnostics key",
+         %{admin: admin, key: key, seed: seed, scope: scope} do
+      %{access_key: node_key, secret: node_seed} =
+        Apiary.AccessKeysFixtures.access_key_fixture(scope)
+
+      gateway = Apiary.NodesFixtures.gateway_fixture(scope)
+
+      %{access_key: gateway_key, secret: gateway_seed} =
+        contract_key_fixture(scope, node: gateway)
+
+      for {other, other_seed} <- [{node_key, node_seed}, {gateway_key, gateway_seed}] do
+        assert_unauthorized(list(other, other_seed, "limit=1"))
+      end
+
+      assert page!(list(key, seed, "limit=1"))
+      assert {:ok, %AccessKey{}} = AccessKeys.revoke_diagnostics_key(admin, key)
+      assert_unauthorized(list(key, seed, "limit=1"))
+      # The query is read after the signed check: a bad one gets the same 401.
+      assert_unauthorized(list(key, seed, "limit=0"))
+    end
+
+    # The features are the node's: observability, which every other needs, cannot be
+    # left out of a set the tag parses, so the test switches it off for its run.
+    @tag with_features: [:observability]
+    test "is not found without the observability feature", %{key: key, seed: seed} do
+      Application.put_env(:apiary, :features, [])
+
+      conn = list(key, seed, "limit=1")
+      assert conn.status == 404
+      refute conn.resp_body =~ "runs"
     end
   end
 end

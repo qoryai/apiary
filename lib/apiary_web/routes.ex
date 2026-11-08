@@ -165,7 +165,8 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Contract.AdapterRequest, kind: :pool
       end
 
-      # A run's diagnostics, signed with a diagnostics key, which no other pipeline takes.
+      # A run's diagnostics and the run list, signed with a diagnostics key, which no other
+      # pipeline takes.
       pipeline :contract_diagnostics do
         plug :accepts, ["json"]
         plug ApiaryWeb.Contract.SignedRequest, kinds: [:diagnostics]
@@ -270,6 +271,7 @@ defmodule ApiaryWeb.Routes do
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_diagnostics
 
+        get "/runs", RunListController, :index
         get "/runs/:run_id/diagnostics", DiagnosticsController, :show
       end
 
