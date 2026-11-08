@@ -98,7 +98,7 @@ run the full suite locally under all 3 sets: `QORY_FEATURES` blank, `all` and
 `observability`.
 
 A template that makes many people and places for each of many tests may make them once
-for its module (`cast: :module` of `Apiary.AccessCase` and `ApiaryWeb.RefusalsCase`, on
+for its module (`cast: :module` of `ApiaryWeb.RefusalsCase`, on
 `Apiary.DataCase.setup_module_sandbox/2`): one sandbox for the module, and each test
 inside a savepoint of it, rolled back as it ends. What lives in a process, an edition's
 stub among it, is set in each test's `setup`; a test under other features than the

@@ -1,9 +1,14 @@
 defmodule Apiary.AccessTest do
-  # Not async: the rows of a feature switched off switch the features of the whole node.
-  # Who may take each of the core's actions is the core's rows (`Apiary.AccessRows`),
-  # asked by `Apiary.AccessCase` with the rows of the edition's kit where the edition
-  # changes what the core's actors may; what follows asks what the rows do not.
-  use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core, cast: :module
+  # Not async: a test of a feature switched off switches the features of the whole node.
+  # These tests cover the rules of `Apiary.Access.can?/3` and `authorize/3` once each, with
+  # the refusal: the role of each level, a node's key and the instance; the feature; the
+  # edition; the place; the workspaces a person reaches; the marks for deletion; leaving
+  # one's membership, what a person wrote, and whom an action over people is over. The
+  # rules of the pool, gateway and adapter keys and the dispatch actions are tested in
+  # test/apiary/pool_key_role_test.exs, gateways_instance_test.exs, adapters_test.exs and
+  # adapters/connections_test.exs; the approvers in access_approvers_test.exs.
+  # `Apiary.AccessCase` checks that every core action has a row of `Apiary.AccessRows`.
+  use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core
 
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
@@ -12,12 +17,6 @@ defmodule Apiary.AccessTest do
 
   alias Apiary.Access
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.Organisation
-
-  # The core's rows as the edition answers them: what the tests below expect of the
-  # core's actors.
-  @answering Apiary.AccessCase.answering([Apiary.AccessRows])
-  @table Apiary.AccessCase.rows(@answering)
 
   test "an action that is none raises" do
     assert_raise ArgumentError, fn -> Access.can?(nil, :"no.such_action", nil) end
@@ -64,6 +63,137 @@ defmodule Apiary.AccessTest do
     end
   end
 
+  describe "the role" do
+    # One action of each role, asked of the role that holds it and of one that does not:
+    # an action the role does not hold is forbidden.
+    setup do
+      %{scope: owner} = sign_up_fixture()
+
+      %{
+        owner: owner,
+        admin: member_fixture(owner, :admin).scope,
+        member: member_fixture(owner, :member).scope,
+        instance: Scope.for_instance(owner.organisation, owner.workspace)
+      }
+    end
+
+    test "a member's action: every level takes it, the instance does not", ctx do
+      for level <- [:member, :admin, :owner] do
+        assert Access.can?(ctx[level], :"node.read", ctx.owner.workspace)
+        assert Access.authorize(ctx[level], :"node.read", ctx.owner.workspace) == :ok
+      end
+
+      refute Access.can?(ctx.instance, :"node.read", ctx.owner.workspace)
+
+      assert Access.authorize(ctx.instance, :"node.read", ctx.owner.workspace) ==
+               {:error, :forbidden}
+    end
+
+    test "an admin's action: an admin and an owner take it, a member does not", ctx do
+      for level <- [:admin, :owner] do
+        assert Access.authorize(ctx[level], :"workspace.rename", ctx.owner.workspace) == :ok
+      end
+
+      refute Access.can?(ctx.member, :"workspace.rename", ctx.owner.workspace)
+
+      assert Access.authorize(ctx.member, :"workspace.rename", ctx.owner.workspace) ==
+               {:error, :forbidden}
+    end
+
+    test "an owner's action: an owner takes it, an admin does not", ctx do
+      organisation = ctx.owner.organisation
+      assert Access.authorize(ctx.owner, :"organisation.delete", organisation) == :ok
+
+      refute Access.can?(ctx.admin, :"organisation.delete", organisation)
+
+      assert Access.authorize(ctx.admin, :"organisation.delete", organisation) ==
+               {:error, :forbidden}
+    end
+
+    test "the instance's action: the instance takes it, an owner does not", ctx do
+      organisation = ctx.owner.organisation
+      assert Access.authorize(ctx.instance, :"audit.prune", organisation) == :ok
+
+      refute Access.can?(ctx.owner, :"audit.prune", organisation)
+      assert Access.authorize(ctx.owner, :"audit.prune", organisation) == {:error, :forbidden}
+    end
+
+    test "a node's key: it takes its role's action and no person's, and no person takes its",
+         ctx do
+      %{access_key: key} = access_key_fixture(ctx.owner)
+      key = Scope.for_access_key(key)
+      workspace = ctx.owner.workspace
+
+      assert Access.role(key) == :access_key
+      assert Access.authorize(key, :"run.post_events", workspace) == :ok
+      assert Access.authorize(key, :"node.read", workspace) == {:error, :forbidden}
+      assert Access.authorize(ctx.owner, :"run.post_events", workspace) == {:error, :forbidden}
+    end
+  end
+
+  describe "a feature that is off" do
+    # Every feature but `secrets` and the features that need it.
+    @without_secrets Enum.reject(
+                       Apiary.Features.all(),
+                       &(&1 == :secrets or :secrets in Apiary.Features.needs(&1))
+                     )
+
+    @tag with_features: @without_secrets
+    test "its action is not found to anyone whose role holds it; an action of none answers" do
+      %{scope: owner} = sign_up_fixture()
+      member = member_fixture(owner, :member).scope
+
+      for scope <- [owner, member] do
+        refute Access.can?(scope, :"secret.read", scope.workspace)
+        assert Access.authorize(scope, :"secret.read", scope.workspace) == {:error, :not_found}
+        assert Access.authorize(scope, :"node.read", scope.workspace) == :ok
+      end
+    end
+
+    test "with the feature on, its action answers as the role does" do
+      %{scope: owner} = sign_up_fixture()
+      member = member_fixture(owner, :member).scope
+
+      for scope <- [owner, member] do
+        assert Access.authorize(scope, :"secret.read", scope.workspace) == :ok
+      end
+    end
+  end
+
+  describe "the edition" do
+    # The edition is asked before the core's steps (`Apiary.Edition.check/3`): its answer
+    # stands, a yes the role would not give and a no the role would not; `:continue`
+    # leaves the answer to the core.
+    setup do
+      %{scope: owner} = sign_up_fixture()
+      %{owner: owner, admin: member_fixture(owner, :admin).scope}
+    end
+
+    test "its no stands where the role allows", ctx do
+      workspace = ctx.owner.workspace
+      assert Access.authorize(ctx.owner, :"node.read", workspace) == :ok
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ReadsNoMachines)
+
+      refute Access.can?(ctx.owner, :"node.read", workspace)
+      assert Access.authorize(ctx.owner, :"node.read", workspace) == {:error, :forbidden}
+      # Every other action is left to the core.
+      assert Access.authorize(ctx.owner, :"workspace.rename", workspace) == :ok
+    end
+
+    test "its yes stands where the role refuses", ctx do
+      %{membership: membership} = member_fixture(ctx.owner, :admin)
+
+      assert Access.authorize(ctx.admin, :"member.change_level", membership) ==
+               {:error, :forbidden}
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AdminsChangeLevels)
+
+      assert Access.can?(ctx.admin, :"member.change_level", membership)
+      assert Access.authorize(ctx.admin, :"member.change_level", membership) == :ok
+    end
+  end
+
   describe "a reader" do
     # `reader/1` names the edition's way in only for a role that changes nothing, asked
     # with `reads_only?/1` of the actions the role holds: a stub role an edition might
@@ -92,11 +222,10 @@ defmodule Apiary.AccessTest do
   end
 
   describe "marked for deletion" do
-    # A scope loaded before the marking, asked after it: every action is not found, as for
-    # an organisation or a workspace that is gone, but cancelling the deletion and the
-    # purge, which answer as the table does. An access key of a marked organisation or
-    # workspace is refused at its verification, on every request, and asks nothing here.
-    @marked_actors [:member, :admin, :owner, :instance]
+    # A scope loaded before the marking, asked after it: an action is not found, as for an
+    # organisation or a workspace that is gone, but cancelling the deletion and the purge,
+    # which answer as the role does. An access key of a marked organisation or workspace is
+    # refused at its verification, on every request, and asks nothing here.
 
     setup do
       signed_up = sign_up_fixture()
@@ -119,43 +248,77 @@ defmodule Apiary.AccessTest do
       }
     end
 
-    for mark <- [:organisation, :workspace],
-        {action, row} <- @table,
-        action in Apiary.AccessCase.actions(:core) do
-      @tag mark: mark, action: action, yes: row[:yes]
-      test "a marked #{mark}: #{action} is #{if action in Access.on_marked() or Access.action(action).asked_of == :new_organisation, do: "as the table says", else: "not found"}",
-           ctx do
-        %{mark: mark, action: action, yes: yes} = ctx
+    test "a marked organisation: an action is not found, but cancelling and the purge", ctx do
+      %{scopes: scopes, organisation: organisation, workspace: workspace} = ctx
 
-        case mark do
-          :organisation ->
-            {:ok, _} =
-              Apiary.Deletion.delete_organisation(ctx.owner, ctx.organisation.slug)
-
-          :workspace ->
-            {:ok, _} =
-              Apiary.Deletion.delete_workspace(ctx.owner, ctx.workspace.id, ctx.workspace.slug)
-        end
-
-        subject = subject(ctx, action)
-
-        for actor <- @marked_actors do
-          answer = Access.authorize(ctx.scopes[actor], action, subject)
-
-          cond do
-            # A person's own action is asked of no place, marked or not.
-            action not in Access.on_marked() and not own?(action) ->
-              assert answer == {:error, :not_found}, "#{actor}: #{inspect(answer)}"
-
-            actor in yes ->
-              assert answer == :ok, "#{actor}: #{inspect(answer)}"
-
-            true ->
-              refusal = Apiary.AccessCase.refusal(@answering, action, actor, subject)
-              assert answer == {:error, refusal}, "#{actor}: #{inspect(answer)}"
-          end
-        end
+      for actor <- [:owner, :admin, :member] do
+        assert Access.authorize(scopes[actor], :"node.read", workspace) == :ok
       end
+
+      assert Access.authorize(scopes.instance, :"audit.prune", organisation) == :ok
+
+      {:ok, _} = Apiary.Deletion.delete_organisation(ctx.owner, organisation.slug)
+
+      for actor <- [:owner, :admin, :member] do
+        assert Access.authorize(scopes[actor], :"node.read", workspace) == {:error, :not_found}
+      end
+
+      # The instance's scope, loaded before the marking, reads the marks again too.
+      assert Access.authorize(scopes.instance, :"audit.prune", organisation) ==
+               {:error, :not_found}
+
+      assert Access.authorize(scopes.owner, :"organisation.rename", organisation) ==
+               {:error, :not_found}
+
+      # Cancelling the deletion and the purge answer as the role does.
+      assert Access.authorize(scopes.owner, :"organisation.restore", organisation) == :ok
+
+      assert Access.authorize(scopes.admin, :"organisation.restore", organisation) ==
+               {:error, :forbidden}
+
+      assert Access.authorize(scopes.instance, :"organisation.purge", organisation) == :ok
+
+      assert Access.authorize(scopes.owner, :"organisation.purge", organisation) ==
+               {:error, :forbidden}
+    end
+
+    test "a marked workspace: an action there is not found, but cancelling and the purge",
+         ctx do
+      %{scopes: scopes, organisation: organisation, workspace: workspace} = ctx
+
+      for actor <- [:owner, :admin, :member] do
+        assert Access.authorize(scopes[actor], :"node.read", workspace) == :ok
+      end
+
+      assert Access.authorize(scopes.instance, :"audit.prune", organisation) == :ok
+
+      {:ok, _} =
+        Apiary.Deletion.delete_workspace(ctx.owner, workspace.id, workspace.slug)
+
+      for actor <- [:owner, :admin, :member] do
+        assert Access.authorize(scopes[actor], :"node.read", workspace) == {:error, :not_found}
+      end
+
+      # The instance's scope at the workspace, loaded before the marking, reads the marks
+      # again: no action the instance holds is of a workspace but the purge, so it is
+      # checked with one of the organisation, from that scope.
+      assert Access.authorize(scopes.instance, :"audit.prune", organisation) ==
+               {:error, :not_found}
+
+      assert Access.authorize(scopes.owner, :"workspace.rename", workspace) ==
+               {:error, :not_found}
+
+      # Cancelling the deletion and the purge answer as the role does.
+      assert Access.authorize(scopes.owner, :"workspace.restore", organisation) == :ok
+      assert Access.authorize(scopes.admin, :"workspace.restore", organisation) == :ok
+
+      assert Access.authorize(scopes.member, :"workspace.restore", organisation) ==
+               {:error, :forbidden}
+
+      assert Access.authorize(scopes.instance, :"workspace.purge", workspace) == :ok
+
+      # The organisation's other workspace is not marked.
+      assert Access.authorize(ctx.owner, :"node.read", ctx.owner.workspace) == :ok
     end
 
     test "can?/3 answers from the marks the scope carries, without a read", ctx do
@@ -371,6 +534,21 @@ defmodule Apiary.AccessTest do
       %{scope: owner, organisation: organisation} = sign_up_fixture()
       %{user: admin} = member_fixture(owner, :admin)
       %{owner: owner, second: workspace_fixture(organisation, "Platform"), admin: admin}
+    end
+
+    test "a member the edition does not let reach a workspace finds nothing of it", ctx do
+      %{user: member} = member_fixture(ctx.owner, :member)
+      there = workspace_scope(member, ctx.second)
+      admin = workspace_scope(ctx.admin, ctx.second)
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.MembersReachNamed)
+      Apiary.EditionStubs.MembersReachNamed.put([ctx.owner.workspace.id])
+
+      assert Access.authorize(there, :"node.read", ctx.second) == {:error, :not_found}
+      assert Access.authorize(admin, :"node.read", ctx.second) == :ok
+
+      Apiary.EditionStubs.MembersReachNamed.put([ctx.second.id])
+      assert Access.authorize(there, :"node.read", ctx.second) == :ok
     end
 
     test "an owner and an admin reach every workspace", ctx do
@@ -726,19 +904,4 @@ defmodule Apiary.AccessTest do
                {:error, :not_found}
     end
   end
-
-  # What an action is asked of in `place`, as the rows say: the organisation, the
-  # workspace, or a new organisation.
-  defp subject(place, action) do
-    {^action, row} = List.keyfind(@table, action, 0)
-
-    case Keyword.get(row, :on, Access.action(action).asked_of) do
-      :workspace -> place.workspace
-      :new_organisation -> %Organisation{}
-      _organisation -> place.organisation
-    end
-  end
-
-  # A person's own action, asked of no place.
-  defp own?(action), do: Access.action(action).asked_of == :new_organisation
 end

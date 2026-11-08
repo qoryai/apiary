@@ -21,11 +21,16 @@ actions:
    asked of;
 2. is given to the roles that may take it, in the action's `roles`, from which the
    module's role table is built;
-3. gets its rows in the access test's rows modules (`Apiary.AccessRows` for the core,
-   which `test/apiary/access_test.exs` asks of the core's actions through
-   `Apiary.AccessCase`, and an edition's rows module, which the edition's access test
-   gives with the core's to ask of every action): yes or no for every kind of actor that
-   matters. The test fails for an action in the list without rows.
+3. gets its row in the access test's rows modules (`Apiary.AccessRows` for the core,
+   an edition's rows module for the edition's actions): the kinds of actor that may take
+   it. `Apiary.AccessCase` fails for an action in the list without a row. The tests
+   test each rule of `can?/3` and `authorize/3` once, not each action of each actor:
+   `test/apiary/access_test.exs`, and for the keys, the dispatch actions and the
+   approvers `test/apiary/pool_key_role_test.exs`,
+   `test/apiary/gateways_instance_test.exs`, `test/apiary/adapters_test.exs`,
+   `test/apiary/adapters/connections_test.exs` and
+   `test/apiary/access_approvers_test.exs`. A change to an action's `roles` shows in the
+   diff of `Apiary.Access`, and no test fails for it.
 
 ## Levels, and the workspaces a person reaches
 
