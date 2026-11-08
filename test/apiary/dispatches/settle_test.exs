@@ -348,18 +348,24 @@ defmodule Apiary.Dispatches.SettleTest do
       # Gaps no other test writes, so no other test stores the same file.
       escalate!(handed, "Which basket #{System.unique_integer([:positive])}?")
 
-      [file] =
-        Apiary.Stages.Artifacts.newest_of_run(handed.dispatch_run.id, "verdict", "main").files
-
+      version = Apiary.Stages.Artifacts.newest_of_run(handed.dispatch_run.id, "verdict", "main")
+      [file] = version.files
       {:ok, path} = Apiary.Artifacts.open_file(file)
       File.rename!(path, path <> ".away")
       on_exit(fn -> File.rename(path <> ".away", path) end)
 
       # The end cannot read the verdict: no proposal is kept for good.
       exited!(handed, 9)
-      ExUnit.CaptureLog.capture_log(fn -> project!(handed) end)
+      log = ExUnit.CaptureLog.capture_log(fn -> project!(handed) end)
       assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
       assert stored(handed) == {nil, nil}
+
+      assert log =~
+               "run outcome not stored, newest verdict unreadable " <>
+                 "dispatch_run=#{handed.dispatch_run.id} " <>
+                 "work_item=#{work_item!(handed).public_id} verdict_version=#{version.public_id}"
+
+      refute log =~ "newest questions unreadable"
 
       File.rename!(path <> ".away", path)
       assert [_] = Settle.sweep(Dispatches.now())
