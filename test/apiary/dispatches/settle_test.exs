@@ -51,8 +51,9 @@ defmodule Apiary.Dispatches.SettleTest do
   defp questions!(handed, texts \\ ["Which basket?", "Which sale?"]),
     do: push_result!(queue_run!(handed), run!(handed), questions_result(texts))
 
-  # The verdict `escalate` of the run, with `gaps`, as the run API stores it: the version.
-  defp escalate!(handed, gaps \\ "The ticket describes two baskets.") do
+  # The verdict `escalate` of the run, with one point of `text`, as the run API stores it:
+  # the version.
+  defp escalate!(handed, text \\ "The ticket describes two baskets.") do
     dispatch_run = queue_run!(handed)
 
     {:ok, version} =
@@ -60,7 +61,7 @@ defmodule Apiary.Dispatches.SettleTest do
         {:run, dispatch_run},
         work_item!(handed),
         "verdict",
-        %{"verdict" => "escalate", "gaps" => gaps},
+        %{"verdict" => "escalate", "points" => [%{"text" => text, "action" => "run_again"}]},
         stage_id: dispatch_run.stage_id
       )
 
@@ -345,7 +346,7 @@ defmodule Apiary.Dispatches.SettleTest do
          ctx do
       handed = handed_over!(ctx)
       proposal!(handed)
-      # Gaps no other test writes, so no other test stores the same file.
+      # A point no other test writes, so no other test stores the same file.
       escalate!(handed, "Which basket #{System.unique_integer([:positive])}?")
 
       version = Apiary.Stages.Artifacts.newest_of_run(queue_run!(handed), "verdict", "main")

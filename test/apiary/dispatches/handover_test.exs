@@ -1146,9 +1146,14 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert %Apiary.Stages.Escalation{
                cause: :run_stopped,
-               gaps:
-                 "The run did not start, because the work item's ticket is no longer in Qory Apiary.\n" <>
-                   "Close the work item, or take the ticket in again."
+               points: [
+                 %{
+                   "text" =>
+                     "The run stopped: it did not start, because the work item's ticket is no longer in Qory Apiary.",
+                   "action" => "run_again",
+                   "fix" => "Close the work item, or take the ticket in again."
+                 }
+               ]
              } = Repo.get_by!(Apiary.Stages.Escalation, work_item_id: work_item.id)
 
       public_id = work_item.public_id

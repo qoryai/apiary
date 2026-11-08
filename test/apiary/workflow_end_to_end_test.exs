@@ -332,8 +332,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     pushed = push_explainer!(ctx, run, "# Gift cards\n\nThe payment step has a field.\n")
     assert pushed["version"]["number"] == 1
 
-    gaps = "The explainer does not show a payment with two gift cards."
-    verdict!(ctx, run, %{"verdict" => "changes-requested", "gaps" => gaps})
+    verdict!(ctx, run, %{"verdict" => "changes-requested"})
     end_run!(ctx, run)
 
     work_item = reload(ctx.work_item)
@@ -350,8 +349,8 @@ defmodule Apiary.WorkflowEndToEndTest do
            }
 
     assert %{"round" => 2, "rounds" => 3, "state" => "running"} = snapshot["stage"]
-    assert %{"verdict" => "changes-requested", "gaps" => ^gaps} = snapshot["verdict"]
-    assert snapshot["gaps"] == gaps
+    assert %{"verdict" => "changes-requested", "points" => nil} = snapshot["verdict"]
+    assert snapshot["gaps"] == nil
 
     assert [%{"type" => "explainer", "check" => "passed", "version" => %{"number" => 1}}] =
              snapshot["outputs"]
@@ -439,14 +438,21 @@ defmodule Apiary.WorkflowEndToEndTest do
     work_item = reload(work_item)
     assert_place(work_item, @build, :escalated, 1)
 
-    assert %Escalation{cause: :run_stopped, round: 1, gaps: stop_cause} =
+    assert %Escalation{cause: :run_stopped, round: 1, points: points} =
              Repo.one!(
                from e in Escalation,
                  where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)
              )
 
-    assert is_binary(stop_cause) and stop_cause != ""
-    assert %{escalation: %{cause: :run_stopped}} = Stages.status(work_item, scope)
+    assert points == [
+             %{
+               "text" => "The run stopped: it ended without a result.",
+               "action" => "run_again"
+             }
+           ]
+
+    assert %{escalation: %{cause: :run_stopped, points: ^points}, gaps: nil} =
+             Stages.status(work_item, scope)
 
     # A run that has ended writes nothing.
     assert json_response(write!(ctx, stopped, "/verdict", %{"verdict" => "passed"}), 409) == %{
@@ -492,7 +498,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   defp step_6(ctx) do
     %{scope: scope, run: run} = ctx
 
-    verdict!(ctx, run, %{"verdict" => "changes-requested", "gaps" => "The note is not done."})
+    verdict!(ctx, run, %{"verdict" => "changes-requested"})
     end_run!(ctx, run)
 
     work_item = reload(ctx.work_item)

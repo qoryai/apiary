@@ -1103,12 +1103,18 @@ defmodule Apiary.DispatchesTest do
 
       target = Repo.get!(WorkItem, held.work_item_id).target_path
 
-      assert %Apiary.Stages.Escalation{cause: :run_stopped, gaps: gaps} =
+      assert %Apiary.Stages.Escalation{cause: :run_stopped, points: points} =
                Repo.get_by!(Apiary.Stages.Escalation, work_item_id: held.work_item_id)
 
-      assert gaps ==
-               "The run did not start, because the build of the environment for target #{target} failed.\n" <>
-                 "Read why on the page of target #{target}, under Targets, then choose Rebuild there."
+      assert points == [
+               %{
+                 "text" =>
+                   "The run stopped: it did not start, because the build of the environment for target #{target} failed.",
+                 "action" => "run_again",
+                 "fix" =>
+                   "Read why on the page of target #{target}, under Targets, then choose Rebuild there."
+               }
+             ]
     end
 
     # The stage runner cannot read the held run's questions: the run still ends with the
