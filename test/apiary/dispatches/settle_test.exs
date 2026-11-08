@@ -51,6 +51,22 @@ defmodule Apiary.Dispatches.SettleTest do
   defp questions!(handed, texts \\ ["Which basket?", "Which sale?"]),
     do: push_result!(queue_run!(handed), run!(handed), questions_result(texts))
 
+  # The verdict `escalate` of the run, with `gaps`, as the run API stores it: the version.
+  defp escalate!(handed, gaps \\ "The ticket describes two baskets.") do
+    dispatch_run = queue_run!(handed)
+
+    {:ok, version} =
+      Apiary.Stages.Artifacts.push_json(
+        {:run, dispatch_run},
+        work_item!(handed),
+        "verdict",
+        %{"verdict" => "escalate", "gaps" => gaps},
+        stage_id: dispatch_run.stage_id
+      )
+
+    version
+  end
+
   defp exited!(handed, sequence, state \\ "succeeded"),
     do:
       event_fixture(handed.run, sequence, "run.exited", %{
@@ -219,6 +235,22 @@ defmodule Apiary.Dispatches.SettleTest do
       assert stored(second) == {:none, nil}
     end
 
+    test "the verdict escalate: none, after open questions", ctx do
+      escalated = handed_over!(ctx)
+      proposal!(escalated)
+      escalate!(escalated)
+      exited!(escalated, 9)
+      project!(escalated)
+      assert stored(escalated) == {:none, nil}
+
+      asked = handed_over!(ctx)
+      questions!(asked)
+      escalate!(asked)
+      exited!(asked, 9)
+      project!(asked)
+      assert stored(asked) == {:questions, nil}
+    end
+
     test "the exit folded, its end not yet written: the outcome's end stores it", ctx do
       handed = handed_over!(ctx)
 
@@ -307,6 +339,37 @@ defmodule Apiary.Dispatches.SettleTest do
       assert [_] = Settle.sweep(Dispatches.now())
       assert stored(handed) == {:questions, nil}
       assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
+    test "a run whose verdict the store cannot read is left unset, and settled once it can",
+         ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      # Gaps no other test writes, so no other test stores the same file.
+      escalate!(handed, "Which basket #{System.unique_integer([:positive])}?")
+
+      version = Apiary.Stages.Artifacts.newest_of_run(queue_run!(handed), "verdict", "main")
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The end cannot read the verdict: no proposal is kept for good.
+      exited!(handed, 9)
+      log = ExUnit.CaptureLog.capture_log(fn -> project!(handed) end)
+      assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
+      assert stored(handed) == {nil, nil}
+
+      assert log =~
+               "run outcome not stored, newest verdict unreadable " <>
+                 "dispatch_run=#{handed.dispatch_run.id} " <>
+                 "work_item=#{work_item!(handed).public_id} verdict_version=#{version.public_id}"
+
+      refute log =~ "newest questions unreadable"
+
+      File.rename!(path <> ".away", path)
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert stored(handed) == {:none, nil}
     end
 
     test "reads after where the sweep before stopped, so runs left unset fill no batch",
@@ -505,6 +568,17 @@ defmodule Apiary.Dispatches.SettleTest do
       assert %DispatchRun{end_cause: :lost, result_outcome: nil} = queue_run!(handed)
       assert Settle.settle(handed.dispatch_run.id) == []
     end
+
+    test "with the verdict escalate and no open question: nothing stored", ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      escalate!(handed)
+      Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+
+      assert %DispatchRun{end_cause: :lost, result_outcome: nil} = queue_run!(handed)
+      assert Settle.settle(handed.dispatch_run.id) == []
+      assert stored(handed) == {nil, nil}
+    end
   end
 
   describe "what is never settled" do
@@ -642,6 +716,35 @@ defmodule Apiary.Dispatches.SettleTest do
                  "1" => "The small one.",
                  "2" => "The spring sale."
                })
+    end
+
+    test "the verdict escalate after a proposal of an earlier run: no result, no confirm",
+         ctx do
+      first = handed_over!(ctx)
+      proposal!(first)
+      questions!(first, ["Which basket?"])
+      exited!(first, 9)
+      project!(first)
+      work_item = work_item!(first)
+
+      assert {:ok, _answered} =
+               WorkItems.answer(ctx.scope, work_item, 1, %{"1" => "The small one."})
+
+      %DispatchRun{} = queued = Repo.get_by!(DispatchRun, work_item_id: work_item.id, attempt: 2)
+      second = handed_over(ctx.scope, ctx.key, queued, %{})
+      escalate!(second)
+      exited!(second, 9)
+      project!(second)
+      assert stored(second) == {:none, nil}
+
+      assert reads(ctx, second, Dispatches.now()) == %{
+               status: :no_result,
+               page: {:no_result, :no_result, :none},
+               sql: :no_result
+             }
+
+      assert WorkItems.confirm(ctx.scope, work_item!(second), 2) == {:error, :not_waiting}
+      refute Repo.get_by(Confirmation, work_item_id: work_item.id)
     end
 
     test "a proposal, then the run lost: lost", ctx do

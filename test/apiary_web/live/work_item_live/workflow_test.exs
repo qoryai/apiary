@@ -1537,6 +1537,38 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
     end
 
+    test "a run that pushed the verdict escalate: the escalation, and no Approve", %{
+      conn: conn,
+      scope: scope
+    } do
+      gaps = "The ticket describes two baskets."
+
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, understood_result())
+
+          {:ok, _version} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verdict",
+              %{"verdict" => "escalate", "gaps" => gaps},
+              stage_id: run.stage_id
+            )
+        end)
+
+      assert %Escalation{cause: :escalate} = escalation(work_item)
+
+      for tab <- ["/ticket", "/explore"] do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+        assert render(view) =~ gaps
+        refute has_element?(view, "#work-item-stage-gate-approve")
+        refute has_element?(view, "#work-item-explore-gate-go")
+      end
+    end
+
     test "a result that did not pass the check: both cards name the run by its attempt", %{
       conn: conn,
       scope: scope

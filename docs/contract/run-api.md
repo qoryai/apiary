@@ -406,7 +406,9 @@ The body, at most 64 KiB:
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
 file, `verdict.json`, `{"verdict": ..., "gaps": ...}`, without `gaps` when the body
-has none. A run of any workflow may give a verdict. Returns `201` with the version, as
+has none. A run of any workflow may give a verdict. For a run of Explore, only
+`escalate` changes what happens: the stage escalates with the gaps. Explore treats
+`passed` and `changes-requested` as no verdict. Returns `201` with the version, as
 `POST artifacts` does.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body that is not this object
