@@ -5,10 +5,19 @@ defmodule Apiary.Runs.Preparation do
   the machine request to the start of its session, how the session ended, what the run
   pushed, and the removal of the machine. Read from records Qory Apiary keeps for every
   run: the run's dispatch and its run of the queue, its steps (`Apiary.Runs.Step`) with
-  their log lines, its first `dev.qory.session.started` and the events that end its
-  session, and the artifact versions it pushed.
+  their log lines, its `dev.qory.session.started` events and the events that end its
+  sessions, and the artifact versions it pushed.
 
-  `read/2` returns a map with eight members:
+  An agent session is a session that runs an agent: every session but a bare one, whose
+  `dev.qory.session.started` has `bare: true`, and one whose wall failed, which never ran
+  its agent. A bare session is a helper that `qory run` starts with no runtime, such as
+  the one that copies the run's work back from the wall.
+  A helper step is a step of the kind `copy`, or a `join` or a `wall` of a bare session:
+  one whose start lies inside a `copy` step by sequence, a join followed by a bare
+  session's start, or a wall that follows one with no join of an agent session between
+  them. The run page shows no helper step.
+
+  `read/2` returns a map with twelve members:
 
     * `machine`: the dispatch whose claim registered the run, nil for a run no node
       pool claimed. `queued_at` is when the run of the queue began to wait for this
@@ -19,23 +28,39 @@ defmodule Apiary.Runs.Preparation do
       attempt; `end` is what the pool's starter last reported about the removal of the
       machine, nil while it has reported nothing; `removal_cause` is why the machine was
       removed (`t:machine/0`).
-    * `steps`: the run's steps of every kind but `push`, by number, each with its output:
+    * `steps`: the run's steps of every kind but `push` and `copy`, by number, each with
+      its output:
       its last log lines as plain text (`Apiary.Runs.Record.plain_line/1`), at most 64 KiB
       and 2,500 lines, each with its number in the step and its time, and whether that is
       cut (`t:output/0`). The output is nil for a reader who may not read the run's log
       (`run.read_log`), and empty once retention deleted the run's log lines.
-    * `after_session`: the run's `push` steps by number, in the same shape. A push runs
-      after the last session, so it is no part of the preparation: `machine` and `stopped`
-      are read from `steps` alone, and a failed push is no failed preparation.
+    * `after_session`: the run's `push` and `copy` steps by number, in the same shape.
+      Both run after the last agent session, so they are no part of the preparation:
+      `machine` and `stopped` are read from `steps` alone, and a failed push or copy is no
+      failed preparation.
     * `log_pruned_at`: when retention deleted the run's log lines (`runs.log_pruned_at`),
       nil while they are kept.
-    * `session_started_at`: the time of the run's first `dev.qory.session.started`; nil
-      before the session starts and once retention deleted the run's events.
-    * `session_end`: how the session ended, from the run's last `dev.qory.runtime.result`
-      and `dev.qory.session.exited`; nil while it has neither (`t:session_end/0`).
+    * `sessions`: the run's agent sessions in the order they started, each with how it
+      ended (`t:session/0`); none before the first starts and once retention deleted the
+      run's events.
+    * `unrun`: the sessions whose wall failed after their start, which never ran their
+      agent, each with its number and the sequence of its start (`t:unrun/0`).
+    * `session_started_at`: when the first agent session started; nil before it starts
+      and once retention deleted the run's events.
+    * `session_end`: how the last agent session ended (`t:session_end/0`); for a run with
+      no `dev.qory.session.started` at all, how its session ended, from the run's last
+      `dev.qory.runtime.result` and `dev.qory.session.exited`; nil while it has neither.
     * `outputs`: the artifact versions the run pushed, in the order they were pushed
       (`t:output_version/0`).
     * `stopped`: why the preparation failed, nil while it has not (`t:stopped/0`).
+    * `prebuild`: whether the run is a prebuild, a run of the queue for the step
+      `prebuild` that builds a collection's environment (`dispatch_runs.step`); false for
+      a run no queue started. A prebuild builds its image in one session that `qory`
+      starts with no agent, which Forager may mark bare: the session of a prebuild is
+      read as an agent session, bare or not, so its join and wall are no helper steps.
+    * `built`: for a prebuild, its first `dev.qory.run.built` by sequence, `at` its time
+      and `image` the image it reports, nil when that is no text; nil while it has none,
+      and for any other run (`t:built/0`).
 
   Every read is scoped as `Apiary.Runs.Record` scopes it: the scope's organisation and
   workspace, and the run's row id.
@@ -63,6 +88,10 @@ defmodule Apiary.Runs.Preparation do
   # lies in the workspace: its targets, harness, build and set-up, and a kind outside the
   # contract's list counts as the workspace's.
   @pool_kinds ~w(image join wall machine)
+
+  # The kinds of step that run after the last agent session: the push of the run's work,
+  # and the copy of it back from the wall.
+  @after_kinds ~w(push copy)
 
   @typedoc "Where the cause of a failure lies, by who can fix it."
   @type fixer :: :support | :operator_admin | :workspace_admin
@@ -156,10 +185,12 @@ defmodule Apiary.Runs.Preparation do
 
   @typedoc """
   One step. `name` is qory's name with its first letter in upper case, nil when only the
-  step's exit is recorded, as `started_at` is; `sent_name` is the name as qory or Forager
-  sent it, for `step_detail/1`.
+  step's exit is recorded, as `started_at` and `started_sequence` are; `sent_name` is the
+  name as qory or Forager sent it, for `step_detail/1`. `helper` is whether the step is
+  a helper step (the moduledoc). A join of a prebuild also has `prebuild: true`.
   """
   @type step :: %{
+          optional(:prebuild) => true,
           number: pos_integer,
           name: String.t() | nil,
           sent_name: String.t() | nil,
@@ -168,7 +199,10 @@ defmodule Apiary.Runs.Preparation do
           exit_code: integer | nil,
           started_at: DateTime.t() | nil,
           exited_at: DateTime.t() | nil,
+          started_sequence: integer | nil,
+          exited_sequence: integer | nil,
           duration_ms: non_neg_integer | nil,
+          helper: boolean,
           output: output | nil
         }
 
@@ -190,11 +224,15 @@ defmodule Apiary.Runs.Preparation do
         }
 
   @typedoc """
-  How the session ended. `result_at` is the time of the run's last
+  How a session ended. `result_at` is the time of the session's last
   `dev.qory.runtime.result`, and `outcome`, `turns`, `duration_ms` and `cost_usd` are
-  from it, nil without one. `exited_at` is the time of the run's last
+  from it, nil without one. `exited_at` is the time of the session's last
   `dev.qory.session.exited`, and `state` and `exit_code` are from it, nil without one.
-  `model` is the model of the run's last `dev.qory.runtime.started`, nil without one.
+  `model` is the model of the session's last `dev.qory.runtime.started`, nil without
+  one. An event belongs to the session whose number its `session` has; an event with no
+  `session`, as in a record written before Forager sent it on every runtime event, to
+  the last agent session that started before it. An event of a bare session belongs to
+  none.
   """
   @type session_end :: %{
           result_at: DateTime.t() | nil,
@@ -220,16 +258,36 @@ defmodule Apiary.Runs.Preparation do
           public_id: String.t()
         }
 
+  @typedoc """
+  An agent session: its number (`session` of its `dev.qory.session.started`, nil
+  without one), the sequence and the time of that start, and how it ended, nil while it
+  has neither a result nor an exit (`t:session_end/0`).
+  """
+  @type session :: %{
+          session: pos_integer | nil,
+          sequence: integer,
+          started_at: DateTime.t(),
+          end: session_end | nil
+        }
+
+  @type unrun :: %{session: pos_integer | nil, sequence: integer}
+
   @type t :: %{
           machine: machine | nil,
           steps: [step],
           after_session: [step],
           log_pruned_at: DateTime.t() | nil,
+          sessions: [session],
+          unrun: [unrun],
           session_started_at: DateTime.t() | nil,
           session_end: session_end | nil,
           outputs: [output_version],
-          stopped: stopped | nil
+          stopped: stopped | nil,
+          prebuild: boolean,
+          built: built | nil
         }
+
+  @type built :: %{at: DateTime.t(), image: String.t() | nil}
 
   @doc """
   The preparation of `run` for the reader of `scope`: the moduledoc. `opts`:
@@ -247,9 +305,17 @@ defmodule Apiary.Runs.Preparation do
     attempt = attempt(scope, run)
     log? = Keyword.get_lazy(opts, :log, fn -> Access.can?(scope, :"run.read_log", run) end)
     kept? = is_nil(run.log_pruned_at)
+    prebuild = prebuild?(scope, run)
+    starts = Record.session_starts(scope, run)
+    starts = if prebuild, do: Enum.map(starts, &%{&1 | bare: false}), else: starts
     every = for step <- Record.steps(scope, run), do: step(scope, run, step, log?, kept?)
-    {after_session, steps} = Enum.split_with(every, &(&1.kind == "push"))
-    session_started_at = Record.session_started_at(scope, run)
+    every = helpers(every, starts)
+    every = if prebuild, do: Enum.map(every, &prebuild_step/1), else: every
+    {after_session, steps} = Enum.split_with(every, &(&1.kind in @after_kinds))
+    starts = unrun(starts, steps)
+    ends = Record.session_end_events(scope, run)
+    sessions = sessions(starts, ends)
+    session_started_at = sessions |> List.first() |> then(&(&1 && &1.started_at))
     machine = machine(scope, run, attempt, steps, session_started_at)
 
     %{
@@ -257,8 +323,14 @@ defmodule Apiary.Runs.Preparation do
       steps: steps,
       after_session: after_session,
       log_pruned_at: run.log_pruned_at,
+      sessions: sessions,
+      unrun:
+        for(
+          %{unrun: true, bare: false} = start <- starts,
+          do: Map.take(start, [:session, :sequence])
+        ),
       session_started_at: session_started_at,
-      session_end: session_end(scope, run),
+      session_end: last_end(starts, sessions, ends),
       outputs: outputs(scope, run),
       stopped:
         stopped(
@@ -266,9 +338,11 @@ defmodule Apiary.Runs.Preparation do
           run,
           attempt,
           machine,
-          steps,
+          Enum.reject(steps, & &1.helper),
           Keyword.get(opts, :release_reason, :filtered)
-        )
+        ),
+      prebuild: prebuild,
+      built: if(prebuild, do: built(scope, run))
     }
   end
 
@@ -461,17 +535,92 @@ defmodule Apiary.Runs.Preparation do
 
   defp between(_from, _to), do: nil
 
-  ## The end of the session
+  ## The sessions
 
-  defp session_end(scope, run) do
-    events = Record.session_end(scope, run)
-    result = events["dev.qory.runtime.result"]
-    exited = events["dev.qory.session.exited"]
+  # One session per agent session's start, in sequence order, each with the end events
+  # that belong to it (`t:session_end/0`).
+  defp sessions(starts, ends) do
+    agents = Enum.reject(starts, &(&1.bare or &1.unrun))
+    by_start = Enum.group_by(ends, &owner(&1, starts, agents))
+
+    for start <- agents do
+      %{
+        session: start.session,
+        sequence: start.sequence,
+        started_at: start.time,
+        end: session_end(Map.get(by_start, start.sequence, []))
+      }
+    end
+  end
+
+  # Marks each session's start `unrun` when the session's wall failed: the wall starts
+  # after the session's start (the Forager contract's `dev.qory.run.step_started`), and
+  # the agent runs only behind it, so the session never ran its agent. A wall's session is
+  # the last to start before it, unless the join of an agent session lies between that
+  # start and the wall: then the wall failed before its session started, as
+  # `bare_session?/4` reads it.
+  defp unrun(starts, steps) do
+    joins =
+      for %{kind: "join", helper: false, started_sequence: at} <- steps,
+          is_integer(at),
+          do: at
+
+    unrun =
+      for %{kind: "wall", state: "failed", helper: false, started_sequence: at} <- steps,
+          is_integer(at),
+          %{bare: false} = start <- [starts |> Enum.filter(&(&1.sequence < at)) |> List.last()],
+          not Enum.any?(joins, &(&1 > start.sequence and &1 < at)),
+          into: MapSet.new(),
+          do: start.sequence
+
+    Enum.map(starts, &Map.put(&1, :unrun, MapSet.member?(unrun, &1.sequence)))
+  end
+
+  # The sequence of the start of the agent session an end event belongs to: the last
+  # session, bare or not, with the event's `session` that started before it, else the
+  # first with that number; nil when that session is bare or did not run its agent, so a
+  # bare session that reuses an agent session's number does not end it. For an event
+  # with no `session`, or one that no session's start has, the last agent session that
+  # started before it, else the first.
+  defp owner(%{session: n} = event, starts, agents) do
+    numbered = if n, do: Enum.filter(starts, &(&1.session == n)), else: []
+
+    cond do
+      numbered != [] ->
+        case started_before(numbered, event.sequence) do
+          %{bare: true} -> nil
+          %{unrun: true} -> nil
+          start -> start.sequence
+        end
+
+      agents != [] ->
+        started_before(agents, event.sequence).sequence
+
+      true ->
+        nil
+    end
+  end
+
+  defp started_before(starts, sequence) do
+    starts |> Enum.filter(&(&1.sequence < sequence)) |> List.last() || hd(starts)
+  end
+
+  # How the last agent session ended. For a run with no session's start at all, as one
+  # whose session no event announced, it is read from the run's last end events.
+  defp last_end([], [], ends), do: session_end(ends)
+  defp last_end(_starts, sessions, _ends), do: sessions |> List.last() |> then(&(&1 && &1.end))
+
+  # How a session ended, from its last result, exit and runtime start; nil with neither a
+  # result nor an exit.
+  defp session_end(events) do
+    last = fn type -> events |> Enum.filter(&(&1.type == type)) |> List.last() end
+    result = last.("dev.qory.runtime.result")
+    exited = last.("dev.qory.session.exited")
 
     if result || exited do
       result_data = (result && result.data) || %{}
       exited_data = (exited && exited.data) || %{}
-      started_data = (events["dev.qory.runtime.started"] || %{data: %{}}).data
+      started_data = (last.("dev.qory.runtime.started") || %{data: %{}}).data
 
       %{
         result_at: result && result.time,
@@ -486,6 +635,64 @@ defmodule Apiary.Runs.Preparation do
       }
     end
   end
+
+  @doc """
+  The session of the run page's Timeline that `item` belongs to: the `sequence` of its
+  agent session's start (`t:session/0`); nil for no session. The rule is the one that
+  places a session's end events: an item whose `session` is an agent session's number
+  belongs to the last session with that number that started before it, else to the first
+  with that number. An item with no `session`, or with a bare session's number, belongs
+  to the last agent session that started before it. Both go by the item's `sequence`, or,
+  for a row with no sequence, as Pushed, by its `time`; an item before every candidate
+  belongs to the first.
+  """
+  @spec session_of([session], map) :: integer | nil
+  def session_of([], _item), do: nil
+
+  def session_of(sessions, item) do
+    n = item[:session]
+    numbered = if n, do: Enum.filter(sessions, &(&1.session == n)), else: []
+    session_by(if(numbered == [], do: sessions, else: numbered), item).sequence
+  end
+
+  @doc """
+  The session of the run page's Timeline that `item` belongs to, as `session_of/2` has
+  it, and nil for an item of a session that never ran its agent (`unrun`): the rule is
+  the same, among the agent sessions and those sessions, by the item's `session` and
+  `sequence`. Such an item is in the Timeline after the list.
+  """
+  @spec session_of([session], [unrun], map) :: integer | nil
+  def session_of(sessions, [], item), do: session_of(sessions, item)
+
+  def session_of(sessions, unrun, item) do
+    if unrun_item?(sessions, unrun, item), do: nil, else: session_of(sessions, item)
+  end
+
+  defp unrun_item?(sessions, unrun, %{session: n, sequence: seq})
+       when is_integer(n) and is_integer(seq) do
+    marked = Enum.map(unrun, &Map.put(&1, :unrun, true))
+
+    case sessions |> Enum.concat(marked) |> Enum.filter(&(&1.session == n)) do
+      [] ->
+        false
+
+      numbered ->
+        match?(%{unrun: true}, numbered |> Enum.sort_by(& &1.sequence) |> started_before(seq))
+    end
+  end
+
+  defp unrun_item?(_sessions, _unrun, _item), do: false
+
+  defp session_by(sessions, %{sequence: sequence}) when is_integer(sequence),
+    do: started_before(sessions, sequence)
+
+  defp session_by(sessions, %{time: %DateTime{} = time}) do
+    sessions
+    |> Enum.filter(&(DateTime.compare(&1.started_at, time) != :gt))
+    |> List.last() || hd(sessions)
+  end
+
+  defp session_by(sessions, _item), do: hd(sessions)
 
   defp text(value) when is_binary(value), do: value
   defp text(_value), do: nil
@@ -518,6 +725,33 @@ defmodule Apiary.Runs.Preparation do
   end
 
   defp outputs(_scope, _run), do: []
+
+  # Whether the run's run of the queue is for the step `prebuild`; false for a run no
+  # queue started.
+  defp prebuild?(%Scope{organisation: organisation, workspace: workspace}, %Run{
+         dispatch_run_id: id
+       })
+       when is_binary(id) do
+    Repo.exists?(
+      from d in Apiary.Dispatches.DispatchRun,
+        where: d.id == ^id and d.step == ^Apiary.Dispatches.DispatchRun.prebuild(),
+        where: d.organisation_id == ^organisation.id and d.workspace_id == ^workspace.id
+    )
+  end
+
+  defp prebuild?(_scope, _run), do: false
+
+  # A step of a prebuild, marked so its join reads Start the build (`step_label/1`).
+  defp prebuild_step(%{kind: "join"} = step), do: Map.put(step, :prebuild, true)
+  defp prebuild_step(step), do: step
+
+  # A prebuild's first `dev.qory.run.built` by sequence (`t:built/0`), nil for none.
+  defp built(scope, run) do
+    case Record.built(scope, run) do
+      %{time: at, image: image} -> %{at: at, image: text(image)}
+      nil -> nil
+    end
+  end
 
   # work_item/2 is the work item of the run's run of the queue, whose artifacts the run
   # pushes: nil for a run no queue started, or a run of the queue with no work item.
@@ -554,9 +788,56 @@ defmodule Apiary.Runs.Preparation do
       exit_code: step.exit_code,
       started_at: step.started_at,
       exited_at: step.exited_at,
+      started_sequence: step.started_sequence,
+      exited_sequence: step.exited_sequence,
       duration_ms: step.duration_ms,
+      helper: false,
       output: if(log?, do: output(scope, run, step.step, kept?))
     }
+  end
+
+  # Marks the helper steps (the moduledoc). A step whose start is not recorded is none:
+  # its place among the events is not known.
+  defp helpers(steps, starts) do
+    copies =
+      for %{kind: "copy", started_sequence: from} = copy <- steps,
+          is_integer(from),
+          do: {from, copy.exited_sequence}
+
+    # The joins of agent sessions, which end a bare session's part of the run.
+    joins =
+      for %{kind: "join", started_sequence: at} <- steps,
+          is_integer(at),
+          not in_copy?(at, copies),
+          not bare_session?("join", at, starts, []),
+          do: at
+
+    Enum.map(steps, &%{&1 | helper: helper?(&1, copies, starts, joins)})
+  end
+
+  defp helper?(%{kind: "copy"}, _copies, _starts, _joins), do: true
+
+  defp helper?(%{kind: kind, started_sequence: at}, copies, starts, joins)
+       when kind in ["join", "wall"] and is_integer(at),
+       do: in_copy?(at, copies) or bare_session?(kind, at, starts, joins)
+
+  defp helper?(_step, _copies, _starts, _joins), do: false
+
+  defp in_copy?(at, copies),
+    do: Enum.any?(copies, fn {from, to} -> at > from and (is_nil(to) or at < to) end)
+
+  # A join ends before its session's start, and a wall starts after it (the Forager
+  # contract's `dev.qory.run.step_started`): a join's session is the first to start after
+  # it, a wall's the last to start before it, unless the join of an agent session lies
+  # between that start and the wall, as for a wall that fails before its session starts.
+  defp bare_session?("join", at, starts, _joins),
+    do: match?(%{bare: true}, Enum.find(starts, &(&1.sequence > at)))
+
+  defp bare_session?("wall", at, starts, joins) do
+    case starts |> Enum.filter(&(&1.sequence < at)) |> List.last() do
+      %{bare: true, sequence: start} -> not Enum.any?(joins, &(&1 > start and &1 < at))
+      _ -> false
+    end
   end
 
   # qory's name as it gave it, with its first letter in upper case.
@@ -729,6 +1010,15 @@ defmodule Apiary.Runs.Preparation do
   # Forager contract's `dev.qory.run.step_exited`), so the line shows none.
   defp step_line(step, who, pruned_at), do: {step_what(step), reads_cause(who, pruned_at)}
 
+  @doc """
+  The cause line of a prebuild's session that failed, as the step Build the image:
+  "Build the image failed with exit code 1." for the session's `exit_code`, or "Build the
+  image failed." with none, or with -1 (`t:session_end/0`).
+  """
+  @spec build_what(map) :: String.t()
+  def build_what(session_end),
+    do: step_what(%{kind: "build", exit_code: session_end[:exit_code], sent_name: nil, name: nil})
+
   defp step_what(%{exit_code: code} = step) when is_integer(code) and code != -1 do
     case step_detail(step) do
       nil ->
@@ -771,17 +1061,25 @@ defmodule Apiary.Runs.Preparation do
   def step_name(%{number: number}), do: gettext("Step %{number}", number: number)
 
   @doc """
-  What a row of the preparation calls a step of `kind`: Clone repository for `fetch`,
-  Pull images for `image`, Set up dev container for `setup` and Start agent for `join`;
-  nil for any other kind, whose row has the step's name (`step_name/1`).
+  What a row of the preparation calls a step of `kind`: Clone the repository for
+  `fetch`, Compose the harness for `compose`, Pull the images for `image`, Build the
+  image for `build`, Set up the dev container for `setup`, Start the agent for `join`,
+  or Start the build for the join of a prebuild, whose step has `prebuild: true`, Start
+  the wall for `wall` and Start the machine for `machine`; nil for any other kind, whose
+  row has the step's name (`step_name/1`).
   """
   @spec step_label(map) :: String.t() | nil
   # A fetch clones a repository in a workspace of any domain, so the label is the same in
   # every domain: the plain context (docs/lingo.md).
-  def step_label(%{kind: "fetch"}), do: pgettext("plain", "Clone repository")
-  def step_label(%{kind: "image"}), do: gettext("Pull images")
-  def step_label(%{kind: "setup"}), do: gettext("Set up dev container")
-  def step_label(%{kind: "join"}), do: gettext("Start agent")
+  def step_label(%{kind: "fetch"}), do: pgettext("plain", "Clone the repository")
+  def step_label(%{kind: "compose"}), do: gettext("Compose the harness")
+  def step_label(%{kind: "image"}), do: gettext("Pull the images")
+  def step_label(%{kind: "build"}), do: gettext("Build the image")
+  def step_label(%{kind: "setup"}), do: gettext("Set up the dev container")
+  def step_label(%{kind: "join", prebuild: true}), do: gettext("Start the build")
+  def step_label(%{kind: "join"}), do: gettext("Start the agent")
+  def step_label(%{kind: "wall"}), do: gettext("Start the wall")
+  def step_label(%{kind: "machine"}), do: gettext("Start the machine")
   def step_label(_step), do: nil
 
   @doc "The name of a step's row: its label (`step_label/1`), else its name (`step_name/1`)."
@@ -793,9 +1091,10 @@ defmodule Apiary.Runs.Preparation do
   the name as qory or Forager sent it (`sent_name`): without its first word when that
   word is the step's kind, as in "postCreateCommand: npm ci" for
   "setup postCreateCommand: npm ci", else the whole name. Nil for a step with no label,
-  with no name, with a name of one word (qory's "prepare"), or whose name is its label,
-  and for a `join`, whose name has the session's number alone. An `image` step whose name
-  is one word, its image reference, has that name, unless the word is the kind.
+  with no name, with a name of one word (qory's "prepare"), or whose words are all words
+  of its label, as "compose harness" for Compose the harness, and for a `join`, whose
+  name has the session's number alone. An `image` step whose name is one word, its image
+  reference, has that name, unless the word is the kind.
   """
   @spec step_detail(map) :: String.t() | nil
   def step_detail(%{kind: "join"}), do: nil
@@ -811,26 +1110,53 @@ defmodule Apiary.Runs.Preparation do
       end
 
     if label != nil and detail not in [nil, ""] and
-         String.downcase(detail) != String.downcase(label),
+         not MapSet.subset?(words(detail), words(label)),
        do: detail
   end
 
   def step_detail(_step), do: nil
 
+  defp words(text), do: text |> String.downcase() |> String.split() |> MapSet.new()
+
   @doc """
-  The step a preparation stopped at, as the run page names it: Start machine for a cause
-  of the machine, else the failed step's row name (`row_name/1`); nil while it has not
-  stopped.
+  The step a preparation stopped at, as the run page shows it: Start the machine for a
+  cause of the machine, else the failed step's row name (`row_name/1`); nil while it has
+  not stopped.
   """
   @spec stopped_step(t) :: String.t() | nil
-  def stopped_step(%{stopped: %{step: nil}}), do: gettext("Start machine")
+  def stopped_step(%{stopped: %{step: nil}}), do: gettext("Start the machine")
 
   def stopped_step(%{stopped: %{step: number}, steps: steps}),
     do: steps |> Enum.find(&(&1.number == number)) |> row_name()
 
   def stopped_step(_preparation), do: nil
 
-  @doc "Whether a push step of a preparation failed."
+  @doc """
+  How a run that a failed step of its preparation stopped ended, as the run page's header
+  shows it: the first sentence of the cause line (`stopped`'s `what`), which states what
+  happened, with no advice. Nil for any other preparation: the header's reason states a
+  machine's cause.
+  """
+  @spec stop_line(t) :: String.t() | nil
+  def stop_line(%{stopped: %{step: n, what: what}}) when is_integer(n), do: what
+  def stop_line(_preparation), do: nil
+
+  @doc """
+  How a run whose push or copy failed ended, as the run page's header shows it, for the
+  first failed one: for a push, what happened, the first sentence of its cause line, with
+  no advice; for the copy of the run's work back from the wall, that the work did not
+  come back from the machine. Nil when neither failed.
+  """
+  @spec push_line(t) :: String.t() | nil
+  def push_line(%{after_session: steps}) do
+    case Enum.find(steps, &(&1.state == "failed")) do
+      nil -> nil
+      %{kind: "copy"} -> gettext("The run's work did not come back from the machine.")
+      push -> step_what(push)
+    end
+  end
+
+  @doc "Whether a step after the last agent session, a push or a copy, failed."
   @spec push_failed?(t) :: boolean
   def push_failed?(%{after_session: steps}), do: Enum.any?(steps, &(&1.state == "failed"))
 

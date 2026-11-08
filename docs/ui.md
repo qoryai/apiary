@@ -1782,11 +1782,17 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   (Copy run id, Raw log, Download log, a file with the `rn_` id as its name,
   `rn_0123456789abcdef.log`), and no Close: Qory Apiary records what a run reports and
   never ends a run it did not start; it starts none today. The seven
-  cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
-  meta line, in one cut line whole on hover: the last result of its timeline that was no
-  success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
-  A run with a failed push step looks only at the newest of its results and failed turns,
-  and shows that item if it is a failure, else no line.
+  cells of v1 are the rail's. A run that ended badly (Failed or Lost) shows how under the
+  meta line, after "How it ended". For a run that a failed step of its preparation
+  stopped, the line states what happened at that step, with no advice, such as "Start the
+  wall failed with exit code 125.", on every pool. Else the line is the last result of its
+  timeline that was no success, else its
+  last failed turn or tool, in one cut line whole on hover, with "Jump to it", the
+  timeline at that item. A run with a failed push or copy step looks only at the newest
+  of its results and failed turns, and shows that item if it is a failure. Else a run
+  whose push failed shows what happened at the push, with no advice, such as "Push work
+  to git.example.com/acme/web-shop failed with exit code 1." A step's line wraps whole and
+  has no "Jump to it".
 - **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
   live action of the one LiveView, so a tab is a patch. Terminal is the log's
   (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
@@ -1812,7 +1818,13 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   a tenth; the CPU time as a duration, "12 s", "41 m 10 s", "5 h 00 m". When
   sessions of one run overlap, Peak memory shows the highest single peak. Both cover
   everything behind the session's wall. Run has Machine type after Host, the type the
-  claim answer had, absent for an answer without one.
+  claim answer had, absent for an answer without one. Run has Image after Wall, for a run
+  behind a wall: the image prebuilt for the run's target, with "Prebuilt for this target"
+  under it, else the image the run reported, with "The pool's default image." under it
+  when the run started in its pool's default image. Where the reader is not shown the
+  factory feature, Image is the image the run reported, with no line under it. Run's
+  Policy row and the Policy in force section show only for a run whose policy event
+  arrived.
 - **About** is the rail's first section, shown when the run names a kind, a subject or
   details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
   its title muted under it, cut to a line and whole on hover; then the details in mono, by
@@ -1830,7 +1842,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   sentence too (`{:bdi, title}` of `ApiaryWeb.RichText`); a tooltip, the page's `<title>`,
   an `aria-label` and an announcement hold them as plain text.
 - **The Timeline is an overview of the run** (`Apiary.Runs.Record.Overview`). It lists
-  the run's and the session's events, one row per agent, the agents' texts, the artifact
+  the run's and the sessions' events, one row per agent, the agents' texts, the artifact
   versions the run pushed, failures and denials, and each tool call that was the only
   open call at a connection. A routine tool call, one that finished or still runs with
   no connection and no denied connection inside, is in the Terminal only. A call that
@@ -1843,11 +1855,13 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   from a tool's name; a denied tool reads "Not run: denied"; a call with connections
   inside reads "only open call at a connection" under it. A text of the session is a
   **Text** row: its first line, without Markdown marks (a heading's `#`, a quote's `>`, a
-  bullet or number, emphasis, code and a link's address). **Main session** follows the
-  main agent's first prompt, with the prompt's event number: how many tool calls the
-  main agent made, routine ones included, and the first line of its last text. Its Took
-  is the sum of the durations of the main agent's results, and is empty while the run
-  is live and has no result. Each subagent is one row, its start, which opens to the
+  bullet or number, emphasis, code and a link's address). In each agent session, a **Main
+  session** row follows the main agent's first prompt, with the prompt's event number: how
+  many tool calls the main agent made in that session, routine ones included, and the
+  first line of its last text. Its Took is the sum of the durations of the main agent's
+  results in that session, and is empty while the run is live and the session has no
+  result. The first Main session row has the id `main-session`, a later one
+  `main-session-2` and so on. Each subagent is one row, its start, which opens to the
   subagent's rows. A **Pushed** row is a version the run pushed
   (`Pushed proposal/main version 2`: the artifact's type and name, and the version's
   number), placed by the time it was pushed among the rows, before the first or after Run
@@ -1856,7 +1870,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   Result keeps its outcome, turns and cost (`success · 6 turns · $0.09`).
 - **Terminal ›** ends each row that has a line in the Terminal tab's Transcript, for a
   reader who may read the log: a prompt, a text, a tool call, a result, a subagent's
-  start, and Turn finished in a run recorded before Forager sent texts. The Main session
+  start, and Turn finished in a run recorded before Forager sent texts. A Main session
   row links to its last text. A `?seq=` of a routine call's event goes to that call's line
   in the Terminal for a reader who may read the log, and to the nearest row before it
   for any other reader. A `?seq=` of any other event with no row, such as thinking or an
@@ -1888,133 +1902,218 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   covers the row under the pointer, so the eye can follow it to the time. Below 1280 px a
   row sets out its times without columns or a legend.
 - **The Run list** is the Timeline's first section (`ApiaryWeb.PreparationComponents`,
-  from `Apiary.Runs.Preparation`), headed "Run", and the Timeline's whole content while a
-  pending run has no event. It is there for a run with a machine of a node pool, a step,
-  or an artifact version it pushed, and for a run on a permanent machine once it ended;
-  any other run has its timeline alone. The whole list shows even when the loaded events
-  start later in the run, such as for a `?seq=` link to a late event. One row per phase
-  of the run, in time order, and only the phases that happened. Each row has its state,
-  its start time under Started and its duration under Took; no duration sits beside a
-  name.
-  1. **Queued**, for a run a pool claimed: from the queueing this claim came from to the
-     claim. That is the queue (`dispatch_runs.queued_at`), or, for a run of the queue
+  from `Apiary.Runs.Preparation`), and the Timeline's whole content while a pending run
+  has no event. It is there for a run a node pool claimed, a run with a step that has a
+  row, a push, or an artifact version it pushed, and for a run on a permanent machine once
+  it ended; any other run has its timeline alone. The list is not drawn when it has no
+  row. The whole list shows even when the loaded events start later in the run, such as
+  for a `?seq=` link to a late event. Every reader sees the same list, on every pool: the
+  workspace's pool, the Qory Pool and another organisation's pool.
+
+  The heading is "Run on" and the pool's name, then the run's state in the word of the
+  run's badge: "Run on Qory Pool · Completed", or Pending, Running, Failed, Cancelled or
+  Lost. A run no pool claimed is headed "Run", with its state: "Run · Completed".
+
+  The list has one row per step of the run, each named as an action, in the order the
+  steps ran, as in GitHub Actions. A step that is made of steps opens to them, and a step
+  with events opens to them, each with its time: Queued, Machine requested, Machine
+  started, Started, Finished, Outputs saved and Machine removed. Each top-level row has its
+  state, its start time under Started and its duration under Took; the rows inside a step
+  have no times, and no duration sits beside a name.
+  1. **Queue the run**, for a run a pool claimed: from the queueing this claim came from to
+     the claim. That is the queue (`dispatch_runs.queued_at`), or, for a run of the queue
      lapsed or released and claimed again, the moment the dispatch that put it back in
-     the queue lapsed (`dispatches.stale_at`) or ended (`dispatches.ended_at`). It does
-     not open.
-  2. **Machine requested**: from the claim to the starter's `dispatched`, empty without
-     one. It opens to the pool and the machine type with its spec, "large (4 vCPUs,
-     16 GiB, 60 GiB disk)", or "pool default" while the claim answer has none.
-  3. **Machine started**: from `dispatched` to the redemption of the run's code. It opens
-     to Start machine, with the same times. A step of kind `machine` (the parts of the
-     machine's start that `qory run` sends, such as `start Docker  3.2 s`) is no row: its
-     lines are Start machine's, after a first line, `create machine  14.8 s`, at the time
-     of `dispatched`, with the seconds from `dispatched` to that step's start, written only
-     when the step started no later than the redemption. Start machine is failed once that
-     step failed. Start machine also has, for an instance admin, the machine type the pool
-     started, "Started as (instance admins)" and the type its starter reported, absent
-     while it reported none, then the machine log, numbered with no times; anyone else
-     sees neither. With no machine log recorded, an instance admin reads "No machine log has arrived." until a day has passed since the
-     claim (the least the machine logs' retention can be set to, under which a prune can
-     have deleted the log), and then "Machine logs are kept for 30 days. This machine has
-     none.", with the retention's days in force.
-  4. **Prepare**: the run's steps that started before the first session, every step while
-     no session has started, in order, for a run a pool claimed or not. Its duration runs
-     from its first step's start to the end of its last step; on a live run it is running
-     until the first session starts or the preparation stops, and between two steps it
-     has the word Running and no clock. A step of kind `fetch` is Clone repository,
-     `image` Pull images, `setup` Set up dev container and `join` Start agent; a step of
-     any other kind has qory's name, its first letter in upper case, or "Step" and its
-     number when only its exit is recorded.
-  5. **Session started**: from the first `dev.qory.session.started` to the last
-     `dev.qory.session.exited`, with the exit's state. It opens to the run's timeline,
-     Run started, Policy applied and Run ended included. It is open when it appears on a
-     live run, where its duration counts up, and closed on a run that ended. It opens for
-     a `?seq=` link to an event inside it, for j or k with focus on its row (j moves to
-     the first event, k to the last), for g e, the live end, and for the new-events pill.
-     A run that ended with no session exit shows it Cancelled.
-  6. **Session finished**: from the runtime's last `dev.qory.runtime.result` to the
-     session's exit; from the exit alone, with no duration, for a session with no result.
-     It opens to Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84" (an exit code
-     of -1 is no exit status and is left out), and Model, from the last
-     `dev.qory.runtime.started`.
-  7. **Outputs saved**: the artifact versions the run pushed, by their run of the queue
-     (`runs.dispatch_run_id`), such as "proposal Version 3", and the run's `push` steps,
-     the host work a run does after its last session. It starts at the first push's start
-     and ends at the end of the last push; with no push step, it runs from the first
-     version pushed to the last. A failed push is no failed preparation: it adds no cause
-     line, no reason in the run's header and no note above the timeline. Under How it
-     ended, a run with a failed push shows only a failed result or failed turn that is the
-     newest of its results and failed turns; a failed tool or an earlier failure does not
-     show.
-  8. **Machine removed**, last, shows what the pool's starter reported about the removal
+     the queue lapsed (`dispatches.stale_at`) or ended (`dispatches.ended_at`). It opens to
+     Queued and its time.
+  2. **Request a machine**: from the claim to the starter's `dispatched`, empty without
+     one. It opens to Machine requested and its time, the pool, and the machine type with
+     its spec, "large (4 vCPUs, 16 GiB, 60 GiB disk)", or "pool default" while the claim
+     answer has none.
+  3. **Start the machine**: from `dispatched` to the redemption of the run's code. It opens
+     to Machine started and its time, once the machine started. A step of kind `machine`
+     (the parts of the machine's start that `qory run` sends, such as `start Docker  3.2
+     s`) is no row: its lines are Start the machine's, after a first line, `create machine
+     14.8 s`, at the time of `dispatched`, with the seconds from `dispatched` to that step's
+     start, written only when the step started no later than the redemption. Start the
+     machine is failed once that step failed. It also has, for an instance admin, the
+     machine type the pool started, "Started as (instance admins)" and the type its starter
+     reported, absent while it reported none, then the machine log, numbered with no
+     times; anyone else sees neither. With no machine log recorded, an instance admin reads
+     "No machine log has arrived." until a day has passed since the claim (the least the
+     machine logs' retention can be set to, under which a prune can have deleted the log),
+     and then "Machine logs are kept for 30 days. This machine has none.", with the
+     retention's days in force.
+  4. **Prepare the machine**: the run's steps that started before the first agent
+     session, in order, for a run a pool claimed or not, except the joins and walls, which
+     are in the Prepare the session of their Agent session. It runs from its first step's
+     start to the end of its last step; on a live run it is running until a step of an
+     agent session, or a prebuild's Build the image, begins or the preparation stops, and
+     between two steps it has the word Running and no clock. A step of kind `fetch` is
+     Clone the repository, `compose` Compose the harness, `image` Pull the images, `build`
+     Build the image, `setup` Set up the dev container, `join` Start the agent, `wall`
+     Start the wall and `machine` Start the machine; a step of any other kind has qory's
+     name, its first letter in upper case, or "Step" and its number when only its exit is
+     recorded.
+  5. **Agent session 1**, **Agent session 2** and on, one for each agent session. An agent
+     session is every session except a bare one and one whose wall failed. A bare session
+     is a helper session that `qory run` starts with no runtime, whose
+     `dev.qory.session.started` has `bare: true`. A session whose wall failed never ran
+     its agent; its steps stay in the Agent session of its join. Each opens to the same
+     three steps:
+     - **Prepare the session**: the session's join, Start the agent, and its wall, Start
+       the wall, with any other step that ran after the start of the session before, in
+       the order they ran. A join, and any other step but a wall that runs after the first
+       session's start, belongs to the first agent session that starts after it, or, when
+       none does, to an Agent session that has not started. A wall belongs to the session
+       of the last join before it when no agent session started between the two, as for a
+       wall that fails before its session starts; else to the last session that started
+       before it. A step with only its exit recorded belongs to the last session that
+       started before its exit. It is running on a live run until its session starts.
+     - **Run the agent**: from the session's `dev.qory.session.started` to its last
+       `dev.qory.session.exited`, with the exit's state. It opens to Started; Finished, the
+       time of the session's last `dev.qory.runtime.result`, or of its exit for a session
+       with no result; Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84" (an exit
+       code of -1 is no exit status and is left out); and Model, from the session's last
+       `dev.qory.runtime.started`. Then comes that session's Timeline, with that session's
+       Main session row: `timeline` for the first agent session, `timeline-2` for the
+       second, and so on. An event whose `session` is an agent session's number belongs
+       to the last session with that number that started before it, as the session's end
+       events do; an event with no `session`, or a bare session's, belongs to the last
+       agent session that started before it, and an event before every session to the
+       first. An event whose `session` is the number of a session that never ran its
+       agent, because its wall failed after the session started, is in the Timeline
+       after the list, `timeline-after-list`, as on a run whose only session's wall
+       failed. So sessions that overlap in time keep their events apart, and each Main
+       session row counts the calls and results of its session. The first Timeline has
+       Run started and Policy applied, and the last agent session's Timeline has Run
+       ended. Load earlier is in the Timeline of the first loaded row, Load newer in the
+       Timeline of the last, and the page keeps 600 rows across all Timelines. A run
+       with one agent session has one Timeline, `timeline`, with every row, and, when a
+       session's wall failed after its start, `timeline-after-list`. A session with no
+       exit on a run that ended shows Cancelled. A run with no session's start at all,
+       from an older record, has one Agent session whose Run the agent has Finished,
+       Result and Model alone.
+     - **Save the outputs**: the artifact versions the session's agent saved, by their run
+       of the queue (`runs.dispatch_run_id`), such as "proposal Version 3", after Outputs
+       saved and the time of the first, and the `push` steps, the host work a run does
+       after its last agent session, in the last session. A version belongs to the last
+       session that started by its time. It starts at the first push's start and ends at
+       the end of the last push; with no push step, it runs from the first version to the
+       last. A session that saved nothing has no Save the outputs. A failed push is no
+       failed preparation: it adds no cause line, no reason in the meta line and no note
+       above the timeline. "How it ended" in the header states what happened at the push
+       when no failed result or turn comes first (The header). When the copy of the run's
+       work back from the wall fails, "How it ended" reads "The run's work did not come
+       back from the machine.", under the same rule; the copy step has no row.
+
+     A prebuild, a run of the queue for the step `prebuild`, builds its image in one
+     session that `qory` starts with no agent. That session is the step **Build the
+     image**, between Prepare the machine and Remove the machine, with no Agent session,
+     Prepare the session or Run the agent. Build the image opens to the session's join,
+     **Start the build**, and its wall, then Started and Finished as Run the agent has
+     them, and the session's Timeline. The join of any other run is Start the agent. A
+     prebuild's `image` step, which Forager writes in the session's join after the
+     session's start, is in Prepare the machine. A prebuild's `dev.qory.run.built` is
+     the step **Save the outputs**, with Outputs saved and the image it reports. The
+     session is read as an agent session whether or not its `dev.qory.session.started`
+     has `bare: true`, so its join and wall keep their rows. A failed join or wall fails
+     Build the image, with the step's cause line, such as "Start the build failed with
+     exit code 1."; a failed session fails it with "Build the image failed with exit
+     code 1." for the session's exit code. Save the outputs is then Skipped.
+
+     An Agent session and its Run the agent are open when they appear on a live run, where
+     the duration counts up, and closed on a run that ended. They open for a `?seq=` link
+     to an event of the session, for j or k with focus on the row (j moves to the first
+     event of its Timeline, k to the last), and for the new-events pill. g e, the live end,
+     opens the last Run the agent and moves to the last row of its Timeline.
+  6. **Remove the machine**, last, shows what the pool's starter reported about the removal
      of the machine (`PreparationComponents.clean_up/3`). It starts at the end of the
      run's dispatch, or the run's end, and takes the time to the starter's `gone` report.
-     It opens to Cause, "Run ended" for a run that exited or "Keep-alive lost" for a run
-     that was lost (`runs.lost_at`), and Alive, from `dispatched` to the `gone` report;
-     each is left out when it does not apply. A report that is no `gone` shows "Machine
-     removal requested" or "Removal failed: the machine still exists" beside the name,
-     with no duration. With no report, a run that has ended and whose dispatch was handed
-     over shows "Waiting for a report" for 15 minutes after the run ended, counted at
-     render, and then "No removal report", with no duration; an open page changes at the
-     15 minutes without a reload. A run that goes on with no report, or whose dispatch was
-     released before a machine existed, has no such row. A report reaches an open page on
-     the run's topic. A run on a permanent machine (a node of kind `node`) that ended has
-     **Machine stays registered** as its last row in place of Machine removed, with no
-     time, as the machine is not removed.
+     It opens to Machine removed and the time of that report, Cause, "Run ended" for a run
+     that exited or "Keep-alive lost" for a run that was lost (`runs.lost_at`), and Alive,
+     from `dispatched` to the `gone` report; each is left out when it does not apply. A
+     report that is no `gone` shows "Machine removal requested" or "Removal failed: the
+     machine still exists" beside the name, with no duration. With no report, a run that
+     has ended and whose dispatch was handed over shows "Waiting for a report" for 15
+     minutes after the run ended, counted at render, and then "No removal report", with no
+     duration; an open page changes at the 15 minutes without a reload. A run that goes on
+     with no report has no such row. A report reaches an open page on the run's topic. A
+     run on a permanent machine (a node of kind `node`) that ended has **Machine stays
+     registered** as its last row in place of Remove the machine, with no time, as the
+     machine is not removed.
 
-  A later session's steps, such as its join, are rows after Session started, placed by
-  time with Session finished and Outputs saved. While the run is alive, a running row has
-  the word Running, a mark that pulses (still under `prefers-reduced-motion`), and in
-  place of its duration a clock that ticks in the browser
-  (`<.duration elapsed_seconds= elapsed_at= id=>`), from the row's start, or, for Machine
-  started and Start machine before the starter's `dispatched`, from the claim. A run's
-  exit closes a step without an exit as Cancelled; on a lost run such a step keeps the
-  word Running, with no clock and no pulse. A step's row opens on a click to its output,
-  for a reader who may read the run's log (`run.read_log`), or the run's log-pruned
-  sentence with its date once retention deleted the log lines. The output is its last
-  lines, at most 64 KiB and 2,500 lines, each with its number in the step's whole output
-  and its time to a tenth of a second ("00:33:07.6", the time of the event the line began
-  in), in a box that scrolls; a note above the lines shows that the start is cut. A step
-  that exits with code -1 has no exit status, and its line shows no code. A running or
-  failed row is open when it appears, Start machine also while its `machine` step runs or
-  once that step failed, and Machine started and Prepare while they are running or
-  failed; the others are closed, and a person's open or close stays. A push step's row,
-  and Outputs saved, open when the push fails on an open page, as their `id` changes to a
-  new one that ends in `-failed`, so the page mounts them again.
+  A helper step has no row: a step of the kind `copy`, the copy of the run's work back
+  from the wall after the last agent session, and the join and the wall of a bare session,
+  such as the one that makes that copy. A wall is a bare session's only when no join of an
+  agent session lies between the bare session's start and the wall. A bare session is no
+  Agent session. In records from before the kind `copy`, a copy step has no kind. A
+  migration sets the kind to `copy` on each step with no kind and the name `copy work
+  out`, so such a step has no row either.
 
-  A failed row has one cause line under its output that shows the cause, then who fixes
-  it. The cause line starts with the step's label; when the name qory or Forager sent for
-  the step has more than its label, the rest follows in parentheses, as sent, with a
-  set-up command in code font: "Set up dev container failed with exit code 1
+  A failed step has a red cross. Once the run has ended, each step after a failed step
+  that did not run has a grey row with the word Skipped and no content, such as Start
+  the wall, Run the agent and Save the outputs after a failed Start the agent, Save the
+  outputs after a failed Run the agent, or Prepare the machine, Agent session 1 and
+  Remove the machine after a machine that did not start. Start the wall has such a row
+  only for a run with a wall. A step made of steps counts as failed after its steps. A
+  step that ran and did not fail clears the failure for the steps after it: after a
+  failed Agent session 1, an Agent session 2 that ran has no Skipped row, nor does what
+  follows it. A wall starts after its session's start; when it fails, the agent never
+  ran, so Run the agent and Save the outputs are Skipped, with no Started or Finished,
+  and the run's Timeline follows the list. Remove the machine is green after a failed
+  step when the machine was removed, as it ran. A step that did not run and follows no
+  failed step has no row, and on a live run no step that has not run has a row.
+
+  While the run is alive, a running row has the word Running, a mark that pulses (still
+  under `prefers-reduced-motion`), and in place of its duration a clock that ticks in the
+  browser (`<.duration elapsed_seconds= elapsed_at= id=>`), from the row's start, or, for
+  Start the machine before the starter's `dispatched`, from the claim. A run's exit closes
+  a step without an exit as Cancelled; on a lost run such a step keeps the word Running,
+  with no clock and no pulse. A step's row opens on a click to its output, for a reader
+  who may read the run's log (`run.read_log`), or the run's log-pruned sentence with its
+  date once retention deleted the log lines. The output is its last lines, at most 64 KiB
+  and 2,500 lines, each with its number in the step's whole output and its time to a
+  tenth of a second ("00:33:07.6", the time of the event the line began in), in a box
+  that scrolls; a note above the lines shows that the start is cut. A step that exits
+  with code -1 has no exit status, and its line shows no code. A running or failed row is
+  open when it appears, Start the machine also while its `machine` step runs or once that
+  step failed; the others are closed, and a person's open or close stays. A push step's
+  row, and Save the outputs, open when the push fails on an open page, as their `id`
+  changes to a new one that ends in `-failed`, so the page mounts them again.
+
+  A failed step has one cause line under its output that states what happened, with no
+  advice. The cause line starts with the step's label; when the name qory or Forager sent
+  for the step has words beyond its label, the name follows in parentheses, as sent, with
+  a set-up command in code font: "Set up the dev container failed with exit code 1
   (postCreateCommand: `npm ci`)." A join and a step whose name is one word, such as
-  qory's `prepare`, have no parentheses: "Set up dev container failed with exit code 1."
-  For an image step named by its image reference alone, the parentheses contain that
-  reference: "Pull images failed (registry.example.com/acme/storefront-dev:1)." Once
-  retention deleted the run's log lines, "The step's output was deleted under the
-  workspace's log retention, so the cause is no longer shown." is in place of who fixes
-  it. Under Start machine, for a machine that did not start, the line shows only who
-  fixes it, as the header shows the cause: for the instance's pool, "Contact support
-  with run <id>."; for any other pool, that its admins read why in the pool's log on its
-  host. A run that stopped before its session started has a note above the Timeline,
-  "The run stopped before its session started, at the step Set up dev container.", with
-  the row's name, or Start machine for a machine that did not start.
+  qory's `prepare`, have no parentheses: "Set up the dev container failed with exit code
+  1." For an image step named by its image reference alone, the parentheses contain that
+  reference: "Pull the images failed (registry.example.com/acme/storefront-dev:1)." Under
+  Start the machine, for a machine that did not start, the line states the machine's
+  cause, such as "Qory Pool did not start a machine within 10 minutes." A run that stopped
+  before its first agent session started has no note above the Timeline: the failed row
+  and its cause line state what happened. A run whose preparation stopped after a
+  session's start, as at a failed wall, has no note about missing session events either.
+  The meta line's reason shows a machine's cause, and "How it ended" a step's.
 
-  The heading's time runs from the first row's start, Queued's for a run a pool claimed,
-  to the end of the last row: the `gone` report, else the latest end of the dispatch, the
-  machine's start, a step, the session or a push. While the run is alive it counts up
-  from the first row's start, "4 m 13 s so far". The page reads the run's preparation
-  again at each flush until it has settled: until the session's first item, or until the
-  session started with no step running. After that it reads it at each
-  `dev.qory.run.step_started`, `dev.qory.run.step_exited`, `dev.qory.runtime.result`,
-  `dev.qory.session.exited` and `dev.qory.run.exited`, so a later session's join, the
-  session's end and a push show on an open page. It also reads it when a version is
-  pushed to the run's work item (the work item's artifacts topic), so a version pushed
-  with no push step shows at once. The starter's `dispatched` and the
-  redemption of the run's code are broadcast on the run's topic, so they show at once. On
-  the Timeline tab the page also reads them at each quiet tick (5 s) while Machine
-  started is running. When the session starts on an open page, the timeline moves into
-  Session started, and the page sends its loaded events again and keeps the count of new
-  events.
+  The heading's time counts only the rows the list shows. It runs from the first row's
+  start, Queue the run's for a run a pool claimed, to the end of the last row: the `gone`
+  report, else the latest end of the dispatch, the machine's start, a step, a session or
+  Save the outputs. While the run is alive it counts up from the first row's start, "4 m
+  13 s so far". The page reads the run's preparation again at each flush until it has
+  settled: until the session's first item, or until the session started with no step
+  running. After that it reads it at each `dev.qory.run.step_started`,
+  `dev.qory.run.step_exited`, `dev.qory.session.started`, `dev.qory.runtime.result`,
+  `dev.qory.session.exited` and `dev.qory.run.exited`, so a later session's join and
+  start, a session's end and a push show on an open page. It also reads it when a version
+  is pushed to the run's work item (the work item's artifacts topic), so a version pushed
+  with no push step shows at once. The starter's `dispatched` and the redemption of the
+  run's code are broadcast on the run's topic, so they show at once. On the Timeline tab
+  the page also reads them at each quiet tick (5 s) while Start the machine is running.
+  When the first agent session starts on an open page, the timeline moves into Run the
+  agent, and the page sends its loaded events again and keeps the count of new events. A
+  later agent session's start adds its Agent session with a new Timeline, and the page
+  sends no events again: the events after that start go into it.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
   the meta line, under State in the rail and in the runs list's preview, and in the
   timeline's last item too unless the run was given an outcome: that item says the exit's

@@ -194,7 +194,6 @@ defmodule ApiaryWeb.RunPageComponents do
     values: [
       :no_hooks,
       :vm_wall,
-      :stopped,
       :other_runtime,
       :not_started,
       :no_egress,
@@ -209,7 +208,6 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :wall, :boolean, default: false
   attr :only_result, :boolean, default: false
   attr :at, :any, default: nil, doc: "when retention pruned, for `:pruned` and `:log_pruned`"
-  attr :step, :string, default: nil, doc: "for `:stopped`: the step the run stopped at"
 
   attr :registered, :boolean,
     default: false,
@@ -229,7 +227,6 @@ defmodule ApiaryWeb.RunPageComponents do
         runtime={@runtime}
         registered={@registered}
         terminal={@terminal}
-        step={@step}
       />
       <span :if={@only_result}>
         {gettext("Only the result, read from the runtime's output, is shown.")}
@@ -271,7 +268,6 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :at, :any, default: nil
   attr :registered, :boolean, default: false
   attr :terminal, :boolean, default: true
-  attr :step, :string, default: nil
 
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
@@ -348,18 +344,6 @@ defmodule ApiaryWeb.RunPageComponents do
           class="q-tip-wide"
         />
       </:part>
-    </.rich>
-    """
-  end
-
-  defp limit_sentence(%{reason: :stopped} = assigns) do
-    ~H"""
-    <.rich text={
-      rich_gettext("The run stopped before its session started, at the step %{step}.",
-        step: {:part, :step}
-      )
-    }>
-      <:part name={:step}><.external_text text={@step} /></:part>
     </.rich>
     """
   end
@@ -446,6 +430,10 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :security, :boolean, default: true, doc: "false: connections without rules or modes"
   attr :legend, :boolean, default: false, doc: "whether a row is there for the legend to label"
 
+  attr :keep, :any,
+    default: nil,
+    doc: "a function true of each item of `stream` this list shows; nil: every item"
+
   def timeline(assigns) do
     ~H"""
     <div class="grid q-took">
@@ -480,6 +468,7 @@ defmodule ApiaryWeb.RunPageComponents do
       >
         <.timeline_item
           :for={{dom_id, item} <- @stream}
+          :if={is_nil(@keep) or @keep.(item)}
           id={dom_id}
           item={item}
           started_at={@started_at}

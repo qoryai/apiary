@@ -7,8 +7,10 @@ defmodule Apiary.Runs.Step do
 
   `name`, `kind`, `started_sequence` and `started_at` are the start's, nil until the start
   is folded; `kind` is `fetch`, `compose`, `image`, `build`, `setup`, `join`, `wall`,
-  `push` or `machine`, nil for any other value. A `machine` step is the start of the run's
-  machine, which `qory run` sends after the redemption, one line per part of the start.
+  `push`, `machine` or `copy`, nil for any other value. A `machine` step is the start of
+  the run's machine, which `qory run` sends after the redemption, one line per part of the
+  start. A `copy` step is the copy of the run's work back from the wall after its last
+  agent session, which `qory run` sends around the session that makes the copy.
   `exit_code`, `duration_ms`, `exited_sequence` and `exited_at` are the exit's, nil until
   the exit is folded. `state` is `running` until then, and the exit's `succeeded`,
   `failed` or `cancelled` after. A step whose run's `dev.qory.run.exited` is folded
@@ -22,12 +24,12 @@ defmodule Apiary.Runs.Step do
   @type t :: %__MODULE__{}
 
   @states ~w(running succeeded failed cancelled)
-  @kinds ~w(fetch compose image build setup join wall push machine)
+  @kinds ~w(fetch compose image build setup join wall push machine copy)
 
   @doc "The states a step can be in."
   def states, do: @states
 
-  @doc "The kinds of step kept: the contract's eight and `machine`."
+  @doc "The kinds of step kept: the contract's eight, `machine` and `copy`."
   def kinds, do: @kinds
 
   @primary_key {:id, :binary_id, autogenerate: true}

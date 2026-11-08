@@ -232,6 +232,28 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
+  describe "Policy in Details" do
+    @tag :feature_sets
+    test "a run with no policy event has no Policy and no Policy in force; one with it has both",
+         %{conn: conn, scope: scope} do
+      without = projected(scope, [{1, "run.started", started_data()}])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{without.number}")
+
+      refute has_element?(lv, "#run-facts dt", "Policy")
+      refute has_element?(lv, "#rail-policy")
+
+      with_policy = projected(scope, Enum.take(record(), 4))
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{with_policy.number}")
+
+      assert has_element?(lv, "#run-facts dt", "Policy") == security?()
+      assert has_element?(lv, "#rail-policy", "Policy in force") == security?()
+    end
+  end
+
   describe "the header (U6)" do
     @tag :feature_sets
     test "two lines: the title, then the state and the run's facts; the rest is the rail's", %{

@@ -92,10 +92,13 @@ defmodule Apiary.Runs.StepKindMachineMigrationTest do
     assert :ok = Ecto.Migrator.up(Repo, @validate_version, @validate, @options)
     assert validated?()
 
-    for {kind, step} <- Enum.with_index(Step.kinds(), 1),
+    # The kinds of this migration's list: a later migration adds more.
+    kinds = ~w(fetch compose image build setup join wall push machine)
+
+    for {kind, step} <- Enum.with_index(kinds, 1),
         do: assert({:ok, _} = insert(run, step, kind))
 
-    assert kinds(run) == ~w(fetch compose image build setup join wall push machine)
+    assert kinds(run) == kinds
 
     assert {:error, %Postgrex.Error{postgres: %{constraint: "run_steps_kind_check"}}} =
              insert(run, 10, "deploy")

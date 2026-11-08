@@ -4864,6 +4864,11 @@ msgstr ""
 msgid "Agent"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Agent session %{n}"
+msgstr ""
+
 #: lib/apiary/runs/filters.ex
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_components.ex
@@ -5883,6 +5888,12 @@ msgstr ""
 msgid "Brings back work item #%{number}"
 msgstr ""
 
+#: lib/apiary/runs/preparation.ex
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Build the image"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Builds asked for"
@@ -6851,7 +6862,7 @@ msgstr ""
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Clone repository"
+msgid "Clone the repository"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -7045,6 +7056,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Completed."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "Compose the harness"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -9447,6 +9463,11 @@ msgstr ""
 msgid "Finish setting up %{workspace}"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Finished"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Finished work items, and work items that stopped: a member closed one or undid its take in, its %{item} closed, or its integration was removed. Where the %{item} of a stopped one is still in the Backlog, Take in again brings it back."
@@ -10377,8 +10398,10 @@ msgctxt "ticket image"
 msgid "Image"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/live/artifact_live/load.ex
 #: lib/apiary_web/live/artifact_live/markdown.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Image"
 msgstr ""
@@ -13086,11 +13109,6 @@ msgstr ""
 msgid "No pending invitations."
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "No policy event has arrived for this run."
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "No pool can take %{attempt}."
@@ -15186,7 +15204,12 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
-msgid "Prepare"
+msgid "Prepare the machine"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Prepare the session"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/canvas.ex
@@ -15289,14 +15312,14 @@ msgstr ""
 msgid "Public address"
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "Pull images"
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Pull interval"
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "Pull the images"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -15634,6 +15657,11 @@ msgstr[1] ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Questions and decisions"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Queue the run"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -16087,6 +16115,11 @@ msgstr ""
 msgid "Remove the label filter"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the machine"
+msgstr ""
+
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the pool %{pool}? Runs in %{workspace} then use the Qory Pool."
@@ -16389,6 +16422,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Repository"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Request a machine"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
@@ -16824,6 +16862,11 @@ msgstr ""
 msgid "Run not found"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run on %{pool}"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -16848,6 +16891,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run started."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run the agent"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -17177,6 +17225,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Save secret"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Save the outputs"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -17535,12 +17588,6 @@ msgstr ""
 msgid "Session events exist only for Claude Code. This run used %{runtime}, so it has connections and no timeline."
 msgstr ""
 
-#: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format
-msgid "Session finished"
-msgstr ""
-
-#: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Session started"
@@ -17769,14 +17816,14 @@ msgstr ""
 msgid "Set up an agent"
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "Set up dev container"
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Set up from"
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "Set up the dev container"
 msgstr ""
 
 #: lib/apiary/edition/core.ex
@@ -18176,6 +18223,7 @@ msgstr ""
 msgid "Skip to content"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Skipped"
@@ -18286,11 +18334,6 @@ msgstr ""
 msgid "Standard types"
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "Start agent"
-msgstr ""
-
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Start an organisation. You set up its first workspace next."
@@ -18299,7 +18342,18 @@ msgstr ""
 #: lib/apiary/runs/preparation.ex
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
-msgid "Start machine"
+msgid "Start the agent"
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "Start the build"
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Start the machine"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -18310,6 +18364,12 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Start the run again. The setup container was not removed, so a process in it could still write the files."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Start the wall"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -20003,11 +20063,6 @@ msgstr ""
 msgid "The policy denies it."
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "The policy event was pruned with the run's events on %{date}."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The pool did not start a machine within 10 minutes."
@@ -20218,11 +20273,6 @@ msgstr ""
 msgid "The run reloaded its policy: version %{n}."
 msgstr ""
 
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "The run stopped before its session started, at the step %{step}."
-msgstr ""
-
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run stopped before its verdict."
@@ -20281,6 +20331,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run's settings did not pass a check on the machine (%{code})."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "The run's work did not come back from the machine."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
