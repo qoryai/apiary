@@ -2045,7 +2045,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # Today's step card, beside the stage card at Explore. At the run limit it says that the
   # run was "the last run of this take in", which is false while the escalation card
   # offers Run another round: there the step card is not shown. Nor is it at a proposal
-  # whose stage escalated: Confirm waits for the gate, which Accept as it is opens.
+  # whose stage escalated. Confirm shows again once the stage reaches its gate.
   defp step_card?(nil, _item), do: true
   defp step_card?(%{explore: false}, _item), do: false
 

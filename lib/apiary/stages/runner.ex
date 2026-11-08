@@ -25,8 +25,8 @@ defmodule Apiary.Stages.Runner do
   #     `changes-requested`. A run with no verdict escalates, `run_stopped`, with no gaps,
   #     on a first run and on a rerun. A test work item's run with no verdict goes on
   #     (`facts.test`): the built-in `hello` writes no verdict
-  #     (`Apiary.Harnesses.Builtin`). So does a run of Explore that left its proposal or
-  #     its questions (`facts.explore_result`).
+  #     (`Apiary.Harnesses.Builtin`). So does a run of Explore whose take in has a
+  #     proposal, or that left open questions (`facts.explore_result`).
   #   * `escalate` escalates, `escalate`; a run that stopped escalates, `run_stopped`, with
   #     its cause as the gaps.
   #   * Questions wait for answers (`:waiting_answers`), in any round and at any count of
@@ -103,7 +103,8 @@ defmodule Apiary.Stages.Runner do
   (`undeclared`), the required output types whose Exists check fails (`failed_checks`),
   the document's machine type (`machine`), the harness's declarations by workflow name
   (`declarations`), whether the work item is a test work item (`test`) and, at a run's
-  end, whether the run is a run of Explore that left a result (`explore_result`).
+  end, whether the run is a run of Explore whose take in has a proposal, or that left open
+  questions (`explore_result`).
   """
   @type facts :: %{
           optional(:missing_inputs) => [String.t()],
@@ -315,7 +316,8 @@ defmodule Apiary.Stages.Runner do
     do: %{state: :waiting_answers, position: position, actions: []}
 
   # Whether a run with no verdict outside a loop goes on: a test work item's run, or a run
-  # of Explore with a result, as Explore's result is its proposal or its questions.
+  # of Explore whose take in has a proposal, or that left open questions, as Explore's
+  # result is its proposal or its questions.
   defp no_verdict_goes_on?(facts),
     do: Map.get(facts, :test, false) or Map.get(facts, :explore_result, false)
 

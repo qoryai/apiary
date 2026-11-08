@@ -49,8 +49,8 @@ defmodule Apiary.Stages do
   # a run of any other workflow does (`reported_verdict/1`). Explore reads only
   # `escalate`: any other verdict counts as none. Otherwise a run of Explore that stopped
   # escalates, `run_stopped`, with the cause, and any other counts as a run with no
-  # verdict, which goes on where the run left a result, its proposal or its questions
-  # (`Apiary.Explore.Outcome`), and escalates, `run_stopped`, where it left neither
+  # verdict, which goes on where the run's take in has a proposal or the run left open
+  # questions (`Apiary.Explore.Outcome`), and escalates, `run_stopped`, otherwise
   # (`Apiary.Stages.Runner`). Newest questions whose file cannot be read raise
   # `Apiary.Stages.QuestionsUnreadable` at those ends. At the end of a run of any
   # workflow, a verdict whose file the store cannot read raises
@@ -1645,8 +1645,9 @@ defmodule Apiary.Stages do
     end
   end
 
-  # Whether `run` left a result of Explore, its proposal or its questions, as Settle
-  # stored it (`Apiary.Explore.Outcome` returns these only for a run of Explore).
+  # Whether `run` is a run of Explore whose take in has a proposal, or that left open
+  # questions, as Settle stored its outcome (`Apiary.Explore.Outcome` returns these only
+  # for a run of Explore).
   defp explore_result?(%DispatchRun{result_outcome: outcome}),
     do: outcome in [:proposal, :questions]
 
