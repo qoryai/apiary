@@ -440,6 +440,31 @@ defmodule Apiary.Runs.PreparationTest do
       assert preparation.session_end == second
     end
 
+    test "each agent session has the runtime of its start, nil when that is no text", ctx do
+      with_runtimes = fn first, second ->
+        Enum.map(two_sessions_and_copy(), fn
+          {6, "session.started", data} ->
+            {6, "session.started", Map.put(data, "runtime", first)}
+
+          {14, "session.started", data} ->
+            {14, "session.started", Map.put(data, "runtime", second)}
+
+          event ->
+            event
+        end)
+      end
+
+      run = ctx.scope |> run_fixture() |> project!(with_runtimes.("claude", "qory"))
+
+      assert [%{sequence: 6, runtime: "claude"}, %{sequence: 14, runtime: "qory"}] =
+               Preparation.read(ctx.scope, run).sessions
+
+      run = ctx.scope |> run_fixture() |> project!(with_runtimes.(%{"name" => "qory"}, 5))
+
+      assert [%{sequence: 6, runtime: nil}, %{sequence: 14, runtime: nil}] =
+               Preparation.read(ctx.scope, run).sessions
+    end
+
     test "the copy and the bare session's join and wall are helper steps", ctx do
       run = ctx.scope |> run_fixture() |> project!(two_sessions_and_copy())
       preparation = Preparation.read(ctx.scope, run)

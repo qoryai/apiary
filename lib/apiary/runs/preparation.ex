@@ -260,13 +260,15 @@ defmodule Apiary.Runs.Preparation do
 
   @typedoc """
   An agent session: its number (`session` of its `dev.qory.session.started`, nil
-  without one), the sequence and the time of that start, and how it ended, nil while it
-  has neither a result nor an exit (`t:session_end/0`).
+  without one), the sequence and the time of that start, its runtime (`runtime` of that
+  start, nil when it has none that is text), and how it ended, nil while it has neither a
+  result nor an exit (`t:session_end/0`).
   """
   @type session :: %{
           session: pos_integer | nil,
           sequence: integer,
           started_at: DateTime.t(),
+          runtime: String.t() | nil,
           end: session_end | nil
         }
 
@@ -548,6 +550,7 @@ defmodule Apiary.Runs.Preparation do
         session: start.session,
         sequence: start.sequence,
         started_at: start.time,
+        runtime: start.runtime,
         end: session_end(Map.get(by_start, start.sequence, []))
       }
     end

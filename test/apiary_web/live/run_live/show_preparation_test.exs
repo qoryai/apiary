@@ -1253,6 +1253,141 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
     end
   end
 
+  describe "the note on a session's runtime" do
+    setup :register_and_log_in_user
+
+    @runtime_note "Only Claude Code sends session events. This session ran qory: its output " <>
+                    "is under Terminal, and its connections under Network access."
+
+    defp note_text(lv, selector) do
+      lv
+      |> element(selector)
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
+    defp note_count(lv),
+      do:
+        lv |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(".q-limits") |> Enum.count()
+
+    # Agent session `n`, from the sequence `seq`, on `runtime`: its join, its start, its
+    # wall, a prompt for Claude Code, whose hooks send it, and its exit. Ten sequences.
+    defp agent_session(seq, n, runtime) do
+      step = 2 * n - 1
+
+      prompt =
+        if runtime == "claude",
+          do: [
+            {seq + 5, "runtime.prompt_submitted",
+             %{"session" => n, "session_id" => "s#{n}", "prompt" => "fix the build"}}
+          ],
+          else: []
+
+      [
+        {seq, "run.step_started",
+         %{"step" => step, "name" => "join session #{n}", "kind" => "join"}},
+        {seq + 1, "run.step_exited",
+         %{"step" => step, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+        {seq + 2, "session.started",
+         session_started_data(%{"session" => n, "runtime" => runtime, "command" => runtime})},
+        {seq + 3, "run.step_started",
+         %{"step" => step + 1, "name" => "start the wall", "kind" => "wall"}},
+        {seq + 4, "run.step_exited",
+         %{"step" => step + 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}}
+      ] ++
+        prompt ++
+        [{seq + 6, "session.exited", %{"session" => n, "state" => "succeeded", "exit_code" => 0}}]
+    end
+
+    defp sessions_run(scope, runtimes) do
+      sessions =
+        for {runtime, n} <- Enum.with_index(runtimes, 1),
+            event <- agent_session(10 * n, n, runtime),
+            do: event
+
+      exited =
+        {10 * length(runtimes) + 10, "run.exited",
+         %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+
+      scope
+      |> run_fixture()
+      |> project!([{1, "run.started", started_data()}] ++ sessions ++ [exited])
+    end
+
+    test "a session on another runtime: the note is in its Run the agent, above its Timeline, and none is above the steps",
+         ctx do
+      lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, ["qory"]))
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @runtime_note
+      assert has_element?(lv, "#prepare-machine-session-agent .q-limits code.q-rule", "qory")
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 1
+
+      agent = lv |> element("#prepare-machine-session-agent") |> render()
+      {note_at, _} = :binary.match(agent, "q-limits")
+      {timeline_at, _} = :binary.match(agent, ~s(id="timeline"))
+      assert note_at < timeline_at
+    end
+
+    test "a Claude Code session has no note", ctx do
+      lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, ["claude"]))
+
+      assert has_element?(lv, "#prepare-machine-session-agent #timeline")
+      assert note_count(lv) == 0
+      refute render(lv) =~ "Only Claude Code sends session events."
+    end
+
+    for runtimes <- [["qory", "claude"], ["claude", "qory"]] do
+      test "sessions on #{Enum.join(runtimes, " and ")}: the note is in the qory session's Run the agent alone",
+           ctx do
+        runtimes = unquote(runtimes)
+        lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, runtimes))
+
+        [qory, claude] =
+          if runtimes == ["qory", "claude"],
+            do: ["#prepare-machine-session-agent", "#prepare-machine-session-2-agent"],
+            else: ["#prepare-machine-session-2-agent", "#prepare-machine-session-agent"]
+
+        assert note_text(lv, "#{qory} .q-limits") == @runtime_note
+        refute has_element?(lv, "#{claude} .q-limits")
+        assert note_count(lv) == 1
+      end
+    end
+
+    @tag needs: [:factory, :registry]
+    test "a prebuild on another runtime: the note is in Build the image", ctx do
+      pool = pool_fixture(ctx.scope, name: "build-pool")
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      _gateway = gateway_for!(ctx.scope, pool)
+      %{run: run} = prebuild_handed_over!(ctx.scope, key)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => -1, "duration_ms" => 100}},
+          {4, "session.started",
+           session_started_data(%{"runtime" => "qory", "command" => "qory", "bare" => true})},
+          {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+          {6, "run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {7, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {8, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-build .q-limits") == @runtime_note
+      assert has_element?(lv, "#prepare-machine-build #timeline")
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 1
+    end
+  end
+
   describe "for an instance admin" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()

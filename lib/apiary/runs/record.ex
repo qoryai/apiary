@@ -847,16 +847,18 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The run's `dev.qory.session.started` events in sequence order: `%{sequence, time,
-  session, bare}` each. `session` is the session's number, nil when the event has none
-  that is an integer; `bare` is true for a session started with no runtime, whose `bare`
-  is `true`. None once retention deleted the run's events.
+  session, bare, runtime}` each. `session` is the session's number, nil when the event
+  has none that is an integer; `bare` is true for a session started with no runtime, whose
+  `bare` is `true`; `runtime` is the event's `runtime`, its first 1,024 characters, nil
+  when it is no text. None once retention deleted the run's events.
   """
   @spec session_starts(Scope.t(), Run.t()) :: [
           %{
             sequence: integer,
             time: DateTime.t(),
             session: integer | nil,
-            bare: boolean
+            bare: boolean,
+            runtime: String.t() | nil
           }
         ]
   def session_starts(%Scope{} = scope, %Run{} = run) do
@@ -868,7 +870,13 @@ defmodule Apiary.Runs.Record do
           sequence: e.sequence,
           time: e.time,
           session: fragment("? -> 'session'", e.data),
-          bare: fragment("coalesce(? -> 'bare' = 'true'::jsonb, false)", e.data)
+          bare: fragment("coalesce(? -> 'bare' = 'true'::jsonb, false)", e.data),
+          runtime:
+            fragment(
+              "CASE WHEN jsonb_typeof(? -> 'runtime') = 'string' THEN left(? ->> 'runtime', 1024) END",
+              e.data,
+              e.data
+            )
         }
     )
     |> Enum.map(&%{&1 | session: session_number(&1.session)})

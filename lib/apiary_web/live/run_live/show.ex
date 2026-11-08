@@ -629,8 +629,8 @@ defmodule ApiaryWeb.RunLive.Show do
       </div>
 
       <.limits
-        :if={shown_limit(@limit, @preparation)}
-        reason={shown_limit(@limit, @preparation)}
+        :if={shown_limit(@limit, @preparation, @clean_up)}
+        reason={shown_limit(@limit, @preparation, @clean_up)}
         runtime={shown_sent(@run.runtime)}
         registered={!!@run.registered_at}
         only_result={@limit == :vm_wall and only_result?(@index)}
@@ -656,6 +656,11 @@ defmodule ApiaryWeb.RunLive.Show do
           :let={session}
           :if={PreparationComponents.session_group?(@preparation, @clean_up)}
         >
+          <.limits
+            :if={session_runtime(@preparation, session)}
+            reason={:other_runtime}
+            runtime={shown_sent(session_runtime(@preparation, session))}
+          />
           <.timeline_list {assigns} session={session} />
         </:session>
       </.run_list>
@@ -2627,7 +2632,7 @@ defmodule ApiaryWeb.RunLive.Show do
     settled? = not alive?(run) or older_than?(run.inserted_at, 60)
 
     cond do
-      is_binary(run.runtime) and run.runtime != "claude" ->
+      other_runtime?(run.runtime) ->
         :other_runtime
 
       is_binary(run.wall) and index.hook_events == 0 and settled? ->
@@ -2640,6 +2645,21 @@ defmodule ApiaryWeb.RunLive.Show do
         nil
     end
   end
+
+  # Whether a runtime is one that sends no session events: they come from Claude Code's
+  # hooks alone.
+  defp other_runtime?(runtime), do: is_binary(runtime) and runtime != "claude"
+
+  # The runtime of the agent session that started at `sequence`, for the note above its
+  # Timeline, when that runtime sends no session events (`other_runtime?/1`); else nil.
+  defp session_runtime(%{sessions: sessions}, sequence) do
+    case Enum.find(sessions, &(&1.sequence == sequence)) do
+      %{runtime: runtime} -> if other_runtime?(runtime), do: runtime
+      nil -> nil
+    end
+  end
+
+  defp session_runtime(_preparation, _sequence), do: nil
 
   defp older_than?(%DateTime{} = at, seconds), do: DateTime.diff(DateTime.utc_now(), at) > seconds
   defp older_than?(_at, _seconds), do: false
@@ -3767,10 +3787,16 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The note above the timeline. A run that stopped before an agent session ran has none,
   # as at a wall that failed: its failed step and How it ended state what happened. A
-  # wall's note is for a run whose agent session started.
-  defp shown_limit(_limit, %{stopped: %{}, session_started_at: nil}), do: nil
-  defp shown_limit(:vm_wall, %{session_started_at: nil}), do: nil
-  defp shown_limit(limit, _preparation), do: limit
+  # wall's note is for a run whose agent session started. The note on a runtime that sends
+  # no session events is above the timeline only on a run with no **Run** list; with one,
+  # it is in the step of each such session, above its Timeline (`session_runtime/2`).
+  defp shown_limit(_limit, %{stopped: %{}, session_started_at: nil}, _clean_up), do: nil
+  defp shown_limit(:vm_wall, %{session_started_at: nil}, _clean_up), do: nil
+
+  defp shown_limit(:other_runtime, preparation, clean_up),
+    do: if(!PreparationComponents.shown?(preparation, clean_up), do: :other_runtime)
+
+  defp shown_limit(limit, _preparation, _clean_up), do: limit
 
   # A `:stale` read returns no rows to look at, so the preparation is read.
   defp refresh_preparation(%{assigns: %{preparation_settled: true}} = socket, rows)

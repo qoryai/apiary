@@ -1317,7 +1317,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, _lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
-      refute html =~ "This run used"
+      refute html =~ "This session ran"
       assert html =~ "120×40"
     end
 
@@ -1339,7 +1339,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
-      assert limits_text(lv) =~ "This run used sh"
+      assert limits_text(lv) =~ "This session ran sh"
     end
 
     test "an agent on pipes shows no terminal size after a helper's resize",
@@ -1378,7 +1378,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
-      assert html =~ "Session events exist only for Claude Code."
+      assert html =~ "Only Claude Code sends session events."
       assert has_element?(lv, ".q-limits code.q-rule", "make")
       assert html =~ "Run started"
       assert html =~ "exit 2"
@@ -1637,8 +1637,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     test "the sentences on session events name no terminal; shown, they do as before",
          %{conn: conn, scope: scope} do
-      other_runtime = demo(scope, "failed-run")
-
       walled =
         projected(scope, [
           {1, "run.started", started_data(%{"wall" => "docker"})},
@@ -1654,9 +1652,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         ])
 
       sentences = [
-        {other_runtime,
-         "Session events exist only for Claude Code. This run used make, so it has connections and no timeline.",
-         "Session events exist only for Claude Code. This run used make, so it has a terminal and connections, and no timeline."},
         {walled,
          "This run's session events could not be recorded: the wall it ran behind runs inside a virtual machine. The run has connections and no session timeline.",
          "This run's session events could not be recorded: the wall it ran behind runs inside a virtual machine. The run has a terminal and connections, and no session timeline."},

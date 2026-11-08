@@ -14239,6 +14239,11 @@ msgstr ""
 msgid "Only %{name}'s policy allows a host here"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgstr ""
+
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "Only a member of this workspace changes its security policy."
@@ -17576,16 +17581,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Session ended"
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "Session events exist only for Claude Code. This run used %{runtime}, so it has a terminal and connections, and no timeline."
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "Session events exist only for Claude Code. This run used %{runtime}, so it has connections and no timeline."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

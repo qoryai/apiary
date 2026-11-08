@@ -1797,9 +1797,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   live action of the one LiveView, so a tab is a patch. Terminal is the log's
   (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
   Terminal, there is no tab, no Raw log or Download log, no Terminal on Details, and the
-  sentences on session events name no terminal. An old link to a run's Details tab
-  (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
-  becomes the Timeline's.
+  notes about a wall or missing hook events leave the terminal out; the note about a
+  session's runtime includes Terminal for every reader. An old link to a run's Details
+  tab (`/runs/:run_id/details`) lands on the Timeline with Details open, and the
+  address becomes the Timeline's.
 - **Details is one element** (`#run-details`), after the header and before the tabs at
   every width, so the two places never disagree and no id is drawn twice; its reading and
   keyboard order is the header, Details, the tabs, then the tab's content. From 1280 px it
@@ -1974,7 +1975,13 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        time of the session's last `dev.qory.runtime.result`, or of its exit for a session
        with no result; Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84" (an exit
        code of -1 is no exit status and is left out); and Model, from the session's last
-       `dev.qory.runtime.started`. Then comes that session's Timeline, with that session's
+       `dev.qory.runtime.started`. A session whose runtime, the `runtime` of its
+       `dev.qory.session.started`, is not Claude Code (`claude`) then has a note: "Only
+       Claude Code sends session events. This session ran qory: its output is under
+       Terminal, and its connections under Network access." In a run of two sessions on
+       different runtimes, only the session that is not on Claude Code has the note, and
+       no note about the runtime is above the Run list; a run with no Run list has it
+       above its Timeline. Then comes that session's Timeline, with that session's
        Main session row: `timeline` for the first agent session, `timeline-2` for the
        second, and so on. An event whose `session` is an agent session's number belongs
        to the last session with that number that started before it, as the session's end
@@ -2011,7 +2018,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      image**, between Prepare the machine and Remove the machine, with no Agent session,
      Prepare the session or Run the agent. Build the image opens to the session's join,
      **Start the build**, and its wall, then Started and Finished as Run the agent has
-     them, and the session's Timeline. The join of any other run is Start the agent. A
+     them, the note of a runtime that is not Claude Code as Run the agent has it, and the
+     session's Timeline. The join of any other run is Start the agent. A
      prebuild's `image` step, which Forager writes in the session's join after the
      session's start, is in Prepare the machine. A prebuild's `dev.qory.run.built` is
      the step **Save the outputs**, with Outputs saved and the image it reports. The
