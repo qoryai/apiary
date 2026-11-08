@@ -1349,6 +1349,34 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @runtime_note
     end
 
+    test "on a live run, a session on another runtime that starts gets the note in its Run the agent",
+         ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+      assert note_count(lv) == 0
+
+      events_fixture(run, [
+        {4, "session.started",
+         session_started_data(%{"session" => 1, "runtime" => "qory", "command" => "qory"})}
+      ])
+
+      {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @runtime_note
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 1
+    end
+
     test "a Claude Code session has no note", ctx do
       lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, ["claude"]))
 

@@ -1970,36 +1970,36 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        before it. A step with only its exit recorded belongs to the last session that
        started before its exit. It is running on a live run until its session starts.
      - **Run the agent**: from the session's `dev.qory.session.started` to its last
-       `dev.qory.session.exited`, with the exit's state. It opens to Started; Finished, the
-       time of the session's last `dev.qory.runtime.result`, or of its exit for a session
-       with no result; Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84" (an exit
-       code of -1 is no exit status and is left out); and Model, from the session's last
-       `dev.qory.runtime.started`. A session whose runtime, the `runtime` of its
-       `dev.qory.session.started`, is not Claude Code (`claude`) then has a note: "Only
-       Claude Code sends session events. This session ran qory: its output is under
-       Terminal, and its connections under Network access." For a reader without the
-       Terminal, the note ends "its connections are under Network access." In a run of
-       two sessions on different runtimes, only the session that is not on Claude Code
-       has the note, and no note about the runtime is above the Run list; a run with no
-       Run list has it above its Timeline. Then comes that session's Timeline, with that
-       session's Main session row: `timeline` for the first agent session, `timeline-2` for the
-       second, and so on. An event whose `session` is an agent session's number belongs
-       to the last session with that number that started before it, as the session's end
-       events do; an event with no `session`, or a bare session's, belongs to the last
-       agent session that started before it, and an event before every session to the
-       first. An event whose `session` is the number of a session that never ran its
-       agent, because its wall failed after the session started, is in the Timeline
-       after the list, `timeline-after-list`, as on a run whose only session's wall
-       failed. So sessions that overlap in time keep their events apart, and each Main
-       session row counts the calls and results of its session. The first Timeline has
-       Run started and Policy applied, and the last agent session's Timeline has Run
-       ended. Load earlier is in the Timeline of the first loaded row, Load newer in the
-       Timeline of the last, and the page keeps 600 rows across all Timelines. A run
-       with one agent session has one Timeline, `timeline`, with every row, and, when a
-       session's wall failed after its start, `timeline-after-list`. A session with no
-       exit on a run that ended shows Cancelled. A run with no session's start at all,
-       from an older record, has one Agent session whose Run the agent has Finished,
-       Result and Model alone.
+       `dev.qory.session.exited`, with the exit's state. It opens to Started; Finished,
+       the time of the session's last `dev.qory.runtime.result`, or of its exit for a
+       session with no result; Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84"
+       (an exit code of -1 is no exit status and is left out); and Model, from the
+       session's last `dev.qory.runtime.started`. A session whose runtime, the `runtime`
+       of its `dev.qory.session.started`, is not Claude Code (`claude`) then has a note:
+       "Only Claude Code sends session events. This session ran qory: its output is
+       under Terminal, and its connections under Network access." For a reader without
+       the Terminal, the note ends "its connections are under Network access." In a run
+       of two sessions on different runtimes, only the session that is not on Claude
+       Code has the note, and no note about the runtime is above the Run list; a run
+       with no Run list has it above its Timeline. Then comes that session's Timeline,
+       with that session's Main session row: `timeline` for the first agent session,
+       `timeline-2` for the second, and so on. An event whose `session` is an agent
+       session's number belongs to the last session with that number that started before
+       it, as the session's end events do; an event with no `session`, or a bare
+       session's, belongs to the last agent session that started before it, and an event
+       before every session to the first. An event whose `session` is the number of a
+       session that never ran its agent, because its wall failed after the session
+       started, is in the Timeline after the list, `timeline-after-list`, as on a run
+       whose only session's wall failed. So sessions that overlap in time keep their
+       events apart, and each Main session row counts the calls and results of its
+       session. The first Timeline has Run started and Policy applied, and the last
+       agent session's Timeline has Run ended. Load earlier is in the Timeline of the
+       first loaded row, Load newer in the Timeline of the last, and the page keeps 600
+       rows across all Timelines. A run with one agent session has one Timeline,
+       `timeline`, with every row, and, when a session's wall failed after its start,
+       `timeline-after-list`. A session with no exit on a run that ended shows
+       Cancelled. A run with no session's start at all, from an older record, has one
+       Agent session whose Run the agent has Finished, Result and Model alone.
      - **Save the outputs**: the artifact versions the session's agent saved, by their run
        of the queue (`runs.dispatch_run_id`), such as "proposal Version 3", after Outputs
        saved and the time of the first, and the `push` steps, the host work a run does
@@ -2101,8 +2101,11 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   cause, such as "Qory Pool did not start a machine within 10 minutes." A run that stopped
   before its first agent session started has no note above the Timeline: the failed row
   and its cause line state what happened. A run whose preparation stopped after a
-  session's start, as at a failed wall, has no note about missing session events either.
-  The meta line's reason shows a machine's cause, and "How it ended" a step's.
+  session's start, as at a failed wall, has no note about missing session events when no
+  agent session ran its agent. When an earlier agent session ran its agent, that
+  session's notes stay: the note about a wall or missing hook events above the Timeline,
+  and the note about its runtime in its step. The meta line's reason shows a machine's
+  cause, and "How it ended" a step's.
 
   The heading's time counts only the rows the list shows. It runs from the first row's
   start, Queue the run's for a run a pool claimed, to the end of the last row: the `gone`
