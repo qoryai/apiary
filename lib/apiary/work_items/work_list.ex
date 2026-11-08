@@ -29,9 +29,8 @@ defmodule Apiary.WorkItems.WorkList do
   # the process versions once, and checks with `Apiary.Access` whether the reader may
   # confirm, and may resolve an escalation, at each gate that lists approvers;
   # `waits_for_reader/2` and `for_reader/3` apply the results in the query, so the count,
-  # the view and the row
-  # (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`) follow one rule, with no query per
-  # work item.
+  # the view and the row (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`) follow one
+  # rule, with no query per work item.
   #
   # **A row** is a plain map: the work item's public id (`id`), its number in the
   # workspace, its title as taken in, its ticket's key at the source or nil, shown as text
