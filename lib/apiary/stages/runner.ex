@@ -33,9 +33,9 @@ defmodule Apiary.Stages.Runner do
   #     passes, a person gate waits (`:at_gate`) and a gate `none` passes on (`:advance`).
   #     On a failure, a stage with a loop starts another round of its last loop, with the
   #     failed checks as the gaps of that round (`{:checks_failed, round, gaps}`), and the
-  #     round counts; at the limit it escalates, `round_limit`, with one point for each
-  #     failed check. A stage with workflows and no loop escalates, `check_failed`, with
-  #     the same points.
+  #     round counts; at the limit it escalates, `round_limit`, with the point of the
+  #     rounds that ran and one point for each failed check. A stage with workflows and no
+  #     loop escalates, `check_failed`, with the points of the failed checks.
   #   * A stage with no workflow is worked by people (§ 4): with a required output
   #     missing, it waits at its gate, a gate `none` too, and escalates nothing. A version
   #     a person adds in the stage (`:version_added`) runs the checks again: once every
@@ -357,7 +357,13 @@ defmodule Apiary.Stages.Runner do
 
           index ->
             if position.round >= rounds(stage, index) do
-              escalate(:round_limit, Points.check_failed(failed), position)
+              rounds = rounds(stage, index)
+
+              escalate(
+                :round_limit,
+                Points.round_limit(position.round, rounds) ++ Points.check_failed(failed),
+                position
+              )
             else
               round = position.round + 1
               outcome = start(stage, %{entry: index, loop_entry: 0, round: round}, facts)
