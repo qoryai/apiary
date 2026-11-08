@@ -2060,10 +2060,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp step_card?(flow, item), do: not escalated?(flow, status(item))
 
   # Whether the page shows the block "What the run needs from you": while the live work
-  # item's stage is escalated, and while it waits for answers with an escalation that has
-  # points.
-  defp needs?(%{ended: false, escalation: %{points: points}, state: state}),
-    do: state == :escalated or points != []
+  # item's stage is escalated, with an escalation row or none, and while it waits for
+  # answers with an escalation that has points.
+  defp needs?(%{ended: false, state: :escalated}), do: true
+  defp needs?(%{ended: false, escalation: %{points: [_ | _]}}), do: true
 
   defp needs?(_flow), do: false
 

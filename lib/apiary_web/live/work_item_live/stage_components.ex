@@ -619,7 +619,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     assigns =
       assign(assigns,
         points:
-          Enum.map(assigns.page.escalation.points, &Map.put(&1, :number, numbers[&1.question])),
+          Enum.map(
+            (assigns.page.escalation || %{points: []}).points,
+            &Map.put(&1, :number, numbers[&1.question])
+          ),
         form: assigns.page.state == :escalated and assigns.page.can_decide,
         form_id: "work-item-stage-escalation-form",
         field: "work-item-stage-escalation"
@@ -640,7 +643,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
                 point.number &&
                   "#{@question_path}#work-item-explore-questions-question-#{point.number}"
               }
-              harness_path={@page.escalation[:harness_path]}
+              harness_path={@page.escalation && @page.escalation[:harness_path]}
             />
           </li>
         </ol>
