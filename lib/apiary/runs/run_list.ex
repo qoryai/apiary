@@ -21,8 +21,9 @@ defmodule Apiary.Runs.RunList do
   first, then by the run's `rn_` id, the greatest first, compared byte by byte. `before`
   selects the runs created earlier than that run, or at the same time with a smaller id.
   `next` is the id of the page's last run when at least one more run matches, else nil.
-  One query reads the page with its organisation, workspace, workflow and work item; the
-  workspace and `before` are each looked up first, when given.
+  One query reads the page with its organisation, workspace, workflow and work item, in
+  the order of the index `runs_inserted_at_public_id_index`; the workspace and `before`
+  are each looked up first, when given.
 
   **Each row.** `workflow` is the workflow of the run's resolved harness walk, as in the
   run diagnostics (`Apiary.Runs.Diagnostics`), and the work item is the one of the run's
@@ -331,12 +332,19 @@ defmodule Apiary.Runs.RunList do
   defp filter(query, :state, state), do: where(query, [r], r.state == ^state)
   defp filter(query, :since, since), do: where(query, [r], r.inserted_at >= ^since)
 
+  # One row comparison, in the order of the index `runs_inserted_at_public_id_index`, so
+  # the next page starts inside the index: earlier, or as early with a smaller id.
   defp filter(query, :before, {at, public_id}) do
     where(
       query,
       [r],
-      r.inserted_at < ^at or
-        (r.inserted_at == ^at and fragment("? COLLATE \"C\" < ?", r.public_id, ^public_id))
+      fragment(
+        "(?, ? COLLATE \"C\") < (?, ?)",
+        r.inserted_at,
+        r.public_id,
+        type(^at, :utc_datetime_usec),
+        ^public_id
+      )
     )
   end
 
