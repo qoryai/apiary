@@ -97,6 +97,30 @@ defmodule Apiary.ModuleSandboxTest do
       end
     end
   end
+
+  # `Apiary.DataCase.setup_features/1` for an async test, called with its tags.
+  describe "an async test tagged with_features:" do
+    @tag :feature_sets
+    test "with the suite's features leaves the application environment as it is" do
+      previous = Application.get_env(:apiary, :features)
+      listed = Enum.reverse(Apiary.Features.enabled())
+
+      assert Apiary.DataCase.setup_features(%{async: true, with_features: listed}) == :ok
+      assert Application.get_env(:apiary, :features) == previous
+    end
+
+    @tag :feature_sets
+    test "with other features raises" do
+      other =
+        if Apiary.Features.enabled() == [:observability],
+          do: Apiary.Features.all(),
+          else: [:observability]
+
+      assert_raise ArgumentError, ~r/^Make the test sync/, fn ->
+        Apiary.DataCase.setup_features(%{async: true, with_features: other})
+      end
+    end
+  end
 end
 
 defmodule Apiary.ModuleSandboxFeaturesTest do

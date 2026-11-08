@@ -142,9 +142,12 @@ defmodule Apiary.DataCase do
   @doc """
   Switches the instance's features for one test: `@tag with_features: [:observability]`
   runs it as an instance launched with `QORY_FEATURES=observability`, and puts back what
-  the suite runs under afterwards. The features are the whole node's, so the test must not
-  be async. Its features being its own, `Apiary.TestSetup.start!/1` runs it only where
-  the suite has every feature.
+  the suite runs under afterwards. The features are the whole node's, so a test that
+  switches them must not be async. An async test may list the suite's features, such as
+  `with_features: Apiary.Features.all()` in the run with every feature on, and then leaves
+  the application environment as it is. An async test that lists other features raises.
+  Its features being its own, `Apiary.TestSetup.start!/1` runs it only where the suite has
+  every feature.
 
   The other tag, `@tag needs: :security` (or `@moduletag`), marks a test that exercises a
   feature; `Apiary.TestSetup.start!/1` leaves it out when the suite runs without that
@@ -162,14 +165,23 @@ defmodule Apiary.DataCase do
     end
 
     if tags[:async] do
-      raise ArgumentError,
-            "@tag with_features: changes the whole node, so the test must not be async"
-    end
+      suite = Enum.sort(Apiary.Features.enabled())
 
-    previous = Application.get_env(:apiary, :features)
-    {:ok, features} = Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1))
-    Application.put_env(:apiary, :features, features)
-    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+      if features(tags) != suite do
+        raise ArgumentError,
+              "Make the test sync, or tag it with the suite's features only: " <>
+                "#{inspect(suite)}. The features are the whole node's, and an async test " <>
+                "runs beside other tests: with_features: #{inspect(features(tags))} " <>
+                "would change them for those tests too"
+      end
+
+      :ok
+    else
+      previous = Application.get_env(:apiary, :features)
+      {:ok, features} = Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1))
+      Application.put_env(:apiary, :features, features)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    end
   end
 
   def setup_features(_tags), do: :ok
