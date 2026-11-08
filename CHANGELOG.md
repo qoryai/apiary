@@ -1201,6 +1201,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and every run of Explore ends with no result.
 - The access action `work_item.decline` is removed. **Close work item…** on the run-limit
   card needs `work_item.close`.
+- A node pool's machine limit counts the machines that may still exist. A claim whose
+  machine was made, by `dispatched`, by the redemption of its run code, or by a report to
+  `POST /v1/dispatches/<dispatch_id>/machine-end`, holds its slot after its run ends,
+  after a release or a close, until the starter reports the machine `gone`. `deleting`
+  and `delete_failed` keep the slot. A claim with no machine frees its slot when it
+  ends, as before. A lapsed lease still frees the slot and puts the run back in the
+  queue; a later `dispatched`, answered `409`, or a report other than `gone` takes the
+  slot back, even past the limit, so the pool's next claims wait. A slot whose machine
+  is never reported `gone` is freed 60 minutes after the machine's lifetime (90 minutes
+  for a prebuild, else 1,470), counted from the last `dispatched`, handover or report.
+  The answers of the endpoints do not change.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - On **Work items**, every tab shows a box for each stage of the workspace's process,

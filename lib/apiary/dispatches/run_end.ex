@@ -77,9 +77,12 @@ defmodule Apiary.Dispatches.RunEnd do
   # The run of the queue ends once: `ended`, with its end cause. Its live dispatch, the one
   # handed over, ends with it with the same cause; a stale dispatch of it not yet ended ends
   # with it, `run_ended`; `ended_at` and `end_cause` are set together. The slot the dispatch
-  # took at its claim is freed then, once (`Apiary.Dispatches.Slots.free/2`, which sets
-  # `slot_freed_at` only where it is nil). An end after the first changes neither the run
-  # of the queue nor its dispatches, and frees nothing again; the registered run still
+  # took at its claim is freed then, once, only when no machine is left for it
+  # (`Apiary.Dispatches.Slots.free/2`, which sets `slot_freed_at` only where it is nil):
+  # a dispatch handed over had a machine, so its slot waits for the starter's report that
+  # the machine is `gone` (`Apiary.Dispatches.MachineEnds`). An end after the first
+  # changes neither the run of the queue nor its dispatches, and frees nothing again; the
+  # registered run still
   # takes what comes as before: a run lost takes its later exit, as any run does.
   #
   # The end by a refusal, as the end by an exit, is written after the projection's pass
@@ -830,8 +833,10 @@ defmodule Apiary.Dispatches.RunEnd do
   defp locked_run(id), do: Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
 
   # The run of the queue ended with `cause`, and `detail` kept on it, its live dispatch
-  # with the cause, a stale one not yet ended `run_ended`, and the slot freed once.
-  defp end_locked(%DispatchRun{id: id}, cause, now, detail) do
+  # with the cause, a stale one not yet ended `run_ended`, and the slot freed once where
+  # no machine is left (`Apiary.Dispatches.Slots`). Its workspace's queue changed,
+  # whether or not the slot was freed.
+  defp end_locked(%DispatchRun{id: id, workspace_id: workspace_id}, cause, now, detail) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
         set: [state: :ended, end_cause: cause, end_detail: detail, updated_at: now]
@@ -855,7 +860,7 @@ defmodule Apiary.Dispatches.RunEnd do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
-    Slots.free({:runs, [id]}, now)
+    Enum.uniq([workspace_id | Slots.free({:runs, [id]}, now)])
   end
 
   defp now, do: Apiary.Dispatches.now()

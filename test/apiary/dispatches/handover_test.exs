@@ -542,11 +542,13 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
 
-      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: %DateTime{}, dispatched_at: nil} =
+      # The lapse freed the slot; the late dispatched tells that a machine was started, so
+      # the stale dispatch takes it back until its machine is gone.
+      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: nil, dispatched_at: nil} =
                dispatch!(claimed)
 
       assert queue_run!(queued).state == :waiting
-      assert Slots.held(ctx.pool.id) == 0
+      assert Slots.held(ctx.pool.id) == 1
       assert queue_runs() == 0
       failed = start_failed!(claimed, "lease_lapsed")
       assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
@@ -1180,6 +1182,11 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert claim(ctx) == {:ok, :none}
       assert %DispatchRun{state: :ended, end_cause: :ticket_gone} = queue_run!(queued)
       assert %Dispatch{end_cause: :run_ended} = dispatch!(stale)
+
+      # The late dispatched took the slot back: it stays held past the end, until the
+      # machine is gone.
+      assert Slots.held(ctx.pool.id) == 1
+      :ok = Dispatches.report_machine_end(ctx.key, stale.dispatch.public_id, %{state: :gone})
       assert Slots.held(ctx.pool.id) == 0
       assert queue_runs() == 0
       start_failed!(stale, "lease_lapsed")

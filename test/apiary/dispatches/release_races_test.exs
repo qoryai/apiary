@@ -521,11 +521,14 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       refute handed_over? and Enum.member?(releases, :ok)
 
       # Whatever came first, nothing is left holding the slot, but a run handed over,
-      # which its exit ends.
+      # which its exit ends and whose machine is then reported gone.
       if queue_run!(claimed).state == :handed_over do
         run = Repo.get!(Run, claimed.run.id)
         exited!(run)
         {:ok, _run} = Apiary.Runs.Projector.project(run)
+
+        :ok =
+          Dispatches.report_machine_end(ctx.key, dispatch!(claimed).public_id, %{state: :gone})
       end
 
       end_waiting!(claimed)

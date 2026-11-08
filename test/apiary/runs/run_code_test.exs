@@ -217,14 +217,16 @@ defmodule Apiary.Runs.RunCodeTest do
   end
 
   describe "a code never redeemed" do
-    test "leaves the run lost at minute 15, its run of the queue ended and its slot freed",
+    test "leaves the run lost at minute 15, its run of the queue ended and its slot held for its machine",
          ctx do
       assert Liveness.check(at(ctx, 900)) == []
       assert %DispatchRun{state: :handed_over} = Repo.get!(DispatchRun, ctx.queued.id)
 
       assert [%Run{state: "lost"}] = Liveness.check(at(ctx, 901))
       assert %DispatchRun{state: :ended, end_cause: :lost} = Repo.get!(DispatchRun, ctx.queued.id)
-      assert Slots.held(ctx.pool.id) == 0
+
+      # Its dispatched came: the slot waits for the machine to be reported gone.
+      assert Slots.held(ctx.pool.id) == 1
 
       assert redeem(ctx, ed25519_key_pair(), at(ctx, 901)) == {:error, :unauthorized}
     end

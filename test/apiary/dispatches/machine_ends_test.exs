@@ -18,7 +18,7 @@ defmodule Apiary.Dispatches.MachineEndsTest do
 
   alias Apiary.{AccessKeys, Dispatches, Repo, Runs}
   alias Apiary.Audit.Entry
-  alias Apiary.Dispatches.Dispatch
+  alias Apiary.Dispatches.{Dispatch, Slots}
 
   @moduletag needs: :factory
 
@@ -116,6 +116,80 @@ defmodule Apiary.Dispatches.MachineEndsTest do
 
       assert report(ctx, lapsed, :delete_failed) == :ok
       assert %Dispatch{machine_end_state: :delete_failed} = reload(lapsed)
+    end
+  end
+
+  describe "the slot" do
+    # The dispatch ended, as its run's end ends it.
+    defp end!(%Dispatch{id: id}) do
+      {1, _rows} =
+        Repo.update_all(from(d in Dispatch, where: d.id == ^id),
+          set: [ended_at: Dispatches.now(), end_cause: :run_ended]
+        )
+
+      {:ok, _freed} = Repo.transact(fn -> {:ok, Slots.free(:all, Dispatches.now())} end)
+    end
+
+    test "a gone with no deleting before it is taken, and frees the slot of a dispatch that ended",
+         ctx do
+      %{dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+      end!(dispatch)
+      assert Slots.held(ctx.pool.id) == 1
+      :ok = Dispatches.subscribe(ctx.scope.workspace.id)
+
+      assert report(ctx, dispatch, :gone) == :ok
+      assert %Dispatch{machine_end_state: :gone, slot_freed_at: %DateTime{}} = reload(dispatch)
+      assert Slots.held(ctx.pool.id) == 0
+      assert_receive {Dispatches, :changed}
+      assert [%{"state" => "gone"}] = Enum.map(entries(), & &1.details)
+    end
+
+    test "deleting and delete_failed keep the slot of a dispatch that ended", ctx do
+      %{dispatch: dispatch} = handed_over_fixture(ctx.scope, ctx.key)
+      end!(dispatch)
+
+      for state <- [:deleting, :delete_failed] do
+        assert report(ctx, dispatch, state) == :ok
+        assert %Dispatch{slot_freed_at: nil} = reload(dispatch)
+      end
+
+      assert report(ctx, dispatch, :gone) == :ok
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "a gone with no dispatched frees the slot at the release, and holds nothing after",
+         ctx do
+      {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+      {:ok, %{dispatch: dispatch}} = walked_claim(ctx.key, Dispatches.now())
+
+      # The machine never came up: the claim still holds its slot until it ends.
+      assert report(ctx, dispatch, :gone) == :ok
+      assert %Dispatch{machine_end_state: :gone, slot_freed_at: nil} = reload(dispatch)
+
+      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "no capacity"})
+      assert %Dispatch{slot_freed_at: %DateTime{} = freed_at} = reload(dispatch)
+
+      # A late dispatched or report takes nothing back.
+      assert {:error, :gone} =
+               Dispatches.dispatched(ctx.key, dispatch.public_id, %{external: nil})
+
+      assert report(ctx, dispatch, :deleting) == :ok
+      assert %Dispatch{machine_end_state: :gone, slot_freed_at: ^freed_at} = reload(dispatch)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "a deleting after a release with no machine takes the slot back until gone", ctx do
+      {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+      {:ok, %{dispatch: dispatch}} = walked_claim(ctx.key, Dispatches.now())
+
+      :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "no capacity"})
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert report(ctx, dispatch, :deleting) == :ok
+      assert Slots.held(ctx.pool.id) == 1
+
+      assert report(ctx, dispatch, :gone) == :ok
+      assert Slots.held(ctx.pool.id) == 0
     end
   end
 

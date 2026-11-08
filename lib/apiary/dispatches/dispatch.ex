@@ -21,7 +21,9 @@ defmodule Apiary.Dispatches.Dispatch do
   # before `lease_until`; `stale_at` when its lease lapsed before a handover, at or after
   # `lease_until`, never both. `ended_at` and `end_cause` are set together
   # (`Apiary.Dispatches.DispatchRun.end_causes/0`). `slot_freed_at` is when the slot of the
-  # pool's instance limit it took at the claim was freed, once. `release_reason` is the
+  # pool's instance limit it took at the claim was freed: nil while the dispatch holds it,
+  # which a dispatch with a machine left does until that machine is reported `gone`
+  # (`Apiary.Dispatches.Slots`). `release_reason` is the
   # starter's reason of a release, 1 to 200 characters, nil for a dispatch not released
   # (`Apiary.Dispatches.Release`). `machine_end_state` is what the starter last reported
   # about the removal of the machine it created for the dispatch, `deleting`, `gone` or
