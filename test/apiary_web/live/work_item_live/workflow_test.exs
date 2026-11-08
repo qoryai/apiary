@@ -118,10 +118,77 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end)
   end
 
+  # The end of a run that pushes its proposal and no verdict.
+  defp proposal_only, do: &push_output!(&1, &2, understood_result())
+
+  # A work item at Explore whose run pushed its proposal and passed, with the stage
+  # escalated `check_failed`: Explore also requires a mockup, which no run pushed.
+  defp mockup_missing!(scope) do
+    document =
+      Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+        Enum.map(stages, fn
+          %{"id" => @explore} = stage ->
+            Map.update!(stage, "outputs", &(&1 ++ [%{"type" => "mockup", "required" => true}]))
+
+          stage ->
+            stage
+        end)
+      end)
+
+    save!(scope, document)
+    work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+    assert %Escalation{cause: :check_failed} = escalation(work_item)
+    work_item
+  end
+
+  # What the rows of the page's runs show, newest first.
+  defp shows(scope, work_item) do
+    scope
+    |> ApiaryWeb.WorkItemLive.Workflow.page(Repo.get!(WorkItem, work_item.id))
+    |> Map.fetch!(:runs)
+    |> Enum.map(& &1.shows)
+  end
+
+  # The end of a run that pushes the verdict `passed`.
+  defp passed do
+    fn run, _registered ->
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, run},
+          Repo.get!(WorkItem, run.work_item_id),
+          "verdict",
+          %{"verdict" => "passed"},
+          stage_id: run.stage_id
+        )
+    end
+  end
+
+  # A work item whose Explore passed and was confirmed, with the run of a next stage of
+  # one workflow outside a loop queued: Shape's sequence is `shape-a-ticket`.
+  defp at_workflow_stage(scope) do
+    document =
+      Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+        Enum.map(stages, fn
+          %{"id" => @shape} = stage ->
+            Map.put(stage, "sequence", [%{"workflow" => "shape-a-ticket"}])
+
+          stage ->
+            stage
+        end)
+      end)
+
+    save!(scope, document)
+    work_item = explore_gate_fixture(scope)
+    {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+    work_item = Repo.get!(WorkItem, work_item.id)
+    assert %WorkItem{stage_id: @shape, stage_state: :running} = work_item
+    work_item
+  end
+
   # Saves the workspace's current version with Explore's sequence a loop of
-  # explore-a-ticket of `rounds` rounds, in place of the default's one workflow. A run of
-  # Explore pushes no verdict, so in the loop each run with no open question starts the
-  # next round, up to the limit.
+  # explore-a-ticket of `rounds` rounds, in place of the default's one workflow. In the
+  # loop, each run with no open question and no verdict starts the next round, up to the
+  # limit.
   defp explore_loop!(scope, rounds \\ 3) do
     save!(
       scope,
@@ -3267,6 +3334,305 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert %Escalation{resolution: resolution} = escalation(work_item)
         assert Atom.to_string(resolution) == how
       end
+    end
+
+    test "a proposal with no verdict goes on: no stopped card, and Confirm moves it on", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = scope |> taken_in_fixture() |> end_run!(proposal_only())
+
+      assert work_item.stage_state == :at_gate
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-stage-escalation-cause")
+      assert render(view) =~ "You approve next"
+
+      view |> element("[phx-click=confirm]") |> render_click()
+
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @shape
+    end
+
+    test "a Shape-style stage: no verdict stops with the card, and its row has one reading", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_workflow_stage(scope) |> end_run!(nil)
+
+      assert work_item.stage_state == :escalated
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-cause",
+               "The run stopped before its verdict."
+             )
+
+      assert has_element?(view, "#work-item-stage-escalation-another")
+
+      assert has_element?(
+               view,
+               "#work-item-runs-0",
+               "Attempt 2 · shape-a-ticket · round 1 · ended without a verdict"
+             )
+
+      refute has_element?(view, "#work-item-runs-0", "passed")
+    end
+
+    test "a Shape-style stage: passed reaches the gate and its row reads passed", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_workflow_stage(scope) |> end_run!(passed())
+
+      assert work_item.stage_state == :at_gate
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-runs-0",
+               "Attempt 2 · shape-a-ticket · round 1 · passed"
+             )
+    end
+
+    test "a test work item's run with no verdict shows no stopped card", %{
+      conn: conn,
+      scope: scope
+    } do
+      save!(
+        scope,
+        Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+          Enum.map(stages, fn
+            %{"id" => @explore} = stage -> Map.put(stage, "outputs", [])
+            stage -> stage
+          end)
+        end)
+      )
+
+      {:ok, work_item} = WorkItems.take_in_test(scope, "Hi! Where are you running?")
+      work_item = Repo.get!(WorkItem, work_item.id) |> end_run!(nil)
+
+      assert work_item.stage_state == :at_gate
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      refute has_element?(view, "#work-item-stage-escalation-cause")
+    end
+
+    test "a Shape-style run that wrote passed and was lost: the card, and no passed row", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_workflow_stage(scope)
+      {_registered, run} = registered!(work_item, newest_run(work_item), :handed_over)
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, run},
+          work_item,
+          "verdict",
+          %{"verdict" => "passed"},
+          stage_id: run.stage_id
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [state: :ended, end_cause: :lost]
+        )
+
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert [:no_verdict, :passed] = shows(scope, work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-cause",
+               "The run stopped before its verdict:"
+             )
+
+      assert has_element?(
+               view,
+               "#work-item-runs-0",
+               "Attempt 2 · shape-a-ticket · round 1 · ended without a verdict"
+             )
+
+      refute has_element?(view, "#work-item-runs-0", "passed")
+    end
+
+    test "an escalation beside a proposal: no Confirm for any reader, until Accept as it is", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = mockup_missing!(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      for {:ok, view, _html} <- [
+            {:ok, view, nil},
+            live(as(conn, scope, :member), page(scope, work_item.number))
+          ] do
+        refute has_element?(view, "#work-item-step")
+        refute has_element?(view, "[phx-click=confirm]")
+        refute render(view) =~ "You approve next"
+      end
+
+      assert has_element?(view, "#work-item-stage-escalation-accept")
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "accept"})
+
+      assert %WorkItem{stage_state: :at_gate} = Repo.get!(WorkItem, work_item.id)
+      assert render(view) =~ "You approve next"
+
+      view |> element("[phx-click=confirm]") |> render_click()
+      assert %WorkItem{stage_id: @shape} = Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "the Thread beside an escalation has no next confirmer, until Accept as it is", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = mockup_missing!(scope)
+      thread = page(scope, work_item.number) <> "/thread"
+
+      {:ok, _view, html} = live(conn, thread)
+      assert html =~ "Explore wrote a proposal"
+      refute html =~ "You approve next"
+
+      {:ok, _work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      {:ok, _view, html} = live(conn, thread)
+      assert html =~ "You approve next"
+    end
+
+    test "a page opened before the stop: Confirm writes nothing, and the page shows the card", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = explore_gate_fixture(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "[phx-click=confirm]")
+
+      # The stage stops with no message to the open page.
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :escalated]
+        )
+
+      escalate!(work_item, :run_stopped, nil, newest_run(work_item))
+
+      view |> element("[phx-click=confirm]") |> render_click()
+
+      assert %WorkItem{stage_state: :escalated, stage_id: @explore} =
+               Repo.get!(WorkItem, work_item.id)
+
+      refute Repo.get_by(Confirmation, work_item_id: work_item.id)
+      refute has_element?(view, "[phx-click=confirm]")
+      refute has_element?(view, "#work-item-step")
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-cause",
+               "The run stopped before its verdict."
+             )
+    end
+
+    test "a stopped card: Run another round, then a proposal, reaches Confirm and the next stage",
+         %{
+           conn: conn,
+           scope: scope
+         } do
+      work_item = scope |> taken_in_fixture() |> end_run!(nil)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "another_round"})
+
+      confirm_spend(view)
+
+      assert %WorkItem{stage_state: :running} = Repo.get!(WorkItem, work_item.id)
+      assert %DispatchRun{attempt: 2} = newest_run(work_item)
+
+      work_item = Repo.get!(WorkItem, work_item.id) |> end_run!(understood_result())
+      assert work_item.stage_state == :at_gate
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert render(view) =~ "You approve next"
+      view |> element("[phx-click=confirm]") |> render_click()
+      assert %WorkItem{stage_id: @shape} = Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "a run that asked and gave no verdict reads questions, answered or not", %{scope: scope} do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(&push_output!(&1, &2, questions_result()))
+
+      assert work_item.stage_state == :waiting_answers
+      assert [:questions] = shows(scope, work_item)
+
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, open_answers(work_item))
+      assert [:queued, :questions] = shows(scope, Repo.get!(WorkItem, work_item.id))
+    end
+
+    test "a run with no proposal and no verdict keeps its step line, with the stopped card", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = scope |> taken_in_fixture() |> end_run!(nil)
+
+      assert %Escalation{cause: :run_stopped, gaps: nil} = escalation(work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert line(view, "#work-item-step-line") == "Attempt 1 (Run 1) ended without a result."
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-cause",
+               "The run stopped before its verdict."
+             )
+
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      assert has_element?(view, "#work-item-stage-escalation-another")
+      assert [:no_verdict] = shows(scope, work_item)
+    end
+
+    test "a stage with no outputs: Accept after no verdict, none after a run that failed", %{
+      conn: conn,
+      scope: scope
+    } do
+      document =
+        Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+          Enum.map(stages, fn
+            %{"id" => @explore} = stage -> Map.put(stage, "outputs", [])
+            stage -> stage
+          end)
+        end)
+
+      save!(scope, document)
+
+      no_verdict = scope |> taken_in_fixture() |> end_run!(nil)
+      assert %Escalation{cause: :run_stopped, gaps: nil} = escalation(no_verdict)
+      {:ok, view, _html} = live(conn, page(scope, no_verdict.number))
+      assert has_element?(view, "#work-item-stage-escalation-accept")
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "accept"})
+
+      assert Repo.get!(WorkItem, no_verdict.id).stage_state == :at_gate
+
+      failed =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %Escalation{cause: :run_stopped} = escalation(failed)
+      {:ok, view, _html} = live(conn, page(scope, failed.number))
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      assert has_element?(view, "#work-item-stage-escalation-another")
     end
 
     test "no result: no Accept as it is, and a sent accept is refused", %{

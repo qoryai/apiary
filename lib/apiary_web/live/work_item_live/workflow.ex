@@ -335,7 +335,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     %{
       cause: cause,
-      result: result?(cause, outputs),
+      result: result?(cause, outputs, lines(get(escalation, :gaps))),
       gaps: lines(get(escalation, :gaps)),
       round: get(escalation, :round),
       run: escalated_run(escalation, runs),
@@ -343,10 +343,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     }
   end
 
-  # Whether the stage has a result to accept as it is: a version of one of its outputs, or,
-  # for a stage with no outputs, a run that did not stop before its verdict.
-  defp result?(cause, []), do: cause != :run_stopped
-  defp result?(_cause, outputs), do: Enum.any?(outputs, & &1.version_id)
+  # Whether the stage has a result to accept as it is: a version of one of its outputs; for
+  # a stage with no outputs, a run that did not stop before its verdict; or a run that ended
+  # with no verdict (`run_stopped` with no cause in its gaps) where no output is required.
+  defp result?(:run_stopped, outputs, []),
+    do: Enum.any?(outputs, & &1.version_id) or not Enum.any?(outputs, & &1.required)
+
+  defp result?(cause, [], _gaps), do: cause != :run_stopped
+  defp result?(_cause, outputs, _gaps), do: Enum.any?(outputs, & &1.version_id)
 
   # An artifact of the index with its approval marks: the number of the version a gate
   # approved, and of a newer one where there is one.
