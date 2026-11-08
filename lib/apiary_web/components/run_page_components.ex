@@ -216,8 +216,8 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :terminal, :boolean,
     default: true,
     doc:
-      "whether the reader is shown the run's terminal (`run.read_log`): the sentence " <>
-        "of `:vm_wall` or `:no_hooks` includes the terminal only then"
+      "whether the reader is shown the run's terminal (`run.read_log`): a sentence " <>
+        "that includes the terminal is shown only then"
 
   def limits(%{variant: "notice"} = assigns) do
     ~H"""
@@ -303,10 +303,17 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_sentence(%{reason: :other_runtime} = assigns) do
     ~H"""
     <.rich text={
-      rich_gettext(
-        "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
-        runtime: {:part, :runtime}
-      )
+      if @terminal,
+        do:
+          rich_gettext(
+            "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
+            runtime: {:part, :runtime}
+          ),
+        else:
+          rich_gettext(
+            "Only Claude Code sends session events. This session ran %{runtime}: its connections are under Network access.",
+            runtime: {:part, :runtime}
+          )
     }>
       <:part name={:runtime}><code class="q-rule">{@runtime}</code></:part>
     </.rich>

@@ -97,16 +97,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   <n>** with **Prepare the session**, the session's join and wall and any step that ran
   after the start of the session before, **Run the agent**, with when the session
   started and finished, its result and its model, which opens to the Timeline of that
-  session's events and its **Main session** row, open while the run runs and closed
-  once it has ended, and **Save the outputs**, with the artifact versions the session
-  saved and its push steps; and **Remove the machine**. A prebuild has **Build the
-  image**, its session, with its join as **Start the build**, and **Save the outputs**,
-  the image it built, as steps of the run, with no Agent session. Each top-level row
-  shows its start time and how long it took; the rows inside a step show no times.
-  After a failed step, the steps that did not run show as **Skipped** until a step after
-  it runs; **Remove the machine** still shows its result. The step that copies the
-  run's work back, and the join and wall steps of the helper session it starts, have no
-  row.
+  session's events and its **Main session** row, open while the run runs and closed once
+  it has ended, and **Save the outputs**, with the artifact versions the session saved
+  and its push steps; and **Remove the machine**. A session whose runtime is not Claude
+  Code shows, above its Timeline, that only Claude Code sends session events and where
+  its output and connections are. A prebuild has **Build the image**, its session, with
+  its join as **Start the build**, and **Save the outputs**, the image it built, as
+  steps of the run, with no Agent session. Each top-level row shows its start time and
+  how long it took; the rows inside a step show no times. After a failed step, the steps
+  that did not run show as **Skipped** until a step after it runs; **Remove the
+  machine** still shows its result. The step that copies the run's work back, and the
+  join and wall steps of the helper session it starts, have no row.
   Owners, admins and members open a step's row to read its output, the last 64 KiB. A
   failed step's row is open, with what happened and no advice, such as “Start the wall
   failed with exit code 125.” “How it ended” in the header shows the same line, or the

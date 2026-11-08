@@ -660,6 +660,7 @@ defmodule ApiaryWeb.RunLive.Show do
             :if={session_runtime(@preparation, session)}
             reason={:other_runtime}
             runtime={shown_sent(session_runtime(@preparation, session))}
+            terminal={Access.can?(@current_scope, :"run.read_log", @run)}
           />
           <.timeline_list {assigns} session={session} />
         </:session>

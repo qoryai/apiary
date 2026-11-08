@@ -1332,6 +1332,23 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert note_at < timeline_at
     end
 
+    test "for a reader without the Terminal, the note in Run the agent leaves the Terminal out",
+         ctx do
+      run = sessions_run(ctx.scope, ["qory"])
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") ==
+               "Only Claude Code sends session events. This session ran qory: its " <>
+                 "connections are under Network access."
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      lv = open(ctx.conn, ctx.scope, run)
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @runtime_note
+    end
+
     test "a Claude Code session has no note", ctx do
       lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, ["claude"]))
 

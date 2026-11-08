@@ -1797,10 +1797,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   live action of the one LiveView, so a tab is a patch. Terminal is the log's
   (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
   Terminal, there is no tab, no Raw log or Download log, no Terminal on Details, and the
-  notes about a wall or missing hook events leave the terminal out; the note about a
-  session's runtime includes Terminal for every reader. An old link to a run's Details
-  tab (`/runs/:run_id/details`) lands on the Timeline with Details open, and the
-  address becomes the Timeline's.
+  notes on session events leave the terminal out. An old link to a run's Details tab
+  (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
+  becomes the Timeline's.
 - **Details is one element** (`#run-details`), after the header and before the tabs at
   every width, so the two places never disagree and no id is drawn twice; its reading and
   keyboard order is the header, Details, the tabs, then the tab's content. From 1280 px it
@@ -1978,11 +1977,12 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        `dev.qory.runtime.started`. A session whose runtime, the `runtime` of its
        `dev.qory.session.started`, is not Claude Code (`claude`) then has a note: "Only
        Claude Code sends session events. This session ran qory: its output is under
-       Terminal, and its connections under Network access." In a run of two sessions on
-       different runtimes, only the session that is not on Claude Code has the note, and
-       no note about the runtime is above the Run list; a run with no Run list has it
-       above its Timeline. Then comes that session's Timeline, with that session's
-       Main session row: `timeline` for the first agent session, `timeline-2` for the
+       Terminal, and its connections under Network access." For a reader without the
+       Terminal, the note ends "its connections are under Network access." In a run of
+       two sessions on different runtimes, only the session that is not on Claude Code
+       has the note, and no note about the runtime is above the Run list; a run with no
+       Run list has it above its Timeline. Then comes that session's Timeline, with that
+       session's Main session row: `timeline` for the first agent session, `timeline-2` for the
        second, and so on. An event whose `session` is an agent session's number belongs
        to the last session with that number that started before it, as the session's end
        events do; an event with no `session`, or a bare session's, belongs to the last
