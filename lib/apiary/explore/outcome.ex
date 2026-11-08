@@ -77,7 +77,7 @@ defmodule Apiary.Explore.Outcome do
   defp without_questions(run) do
     case Apiary.Stages.reported_verdict(run) do
       {:error, :store_unavailable} -> nil
-      {:verdict, :escalate, _gaps} -> :none
+      {:verdict, :escalate, _points} -> :none
       _none_or_other -> if not stopped?(run) and proposal?(run), do: :proposal, else: :none
     end
   end

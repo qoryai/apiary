@@ -20,18 +20,22 @@ defmodule Apiary.Stages.Runner do
   #   * In a loop, `passed` from any workflow leaves the loop at once. `changes-requested`,
   #     or a run with no verdict, runs the next workflow of the ring; after the last one the
   #     ring goes back to the first, which starts the next round. At the round limit the
-  #     stage escalates, `round_limit`, with the newest gaps.
+  #     stage escalates, `round_limit`, with a point that says so
+  #     (`Apiary.Stages.Points`).
   #   * Outside a loop, the sequence goes on after each run, whatever its verdict.
-  #   * `escalate` escalates, `escalate`; a run that stopped escalates, `run_stopped`, with
-  #     its cause as the gaps.
+  #   * `escalate` escalates, `escalate`, with the verdict's points; a run that stopped
+  #     escalates, `run_stopped`, with a point of its cause.
   #   * Questions wait for answers (`:waiting_answers`), in any round and at any count of
-  #     runs; the answers run the same workflow again, as the loop's next round.
+  #     runs; the answers run the same workflow again, as the loop's next round. Open
+  #     questions come first: a run that asked them and escalated waits for answers, and
+  #     its escalation is kept with its points (`{:questions, texts, points}`).
   #   * At the end of the sequence the Exists checks run. When every required output
   #     passes, a person gate waits (`:at_gate`) and a gate `none` passes on (`:advance`).
   #     On a failure, a stage with a loop starts another round of its last loop, with the
   #     failed checks as the gaps of that round (`{:checks_failed, round, gaps}`), and the
-  #     round counts; at the limit it escalates,
-  #     `round_limit`. A stage with workflows and no loop escalates, `check_failed`.
+  #     round counts; at the limit it escalates, `round_limit`, with one point for each
+  #     failed check. A stage with workflows and no loop escalates, `check_failed`, with
+  #     the same points.
   #   * A stage with no workflow is worked by people (§ 4): with a required output
   #     missing, it waits at its gate, a gate `none` too, and escalates nothing. A version
   #     a person adds in the stage (`:version_added`) runs the checks again: once every
@@ -49,6 +53,8 @@ defmodule Apiary.Stages.Runner do
   #     workflow's declaration (addition 10); its machine type is the entry's, else the
   #     document's.
   @moduledoc false
+
+  alias Apiary.Stages.Points
 
   @default_rounds 3
 
@@ -72,14 +78,19 @@ defmodule Apiary.Stages.Runner do
   @typedoc "Why a stage escalates."
   @type cause :: :round_limit | :escalate | :check_failed | :run_stopped
 
+  @typedoc "A point of an escalation (`Apiary.Stages.Points`)."
+  @type point :: %{required(String.t()) => String.t()}
+
   @typedoc """
-  What a run gave: its newest verdict with its gaps (nil verdict for none), its
-  questions, or why it stopped.
+  What a run gave: its newest verdict with its points (nil verdict for none), its
+  questions, with the points of an `escalate` verdict where it has one, or the point of
+  why it stopped.
   """
   @type run_result ::
-          {:verdict, :passed | :changes_requested | :escalate | nil, String.t() | nil}
+          {:verdict, :passed | :changes_requested | :escalate | nil, [point] | nil}
           | {:questions, String.t()}
-          | {:stopped, String.t()}
+          | {:questions, String.t(), [point] | nil}
+          | {:stopped, [point]}
 
   @typedoc "What happened to the stage."
   @type event ::
@@ -121,7 +132,7 @@ defmodule Apiary.Stages.Runner do
   @typedoc "An action for `Apiary.Stages` to apply."
   @type action ::
           {:queue, run_spec}
-          | {:escalate, cause, String.t() | nil}
+          | {:escalate, cause, [point]}
           | {:checks_failed, pos_integer, String.t()}
           | :advance
 
@@ -281,35 +292,43 @@ defmodule Apiary.Stages.Runner do
 
   ## A run's end
 
-  defp run_ended(stage, position, {:verdict, :passed, _gaps}, facts),
+  defp run_ended(stage, position, {:verdict, :passed, _points}, facts),
     do: start(stage, next(stage, position), facts)
 
-  defp run_ended(_stage, position, {:verdict, :escalate, gaps}, _facts),
-    do: escalate(:escalate, gaps, position)
+  defp run_ended(_stage, position, {:verdict, :escalate, points}, _facts),
+    do: escalate(:escalate, points || [], position)
 
-  defp run_ended(stage, position, {:verdict, _changes_or_none, gaps}, facts) do
+  defp run_ended(stage, position, {:verdict, _changes_or_none, _points}, facts) do
     if in_loop?(position),
-      do: ring(stage, position, gaps, facts),
+      do: ring(stage, position, facts),
       else: start(stage, next(stage, position), facts)
   end
 
-  defp run_ended(_stage, position, {:stopped, cause}, _facts),
-    do: escalate(:run_stopped, cause, position)
+  defp run_ended(_stage, position, {:stopped, points}, _facts),
+    do: escalate(:run_stopped, points, position)
 
   defp run_ended(_stage, position, {:questions, _questions}, _facts),
     do: %{state: :waiting_answers, position: position, actions: []}
 
+  # Open questions first: the stage waits for answers, and the escalation is kept.
+  defp run_ended(_stage, position, {:questions, _questions, [_ | _] = points}, _facts),
+    do: %{state: :waiting_answers, position: position, actions: [{:escalate, :escalate, points}]}
+
+  defp run_ended(_stage, position, {:questions, _questions, _none}, _facts),
+    do: %{state: :waiting_answers, position: position, actions: []}
+
   # The next workflow of the loop's ring, or the next round from its first, or the round
   # limit.
-  defp ring(stage, position, gaps, facts) do
+  defp ring(stage, position, facts) do
     body = body(stage, position.entry)
+    rounds = rounds(stage, position.entry)
 
     cond do
       position.loop_entry + 1 < length(body) ->
         start(stage, %{position | loop_entry: position.loop_entry + 1}, facts)
 
-      position.round >= rounds(stage, position.entry) ->
-        escalate(:round_limit, gaps, position)
+      position.round >= rounds ->
+        escalate(:round_limit, Points.round_limit(position.round, rounds), position)
 
       true ->
         start(stage, %{position | loop_entry: 0, round: position.round + 1}, facts)
@@ -334,11 +353,11 @@ defmodule Apiary.Stages.Runner do
 
         case last_loop(stage) do
           nil ->
-            escalate(:check_failed, gaps, position)
+            escalate(:check_failed, Points.check_failed(failed), position)
 
           index ->
             if position.round >= rounds(stage, index) do
-              escalate(:round_limit, gaps, position)
+              escalate(:round_limit, Points.check_failed(failed), position)
             else
               round = position.round + 1
               outcome = start(stage, %{entry: index, loop_entry: 0, round: round}, facts)
@@ -355,8 +374,8 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  defp escalate(cause, gaps, position),
-    do: %{state: :escalated, position: position, actions: [{:escalate, cause, gaps}]}
+  defp escalate(cause, points, position),
+    do: %{state: :escalated, position: position, actions: [{:escalate, cause, points}]}
 
   # check_gaps/1 is the gaps of failed Exists checks, one line per output type.
   @doc false
