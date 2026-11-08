@@ -2712,6 +2712,41 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-items-stages-confirm .q-wl-attn", "1 waits for a member")
     end
 
+    test "an escalated work item still at Confirm waits only for whoever may resolve it",
+         %{scope: scope} do
+      listed = explore_gate_listing(scope)
+      work_item = explore_gate_fixture(scope)
+      row = "#work-item-#{work_item.public_id}"
+
+      # Explore's status stays confirm, but the stage escalated: the page hides Confirm.
+      {1, _} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :escalated]
+        )
+
+      escalate!(Repo.get!(WorkItem, work_item.id), :escalate, "Blocked")
+      approver = log_in_user(build_conn(), listed.user)
+
+      # The listed approver may resolve the escalation: it counts once.
+      {:ok, view, _html} = live(approver, list(scope))
+      assert has_element?(view, "#nav-work_items .q-nav-count", "1")
+      assert has_element?(view, "#work-items-views", "Waiting on you 1")
+      {:ok, view, _html} = live(approver, list(scope) <> "?view=you")
+      assert has_element?(view, row)
+
+      # Without the workflow model, the approver may confirm but not resolve: neither
+      # Waiting on you nor Approve counts it.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:workflow_model])
+
+      {:ok, view, _html} = live(approver, list(scope))
+      refute has_element?(view, "#nav-work_items .q-nav-count")
+      assert has_element?(view, "#work-items-views", "Waiting on you 0")
+      refute has_element?(view, "#work-items-stages-confirm .q-wl-attn", "waits for you")
+      {:ok, view, _html} = live(approver, list(scope) <> "?view=you")
+      refute has_element?(view, row)
+    end
+
     test "a work item with no process version follows the current version's approvers",
          %{scope: scope} do
       listed = explore_gate_listing(scope)

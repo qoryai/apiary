@@ -93,11 +93,12 @@ defmodule Apiary.WorkItems.WorkList do
 
   # Whether the work item `w`, at Confirm, waits for the reader of `gates` (`gates/2`): at
   # a gate that lists approvers, where the reader may confirm there; else where the reader
-  # owns it.
+  # owns it. An escalated work item never waits at Confirm, as its page hides Confirm.
   defmacrop waits_for_reader(w, gates) do
     quote do
       fragment(
-        "CASE WHEN ? THEN TRUE WHEN ? THEN FALSE ELSE ? = ? END",
+        "CASE WHEN ? THEN FALSE WHEN ? THEN TRUE WHEN ? THEN FALSE ELSE ? = ? END",
+        coalesce(unquote(w).stage_state == :escalated, false),
         at_gate(unquote(w), unquote(gates), unquote(gates).you),
         at_gate(unquote(w), unquote(gates), unquote(gates).listed),
         unquote(w).owner_id,
