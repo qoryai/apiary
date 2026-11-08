@@ -1,11 +1,13 @@
 defmodule Apiary.Stages.Points do
   # Points are what an escalation asks of a person (`Apiary.Stages.Escalation`), each
-  # `%{"text", "action", "question"?}` as `verdict.schema.json` has them: `action` is
-  # `answer`, with the id of an open question in `question`, or `run_again`. A run writes
-  # them in its verdict. For the causes the stage runner sets itself (`round_limit`,
-  # `check_failed`, `run_stopped`), this module writes one `run_again` point, in the
-  # default locale's words (`ApiaryWeb.Lingo.default_locale/0`) whatever the calling
-  # process's locale, as the escalation stores it.
+  # `%{"text", "action", "question"?}` as `verdict.schema.json` has them: `text` is one
+  # sentence on what is wrong, and `action` is `answer`, with the id of an open question
+  # in `question`, or `run_again`. The page adds the action's sentence. A run writes them
+  # in its verdict. For the causes the stage runner sets itself (`round_limit`,
+  # `check_failed`, `run_stopped`), this module writes `run_again` points in the default
+  # locale's words (`ApiaryWeb.Lingo.default_locale/0`) whatever the calling process's
+  # locale. A stopped run's point has `fix`, the stop cause's fix line, where the cause
+  # has one: the page shows it in place of the action's sentence. Only Core writes `fix`.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -24,7 +26,7 @@ defmodule Apiary.Stages.Points do
     [
       run_again(
         default(fn ->
-          gettext("%{ran} of %{rounds} rounds ran. Run another round.", ran: ran, rounds: rounds)
+          gettext("%{ran} of %{rounds} rounds ran.", ran: ran, rounds: rounds)
         end)
       )
     ]
@@ -37,28 +39,21 @@ defmodule Apiary.Stages.Points do
     for type <- types do
       run_again(
         default(fn ->
-          gettext("No %{type} was stored in this stage. Run another round.", type: type)
+          gettext("No %{type} was stored in this stage.", type: type)
         end)
       )
     end
   end
 
   # run_stopped/2 is the point of a run that stopped, from its stop cause
-  # (`Apiary.Stages.StopCause.parts/3`): "The run stopped:", the cause with its leading
-  # "The run" written as "it", then the cause's fix, or "Run another round." where the
-  # cause has none.
+  # (`Apiary.Stages.StopCause.parts/3`): "The run stopped:" and the cause, with its
+  # leading "The run" written as "it", and the cause's fix in `fix` where it has one.
   @doc false
   @spec run_stopped(String.t(), String.t() | nil) :: [t]
   def run_stopped(cause, fix) when is_binary(cause) do
-    text =
-      default(fn ->
-        gettext("The run stopped: %{cause} %{next}",
-          cause: lowered(cause),
-          next: fix || gettext("Run another round.")
-        )
-      end)
-
-    [run_again(text)]
+    text = default(fn -> gettext("The run stopped: %{cause}", cause: lowered(cause)) end)
+    point = run_again(text)
+    [if(fix, do: Map.put(point, "fix", fix), else: point)]
   end
 
   # The cause after "The run stopped:": "The run" becomes "it", and a sentence that opens

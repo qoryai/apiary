@@ -849,9 +849,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 - When a run escalates, the work item page shows the block “What the run needs from
-  you”, with one numbered sentence for each point: what is wrong or missing, and what you
-  can do. An `answer` point links “question 4” to its question, and a `run_again` point
-  asks for another round. The block takes the place of the red banner “The run ended
+  you”, with one numbered item for each point: the run's sentence on what is wrong or
+  missing, then what you can do, “Answer question 4.”, with “question 4” linked to the
+  question, or “Run another round.” The block takes the place of the red banner “The run ended
   without a result”, at the top of the Explore tab or of the stage's area, and the
   stage's note field and **Run another round** sit in it. A proposal from a round before
   the run shows “· from an earlier round”. In the side panel, one line, “Waits for you: 2
@@ -865,10 +865,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   question q7, which is not open.” The work item's answer to a run has `verdict.points` in
   place of `verdict.gaps`.
 - For a cause Qory Apiary sets itself, an escalation has one point that Qory Apiary
-  writes: “3 of 3 rounds ran. Run another round.”, “No spec was stored in this stage. Run
-  another round.” for each failed check, or “The run stopped: it ended without a result.
-  Run another round.” A stop cause that has a fix, such as a missing model key, ends with
-  that fix.
+  writes: “3 of 3 rounds ran.”, “No spec was stored in this stage.” for each failed
+  check, or “The run stopped: it ended without a result.”, each followed by “Run another
+  round.” on the page. A stop cause that has a fix, such as a missing model key, shows
+  that fix in place of “Run another round.”
 - A run that leaves questions open and escalates waits for answers first: its escalation
   is kept, the block shows its points above the questions, and the answers run the next
   round and resolve it. **Accept as it is**, **Move back** and **Close** are refused while

@@ -593,9 +593,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   @doc """
   The block "What the run needs from you": the points of the stage's open escalation, one
-  numbered sentence each. An `answer` point links the words "question N" to its question,
-  numbered as the Explore tab numbers it, or adds the link "Question N" after its sentence
-  where its text has no such words. While the stage is escalated, a reader who may decide
+  numbered sentence each, followed by the sentence of its action: "Answer question N.",
+  with "question N" linked to the question as the Explore tab numbers it, or "Run another
+  round.", or a stopped run's fix line in its place. While the stage is escalated, a reader who may decide
   finds the note field and Run another round under the points; they belong to the form of
   the escalation card in the rail (`stage_card/1`). While the stage waits for answers, the
   answers run the next round, so the block has no form.
@@ -677,47 +677,46 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :href, :string, default: nil, doc: "the question of an `answer` point, nil for none"
   attr :harness_path, :any, default: nil
 
-  # A point's sentence, escaped. An `answer` point links "question N" in it to its
-  # question, or adds the link "Question N" after it; in any point, the words "the set-up
-  # step Harness" link to that step where its fix is on it (`gap_line/1`).
+  # A point's sentence, escaped, then the sentence of its action. An `answer` point adds
+  # "Answer question N.", with "question N" linked to its question; a `run_again` point
+  # adds "Run another round.", or the stop cause's fix line in its place, in which the
+  # words "the set-up step Harness" link to that step where the fix is on it
+  # (`gap_line/1`).
   defp point(%{point: %{action: :answer, number: n}, href: href} = assigns)
        when is_integer(n) and is_binary(href) do
-    words = "question #{n}"
-
-    parts =
-      case Regex.run(~r/question #{n}(?!\d)/, assigns.point.text, return: :index) do
-        [{at, length}] ->
-          {binary_part(assigns.point.text, 0, at),
-           binary_part(
-             assigns.point.text,
-             at + length,
-             byte_size(assigns.point.text) - at - length
-           )}
-
-        nil ->
-          nil
-      end
+    # The sentence is split at a marker, so that the link keeps its place in any locale.
+    marker = <<0>>
+    [before, rest] = String.split(gettext("Answer %{question}.", question: marker), marker)
 
     assigns =
       assign(assigns,
-        words: words,
-        parts: parts,
-        label: gettext("Question %{number}", number: Format.number(n))
+        before: before,
+        rest: rest,
+        words: gettext("question %{number}", number: Format.number(n))
       )
 
     ~H"""
-    <%= case @parts do %>
-      <% {before, rest} -> %>
-        {before}<.link href={@href} class="q-link">{@words}</.link>{rest}
-      <% nil -> %>
-        {@point.text} <.link href={@href} class="q-link">{@label}</.link>
-    <% end %>
+    {@point.text} {@before}<.link href={@href} class="q-link">{@words}</.link>{@rest}
+    """
+  end
+
+  defp point(%{point: %{action: :answer}} = assigns) do
+    ~H"""
+    {@point.text} {gettext("Answer the question.")}
     """
   end
 
   defp point(assigns) do
+    fix = assigns.point[:fix]
+
+    assigns =
+      assign(assigns,
+        line: fix || gettext("Run another round."),
+        path: fix && assigns.harness_path
+      )
+
     ~H"""
-    <.gap_line line={@point.text} path={@harness_path} />
+    {@point.text} <.gap_line line={@line} path={@path} />
     """
   end
 

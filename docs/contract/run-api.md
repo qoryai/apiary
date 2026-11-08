@@ -402,18 +402,19 @@ The body, at most 64 KiB:
 ```json
 {"verdict": "escalate",
  "points": [
-   {"text": "The ticket does not say who may cancel a booking. Answer question 4.",
+   {"text": "The ticket does not say who may cancel a booking.",
     "action": "answer", "question": "q4"},
-   {"text": "The checks script failed on the spec's links. Run another round.",
-    "action": "run_again"}
+   {"text": "The checks script failed on the spec's links.", "action": "run_again"}
  ]}
 ```
 
 - `verdict`: `passed`, `changes-requested` or `escalate`.
 - `points`: what a person reads when the stage escalates, 1 to 20 points, required with
   `escalate` and absent otherwise. Each point has `text`, one plain sentence on one line
-  of 1 to 500 characters, and `action`: `answer`, with `question`, the id of an open
-  question, or `run_again`, without `question`. The schema of the type `verdict`
+  of 1 to 500 characters that says what is wrong, with no action, and `action`: `answer`,
+  with `question`, the id of an open question, or `run_again`, without `question`. The
+  work item page adds the action's sentence: "Answer question 4." or "Run another
+  round." The schema of the type `verdict`
   checks them (`priv/schemas/artifacts/verdict.schema.json`, a copy of qory's
   `contracts/harness/v1/verdict.schema.json`).
 

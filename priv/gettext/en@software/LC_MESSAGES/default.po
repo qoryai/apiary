@@ -2870,7 +2870,7 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
-msgid "%{ran} of %{rounds} rounds ran. Run another round."
+msgid "%{ran} of %{rounds} rounds ran."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -5333,6 +5333,11 @@ msgstr ""
 msgid "Answer"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Answer %{question}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Answer the question"
@@ -5353,6 +5358,11 @@ msgid "Answer the question, then run another round."
 msgid_plural "Answer the %{number} questions, then run another round."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Answer the question."
+msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -12762,7 +12772,7 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
-msgid "No %{type} was stored in this stage. Run another round."
+msgid "No %{type} was stored in this stage."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapters.ex
@@ -15624,11 +15634,6 @@ msgid_plural "Questions"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "Question %{number}"
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Question and answer"
@@ -16738,7 +16743,7 @@ msgctxt "plain"
 msgid "Run another round to apply your change."
 msgstr ""
 
-#: lib/apiary/stages/points.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run another round."
 msgstr ""
@@ -20220,7 +20225,7 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
-msgid "The run stopped: %{cause} %{next}"
+msgid "The run stopped: %{cause}"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -24504,6 +24509,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "qory run on a machine"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "question %{number}"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

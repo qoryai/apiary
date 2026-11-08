@@ -353,7 +353,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
           %{text: text, action: :answer, question: get(point, :question)}
 
         _run_again ->
-          %{text: text, action: :run_again, question: nil}
+          %{text: text, action: :run_again, question: nil, fix: get(point, :fix)}
       end
     end
   end

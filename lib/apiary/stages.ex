@@ -1828,8 +1828,11 @@ defmodule Apiary.Stages do
   defp escalate_points({:verdict, :escalate, points}), do: points
   defp escalate_points(_other), do: nil
 
-  # The points of a verdict's file: its list of point objects, nil for none.
-  defp points(points) when is_list(points), do: Enum.filter(points, &is_map/1)
+  # The points of a verdict's file: its list of point objects, nil for none. A run's
+  # point never has `fix`, which only Core writes (`Apiary.Stages.Points`).
+  defp points(points) when is_list(points),
+    do: for(%{} = point <- points, do: Map.take(point, ~w(text action question)))
+
   defp points(_none), do: nil
 
   # The verdict of a run of another workflow as `reported_verdict/1` reads it; a verdict
