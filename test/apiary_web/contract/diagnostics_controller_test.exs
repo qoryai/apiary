@@ -582,12 +582,14 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
           page!(list(key, seed, workspace(scope) <> "&before=" <> run.public_id))
         end)
 
-      # The router's lines alone: the debug lines of the page's database queries, which
-      # show their values, are not checked here.
+      # Neither the router's lines nor the debug lines of the page's database queries.
+      # The key's lookup and the record of its use are logged, and contain neither value.
       refute listed =~ "Processing with"
       refute listed =~ "Parameters"
-      refute listed =~ ~s("before" => )
-      refute listed =~ ~s("workspace" => )
+      assert listed =~ "QUERY OK"
+      refute listed =~ run.public_id
+      refute listed =~ ~s("#{scope.workspace.slug}")
+      refute listed =~ ~s("#{scope.organisation.slug}")
     end
 
     # The features are the node's: observability, which every other needs, cannot be

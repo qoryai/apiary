@@ -35,7 +35,7 @@ defmodule Apiary.Runs.RunList do
   pattern, is left out.
 
   It reads every run of the instance and writes nothing: no read is recorded, and nothing
-  of the runs or the query is logged.
+  of the runs or the query is logged, its database queries' debug lines included.
   """
 
   import Ecto.Query, only: [from: 2, where: 3]
@@ -237,7 +237,9 @@ defmodule Apiary.Runs.RunList do
 
     with {:ok, workspace_id} <- workspace_id(filters.workspace),
          {:ok, before} <- before(filters.before) do
-      rows = Repo.all(query(filters, workspace_id, before))
+      # No query is logged (`log: false`): its parameters and its rows are the runs' and
+      # the request's.
+      rows = Repo.all(query(filters, workspace_id, before), log: false)
       {page, more} = Enum.split(rows, filters.limit)
 
       next =
@@ -254,11 +256,13 @@ defmodule Apiary.Runs.RunList do
 
   defp workspace_id({organisation, workspace}) do
     Repo.one(
-      from w in Workspace,
+      from(w in Workspace,
         join: o in Organisation,
         on: o.id == w.organisation_id,
         where: o.slug == ^organisation and w.slug == ^workspace,
         select: w.id
+      ),
+      log: false
     )
     |> case do
       nil -> {:error, "workspace"}
@@ -269,7 +273,9 @@ defmodule Apiary.Runs.RunList do
   defp before(nil), do: {:ok, nil}
 
   defp before(public_id) do
-    case Repo.one(from r in Run, where: r.public_id == ^public_id, select: r.inserted_at) do
+    case Repo.one(from(r in Run, where: r.public_id == ^public_id, select: r.inserted_at),
+           log: false
+         ) do
       nil -> {:error, "before"}
       at -> {:ok, {at, public_id}}
     end
