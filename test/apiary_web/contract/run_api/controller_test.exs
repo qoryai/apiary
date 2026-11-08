@@ -1496,7 +1496,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       not_open = fn point, question ->
         "Push the questions first, or point at an open question in verdict.json: " <>
-          "point #{point} names question #{question}, which is not open."
+          "point #{point} is about question #{question}, which is not open."
       end
 
       # With no questions pushed, no question is open.

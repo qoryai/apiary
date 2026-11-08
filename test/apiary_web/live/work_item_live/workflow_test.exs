@@ -2725,25 +2725,53 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert WorkItems.count_waiting_on(scope) == 0
     end
 
-    test "an escalated work item: Waiting on you has it for everyone who may resolve it",
+    test "an escalation at a gate of every member waits for the owner only, as Confirm does",
          %{conn: conn, scope: scope} do
       other = member_fixture(scope, :member)
       work_item = at_build(scope, :escalated, round: 3)
       escalate!(work_item, :escalate, "Blocked")
       row = "#work-item-#{work_item.public_id}"
 
-      for conn <- [conn, log_in_user(build_conn(), other.user)] do
-        {:ok, view, _html} = live(conn, list(scope))
-        assert has_element?(view, "#nav-work_items .q-nav-count", "1")
-        assert has_element?(view, "#work-items-views", "Waiting on you 1")
-        {:ok, view, _html} = live(conn, list(scope) <> "?view=you")
-        assert has_element?(view, row)
-      end
+      {:ok, view, _html} = live(conn, list(scope))
+      assert has_element?(view, "#nav-work_items .q-nav-count", "1")
+      assert has_element?(view, "#work-items-views", "Waiting on you 1")
+      {:ok, view, _html} = live(conn, list(scope) <> "?view=you")
+      assert has_element?(view, row)
+
+      reader = log_in_user(build_conn(), other.user)
+      {:ok, view, _html} = live(reader, list(scope))
+      refute has_element?(view, "#nav-work_items .q-nav-count")
+      assert has_element?(view, "#work-items-views", "Waiting on you 0")
 
       {:ok, _} =
         Stages.resolve_escalation(scope, work_item, :close, nil, expect_stage: work_item.stage_id)
 
       assert WorkItems.count_waiting_on(scope) == 0
+    end
+
+    test "an escalation at a gate that lists approvers waits for a listed member only",
+         %{scope: scope} do
+      listed = member_fixture(scope, :member)
+      unlisted = member_fixture(scope, :member)
+
+      work_item =
+        at_build(scope, :escalated, round: 3, approvers: %{"members" => [listed.user.id]})
+
+      escalate!(work_item, :escalate, "Blocked")
+      row = "#work-item-#{work_item.public_id}"
+
+      reader = log_in_user(build_conn(), listed.user)
+      {:ok, view, _html} = live(reader, list(scope))
+      assert has_element?(view, "#work-items-views", "Waiting on you 1")
+      {:ok, view, _html} = live(reader, list(scope) <> "?view=you")
+      assert has_element?(view, row)
+
+      reader = log_in_user(build_conn(), unlisted.user)
+      {:ok, view, _html} = live(reader, list(scope))
+      refute has_element?(view, "#nav-work_items .q-nav-count")
+      assert has_element?(view, "#work-items-views", "Waiting on you 0")
+      {:ok, view, _html} = live(reader, list(scope) <> "?view=you")
+      refute has_element?(view, row)
     end
 
     test "a gate of every member: the counts and Waiting on you stay with the owner, with no query per row",
@@ -3400,8 +3428,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         moved = at_build(scope, :escalated, round: 3)
         escalate!(moved, :escalate, "Blocked")
         {:ok, view, _html} = live(conn, page(scope, moved.number))
-        # Everyone who may resolve the escalation finds it in Waiting on you.
-        assert has_element?(view, "#nav-work_items .q-nav-count", "1")
+        # At a gate of every member, Waiting on you has the escalation for its owner only.
+        assert has_element?(view, "#nav-work_items .q-nav-count") == (unquote(level) == :owner)
 
         view
         |> form("#work-item-stage-escalation-form", %{"note" => "Plan again", "stage" => @shape})
@@ -3422,22 +3450,46 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
-    test "Accept as it is, and Run another round", %{conn: conn, scope: scope} do
-      for how <- ["accept", "another_round"] do
+    test "each button sends the note from the block, Run another round from outside the form",
+         %{conn: conn, scope: scope} do
+      for {how, button} <- [
+            accept: "#work-item-stage-escalation-accept",
+            another_round: "#work-item-stage-escalation-another",
+            close: "#work-item-stage-escalation-close"
+          ] do
         work_item = at_build(scope, :escalated, round: 3)
         push!({:person, scope}, work_item, "explainer", @build)
         escalate!(work_item, :escalate, "Blocked")
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
+        # The note field and Run another round sit in the block, outside the form in the
+        # rail, and name it in their form attribute.
+        assert has_element?(
+                 view,
+                 ~s|#work-item-needs [form="work-item-stage-escalation-form"]#work-item-stage-escalation-note|
+               )
+
         view
-        |> form("#work-item-stage-escalation-form", %{"note" => "Go on"})
-        |> render_submit(%{"how" => how})
+        |> form("#work-item-stage-escalation-form", %{"note" => "Note for #{how}"})
+        |> put_submitter(button)
+        |> render_submit()
 
         confirm_spend(view)
 
-        assert %Escalation{resolution: resolution} = escalation(work_item)
-        assert Atom.to_string(resolution) == how
+        assert %Escalation{resolution: ^how, note: note} = escalation(work_item)
+        assert note == "Note for #{how}"
       end
+    end
+
+    test "escalated with no escalation row: the block with the note and Run another round",
+         %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :escalated, round: 3)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-needs #work-item-stage-escalation-note")
+      assert has_element?(view, "#work-item-needs #work-item-stage-escalation-another")
+      refute has_element?(view, "#work-item-needs-points")
+      refute has_element?(view, "#work-item-stage-waits")
     end
 
     test "no result: no Accept as it is, and a sent accept is refused", %{

@@ -49,6 +49,12 @@ defmodule Apiary.Stages.PointsTest do
            ]
   end
 
+  test "a round limit of one round says round" do
+    assert Points.round_limit(1, 1) == [
+             %{"text" => "1 of 1 round ran.", "action" => "run_again"}
+           ]
+  end
+
   test "failed checks are one point for each output type" do
     assert Points.check_failed(["spec", "mockup"]) == [
              %{"text" => "No spec was stored in this stage.", "action" => "run_again"},
@@ -63,7 +69,7 @@ defmodule Apiary.Stages.PointsTest do
 
     assert stopped(:lost, work_item) == [
              %{
-               "text" => "The run stopped: it stopped reporting and was marked lost.",
+               "text" => "The run stopped: Qory Apiary got no report from it and marked it lost.",
                "action" => "run_again"
              }
            ]

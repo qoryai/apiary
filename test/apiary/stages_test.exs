@@ -787,7 +787,8 @@ defmodule Apiary.StagesTest do
                cause: :run_stopped,
                points: [
                  %{
-                   "text" => "The run stopped: it stopped reporting and was marked lost.",
+                   "text" =>
+                     "The run stopped: Qory Apiary got no report from it and marked it lost.",
                    "action" => "run_again"
                  }
                ]
@@ -875,6 +876,50 @@ defmodule Apiary.StagesTest do
 
       assert [%Escalation{resolution: :another_round, resolved_at: %DateTime{}}] =
                Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+    end
+
+    test "an answer point whose question the run withdrew after its verdict asks for another round",
+         %{scope: scope} do
+      points = [
+        %{
+          "text" => "The ticket describes two baskets.",
+          "action" => "answer",
+          "question" => "q1"
+        },
+        %{"text" => "The ticket links no sale page.", "action" => "run_again"}
+      ]
+
+      # The run asks q1, gives its verdict with a point about q1, then withdraws q1.
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, questions_result(["Which basket?"]))
+          verdict("escalate", points).(run, registered)
+
+          work_item = Repo.get!(WorkItem, run.work_item_id)
+          {_version, document} = Apiary.Explore.Questions.newest(work_item)
+
+          withdrawn =
+            update_in(document["questions"], fn questions ->
+              for question <- questions, do: %{question | "state" => "withdrawn"}
+            end)
+
+          {:ok, _version} =
+            Stages.Artifacts.push_json({:run, run}, work_item, "questions", withdrawn,
+              stage_id: run.stage_id
+            )
+        end)
+
+      # No question is open, so the stage escalates; the point keeps its sentence and asks
+      # for another round, and no point is dropped.
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{cause: :escalate, points: stored} = escalation(work_item)
+
+      assert stored == [
+               %{"text" => "The ticket describes two baskets.", "action" => "run_again"},
+               %{"text" => "The ticket links no sale page.", "action" => "run_again"}
+             ]
     end
 
     test "while answers wait, an open escalation's other actions are refused", %{scope: scope} do
@@ -998,7 +1043,8 @@ defmodule Apiary.StagesTest do
                cause: :run_stopped,
                points: [
                  %{
-                   "text" => "The run stopped: it stopped reporting and was marked lost.",
+                   "text" =>
+                     "The run stopped: Qory Apiary got no report from it and marked it lost.",
                    "action" => "run_again"
                  }
                ]
@@ -1492,9 +1538,13 @@ defmodule Apiary.StagesTest do
 
       work_item = work_item |> end_run!(verdict("passed")) |> end_run!(verdict("passed"))
 
-      # At the limit, the escalation has one point for each failed check, and status shows
-      # the points instead of the gaps.
-      points = [%{"text" => "No mockup was stored in this stage.", "action" => "run_again"}]
+      # At the limit, the escalation has the point of the rounds that ran and one for each
+      # failed check, and status shows the points instead of the gaps.
+      points = [
+        %{"text" => "3 of 3 rounds ran.", "action" => "run_again"},
+        %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
+      ]
+
       assert %Escalation{cause: :round_limit, points: ^points} = escalation(work_item)
       assert %{gaps: nil, escalation: %{points: ^points}} = Stages.status(work_item)
       assert [%{kind: :check}, %{kind: :check}] = Stages.notes(work_item)

@@ -280,7 +280,7 @@ defmodule Apiary.Stages.RunnerTest do
 
       outcome = Runner.step(seq, pos(0, 0, 1), {:run, {:verdict, nil, nil}})
       assert outcome.state == :escalated
-      assert outcome.actions == [{:escalate, :round_limit, [again("1 of 1 rounds ran.")]}]
+      assert outcome.actions == [{:escalate, :round_limit, [again("1 of 1 round ran.")]}]
     end
 
     test "questions wait; the answers run the same workflow as the next round" do
@@ -340,10 +340,11 @@ defmodule Apiary.Stages.RunnerTest do
       assert outcome.state == :escalated
       assert outcome.position.entry == 2
 
-      # One point for each failed check, as check_failed has them.
+      # The point of the rounds that ran, then one for each failed check.
       assert outcome.actions == [
                {:escalate, :round_limit,
                 [
+                  again("3 of 3 rounds ran."),
                   again("No demo-video was stored in this stage."),
                   again("No change was stored in this stage.")
                 ]}
