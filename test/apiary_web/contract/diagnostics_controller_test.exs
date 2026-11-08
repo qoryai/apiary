@@ -561,6 +561,35 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       assert_unauthorized(list(key, seed, "limit=0"))
     end
 
+    # The router logs a route's dispatch at debug with its parameters, the query's among
+    # them; the run list's route is not logged. The run diagnostics route, which is, shows
+    # that the capture sees the line.
+    test "logs no parameters of the query", %{key: key, seed: seed, scope: scope} do
+      run = run_at!(scope, DateTime.utc_now())
+      level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: level) end)
+
+      shown =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          assert diagnose(key.key_id, seed, run.public_id).status == 200
+        end)
+
+      assert shown =~ ~s(Parameters: %{"run_id" => "#{run.public_id}"})
+
+      listed =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          page!(list(key, seed, workspace(scope) <> "&before=" <> run.public_id))
+        end)
+
+      # The router's lines alone: the debug lines of the page's database queries, which
+      # show their values, are not checked here.
+      refute listed =~ "Processing with"
+      refute listed =~ "Parameters"
+      refute listed =~ ~s("before" => )
+      refute listed =~ ~s("workspace" => )
+    end
+
     # The features are the node's: observability, which every other needs, cannot be
     # left out of a set the tag parses, so the test switches it off for its run.
     @tag with_features: [:observability]
