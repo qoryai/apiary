@@ -1207,10 +1207,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   after a release or a close, until the starter reports the machine `gone`. `deleting`
   and `delete_failed` keep the slot. A claim with no machine frees its slot when it
   ends, as before. A lapsed lease still frees the slot and puts the run back in the
-  queue. A machine that shows up after the slot was freed by a lapse, a release, a close
-  or an undo takes the slot back, even past the limit, so the pool's next claims wait: a
-  `dispatched` answered `409`, a run code redemption refused because the claim is stale
-  or ended, or a report other than `gone`. A slot whose machine is never reported `gone`
+  queue. A machine that shows up after the slot was freed takes the slot back, even past
+  the limit, so the pool's next claims wait: after a lapse, a release, a close or an
+  undo, a `dispatched` answered `409` or `410`, or a report other than `gone`; after a
+  lapse or a release, a run code redemption refused because the claim is stale or ended.
+  A close or an undo deletes the run code, so a redemption after one is not counted. A slot whose machine is never reported `gone`
   is freed 60 minutes after the machine's lifetime (90 minutes for a prebuild, else
   1,470), counted from the last `dispatched`, handover, report or late machine, or from
   the claim when there is none. The answers of the endpoints do not change.

@@ -334,8 +334,53 @@ defmodule Apiary.Runs.RunCodeTest do
 
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, claimed.queued.id)
 
+      # The late redemption marked a machine: the lapse keeps the slot, and the pool holds
+      # it with the slot of the run the setup handed over.
+      assert %Dispatch{late_machine_at: %DateTime{}, stale_at: %DateTime{}, slot_freed_at: nil} =
+               Repo.get!(Dispatch, claimed.dispatch.id)
+
+      assert Slots.held(ctx.pool.id) == 2
+
       assert RunCode.redeem(request, relayed_by: ctx.gateway.id, now: past_lease) ==
                {:error, :unauthorized}
+    end
+
+    test "of a late code with a proof that does not verify writes no late machine", ctx do
+      claimed = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, claimed.dispatch.public_id, %{reason: "stopped"})
+      now = DateTime.utc_now()
+
+      # Signed by one key pair, sent with the public key of another.
+      request = %{
+        request(claimed.handed.run_code, ed25519_key_pair(), now)
+        | public_key: ed25519_key_pair().encoded
+      }
+
+      assert RunCode.redeem(request, relayed_by: ctx.gateway.id, now: now) ==
+               {:error, :unauthorized}
+
+      assert %Dispatch{late_machine_at: nil, slot_freed_at: %DateTime{}} =
+               Repo.get!(Dispatch, claimed.dispatch.id)
+
+      assert Slots.held(ctx.pool.id) == 1
+    end
+
+    test "of a late code past the code's limit writes no late machine, and is unauthorized",
+         ctx do
+      claimed = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, claimed.dispatch.public_id, %{reason: "stopped"})
+      limit = [rate: 1, burst: 1]
+      assert :ok = Apiary.Runs.RateLimit.check({:run_code, claimed.run.id}, limit)
+      now = DateTime.utc_now()
+      request = request(claimed.handed.run_code, ed25519_key_pair(), now)
+
+      assert RunCode.redeem(request, relayed_by: ctx.gateway.id, now: now, code_limit: limit) ==
+               {:error, :unauthorized}
+
+      assert %Dispatch{late_machine_at: nil, slot_freed_at: %DateTime{}} =
+               Repo.get!(Dispatch, claimed.dispatch.id)
+
+      assert Slots.held(ctx.pool.id) == 1
     end
 
     test "of a code that carries another prefix, or another fingerprint", ctx do

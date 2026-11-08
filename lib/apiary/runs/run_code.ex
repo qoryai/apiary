@@ -61,8 +61,9 @@ defmodule Apiary.Runs.RunCode do
   #
   # **A late machine.** A code refused at step 2 because it expired, its run ended, or
   # its dispatch is stale, ended or past its lease, whose proof verifies, tells that a
-  # machine came up for a dispatch that takes none: the dispatch the run was registered
-  # for, not handed over, locked `FOR UPDATE` after the run, keeps the time
+  # machine came up for a dispatch that takes none: within the code's limit of step 4,
+  # the dispatch the run was registered for, not handed over, locked `FOR UPDATE` after
+  # the run, keeps the time
   # (`Apiary.Dispatches.Slots.late_machine/2`) and holds its slot of its pool's limit
   # until the machine is reported `gone`. That write commits, and the answer is still
   # `{:error, :unauthorized}`. A close deletes the run with its code
@@ -213,21 +214,23 @@ defmodule Apiary.Runs.RunCode do
            {%{run_id: run.node_run_id, run_key: given(run), documents: run.run_documents}, nil}}
       end
     else
-      {:late, %Run{} = run} -> late_machine(run, request, now)
+      {:late, %Run{} = run} -> late_machine(run, request, now, code_limit)
       refused -> refused
     end
   end
 
-  # A code refused as late whose proof verifies: the dispatch the run was registered for,
-  # not handed over, keeps the late machine (the moduledoc), committed, and the answer is
-  # `{:error, :unauthorized}` all the same (`broadcast_redeemed/1`).
-  defp late_machine(%Run{} = run, request, now) do
+  # A code refused as late whose proof verifies, within the code's limit: the dispatch the
+  # run was registered for, not handed over, keeps the late machine (the moduledoc),
+  # committed. The answer is `{:error, :unauthorized}` either way, past the limit too, so
+  # the answer shows nothing about the code (`broadcast_redeemed/1`).
+  defp late_machine(%Run{} = run, request, now, code_limit) do
     with {:ok, _public_key} <- proven(request),
+         :ok <- within_code_limit(run, code_limit),
          %Dispatch{} = dispatch <- late_dispatch(run) do
       _held = Slots.late_machine(dispatch, now)
       {:ok, :late_machine}
     else
-      _unproven_or_none -> {:error, :unauthorized}
+      _unproven_limited_or_none -> {:error, :unauthorized}
     end
   end
 
