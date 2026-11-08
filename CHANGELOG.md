@@ -1310,6 +1310,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   intermediate CA certificates were compromised (Debian DSA-6572-1).
 - plug_crypto is updated to 2.2.1, which fixes CVE-2026-105963: a call to `Plug.Crypto` with
   an argument of the wrong type could write the secret key base to the logs.
+- Bandit 1.14.1, Ecto 3.14.3, Phoenix.HTML 4.4.0, and JSV 0.26.2 close published
+  advisories, among them a WebSocket message that made the server hold about 150 times the
+  message size limit in memory.
 - The log filter replaces an invitation link's token before it looks for `qak_` and an
   enrolment code's prefix. Before, a token that contained one of them could leave up to
   39 of its 43 characters in the log line.

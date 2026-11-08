@@ -307,9 +307,9 @@ defmodule Apiary.Processes do
   @doc """
   description/1 is `text` as a stage's `description`: each CRLF and each lone CR as LF,
   no white space at the start or the end, and at most `description_limit/0` code points,
-  of whole graphemes. JSON Schema counts `maxLength` in code points, and JSV in graphemes;
-  a text that fits the first fits the second. A first grapheme over the limit leaves the
-  empty text. The cut stops at the first grapheme over the limit.
+  of whole graphemes. JSON Schema and JSV count `maxLength` in code points, so the text
+  fits the schema's `maxLength`. A first grapheme over the limit leaves the empty text.
+  The cut stops at the first grapheme over the limit.
   """
   @spec description(String.t()) :: String.t()
   def description(text) when is_binary(text) do

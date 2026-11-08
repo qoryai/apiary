@@ -6,7 +6,8 @@ defmodule Apiary.Connections.SettingsBudgetTest do
   # settings within the budget, the warning it logs says which it ran out of, reductions
   # or heap, the caller lives on and the next write takes the lock. The budget counts
   # work, not time, so the reason is asserted and the time is not: a check its time
-  # stopped, 10 s, would log `reason=time`.
+  # stopped, 10 s, would log `reason=time`. A backtracking pattern ends the check before
+  # the budget: JSV stops the match at a step limit, and the settings are invalid.
   use Apiary.DataCase, async: false
 
   import Apiary.DescriptionFixtures
@@ -18,8 +19,8 @@ defmodule Apiary.Connections.SettingsBudgetTest do
 
   @moduletag needs: :secrets
 
-  # Without the budget, the checks of the writes below took 33 s, 5.7 s and 1.19 GB, and
-  # 24.5 s.
+  # Without the budget, the checks of the first two writes below took 33 s, and 5.7 s and
+  # 1.19 GB.
 
   @url "https://downloads.example.com/acme/tracker/description.json"
 
@@ -132,7 +133,7 @@ defmodule Apiary.Connections.SettingsBudgetTest do
              Connections.update_connection(scope, connection, %{"applies_to" => "all"})
   end
 
-  test "change_release refuses settings that the new release's check runs out of reductions on",
+  test "change_release refuses settings whose check JSV's step limit ends on the new release's backtracking patterns",
        %{scope: scope} do
     first = release!(scope, %{"type" => "string"})
     url = String.duplicate("a", 60_000) <> "!"
@@ -140,14 +141,21 @@ defmodule Apiary.Connections.SettingsBudgetTest do
     {:ok, connection} =
       Connections.create_integration(scope, first.id, %{"settings" => %{"url" => url}})
 
-    # 1000 backtracking patterns, each spending the pattern budget of JSV on the setting.
+    # 1000 backtracking patterns. JSV stops the first match against the setting at a step
+    # limit and ends the check with one error, `indeterminate_pattern`, before the budget.
     patterns = %{"anyOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
     second = release!(scope, %{"$ref" => "#/$defs/p"}, %{"p" => patterns}, "0.4.0")
 
-    over_budget(
-      fn -> Connections.change_release(scope, connection, second.id) end,
-      "reductions"
-    )
+    flush()
+    monitors = Process.info(self(), :monitors)
+
+    {result, log} =
+      with_log(fn -> Connections.change_release(scope, connection, second.id) end)
+
+    assert result == {:error, {:integration_settings_invalid, %{valid: false}}}
+    refute log =~ "settings check was stopped"
+    assert Process.info(self(), :monitors) == monitors
+    refute_received _any
 
     assert Repo.get!(Connection, connection.id).release_id == first.id
   end

@@ -1083,11 +1083,10 @@ defmodule Apiary.Integrations.DescriptionTest do
     # budget, measured: 1.2 s to 1.7 s at 20 levels of allOf and for 1000 patterns against
     # 1024 strings, 5 s to 5.7 s and 1.19 GB at 20 levels of allOf whose leaf refuses the
     # value, 5.6 s at 20 levels of anyOf, 33 s at 24 levels of allOf and over 30 s in
-    # draft-07; 24 s to 28 s for 1000 backtracking patterns against a string of 60001
-    # bytes, 15 s against 128 settings, 9.5 s against a list of 100 strings, and 13.3 s for
-    # 1000 email formats against a string of 60 KB. With it, each ran out within 350 ms.
-    # The reason is asserted and the time is not: a check its time stopped, 10 s, would log
-    # `reason=time`.
+    # draft-07, and 13.3 s for 1000 email formats against a string of 60 KB. With it, each
+    # ran out within 350 ms. The reason is asserted and the time is not: a check its time
+    # stopped, 10 s, would log `reason=time`. A backtracking pattern ends the check before
+    # the budget: JSV stops the match at a step limit, and the settings are invalid.
 
     defp with_settings_schema(schema) do
       assert {:ok, description} = parse(tracker_description(%{"settings" => schema}))
@@ -1135,8 +1134,28 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert caller < 1_000_000, "#{caller} reductions in the caller"
     end
 
-    # 1000 backtracking patterns, each spending the pattern budget of JSV on a value.
-    defp backtracking, do: %{"anyOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
+    # `settings` refused before the budget, at JSV's step limit for a pattern match: invalid
+    # settings without `budget: :exceeded`, no warning, and little work in the caller.
+    defp refused_at_step_limit(description, settings) do
+      {{caller, result}, log} =
+        with_log(fn ->
+          reductions(fn -> Description.check_settings(description, settings) end)
+        end)
+
+      assert result == {:error, {:integration_settings_invalid, %{valid: false}}}
+      refute log =~ "settings check was stopped"
+      assert caller < 1_000_000, "#{caller} reductions in the caller"
+    end
+
+    # 1000 backtracking patterns in `keyword`. JSV stops a match after a number of
+    # backtracking steps that grows with the length of the value, and ends the check with
+    # one error, `indeterminate_pattern`: the match against `value` reaches that limit.
+    defp backtracking(value, keyword \\ "anyOf") do
+      assert {:error, %JSV.ValidationError{errors: [%{kind: :indeterminate_pattern}]}} =
+               JSV.validate(value, JSV.build!(%{"pattern" => "^(a+)+$"}))
+
+      %{keyword => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
+    end
 
     test "a schema that doubles its work at each of 20 or 24 levels runs out of reductions" do
       over_budget(doubling(20), %{"a" => "s"}, "reductions")
@@ -1176,43 +1195,57 @@ defmodule Apiary.Integrations.DescriptionTest do
       over_budget(description, %{"x" => List.duplicate("a", 1024)}, "heap")
     end
 
-    test "1000 backtracking patterns run out of reductions on a long setting, 128, a list" do
+    test "1000 backtracking patterns end the check of a long setting, 128, a list at JSV's step limit" do
+      long = String.duplicate("a", 60_000) <> "!"
+
       one =
         with_settings_schema(%{
           "type" => "object",
           "properties" => %{"s1" => %{"$ref" => "#/$defs/p"}},
-          "$defs" => %{"p" => backtracking()}
+          "$defs" => %{"p" => backtracking(long)}
         })
 
-      over_budget(one, %{"s1" => String.duplicate("a", 60_000) <> "!"}, "reductions")
+      refused_at_step_limit(one, %{"s1" => long})
+
+      short = String.duplicate("a", 60) <> "!"
 
       many =
         with_settings_schema(%{
           "type" => "object",
           "properties" => Map.new(1..128, &{"s#{&1}", %{"$ref" => "#/$defs/p"}}),
-          "$defs" => %{"p" => backtracking()}
+          "$defs" => %{"p" => backtracking(short)}
         })
 
-      over_budget(
-        many,
-        Map.new(1..128, &{"s#{&1}", String.duplicate("a", 60) <> "!"}),
-        "reductions"
-      )
+      refused_at_step_limit(many, Map.new(1..128, &{"s#{&1}", short}))
+
+      item = String.duplicate("a", 24) <> "!"
 
       list =
         with_settings_schema(%{
           "type" => "object",
-          "properties" => %{"l" => %{"type" => "array", "items" => backtracking()}}
+          "properties" => %{"l" => %{"type" => "array", "items" => backtracking(item)}}
         })
 
-      over_budget(
-        list,
-        %{"l" => List.duplicate(String.duplicate("a", 24) <> "!", 100)},
-        "reductions"
-      )
+      refused_at_step_limit(list, %{"l" => List.duplicate(item, 100)})
     end
 
-    # Without the budget, each of the next three checks passed 2000000000 reductions
+    test "1000 backtracking patterns in items.oneOf end the check of 1024 strings at JSV's step limit" do
+      item = String.duplicate("a", 59) <> "!"
+
+      description =
+        with_settings_schema(%{
+          "type" => "object",
+          "properties" => %{
+            "x" => %{"type" => "array", "items" => backtracking(item, "oneOf")}
+          }
+        })
+
+      settings = %{"x" => List.duplicate(item, 1024)}
+      assert byte_size(Apiary.Kinds.CanonicalJSON.encode!(settings)) in 60_000..65_536
+      refused_at_step_limit(description, settings)
+    end
+
+    # Without the budget, each of the next two checks passed 2000000000 reductions
     # unfinished.
 
     test "a $ref chain that doubles at each of 40 levels runs out of reductions" do
@@ -1239,23 +1272,6 @@ defmodule Apiary.Integrations.DescriptionTest do
       # `t` refuses, so each level tries both branches.
       settings = %{"t" => Enum.reduce(1..62, [1], fn _, inner -> [inner] end)}
       over_budget(description, settings, "heap")
-    end
-
-    test "1000 backtracking patterns in items.oneOf against 1024 strings run out of reductions" do
-      description =
-        with_settings_schema(%{
-          "type" => "object",
-          "properties" => %{
-            "x" => %{
-              "type" => "array",
-              "items" => %{"oneOf" => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
-            }
-          }
-        })
-
-      settings = %{"x" => List.duplicate(String.duplicate("a", 59) <> "!", 1024)}
-      assert byte_size(Apiary.Kinds.CanonicalJSON.encode!(settings)) in 60_000..65_536
-      over_budget(description, settings, "reductions")
     end
 
     test "1000 email formats against a string of 60 KB run out of heap" do

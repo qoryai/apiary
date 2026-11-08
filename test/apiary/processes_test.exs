@@ -246,7 +246,8 @@ defmodule Apiary.ProcessesTest do
       assert String.length(text) == 250
       assert Processes.validate(edit(&Map.put(&1, "description", text))) == :ok
 
-      # A text of 300 graphemes and 600 code points: within JSV's count, over the schema's.
+      # A text of 301 graphemes and 601 code points: the cut keeps 499, as one more
+      # grapheme would go over the schema's maxLength of 500.
       assert Processes.description("a" <> String.duplicate(accent, 300)) ==
                "a" <> String.duplicate(accent, 249)
     end
