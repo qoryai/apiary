@@ -16,13 +16,12 @@ defmodule Apiary.Dispatches.Slots do
   # run code), the starter reported its machine's end (`machine_end_state`), or a machine
   # showed up too late (`late_machine_at`, `late_machine/2`); and for a stale dispatch
   # whose slot is held, as only `hold_again/2` holds a stale dispatch's slot. A `gone`
-  # with no report and no `dispatched` before it frees the slot as any `gone` does.
-  # Every path that ends a dispatch frees through `due/2`: its release
-  # (`free_slot/2`, `Apiary.Dispatches.Release`), its end before its handover because
-  # its work item was closed or undone or its run could not be formed, and its run's end,
-  # the lost-run check and a machine stopped among them (`free/3`, through
-  # `free_due/2`). So does a report of `gone` (`free_slot/2`). A slot not due waits for
-  # that report.
+  # with no report and no `dispatched` before it frees the slot as any `gone` does. Every
+  # path that ends a dispatch frees through `due/2`: its release (`free_slot/2`,
+  # `Apiary.Dispatches.Release`), its end before its handover because its work item was
+  # closed or undone or its run could not be formed, and its run's end, the lost-run check
+  # and a machine stopped among them (`free/3`, through `free_due/2`). So does a report of
+  # `gone` (`free_slot/2`). A slot not due waits for that report.
   #
   # **The safety net.** A dispatch done or handed over whose slot is still held has it
   # freed once the latest of its `dispatched_at`, its `handed_over_at` (a redemption of
