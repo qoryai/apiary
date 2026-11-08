@@ -386,6 +386,23 @@ defmodule Apiary.ProcessesTest do
                {:gate_changed, @shape, %{to: %{"kind" => "none"}}}
              ] = Processes.diff(default(), newer)
     end
+
+    test "lists a changed description, added and removed, with the text before and after" do
+      described =
+        edit(&if(&1["id"] == @shape, do: Map.put(&1, "description", "Plan it."), else: &1))
+
+      assert Processes.diff(default(), described) ==
+               [{:description_changed, @shape, %{from: nil, to: "Plan it."}}]
+
+      changed =
+        edit(described, &if(&1["id"] == @shape, do: %{&1 | "description" => "Plan."}, else: &1))
+
+      assert Processes.diff(described, changed) ==
+               [{:description_changed, @shape, %{from: "Plan it.", to: "Plan."}}]
+
+      assert Processes.diff(described, default()) ==
+               [{:description_changed, @shape, %{from: "Plan it.", to: nil}}]
+    end
   end
 
   describe "placement_check/3" do

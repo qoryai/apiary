@@ -101,6 +101,7 @@ defmodule Apiary.Processes do
            | :stage_removed
            | :stage_renamed
            | :stage_moved
+           | :description_changed
            | :sequence_changed
            | :inputs_changed
            | :outputs_changed
@@ -832,15 +833,16 @@ defmodule Apiary.Processes do
   diff/2 is what changed from `older` to `newer`, two versions or documents; `older` nil
   for none, as before version 1. First a change of the document's `machine`, then, for
   each stage of `newer` in its order, whether it was added, or renamed, moved, or had its
-  sequence, inputs, outputs or gate changed, then each stage `older` had and `newer`
-  does not, in `older`'s order. A stage is moved when its place among the stages both
-  have changed, beyond what another stage's move explains.
+  description, sequence, inputs, outputs or gate changed, then each stage `older` had and
+  `newer` does not, in `older`'s order. A stage is moved when its place among the stages
+  both have changed, beyond what another stage's move explains.
 
   Each change is `{kind, stage_id, detail}`: `%{name, position}` for an added stage
   (position from 0), `%{name}` for a removed one, `%{from, to}` for the rest, the value
   before and after (a position for a move, the document's machine for
-  `:machine_changed`, whose stage id is nil). A document with no `machine` and one with
-  `default` run on the same type: between them there is no `:machine_changed`.
+  `:machine_changed`, whose stage id is nil, and nil for a stage with no description). A
+  document with no `machine` and one with `default` run on the same type: between them
+  there is no `:machine_changed`.
   """
   @spec diff(Version.t() | document | nil, Version.t() | document) :: [change]
   def diff(%Version{document: older}, newer), do: diff(older, newer)
@@ -886,6 +888,8 @@ defmodule Apiary.Processes do
     [
       old["name"] != new["name"] && {:stage_renamed, id, %{from: old["name"], to: new["name"]}},
       move && {:stage_moved, id, move},
+      old["description"] != new["description"] &&
+        {:description_changed, id, %{from: old["description"], to: new["description"]}},
       field_change(:sequence_changed, id, old, new, "sequence"),
       field_change(:inputs_changed, id, old, new, "inputs"),
       field_change(:outputs_changed, id, old, new, "outputs"),

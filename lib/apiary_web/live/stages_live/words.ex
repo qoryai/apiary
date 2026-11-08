@@ -267,6 +267,9 @@ defmodule ApiaryWeb.StagesLive.Words do
         to: to + 1
       )
 
+  def change({:description_changed, id, _detail}, _older, newer, _people),
+    do: gettext("Changed the description of %{name}.", name: name(newer, id))
+
   def change({:sequence_changed, id, _detail}, _older, newer, _people),
     do: gettext("Changed the sequence of %{name}.", name: name(newer, id))
 

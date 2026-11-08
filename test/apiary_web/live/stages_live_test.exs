@@ -2741,9 +2741,11 @@ defmodule ApiaryWeb.StagesLiveTest do
         |> Draft.update_stage(id_of("Shape"), &Map.put(&1, "name", "Plan"))
         |> Draft.move(id_of("Release"), -1)
         |> Draft.update_stage(id_of("Build"), &Draft.add_entry(&1, "explore-a-ticket", nil))
+        |> Draft.update_stage(id_of("Verify"), &Map.put(&1, "description", "Check it."))
 
       lines = for change <- Processes.diff(old, new), do: Words.change(change, old, new)
 
+      assert "Changed the description of Verify." in lines
       assert "Changed the default machine type from Default to large." in lines
       assert "Renamed the stage Shape to Plan." in lines
       assert "Changed the sequence of Build." in lines
