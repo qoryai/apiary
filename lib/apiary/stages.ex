@@ -1696,10 +1696,10 @@ defmodule Apiary.Stages do
 
     cond do
       open != [] ->
-        {:questions, question_texts(open), escalate_points(escalate_verdict(run))}
+        {:questions, question_texts(open), escalate_points(escalate_verdict(run), open)}
 
       escalate = escalate_verdict(run) ->
-        escalate
+        open_points(escalate, open)
 
       stopped?(run) ->
         case failed_proposal(run) do
@@ -1766,10 +1766,10 @@ defmodule Apiary.Stages do
 
     cond do
       open != [] ->
-        {:questions, question_texts(open), escalate_points(verdict_or_none(run))}
+        {:questions, question_texts(open), escalate_points(verdict_or_none(run), open)}
 
       verdict = verdict_or_none(run) ->
-        verdict
+        open_points(verdict, open)
 
       match?(
         %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
@@ -1824,9 +1824,30 @@ defmodule Apiary.Stages do
     end
   end
 
-  # The points of a verdict `escalate`, nil for any other verdict and for none.
-  defp escalate_points({:verdict, :escalate, points}), do: points
-  defp escalate_points(_other), do: nil
+  # The points of a verdict `escalate`, with the open questions `open` (`open_points/2`);
+  # nil for any other verdict and for none.
+  defp escalate_points(verdict, open) do
+    case open_points(verdict, open) do
+      {:verdict, :escalate, points} -> points
+      _other -> nil
+    end
+  end
+
+  # The verdict `escalate` with each `answer` point whose question is not among the open
+  # questions `open` turned into a `run_again` point with the same sentence: a question
+  # withdrawn after the verdict can no longer be answered. No point is dropped.
+  defp open_points({:verdict, :escalate, points}, open) when is_list(points) do
+    ids = MapSet.new(open, & &1["id"])
+
+    {:verdict, :escalate,
+     for point <- points do
+       if point["action"] == "answer" and not MapSet.member?(ids, point["question"]),
+         do: point |> Map.delete("question") |> Map.put("action", "run_again"),
+         else: point
+     end}
+  end
+
+  defp open_points(verdict, _open), do: verdict
 
   # The points of a verdict's file: its list of point objects, nil for none. A run's
   # point never has `fix`, which only Core writes (`Apiary.Stages.Points`).
