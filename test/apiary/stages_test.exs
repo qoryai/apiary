@@ -779,7 +779,7 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{attempt: 2, result_outcome: :none} = newest_run(work_item)
       assert %{status: :no_result} = Explore.current(work_item, DateTime.utc_now())
       refute Stages.status(work_item, scope).gate.approvable?
-      assert {:error, _refused} = WorkItems.confirm(scope, work_item, 2)
+      assert WorkItems.confirm(scope, work_item, 2) == {:error, :not_waiting}
       assert [%{attempt: 2, verdict: :failed} | _] = Stages.runs(work_item)
     end
 
@@ -908,7 +908,7 @@ defmodule Apiary.StagesTest do
           set: [stage_state: :running]
         )
 
-      [file] = Stages.Artifacts.newest_of_run(run.id, "verdict", "main").files
+      [file] = Stages.Artifacts.newest_of_run(run, "verdict", "main").files
       {:ok, path} = Artifacts.open_file(file)
       File.rename!(path, path <> ".away")
       on_exit(fn -> File.rename(path <> ".away", path) end)
@@ -1417,6 +1417,30 @@ defmodule Apiary.StagesTest do
       assert work_item.stage_state == :escalated
       assert %Escalation{cause: :escalate, round: 1, gaps: ^gaps} = escalation(work_item)
       assert %DispatchRun{explore: false, result_outcome: :none} = newest_run(work_item)
+    end
+
+    test "a verdict the store cannot read counts as a verdict with no value", %{scope: scope} do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      # Gaps no other test writes, so no other test stores the same file.
+      gaps = "The demo skips step #{System.unique_integer([:positive])}."
+
+      # The run pushes changes-requested, and its file is gone from the store at the exit.
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          verdict("changes-requested", gaps).(run, registered)
+          [file] = Stages.Artifacts.newest_of_run(run, "verdict", "main").files
+          {:ok, path} = Artifacts.open_file(file)
+          File.rename!(path, path <> ".away")
+          on_exit(fn -> File.rename(path <> ".away", path) end)
+        end)
+
+      run = newest_run(work_item)
+      assert Stages.reported_verdict(run) == {:error, :store_unavailable}
+      # The exit is kept, and the stage goes on as after a run with no verdict.
+      assert %DispatchRun{end_cause: :run_ended, result_outcome: :none} = run
+      assert work_item.stage_state == :at_gate
+      refute escalation(work_item)
     end
 
     test "open questions come before the verdict escalate", %{scope: scope} do

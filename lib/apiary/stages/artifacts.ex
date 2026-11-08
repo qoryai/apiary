@@ -9,6 +9,7 @@ defmodule Apiary.Stages.Artifacts do
 
   alias Apiary.Artifacts
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Version}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Repo
 
   # push/5 stores a new version of the work item's artifact of `type`
@@ -43,16 +44,17 @@ defmodule Apiary.Stages.Artifacts do
   def exists?(work_item, stage_id, type), do: Artifacts.exists?(work_item, stage_id, type)
 
   # newest_of_run/3 is the newest version of the artifact of `type` and `name` that the
-  # run of the queue `run_id` pushed, with its files in the order of their names; nil for
+  # run of the queue `run` pushed, with its files in the order of their names; nil for
   # none.
   @doc false
-  @spec newest_of_run(Ecto.UUID.t(), String.t(), String.t()) :: Version.t() | nil
-  def newest_of_run(run_id, type, name) do
+  @spec newest_of_run(DispatchRun.t(), String.t(), String.t()) :: Version.t() | nil
+  def newest_of_run(%DispatchRun{id: run_id, workspace_id: workspace_id}, type, name) do
     Repo.one(
       from v in Version,
         join: a in Artifact,
         on: a.id == v.artifact_id,
-        where: v.run_id == ^run_id and a.type == ^type and a.name == ^name,
+        where: v.run_id == ^run_id and a.workspace_id == ^workspace_id,
+        where: a.type == ^type and a.name == ^name,
         order_by: [desc: v.number],
         limit: 1,
         preload: [files: ^from(f in ArtifactFile, order_by: f.filename)]

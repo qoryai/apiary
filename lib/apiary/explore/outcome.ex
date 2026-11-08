@@ -8,8 +8,8 @@ defmodule Apiary.Explore.Outcome do
   #     that stopped. A question left open in an earlier take in does not count;
   #   * `:none` when the run ended by its exit and its newest `verdict` named `main` is
   #     `escalate` (`Apiary.Stages.reported_verdict/1`): its stage escalates, so no
-  #     proposal of the take in waits for a confirmation, also not one an earlier run
-  #     pushed. A verdict other than `escalate` counts as none;
+  #     proposal of the take in is at the gate for a confirmation, also not one an earlier
+  #     run pushed. A verdict other than `escalate` counts as none;
   #   * `:proposal` when a run of its take in, this one or an earlier one, pushed a
   #     version of the work item's `proposal` named `main`, the one Explore reads
   #     (`Apiary.WorkItems.Explore.proposal/2`), and the run did not stop: its registered

@@ -37,10 +37,9 @@ defmodule Apiary.Dispatches.Settle do
   # at its end is left with no outcome (`Outcome.at_end/1` is nil), with a warning in the
   # log that has the run's id, so the sweep reads it again. With the workflow model on,
   # the stage runner raises for the end of the newest run of a running stage
-  # (`Apiary.Stages`), so the end's
-  # transaction rolls back and the lost-run check ends the run again at a later tick
-  # (`Apiary.Dispatches.RunEnd.lose/3`). Any other run ended `lost` is then not settled,
-  # since the sweep reads `run_ended` runs alone.
+  # (`Apiary.Stages`), so the end's transaction rolls back and the lost-run check ends the
+  # run again at a later tick (`Apiary.Dispatches.RunEnd.lose/3`). Any other run ended
+  # `lost` is then not settled, since the sweep reads `run_ended` runs alone.
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the work item's
@@ -218,7 +217,7 @@ defmodule Apiary.Dispatches.Settle do
       ids = "dispatch_run=#{id} work_item=#{work_item && work_item.public_id}"
 
       if verdict_unread?(work_item, dispatch_run) do
-        version = Apiary.Stages.Artifacts.newest_of_run(id, "verdict", "main")
+        version = Apiary.Stages.Artifacts.newest_of_run(dispatch_run, "verdict", "main")
 
         "run outcome not stored, newest verdict unreadable #{ids} " <>
           "verdict_version=#{version && version.public_id}"

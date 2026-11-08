@@ -348,7 +348,7 @@ defmodule Apiary.Dispatches.SettleTest do
       # Gaps no other test writes, so no other test stores the same file.
       escalate!(handed, "Which basket #{System.unique_integer([:positive])}?")
 
-      version = Apiary.Stages.Artifacts.newest_of_run(handed.dispatch_run.id, "verdict", "main")
+      version = Apiary.Stages.Artifacts.newest_of_run(queue_run!(handed), "verdict", "main")
       [file] = version.files
       {:ok, path} = Apiary.Artifacts.open_file(file)
       File.rename!(path, path <> ".away")
@@ -743,7 +743,7 @@ defmodule Apiary.Dispatches.SettleTest do
                sql: :no_result
              }
 
-      assert {:error, _refused} = WorkItems.confirm(ctx.scope, work_item!(second), 2)
+      assert WorkItems.confirm(ctx.scope, work_item!(second), 2) == {:error, :not_waiting}
       refute Repo.get_by(Confirmation, work_item_id: work_item.id)
     end
 
