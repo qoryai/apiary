@@ -82,7 +82,9 @@ Returns `200` with the work item snapshot:
   "outputs": [
     {"type": "demo-video", "required": true, "version": null, "check": "missing"}
   ],
-  "verdict": {"verdict": "changes-requested", "gaps": "...", "version": {"id": "av_...", "number": 1}},
+  "verdict": {"verdict": "escalate",
+              "points": [{"text": "...", "action": "answer", "question": "q4"}],
+              "version": {"id": "av_...", "number": 1}},
   "gaps": "...",
   "ticket": {"external_ref": "...", "url": "...", "title": "...", "body": "...",
              "filed_by": {"name": "Dana", "kind": "person"}, "filed_at": "...", "collection": "..."},
@@ -101,8 +103,10 @@ Returns `200` with the work item snapshot:
   there is none.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
-- `verdict` is the work item's newest verdict, or null for none. `gaps` is the stage's
-  gaps.
+- `verdict` is the work item's newest verdict, or null for none. `points` is its list of
+  points, as the verdict's file has them, or null for a verdict with none.
+- `gaps` is why the stage waits for a workflow, or the failed checks that started its
+  round; null otherwise.
 - `ticket`, `instruction`, `comments` and `comments_omitted` are the same as in
   Explore's input, within the same bound: at most 768 KiB encoded, with the oldest
   comments left out first and counted in `comments_omitted`. A test work item has no
@@ -396,23 +400,38 @@ Checks, in order, after the checks of every request:
 The body, at most 64 KiB:
 
 ```json
-{"verdict": "changes-requested", "gaps": "The demo skips the gift card step."}
+{"verdict": "escalate",
+ "points": [
+   {"text": "The ticket does not say who may cancel a booking. Answer question 4.",
+    "action": "answer", "question": "q4"},
+   {"text": "The checks script failed on the spec's links. Run another round.",
+    "action": "run_again"}
+ ]}
 ```
 
 - `verdict`: `passed`, `changes-requested` or `escalate`.
-- `gaps`: optional text, 1 to 20000 code points, with no control character but a tab
-  or a line break, and none of the bidirectional, separator and format characters that
-  the schema of the type `verdict` refuses (`priv/schemas/artifacts/verdict.schema.json`).
+- `points`: what a person reads when the stage escalates, 1 to 20 points, required with
+  `escalate` and absent otherwise. Each point has `text`, one plain sentence on one line
+  of 1 to 500 characters, and `action`: `answer`, with `question`, the id of an open
+  question, or `run_again`, without `question`. The schema of the type `verdict`
+  checks them (`priv/schemas/artifacts/verdict.schema.json`, a copy of qory's
+  `contracts/harness/v1/verdict.schema.json`).
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
-file, `verdict.json`, `{"verdict": ..., "gaps": ...}`, without `gaps` when the body
+file, `verdict.json`, `{"verdict": ..., "points": ...}`, without `points` when the body
 has none. A run of any workflow may give a verdict. For a run of Explore, only
-`escalate` changes what happens: the stage escalates with the gaps. Explore treats
-`passed` and `changes-requested` as no verdict. Returns `201` with the version, as
-`POST artifacts` does.
+`escalate` changes what happens: the stage escalates with the points. Explore treats
+`passed` and `changes-requested` as no verdict. A run that leaves questions open and
+gives `escalate` waits for answers first: its escalation is kept, and the answers run the
+next round. Returns `201` with the version, as `POST artifacts` does.
 
-Checks: a body over 64 KiB is `413` `payload_too_large`; a body that is not this object
-is `400` `invalid_request`.
+Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
+`verdict` and `points`, or a `verdict` that is not one of the three, is `400`
+`invalid_request`; points the schema refuses are `422` `invalid_artifact`. The question
+of each `answer` point must be open in the newest `questions` of the work item's current
+take in, so the run pushes its questions first; otherwise the verdict is `422`
+`invalid_artifact`, with the message "Push the questions first, or point at an open
+question in verdict.json: point 2 names question q7, which is not open."
 
 ## Errors
 
@@ -429,7 +448,7 @@ is `400` `invalid_request`.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, or a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision` |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, or a verdict's `answer` point is about a question that is not open |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:

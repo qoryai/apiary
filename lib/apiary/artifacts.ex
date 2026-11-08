@@ -112,7 +112,11 @@ defmodule Apiary.Artifacts do
   # (`Apiary.Explore.Questions.check_run/3`,
   # `Apiary.Explore.ReviewComments.check_run/4`), else
   # `{:invalid, {:kept, 0, reason}}`, with the rule it breaks; a newest version whose file
-  # cannot be read is `{:error, :store_unavailable}`. Numbers compare by value there.
+  # cannot be read is `{:error, :store_unavailable}`. Numbers compare by value there. A
+  # version of the verdict, from any writer, has each `answer` point about a question that
+  # is open in the newest questions of the work item's current take in, else
+  # `{:invalid, {:kept, 0, {:not_open, point, question}}}`, `point` counted from 1: the run
+  # pushes its questions first (`points_open/3`).
   #
   # Then a version of the questions or the review comments, from any writer, is stored
   # with each number that is an integer in value written as an integer: a file with
@@ -929,6 +933,7 @@ defmodule Apiary.Artifacts do
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
            :ok <- members_kept(writer, artifact, staged),
+           :ok <- points_open(held, artifact, staged),
            {:ok, kept} <- integers(type, staged) do
         keep(writer, held, artifact, fields, kept, now)
       else
@@ -1005,6 +1010,49 @@ defmodule Apiary.Artifacts do
   end
 
   defp members_kept(_writer, _artifact, _stored), do: :ok
+
+  # A verdict, checked under the work item's lock: the question of each `answer` point is
+  # open in the newest questions, and is a question of the work item's current take in
+  # (`Apiary.Explore.Questions.open_in_take_in/2`), so the person can answer it; else
+  # `{:invalid, {:kept, 0, {:not_open, point, question}}}`, with `point` counted from 1.
+  # The format check passed, so the file is one JSON document of the verdict's format. The
+  # newest questions, where their file cannot be read, are `{:error, :store_unavailable}`.
+  defp points_open(%WorkItem{} = held, %Artifact{type: "verdict"}, [file]) do
+    with {:ok, text} <- File.read(file.staged.path),
+         {:ok, %{} = document} <- Jason.decode(text) do
+      case answer_points(document) do
+        [] -> :ok
+        answers -> answers_open(held, answers)
+      end
+    else
+      _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
+    end
+  end
+
+  defp points_open(_held, _artifact, _staged), do: :ok
+
+  defp answer_points(%{"points" => points}) when is_list(points) do
+    for {%{"action" => "answer", "question" => question}, point} <- Enum.with_index(points, 1),
+        do: {point, question}
+  end
+
+  defp answer_points(_document), do: []
+
+  defp answers_open(held, answers) do
+    with {:ok, newest} <- Questions.current(held) do
+      document = if newest, do: elem(newest, 1)
+
+      open =
+        document
+        |> Questions.open_in_take_in(Questions.take_in_runs(held.id, held.take_in || 0))
+        |> MapSet.new(& &1["id"])
+
+      case Enum.find(answers, fn {_point, question} -> not MapSet.member?(open, question) end) do
+        nil -> :ok
+        {point, question} -> {:error, {:invalid, {:kept, 0, {:not_open, point, question}}}}
+      end
+    end
+  end
 
   # The document of the artifact's newest version: `{:ok, nil}` for no version.
   defp newest_document(module, artifact) do
