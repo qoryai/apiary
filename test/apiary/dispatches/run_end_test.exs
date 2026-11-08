@@ -991,6 +991,28 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert Slots.held(ctx.place.pool.id) == 0
     end
 
+    test "its slot, its run not ended and its machine never reported gone, is freed 90 and 60 minutes after its last sign of a machine",
+         ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+
+      %Dispatch{dispatched_at: dispatched_at, handed_over_at: handed_over_at} =
+        dispatch!(ctx.handed.dispatch)
+
+      last = Enum.max([dispatched_at, handed_over_at], DateTime)
+      net = DateTime.add(last, (90 + 60) * 60, :second)
+
+      # The run still beats at the net, so the lost-run check leaves it live.
+      beat!(ctx.handed.run, net)
+      Dispatches.sweep(DateTime.add(net, -1, :microsecond))
+      assert Slots.held(ctx.place.pool.id) == 1
+
+      Dispatches.sweep(net)
+      assert %DispatchRun{state: :handed_over} = queue_run!(ctx.handed.dispatch_run)
+
+      assert %Dispatch{ended_at: nil, slot_freed_at: ^net} = dispatch!(ctx.handed.dispatch)
+      assert Slots.held(ctx.place.pool.id) == 0
+    end
+
     test "its succeeded exit, once folded, ends it run_ended, frees its slot once its machine is gone, and records no failure",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()

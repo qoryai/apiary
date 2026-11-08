@@ -365,6 +365,22 @@ defmodule Apiary.Runs.RunCodeTest do
       assert Slots.held(ctx.pool.id) == 1
     end
 
+    test "of a late code relayed by another gateway than the bound one writes no late machine",
+         ctx do
+      claimed = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, claimed.dispatch.public_id, %{reason: "stopped"})
+      now = DateTime.utc_now()
+      request = request(claimed.handed.run_code, ed25519_key_pair(), now)
+
+      assert RunCode.redeem(request, relayed_by: Ecto.UUID.generate(), now: now) ==
+               {:error, :unauthorized}
+
+      assert %Dispatch{late_machine_at: nil, slot_freed_at: %DateTime{}} =
+               Repo.get!(Dispatch, claimed.dispatch.id)
+
+      assert Slots.held(ctx.pool.id) == 1
+    end
+
     test "of a late code past the code's limit writes no late machine, and is unauthorized",
          ctx do
       claimed = claimed!(ctx)

@@ -542,7 +542,7 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
 
-      # The lapse freed the slot; the late dispatched tells that a machine was started, so
+      # The lapse freed the slot; the late dispatched shows that a machine was started, so
       # the stale dispatch takes it back until its machine is gone.
       assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: nil, dispatched_at: nil} =
                dispatch!(claimed)
@@ -1555,6 +1555,24 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert Slots.held(ctx.pool.id) == 0
       assert {:ok, %{run: %{id: id}}} = claim(ctx)
       assert id == next.id
+    end
+
+    test "a dispatched after an undo takes the slot back, and gone frees it", ctx do
+      {work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+
+      # An undo works once no claim holds the run: after the release here.
+      :ok = Dispatches.release(ctx.key, id(claimed), %{reason: "no capacity"})
+      assert {:ok, :ok} = Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
+      assert %DispatchRun{state: :ended, end_cause: :undone} = queue_run!(queued)
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert dispatched(ctx.key, claimed) == {:error, :gone}
+      assert %Dispatch{late_machine_at: %DateTime{}, slot_freed_at: nil} = dispatch!(claimed)
+      assert Slots.held(ctx.pool.id) == 1
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
     end
 
     test "a redemption after a close finds no run: the close deleted it with its code", ctx do
