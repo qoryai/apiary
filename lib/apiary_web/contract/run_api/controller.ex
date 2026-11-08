@@ -517,7 +517,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp kept("verdict", {:not_open, point, question}, filename),
     do:
       "Push the questions first, or point at an open question in #{filename}: " <>
-        "point #{point} names question #{question}, which is not open."
+        "point #{point} is about question #{question}, which is not open."
 
   defp kept("review-comments", reason, filename) do
     case reason do

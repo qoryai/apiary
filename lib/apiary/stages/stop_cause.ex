@@ -39,27 +39,34 @@ defmodule Apiary.Stages.StopCause do
   def text(run, work_item, context \\ %{}) do
     case split(run, work_item, context) do
       {:one, cause} -> cause
+      {:point, cause, _point} -> cause
+      {:then, cause, fix} -> cause <> " " <> fix
       {:lines, cause, fix} -> cause <> "\n" <> fix
       {:fix_first, fix, cause} -> fix <> " " <> cause
     end
   end
 
   # parts/3 is why `run` stopped as an escalation's point takes it
-  # (`Apiary.Stages.Points.run_stopped/2`): the cause, and what fixes it, nil where only
-  # another round does.
+  # (`Apiary.Stages.Points.run_stopped/2`), after "The run stopped:": the cause, and what
+  # fixes it, nil where only another round does.
   @doc false
   @spec parts(DispatchRun.t(), WorkItem.t(), context) :: {String.t(), String.t() | nil}
   def parts(run, work_item, context \\ %{}) do
     case split(run, work_item, context) do
       {:one, cause} -> {cause, nil}
+      {:point, _cause, point} -> {point, nil}
+      {:then, cause, fix} -> {cause, fix}
       {:lines, cause, fix} -> {cause, fix}
       {:fix_first, fix, cause} -> {cause, fix}
     end
   end
 
-  # The cause and its fix: `{:one, cause}` with no fix, `{:lines, cause, fix}` for a run
-  # that ended before it started, and `{:fix_first, fix, cause}` for a read-only run that
-  # could not go on, whose text has the fix first.
+  # The cause and its fix: `{:one, cause}` with no fix; `{:point, cause, point}` with no
+  # fix, where a point says the cause in other words after "The run stopped:";
+  # `{:then, cause, fix}` for a cause whose second sentence follows on the same line;
+  # `{:lines, cause, fix}` for a run that ended before it started; and
+  # `{:fix_first, fix, cause}` for a read-only run that could not go on, whose text has the
+  # fix first.
   defp split(%DispatchRun{end_cause: :run_ended, result_outcome: :error}, _work_item, _ctx),
     do: {:one, "The run ended with an error."}
 
@@ -69,7 +76,7 @@ defmodule Apiary.Stages.StopCause do
   # (`Apiary.Runs.ReadNeeds`).
   defp split(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
     case WorkflowGap.of_dispatch_run(run, work_item) do
-      %{} = facts -> {:one, workflow_gap(facts, work_item)}
+      %{} = facts -> workflow_gap(facts, work_item)
       nil -> no_gap(run, work_item)
     end
   end
@@ -78,7 +85,9 @@ defmodule Apiary.Stages.StopCause do
     do: {:one, "The run ended without a result."}
 
   defp split(%DispatchRun{end_cause: :lost}, _work_item, _context),
-    do: {:one, "The run stopped reporting and was marked lost."}
+    do:
+      {:point, "The run stopped reporting and was marked lost.",
+       "Qory Apiary got no report from it and marked it lost."}
 
   defp split(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
     {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
@@ -216,8 +225,8 @@ defmodule Apiary.Stages.StopCause do
         else: "The run's harness has no skill for the run's workflow."
 
     case gap_source(source, work_item) do
-      nil -> missing
-      from -> missing <> " " <> from
+      nil -> {:one, missing}
+      from -> {:then, missing, from}
     end
   end
 

@@ -861,19 +861,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   question?}`, with `action` `answer` or `run_again`, required with `escalate` and absent
   otherwise. The schema is a copy of qory's `contracts/harness/v1/verdict.schema.json`.
   The run API refuses a verdict whose `answer` point is about a question that is not open:
-  “Push the questions first, or point at an open question in verdict.json: point 2 names
+  “Push the questions first, or point at an open question in verdict.json: point 2 is about
   question q7, which is not open.” The work item's answer to a run has `verdict.points` in
   place of `verdict.gaps`.
 - For a cause Qory Apiary sets itself, an escalation has one point that Qory Apiary
   writes: “3 of 3 rounds ran.”, “No spec was stored in this stage.” for each failed
-  check, or “The run stopped: it ended without a result.”, each followed by “Run another
-  round.” on the page. A stop cause that has a fix, such as a missing model key, shows
+  check, both at a round limit after failed checks, or “The run stopped: it ended without
+  a result.”, each followed by “Run another round.” on the page. An `answer` point whose
+  question the run withdrew asks for another round instead. A stop cause that has a fix, such as a missing model key, shows
   that fix in place of “Run another round.”
 - A run that leaves questions open and escalates waits for answers first: its escalation
   is kept, the block shows its points above the questions, and the answers run the next
   round and resolve it. **Accept as it is**, **Move back** and **Close** are refused while
   the answers wait.
-- “Waiting on you” counts the escalated work items whose escalation you may resolve.
+- “Waiting on you” counts an escalated work item for the people a proposal at its stage
+  waits for: the approvers its gate lists who may resolve the escalation, else its owner.
 - The run page's **Timeline** shows an overview of the run: its stages, a row for each
   agent, the agents' messages, the artifact versions the run pushed, failures, denials,
   and the tool calls that were the only call running when a network connection was made.

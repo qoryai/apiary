@@ -2870,8 +2870,10 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
-msgid "%{ran} of %{rounds} rounds ran."
-msgstr ""
+msgid "%{ran} of %{count} round ran."
+msgid_plural "%{ran} of %{count} rounds ran."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format

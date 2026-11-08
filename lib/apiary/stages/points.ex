@@ -26,7 +26,9 @@ defmodule Apiary.Stages.Points do
     [
       run_again(
         default(fn ->
-          gettext("%{ran} of %{rounds} rounds ran.", ran: ran, rounds: rounds)
+          ngettext("%{ran} of %{count} round ran.", "%{ran} of %{count} rounds ran.", rounds,
+            ran: ran
+          )
         end)
       )
     ]

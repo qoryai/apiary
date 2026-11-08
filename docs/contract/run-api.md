@@ -432,7 +432,7 @@ Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member ot
 of each `answer` point must be open in the newest `questions` of the work item's current
 take in, so the run pushes its questions first; otherwise the verdict is `422`
 `invalid_artifact`, with the message "Push the questions first, or point at an open
-question in verdict.json: point 2 names question q7, which is not open."
+question in verdict.json: point 2 is about question q7, which is not open."
 
 ## Errors
 
@@ -498,6 +498,9 @@ The messages:
       attribute", "the url() in the style element", "the url() in the xmlns:a
       attribute", "the @import in the text of the desc element" or "the image-set() in
       the style attribute". A name past 64 characters is cut to 64 and "…".
+  - For a version of `verdict` whose `answer` point is about a question that is not open:
+    "Push the questions first, or point at an open question in verdict.json: point 2 is
+    about question q7, which is not open."
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
     - "Fix sources.json to match the format of proposal sources: at #, additional
