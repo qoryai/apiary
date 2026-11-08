@@ -1161,6 +1161,11 @@ msgstr[1] ""
 msgid "%{name} (deleted)"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} added a note %{when}"
+msgstr ""
+
 #: lib/apiary_web/live/artifact_live/types.ex
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
@@ -1254,6 +1259,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} cannot be switched off: work items of this workspace have artifacts of this type."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} changed it %{when}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -2858,14 +2868,9 @@ msgstr ""
 msgid "%{product} menu"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
-msgid "%{ran} of %{rounds} rounds ran, with these gaps:"
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{ran} of %{rounds} rounds ran."
+msgid "%{ran} of %{rounds} rounds ran. Run another round."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -4545,6 +4550,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Add anything the questions and decisions do not cover."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Add anything the questions do not cover."
 msgstr ""
 
@@ -6176,6 +6186,7 @@ msgstr ""
 msgid "Change your password in Account settings."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -6290,6 +6301,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Changed by"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Changed from"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6750,6 +6766,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose the workspace's default mode"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Chosen by the agent"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -7618,6 +7639,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Decision"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Decisions"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -12734,6 +12760,11 @@ msgstr ""
 msgid "No %{items} yet"
 msgstr ""
 
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "No %{type} was stored in this stage. Run another round."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgid "No adapter yet"
@@ -15593,12 +15624,22 @@ msgid_plural "Questions"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Question %{number}"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Question and answer"
 msgid_plural "Questions and answers"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Questions and decisions"
+msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/work_item_components.ex
@@ -16592,6 +16633,11 @@ msgstr ""
 msgid "Run"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run %{number} chose it %{when}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/components/overview_components.ex
@@ -16658,12 +16704,43 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your answers and your changed decisions, and updates the proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Run another round starts the next run. That run reads your answers and your comment, and updates the proposal."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your answers, your changed decisions and your comment, and updates the proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your changed decisions and updates the proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Run another round starts the next run. That run reads your comment and updates the proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Run another round to apply your change."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
@@ -19186,16 +19263,6 @@ msgstr ""
 msgid "The addresses of %{organisation} change to start with %{new}. Links to %{old} stop working."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "The agent escalated, with these gaps:"
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "The agent escalated."
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The agent is writing a reply to the line."
@@ -19860,11 +19927,6 @@ msgstr ""
 msgid "The outcome is that of the last attempt across the runs shown."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "The output checks failed."
-msgstr ""
-
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "The output is cut: these are its last %{lines} lines."
@@ -20156,14 +20218,9 @@ msgstr ""
 msgid "The run stopped before its session started, at the step %{step}."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
-msgid "The run stopped before its verdict."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "The run stopped before its verdict:"
+msgid "The run stopped: %{cause} %{next}"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -20631,11 +20688,6 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "These %{collections} are each assigned to one workspace."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "These output checks failed:"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -21783,6 +21835,11 @@ msgstr ""
 msgid "Version %{version} · Policy"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · from an earlier round"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version}."
@@ -21927,6 +21984,13 @@ msgstr ""
 msgid "Waits for inputs"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waits for you: %{count} point"
+msgid_plural "Waits for you: %{count} points"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Wall"
@@ -22046,6 +22110,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "What the release serves doesn't match its source: its checksums.txt, its version, or a description of the same version fetched before."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "What the run needs from you"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -22716,6 +22785,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "You added a note %{when}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "You answered %{when}"
 msgstr ""
 
@@ -22948,6 +23022,11 @@ msgstr ""
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
 #, elixir-autogen, elixir-format
 msgid "You cancelled the install on %{integration}. Nothing has changed."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You changed it %{when}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

@@ -235,6 +235,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             error={@stage_error}
             check={@stage_check}
             notice={@stage_notice}
+            needs_path={needs_path(@flow, @tab, @current_scope, @number)}
           />
           <.step_card
             :if={step_card?(@flow, @item)}
@@ -252,6 +253,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
             no_pool={@no_pool}
             commenting={@can.send and @proposal != nil}
+            points={waiting_points(@flow)}
+            needs_path={needs_path(@flow, @tab, @current_scope, @number)}
           >
             <:badge :if={one_card?(@flow, @item)}>
               <StageComponents.stage_badge page={@flow} quiet={@item[:run][:liveness] == :quiet} />
@@ -287,6 +290,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             id="work-item-flow"
             class="q-wi-flow flex flex-col gap-3"
           >
+            <StageComponents.needs_block
+              :if={!@flow.explore and needs?(@flow)}
+              page={@flow}
+              questions={@questions}
+              question_path={if @tab != :explore, do: tab_path(@current_scope, @number, :explore)}
+              class="mb-3"
+            />
             <StageComponents.stage_runs :if={!@flow.explore} runs={@flow.runs} />
             <StageComponents.stage_notes notes={stage_notes(@flow)} />
             <section
@@ -351,6 +361,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             now={@now}
             no_pool={@no_pool}
           >
+            <:needs :if={@flow && @flow.explore && needs?(@flow)}>
+              <StageComponents.needs_block page={@flow} questions={@questions} />
+            </:needs>
             <:artifacts :if={@flow && @flow.explore}>
               <section
                 id="work-item-artifacts"
@@ -2039,12 +2052,33 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp one_card?(_flow, _item), do: false
 
-  # Today's step card, beside the stage card at Explore. At the run limit it says that the
-  # run was "the last run of this take in", which is false while the escalation card
-  # offers Run another round: there the step card is not shown.
+  # Today's step card, beside the stage card at Explore. While the stage is escalated after
+  # a run with no result, the block "What the run needs from you" says what happened and
+  # the escalation card offers Run another round: there the step card is not shown.
   defp step_card?(nil, _item), do: true
   defp step_card?(%{explore: false}, _item), do: false
-  defp step_card?(flow, item), do: not (status(item) == :used_up and escalated?(flow, :used_up))
+  defp step_card?(flow, item), do: not escalated?(flow, status(item))
+
+  # Whether the page shows the block "What the run needs from you": while the stage is
+  # escalated, and while it waits for answers with an escalation that has points.
+  defp needs?(%{escalation: %{points: points}, state: state}),
+    do: state == :escalated or points != []
+
+  defp needs?(_flow), do: false
+
+  # The points of an escalation kept while the stage waits for answers, for the line
+  # "Waits for you" on the step card; 0 otherwise.
+  defp waiting_points(%{state: :waiting_answers, escalation: %{points: points}}),
+    do: length(points)
+
+  defp waiting_points(_flow), do: 0
+
+  # Where the block "What the run needs from you" is: on this page, or, at Explore, on the
+  # Explore tab when the page shows another tab.
+  defp needs_path(%{explore: true}, tab, scope, number) when tab != :explore,
+    do: tab_path(scope, number, :explore) <> "#work-item-needs"
+
+  defp needs_path(_flow, _tab, _scope, _number), do: "#work-item-needs"
 
   defp status(%{status: status}), do: status
   defp status(_item), do: nil
@@ -2062,7 +2096,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp stage_notes(%{notes: notes}), do: notes
 
-  defp escalated?(%{escalation: %{}}, status)
+  defp escalated?(%{state: :escalated, escalation: %{}}, status)
        when status in [:no_result, :lost, :cancelled, :used_up],
        do: true
 

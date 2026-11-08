@@ -848,6 +848,32 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- When a run escalates, the work item page shows the block “What the run needs from
+  you”, with one numbered sentence for each point: what is wrong or missing, and what you
+  can do. An `answer` point links “question 4” to its question, and a `run_again` point
+  asks for another round. The block takes the place of the red banner “The run ended
+  without a result”, at the top of the Explore tab or of the stage's area, and the
+  stage's note field and **Run another round** sit in it. A proposal from a round before
+  the run shows “· from an earlier round”. In the side panel, one line, “Waits for you: 2
+  points”, links to the block; **Accept as it is**, **Move back** and **Close** stay there
+  and take the note too. The step card is hidden while the stage is escalated.
+- A run's verdict has `points` in place of `gaps`: 1 to 20 points, each `{text, action,
+  question?}`, with `action` `answer` or `run_again`, required with `escalate` and absent
+  otherwise. The schema is a copy of qory's `contracts/harness/v1/verdict.schema.json`.
+  The run API refuses a verdict whose `answer` point is about a question that is not open:
+  “Push the questions first, or point at an open question in verdict.json: point 2 names
+  question q7, which is not open.” The work item's answer to a run has `verdict.points` in
+  place of `verdict.gaps`.
+- For a cause Qory Apiary sets itself, an escalation has one point that Qory Apiary
+  writes: “3 of 3 rounds ran. Run another round.”, “No spec was stored in this stage. Run
+  another round.” for each failed check, or “The run stopped: it ended without a result.
+  Run another round.” A stop cause that has a fix, such as a missing model key, ends with
+  that fix.
+- A run that leaves questions open and escalates waits for answers first: its escalation
+  is kept, the block shows its points above the questions, and the answers run the next
+  round and resolve it. **Accept as it is**, **Move back** and **Close** are refused while
+  the answers wait.
+- “Waiting on you” counts the escalated work items whose escalation you may resolve.
 - The run page's **Timeline** shows an overview of the run: its stages, a row for each
   agent, the agents' messages, the artifact versions the run pushed, failures, denials,
   and the tool calls that were the only call running when a network connection was made.
@@ -1328,6 +1354,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `escalations` (20261109100000): the column `gaps` is dropped, and a column `points`,
+  a JSON array that is empty by default, takes its place. The gaps of earlier escalations
+  are not copied.
 - `machine_types` (20261107110000): a new table of the instance's machine types, with
   the type `standard` as the default: 2 vCPUs, 4096 MiB, 30 GiB of disk, amd64, no
   virtualization.

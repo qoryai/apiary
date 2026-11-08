@@ -711,6 +711,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: false,
     doc: "whether Explore's tab has the comment field under the questions"
 
+  attr :points, :integer,
+    default: 0,
+    doc: "the points of the stage's open escalation, while the questions wait for answers"
+
+  attr :needs_path, :string,
+    default: "#work-item-needs",
+    doc: "where the block \"What the run needs from you\" is"
+
   def step_card(%{work_item: %{status: status}} = assigns) when status in @ended, do: ~H""
 
   def step_card(assigns) do
@@ -768,8 +776,31 @@ defmodule ApiaryWeb.WorkItemComponents do
         now={@now}
         no_pool={@no_pool}
         commenting={@commenting}
+        points={@points}
+        needs_path={@needs_path}
       />
     </section>
+    """
+  end
+
+  @doc """
+  The line "Waits for you: N points" of an open escalation, which links to the block
+  "What the run needs from you" at `path`: an anchor on the page, or the Explore tab's
+  path with it.
+  """
+  attr :id, :string, default: "work-item-stage-waits"
+  attr :count, :integer, required: true
+  attr :path, :string, default: "#work-item-needs"
+
+  def waits_line(assigns) do
+    ~H"""
+    <p id={@id}>
+      <.link href={@path} class="q-link">
+        {ngettext("Waits for you: %{count} point", "Waits for you: %{count} points", @count,
+          count: Format.number(@count)
+        )}
+      </.link>
+    </p>
     """
   end
 
@@ -836,6 +867,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :now, :any, required: true
   attr :no_pool, :map, default: nil
   attr :commenting, :boolean, default: false
+  attr :points, :integer, default: 0
+  attr :needs_path, :string, default: "#work-item-needs"
 
   # A later run of the take in: what it reads, with whose answers, and which run is
   # queued, or that no pool can take it. Undo is only until the first run of a take in
@@ -996,6 +1029,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <p :if={@line} id={"#{@id}-line"}>{@line}</p>
     <p :if={!@can_act} id={"#{@id}-waits"} class="q-wi-reader">{@waits}</p>
+    <.waits_line :if={@points > 0} count={@points} path={@needs_path} />
     <.go_link :if={@can_act} id={"#{@id}-explore"} path={@explore_path} words={@go} />
     """
   end
@@ -2198,6 +2232,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   slot :artifacts, doc: "the work item's artifacts, in the fold of its runs"
 
+  slot :needs,
+    doc:
+      "the block \"What the run needs from you\" of an open escalation, at the top of the tab, in place of the banner of a run with no result"
+
   def explore_tab(assigns) do
     work_item = at_limit(assigns.work_item)
     status = explore_status(work_item.status, work_item[:run])
@@ -2265,7 +2303,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         item={@item}
         test={@work_item[:test] == true}
       />
-      <.no_result :if={@view == :no_result} id={"#{@id}-none"} run={@run} />
+      {render_slot(@needs)}
+      <.no_result :if={@view == :no_result and @needs == []} id={"#{@id}-none"} run={@run} />
       <.ended
         :if={@view in [:closed, :undone]}
         id={"#{@id}-#{@view}"}
@@ -2277,6 +2316,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         id={"#{@id}-proposal"}
         run={%{proposal: @proposal, version: @proposal.version, attempt: @run[:attempt]}}
         confirmed={@confirmed}
+        earlier={@needs != [] and @run[:wrote] != @proposal.version}
         now={@now}
       >
         <:comments :if={@review_comments != []}>
@@ -2883,6 +2923,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :confirmed, :any, default: nil
   attr :now, :any, required: true
 
+  attr :earlier, :boolean,
+    default: false,
+    doc: "whether a run before the latest one wrote it, while that run escalated"
+
   attr :images, :any,
     default: nil,
     doc: "the proposal version's images, filename and download address; nil if not known"
@@ -2942,7 +2986,10 @@ defmodule ApiaryWeb.WorkItemComponents do
       </p>
       <p :if={!@caption && @run[:version]} class="q-xp-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-        <span>{gettext("Version %{version}", version: Format.number(@run.version))}</span>
+        <span :if={!@earlier}>{gettext("Version %{version}", version: Format.number(@run.version))}</span>
+        <span :if={@earlier}>
+          {gettext("Version %{version} · from an earlier round", version: Format.number(@run.version))}
+        </span>
       </p>
       <div :if={@comments != []} class="q-xp-body q-xp-rc-inline">{render_slot(@comments)}</div>
       <div

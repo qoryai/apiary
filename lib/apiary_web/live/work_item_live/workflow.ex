@@ -336,12 +336,29 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     %{
       cause: cause,
       result: result?(cause, outputs),
-      gaps: lines(get(escalation, :gaps)),
+      points: points(get(escalation, :points)),
       round: get(escalation, :round),
       run: escalated_run(escalation, runs),
       harness_path: harness_path(scope, get(escalation, :set_up_step))
     }
   end
+
+  # An escalation's points as the block "What the run needs from you" shows them: each
+  # with its text, its action (`:answer` or `:run_again`) and, for `:answer`, the id of
+  # its question. A point without text is left out.
+  defp points(points) when is_list(points) do
+    for %{} = point <- points, text = get(point, :text), is_binary(text) and text != "" do
+      case get(point, :action) do
+        action when action in ["answer", :answer] ->
+          %{text: text, action: :answer, question: get(point, :question)}
+
+        _run_again ->
+          %{text: text, action: :run_again, question: nil}
+      end
+    end
+  end
+
+  defp points(_none), do: []
 
   # Whether the stage has a result to accept as it is: a version of one of its outputs, or,
   # for a stage with no outputs, a run that did not stop before its verdict.
