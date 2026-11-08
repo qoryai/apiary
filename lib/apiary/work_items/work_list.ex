@@ -25,10 +25,11 @@ defmodule Apiary.WorkItems.WorkList do
   # for the approvers its stage's gate lists, and for its owner where the gate lists no
   # one. A work item whose stage is escalated waits the same way: at a stage whose gate
   # lists approvers, for those whom `Apiary.Access` allows `gate.approve` there, as
-  # `Apiary.Stages.resolve_escalation/5` asks; elsewhere for its owner. `gates/2` reads the process versions once,
-  # and checks with `Apiary.Access` whether the reader may confirm at each gate that lists
-  # approvers, and may resolve an escalation at each stage; `waits_for_reader/2` and
-  # `for_reader/3` apply the results in the query, so the count, the view and the row
+  # `Apiary.Stages.resolve_escalation/5` asks; elsewhere for its owner. `gates/2` reads
+  # the process versions once, and checks with `Apiary.Access` whether the reader may
+  # confirm, and may resolve an escalation, at each gate that lists approvers;
+  # `waits_for_reader/2` and `for_reader/3` apply the results in the query, so the count,
+  # the view and the row
   # (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`) follow one rule, with no query per
   # work item.
   #
