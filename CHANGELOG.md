@@ -1358,6 +1358,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `workspaces` (20261108120000): a nullable column `keep_process_latest`, the switch
+  Keep the process at the latest. Empty means on for the Qory harness and off for a
+  harness repository. The migration sets it off for each workspace whose current
+  process version a person saved, and changes no other row.
 - `machine_types` (20261107110000): a new table of the instance's machine types, with
   the type `standard` as the default: 2 vCPUs, 4096 MiB, 30 GiB of disk, amd64, no
   virtualization.
