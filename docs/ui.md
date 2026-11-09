@@ -1760,7 +1760,8 @@ the id the API gives, is sent on to the number's address when the run is in the
 workspace; a number or `rn_` id of no run of the workspace, the run id on the machine and
 any other value are not found, the same page for each. The header, the breadcrumb, the
 lists and the titles show a run as "Run 14"; Details' Record shows "Run id", the run's `rn_`
-id, with Copy, because support and diagnostics find a run by it on the whole server;
+id, with Copy, because support and diagnostics find a run by it on the whole server
+(`GET /v1/runs`, signed with a diagnostics key, lists the instance's runs with this id);
 the run id on the machine on the next row, "Run id on the machine", and the search finds
 a run by its `rn_` id or the run id on the machine. Other than on Details and in a line
 that sends the reader to support, the run page, the lists and the titles show no `rn_`

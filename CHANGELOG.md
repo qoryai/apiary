@@ -132,14 +132,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   value, only the variables' names. Text is copied as Qory Apiary stored it, so a secret a
   run printed is in the copy. When the copy fails, the menu shows the fix first, such as
   “Sign in again, then copy again. Your session ended.”
-- Instance settings › **Diagnostics keys**, for instance admins, lists the keys with which
-  a computer reads the diagnostics of any run on the instance, and nothing else, at
-  `GET /v1/runs/<run id>/diagnostics`, in a request signed with the key. **Get the
-  command**, after a recent sign-in, shows `qory apiary enrol <address> <code>` with
-  **Copy command**: the code starts with `qecd_` and works once, within 15 minutes, and
-  the computer makes the key and sends Qory Apiary only its public half. Each key shows
-  who made it, when, when it was last used, and **Revoke…**. An instance has at most 20
-  diagnostics keys. The audit log records each code, each key added and each key revoked.
+- Instance settings › **Diagnostics keys**, for instance admins, lists the diagnostics
+  keys. With a diagnostics key, a computer lists the runs on this instance, with their
+  organisation, workspace and work item title, and reads the diagnostics of any of them,
+  and nothing else. It reads the diagnostics at `GET /v1/runs/<run id>/diagnostics`, in a
+  request signed with the key. **Get the command**, after a recent sign-in, shows
+  `qory apiary enrol <address> <code>` with **Copy command**: the code starts with
+  `qecd_` and works once, within 15 minutes, and the computer makes the key and sends
+  Qory Apiary only its public half. Each key shows who made it, when, when it was last
+  used, and **Revoke…**. An instance has at most 20 diagnostics keys. The audit log
+  records each code, each key added and each key revoked.
+- A diagnostics key also lists the runs of the instance at `GET /v1/runs`, in a request
+  signed with the key, 25 runs to a page by default and 100 at most, the last created
+  first. Each run shows its id, number, organisation, workspace, state and creation time,
+  and, where the run has them, its workflow, work item, reason, start time and duration.
+  The query narrows the list to a workspace, such as `workspace=example-org/example`, a
+  work item of that workspace, a workflow, a state, or the runs created since a time
+  (`since`). `before`, set to the answer's `next`, reads the next page. A query gets
+  `400` with the name of the parameter for a parameter that is unknown, given twice,
+  empty or outside its rule, for `work_item` without `workspace`, for a workspace that
+  does not exist, and for a `before` that is the id of no run.
+  Qory Apiary records no read of a run for the list.
 - Qory Apiary scans the text a run stores, as it arrives, for keys of a known form: Qory
   Apiary's keys and codes, and Anthropic, OpenAI, GitHub and GitLab tokens. It scans the
   run's output, its events, its machine log and the reason its machine was released. It
@@ -1376,6 +1389,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 - `dispatches` (20261108130000): a nullable column `late_machine_at`, the last time a
   machine showed up for a claim that takes none. It changes no row.
+- `runs` (20261108120100): an index in the order of the run list, `GET /v1/runs`, built
+  concurrently, so it does not block writes. It changes no row.
 - `machine_types` (20261107110000): a new table of the instance's machine types, with
   the type `standard` as the default: 2 vCPUs, 4096 MiB, 30 GiB of disk, amd64, no
   virtualization.
