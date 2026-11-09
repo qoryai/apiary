@@ -882,38 +882,36 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - When a run escalates, the work item page shows the block “What the run needs from
   you”, with one numbered item for each point: the run's sentence on what is wrong or
   missing, then what you can do, “Answer question 4.”, with “question 4” linked to the
-  question, or “Run another round.” The block takes the place of the red banner “The run ended
-  without a result”, at the top of the Explore tab or of the stage's area, and the
-  stage's note field and **Run another round** sit in it. A proposal from a round before
-  the run shows “· from an earlier round”. In the side panel, one line, “Waits for you: 2
-  points”, links to the block; **Accept as it is**, **Move back** and **Close** stay there
-  and take the note too. The step card is hidden while the stage is escalated.
-- A run's verdict has `points` in place of `gaps`: 1 to 20 points, each `{text, action,
-  question?}`, with `action` `answer` or `run_again`, required with `escalate` and absent
-  otherwise. The schema is a copy of qory's `contracts/harness/v1/verdict.schema.json`.
-  The run API refuses a verdict whose `answer` point is about a question that is not open:
-  “Push the questions first, or point at an open question in verdict.json: point 2 is about
-  question q7, which is not open.” The work item's answer to a run has `verdict.points` in
-  place of `verdict.gaps`.
-- For a cause Qory Apiary sets itself, an escalation has one point that Qory Apiary
-  writes: “3 of 3 rounds ran.”, “No spec was stored in this stage.” for each failed
-  check, both at a round limit after failed checks, or “The run stopped: it ended without
-  a result.”, each followed by “Run another round.” on the page. An `answer` point whose
-  question the run withdrew asks for another round instead. A stop cause that has a fix, such as a missing model key, shows
-  that fix in place of “Run another round.”
-- A run that leaves questions open and escalates waits for answers first: its escalation
-  is kept, the block shows its points above the questions, and the answers run the next
-  round and resolve it. **Accept as it is**, **Move back** and **Close** are refused while
-  the answers wait.
-- “Waiting on you” counts an escalated work item for the people a proposal at its stage
-  waits for: the approvers its gate lists who may resolve the escalation, else its owner.
-- A work item that left Explore while its proposal still waits, as after Explore's gate
-  `none`, is not highlighted in the Work items list and is not counted in “Waiting on
-  you”: no one approves that proposal at a later stage.
-- Where a run ends without a result, with an error, lost or cancelled, and a proposal of
-  an earlier round shows below its banner, the banner says “The proposal below is from an
-  earlier round.” in place of “There is nothing to show or approve.”, and the proposal
-  shows “· from an earlier round”.
+  question, or “Run another round.” A stop cause that has a fix, such as “Owners and
+  admins choose a harness.”, shows that fix in place of “Run another round.” The block
+  takes the place of the red banner “The run ended without a result” at the top of the
+  Explore tab or of the stage's area, and the stage's note field and **Run another round**
+  sit in it. In the side panel, the line “Waits for you: 2 points” links to the block;
+  **Accept as it is**, **Move back** and **Close** stay there and take the note too. The
+  step card is hidden while the stage is escalated. For a cause Qory Apiary sets itself,
+  it writes one point: “3 of 3 rounds ran.”, “No spec was stored in this stage.” for each
+  failed check, both at a round limit after failed checks, “The run stopped: it ended
+  without a result.”, or “The run stopped before its verdict.” An escalation that was
+  open before this change shows the point of its cause. An `answer` point whose question
+  the run withdrew asks for another round instead. A run that leaves questions open
+  and escalates waits for answers first: its escalation is kept, the block shows its
+  points above the questions, and the answers run the next round and resolve it;
+  **Accept as it is**, **Move back** and **Close** are refused while the answers wait.
+  “Waiting on you” counts an escalated work item for the approvers its gate lists who
+  may resolve the escalation, else for its owner. A work item that left Explore while
+  its proposal still waits, as after Explore's gate `none`, is not highlighted in the
+  Work items list and is not counted in “Waiting on you”. Where a run ends without a
+  result, with an error, lost or cancelled, and a proposal of an earlier round shows
+  below its banner, the banner says “The proposal below is from an earlier round.” in
+  place of “There is nothing to show or approve.”, and the proposal shows “· from an
+  earlier round”. A run's verdict has `points` in place of `gaps`: 1 to 20 points, each
+  `{text, action, question?}`, with `action` `answer` or `run_again`, required with
+  `escalate` and absent otherwise; the schema is a copy of qory's
+  `contracts/harness/v1/verdict.schema.json`. The run API refuses a verdict whose
+  `answer` point is about a question that is not open: “Push the questions first, or
+  point at an open question in verdict.json: point 2 is about question q7, which is not
+  open.” The work item's answer to a run has `verdict.points` in place of
+  `verdict.gaps`.
 - Making a pool needs `node.set_limit`, the action that sets a pool's machine limit,
   with a limit or without one. One who may make machines and pools but may not set the
   limit is refused the pool; before, such a pool was made with a limit of 1. That person
