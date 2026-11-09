@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.RunLive.ShowImageTest do
   @moduledoc """
-  The image under the Wall in a run page's rail (`ApiaryWeb.RunLive.Show`), for a run of
-  the workspace's queue: the image Qory gave the run, raw, with "Prebuilt for this
+  The Image row of a run page's rail (`ApiaryWeb.RunLive.Show`), after the Wall, for a
+  run of the workspace's queue: the image Qory gave the run, raw, with "Prebuilt for this
   repository" under it; for a run of the queue given none, the image it reported, with
   "The pool's default image." under it; for a run that started in its policy's image, and
-  any other run, the image it reported, with no line under it.
+  any other run, the image it reported, with no line under it. A run with no wall has no
+  Image row.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -53,6 +54,31 @@ defmodule ApiaryWeb.RunLive.ShowImageTest do
     assert has_element?(lv, ~s(#run-image.font-mono[title="#{@prebuilt}"]), @prebuilt)
     refute has_element?(lv, "#run-image bdi")
     assert has_element?(lv, "#run-image-source", "Prebuilt for this repository")
+  end
+
+  test "the image has a separate row after the Wall, which has the wall alone",
+       %{conn: conn, scope: scope, key: key} do
+    run = dispatched(scope, key, %{started_image_from: "none"})
+    lv = open(conn, scope, run)
+
+    facts = lv |> element("#run-facts") |> render() |> LazyHTML.from_fragment()
+    labels = facts |> LazyHTML.query("dt") |> Enum.map(&String.trim(LazyHTML.text(&1)))
+    wall = Enum.find_index(labels, &(&1 == "Wall"))
+    assert Enum.at(labels, wall + 1) == "Image"
+
+    assert has_element?(lv, "#run-image-row #run-image", @reported)
+    assert has_element?(lv, "#run-image-row #run-image-source")
+
+    wall_value = facts |> LazyHTML.query("dd") |> Enum.at(wall) |> LazyHTML.text()
+    assert String.trim(wall_value) == "docker"
+  end
+
+  test "a run with no wall has no Image row", %{conn: conn, scope: scope} do
+    run = run_fixture(scope, %{state: "running", wall: nil, image: @reported})
+    lv = open(conn, scope, run)
+
+    refute has_element?(lv, "#run-image-row")
+    refute has_element?(lv, "#run-facts dt", "Image")
   end
 
   test "an image Qory gave the run is shown even where the run reported another",

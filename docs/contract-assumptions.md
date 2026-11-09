@@ -696,7 +696,7 @@ and a later report changes nothing and is still `204`. The trail keeps three ent
 `dispatch.machine_end` for a dispatch at most, about the pool: its first report, its first
 `delete_failed` and its `gone`. After each accepted report that the dispatch does not keep
 as `gone`, Qory Apiary broadcasts a message on the topic of the run registered at the claim,
-and the run's page shows the state in the Machine removed row
+and the run's page shows the state in the Remove the machine row
 ([ui.md](ui.md), The run page). The access action reaches every node pool's key, enrolled
 before or after, through the role `pool_key`.
 

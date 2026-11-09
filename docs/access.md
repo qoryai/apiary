@@ -371,7 +371,7 @@ its feature is: `run.read_log` belongs to `observability.terminal`, the run's Te
 an edition that hides it hides the run's whole log from that person, the Terminal tab, the
 log's address with every stream and the download, the ⋯ menu's Raw log and Download log,
 the runs list's preview of the last lines and the terminal's size on Details, and the
-sentences on session events name no terminal; the rest of the run is as it is. A part may
+notes on session events leave the terminal out; the rest of the run is as it is. A part may
 belong to no feature, and is then hidden where it is named alone: the `node.*` and
 `access_key.*` actions belong to `nodes`, so an edition that hides it hides from that
 person the nodes, the node pools, their access keys and the gateways: their pages, which

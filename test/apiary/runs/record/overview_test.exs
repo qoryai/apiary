@@ -31,7 +31,8 @@ defmodule Apiary.Runs.Record.OverviewTest do
         decision: data["decision"],
         tool: if(event.type in @tool_types, do: data["tool"]),
         background_tasks: data["background_tasks"],
-        text_kind: text_kind(event.type, data)
+        text_kind: text_kind(event.type, data),
+        session: if(is_integer(data["session"]), do: data["session"])
       }
     end
   end
@@ -354,6 +355,77 @@ defmodule Apiary.Runs.Record.OverviewTest do
 
       assert %{words: "Added.", duration_ms: 3000} =
                Overview.build(row, built(events, index, row.seqs))
+    end
+
+    test "each agent session has its row, after its first prompt, with its calls and Took" do
+      events = [
+        prompt(1, "Before the runtime started"),
+        event(2, "runtime.started", %{"session" => 1}),
+        tool(3, "failed", "a"),
+        text(4, "One."),
+        event(5, "runtime.result", %{"duration_ms" => 1000}),
+        event(6, "runtime.started", %{"session" => 2}),
+        event(7, "runtime.notification", %{"kind" => "idle"}),
+        event(8, "runtime.started", %{"session" => 3}),
+        prompt(9, "Add a test"),
+        tool(10, "failed", "b"),
+        tool(11, "failed", "c"),
+        text(12, "Three."),
+        event(13, "runtime.result", %{"duration_ms" => 3000})
+      ]
+
+      index = index(events)
+      rows = Overview.list(index.items)
+      # Session 2 has no prompt, so no row: the second row is session 3's.
+      assert seqs(rows) == [
+               1,
+               "main-session",
+               2,
+               3,
+               4,
+               5,
+               6,
+               7,
+               8,
+               9,
+               "main-session-2",
+               10,
+               11,
+               12,
+               13
+             ]
+
+      assert [first, third] = Enum.filter(rows, &(&1.kind == :main_session))
+      assert %{sequence: 1, calls: 1, text_seq: 4, result_seqs: [5]} = first
+      assert %{sequence: 9, calls: 2, text_seq: 12, result_seqs: [13]} = third
+      assert pos(third) > {9, 9} and pos(third) < {10, 10}
+
+      assert %{id: "main-session-2", words: "Three.", duration_ms: 3000} =
+               Overview.build(third, built(events, index, third.seqs))
+    end
+
+    test "sessions that overlap in time keep their items apart by their session number" do
+      one = %{"session" => 1}
+      two = %{"session" => 2}
+
+      # Session 2 starts while session 1 still works: its call, text and result come after.
+      events = [
+        event(3, "runtime.started", one),
+        prompt(4, "Map the checkout", one),
+        event(5, "runtime.started", two),
+        prompt(6, "Add a test", two),
+        tool(7, "failed", "a", one),
+        text(8, "The checkout has four steps.", one),
+        event(9, "runtime.result", Map.put(one, "duration_ms", 1000))
+      ]
+
+      index = index(events)
+      rows = Overview.list(index.items)
+      assert seqs(rows) == [3, 4, "main-session", 5, 6, "main-session-2", 7, 8, 9]
+
+      assert [first, second] = Enum.filter(rows, &(&1.kind == :main_session))
+      assert %{sequence: 4, session: 1, calls: 1, text_seq: 8, result_seqs: [9]} = first
+      assert %{sequence: 6, session: 2, calls: 0, text_seq: nil, result_seqs: []} = second
     end
 
     test "a subagent's result is no part of the Main session's Took" do

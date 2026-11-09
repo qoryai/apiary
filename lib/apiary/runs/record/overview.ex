@@ -11,8 +11,8 @@ defmodule Apiary.Runs.Record.Overview do
 
     * `rows/2` keeps the items the Timeline lists; `routine?/1` is true of a tool call it
       leaves out.
-    * `list/2` adds the Main session row and a Pushed row per artifact version. How many
-      rows it returns is the Timeline tab's count.
+    * `list/2` adds a Main session row per agent session and a Pushed row per artifact
+      version. How many rows it returns is the Timeline tab's count.
     * `build/2` makes the Main session and Pushed rows a page shows. `Timeline.build/3`
       skips them, because no event has their sequence.
     * `terminal_seq/2` is the sequence a row links to in the Terminal, or nil.
@@ -63,14 +63,22 @@ defmodule Apiary.Runs.Record.Overview do
   defp listed?(_item, _connections?), do: true
 
   @doc """
-  The rows the Timeline lists, every subagent open: `rows/2`, with the Main session row
-  after the first prompt of the main agent, and a Pushed row for each of `versions:`.
+  The rows the Timeline lists, every subagent open: `rows/2`, with a Main session row
+  after the first prompt of the main agent in each agent session, and a Pushed row for
+  each of `versions:`.
 
-  The Main session row, `kind: :main_session`, is the main agent's: `sequence` is its
-  prompt's, `calls` how many tool calls the main agent made, routine ones included,
-  `text_seq` the sequence of the main agent's last text, nil while there is none, and
-  `result_seqs` the sequences of the main agent's results, in order. `seqs` are those
-  sequences, whose built items `build/2` takes.
+  An agent session begins at its runtime's start (`:session_started`). An item belongs to
+  a session by its `session`, the number of the session that sent it: to the last start
+  with that number at or before the item, else to the first with that number. An item
+  with no `session`, or with a number no start has, belongs to the last start at or before
+  it; the items before the first start are the first session's. So sessions that overlap
+  in time keep their items apart. A Main session row, `kind: :main_session`, is the main
+  agent's in that session: `sequence` is its prompt's, `session` its prompt's `session`,
+  `calls` how many tool calls the main agent made, routine ones included, `text_seq` the
+  sequence of the main agent's last text, nil while there is none, and `result_seqs` the
+  sequences of the main agent's results, in order. `seqs` are those sequences, whose built
+  items `build/2` takes. The first row's `id` is `main-session`, a later one's has its
+  place among the rows after it: `main-session-2`.
 
   `versions:` are the artifact versions the run pushed, each `%{type, name, number,
   at}` and `public_id`. A Pushed row, `kind: :pushed`, has those fields but `public_id`,
@@ -175,19 +183,41 @@ defmodule Apiary.Runs.Record.Overview do
   defp main_prompt?(_item), do: false
 
   defp with_main(rows, items) do
-    case Enum.find(items, &main_prompt?/1) do
-      nil ->
-        rows
+    items
+    |> sessions()
+    |> Enum.reduce({rows, 0}, fn session, {rows, made} ->
+      with %{} = prompt <- Enum.find(session, &main_prompt?/1),
+           {before, [prompt | rest]} <- Enum.split_while(rows, &(&1.seq != prompt.seq)) do
+        id = if made == 0, do: @main_id, else: "#{@main_id}-#{made + 1}"
+        {before ++ [prompt, main_row(prompt, session, id) | rest], made + 1}
+      else
+        _none -> {rows, made}
+      end
+    end)
+    |> elem(0)
+  end
 
-      prompt ->
-        case Enum.split_while(rows, &(&1.seq != prompt.seq)) do
-          {before, [prompt | rest]} -> before ++ [prompt, main_row(prompt, items) | rest]
-          {_rows, []} -> rows
-        end
+  # The items of each agent session, in the order of the sessions' starts, each in
+  # sequence order (`list/2`).
+  defp sessions(items) do
+    case for(%{kind: :session_started} = item <- items, do: item) do
+      [] ->
+        [items]
+
+      starts ->
+        by_start = Enum.group_by(items, &start_of(&1, starts))
+        for start <- starts, do: Map.get(by_start, start.seq, [])
     end
   end
 
-  defp main_row(prompt, items) do
+  defp start_of(item, starts) do
+    n = item[:session]
+    numbered = if n, do: Enum.filter(starts, &(&1[:session] == n)), else: []
+    from = if numbered == [], do: starts, else: numbered
+    (from |> Enum.filter(&(&1.seq <= item.seq)) |> List.last() || hd(from)).seq
+  end
+
+  defp main_row(prompt, items, id) do
     {calls, text_seq, results} =
       Enum.reduce(items, {0, nil, []}, fn
         %{kind: :tool, lane: %{id: "main"}}, {calls, text, results} ->
@@ -205,9 +235,10 @@ defmodule Apiary.Runs.Record.Overview do
 
     result_seqs = Enum.reverse(results)
 
-    synthetic(:main_session, @main_id, prompt.at, prompt.lane)
+    synthetic(:main_session, id, prompt.at, prompt.lane)
     |> Map.merge(%{
       sequence: prompt.seq,
+      session: prompt[:session],
       calls: calls,
       text_seq: text_seq,
       result_seqs: result_seqs,
