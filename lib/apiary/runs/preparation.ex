@@ -64,7 +64,8 @@ defmodule Apiary.Runs.Preparation do
       as Apiary.Dispatches.Built returns it, nil when it passes; else, once the prebuild
       failed after its build session exited succeeded, `at` the run's exit, no image, and
       `refused` `:not_sent`, as `qory` sends no report when its check of the build's
-      result fails. `fix` is what the reader of `scope` does about an image not saved
+      result fails; or once it was lost or cancelled after that build, `at` when it was
+      found lost or its exit, and `refused` `:lost` or `:cancelled`. `fix` is what the reader of `scope` does about an image not saved
       (`t:built_fix/0`). Nil otherwise, and for any other run.
 
   Every read is scoped as `Apiary.Runs.Record` scopes it: the scope's organisation and
@@ -787,9 +788,17 @@ defmodule Apiary.Runs.Preparation do
   defp prebuild_step(%{kind: "join"} = step), do: Map.put(step, :prebuild, true)
   defp prebuild_step(step), do: step
 
-  # A prebuild with no report whose build session exited succeeded: failed after its
-  # build, at its exit; nil while it goes on, and once it ended in another state.
+  # A prebuild with no report whose build session exited succeeded: failed, lost or
+  # cancelled after its build, at its exit, or when it was found lost; nil while it goes
+  # on, and once it completed.
   defp unsent(%Run{state: "failed", exited_at: at}), do: %{at: at, image: nil, refused: :not_sent}
+
+  defp unsent(%Run{state: "lost"} = run),
+    do: %{at: run.lost_at || run.exited_at, image: nil, refused: :lost}
+
+  defp unsent(%Run{state: "cancelled", exited_at: at}),
+    do: %{at: at, image: nil, refused: :cancelled}
+
   defp unsent(%Run{}), do: nil
 
   # How a prebuild saved its image (`t:built/0`): its first `dev.qory.run.built` by

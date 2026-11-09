@@ -1162,6 +1162,52 @@ defmodule Apiary.Runs.PreparationTest do
       assert cause.(preparation) ==
                what <> " Read the machine log under Start the machine for the cause."
     end
+
+    test "a prebuild lost or cancelled after its build fails Save the outputs, with that line",
+         ctx do
+      events =
+        Enum.map(prebuild_events(report: false, image: "unused"), fn
+          {seq, "run.exited", data} ->
+            {seq, "run.exited", %{data | "state" => "cancelled", "exit_code" => -1}}
+
+          event ->
+            event
+        end)
+
+      run = project!(ctx.run, events)
+      assert run.state == "cancelled"
+      preparation = Preparation.read(ctx.scope, run)
+      assert %{refused: :cancelled, at: at, image: nil, fix: nil} = preparation.built
+      assert at == run.exited_at
+
+      cancelled =
+        "The image was not saved: the build finished, but the run was cancelled before " <>
+          "an image arrived."
+
+      assert ApiaryWeb.PreparationComponents.built_line(preparation) == nil
+      assert ApiaryWeb.PreparationComponents.unsaved_line(preparation) == cancelled
+
+      html = run_list(preparation, "cancelled", @gone)
+      assert row_state(html, "prepare-machine-outputs") == ["failed"]
+      assert outputs_cause(html) == {cancelled, []}
+
+      lost_at = DateTime.add(run.exited_at, 30, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [state: "lost", lost_at: lost_at]
+        )
+
+      preparation = Preparation.read(ctx.scope, Repo.get!(Run, run.id))
+      assert %{refused: :lost, at: ^lost_at, fix: nil} = preparation.built
+
+      lost =
+        "The image was not saved: the build finished, but the run was lost before an " <>
+          "image arrived."
+
+      assert ApiaryWeb.PreparationComponents.unsaved_line(preparation) == lost
+      assert outputs_cause(run_list(preparation, "lost", @gone)) == {lost, []}
+    end
   end
 
   describe "the session of an item of the Timeline" do

@@ -1794,8 +1794,11 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   to git.example.com/acme/web-shop failed with exit code 1." A prebuild whose image was
   not saved shows the first sentence of the cause line of Save the outputs, in plain
   text, before its timeline's results. A prebuild that completed shows that line too: it
-  is the one Completed run with "How it ended". A step's line wraps whole and has no
-  "Jump to it".
+  is the one Completed run with "How it ended". A prebuild lost or cancelled before its
+  image arrived shows that line only when the header has no other line on how the run
+  ended: no starter's outcome in place of the state, no end reason beside it, such as
+  "stopped responding", and, for a lost run, no line from a failed step, item or push. A
+  step's line wraps whole and has no "Jump to it".
 - **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
   live action of the one LiveView, so a tab is a patch. Terminal is the log's
   (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
@@ -2062,6 +2065,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        **Start the machine**. Anyone else reads the log of a pool of the workspace on its
        host, asks an admin of the organisation whose pool it is, or, on Qory Pool,
        contacts support with the run's id.
+     - The run was lost or cancelled after its build session exited 0, before an image
+       arrived: "The image was not saved: the build finished, but the run was lost
+       before an image arrived.", or "cancelled" in place of "lost".
 
      An Agent session and its Run the agent are open when they appear on a live run, where
      the duration counts up, and closed on a run that ended. They open for a `?seq=` link

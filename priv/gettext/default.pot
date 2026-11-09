@@ -19701,6 +19701,16 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
+msgid "The image was not saved: the build finished, but the run was cancelled before an image arrived."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: the build finished, but the run was lost before an image arrived."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
 msgid "The image was not saved: the run reported it at %{reported}, but this run saves images only under %{expected}."
 msgstr ""
 

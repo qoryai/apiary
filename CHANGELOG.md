@@ -1259,7 +1259,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   runtime lost the note about the wall.
 - A prebuild's run page shows **Save the outputs** failed, with a cause line and the
   same line in “How it ended”, when the image was not saved: its report failed the check
-  that stores it, or the run failed after the build and sent no image. The line shows the
+  that stores it, or the run failed after the build and sent no image. A prebuild lost or
+  cancelled after its build shows **Save the outputs** failed too, and “How it ended”
+  shows that line only when the run has no other line on how it ended. The line shows the
   addresses that differ and what to do. Before, the step read “Outputs saved” for an
   image that was not saved, or had no row, and Build the image was green. A long image
   reference now wraps inside the step's column instead of covering **Details**.

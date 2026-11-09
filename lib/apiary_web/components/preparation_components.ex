@@ -27,8 +27,8 @@ defmodule ApiaryWeb.PreparationComponents do
       Finished and the session's Timeline, and Save the outputs, its `dev.qory.run.built`
       with the image, as steps of the run (`prebuild_nodes/3`). Save the outputs is
       failed, with its cause line (`built_cause/1`), when the image was not saved: its
-      report failed the check that stores it, or the run failed after the build and sent
-      none;
+      report failed the check that stores it, or the run failed, was lost or was
+      cancelled after the build and sent none;
     * Remove the machine, last (`clean_up/3`), with Machine removed, the cause and the
       machine's time alive; for a run on a permanent machine, Machine stays registered in
       its place.
@@ -655,16 +655,41 @@ defmodule ApiaryWeb.PreparationComponents do
   @doc """
   How a prebuild whose image was not saved ended, as the run page's header shows it: what
   happened, the first sentence of its cause line (`built_cause/1`), in plain text, with
-  no advice. Nil for any other preparation.
+  no advice. Nil for any other preparation, and for a prebuild lost or cancelled before
+  its image arrived (`unsaved_line/1`).
   """
   @spec built_line(Preparation.t() | nil) :: String.t() | nil
-  def built_line(%{built: %{refused: refused}}) when refused != nil,
+  def built_line(%{built: %{refused: refused}}) when refused not in [nil, :lost, :cancelled],
     do: ApiaryWeb.RichText.plain_text(built_what(refused))
 
   def built_line(_preparation), do: nil
 
+  @doc """
+  How a prebuild ended that was lost or cancelled after its build finished and before an
+  image arrived, as `built_line/1` has it; nil for any other preparation. The run page's
+  header shows it only when the header has no other line on how the run ended: a lost or
+  cancelled run often has one, the starter's outcome or the reason it was lost.
+  """
+  @spec unsaved_line(Preparation.t() | nil) :: String.t() | nil
+  def unsaved_line(%{built: %{refused: refused}}) when refused in [:lost, :cancelled],
+    do: built_what(refused)
+
+  def unsaved_line(_preparation), do: nil
+
   defp built_what(:not_sent),
     do: gettext("The image was not saved: the build finished, but no image arrived.")
+
+  defp built_what(:lost),
+    do:
+      gettext(
+        "The image was not saved: the build finished, but the run was lost before an image arrived."
+      )
+
+  defp built_what(:cancelled),
+    do:
+      gettext(
+        "The image was not saved: the build finished, but the run was cancelled before an image arrived."
+      )
 
   defp built_what({:image_place, reported, expected}),
     do:

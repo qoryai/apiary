@@ -1800,5 +1800,41 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       assert lv |> element("#run-why .q-run-why-whole") |> render() =~ ">#{what}</span>"
     end
+
+    test "a prebuild lost or cancelled after its build: How it ended has the image line only with no other line",
+         ctx do
+      lost =
+        "The image was not saved: the build finished, but the run was lost before an " <>
+          "image arrived."
+
+      run = prebuild!(ctx, nil, %{"state" => "cancelled", "exit_code" => -1})
+      lv = open(ctx.conn, ctx.scope, run)
+      assert has_element?(lv, "#prepare-machine-outputs[data-state=failed]")
+
+      assert lv |> element("#run-why .q-run-why-whole") |> render() =~
+               ">The image was not saved: the build finished, but the run was cancelled " <>
+                 "before an image arrived.</span>"
+
+      lost_at = DateTime.add(run.exited_at, 30, :second)
+
+      {1, _rows} =
+        Apiary.Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
+          set: [state: "lost", lost_at: lost_at]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+      assert lv |> element("#run-why .q-run-why-whole") |> render() =~ ">#{lost}</span>"
+
+      # A lost run with a reason beside its state keeps that line alone.
+      {1, _rows} =
+        Apiary.Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
+          set: [reason: "session_lost"]
+        )
+
+      lv = open(ctx.conn, ctx.scope, run)
+      assert has_element?(lv, "#run-reason", "stopped responding")
+      refute has_element?(lv, "#run-why")
+      assert lv |> element("#prepare-machine-outputs-cause") |> render() =~ lost
+    end
   end
 end

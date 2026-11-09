@@ -57,6 +57,7 @@ defmodule ApiaryWeb.RunLive.Show do
   alias ApiaryWeb.ConnectionLive.Rules
   alias ApiaryWeb.RunLive.Concealed
   alias ApiaryWeb.PreparationComponents
+  alias ApiaryWeb.RunComponents
   alias ApiaryWeb.TranscriptComponents
 
   @window 300
@@ -2444,9 +2445,10 @@ defmodule ApiaryWeb.RunLive.Show do
   # A run that ended badly ends with the failed step of its preparation
   # (`Preparation.stop_line/1`), or with the image a prebuild did not save
   # (`PreparationComponents.built_line/1`); else with the item the candidates find; else
-  # with its failed push or copy (`Preparation.push_line/1`). A prebuild that ended in
-  # another state ends with the image it did not save, as one that completed whose
-  # report failed its check. A step's ending has no `seq`.
+  # with its failed push or copy (`Preparation.push_line/1`); else, for a prebuild lost
+  # before its image arrived, that (`unsaved_ending/2`). A prebuild that ended in another
+  # state ends with the image it did not save, as one that completed whose report failed
+  # its check, or one cancelled before its image arrived. A step's ending has no `seq`.
   defp assign_ending(socket, state, run, index) do
     preparation = socket.assigns.preparation
     scope = socket.assigns.current_scope
@@ -2458,16 +2460,29 @@ defmodule ApiaryWeb.RunLive.Show do
             Preparation.stop_line(preparation) || PreparationComponents.built_line(preparation)
           ) ||
             item_ending(scope, run, index, preparation) ||
-            step_ending(Preparation.push_line(preparation))
+            step_ending(Preparation.push_line(preparation)) ||
+            unsaved_ending(run, preparation)
 
         assign(socket, ending: ending)
 
       not alive?(run) ->
-        assign(socket, ending: step_ending(PreparationComponents.built_line(preparation)))
+        ending =
+          step_ending(PreparationComponents.built_line(preparation)) ||
+            unsaved_ending(run, preparation)
+
+        assign(socket, ending: ending)
 
       true ->
         assign(socket, ending: nil)
     end
+  end
+
+  # A prebuild lost or cancelled before its image arrived ends with that
+  # (`PreparationComponents.unsaved_line/1`) only when the header has no other line on its
+  # end: the starter's outcome in the place of the state, or the end reason beside it.
+  defp unsaved_ending(run, preparation) do
+    if is_nil(RunComponents.outcome_sentence(run)) and is_nil(RunComponents.reason_words(run)),
+      do: step_ending(PreparationComponents.unsaved_line(preparation))
   end
 
   defp step_ending(nil), do: nil
