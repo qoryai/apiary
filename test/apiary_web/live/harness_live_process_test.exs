@@ -131,6 +131,28 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
       assert keep(ctx.scope) == true
     end
 
+    test "with the switch turned off and no edits: main is now at, and no notice", ctx do
+      {:ok, _workspace} = HarnessUpdate.set_keep_latest(ctx.scope, ctx.scope.workspace, false)
+      commit = main_moved!()
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+
+      assert has_element?(view, ~s(#harness-latest[aria-checked="false"]))
+      assert text(view, "#harness-now-at") == "main is now at #{short(commit)}"
+      refute has_element?(view, "#harness-stopped")
+    end
+
+    test "with the switch on and main at a commit not saved yet: main is now at", ctx do
+      # The refresh read main, and the switch's update has not saved its commit.
+      commit = main_moved!()
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+
+      assert has_element?(view, ~s(#harness-latest[aria-checked="true"]))
+      assert text(view, "#harness-now-at") == "main is now at #{short(commit)}"
+      refute has_element?(view, "#harness-stopped")
+    end
+
     test "after saved edits: the notice once, then Update from harness and Save", ctx do
       edit!(ctx.scope)
       commit = main_moved!()
@@ -183,6 +205,83 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
       assert current.number == 3
       assert current.template["commit"] == commit
       assert current.template["added_types"] == ["spec"]
+    end
+
+    test "a save after another version became current says to press again", ctx do
+      main_moved!()
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+
+      edit!(ctx.scope)
+      view |> element("#harness-update-save") |> render_click()
+
+      assert text(view, "#harness-update-error") ==
+               "Press Update from harness again. The stages changed after you opened this difference."
+
+      assert Processes.current(ctx.scope.workspace).number == 2
+    end
+
+    test "a save with a stack for the shared harness says to change that stack", ctx do
+      Apiary.Stacks.put_stack(
+        ctx.scope,
+        {:organisation, ctx.scope.organisation},
+        ~s(extends:\n  git: "#{Qory.git()}"\n  ref: "main"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:branch, "main"}
+      )
+
+      files =
+        Map.update!(QoryHarnessFixture.files(), @process, fn process ->
+          String.replace(process, "stack: software\n", "stack: core\n", global: false)
+        end)
+
+      QoryHarnessFixture.serve!(files)
+      {:ok, _commit} = Qory.read({:branch, "main"})
+      {:ok, _workspace} = HarnessUpdate.set_keep_latest(ctx.scope, ctx.scope.workspace, false)
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+      assert has_element?(view, "#harness-update-stack")
+      view |> element("#harness-update-save") |> render_click()
+
+      assert text(view, "#harness-update-error") ==
+               "Change the stack of the harness your organisation shares, then save again. Every workspace that takes that harness uses its stack."
+    end
+
+    test "a template of another type says to choose another harness", ctx do
+      files =
+        Map.update!(QoryHarnessFixture.files(), @process, fn process ->
+          String.replace(process, "type: qory.software\n", "type: qory.other\n")
+        end)
+
+      QoryHarnessFixture.serve!(files)
+      {:ok, _commit} = Qory.read({:branch, "main"})
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+
+      assert text(view, "#harness-update-error") ==
+               "Choose a harness with a process for this type of workspace. The harness has no template of this workspace's type at this commit."
+    end
+
+    test "artifact types that fail the template check say what to correct", ctx do
+      files =
+        Map.update!(QoryHarnessFixture.files(), @process, fn process ->
+          String.replace(process, "        - type: proposal\n", "        - type: blueprint\n")
+        end)
+
+      QoryHarnessFixture.serve!(files)
+      {:ok, _commit} = Qory.read({:branch, "main"})
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+
+      assert text(view, "#harness-update-error") =~
+               ~r/^Correct the process\.yaml of the harness, then press Update from harness again: the stage Explore uses blueprint, which artifact_types does not list.*\.$/
     end
 
     test "a removed line shows the hint; Try first saves a trial; Cancel closes", ctx do
@@ -300,6 +399,84 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
     end
   end
 
+  describe "a harness repository that follows main with the switch off" do
+    setup %{scope: scope} do
+      git = "https://code.example.com/acme/harness"
+      unique = %{".test-#{System.unique_integer([:positive])}" => ""}
+
+      repository =
+        Apiary.PublicGitServer.repository!(Map.merge(QoryHarnessFixture.files(), unique))
+
+      Apiary.PublicGitServer.serve(%{git => repository.dir})
+
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        harness: "extends:\n  git: #{git}\n  ref: main\n  stack: software\n",
+        choice: :repository,
+        version_kind: :branch,
+        version_name: "main"
+      })
+
+      scope.workspace
+      |> Processes.current()
+      |> Ecto.Changeset.change(
+        template: %{
+          "source" => "repository",
+          "git" => git,
+          "commit" => repository.commit,
+          "module" => "software-factory",
+          "stack" => "software",
+          "type" => "qory.software",
+          "version" => nil
+        }
+      )
+      |> Repo.update!()
+
+      %{git: git, repository: repository}
+    end
+
+    test "Version shows where main is now, from the read of the branch", ctx do
+      commit = Apiary.PublicGitServer.commit!(ctx.repository.dir, %{"README.yaml" => "a: 1\n"})
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      render_async(view)
+
+      assert has_element?(view, ~s(#harness-latest[aria-checked="false"]))
+
+      assert text(view, "#harness-in-use") ==
+               "Commit in use: #{short(ctx.repository.commit)}, process version 1"
+
+      assert text(view, "#harness-now-at") == "main is now at #{short(commit)}"
+      refute has_element?(view, "#harness-stopped")
+
+      # Update from harness shows the difference that read returned.
+      view |> element("#harness-update") |> render_click()
+      assert text(view, "#harness-update-title") == "Update from main at #{short(commit)}"
+    end
+
+    test "a harness repository that cannot be read says so under Update from harness", ctx do
+      Apiary.PublicGitServer.serve(%{}, answer: fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      render_async(view)
+      refute has_element?(view, "#harness-now-at")
+
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+      assert text(view, "#harness-update-error") =~ "code.example.com"
+      refute has_element?(view, "#harness-update-diff")
+    end
+  end
+
+  describe "the old addresses" do
+    test "/settings/stages and /settings/workflow are not found", ctx do
+      for rest <- ["/settings/stages", "/settings/workflow"] do
+        assert ctx.conn |> get(workspace_path(ctx.scope, rest)) |> response(404)
+      end
+    end
+  end
+
   describe "a member" do
     test "finds no Harness page", %{scope: scope} do
       %{user: user} = Apiary.OrganisationsFixtures.member_fixture(scope)
@@ -347,22 +524,23 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
     end
 
     test "a version the switch saved, with no change, has no change line", ctx do
-      commit = main_moved!()
-      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.scope.workspace)
+      # main at a commit whose process and artifact types are the same.
+      repository =
+        QoryHarnessFixture.serve!(Map.put(QoryHarnessFixture.files(), "README.yaml", "a: 1\n"))
 
-      # The switch's save: the instance's scope, with no author, of the same document.
-      scope = Apiary.Accounts.Scope.for_instance(ctx.scope.organisation, ctx.scope.workspace)
-      unchanged = %{update | document: update.base.document, changes: []}
-      {:ok, v2} = HarnessUpdate.save(scope, ctx.scope.workspace, unchanged)
-      assert v2.author_id == nil
+      {:ok, commit} = Qory.read({:branch, "main"})
+      assert commit == repository.commit
+
+      assert :ok = HarnessUpdate.follow_all()
+      assert %{number: 2, author_id: nil} = Processes.current(ctx.scope.workspace)
 
       path = workspace_path(ctx.scope, "/settings/workflows?tab=details")
       {:ok, view, _html} = live(ctx.conn, path)
 
       assert text(view, "#stages-version-2") =~
-               ~r/^Version 2 current Updated from main at #{short(commit)}, \d+ \w+ \d{4} Added the artifact type spec\.$/
+               ~r/^Version 2 current Updated from main at #{short(commit)}, \d+ \w+ \d{4}$/
 
-      refute has_element?(view, "#stages-version-2 li", "No change.")
+      refute has_element?(view, "#stages-version-2 li")
     end
   end
 end

@@ -5,8 +5,10 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   # `rows/1` is Source, with the harness's title and its address as a link, Stack, and
   # Version, the branch it follows, or the tag or commit it is pinned to. With the
   # `workflow_model` feature, Version also has the commit the current process version
-  # came from, and, for a harness repository that follows a branch with Keep the process
-  # at the latest off, the commit the branch is at now, once a read of it returned one.
+  # came from, and, where the followed branch is at another commit now, that commit: for
+  # the Qory harness as its last read has it, for a harness repository with Keep the
+  # process at the latest off once a read of it returned one. After edits saved on the
+  # Workflows page, the notice of the stopped update shows that commit instead.
   #
   # `update/1` is the difference that Update from harness shows before a save
   # (`Apiary.Processes.HarnessUpdate.read/2`): the version and its commit against the
@@ -88,26 +90,24 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   end
 
   @doc false
-  # now_at?/2 is whether Version shows where the followed branch of a harness repository
-  # is now: with Keep the process at the latest off and no edits saved since, at another
-  # commit than the one in use. With edits saved, the notice of the stopped update shows
-  # instead (`stopped?/2`).
+  # now_at?/2 is whether Version shows where the followed branch is now: at another commit
+  # than the one in use, for the Qory harness and for a harness repository, unless the
+  # notice of the stopped update shows that commit (`stopped/2`).
   @spec now_at?(map, String.t() | nil) :: boolean
-  def now_at?(%{source: :repository, following: branch, keep_latest: false} = status, head)
-      when is_binary(branch) and is_binary(head),
-      do: head != status.in_use and not status.edits
+  def now_at?(%{following: branch} = status, head) when is_binary(branch) and is_binary(head),
+    do: head != status.in_use and is_nil(stopped(status, head))
 
   def now_at?(_status, _head), do: false
 
   @doc false
-  # stopped?/2 is the commit the notice of a stopped update shows, nil for no notice: for
-  # a harness that follows a branch with Keep the process at the latest off, the commit
-  # the branch is at now where it is another than the one in use; for a harness
-  # repository, only after edits saved on the Workflows page (else `now_at?/2`).
+  # stopped/2 is the commit the notice of a stopped update shows, nil for no notice: for
+  # a harness that follows a branch, after edits saved on the Workflows page turned Keep
+  # the process at the latest off, the commit the branch is at now, where it is another
+  # than the one in use.
   @spec stopped(map, String.t() | nil) :: String.t() | nil
-  def stopped(%{following: branch, keep_latest: false} = status, head)
+  def stopped(%{following: branch, keep_latest: false, edits: true} = status, head)
       when is_binary(branch) and is_binary(head) do
-    if head != status.in_use and (status.source == :qory or status.edits), do: head
+    if head != status.in_use, do: head
   end
 
   def stopped(_status, _head), do: nil
