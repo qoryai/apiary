@@ -100,7 +100,7 @@ defmodule Apiary.Runs.RunListTest do
                work_item: 9_223_372_036_854_775_807,
                workflow: "a-1",
                state: "lost",
-               since: ~U[2026-11-01 23:59:59.000000Z],
+               since: ~U[2026-11-01 23:59:59Z],
                before: before,
                limit: 100
              }
@@ -115,13 +115,14 @@ defmodule Apiary.Runs.RunListTest do
       assert {:ok, %{workspace: {^slug, "x"}}} = RunList.parse("workspace=#{slug}/x")
     end
 
-    test "since is the next whole microsecond at or after the time it names" do
+    test "since is the earliest whole second at or after the time in it" do
       for {value, at} <- [
             {"2026-11-01T00:00:00Z", ~U[2026-11-01 00:00:00.000000Z]},
-            {"2026-11-01T00:00:00.5Z", ~U[2026-11-01 00:00:00.500000Z]},
-            {"2026-11-01T00:00:00.123456Z", ~U[2026-11-01 00:00:00.123456Z]},
-            {"2026-11-01T00:00:00.000000001Z", ~U[2026-11-01 00:00:00.000001Z]},
-            {"2026-11-01T00:00:00.123456000Z", ~U[2026-11-01 00:00:00.123456Z]},
+            {"2026-11-01T00:00:00.0Z", ~U[2026-11-01 00:00:00.000000Z]},
+            {"2026-11-01T00:00:00.000000000Z", ~U[2026-11-01 00:00:00.000000Z]},
+            {"2026-11-01T00:00:00.5Z", ~U[2026-11-01 00:00:01.000000Z]},
+            {"2026-11-01T00:00:00.123456Z", ~U[2026-11-01 00:00:01.000000Z]},
+            {"2026-11-01T00:00:00.000000001Z", ~U[2026-11-01 00:00:01.000000Z]},
             {"2026-12-31T23:59:59.999999999Z", ~U[2027-01-01 00:00:00.000000Z]},
             {"2024-02-29T00:00:00Z", ~U[2024-02-29 00:00:00.000000Z]}
           ] do
@@ -285,8 +286,8 @@ defmodule Apiary.Runs.RunListTest do
           run!(if(id == "rn_000000000000000z", do: other, else: scope), at, %{public_id: id})
         end
 
-      later = run!(scope, DateTime.add(at, 1, :microsecond))
-      earlier = run!(scope, DateTime.add(at, -1, :microsecond))
+      later = run!(scope, DateTime.add(at, 1, :second))
+      earlier = run!(scope, DateTime.add(at, -1, :second))
 
       order = [
         later.public_id,
@@ -312,6 +313,33 @@ defmodule Apiary.Runs.RunListTest do
       assert third["next"] == nil
 
       assert page!(schema, "before=#{earlier.public_id}") == %{"runs" => [], "next" => nil}
+    end
+
+    # The contract's `created_at` is whole seconds: two runs of one second are ordered by
+    # id alone, whatever their fractions.
+    test "orders runs of one second by id, the greatest first, whatever their fractions",
+         %{runs: schema, scope: scope} do
+      a = run!(scope, ~U[2026-11-01 10:00:00.100000Z], %{public_id: "rn_zzzzzzzzzzzzzzzz"})
+      b = run!(scope, ~U[2026-11-01 10:00:00.900000Z], %{public_id: "rn_0000000000000001"})
+
+      page = page!(schema, "")
+      assert ids(page) == [a.public_id, b.public_id]
+
+      assert Enum.map(page["runs"], & &1["created_at"]) ==
+               List.duplicate("2026-11-01T10:00:00Z", 2)
+
+      assert ids(page!(schema, "before=" <> a.public_id)) == [b.public_id]
+      assert page!(schema, "before=" <> b.public_id)["runs"] == []
+    end
+
+    test "since with a fraction lists no run whose created_at is earlier",
+         %{runs: schema, scope: scope} do
+      _a = run!(scope, ~U[2026-11-01 10:00:00.100000Z])
+      _b = run!(scope, ~U[2026-11-01 10:00:00.900000Z])
+      c = run!(scope, ~U[2026-11-01 10:00:01.000000Z])
+
+      assert ids(page!(schema, "since=2026-11-01T10:00:00.5Z")) == [c.public_id]
+      assert length(page!(schema, "since=2026-11-01T10:00:00Z")["runs"]) == 3
     end
 
     test "has 25 rows by default and 100 at most, with next while more match",

@@ -14,25 +14,27 @@ defmodule Apiary.Runs.RunList do
   only the last value of a name given twice. A name that is not one of these, a name
   given twice, an empty value, a value outside its rule, `work_item` without
   `workspace`, a workspace that does not exist and a `before` of no run are refused with
-  the parameter's name. A `work_item`, `workflow` or `state` that no run has gives an
-  empty page.
+  the parameter's name. If no run has the `work_item`, `workflow` or `state` of the query,
+  the page is empty.
 
-  **The page.** The runs are ordered by `created_at` (the run's `inserted_at`), the last
-  first, then by the run's `rn_` id, the greatest first, compared byte by byte. `before`
-  selects the runs created earlier than that run, or at the same time with a smaller id.
-  `next` is the id of the page's last run when at least one more run matches, else nil.
-  One query reads the page with its organisation, workspace, workflow and work item, in
-  the order of the index `runs_inserted_at_public_id_index`; the workspace and `before`
-  are each looked up first, when given.
+  **The page.** The runs are ordered by `created_at` (the run's `inserted_at`, cut to
+  whole seconds, as the contract's time is), the last first, then by the run's `rn_` id,
+  the greatest first, compared byte by byte. `before` selects the runs whose `created_at`
+  is earlier than that run's, or the same with a smaller id; `since` selects the runs
+  whose `created_at` is at or after it. `next` is the id of the page's last run when at
+  least one more run matches, else nil. One query reads the page with its organisation,
+  workspace, workflow and work item, in the order of the index
+  `runs_inserted_at_public_id_index`; the workspace and `before` are each looked up
+  first, when given.
 
   **Each row.** `workflow` is the workflow of the run's resolved harness walk, as in the
   run diagnostics (`Apiary.Runs.Diagnostics`), and the work item is the one of the run's
   row in its workspace's queue (`dispatch_run_id`), as there too: a run whose start
-  failed left that row, and has neither. The work item's number and title are there only while the
-  work item is in the run's workspace. `duration_seconds` counts whole seconds from
-  `started_at` to `exited_at`, or to `now` for a started run that is pending or running
-  without an exit. A member the run has not got, or whose value is outside the contract's
-  pattern, is left out.
+  failed left that row, and has neither. The work item's number and title are there only
+  while the work item is in the run's workspace. `duration_seconds` counts whole seconds
+  from `started_at` to `exited_at`, or to `now` for a started run that is pending or
+  running without an exit. A member the run has not got, or whose value is outside the
+  contract's pattern, is left out.
 
   It reads every run of the instance and writes nothing: no read is recorded, and nothing
   of the runs or the query is logged, its database queries' debug lines included.
@@ -46,6 +48,12 @@ defmodule Apiary.Runs.RunList do
   alias Apiary.Repo
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.WorkItem
+
+  # The contract's `created_at` of a run, `inserted_at` cut to whole seconds, in the form
+  # of the index `runs_inserted_at_public_id_index`, so the page reads that index.
+  defmacrop created_at(inserted_at) do
+    quote do: fragment("date_trunc('second', ?)", unquote(inserted_at))
+  end
 
   @names ~w(workspace work_item workflow state since before limit)
   @default_limit 25
@@ -74,7 +82,7 @@ defmodule Apiary.Runs.RunList do
         }
 
   @doc """
-  answer/2 is the page that `query`, the raw query string, asks for, as the contract's
+  answer/2 is the page that `query`, the raw query string, requests, as the contract's
   document: `{:ok, %{"runs" => rows, "next" => id or nil}}`, or `{:error, parameter}` with
   the name of a parameter the request breaks the rule of. `opts`: `now`, the time the
   answer is built (the current time).
@@ -188,10 +196,9 @@ defmodule Apiary.Runs.RunList do
     end
   end
 
-  # The earliest microsecond at or after the time `value` names: the database keeps
-  # microseconds, so a run created at or after a time with nanoseconds is one created at
-  # or after the next whole microsecond. Nil for a value outside the rule: seconds 00 to
-  # 59, and a date and time that exist.
+  # The earliest whole second at or after the time in `value`: `created_at` is whole
+  # seconds, so a fraction above zero moves `since` to the next second. Nil for a value
+  # outside the rule: seconds 00 to 59, and a date and time that exist.
   defp since(value) do
     with [year, month, day, hour, minute, second | fraction] <-
            Regex.run(@since, value, capture: :all_but_first),
@@ -201,19 +208,14 @@ defmodule Apiary.Runs.RunList do
          {:ok, date} <- Date.new(year, month, day),
          {:ok, time} <- Time.new(hour, minute, second),
          {:ok, at} <- DateTime.new(date, time, "Etc/UTC") do
-      DateTime.add(at, microseconds_up(fraction), :microsecond)
+      if fraction?(fraction), do: DateTime.add(at, 1, :second), else: at
     else
       _outside -> nil
     end
   end
 
-  defp microseconds_up([]), do: 0
-  defp microseconds_up([""]), do: 0
-
-  defp microseconds_up([digits]) do
-    nanoseconds = digits |> String.pad_trailing(9, "0") |> String.to_integer()
-    div(nanoseconds + 999, 1000)
-  end
+  defp fraction?([digits]), do: String.trim(digits, "0") != ""
+  defp fraction?(_none), do: false
 
   # A name as a refusal shows it: valid UTF-8, each control character replaced with
   # U+FFFD, its first 64 characters.
@@ -227,9 +229,10 @@ defmodule Apiary.Runs.RunList do
   end
 
   @doc """
-  page/2 is the page `filters` asks for, as answer/2 returns it, or `{:error, parameter}`
-  for a workspace that does not exist (`workspace`) and a `before` that is the id of no
-  run (`before`). `opts`: `now`, the time the answer is built (the current time).
+  page/2 is the page that matches `filters`, as answer/2 returns it, or
+  `{:error, parameter}` for a workspace that does not exist (`workspace`) and a `before`
+  that is the id of no run (`before`). `opts`: `now`, the time the answer is built (the
+  current time).
   """
   @spec page(filters, keyword) :: {:ok, map} | {:error, String.t()}
   def page(filters, opts \\ []) do
@@ -273,7 +276,11 @@ defmodule Apiary.Runs.RunList do
   defp before(nil), do: {:ok, nil}
 
   defp before(public_id) do
-    case Repo.one(from(r in Run, where: r.public_id == ^public_id, select: r.inserted_at),
+    case Repo.one(
+           from(r in Run,
+             where: r.public_id == ^public_id,
+             select: type(created_at(r.inserted_at), :utc_datetime_usec)
+           ),
            log: false
          ) do
       nil -> {:error, "before"}
@@ -281,9 +288,9 @@ defmodule Apiary.Runs.RunList do
     end
   end
 
-  # The page and one run more, whose presence says there is a next page. Each run has one
-  # organisation, one workspace, at most one row of the queue, one harness walk of that row
-  # (a unique index) and one work item, so the joins add no row.
+  # The page and one run more: if that run is found, there is a next page. Each run has
+  # one organisation, one workspace, at most one row of the queue, one harness walk of
+  # that row (a unique index) and one work item, so the joins add no row.
   defp query(filters, workspace_id, before) do
     from(r in Run,
       join: o in Organisation,
@@ -298,7 +305,10 @@ defmodule Apiary.Runs.RunList do
       left_join: w in WorkItem,
       as: :work_item,
       on: w.id == d.work_item_id and w.workspace_id == r.workspace_id,
-      order_by: [desc: r.inserted_at, desc: fragment("? COLLATE \"C\"", r.public_id)],
+      order_by: [
+        desc: created_at(r.inserted_at),
+        desc: fragment("? COLLATE \"C\"", r.public_id)
+      ],
       limit: ^(filters.limit + 1),
       select: %{
         id: r.public_id,
@@ -334,7 +344,9 @@ defmodule Apiary.Runs.RunList do
     do: where(query, [walk: h], h.workflow == ^workflow)
 
   defp filter(query, :state, state), do: where(query, [r], r.state == ^state)
-  defp filter(query, :since, since), do: where(query, [r], r.inserted_at >= ^since)
+
+  defp filter(query, :since, since),
+    do: where(query, [r], created_at(r.inserted_at) >= type(^since, :utc_datetime_usec))
 
   # One row comparison, in the order of the index `runs_inserted_at_public_id_index`, so
   # the next page starts inside the index: earlier, or as early with a smaller id.
@@ -344,7 +356,7 @@ defmodule Apiary.Runs.RunList do
       [r],
       fragment(
         "(?, ? COLLATE \"C\") < (?, ?)",
-        r.inserted_at,
+        created_at(r.inserted_at),
         r.public_id,
         type(^at, :utc_datetime_usec),
         ^public_id
