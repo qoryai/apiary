@@ -1176,15 +1176,37 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
   describe "guard" do
     @tag needs: :security
-    test "policy: a new workspace, then a managed one with a version, own rules and hosts to review",
+    test "policy: two repositories follow it", %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, scope)
+
+      assert text(view, "#overview-policy-mode") =~ "2 of 2 repositories follow it."
+    end
+
+    @tag needs: :security
+    test "policy: a workspace with no version yet shows no mode, here and in the sidebar",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      no_policy_version!(scope.workspace)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#overview-policy-open")
+      assert text(view, "#overview-policy-version") == ""
+      refute has_element?(view, "#overview-policy-mode")
+      refute has_element?(view, "#nav-policy-mode")
+    end
+
+    @tag needs: :security
+    test "policy: a new workspace at version 1, then one with own rules and hosts to review",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
       view = open(conn, scope)
 
-      assert text(view, "#overview-policy-version") == "observe"
-
-      assert text(view, "#overview-policy-mode") ==
-               "Machines use their local policy until the first change here."
+      assert text(view, "#overview-policy-version") == "observe · v1"
+      assert text(view, "#overview-policy-mode") =~ "In force since"
+      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follows it."
+      refute has_element?(view, "#att-policy-unmanaged")
 
       assert has_element?(
                view,
@@ -1199,9 +1221,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       render_async(view, 5_000)
 
-      assert text(view, "#overview-policy-version") == "enforce · v2"
+      assert text(view, "#overview-policy-version") == "enforce · v3"
       assert text(view, "#overview-policy-mode") =~ "In force since"
-      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follow it."
+      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follows it."
       assert text(view, "#overview-policy-mode") =~ "2 declared hosts to review in 1 repository."
       assert text(view, "#overview-own") =~ "Every repository follows the workspace's mode."
 
@@ -1466,7 +1488,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         ]
       )
 
-      # No rule yet, with runs: the policy is unmanaged, the sixth item.
+      # A rule in observe: the enforce item, the sixth.
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
       lost_run(scope)
       started_run(scope, shop(), heartbeat: {45, 100, 30})
       started_run(scope, shop(), heartbeat: {45, 100, 30})
@@ -1659,25 +1682,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
+    test "the policy items: none at version 1, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())
       view = open(conn, scope)
 
-      assert text(view, "#att-policy-unmanaged") =~ "Qory Apiary serves no policy yet"
-
-      assert text(view, "#att-policy-unmanaged") =~ "1 run under the machines' policies"
-
-      assert has_element?(
-               view,
-               "#att-policy-unmanaged-act[href='#{workspace_path(scope, "/policy")}']",
-               "Open policy"
-             )
+      refute has_element?(view, "#att-policy-unmanaged")
+      refute has_element?(view, "#att-policy-enforce")
+      refute render(view) =~ "serves no policy"
 
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
       render_async(view, 5_000)
-      assert text(view, "#att-policy-unmanaged") =~ "Qory Apiary serves the policy now."
-      assert has_element?(view, "#att-policy-unmanaged.q-resolved")
 
       assert text(view, "#att-policy-enforce") =~ "Observe is the workspace's default"
 
@@ -2088,12 +2103,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert text(view, "#overview-announcer") =~ "files.cdn.example is allowed for acme/shop."
 
-      # The policy topic re-reads the list: the struck row stays where it is, and the
-      # workspace is managed now, so the unmanaged item resolves in words too. A target's
+      # The policy topic re-reads the list: the struck row stays where it is. A target's
       # rule is no allow rule of the workspace: no enforce nudge.
       render_async(view, 5_000)
       assert has_element?(view, "##{item}.q-resolved")
-      assert has_element?(view, "#att-policy-unmanaged.q-resolved")
       refute has_element?(view, "#att-policy-enforce")
       assert text(view, "#attention-n") == "0"
     end

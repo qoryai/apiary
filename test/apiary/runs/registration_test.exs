@@ -84,6 +84,7 @@ defmodule Apiary.Runs.RegistrationTest do
   # A configuration of a target alone: the workspace is managed, and has no baseline to give
   # a run whose labels name no target, so its configuration cannot be read for one.
   defp unreadable(scope) do
+    no_policy_version!(scope.workspace)
     shop = target_fixture(scope, "git.example.com", "acme/shop")
 
     document =
@@ -237,7 +238,8 @@ defmodule Apiary.Runs.RegistrationTest do
 
   describe "register/3" do
     test "creates the run pending, under the key, on its node and the claimed instance",
-         %{key: key} do
+         %{key: key, scope: scope} do
+      no_policy_version!(scope.workspace)
       body = body()
       run_id = body["run_id"]
 
@@ -485,8 +487,10 @@ defmodule Apiary.Runs.RegistrationTest do
       assert [%Run{node_instance_id: "i_full"}] = runs()
     end
 
-    test "a workspace nobody has given a policy: no policy, and the run is created",
-         %{key: key} do
+    test "a workspace with no row: no policy, and the run is created",
+         %{key: key, scope: scope} do
+      no_policy_version!(scope.workspace)
+
       assert {:ok, %{settings: @no_policy, managed: false, run: %Run{}}} = register(key, body())
       assert length(runs()) == 1
     end
@@ -668,7 +672,8 @@ defmodule Apiary.Runs.RegistrationTest do
 
   describe "fetch/2, the reload" do
     test "a workspace that serves no run configuration is not found, never no policy",
-         %{key: key} do
+         %{key: key, scope: scope} do
+      no_policy_version!(scope.workspace)
       body = body()
       assert {:ok, _} = register(key, body)
 

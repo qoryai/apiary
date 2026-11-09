@@ -332,7 +332,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
              }
 
       assert Policy.answered_digest(ctx.scope, run) == reloaded.digest
-      assert %{n: 2} = Rules.version(ctx.scope, nil, reloaded.digest)
+      assert %{n: 3} = Rules.version(ctx.scope, nil, reloaded.digest)
     end
 
     test "never takes a stored version's digest for a prebuild's document of the same bytes",
@@ -360,7 +360,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert reported == p1.digest
       assert applied == p1.digest
       assert Policy.policy_digest(ctx.scope, p1.digest) == p1.digest
-      assert %{n: 1} = Rules.version(ctx.scope, nil, p1.digest)
+      assert %{n: 2} = Rules.version(ctx.scope, nil, p1.digest)
 
       # A run the events endpoint does not know, reporting P1, is not told P1 is in force.
       %{access_key: key} = contract_key_fixture(ctx.scope)
@@ -405,7 +405,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
                drift: false
              }
 
-      assert %{n: 1, digest: digest} = Rules.version(ctx.scope, nil, composed.digest)
+      assert %{n: 2, digest: digest} = Rules.version(ctx.scope, nil, composed.digest)
       assert digest == ctx.configuration.digest
 
       {:ok, _rule} = Policy.allow(ctx.scope, nil, %{host: "cdn.example"})

@@ -441,10 +441,9 @@ tab, select a stage, choose its workflow under **Sequence**, and select **Save**
 ## Next
 
 <!-- feature: security -->
-- Until somebody changes the workspace's policy, runs use each machine's local policy. Read
-  [The security policy](security-policy.md) before the first rule: from the first change,
-  each machine's runs take the workspace's policy, narrowed by the `egress` section of
-  the machine's Forager file.
+- A workspace starts with policy version 1: observe, with no rules. Each machine's runs take
+  the workspace's policy, narrowed by the `egress` section of the machine's Forager file.
+  Read [The security policy](security-policy.md) before the first rule.
 <!-- /feature -->
 - `qory run --local` records to files only and does not contact Qory Apiary.
 - To stop the trial: `docker compose down`. The database stays in the volume

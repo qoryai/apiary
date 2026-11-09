@@ -1048,7 +1048,7 @@ defmodule Apiary.Runs.Registration do
   `{:error, :not_found}` for a run id the key's workspace does not hold, a run another
   node registered, a run through a gateway that another instance of the gateway attached
   (`Apiary.Runs.Sender`), a run that never registered (its batches created it), and a
-  workspace that serves no run configuration: nobody has made its policy, the instance
+  workspace that serves no run configuration: it has no row yet, the instance
   does not have the `security` feature, or `Apiary.Access` refuses
   `run_configuration.fetch`. That last is never the document of no policy, which would
   take the policy in force off a run that started under it: a policy removed mid-run
@@ -1135,7 +1135,7 @@ defmodule Apiary.Runs.Registration do
       not Run.through_gateway?(run) or
         AccessKeys.place_in_use?(run.organisation_id, run.workspace_id)
 
-  # A reload where the workspace serves no run configuration (nobody has made its policy,
+  # A reload where the workspace serves no run configuration (it has no row yet,
   # the instance does not have the `security` feature, or `Apiary.Access` refuses
   # `run_configuration.fetch`) is not found, never the document of no policy: that answer
   # would take the policy in force off a run that started under it. A policy removed
