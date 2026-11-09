@@ -271,7 +271,7 @@ defmodule ApiaryWeb.Routes do
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_diagnostics
 
-        # No log of the dispatch: its parameters are the query, which names runs.
+        # No log of the dispatch: its parameters are the query, which contains run ids.
         get "/runs", RunListController, :index, log: false
         get "/runs/:run_id/diagnostics", DiagnosticsController, :show
       end

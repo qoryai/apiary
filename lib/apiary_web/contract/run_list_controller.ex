@@ -38,7 +38,7 @@ defmodule ApiaryWeb.Contract.RunListController do
     end
   rescue
     exception ->
-      # The class alone: the message can carry the runs' data or the query.
+      # The class alone: the message can contain the runs' data or the query.
       Logger.error("run list not built: #{inspect(exception.__struct__)}")
       conn |> put_status(503) |> json(%{error: "unavailable"})
   end
