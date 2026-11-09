@@ -830,18 +830,24 @@ defmodule Apiary.Runs.Record do
   end
 
   @doc """
-  The run's first `dev.qory.run.built` by sequence: `%{time, image}`, `image` the
-  event's `image` as it is, nil when that is no text; nil for a run with none, and once
-  retention deleted the run's events.
+  The run's first `dev.qory.run.built` by sequence: `%{time, image, data}`, `image` the
+  event's `image` as it is, nil when that is no text, and `data` the event's data, for
+  the check that stores its image (Apiary.Dispatches.Built); nil for a run with none,
+  and once retention deleted the run's events.
   """
-  @spec built(Scope.t(), Run.t()) :: %{time: DateTime.t(), image: String.t() | nil} | nil
+  @spec built(Scope.t(), Run.t()) ::
+          %{time: DateTime.t(), image: String.t() | nil, data: map} | nil
   def built(%Scope{} = scope, %Run{} = run) do
     Repo.one(
       from e in events(scope, run),
         where: e.type == "dev.qory.run.built",
         order_by: e.sequence,
         limit: 1,
-        select: %{time: e.time, image: fragment("left(? ->> 'image', 400)", e.data)}
+        select: %{
+          time: e.time,
+          image: fragment("left(? ->> 'image', 400)", e.data),
+          data: e.data
+        }
     )
   end
 
