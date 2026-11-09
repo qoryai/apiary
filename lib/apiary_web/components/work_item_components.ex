@@ -348,8 +348,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   def you?(%{you: true}), do: true
   def you?(_person), do: false
 
-  # The listed approvers without the reader: a listed reader here is one whom
-  # `Apiary.Access` refuses `work_item.confirm`, as one who may confirm has `:you`.
+  # The listed approvers without the reader: a listed reader here is one for whom the
+  # `work_item.confirm` check fails, as one who may confirm has `:you`.
   defp others(confirmers), do: Enum.reject(confirmers, &you?/1)
 
   # The ticket's title as a page shows it (`Apiary.ExternalText.present/1`): nil for one
@@ -1136,7 +1136,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     assigns =
       assign(assigns,
-        # A listed reader whom `Apiary.Access` refuses, beside other approvers.
+        # A listed reader for whom the `work_item.confirm` check fails, beside others.
         refused: not assigns.can_act and others != [] and others != confirmers,
         line:
           cond do

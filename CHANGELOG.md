@@ -631,16 +631,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   other member reads “Dana approves next”, “Dana or Sam approves next” or “One of 3
   approvers approves next”, and the step card “Dana approves the proposal or runs
   another round.”, “Dana or Sam approves the proposal or runs another round.” or “One of
-  the stage's 3 approvers approves the proposal or runs another round.” The Work items
-  list shows the same words on the row, and its **Waiting on you** view, its Approve
-  band's count and the sidebar's count go to the members who may approve, not to an
-  owner who is not listed. Elsewhere the header shows the owner as before, “You approve
-  next” or “Dana approves next”. A member who stopped being an approver after the page
-  showed the gate, and clicks **Run another round**, sees “Ask an approver of Explore to
-  act on it.” under the gate, and no run starts. With the workflow model, where the
-  stage lists approvers, only they approve a gate. Every member answers the questions.
-  The access action `work_item.review_comment` covers the comment on the whole proposal,
-  a reply and a send of the open comments.
+  the stage's 3 approvers approves the proposal or runs another round.” A listed member
+  who may not approve does not see their name there. Beside other approvers, the step
+  card adds “You are listed as an approver, but you may not approve in this workspace.”
+  When that member is the only listed approver, the header shows “No listed approver may
+  approve” and the step card shows “You are the only listed approver, but you may not
+  approve in this workspace.” The Work items list shows the same words on the row, and
+  its **Waiting on you** view, its Approve band's count and the sidebar's count go to
+  the members who may approve, not to an owner who is not listed. Elsewhere the header
+  shows the owner as before, “You approve next” or “Dana approves next”. A member who
+  stopped being an approver after the page showed the gate, and clicks **Run another
+  round**, sees “Ask an approver of Explore to act on it.” under the gate, and no run
+  starts. With the workflow model, where the stage lists approvers, only they approve a
+  gate. Every member answers the questions. The access action `work_item.review_comment`
+  covers the comment on the whole proposal, a reply and a send of the open comments.
 - When **Run another round** or a reply sends nothing, the answers, the comment or the
   text stay, and the form shows the fix under it: “Send it again when attempt 3 ends.
   Attempt 3 (Run 14) started first, so nothing was sent.” when another run started

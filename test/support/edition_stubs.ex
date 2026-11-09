@@ -827,9 +827,9 @@ defmodule Apiary.EditionStubs do
 
   defmodule RefusesConfirm do
     @moduledoc """
-    The account the test puts (`put/1`, read as `HidesNamed` reads its list) may not
-    approve a proposal (`work_item.confirm`), as an edition refuses every change to a
-    member of a suspended organisation. Every other check is the edition's.
+    The `work_item.confirm` check fails for the account the test puts (`put/1`, read as
+    `HidesNamed` reads its list), as every change check fails in an edition for a member
+    of a suspended organisation. Every other check is the edition's.
     """
 
     @doc "put/1 sets the account id that may not approve a proposal."
