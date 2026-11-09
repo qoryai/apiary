@@ -476,6 +476,42 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  # How many reads of `process_versions` the test process and the page's LiveView ran
+  # while the page at `path` loaded, with the view.
+  defp version_reads(conn, path) do
+    handler = "workflow-version-reads-#{System.unique_integer([:positive])}"
+    me = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, meta, _config ->
+          if meta.source == "process_versions", do: send(me, {:version_read, self()})
+        end,
+        nil
+      )
+
+    try do
+      {:ok, view, _html} = live(conn, path)
+      _ = render(view)
+      {count_version_reads([me, view.pid], 0), view}
+    after
+      :telemetry.detach(handler)
+    end
+  end
+
+  # The process version on the work item the page at `view` keeps.
+  defp loaded_version(view), do: :sys.get_state(view.pid).socket.assigns.row.process_version
+
+  defp count_version_reads(pids, n) do
+    receive do
+      {:version_read, pid} -> count_version_reads(pids, if(pid in pids, do: n + 1, else: n))
+    after
+      0 -> n
+    end
+  end
+
   # The name the page shows for the account `id`.
   defp shown_name(scope, id), do: ApiaryWeb.WorkItemLive.View.people(scope, [id])[id].name
 
@@ -497,6 +533,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
   describe "without the feature" do
     @describetag with_features: Apiary.Features.all() -- [:workflow_model]
+
+    # The one read left on each load, the static one and the connected one, is the
+    # Explore tab's stage (`ApiaryWeb.WorkItemLive.View`), not the work item's version.
+    test "the page loads no process version on the work item", %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+      {reads, view} = version_reads(conn, page(scope, work_item.number))
+
+      assert reads == 2
+      assert %Ecto.Association.NotLoaded{} = loaded_version(view)
+      assert has_element?(view, "#work-item-step")
+    end
 
     test "the page has the step card and the stages as before it", %{conn: conn, scope: scope} do
       work_item = backfilled!(scope, @explore, :running)
@@ -564,6 +611,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-item-step")
       refute has_element?(view, "#work-item-stage")
+    end
+
+    test "the page reads the workspace's current process version", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = work_item_fixture(scope)
+      {reads, view} = version_reads(conn, page(scope, work_item.number))
+
+      assert reads > 2
+      assert %Processes.Version{status: :current} = loaded_version(view)
+      assert has_element?(view, "#work-item-step")
     end
   end
 
