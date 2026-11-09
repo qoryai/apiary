@@ -6413,6 +6413,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .q-run-why-t.q-run-why-whole {
+    overflow: visible;
+    white-space: normal;
+  }
   .q-run-why .q-link {
     flex: none;
   }
@@ -7257,6 +7261,14 @@
   }
   .q-prep-facts dt {
     color: var(--q-muted);
+  }
+  /* A step that did not run: its name and mark in grey, with no content. */
+  .q-prep-skipped .q-prep-name,
+  .q-prep-skip {
+    color: var(--q-faint);
+  }
+  .q-prep-skip {
+    font-size: 0.71875rem;
   }
   .q-prep-cause {
     color: var(--q-error-soft-content);

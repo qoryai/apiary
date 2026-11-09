@@ -1,4 +1,4 @@
-// The run's timeline inside Session started, a row of the Run list that can be closed
+// The run's timeline inside Run the agent, a row of the Run list that can be closed
 // (assets/js/hooks/timeline_keys.js and live_end.js): the item `?seq=` points at, j and k
 // on the row's summary, g e, and the new-events pill open the row. A fake DOM of
 // `details` elements stands in for the page.
@@ -31,7 +31,7 @@ const element = (tag, parent = null, extra = {}) => {
   return el
 }
 
-// The Run list's Session started row, closed, with its summary and the timeline's list of
+// The Run list's Run the agent row, closed, with its summary and the timeline's list of
 // three items inside it.
 const page = () => {
   const group = element("details", null, {open: false})
@@ -67,6 +67,8 @@ globalThis.document = {
   getElementById: id => byId[id] || null,
   activeElement: null,
   querySelector: () => null,
+  // One list: `end` falls back to the list the hook is on.
+  querySelectorAll: () => [],
   documentElement: {getAttribute: () => null, scrollHeight: 2000},
 }
 
@@ -94,7 +96,7 @@ test("openAround opens every closed details an element is inside", () => {
   assert.equal(outer.open, true)
 })
 
-test("the item ?seq= points at opens Session started", () => {
+test("the item ?seq= points at opens Run the agent", () => {
   const p = page()
   byId = Object.fromEntries(p.items.map(li => [li.id, li]))
   p.ol.dataset.target = "e-3"
@@ -103,7 +105,7 @@ test("the item ?seq= points at opens Session started", () => {
   assert.deepEqual(p.focused, ["e-3"])
 })
 
-test("with no target, Session started stays closed", () => {
+test("with no target, Run the agent stays closed", () => {
   const p = page()
   byId = {}
   mount(p.ol)
@@ -206,7 +208,7 @@ test("the live end measures again when the page's height changes", t => {
   hook.destroyed()
 })
 
-test("a list that moves into Session started after its mount: j on the row's summary opens it", () => {
+test("a list that moves into Run the agent after its mount: j on the row's summary opens it", () => {
   // Mounted outside any row, as before the session starts.
   const p = page()
   const outside = element("div")
