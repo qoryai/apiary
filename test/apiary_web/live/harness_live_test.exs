@@ -6,7 +6,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
   selects under the choice, their saves and refusals; each kind of source, read when
   chosen; a refused address; the save, its document, and the setting shown again. With
   the feature `workflow_model`, the page keeps the harness choice, drops the workflow
-  choice and links to Stages.
+  choice and links to Workflows.
 
   Not async: each test sets the instance's features, which are the whole node's. The
   workflow choice is tested with `workflow_model` off, as an instance without it shows it.

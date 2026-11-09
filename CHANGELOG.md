@@ -922,7 +922,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The hint “It does not choose the machine that runs it.” under **Default machine type**
-  on Stages and on Instance settings › Workspace types is gone. On Stages it reads
+  on Workflows and on Instance settings › Workspace types is gone. On Workflows it reads
   “Workflows that pick no machine type run on this one. The people who run this Qory
   Apiary add machine types.” On Workspace types it reads “New workspaces of this type
   start with this default. Add machine types in Instance settings › Machine types.”

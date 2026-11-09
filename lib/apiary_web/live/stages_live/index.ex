@@ -996,7 +996,7 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   # The placement check with nothing to list. Before the first read of the harness it
   # leaves the workflows out, as it does not check them. The Qory harness is never read:
-  # its workflows are recorded once an owner or admin opens this page or Workflow.
+  # its workflows are recorded once an owner or admin opens this page or Harness.
   defp check_clear(nil, :qory_workspace),
     do:
       gettext(
