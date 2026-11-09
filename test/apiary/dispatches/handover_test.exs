@@ -1094,6 +1094,19 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert walk!(queued).document["extends"]["ref"] == "main"
     end
 
+    test "a run of a process version of the Qory harness at another address is read", ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+
+      on_version!(ctx, queued, %{
+        "source" => "qory",
+        "git" => "https://code.example.com/acme/old-harness",
+        "commit" => String.duplicate("ab", 20)
+      })
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] ==
+               QoryHarnessFixture.commit()
+    end
+
     test "a run of a process version of a harness repository on a branch composes its commit",
          ctx do
       git = "https://code.example.com/acme/harness"

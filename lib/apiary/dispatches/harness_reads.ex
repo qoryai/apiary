@@ -16,9 +16,10 @@ defmodule Apiary.Dispatches.HarnessReads do
   # composes the harness commit that version was made from, or the nearest version it was
   # based on that has one (`Apiary.Processes.harness_template/1`), with no read: a base
   # of the Qory harness with no version or on a branch, and a base of a harness
-  # repository on a branch, where the record is of that harness (`source` `qory` for the
-  # Qory harness's address, else `repository` with the base's `git`). A base at a tag or a
-  # commit, a record of another harness, and a run with no such record, are read as below.
+  # repository on a branch, where the record is of that harness (`source` `qory` and the
+  # Qory harness's address as its `git`, else `repository` with the base's `git`). A base
+  # at a tag or a commit, a record of another harness or of an address the instance set
+  # before, and a run with no such record, are read as below.
   #
   # **A failed read.**
   #
@@ -248,7 +249,7 @@ defmodule Apiary.Dispatches.HarnessReads do
 
     same? =
       if qory?,
-        do: template["source"] == "qory",
+        do: template["source"] == "qory" and template["git"] == git,
         else: template["source"] == "repository" and template["git"] == git
 
     if following? and same? and Qory.commit?(commit), do: commit
