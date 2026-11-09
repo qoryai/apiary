@@ -2718,6 +2718,28 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "above a proposal of an earlier round: the banner says so, and so does the proposal" do
+      earlier = "The proposal below is from an earlier round."
+
+      for {status, overrides, body} <- [
+            {:no_result, %{state: :failed, outcome: :error, end_cause: :run_ended},
+             "The run's last result was an error. " <> earlier},
+            {:no_result, %{outcome: :none}, earlier},
+            {:lost, %{state: :lost, outcome: nil},
+             "Qory Apiary has no result from the run. " <> earlier},
+            {:cancelled, %{state: :cancelled, outcome: nil}, earlier}
+          ] do
+        r = run(Map.merge(%{attempt: 2, proposal: nil, version: nil}, overrides))
+        html = tab(work_item(%{number: 97, status: status, run: r}), proposal: proposal_v(1))
+
+        assert Enum.at(texts(html, "#work-item-explore-none p"), 1) == body
+        refute html =~ "There is nothing to show or approve."
+
+        assert text(html, "#work-item-explore-proposal .q-xp-cap") ==
+                 "Version 1 · from an earlier round"
+      end
+    end
+
     test "a run that ended at its handover, before it started: what to fix and why, here and in the folds" do
       for {cause, body} <- [
             {:variables_invalid,

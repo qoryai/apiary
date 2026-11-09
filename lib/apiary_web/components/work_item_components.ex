@@ -2282,6 +2282,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         run: run,
         earlier_runs: earlier_runs,
         view: view,
+        # The proposal shown is not one that the latest run wrote.
+        earlier: not is_nil(assigns.proposal) and run[:wrote] != assigns.proposal.version,
         running: running,
         groups: Enum.filter(earlier_runs, &answered?/1),
         confirmed:
@@ -2324,7 +2326,12 @@ defmodule ApiaryWeb.WorkItemComponents do
         test={@work_item[:test] == true}
       />
       {render_slot(@needs)}
-      <.no_result :if={@view == :no_result and @needs == []} id={"#{@id}-none"} run={@run} />
+      <.no_result
+        :if={@view == :no_result and @needs == []}
+        id={"#{@id}-none"}
+        run={@run}
+        earlier={@earlier}
+      />
       <.ended
         :if={@view in [:closed, :undone]}
         id={"#{@id}-#{@view}"}
@@ -2336,7 +2343,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         id={"#{@id}-proposal"}
         run={%{proposal: @proposal, version: @proposal.version, attempt: @run[:attempt]}}
         confirmed={@confirmed}
-        earlier={@needs != [] and @run[:wrote] != @proposal.version}
+        earlier={(@needs != [] or @view == :no_result) and @earlier}
         now={@now}
       >
         <:comments :if={@review_comments != []}>
@@ -4631,9 +4638,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, required: true
   attr :run, :map, required: true
 
+  attr :earlier, :boolean,
+    default: false,
+    doc: "whether a proposal of an earlier round shows below"
+
   # A run that gave no result: what happened, and its page.
   defp no_result(assigns) do
-    {icon, heading, body} = no_result_words(assigns.run)
+    {icon, heading, body} = no_result_words(assigns.run, assigns.earlier)
     assigns = assign(assigns, icon: icon, heading: heading, body: body)
 
     ~H"""
@@ -4683,58 +4694,64 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   # A run that pushed a proposal before it ended shows that proposal on the tab, so the
   # page shows no line that there is nothing to show.
-  defp no_result_words(%{state: :failed, wrote: version}) when is_integer(version),
+  defp no_result_words(%{state: :failed, wrote: version}, _earlier) when is_integer(version),
     do: {"hero-exclamation-triangle-micro", failed_after(version), nil}
 
-  defp no_result_words(%{state: :lost, wrote: version}) when is_integer(version),
+  defp no_result_words(%{state: :lost, wrote: version}, _earlier) when is_integer(version),
     do: {"hero-signal-slash-micro", gettext("The run was lost."), nil}
 
-  defp no_result_words(%{state: :lost}),
+  defp no_result_words(%{state: :lost}, earlier),
     do:
       {"hero-signal-slash-micro", gettext("The run was lost."),
-       gettext("Qory Apiary has no result from the run. There is nothing to show or approve.")}
+       if(earlier,
+         do:
+           gettext(
+             "Qory Apiary has no result from the run. The proposal below is from an earlier round."
+           ),
+         else:
+           gettext("Qory Apiary has no result from the run. There is nothing to show or approve.")
+       )}
 
-  defp no_result_words(%{state: :cancelled, wrote: version}) when is_integer(version),
-    do: {"hero-stop-circle-micro", gettext("The run was cancelled."), nil}
+  defp no_result_words(%{state: :cancelled, wrote: version}, _earlier)
+       when is_integer(version),
+       do: {"hero-stop-circle-micro", gettext("The run was cancelled."), nil}
 
-  defp no_result_words(%{state: :cancelled}),
-    do:
-      {"hero-stop-circle-micro", gettext("The run was cancelled."),
-       gettext("There is nothing to show or approve.")}
+  defp no_result_words(%{state: :cancelled}, earlier),
+    do: {"hero-stop-circle-micro", gettext("The run was cancelled."), nothing_left(earlier)}
 
-  defp no_result_words(%{end_cause: :harness_unresolved} = run),
+  defp no_result_words(%{end_cause: :harness_unresolved} = run, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        harness_failure_words(run[:harness_failure])}
 
-  defp no_result_words(%{end_cause: :run_refused, end_detail: "model_key_missing"}),
+  defp no_result_words(%{end_cause: :run_refused, end_detail: "model_key_missing"}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        gettext(
          "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
        )}
 
-  defp no_result_words(%{end_cause: cause}) when cause in @unstarted,
+  defp no_result_words(%{end_cause: cause}, _earlier) when cause in @unstarted,
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        unstarted_words(cause)}
 
-  defp no_result_words(%{workflow_gap: %{} = gap}),
+  defp no_result_words(%{workflow_gap: %{} = gap}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        ApiaryWeb.HarnessComponents.workflow_gap_words(gap)}
 
-  defp no_result_words(%{read_needs: %{} = facts}),
+  defp no_result_words(%{read_needs: %{} = facts}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
        read_needs_words(facts)}
 
-  defp no_result_words(%{outcome: :none}),
+  defp no_result_words(%{outcome: :none}, earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
-       gettext("There is nothing to show or approve.")}
+       nothing_left(earlier)}
 
-  defp no_result_words(%{outcome: :refused}),
+  defp no_result_words(%{outcome: :refused}, _earlier),
     do:
       {"hero-exclamation-triangle-micro",
        gettext("The run's result did not pass Qory Apiary's check."),
@@ -4742,10 +4759,21 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Qory Apiary accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so it is not shown."
        )}
 
-  defp no_result_words(_error),
+  defp no_result_words(_error, earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended with an error."),
-       gettext("The run's last result was an error. There is nothing to show or approve.")}
+       if(earlier,
+         do:
+           gettext(
+             "The run's last result was an error. The proposal below is from an earlier round."
+           ),
+         else: gettext("The run's last result was an error. There is nothing to show or approve.")
+       )}
+
+  # What is left to read below a run with no result: a proposal of an earlier round
+  # (`earlier`), or nothing.
+  defp nothing_left(true), do: gettext("The proposal below is from an earlier round.")
+  defp nothing_left(false), do: gettext("There is nothing to show or approve.")
 
   # What a person does about a read-only run that qory closed (`Apiary.Runs.ReadNeeds`), the
   # fix first. A person in an organisation cannot edit the forager.yaml of the instance's

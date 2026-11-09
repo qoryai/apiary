@@ -15504,6 +15504,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Qory Apiary has no result from the run. The proposal below is from an earlier round."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Qory Apiary has no result from the run. There is nothing to show or approve."
 msgstr ""
 
@@ -20110,6 +20115,11 @@ msgstr ""
 msgid "The project's full path, its groups included."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The proposal below is from an earlier round."
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -20313,6 +20323,11 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run's harness has no skill for the workflow %{workflow}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's last result was an error. The proposal below is from an earlier round."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

@@ -2173,6 +2173,41 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
     end
   end
 
+  describe "a run with no result after a run that wrote a proposal" do
+    test "the banner says that the proposal below is from an earlier round", %{
+      conn: conn,
+      scope: scope
+    } do
+      for {run, outcome, heading, body} <- [
+            {%{}, :none, "The run ended without a result",
+             "The proposal below is from an earlier round."},
+            {%{state: "failed", exit_state: "failed", outcome_state: "failed"}, :error,
+             "The run ended with an error",
+             "The run's last result was an error. The proposal below is from an earlier round."}
+          ] do
+        work_item = work_item_fixture(scope)
+        explore_run_fixture(work_item, result: understood_result(%{"message" => @proposal}))
+        %{dispatch_run: dispatch_run} = explore_run_fixture(work_item, run: run)
+
+        dispatch_run
+        |> Ecto.Changeset.change(result_outcome: outcome)
+        |> Repo.update!()
+
+        {:ok, view, _html} = live(conn, explore(scope, work_item.number))
+
+        assert has_element?(view, "#work-item-explore-none-h", heading)
+        assert has_element?(view, "#work-item-explore-none p", body)
+        refute render(view) =~ "There is nothing to show or approve."
+
+        assert has_element?(
+                 view,
+                 "#work-item-explore-proposal .q-xp-cap",
+                 "Version 1 · from an earlier round"
+               )
+      end
+    end
+  end
+
   describe "answer_list/2" do
     @open [
       %{id: "q1", options: [%{title: "The order's currency"}, %{title: "The shop's currency"}]},

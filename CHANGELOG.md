@@ -893,6 +893,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A work item that left Explore while its proposal still waits, as after Explore's gate
   `none`, is not highlighted in the Work items list and is not counted in “Waiting on
   you”: no one approves that proposal at a later stage.
+- Where a run ends without a result, with an error, lost or cancelled, and a proposal of
+  an earlier round shows below its banner, the banner says “The proposal below is from an
+  earlier round.” in place of “There is nothing to show or approve.”, and the proposal
+  shows “· from an earlier round”.
 - The run page's **Timeline** shows an overview of the run: its stages, a row for each
   agent, the agents' messages, the artifact versions the run pushed, failures, denials,
   and the tool calls that were the only call running when a network connection was made.
