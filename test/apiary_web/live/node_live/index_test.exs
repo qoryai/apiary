@@ -276,7 +276,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
                Nodes.list_nodes(scope)
     end
 
-    test "a pool is made with a limit of 1 by one an edition keeps its limit from",
+    test "a pool is refused to one an edition keeps its limit from",
          %{conn: conn, scope: scope} do
       # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`).
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
@@ -291,14 +291,11 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       assert html =~ "You can&#39;t change the machine limit."
       assert Nodes.list_nodes(scope) == []
 
-      {:ok, _show, _html} =
-        lv
-        |> form("#new-node-form", node: %{name: "spot-runners"})
-        |> render_submit()
-        |> follow_redirect(conn)
+      # Without a limit, the form stays on the page and makes no pool.
+      lv |> form("#new-node-form", node: %{name: "spot-runners"}) |> render_submit()
 
-      assert [%Node{kind: :pool, name: "spot-runners", instance_limit: 1}] =
-               Nodes.list_nodes(scope)
+      assert has_element?(lv, "#new-node-form")
+      assert Nodes.list_nodes(scope) == []
     end
 
     test "a name in use is refused on the page", %{conn: conn, scope: scope} do

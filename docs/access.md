@@ -293,8 +293,9 @@ another node of the workspace, a gateway's included, is refused, and a revoked k
 verifies under no key. A run through a gateway takes its batches and reloads from the
 gateway that attached it instead. Setting a pool's instance limit, as it is made or after,
 is a separate action (`node.set_limit`), held by owners and admins as `node.edit` is, so
-an edition may keep it from some who change the rest, whose pools are made with a limit
-of 1; its change is recorded in the entry of the node's creation or edit. Everyone in the
+an edition may keep it from some who change the rest; its change is recorded in the
+entry of the node's creation or edit. Making a pool asks `node.set_limit` too, with a
+limit or without one, so one who may not set the limit makes no pool. Everyone in the
 workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
 
 A key acts in the role its node's kind gives it (`Apiary.Access.role/1`): a node's key and

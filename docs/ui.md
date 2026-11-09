@@ -978,8 +978,7 @@ address under `/machines`, with what followed `/nodes` and the query.
   (`PageComponents.page_form/1`, no Back link) and one sentence of what the kind is, with
   "You can't change the kind later"; then the form, a name (it takes the focus), and for a
   pool its machine limit (a whole number up to 10,000, or empty for none), left out for
-  one who may not set it (`node.set_limit`), whose pool is made with a limit of 1, and its
-  foot,
+  one who may not set it (`node.set_limit`), whose Add pool is refused, and its foot,
   Add machine or Add pool with Cancel back to the list (`page_form_foot/1`). Once the
   workspace has a gateway, a machine's and a pool's form ask its **Gateway** too, a select
   (`NodeComponents.gateway_field/1`): Default gateway, offered only while a default

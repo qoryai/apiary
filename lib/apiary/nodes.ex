@@ -247,14 +247,13 @@ defmodule Apiary.Nodes do
   @doc """
   create_node/2 makes a node of the scope's workspace (`node.create`, owners and
   admins) from `attrs`: its `kind`, `node`, `pool` or `gateway`, which is fixed from then
-  on, its `name`, a pool's `instance_limit`, empty for none, which a limit given asks of
-  `node.set_limit` too: one who may not set it makes a pool whose limit is 1; a gateway's
-  `url`, and a node's or a pool's `gateway_choice` (`named` with its `gateway_id`). A node
-  or a pool given no choice starts on `default` when a default gateway resolves for the
-  workspace, and on `direct` otherwise. A gateway made when no default gateway resolves
-  for the workspace is made its default. `{:ok, node}`, `{:error, changeset}`, or
-  `{:error, :forbidden}` for
-  one who may not, `{:error, :not_found}` where the workspace is out of their reach.
+  on, its `name`, a pool's `instance_limit`, empty for none, a gateway's `url`, and a
+  node's or a pool's `gateway_choice` (`named` with its `gateway_id`). A pool asks
+  `node.set_limit` too, whether or not a limit is given. A node or a pool given no choice
+  starts on `default` when a default gateway resolves for the workspace, and on `direct`
+  otherwise. A gateway made when no default gateway resolves for the workspace is made
+  its default. `{:ok, node}`, `{:error, changeset}`, or `{:error, :forbidden}` for one
+  who may not, `{:error, :not_found}` where the workspace is out of their reach.
 
   It takes the gateways' locks of the workspace first (`Apiary.Gateways.lock/1`).
   """
@@ -282,7 +281,7 @@ defmodule Apiary.Nodes do
              |> made_here()
              |> put_first_choice(attrs, workspace)
              |> validate_gateway(scope),
-           {:ok, changeset} <- limit_set(asking, changeset, workspace),
+           :ok <- check_limit_set(asking, changeset, workspace),
            {:ok, node} <- PublicId.Insert.insert(changeset),
            {:ok, node} <- default_if_none(node, workspace),
            {:ok, _entry} <-
@@ -634,22 +633,13 @@ defmodule Apiary.Nodes do
     if rest == %{} and limit != [], do: limit, else: [:"node.edit" | limit]
   end
 
-  # A new pool's limit, when one is given, asks `node.set_limit` too; a node's is 1,
-  # whoever makes it.
-  # A pool's limit as it is made: what one who may set it (`node.set_limit`) gives, none
-  # when they give none; for one who may not, a limit given is refused, and the pool is
-  # made with a limit of 1, which one who may set it raises.
-  defp limit_set(scope, changeset, workspace) do
-    with :pool <- Ecto.Changeset.get_field(changeset, :kind),
-         {:error, :forbidden} <- Access.check(scope, :"node.set_limit", workspace) do
-      if is_nil(Ecto.Changeset.get_change(changeset, :instance_limit)),
-        do: {:ok, Ecto.Changeset.put_change(changeset, :instance_limit, 1)},
-        else: {:error, :forbidden}
-    else
-      :ok -> {:ok, changeset}
-      {:error, _reason} = refused -> refused
-      _node -> {:ok, changeset}
-    end
+  # A new pool asks `node.set_limit` too, whether or not a limit is given, as it is made
+  # with the limit given or with none; a node's limit is 1 and a gateway's none, whoever
+  # makes it.
+  defp check_limit_set(scope, changeset, workspace) do
+    if Ecto.Changeset.get_field(changeset, :kind) == :pool,
+      do: Access.check(scope, :"node.set_limit", workspace),
+      else: :ok
   end
 
   defp check_each(scope, actions, subject) do

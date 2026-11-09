@@ -862,6 +862,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- Making a pool asks for `node.set_limit`, the action that sets a pool's machine limit,
+  with a limit or without one. One who may make machines but may not set the limit is
+  refused the pool; before, such a pool was made with a limit of 1. Owners and admins
+  hold both actions, so what they can do stays the same. A machine's limit stays 1.
 - The run page's **Timeline** shows an overview of the run: its stages, a row for each
   agent, the agents' messages, the artifact versions the run pushed, failures, denials,
   and the tool calls that were the only call running when a network connection was made.
