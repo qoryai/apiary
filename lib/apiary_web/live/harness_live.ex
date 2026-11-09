@@ -531,7 +531,7 @@ defmodule ApiaryWeb.HarnessLive do
         number: version.number
       )
 
-  # Why a save of Update from harness was refused, the fix first.
+  # Why a save of Update from harness failed, the fix first.
   defp save_words(:stale, _update),
     do:
       gettext(
@@ -540,11 +540,7 @@ defmodule ApiaryWeb.HarnessLive do
 
   defp save_words({:trial_exists, trial}, _update), do: StagesWords.trial_exists(trial)
 
-  defp save_words(:shared, _update),
-    do:
-      gettext(
-        "Save without the stack, or change the stack of the harness your organisation shares. Every workspace that takes that harness uses its stack."
-      )
+  defp save_words(:shared, _update), do: StagesWords.shared_stack()
 
   defp save_words({:types, {:invalid, name}}, _update),
     do: gettext("Correct the artifact type %{type} in the harness, then save again.", type: name)
