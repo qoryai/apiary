@@ -154,6 +154,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           nodes={@onboarding.nodes}
           keys={@onboarding.keys}
           may_add={@onboarding.may_add}
+          may_set_limit={@onboarding.may_set_limit}
           target={@onboarding.target}
           may_key={@onboarding.may_key}
           command={@command}
@@ -1870,6 +1871,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       nodes: counts.node + counts.pool,
       keys: keys,
       may_add: Common.may?(scope, :"node.create"),
+      may_set_limit: Common.may?(scope, :"node.set_limit"),
       target: target,
       may_key:
         not is_nil(target) and may_key?.(:"access_key.add") and

@@ -94,9 +94,10 @@ page and an Instance page, the one the person came from (Two levels, below).
   as text.
 - **New** offers only what the reader may do where the page is
   (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New machine, and New pool
-  for one who may set a pool's limit too (`node.set_limit`), then, on every page, Invite people; before the core's, whatever the edition
-  offers there (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or
-  the organisation as its place says. **The account menu** holds who they are, their email
+  for one who may set a pool's limit too (`node.set_limit`), then, on every page, Invite
+  people; before the core's, whatever the edition offers there
+  (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or the
+  organisation as its place says. **The account menu** holds who they are, their email
   over "Your personal account" (`#user-menu-account`; an account has no name), then
   Settings (`#user-menu-settings`, the person's settings, `/users/settings`) and Your
   organisations, the theme (Auto, Light, Dark), then Log out; an edition's entries follow
@@ -843,9 +844,10 @@ what needs the reader, then what their agents did, and never grows with the data
   says what it does: the policy's mode and version, the targets with target rules
   (Review), retention (Change, to Workspace settings › Runs).
 - A workspace no run has reached is one box: the steps from a machine to the first run, and a
-  panel beside them. Step 2 is "Connect it" ("Run one command on the machine, or generate
-  a key for a CI or another system."). While it is current, it names the newest machine or
-  pool with no active key, its name linking to that one's Access key tab. At step 1 the
+  panel beside them. At step 1 an owner or admin has New machine, and New pool for one who
+  may set a pool's limit too (`node.set_limit`). Step 2 is "Connect it" ("Run one command
+  on the machine, or generate a key for a CI or another system."). While it is current, it
+  names the newest machine or pool with no active key, its name linking to that one's Access key tab. At step 1 the
   panel explains "Two ways to connect a machine", Generate a key in the browser's line ending "… this
   page shows the key's secret once, and you copy it into that system."; at step 2 it asks
   an owner or admin "How do you want to connect build-01?", with the two ways as rows,
@@ -972,7 +974,8 @@ address under `/machines`, with what followed `/nodes` and the query.
   header; with none of any kind yet, the empty state, "No machines yet", offers the first
   two, and tells a member that an owner or admin adds machines. New pool, in the header
   and the empty state, is only for one who may set a pool's limit too (`node.set_limit`),
-  as making a pool asks it.
+  as making a pool asks it; one who may not reads "Add a machine for one computer that
+  stays registered." in the empty state, in place of the sentence that offers a pool.
 - **New machine and New pool** are pages of the Machines section at separate paths,
   `/machines/new` and `/machines/new-pool`, on the pattern of a form page (Settings, A form is a
   page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending
@@ -983,7 +986,9 @@ address under `/machines`, with what followed `/nodes` and the query.
   Add machine or Add pool with Cancel back to the list (`page_form_foot/1`). One who may
   not set a pool's limit (`node.set_limit`) and opens `/machines/new-pool`, or whose Add
   pool is refused, is sent to the list with "Ask an owner or admin to add the pool.
-  Adding one needs the right to set its machine limit." Once the
+  Adding one needs the right to set its machine limit.", or, where the edition says who
+  sets the limit (`c:ApiaryWeb.Edition.who_may_sentence/2`), its sentence and then
+  "Adding one needs the right to set its machine limit." Once the
   workspace has a gateway, a machine's and a pool's form ask its **Gateway** too, a select
   (`NodeComponents.gateway_field/1`): Default gateway, offered only while a default
   resolves for the workspace, and then the one the form starts on; Direct, which it

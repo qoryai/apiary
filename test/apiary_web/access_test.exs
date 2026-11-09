@@ -102,6 +102,23 @@ defmodule ApiaryWeb.AccessTest do
              ) == "Nodes are full. In Acme, someone else adds the nodes."
     end
 
+    test "before a tail is the edition's sentence, then the tail, else the core's whole text",
+         %{scope: scope} do
+      default = "Ask an owner or admin to add the machine. Adding one needs the right."
+      tail = "Adding one needs the right."
+
+      assert ApiaryWeb.Access.who_may_before(
+               ApiaryWeb.Edition.Core,
+               scope,
+               :"node.create",
+               default,
+               tail
+             ) == default
+
+      assert ApiaryWeb.Access.who_may_before(NodesEdition, scope, :"node.create", default, tail) ==
+               "In Acme, someone else adds the nodes. Adding one needs the right."
+    end
+
     # Each page asks with an action of `Apiary.Access`, or a subject the callback names:
     # one it names nowhere would never be answered.
     test "is asked of an action, or of a subject the edition's callback names" do

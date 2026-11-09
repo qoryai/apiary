@@ -4430,6 +4430,11 @@ msgstr ""
 msgid "Add a machine for one computer that stays registered, or a pool of one or more machines that use one access key."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add a machine for one computer that stays registered."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add a machine, connect it, and start a run."
@@ -4807,6 +4812,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Adding"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Adding one needs the right to set its machine limit."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex

@@ -90,6 +90,29 @@ defmodule ApiaryWeb.Access do
   end
 
   @doc """
+  who_may_before/4 is `who_may/3` for a sentence of the core's that says something after
+  who may: the edition's sentence (`c:ApiaryWeb.Edition.who_may_sentence/2`), then
+  `tail`, or `default`, the core's whole text, where the edition has none. `default`
+  stays one text to translate, so a translation of it keeps its order; `tail` is said only
+  after an edition's sentence.
+  """
+  @spec who_may_before(Apiary.Accounts.Scope.t(), atom, String.t(), String.t()) :: String.t()
+  def who_may_before(scope, about, default, tail),
+    do: who_may_before(ApiaryWeb.Edition, scope, about, default, tail)
+
+  @doc false
+  # The same, asked of `edition`: the configured edition, or a test's.
+  @spec who_may_before(module, Apiary.Accounts.Scope.t(), atom, String.t(), String.t()) ::
+          String.t()
+  def who_may_before(edition, scope, about, default, tail)
+      when is_atom(about) and is_binary(default) and is_binary(tail) do
+    case edition.who_may_sentence(about, scope) do
+      nil -> default
+      sentence -> sentence <> " " <> tail
+    end
+  end
+
+  @doc """
   view_action/1 is the action a LiveView mounts on (`on_mount({ApiaryWeb.Access, action})`),
   or nil for one that asks none, read from its mount hooks: for an answer about a page that
   is not open, as where a switch of workspace lands (`ApiaryWeb.SwitchController`).

@@ -139,6 +139,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     @two_ways "Two ways to connect a machine Connect with a command. For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine. Generate a key in the browser. For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system. You choose one for each machine or pool, once you have added it."
 
+    # Nobody sets a pool's instance limit, as `Apiary.EditionStubs.NoLimit` has it, and the
+    # features the test names are hidden, as `Apiary.EditionStubs.HidesNamed` has them.
+    defmodule NoLimitHidesNamed do
+      @moduledoc false
+      defdelegate check(scope, action, subject), to: Apiary.EditionStubs.NoLimit
+      defdelegate hidden(scope), to: Apiary.EditionStubs.HidesNamed
+    end
+
     # The ids of step 2's buttons, in their order, and those shown as primary.
     defp ways(view) do
       doc = view |> element("#onboarding-ways") |> render() |> LazyHTML.from_fragment()
@@ -215,6 +223,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         |> follow_redirect(conn, workspace_path(scope, "/machines/new"))
 
       assert html =~ "New machine"
+    end
+
+    test "no node, one an edition keeps a pool's limit from: New machine, no New pool",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(NoLimitHidesNamed)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='1']")
+      assert has_element?(view, "#onboarding-new-node", "New machine")
+      refute has_element?(view, "#onboarding-new-pool")
+      refute has_element?(view, "#onboarding-members")
     end
 
     test "no node, a member: no buttons, who adds one instead", %{scope: scope} = ctx do

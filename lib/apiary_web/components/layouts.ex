@@ -221,12 +221,12 @@ defmodule ApiaryWeb.Layouts do
   organisation's page or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
   then the core's: on a workspace's page a node, a node pool for one who may set its
-  limit too (`node.set_limit`), with the `security` feature a network access rule, and with the `secrets` feature an integration, a secret and a
-  variable; on an organisation's page a gateway, where the console offers the
-  organisation's (`ApiaryWeb.NodeComponents.organisation_gateways?/0`); and everywhere an
-  invitation; of them,
-  only what the reader may do there, each entry's action asked of the workspace or the
-  organisation as its `place` says.
+  limit too (`node.set_limit`), with the `security` feature a network access rule, and
+  with the `secrets` feature an integration, a secret and a variable; on an
+  organisation's page a gateway, where the console offers the organisation's
+  (`ApiaryWeb.NodeComponents.organisation_gateways?/0`); and everywhere an invitation; of
+  them, only what the reader may do there, each entry's action asked of the workspace or
+  the organisation as its `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
           [Entry.t()]

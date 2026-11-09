@@ -74,6 +74,13 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
       assert has_element?(lv, "#nodes-empty", "No machines yet")
+
+      assert has_element?(
+               lv,
+               "#nodes-empty",
+               "Add a machine for one computer that stays registered, or a pool of one or more machines that use one access key."
+             )
+
       assert has_element?(lv, "#nodes-empty a", "New machine")
       assert has_element?(lv, "#nodes-empty a", "New pool")
       refute has_element?(lv, "#nodes")
@@ -289,6 +296,14 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
 
       {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      assert has_element?(
+               lv,
+               "#nodes-empty p",
+               "Add a machine for one computer that stays registered."
+             )
+
+      refute render(lv) =~ "or a pool of one or more machines"
       assert has_element?(lv, "#nodes-empty a", "New machine")
       refute has_element?(lv, "#nodes-empty a", "New pool")
 

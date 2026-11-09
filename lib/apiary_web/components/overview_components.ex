@@ -1902,6 +1902,11 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
 
+  attr :may_set_limit, :boolean,
+    default: false,
+    doc:
+      "whether the reader may set a pool's limit (`node.set_limit`), which adding a pool asks too"
+
   attr :target, :any,
     default: nil,
     doc: "the newest node or pool in use that holds no active key, or nil"
@@ -1994,6 +1999,7 @@ defmodule ApiaryWeb.OverviewComponents do
             <.icon name="hero-server" class="size-4" /> {gettext("New machine")}
           </.button>
           <.button
+            :if={@may_set_limit}
             id={"#{@id}-new-pool"}
             navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/new-pool"}
             class="max-[479px]:w-full"

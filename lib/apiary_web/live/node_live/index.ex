@@ -133,7 +133,7 @@ defmodule ApiaryWeb.NodeLive.Index do
     else
       refusal =
         if socket.assigns.may_create,
-          do: pool_refused(),
+          do: pool_refused(socket.assigns.current_scope),
           else: only_admins_add(socket.assigns.current_scope)
 
       socket
@@ -397,7 +397,7 @@ defmodule ApiaryWeb.NodeLive.Index do
     if Access.can?(scope, :"node.create", scope.workspace) do
       socket
       |> assign(:may_set_limit, false)
-      |> put_flash(:error, pool_refused())
+      |> put_flash(:error, pool_refused(scope))
       |> push_patch(to: list_path(socket.assigns.current_scope, socket.assigns.filters))
     else
       refused(socket)
@@ -405,11 +405,17 @@ defmodule ApiaryWeb.NodeLive.Index do
   end
 
   # What one who makes nodes but may not set a pool's limit (`node.set_limit`) is told
-  # where they would add a pool.
-  defp pool_refused,
+  # where they would add a pool: who may set it in the edition's words where it has some
+  # (`ApiaryWeb.Access.who_may_before/4`), then why.
+  defp pool_refused(scope),
     do:
-      gettext(
-        "Ask an owner or admin to add the pool. Adding one needs the right to set its machine limit."
+      ApiaryWeb.Access.who_may_before(
+        scope,
+        :"node.set_limit",
+        gettext(
+          "Ask an owner or admin to add the pool. Adding one needs the right to set its machine limit."
+        ),
+        gettext("Adding one needs the right to set its machine limit.")
       )
 
   # Who may add a node, or who manages the nodes, in the edition's words where it has some.
@@ -561,7 +567,7 @@ defmodule ApiaryWeb.NodeLive.Index do
             required
           />
           <.input
-            :if={@kind == :pool and @may_set_limit}
+            :if={@kind == :pool}
             field={@form[:instance_limit]}
             type="text"
             inputmode="numeric"
@@ -637,10 +643,13 @@ defmodule ApiaryWeb.NodeLive.Index do
 
       <div :if={total(@counts) == 0} id="nodes-empty">
         <.empty_state icon="hero-server-stack" tone="neutral" title={gettext("No machines yet")}>
-          <p :if={@may_create}>
+          <p :if={@may_create and @may_set_limit}>
             {gettext(
               "Add a machine for one computer that stays registered, or a pool of one or more machines that use one access key."
             )}
+          </p>
+          <p :if={@may_create and !@may_set_limit}>
+            {gettext("Add a machine for one computer that stays registered.")}
           </p>
           <p :if={!@may_create}>
             {ApiaryWeb.Edition.nodes_managed_by_sentence(@current_scope.organisation) ||
