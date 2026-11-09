@@ -443,7 +443,11 @@ defmodule Apiary.Processes.HarnessUpdate do
   defp save_update(scope, workspace, update, trial?, after_save) do
     Repo.transact(fn ->
       with {:ok, version} <-
-             Processes.save_harness(scope, workspace, update.document, update.template,
+             Processes.save_harness(
+               scope,
+               workspace,
+               update.document,
+               with_added(workspace, update),
                trial: trial?,
                based_on: update.base
              ),
@@ -454,6 +458,15 @@ defmodule Apiary.Processes.HarnessUpdate do
         {:ok, version}
       end
     end)
+  end
+
+  # The record the version keeps, with `added_types`, the names of the artifact types the
+  # save adds, where it adds any, for the version's History.
+  defp with_added(workspace, %{template: template, artifact_types: listed}) do
+    case added_types(Repo.get!(Workspace, workspace.id), listed) do
+      [] -> template
+      added -> Map.put(template, "added_types", Enum.map(added, & &1["name"]))
+    end
   end
 
   defp add_types(scope, workspace, listed) do

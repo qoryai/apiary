@@ -18,7 +18,8 @@ defmodule Apiary.Processes.Version do
     `module`, `stack`, `type` and `version` for a template, where `type` is the template
     file's `type`, the same value as `workspaces.type`. A version made from the harness
     also has `ref_kind` (`branch`, `tag` or `commit`) and `ref`, the version of the
-    harness it was read at, and `version` nil.
+    harness it was read at, `version` nil, and `added_types`, the names of the artifact
+    types its save added, where it added any.
   - `public_id`: `pv_` and 16 characters (`Apiary.PublicId`).
   """
   use Ecto.Schema
