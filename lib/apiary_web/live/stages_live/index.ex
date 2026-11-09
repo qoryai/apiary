@@ -171,6 +171,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     socket
     |> assign(
       versions: Processes.list_versions(workspace),
+      in_use: Apiary.Processes.HarnessUpdate.status(workspace).in_use,
       base: version,
       draft: version.document,
       selected: Editor.first_id(version.document),
@@ -602,7 +603,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             <p id="stages-export-line" class="min-w-0 flex-1 text-[13px]/5 text-muted">
               {pgettext(
                 "plain",
-                "Commit this file to a harness repository. Only new workspaces made from it use it."
+                "Commit this file to a harness repository. Workspaces that use that harness get it at their next update."
               )}
               <span :if={exports_people?(@versions)} id="stages-export-people">
                 {gettext("Gates that list people export as all members.")}
@@ -676,18 +677,26 @@ defmodule ApiaryWeb.StagesLive.Index do
               )}
             </p>
             <p id="stages-harness" class="text-[13.5px]/5">
-              {gettext("Harness: %{harness}", harness: @harness)}
+              <.rich :if={!@in_use} text={gettext("Harness: %{harness}", harness: @harness)} />
+              <.rich
+                :if={@in_use}
+                text={
+                  rich_gettext("Harness: %{harness}, version %{commit}",
+                    harness: @harness,
+                    commit: {:code, String.slice(@in_use, 0, 7)}
+                  )
+                }
+              />
               <span :if={@may_harness} aria-hidden="true" class="text-muted">·</span>
               <.link
                 :if={@may_harness}
-                id="stages-harness-change"
+                id="stages-harness-open"
                 navigate={
                   ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/harness"
                 }
                 class="font-medium text-accent underline underline-offset-[3px]"
-                aria-label={gettext("Change the harness")}
               >
-                {gettext("Change")}
+                {gettext("Open Harness")}
               </.link>
             </p>
             <div id="stages-workflows" class="grid gap-1 text-[13.5px]/5">
@@ -824,10 +833,13 @@ defmodule ApiaryWeb.StagesLive.Index do
                     </span>
                     <span class="ml-2 badge badge-sm">{status_word(version.status)}</span>
                     <span class="ml-2 text-muted">
-                      {author_line(version, @authors)}
+                      <.rich text={author_line(version, @authors)} />
                     </span>
                   </p>
-                  <ul class="grid gap-0.5 text-[13px]/5 text-muted">
+                  <ul
+                    :if={change_lines(older, version, @people) != []}
+                    class="grid gap-0.5 text-[13px]/5 text-muted"
+                  >
                     <li :for={line <- change_lines(older, version, @people)}>{line}</li>
                   </ul>
                 </li>
@@ -861,6 +873,23 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp status_word(:past), do: gettext("past")
   defp status_word(:dropped), do: gettext("dropped")
 
+  # A version made from the harness (`Apiary.Processes.HarnessUpdate`): by the switch Keep
+  # the process at the latest, with no author, or by a person's Update from harness.
+  defp author_line(
+         %{based_on_id: based_on, template: %{"commit" => commit} = template} = version,
+         authors
+       )
+       when is_binary(based_on) and is_binary(commit) do
+    commit = {:code, String.slice(commit, 0, 7)}
+    date = Format.date(version.inserted_at)
+    from = {template["ref_kind"], template["ref"]}
+
+    case version.author_id do
+      nil -> updated_line(from, commit, date)
+      id -> updated_line(from, commit, date, authors |> People.account(id) |> People.short())
+    end
+  end
+
   defp author_line(%{author_id: nil, inserted_at: at}, _authors),
     do: gettext("Copied from the workspace type, %{date}", date: Format.date(at))
 
@@ -872,6 +901,51 @@ defmodule ApiaryWeb.StagesLive.Index do
     gettext("%{person}, %{date}", person: who, date: Format.date(at))
   end
 
+  defp updated_line({"branch", branch}, commit, date),
+    do:
+      rich_gettext("Updated from %{branch} at %{commit}, %{date}",
+        branch: branch,
+        commit: commit,
+        date: date
+      )
+
+  defp updated_line({"tag", tag}, commit, date),
+    do:
+      rich_gettext("Updated from tag %{tag} at %{commit}, %{date}",
+        tag: tag,
+        commit: commit,
+        date: date
+      )
+
+  defp updated_line(_commit_pin, commit, date),
+    do: rich_gettext("Updated from version %{commit}, %{date}", commit: commit, date: date)
+
+  defp updated_line({"branch", branch}, commit, date, person),
+    do:
+      rich_gettext("%{person}, updated from %{branch} at %{commit}, %{date}",
+        person: person,
+        branch: branch,
+        commit: commit,
+        date: date
+      )
+
+  defp updated_line({"tag", tag}, commit, date, person),
+    do:
+      rich_gettext("%{person}, updated from tag %{tag} at %{commit}, %{date}",
+        person: person,
+        tag: tag,
+        commit: commit,
+        date: date
+      )
+
+  defp updated_line(_commit_pin, commit, date, person),
+    do:
+      rich_gettext("%{person}, updated from version %{commit}, %{date}",
+        person: person,
+        commit: commit,
+        date: date
+      )
+
   # Each version with the version its save started from (`based_on_id`), so a version
   # saved from v1 after a dropped trial v2 lists its changes against v1.
   defp with_older(versions) do
@@ -881,11 +955,37 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   defp change_lines(nil, _version, _people), do: [gettext("The first version.")]
 
+  # A version made from the harness lists no line where the process did not change, and
+  # the artifact types its save added after its changes.
   defp change_lines(older, version, people) do
-    case Processes.diff(older.document, version.document) do
-      [] -> [gettext("No change.")]
-      changes -> Enum.map(changes, &Words.change(&1, older.document, version.document, people))
+    from_harness? = is_binary((version.template || %{})["commit"])
+
+    case {Processes.diff(older.document, version.document), from_harness?} do
+      {[], false} ->
+        [gettext("No change.")]
+
+      {changes, _from_harness} ->
+        Enum.map(changes, &Words.change(&1, older.document, version.document, people)) ++
+          added_types_lines(version.template)
     end
+  end
+
+  defp added_types_lines(%{"added_types" => [_ | _] = names}),
+    do: [
+      ngettext(
+        "Added the artifact type %{names}.",
+        "Added the artifact types %{names}.",
+        length(names), names: names_words(names))
+    ]
+
+  defp added_types_lines(_template), do: []
+
+  # "spec", "spec and demo-scenarios", "spec, plan and demo-scenarios".
+  defp names_words([name]), do: name
+
+  defp names_words(names) do
+    {init, [last]} = Enum.split(names, -1)
+    gettext("%{names} and %{last}", names: Enum.join(init, ", "), last: last)
   end
 
   # The placement check with nothing to list. Before the first read of the harness it

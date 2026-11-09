@@ -157,8 +157,15 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert has_element?(
                view,
-               ~s(#stages-harness-change[href="#{workspace_path(scope, "/settings/harness")}"]),
-               "Change"
+               ~s(#stages-harness-open[href="#{workspace_path(scope, "/settings/harness")}"]),
+               "Open Harness"
+             )
+
+      # The commit version 1 was copied from.
+      assert has_element?(
+               view,
+               "#stages-harness",
+               "commit #{String.slice(Apiary.QoryHarnessFixture.commit(), 0, 7)}"
              )
 
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
@@ -971,7 +978,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stages-export-line",
-               "Commit this file to a harness repository. Only new workspaces made from it use it."
+               "Commit this file to a harness repository. Workspaces that use that harness get it at their next update."
              )
 
       refute has_element?(view, "#stages-export-people")
@@ -2055,7 +2062,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       details(view, path)
       assert has_element?(view, "#stages-harness", "Harness: Qory harness, stack software")
-      refute has_element?(view, "#stages-harness-change")
+      refute has_element?(view, "#stages-harness-open")
 
       assert has_element?(
                view,

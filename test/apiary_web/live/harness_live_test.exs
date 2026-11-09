@@ -84,6 +84,19 @@ defmodule ApiaryWeb.HarnessLiveTest do
     )
   end
 
+  # The rows Source, Stack and Version, as "title · stack · version".
+  defp line(view) do
+    stack =
+      if has_element?(view, "#harness-row-stack"),
+        do: words(view, "#harness-row-stack p:last-child"),
+        else: "no stack"
+
+    Enum.join(
+      [words(view, "#harness-row-source-title"), stack, words(view, "#harness-row-version-line")],
+      " · "
+    )
+  end
+
   defp words(view, selector) do
     view
     |> element(selector)
@@ -727,10 +740,8 @@ defmodule ApiaryWeb.HarnessLiveTest do
          %{conn: conn, path: path} do
       view = open(conn, path)
 
-      assert has_element?(view, "#workflow-harness", "Harness")
-
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software main"
+      assert has_element?(view, "#harness-row-source", "Source")
+      assert line(view) == "Qory harness · software · Follows main"
 
       refute render(view) =~ "fe3b3ab"
       assert has_element?(view, "#workflow-harness-change", "Change")
@@ -764,7 +775,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
       |> render_submit()
 
       render_async(view, 2_000)
-      assert words(view, "#harness-line") == "Qory harness, stack software main"
+      assert line(view) == "Qory harness · software · Follows main"
 
       refute has_element?(view, "#workflow-harness-form")
 
@@ -794,7 +805,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
       |> render_submit()
 
       render_async(view, 2_000)
-      assert words(view, "#harness-line") == "Qory harness, stack software v1.0.0"
+      assert line(view) == "Qory harness · software · Tag v1.0.0"
       assert %{version_kind: :tag, version_name: "v1.0.0"} = Stacks.choice(scope.workspace)
 
       view = conn |> open(path) |> change_harness()
@@ -809,8 +820,8 @@ defmodule ApiaryWeb.HarnessLiveTest do
 
       render_async(view, 2_000)
 
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software #{String.slice(repository.commit, 0, 7)}"
+      assert line(view) ==
+               "Qory harness · software · Commit #{String.slice(repository.commit, 0, 7)}"
 
       assert %{version_kind: :commit, version_name: commit} = Stacks.choice(scope.workspace)
       assert commit == repository.commit
@@ -884,7 +895,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
 
       view = open(conn, path)
 
-      assert words(view, "#harness-line") == "Qory harness, stack core main"
+      assert line(view) == "Qory harness · core · Follows main"
     end
 
     test "without a choice of the workspace: the shared harness and its version as a line, with no version field",
@@ -893,14 +904,14 @@ defmodule ApiaryWeb.HarnessLiveTest do
       {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
       view = open(conn, path)
 
-      assert words(view, "#harness-line") == "Qory harness, stack software main"
+      assert line(view) == "Qory harness · software · Follows main"
 
       refute has_element?(view, "#harness-qory-version")
       refute has_element?(view, "#harness-version")
 
       for {version, line} <- [
-            {{:branch, "main"}, "triage · acme/harness · main"},
-            {{:tag, "v1"}, "triage · acme/harness · v1"}
+            {{:branch, "main"}, "triage · Follows main"},
+            {{:tag, "v1"}, "triage · Tag v1"}
           ] do
         {:ok, _shared} =
           Stacks.put_stack(
@@ -913,7 +924,8 @@ defmodule ApiaryWeb.HarnessLiveTest do
 
         view = open(conn, path)
 
-        assert words(view, "#harness-line") == "A harness repository " <> line
+        assert line(view) == "A harness repository · " <> line
+        assert has_element?(view, ~s(#harness-row-source-link[href="#{@harness}"]))
         refute has_element?(view, "#harness-qory-version")
         refute has_element?(view, "#harness-version")
       end
@@ -1030,7 +1042,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
       # The choice saved, its stack is read again: it lists no workflows.
       assert %{names: []} = Processes.declared_snapshot(scope.workspace)
 
-      assert words(view, "#harness-line") == "A harness repository triage · acme/harness · v2"
+      assert line(view) == "A harness repository · triage · Tag v2"
 
       assert {"R_harness", "harness.yaml", "v2"} in for(
                {"read", call} <- calls(),
@@ -1131,8 +1143,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
                "acme/harness lists the stack triage under exports, but stacks/triage has no " <>
                  "qory-stack.yaml. Add that file."
 
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software main"
+      assert line(view) == "Qory harness · software · Follows main"
 
       assert Stacks.choice(scope.workspace) == nil
     end
@@ -1158,8 +1169,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
       assert words(view, "#workflow-harness-refusal") ==
                "acme/harness has no branch, tag or commit named v9. Correct the version."
 
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software main"
+      assert line(view) == "Qory harness · software · Follows main"
 
       assert Stacks.choice(scope.workspace) == nil
     end
@@ -1227,7 +1237,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
                "Stack"
 
       # Under the choice's line, and under its form once Change opens it.
-      assert before?(render(view), "harness-line", "harness-targets")
+      assert before?(render(view), "harness-rows", "harness-targets")
       assert before?(render(view), "harness-targets", "workflow-form")
       change_harness(view)
       assert before?(render(view), "workflow-harness-form", "harness-targets")
@@ -1274,7 +1284,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
       render_async(view, 2_000)
       render_async(view, 2_000)
 
-      assert words(view, "#harness-line") == "A harness repository triage · acme/harness · v2"
+      assert line(view) == "A harness repository · triage · Tag v2"
 
       assert row_options(view, destination) == [
                {"Workspace's harness", "default"},

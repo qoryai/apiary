@@ -46,9 +46,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - The stages canvas lays the stages out from top to bottom on a dotted background, and
   fills the window beside its side panel. **Focus** (`f`) and **Full screen** enlarge it.
-  On a workspace type's page the canvas is view-only. Workspace settings › Stages and
+  On a workspace type's page the canvas is view-only. Workspace settings › Workflows and
   Instance settings › Workspace types show the canvas on a **Stages** tab and the other
   settings on a **Details** tab.
+- With this feature on, the settings menu lists **Workflows**, at `/settings/workflows`, the
+  page that sets the stages, and **Harness**, at `/settings/harness`. The Harness page
+  shows the commit in use and the process version under **Version**, and the switch
+  **Keep the process at the latest**, on by default, for a harness that follows a
+  branch. With the switch on, each new commit on that branch is saved as a new version
+  of the stages. Edits saved on the Workflows page turn the switch off.
+- **Update from harness** on the Harness page compares the current version of the
+  stages with the process at the version the workspace follows: the changed stages,
+  the new artifact types and a changed stack. **Save** saves it as the current
+  version and turns the switch on again; **Try first** saves it as a trial. Work items
+  in progress stay on their version.
+- Workflows › **Details** shows the harness with the commit the current version came
+  from, and **Open Harness**. Its History lists a version saved from the harness as
+  “Updated from main at 4960195”, with a person's name before it when a person saved
+  it, and the stages and artifact types it changed.
 - Each stage has an optional **Description** under its name in the stage editor: plain
   text of at most 500 characters, with line breaks. A stage's card on the canvas shows it
   under the name, cut to three lines. A template's `process.yaml` may set `description` on
@@ -204,7 +219,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workspace. Each step is a page of the workspace, such as `/acme/main/set-up/harness`,
   and opens in any order; an address with a step you do not see is not found. **Work
   sources**, **Destinations**, **Model** and **Harness** each show where you change them
-  later, such as “You can change this later in Workspace settings › Workflow.” Where the
+  later, such as “You can change this later in Workspace settings › Harness.” Where the
   edition allows more than one workspace, a workspace added later goes through the same 7
   steps.
 - Where the edition shows the setting “Available to every workspace in Acme”, **Model**,
@@ -478,15 +493,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   step shows “Choose the shared harness, or turn off “Available to every workspace in
   Acme”. Acme shares a harness already.” Where Acme shares the Qory harness, sharing a
   harness repository replaces it. The core shows the setting nowhere.
-- **Workspace settings › Workflow**, for owners and admins, shows the workspace's
-  **Harness** on two lines, such as “Qory harness, stack software” over “main”, or
-  the harness the organisation shares where the workspace has no saved choice.
+- **Workspace settings › Harness**, at `/settings/harness`, for owners and admins, shows
+  the workspace's harness in the rows **Source**, with the harness's address as a link,
+  **Stack** and **Version**, such as “Follows main” or “Tag v2.4.0”. Where the workspace
+  has no saved choice, the rows show the harness the organisation shares.
   **Change** opens the two choices of the set-up's **Harness** step, with **Save** and
   **Cancel**. Under the harness, **Repositories** shows the same rows as the Harness
   step, with the same **Stack** field. **About this step** also has the Harness step's
   five paragraphs.
   Under it, the page sets the workflow of the workspace's runs, from a harness
-  repository: **Source** lists the repositories connected to the organisation, and the
+  repository: **Workflow source** lists the repositories connected to the organisation, and the
   harness sources an instance admin assigned to it;
   **Enter an address** takes a **Public address**. **Save** sets the workflow the runs
   use; no run reads that source's stack as its harness. When an adapter's result
@@ -782,7 +798,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A workspace made from the software template gets the artifact type `branch`, and every
   standard type stays shown.
 <!-- feature: factory, workflow_model -->
-- Owners and admins can export a workspace's process as process.yaml from the Stages page.
+- Owners and admins can export a workspace's process as process.yaml from the Workflows page.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item whose run waits in the queue while no pool of its workspace is ready
@@ -948,7 +964,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gate's button, the stage name, the status lines, the Thread, the audit label and the
   permission.
 <!-- /feature -->
-- A harness document's `bind`, in Workspace settings › Workflow and the set-up's Harness
+- A harness document's `bind`, in Workspace settings › Harness and the set-up's Harness
   step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
   the kinds `agents`, `commands` and `skills` are taken, with one name per role. A save
   of a flat key fails with “Write bind by kind, then by role, such as bind: {agents:
@@ -996,7 +1012,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   such as "Taken in by dana". The Host column is gone, and the Target column and the
   rail show only where a run has a target. `item:3` in the query, or the Filter menu's
   Work item section, keeps the runs of work item 3. Below 640 px a run is a card.
-- A run's harness, Workspace settings › Workflow and the set-up's Harness step read a
+- A run's harness, Workspace settings › Harness and the set-up's Harness step read a
   public harness repository from its host over HTTPS, with no connection and no
   adapter: a repository the host serves to anyone is public. A harness source that is
   neither linked nor public fails with “… is not public, or does not exist, and no
@@ -1102,8 +1118,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   beside the form, or under it below 1024 px, that shows what the step does.
 <!-- feature: factory -->
 - **Organisation settings › Model providers**, **Workspace settings › Model** and
-  **Workspace settings › Workflow** have a column **About this step** beside the form.
-  **Provider**, **Model** and **Source** are choice fields.
+  **Workspace settings › Harness** have a column **About this step** beside the form.
+  **Provider**, **Model** and **Workflow source** are choice fields.
 - The `factory` feature needs `secrets` as well as `observability` and `security`: a
   `QORY_FEATURES` list with `factory` and without `secrets` stops the boot. Set
   `QORY_FEATURES=observability,security,secrets,factory`; `all` leaves `factory` off, as
@@ -1265,10 +1281,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   one shown as waiting for a workflow when you click **Check again**. Before, runs of such
   a workspace used the Qory harness at the stack `core`, which lists no workflow, so the
   work item stayed waiting for `explore-a-ticket`.
-- A workspace made from a template runs Explore with no workflow saved on the Workflow
-  page. The Stages page checks each workflow against the stack the workspace's runs use.
+- A workspace made from a template runs Explore with no workflow saved on the Harness
+  page. The Workflows page checks each workflow against the stack the workspace's runs use.
 - Texts about a workflow the Qory harness does not list, and the quickstart guide, point
-  to **Workspace settings › Stages** and its **Details** tab. Before, they pointed to the
+  to **Workspace settings › Workflows** and its **Details** tab. Before, they pointed to the
   Workflow page, which the settings menu does not list with this feature on.
 - The stage's Runs list shows a run that an undo ended as undone, not as ended without a
   verdict.

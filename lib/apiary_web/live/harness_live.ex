@@ -50,9 +50,12 @@ defmodule ApiaryWeb.HarnessLive do
   use ApiaryWeb.Features, :factory
   on_mount {ApiaryWeb.Access, :"harness.save"}
 
+  alias Apiary.Processes
   alias Apiary.Lingo.Domain
+  alias Apiary.Processes.HarnessUpdate
   alias Apiary.Stacks.Sources
-  alias ApiaryWeb.{HarnessComponents, HarnessTargets, SettingsComponents}
+  alias ApiaryWeb.{HarnessComponents, HarnessTargets, HarnessUpdateComponents, SettingsComponents}
+  alias ApiaryWeb.StagesLive.Words, as: StagesWords
 
   @action :"harness.save"
 
@@ -90,8 +93,19 @@ defmodule ApiaryWeb.HarnessLive do
         workspace_stacks_of: nil,
         # With the feature `workflow_model`, the stages replace the workflow choice
         # (decision D3): the page keeps the harness choice and links to Workflows.
-        stages?: Apiary.Features.visible?(scope, :workflow_model)
+        stages?: Apiary.Features.visible?(scope, :workflow_model),
+        may_process:
+          Apiary.Features.visible?(scope, :workflow_model) and
+            Apiary.Access.can?(scope, :"process.edit", scope.workspace),
+        update: nil,
+        next: nil,
+        update_reading: false,
+        update_saving: false,
+        update_error: nil,
+        update_notice: nil,
+        branch_head: nil
       )
+      |> assign_status()
       |> assign_harness_form(nil)
       |> load_targets()
 
@@ -104,10 +118,66 @@ defmodule ApiaryWeb.HarnessLive do
             {Sources.repositories(scope), Sources.unplaced(scope)}
           end)
           |> record_declared()
+          |> read_branch_head()
           |> preselect_assigned(),
         else: socket
 
     {:ok, assign_form(socket)}
+  end
+
+  ## The harness in use and its process
+
+  # The workspace's harness and its process (`Apiary.Processes.HarnessUpdate.status/1`),
+  # with `edits`, whether the current version has edits saved on the Workflows page.
+  defp assign_status(socket) do
+    workspace = socket.assigns.current_scope.workspace
+    current = Processes.current(workspace)
+
+    status =
+      workspace
+      |> HarnessUpdate.status()
+      |> Map.put(:edits, HarnessUpdateComponents.edits?(current))
+
+    assign(socket, status: status, head: head(status, socket.assigns.branch_head))
+  end
+
+  # The commit the followed branch is at now: the Qory harness's at its last read, else
+  # the one a read of the harness repository returned.
+  defp head(%{source: :qory, head: head}, _branch_head), do: head
+  defp head(_status, branch_head), do: branch_head
+
+  # Where a harness repository follows a branch with Keep the process at the latest off,
+  # its branch is read once the page connects, outside the page's process, as Update from
+  # harness reads it, so Version shows the commit it is at now.
+  defp read_branch_head(socket) do
+    %{status: status, current_scope: scope, may_process: may} = socket.assigns
+
+    if may and status.source == :repository and is_binary(status.following) and
+         status.keep_latest == false do
+      socket
+      |> cancel_async(:branch_head)
+      |> start_async(:branch_head, fn -> HarnessUpdate.read(scope, scope.workspace) end)
+    else
+      socket
+    end
+  end
+
+  # The words a read of the harness that failed shows with: the harness repository's
+  # source, else the Qory harness by its name.
+  defp read_source(workspace) do
+    case Sources.chosen_source(workspace) do
+      {:ok, source, _stack} -> source
+      {:error, _reason} -> %{label: HarnessComponents.harness_words(Sources.chosen(workspace))}
+    end
+  end
+
+  # The number a version saved now gets: one more than the newest of the workspace's.
+  defp next_number(workspace) do
+    workspace
+    |> Processes.list_versions()
+    |> Enum.map(& &1.number)
+    |> Enum.max(fn -> 0 end)
+    |> Kernel.+(1)
   end
 
   ## The current setting
@@ -161,9 +231,12 @@ defmodule ApiaryWeb.HarnessLive do
 
     socket
     |> assign(chosen: chosen, editing: false, harness_refusal: nil)
+    |> assign(update: nil, update_error: nil, update_notice: nil, branch_head: nil)
+    |> assign_status()
     |> assign_harness_form(nil)
     |> load_targets()
     |> record_declared()
+    |> read_branch_head()
   end
 
   defp harness_saved(socket, _choice, {:error, :forbidden}),
@@ -370,7 +443,96 @@ defmodule ApiaryWeb.HarnessLive do
       when is_map(params),
       do: {:noreply, HarnessTargets.save(socket, edit, params, &target_saved/3)}
 
+  def handle_event("keep_latest", _params, %{assigns: %{may_process: true}} = socket) do
+    %{current_scope: scope, status: status} = socket.assigns
+
+    case HarnessUpdate.set_keep_latest(scope, scope.workspace, !status.keep_latest) do
+      {:ok, _workspace} ->
+        {:noreply, socket |> assign(update_notice: nil) |> assign_status() |> read_branch_head()}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, StagesWords.refusal(:forbidden, nil))}
+
+      {:error, _pinned_or_gone} ->
+        {:noreply, assign_status(socket)}
+    end
+  end
+
+  def handle_event(
+        "update",
+        _params,
+        %{assigns: %{may_process: true, update_reading: false}} = socket
+      ) do
+    scope = socket.assigns.current_scope
+
+    {:noreply,
+     socket
+     |> assign(update: nil, update_reading: true, update_error: nil, update_notice: nil)
+     |> start_async(:update, fn -> HarnessUpdate.read(scope, scope.workspace) end)}
+  end
+
+  def handle_event("update_cancel", _params, %{assigns: %{update_saving: false}} = socket),
+    do: {:noreply, assign(socket, update: nil, update_error: nil)}
+
+  def handle_event(
+        "update_save",
+        params,
+        %{assigns: %{may_process: true, update: %{} = update, update_saving: false}} = socket
+      ) do
+    scope = socket.assigns.current_scope
+    trial? = params["trial"] == "true"
+
+    case HarnessUpdate.save(scope, scope.workspace, update, trial: trial?) do
+      {:ok, version} ->
+        {:noreply,
+         socket
+         |> assign(update: nil, update_error: nil, update_notice: saved_words(version, trial?))
+         |> assign_status()
+         |> read_branch_head()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, update_error: save_words(reason, update))}
+    end
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp saved_words(version, false),
+    do:
+      gettext("Saved as version %{number}. Work items taken in from now on use it.",
+        number: version.number
+      )
+
+  defp saved_words(version, true),
+    do:
+      gettext(
+        "Saved as version %{number}, a trial. Assign work items to it on the Workflows page.",
+        number: version.number
+      )
+
+  # Why a save of Update from harness was refused, the fix first.
+  defp save_words(:stale, _update),
+    do:
+      gettext(
+        "Press Update from harness again. The stages changed after you opened this difference."
+      )
+
+  defp save_words({:trial_exists, trial}, _update), do: StagesWords.trial_exists(trial)
+
+  defp save_words(:shared, _update),
+    do:
+      gettext(
+        "Save without the stack, or change the stack of the harness your organisation shares. Every workspace that takes that harness uses its stack."
+      )
+
+  defp save_words({:types, {:invalid, name}}, _update),
+    do: gettext("Correct the artifact type %{type} in the harness, then save again.", type: name)
+
+  defp save_words(errors, update) when is_list(errors),
+    do: Enum.map_join(errors, " ", &StagesWords.refusal(&1, update.document))
+
+  defp save_words(:forbidden, _update), do: StagesWords.refusal(:forbidden, nil)
+  defp save_words(_reason, _update), do: gettext("Nothing was changed. Try again.")
 
   # The base and the workflow name of the option `value`, `<stack index>/<workflow>`,
   # among the stacks read for the chosen source; nil and nil for none.
@@ -534,6 +696,27 @@ defmodule ApiaryWeb.HarnessLive do
 
   def handle_async(:declared, _failed, socket), do: {:noreply, socket}
 
+  def handle_async(:update, {:ok, {:ok, update}}, socket) do
+    workspace = socket.assigns.current_scope.workspace
+
+    {:noreply,
+     socket
+     |> assign(update: update, update_reading: false, next: next_number(workspace))
+     |> assign_status()}
+  end
+
+  def handle_async(:update, {:ok, {:error, reason}}, socket),
+    do: {:noreply, update_failed(socket, reason)}
+
+  def handle_async(:update, {:exit, _reason}, socket),
+    do: {:noreply, update_failed(socket, :exited)}
+
+  def handle_async(:branch_head, {:ok, {:ok, %{commit: commit}}}, socket),
+    do: {:noreply, socket |> assign(:branch_head, commit) |> assign_status()}
+
+  # No commit to show: Update from harness shows why, once pressed.
+  def handle_async(:branch_head, _failed, socket), do: {:noreply, socket}
+
   def handle_async(:read, {:exit, _reason}, socket),
     do: {:noreply, socket |> assign(read_error: :exited, reading: false) |> assign_form()}
 
@@ -554,6 +737,15 @@ defmodule ApiaryWeb.HarnessLive do
 
   def handle_async(:target_save, {:exit, _reason}, socket),
     do: {:noreply, HarnessTargets.save_failed(socket)}
+
+  defp update_failed(socket, reason) do
+    scope = socket.assigns.current_scope
+
+    words =
+      HarnessUpdateComponents.reason_words(reason, read_source(scope.workspace), scope)
+
+    assign(socket, update: nil, update_reading: false, update_error: words)
+  end
 
   # Once the connected repositories are listed, a harness form with no repository chosen
   # yet takes the saved one, whose exports are then read.
@@ -665,6 +857,7 @@ defmodule ApiaryWeb.HarnessLive do
         organisation: assigns.current_scope.organisation.name,
         workspace: assigns.current_scope.workspace.name,
         exports: form_exports(assigns),
+        stopped: HarnessUpdateComponents.stopped(assigns.status, assigns.head),
         harness_choice:
           HarnessComponents.choice(
             assigns.harness_form.params,
@@ -691,19 +884,19 @@ defmodule ApiaryWeb.HarnessLive do
         title={SettingsComponents.harness_label()}
       >
         <div id="workflow-harness" class="grid gap-3">
-          <div class="flex flex-wrap items-start gap-x-6 gap-y-1 text-[13.5px]/5">
-            <p class="w-24 font-medium">{gettext("Harness")}</p>
-            <div class="min-w-0 flex-1"><HarnessComponents.line chosen={@chosen} /></div>
-            <.button
-              :if={!@editing}
-              id="workflow-harness-change"
-              type="button"
-              size="sm"
-              phx-click="change_harness"
-            >
-              {gettext("Change")}
-            </.button>
-          </div>
+          <HarnessUpdateComponents.rows status={@status} process={@stages?} branch_head={@head}>
+            <:change>
+              <.button
+                :if={!@editing}
+                id="workflow-harness-change"
+                type="button"
+                size="sm"
+                phx-click="change_harness"
+              >
+                {gettext("Change")}
+              </.button>
+            </:change>
+          </HarnessUpdateComponents.rows>
 
           <.form
             :if={@editing}
@@ -760,6 +953,51 @@ defmodule ApiaryWeb.HarnessLive do
           />
         </div>
 
+        <div :if={@stages?} id="harness-process" class="grid gap-5 border-t border-line pt-5">
+          <.switch
+            :if={@may_process and @status.following}
+            id="harness-latest"
+            label={gettext("Keep the process at the latest")}
+            checked={@status.keep_latest}
+            phx-click="keep_latest"
+          >
+            {HarnessUpdateComponents.latest_words(@status.following)}
+          </.switch>
+          <.notice :if={@stopped} kind={:warning}>
+            <span id="harness-stopped"><.rich text={
+              HarnessUpdateComponents.stopped_words(@status.following, @stopped)
+            } /></span>
+          </.notice>
+          <.notice :if={@update_notice} kind={:success}>
+            <span id="harness-update-notice">{@update_notice}</span>
+          </.notice>
+          <div :if={@may_process and !@update} id="harness-update-line" class="grid gap-2">
+            <p class="text-[13.5px]/5">
+              {HarnessUpdateComponents.compare_words(@status.number, @status.version)}
+            </p>
+            <div>
+              <.button
+                id="harness-update"
+                size="sm"
+                phx-click="update"
+                disabled={@update_reading}
+              >
+                {gettext("Update from harness")}
+              </.button>
+            </div>
+          </div>
+          <.notice :if={@update_error} kind={:error}>
+            <span id="harness-update-error"><.rich text={@update_error} /></span>
+          </.notice>
+          <HarnessUpdateComponents.update
+            :if={@update}
+            update={@update}
+            next={@next}
+            switch_off={is_binary(@status.following) and @status.keep_latest == false}
+            saving={@update_saving}
+          />
+        </div>
+
         <div :if={@stages?} id="workflow-stages" class="grid gap-2">
           <p class="text-[13.5px]/5">
             {gettext(
@@ -795,7 +1033,7 @@ defmodule ApiaryWeb.HarnessLive do
           <.input
             field={@form[:source]}
             type="choice"
-            label={gettext("Source")}
+            label={gettext("Workflow source")}
             prompt={gettext("Choose a source")}
             options={HarnessComponents.source_options(@linked, @assigned)}
             search={@linked not in [nil, []] || nil}
@@ -880,7 +1118,7 @@ defmodule ApiaryWeb.HarnessLive do
               )
             } />
           </p>
-          <HarnessComponents.about />
+          <HarnessComponents.about process={@stages?} />
         </:context>
       </SettingsComponents.layout>
     </Layouts.app>

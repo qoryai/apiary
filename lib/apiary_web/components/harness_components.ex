@@ -59,8 +59,16 @@ defmodule ApiaryWeb.HarnessComponents do
   # for a root file that is no mapping.
   @section_words elem(Document.unreadable(:invalid_stack), 0)
 
+  attr :process, :boolean,
+    default: false,
+    doc:
+      "whether a run uses the commit its process version came from, as with the " <>
+        "`workflow_model` feature on Workspace settings › Harness"
+
   @doc false
   # about/1 is the side note of the Harness step, the paragraphs under About this step.
+  # With `process`, the last paragraph is on the version of the harness a process
+  # version came from (`Apiary.Processes.harness_template/1`).
   def about(assigns) do
     ~H"""
     <p id="harness-about-what">
@@ -79,9 +87,14 @@ defmodule ApiaryWeb.HarnessComponents do
         "A harness source exports stacks in the qory.yaml or harness.yaml at its root. Qory Apiary reads that file in the target you pick, and offers only the stacks it exports."
       )}
     </p>
-    <p id="harness-about-versions">
+    <p :if={!@process} id="harness-about-versions">
       {gettext(
         "Always the latest: a run uses the newest version. On the Qory harness, that is the version when a machine claims the run. On a harness source, it is the version when the run is queued. A fixed version uses that version."
+      )}
+    </p>
+    <p :if={@process} id="harness-about-versions">
+      {gettext(
+        "A run uses the harness version its process version came from. Keep the process at the latest moves that version at each new version of the harness. A fixed version uses that version."
       )}
     </p>
     """
