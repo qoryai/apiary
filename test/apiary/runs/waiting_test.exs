@@ -103,6 +103,8 @@ defmodule Apiary.Runs.WaitingTest do
     assert reason(run) == {:no_fit, "large"}
   end
 
+  # An environment image is built and stored through the registry.
+  @tag needs: [:factory, :registry]
   test "held for its target's environment image: queued, running, or none live",
        %{scope: scope} do
     {pool, key} = ready_pool!(scope)

@@ -262,6 +262,8 @@ defmodule Apiary.Dispatches.QueuedTest do
           do: assert(%Run{state: "cancelled", reason: ^cause} = record(queued))
     end
 
+    # A prebuild builds an environment image, which the registry stores.
+    @tag needs: [:factory, :registry]
     test "a claimed prebuild superseded on its lapse: its started run failed, no new record",
          ctx do
       collection = collection_fixture(ctx.scope)
