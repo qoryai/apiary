@@ -1584,4 +1584,96 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute log =~ "No machine log has arrived."
     end
   end
+
+  describe "a prebuild whose image was not saved" do
+    setup :register_and_log_in_user
+
+    # A report that fails its check is logged as a warning (`Apiary.Dispatches.Built`).
+    @describetag :capture_log
+    @describetag needs: [:factory, :registry]
+
+    @digest String.duplicate("4c1e", 16)
+
+    # A prebuild on a pool of the workspace whose build session exited 0, with `report`
+    # as its `dev.qory.run.built`, if any, and its run's exit.
+    defp prebuild!(ctx, report, exited) do
+      pool = pool_fixture(ctx.scope, name: "build-pool")
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      _gateway = gateway_for!(ctx.scope, pool)
+      %{run: run} = prebuild_handed_over!(ctx.scope, key)
+
+      report =
+        case report do
+          nil -> []
+          report -> [{8, "run.built", report.(run)}]
+        end
+
+      project!(
+        run,
+        [
+          {1, "run.started", started_data()},
+          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {4, "session.started",
+           session_started_data(%{"runtime" => "qory", "command" => "qory", "bare" => true})},
+          {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+          {6, "run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {7, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}
+        ] ++ report ++ [{9, "run.exited", Map.put(exited, "duration_ms", 1000)}]
+      )
+    end
+
+    test "a build that sent no image: Save the outputs failed, and How it ended", ctx do
+      run = prebuild!(ctx, nil, %{"state" => "failed", "exit_code" => -1})
+      lv = open(ctx.conn, ctx.scope, run)
+      what = "The image was not saved: the build finished, but no image arrived."
+
+      assert has_element?(lv, "#prepare-machine-build[data-state=succeeded]")
+      assert has_element?(lv, "#prepare-machine-outputs[data-state=failed]")
+
+      cause = lv |> element("#prepare-machine-outputs-cause") |> render()
+
+      assert cause |> LazyHTML.from_fragment() |> LazyHTML.text() ==
+               "#{what} Read the cause in the log of build-pool on its host."
+
+      assert has_element?(lv, "#prepare-machine-outputs-cause b", "build-pool")
+
+      assert lv |> element("#run-why .q-run-why-whole") |> render() =~ ">#{what}</span>"
+      refute has_element?(lv, "#run-why-jump")
+    end
+
+    test "a completed run whose report is away from its destination: the line in How it ended",
+         ctx do
+      run =
+        prebuild!(
+          ctx,
+          &%{
+            "image" => sent(&1, "image_destination") <> "-x@sha256:" <> @digest,
+            "size" => 1_048_576,
+            "commit" => String.duplicate("a1", 20),
+            "environment_ref" => "env-1"
+          },
+          %{"state" => "succeeded", "exit_code" => 0}
+        )
+
+      destination = sent(run, "image_destination")
+      lv = open(ctx.conn, ctx.scope, run)
+
+      what =
+        "The image was not saved: the run reported it at #{destination}-x, but this run " <>
+          "saves images only under #{destination}."
+
+      assert has_element?(lv, "#run-state", "Completed")
+      assert has_element?(lv, "#prepare-machine-outputs[data-state=failed]")
+      refute render(lv) =~ "Outputs saved"
+
+      cause = lv |> element("#prepare-machine-outputs-cause") |> render()
+      assert cause =~ "<code"
+      assert cause |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.trim() == what
+
+      assert lv |> element("#run-why .q-run-why-whole") |> render() =~ ">#{what}</span>"
+    end
+  end
 end

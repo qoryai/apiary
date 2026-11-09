@@ -58,9 +58,14 @@ defmodule Apiary.Runs.Preparation do
       a run no queue started. A prebuild builds its image in one session that `qory`
       starts with no agent, which Forager may mark bare: the session of a prebuild is
       read as an agent session, bare or not, so its join and wall are no helper steps.
-    * `built`: for a prebuild, its first `dev.qory.run.built` by sequence, `at` its time
-      and `image` the image it reports, nil when that is no text; nil while it has none,
-      and for any other run (`t:built/0`).
+    * `built`: for a prebuild, how it saved its image (`t:built/0`): its first
+      `dev.qory.run.built` by sequence, `at` its time, `image` the image it reports, nil
+      when that is no text, and `refused` why the report fails the check that stores it,
+      as Apiary.Dispatches.Built returns it, nil when it passes; else, once the prebuild
+      failed after its build session exited succeeded, `at` the run's exit, no image, and
+      `refused` `:not_sent`, as `qory` sends no report when its check of the build's
+      result fails. `fix` is what the reader of `scope` does about an image not saved
+      (`t:built_fix/0`). Nil otherwise, and for any other run.
 
   Every read is scoped as `Apiary.Runs.Record` scopes it: the scope's organisation and
   workspace, and the run's row id.
@@ -75,7 +80,7 @@ defmodule Apiary.Runs.Preparation do
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.Dispatch
   alias Apiary.Nodes.Node
-  alias Apiary.Organisations.Organisation
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Record, Run, Step}
 
   # The most of a step's output that is kept, in bytes of UTF-8, and in lines: the page
@@ -289,7 +294,40 @@ defmodule Apiary.Runs.Preparation do
           built: built | nil
         }
 
-  @type built :: %{at: DateTime.t(), image: String.t() | nil}
+  @type built :: %{
+          at: DateTime.t() | nil,
+          image: String.t() | nil,
+          refused: atom | tuple | nil,
+          fix: built_fix | nil
+        }
+
+  @typedoc """
+  What the reader does about a prebuild's image that was not saved, by why it was not
+  and who reads it:
+
+    * `:machine_log`: for an instance admin, the cause of a build whose image never
+      arrived is in the machine log, under Start the machine.
+    * `{:pool_log, pool}`: for anyone else, on a pool of the run's workspace, it is in
+      the log of the pool named `pool` on its host.
+    * `{:operator_log, operator, pool}`: on a pool of another organisation, named
+      `operator`, an admin of it reads that log.
+    * `{:support, run}`: on the instance's pool, and for a report whose form or run does
+      not pass the check, support, given the run's public id `run`.
+    * `{:rebuild, target}`: for a run whose documents have no destination, a reader who
+      may rebuild the environment of the run's target, `target`
+      (`target.rebuild_environment`), rebuilds it.
+    * `{:ask_rebuild, workspace, target}`: a reader who may not asks an admin of the
+      workspace, named `workspace`.
+
+  Nil where the reader has nothing to do: the line shows the values that differ.
+  """
+  @type built_fix ::
+          :machine_log
+          | {:pool_log, String.t()}
+          | {:operator_log, String.t(), String.t()}
+          | {:support, String.t()}
+          | {:rebuild, String.t()}
+          | {:ask_rebuild, String.t(), String.t()}
 
   @doc """
   The preparation of `run` for the reader of `scope`: the moduledoc. `opts`:
@@ -319,6 +357,7 @@ defmodule Apiary.Runs.Preparation do
     sessions = sessions(starts, ends)
     session_started_at = sessions |> List.first() |> then(&(&1 && &1.started_at))
     machine = machine(scope, run, attempt, steps, session_started_at)
+    session_end = last_end(starts, sessions, ends)
 
     %{
       machine: machine,
@@ -332,7 +371,7 @@ defmodule Apiary.Runs.Preparation do
           do: Map.take(start, [:session, :sequence])
         ),
       session_started_at: session_started_at,
-      session_end: last_end(starts, sessions, ends),
+      session_end: session_end,
       outputs: outputs(scope, run),
       stopped:
         stopped(
@@ -344,7 +383,7 @@ defmodule Apiary.Runs.Preparation do
           Keyword.get(opts, :release_reason, :filtered)
         ),
       prebuild: prebuild,
-      built: if(prebuild, do: built(scope, run))
+      built: if(prebuild, do: built(scope, run, session_end, machine))
     }
   end
 
@@ -748,13 +787,65 @@ defmodule Apiary.Runs.Preparation do
   defp prebuild_step(%{kind: "join"} = step), do: Map.put(step, :prebuild, true)
   defp prebuild_step(step), do: step
 
-  # A prebuild's first `dev.qory.run.built` by sequence (`t:built/0`), nil for none.
-  defp built(scope, run) do
-    case Record.built(scope, run) do
-      %{time: at, image: image} -> %{at: at, image: text(image)}
-      nil -> nil
+  # A prebuild with no report whose build session exited succeeded: failed after its
+  # build, at its exit; nil while it goes on, and once it ended in another state.
+  defp unsent(%Run{state: "failed", exited_at: at}), do: %{at: at, image: nil, refused: :not_sent}
+  defp unsent(%Run{}), do: nil
+
+  # How a prebuild saved its image (`t:built/0`): its first `dev.qory.run.built` by
+  # sequence, with the result of its check; else, for a prebuild that failed after its
+  # build session exited succeeded, no report; else nil.
+  defp built(scope, run, session_end, machine) do
+    built =
+      case Record.built(scope, run) do
+        %{time: at, image: image, data: data} ->
+          refused =
+            case Apiary.Dispatches.Built.check(run, data) do
+              :ok -> nil
+              {:refused, why} -> why
+            end
+
+          %{at: at, image: text(image), refused: refused}
+
+        nil ->
+          if session_end[:state] == "succeeded", do: unsent(run)
+      end
+
+    built && Map.put(built, :fix, built_fix(scope, run, machine, built.refused))
+  end
+
+  # What the reader of `scope` does about an image not saved (`t:built_fix/0`).
+  defp built_fix(_scope, _run, _machine, nil), do: nil
+
+  defp built_fix(scope, run, machine, :not_sent) do
+    if Access.instance_admin?(scope) do
+      :machine_log
+    else
+      case machine && machine.pool do
+        %{place: :workspace, name: pool} -> {:pool_log, pool}
+        %{place: :operator, operator: operator, name: pool} -> {:operator_log, operator, pool}
+        _instance -> {:support, run.public_id}
+      end
     end
   end
+
+  defp built_fix(
+         %Scope{workspace: %Workspace{} = workspace} = scope,
+         run,
+         _machine,
+         :no_destination
+       ) do
+    cond do
+      is_nil(run.target_path) -> nil
+      Access.can?(scope, :"target.rebuild_environment", workspace) -> {:rebuild, run.target_path}
+      true -> {:ask_rebuild, workspace.name, run.target_path}
+    end
+  end
+
+  defp built_fix(_scope, run, _machine, :not_prebuild), do: {:support, run.public_id}
+  defp built_fix(_scope, run, _machine, {:form, _member}), do: {:support, run.public_id}
+
+  defp built_fix(_scope, _run, _machine, _why), do: nil
 
   # work_item/2 is the work item of the run's run of the queue, whose artifacts the run
   # pushes: nil for a run no queue started, or a run of the queue with no work item.

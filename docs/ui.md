@@ -1791,8 +1791,11 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   timeline at that item. A run with a failed push or copy step looks only at the newest
   of its results and failed turns, and shows that item if it is a failure. Else a run
   whose push failed shows what happened at the push, with no advice, such as "Push work
-  to git.example.com/acme/web-shop failed with exit code 1." A step's line wraps whole and
-  has no "Jump to it".
+  to git.example.com/acme/web-shop failed with exit code 1." A prebuild whose image was
+  not saved shows the first sentence of the cause line of Save the outputs, in plain
+  text, before its timeline's results. A prebuild that completed shows that line too: it
+  is the one Completed run with "How it ended". A step's line wraps whole and has no
+  "Jump to it".
 - **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
   live action of the one LiveView, so a tab is a patch. Terminal is the log's
   (`run.read_log`): for a reader who may not read it, as where an edition hides the run's
@@ -2022,12 +2025,37 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      session's Timeline. The join of any other run is Start the agent. A
      prebuild's `image` step, which Forager writes in the session's join after the
      session's start, is in Prepare the machine. A prebuild's `dev.qory.run.built` is
-     the step **Save the outputs**, with Outputs saved and the image it reports. The
+     the step **Save the outputs**, with Outputs saved and the image it reports. A long
+     value, such as the image's reference, wraps inside its column. The
      session is read as an agent session whether or not its `dev.qory.session.started`
      has `bare: true`, so its join and wall keep their rows. A failed join or wall fails
      Build the image, with the step's cause line, such as "Start the build failed with
      exit code 1."; a failed session fails it with "Build the image failed with exit
      code 1." for the session's exit code. Save the outputs is then Skipped.
+
+     Save the outputs is failed, with a cause line, when the image was not saved. The
+     line shows what happened, with the values that differ in code font, then what the
+     reader does, where there is a step to take:
+
+     - The report failed the check that stores the image (`Apiary.Dispatches.Built`).
+       Its image is not at the registry address the claim sent the run: "The image was
+       not saved: the run reported it at `registry.example.com/northwind/other`, but this
+       run saves images only under `registry.example.com/northwind/storefront`." Its
+       environment image differs from the one the run was sent, as an address or as the
+       image the build started from. A member breaks its form, such as `commit` that "is
+       not 40 or 64 lower-case hexadecimal characters", with "Contact support with run
+       rn_…". The run's documents have no registry address, as for a run claimed before
+       the claim sent one, with "Rebuild **northwind/storefront** to build the image
+       again." for a reader who may rebuild the target's environment, else "Ask an admin
+       of Main to rebuild **northwind/storefront**." The run is not recorded as a
+       prebuild handed over to a machine, with "Contact support with run rn_…".
+     - The run failed after its build session exited 0 and sent no report, as `qory` does
+       when its check of the build's result fails: "The image was not saved: the build
+       finished, but no image arrived." The cause is in the output of `qory`, so the line
+       shows where to read it, by reader. An instance admin reads the machine log under
+       **Start the machine**. Anyone else reads the log of a pool of the workspace on its
+       host, asks an admin of the organisation whose pool it is, or, on Qory Pool,
+       contacts support with the run's id.
 
      An Agent session and its Run the agent are open when they appear on a live run, where
      the duration counts up, and closed on a run that ended. They open for a `?seq=` link

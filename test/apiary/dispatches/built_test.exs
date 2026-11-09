@@ -386,6 +386,71 @@ defmodule Apiary.Dispatches.BuiltTest do
     end
   end
 
+  describe "check/2" do
+    test "passes a report that record/1 stores", ctx do
+      assert Built.check(ctx.run, built(ctx)) == :ok
+    end
+
+    test "returns the first member that breaks its rules", ctx do
+      for {data, member} <- [
+            {built(ctx, %{"image" => "registry.example.com/acme/shop-env:latest"}), "image"},
+            {Map.delete(built(ctx), "image"), "image"},
+            {built(ctx, %{"size" => 0, "commit" => "x"}), "size"},
+            {built(ctx, %{"size" => "734003200"}), "size"},
+            {built(ctx, %{"commit" => String.upcase(@commit)}), "commit"},
+            {built(ctx, %{"environment_ref" => String.duplicate("e", 201)}), "environment_ref"},
+            {Map.delete(built(ctx), "environment_ref"), "environment_ref"},
+            {built(ctx, %{"environment_image" => 1}), "environment_image"},
+            {%{}, "image"}
+          ] do
+        assert Built.check(ctx.run, data) == {:refused, {:form, member}}
+      end
+    end
+
+    test "returns the place the image was reported at and the run's image_destination",
+         ctx do
+      destination = sent(ctx.run, "image_destination")
+      image = destination <> "-x@sha256:" <> @digest
+
+      assert Built.check(ctx.run, built(ctx, %{"image" => image})) ==
+               {:refused, {:image_place, destination <> "-x", destination}}
+    end
+
+    test "returns the environment image's place and the run's environment_destination",
+         ctx do
+      place = sent(ctx.run, "environment_destination")
+      image = place <> "-x@sha256:" <> @digest
+
+      assert Built.check(ctx.run, built(ctx, %{"environment_image" => image})) ==
+               {:refused, {:environment_image, place <> "-x", {:destination, place}}}
+    end
+
+    test "returns the environment image and the one the run was sent to start from", ctx do
+      sent_image = sent(ctx.run, "environment_destination") <> "@sha256:" <> @old_digest
+      other = String.replace(sent_image, @old_digest, @digest)
+
+      run = %{
+        ctx.run
+        | run_documents:
+            Jason.encode!(%{
+              "image_destination" => sent(ctx.run, "image_destination"),
+              "environment_image" => sent_image
+            })
+      }
+
+      assert Built.check(run, built(ctx, %{"environment_image" => other})) ==
+               {:refused, {:environment_image, other, {:image, sent_image}}}
+    end
+
+    test "refuses a run whose documents have no destination, and a run that is no prebuild",
+         ctx do
+      assert Built.check(%{ctx.run | run_documents: ~s({"step":"prebuild"})}, built(ctx)) ==
+               {:refused, :no_destination}
+
+      assert Built.check(run_fixture(ctx.scope), built(ctx)) == {:refused, :not_prebuild}
+    end
+  end
+
   test "a run with no report records nothing", ctx do
     assert Built.record(ctx.run) == :none
     assert record!(ctx) == ctx.record

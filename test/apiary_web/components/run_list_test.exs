@@ -1222,4 +1222,106 @@ defmodule ApiaryWeb.RunListTest do
       assert LazyHTML.attribute(row, "data-clean-up") == ["stays"]
     end
   end
+
+  describe "the cause line of an image not saved" do
+    @dest "registry.example.com/0123456789abcdef/0f1e2d3c4b5a6978/targets/1a2b3c4d5e6f7081"
+    @env "registry.example.com/0123456789abcdef/0f1e2d3c4b5a6978/environments/1a2b3c4d5e6f7081"
+    @sent @env <> "@sha256:" <> String.duplicate("3b9d", 16)
+    @other @env <> "@sha256:" <> String.duplicate("7a1c", 16)
+
+    # The line as its text reads, with no markup, and the values in code font.
+    defp line(refused, fix) do
+      cause = PreparationComponents.built_cause(%{refused: refused, fix: fix})
+      codes = for {:code, value} <- List.flatten(List.wrap(cause)), do: value
+      {ApiaryWeb.RichText.plain_text(cause), codes}
+    end
+
+    test "each cause states what happened, with the values that differ as code" do
+      assert line({:image_place, @dest <> "-x", @dest}, nil) ==
+               {"The image was not saved: the run reported it at #{@dest}-x, but this run " <>
+                  "saves images only under #{@dest}.", [@dest <> "-x", @dest]}
+
+      assert line({:environment_image, @env <> "-x", {:destination, @env}}, nil) ==
+               {"The image was not saved: the run reported its environment image at " <>
+                  "#{@env}-x, but this run saves environment images only under #{@env}.",
+                [@env <> "-x", @env]}
+
+      assert line({:environment_image, @other, {:image, @sent}}, nil) ==
+               {"The image was not saved: the run reported that it started from #{@other}, " <>
+                  "but this run starts from #{@sent}.", [@other, @sent]}
+
+      assert line(:no_destination, nil) ==
+               {"The image was not saved: this run has no registry address to check the " <>
+                  "image against.", []}
+
+      assert line(:not_prebuild, {:support, "rn_0123456789abcdef"}) ==
+               {"The image was not saved: this run is not recorded as a prebuild handed over " <>
+                  "to a machine. Contact support with run rn_0123456789abcdef.", []}
+    end
+
+    test "a member that breaks its form, with its rule" do
+      rules = [
+        {"image",
+         "is not a registry address pinned by its digest, @sha256: and 64 lower-case " <>
+           "hexadecimal digits, of at most 327 characters"},
+        {"environment_image",
+         "is not a registry address pinned by its digest, @sha256: and 64 lower-case " <>
+           "hexadecimal digits, of at most 327 characters"},
+        {"size", "is not a whole number of bytes from 1 to 9,007,199,254,740,991"},
+        {"commit", "is not 40 or 64 lower-case hexadecimal characters"},
+        {"environment_ref", "is not 1 to 200 characters"}
+      ]
+
+      for {member, rule} <- rules do
+        {text, codes} = line({:form, member}, {:support, "rn_0123456789abcdef"})
+
+        assert text ==
+                 "The image was not saved: #{member} in the image report #{rule}. " <>
+                   "Contact support with run rn_0123456789abcdef."
+
+        assert hd(codes) == member
+      end
+    end
+
+    test "a build whose image never arrived: where each reader reads why" do
+      what = "The image was not saved: the build finished, but no image arrived."
+
+      for {fix, step} <- [
+            {:machine_log, "Read the machine log under Start the machine for the cause."},
+            {{:pool_log, "build-pool"}, "Read the cause in the log of build-pool on its host."},
+            {{:operator_log, "Northwind", "partner-pool"},
+             "Ask an admin of Northwind for the cause in the log of partner-pool."},
+            {{:support, "rn_0123456789abcdef"}, "Contact support with run rn_0123456789abcdef."}
+          ] do
+        assert line(:not_sent, fix) == {what <> " " <> step, []}
+      end
+    end
+
+    test "a run with no destination: Rebuild, or ask an admin of the workspace" do
+      what =
+        "The image was not saved: this run has no registry address to check the image against."
+
+      assert line(:no_destination, {:rebuild, "northwind/storefront"}) ==
+               {what <> " Rebuild northwind/storefront to build the image again.", []}
+
+      assert line(:no_destination, {:ask_rebuild, "Main", "northwind/storefront"}) ==
+               {what <> " Ask an admin of Main to rebuild northwind/storefront.", []}
+    end
+
+    test "How it ended has the first sentence alone, in plain text" do
+      built = %{refused: {:image_place, @dest <> "-x", @dest}, fix: nil, at: nil, image: nil}
+
+      assert PreparationComponents.built_line(%{built: built}) ==
+               "The image was not saved: the run reported it at #{@dest}-x, but this run " <>
+                 "saves images only under #{@dest}."
+
+      assert PreparationComponents.built_line(%{
+               built: %{built | refused: :not_sent, fix: :machine_log}
+             }) == "The image was not saved: the build finished, but no image arrived."
+
+      assert PreparationComponents.built_line(%{built: %{built | refused: nil}}) == nil
+      assert PreparationComponents.built_line(%{built: nil}) == nil
+      assert PreparationComponents.built_line(nil) == nil
+    end
+  end
 end

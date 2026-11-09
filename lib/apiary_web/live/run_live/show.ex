@@ -2428,21 +2428,31 @@ defmodule ApiaryWeb.RunLive.Show do
   defp assign_ending(socket), do: assign(socket, ending: nil)
 
   # A run that ended badly ends with the failed step of its preparation
-  # (`Preparation.stop_line/1`); else with the item the candidates find; else with its
-  # failed push or copy (`Preparation.push_line/1`). A step's ending has no `seq`.
+  # (`Preparation.stop_line/1`), or with the image a prebuild did not save
+  # (`PreparationComponents.built_line/1`); else with the item the candidates find; else
+  # with its failed push or copy (`Preparation.push_line/1`). A prebuild that ended in
+  # another state ends with the image it did not save, as one that completed whose
+  # report failed its check. A step's ending has no `seq`.
   defp assign_ending(socket, state, run, index) do
     preparation = socket.assigns.preparation
     scope = socket.assigns.current_scope
 
-    if state in Run.ended_badly_states() do
-      ending =
-        step_ending(Preparation.stop_line(preparation)) ||
-          item_ending(scope, run, index, preparation) ||
-          step_ending(Preparation.push_line(preparation))
+    cond do
+      state in Run.ended_badly_states() ->
+        ending =
+          step_ending(
+            Preparation.stop_line(preparation) || PreparationComponents.built_line(preparation)
+          ) ||
+            item_ending(scope, run, index, preparation) ||
+            step_ending(Preparation.push_line(preparation))
 
-      assign(socket, ending: ending)
-    else
-      assign(socket, ending: nil)
+        assign(socket, ending: ending)
+
+      not alive?(run) ->
+        assign(socket, ending: step_ending(PreparationComponents.built_line(preparation)))
+
+      true ->
+        assign(socket, ending: nil)
     end
   end
 
