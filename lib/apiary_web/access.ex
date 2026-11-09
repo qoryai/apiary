@@ -32,7 +32,9 @@ defmodule ApiaryWeb.Access do
   A page that refuses anyone else a change, or offers them no way to make it, says who may
   with `who_may/3`: the core's sentence names the levels that may, and the edition may
   say it instead. Where the core's sentence first says something else, such as that a
-  rule is locked, `who_may_after/4` keeps that lead before an edition's sentence.
+  rule is locked, `who_may_after/4` keeps that lead before an edition's sentence. Where
+  the core's sentence says something after who may, such as why a pool is refused,
+  `who_may_before/4` puts the edition's sentence before that tail.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext

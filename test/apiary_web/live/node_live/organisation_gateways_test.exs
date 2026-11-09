@@ -572,6 +572,15 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
                "Adding one needs the right to set its machine limit."
              )
 
+      # The flash shows the first sentence over the second: joined, they are the refusal.
+      assert lv
+             |> element("#flash-error")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("p")
+             |> Enum.map_join(" ", &LazyHTML.text/1) ==
+               "#{sentence} Adding one needs the right to set its machine limit."
+
       refute render(lv) =~ "Ask an owner or admin"
       refute has_element?(lv, "#new-node-form")
     end
