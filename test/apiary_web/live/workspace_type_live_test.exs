@@ -36,7 +36,7 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
                    end)
 
   @summary "Agents change code in your repositories. Each ticket needs a repository."
-  @stages "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › Stages."
+  @stages "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › Workflows."
 
   setup do
     {:ok, %{user: user, organisation: organisation}} =

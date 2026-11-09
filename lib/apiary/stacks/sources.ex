@@ -1,6 +1,6 @@
 defmodule Apiary.Stacks.Sources do
-  # The harness sources Workspace settings › Workflow offers a workspace
-  # (`ApiaryWeb.WorkflowLive`), the stacks each has, the workflows each stack lists, and
+  # The harness sources Workspace settings › Harness offers a workspace
+  # (`ApiaryWeb.HarnessLive`), the stacks each has, the workflows each stack lists, and
   # the save of the workspace's document. Every read goes through the adapters' calls
   # (`Apiary.Adapters.Calls`: `resolve` and `read`), or reads a public repository from
   # its host with no adapter (`Apiary.Harnesses.PublicGit`), as a run's walk reads
@@ -1511,7 +1511,7 @@ defmodule Apiary.Stacks.Sources do
   # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
   # where the choice names none. The Qory harness is not read: its names are those of
   # its stored files at the choice's version (`Apiary.Processes.qory_workflows/1`). The
-  # Stages page, the Workflow page and Check again on a work item read the snapshot
+  # Workflows page, the Harness page and Check again on a work item read the snapshot
   # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
   # `{:error, reason}`.
   @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}

@@ -476,7 +476,7 @@ defmodule Apiary.Processes do
   copy_template/4 inserts version 1 of `workspace`, made from a template of a harness
   source by the person `author_id`: `document`, the template's process, and `template`, its
   record (Apiary.Stacks.Sources.save_start/3). The author is the scope's person, because
-  a version with no author reads as copied from the workspace type on the Stages page.
+  a version with no author reads as copied from the workspace type on the Workflows page.
   Called where the workspace is created, in that transaction. `{:ok, version}`.
   """
   @spec copy_template(%Workspace{}, document, map, Ecto.UUID.t() | nil) ::
@@ -1087,7 +1087,7 @@ defmodule Apiary.Processes do
   (`declared_snapshot/1`). Call it with the names that
   Apiary.Stacks.Sources.chosen_workflows/2 returns for the workspace's harness: its
   choice, else the harness the organisation shares, else the Qory harness, whose names
-  are `qory_workflows/1`, with no read. The Stages page calls it on open, Workspace
+  are `qory_workflows/1`, with no read. The Workflows page calls it on open, Workspace
   settings > Workflow on open and after a harness choice is saved, and Check again on a
   work item; a saved workflow does not change it. Each name is kept once, sorted, at
   most 1,000. `:ok`.
@@ -1134,7 +1134,7 @@ defmodule Apiary.Processes do
   sorted: for a workspace on the Qory harness, `qory_workflows/1`; the names of the
   workspace's snapshot (`declared_snapshot/1`), which covers only the workspace's harness,
   as Apiary.Stacks.Sources.chosen_workflows/2 finds it; and the workflow saved on the
-  workspace's Workflow page, at the workspace or a target of it. Before the first
+  workspace's Harness page, at the workspace or a target of it. Before the first
   snapshot, a workspace on another harness has only the saved workflow.
   """
   @spec declared_workflows(%Workspace{}) :: [String.t()]

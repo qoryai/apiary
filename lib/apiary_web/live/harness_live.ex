@@ -1,5 +1,5 @@
-defmodule ApiaryWeb.WorkflowLive do
-  # Workspace settings › Workflow (`/:org/:workspace/settings/workflow`), with the
+defmodule ApiaryWeb.HarnessLive do
+  # Workspace settings › Harness (`/:org/:workspace/settings/harness`), with the
   # `factory` feature: the workspace's harness choice (`Apiary.Stacks.Sources.choose/3`),
   # and the workflow the workspace's runs follow, stored as the workspace-level document
   # for that workflow (`Apiary.Stacks.Sources.save/3`). A run's workflow comes from the
@@ -63,7 +63,8 @@ defmodule ApiaryWeb.WorkflowLive do
     socket =
       socket
       |> assign(
-        page_title: SettingsComponents.page_title(scope, :workspace, [gettext("Workflow")]),
+        page_title:
+          SettingsComponents.page_title(scope, :workspace, [SettingsComponents.harness_label()]),
         sections: SettingsComponents.sections(scope, :workspace),
         linked: nil,
         unplaced: [],
@@ -88,7 +89,7 @@ defmodule ApiaryWeb.WorkflowLive do
         workspace_stacks: nil,
         workspace_stacks_of: nil,
         # With the feature `workflow_model`, the stages replace the workflow choice
-        # (decision D3): the page keeps the harness choice and links to Stages.
+        # (decision D3): the page keeps the harness choice and links to Workflows.
         stages?: Apiary.Features.visible?(scope, :workflow_model)
       )
       |> assign_harness_form(nil)
@@ -680,14 +681,14 @@ defmodule ApiaryWeb.WorkflowLive do
       counts={@nav_counts}
       nav={:settings}
       sections={@sections}
-      section={if @stages?, do: :stages, else: :workflow}
+      section={:harness}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        current={if @stages?, do: :stages, else: :workflow}
-        title={gettext("Workflow")}
+        current={:harness}
+        title={SettingsComponents.harness_label()}
       >
         <div id="workflow-harness" class="grid gap-3">
           <div class="flex flex-wrap items-start gap-x-6 gap-y-1 text-[13.5px]/5">
@@ -762,7 +763,7 @@ defmodule ApiaryWeb.WorkflowLive do
         <div :if={@stages?} id="workflow-stages" class="grid gap-2">
           <p class="text-[13.5px]/5">
             {gettext(
-              "Set the stages of %{workspace}, and the workflows each stage runs, on the Stages page.",
+              "Set the stages of %{workspace}, and the workflows each stage runs, on the Workflows page.",
               workspace: @workspace
             )}
           </p>
@@ -770,10 +771,10 @@ defmodule ApiaryWeb.WorkflowLive do
             <.button
               id="workflow-stages-link"
               navigate={
-                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/stages"
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/workflows"
               }
             >
-              {gettext("Open Stages")}
+              {gettext("Open Workflows")}
             </.button>
           </div>
         </div>

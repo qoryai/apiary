@@ -1338,12 +1338,12 @@ mark and the theme menu.
   canvas), and a 24rem side panel beside it has the template's name as the page's
   heading, its summary, "How it works" with its description, "Stages" with "The workspace
   starts with the stages shown. After you create it, owners and admins can change them in
-  Workspace settings › Stages.", the harness line "Harness: Qory harness, stack software"
+  Workspace settings › Workflows.", the harness line "Harness: Qory harness, stack software"
   (with the feature `factory`), and **Create workspace** under the text. Without
   `workflow_model` there is no canvas: "How it works" takes the main area, and the side
   panel has the name, the summary, the harness line and Create workspace. **Create workspace** creates the workspace, named after the
   template ("Software factory", then "Software factory 2"), and opens its step Name.
-  Workspace settings › Stages and Workflow then show its harness with its stack: "Harness:
+  Workspace settings › Workflows and Harness then show its harness with its stack: "Harness:
   Qory harness, stack software", or "stack core" for a workspace made with no template.
   The page shows nothing of the workspace limit; at the limit, Create workspace shows the
   edition's line as information.
@@ -2201,7 +2201,7 @@ Stages, Instance settings › Workspace types and a workspace type's page use it
   box, the side too. Outside such a box the canvas is as tall as its column. A box that
   is the page's first element, or comes right after the shell's notices while no notice
   shows, starts at the top bar, with no page padding above it.
-- **The settings pages.** Workspace settings › Stages and Instance settings › Workspace
+- **The settings pages.** Workspace settings › Workflows and Instance settings › Workspace
   types each have two tabs under the page's title (`page_tabs/1`, `place="section"`):
   **Stages**, at the page's address, is the canvas with the inspector beside it in a
   `.q-canvas-fill` box, right under the tabs; **Details**, at `?tab=details`, starts with

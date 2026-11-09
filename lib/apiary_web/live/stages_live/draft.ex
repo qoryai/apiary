@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.StagesLive.Draft do
-  # The process document as the Stages page edits it before a save: pure functions over
+  # The process document as the Workflows page edits it before a save: pure functions over
   # the document's map, with string keys as the schema has them. Every change keeps the
   # fields it does not touch, unknown fields included (the spec's § The process
   # document). A stage's id is made once, when the stage is added, and never changes.

@@ -313,7 +313,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   def handle_params(params, _uri, socket),
     do: {:noreply, apply_action(socket, socket.assigns.live_action, params)}
 
-  # `?name=` on the list, as Define it links here from the Stages page, opens the add
+  # `?name=` on the list, as Define it links here from the Workflows page, opens the add
   # form with that name filled in, while the name is one a type may have and no type of
   # the workspace has it; any other name opens the form empty.
   defp apply_action(socket, :index, %{"name" => _name} = params),

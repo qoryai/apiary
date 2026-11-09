@@ -33,7 +33,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #     scope.
   #
   # Dana also stores the stack of Main's explore runs with `Apiary.Stacks.put_stack/3`,
-  # not through Workspace settings › Workflow, as that page reads the workflows of a
+  # not through Workspace settings › Harness, as that page reads the workflows of a
   # stack through an adapter before its save (`Apiary.Stacks.Sources.save/3`) stores the
   # one chosen: the workflow `hello` at the workspace, with a harness document that
   # extends the stack `examples/hello` of qory's repository at one commit, as that page's

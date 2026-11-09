@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.StagesLive.Index do
-  # Workspace settings › Stages (`/:org/:workspace/settings/stages`), with the feature
-  # `workflow_model` (decision D2): the workspace's process (`Apiary.Processes`), the
-  # stages every work item goes through, edited on a canvas. Not found while
-  # `workflow_model` is off. With the feature, the sidebar's Stages entry leads here, and
-  # the Workflow page keeps the harness choice that "Change" opens.
+  # Workspace settings › Workflows (`/:org/:workspace/settings/workflows`), with the
+  # feature `workflow_model` (decision D2): the workspace's process (`Apiary.Processes`),
+  # the stages every work item goes through, edited on a canvas. Not found while
+  # `workflow_model` is off. With the feature, the sidebar's Workflows entry leads here,
+  # and the Harness page keeps the harness choice that "Change" opens.
   #
   # The canvas is the editor (`assets/js/canvas.js`, React Flow, through the hook
   # `assets/js/hooks/stages_canvas.js`): it sends a selection, an order of stages, a move
@@ -61,7 +61,10 @@ defmodule ApiaryWeb.StagesLive.Index do
     socket =
       socket
       |> assign(
-        page_title: SettingsComponents.page_title(scope, :workspace, [gettext("Stages")]),
+        page_title:
+          SettingsComponents.page_title(scope, :workspace, [
+            SettingsComponents.workflows_label()
+          ]),
         sections: SettingsComponents.sections(scope, :workspace),
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
         harness: harness_name(Sources.chosen(workspace)),
@@ -149,7 +152,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     do: {:noreply, declared_failed(socket, :exited)}
 
   # The list of the last read stays; the line under it gives the cause, in the words the
-  # Workflow page uses for a read that failed.
+  # Harness page uses for a read that failed.
   defp declared_failed(socket, reason) do
     words =
       ApiaryWeb.HarnessComponents.read_words(
@@ -181,7 +184,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     |> refresh()
   end
 
-  # The harness of the workspace's runs, as the Workflow page names it.
+  # The harness of the workspace's runs, as the Harness page names it.
   defp harness_name(%{choice: :qory} = chosen), do: ApiaryWeb.HarnessComponents.qory_line(chosen)
   defp harness_name(chosen), do: ApiaryWeb.HarnessComponents.chosen_line(chosen)
 
@@ -514,7 +517,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         trial: trial(assigns.versions),
         workspace: assigns.current_scope.workspace.name,
         path:
-          ~p"/#{assigns.current_scope.organisation}/#{assigns.current_scope.workspace}/settings/stages"
+          ~p"/#{assigns.current_scope.organisation}/#{assigns.current_scope.workspace}/settings/workflows"
       )
 
     ~H"""
@@ -525,15 +528,15 @@ defmodule ApiaryWeb.StagesLive.Index do
       counts={@nav_counts}
       nav={:settings}
       sections={@sections}
-      section={:stages}
+      section={:workflows}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        current={:stages}
+        current={:workflows}
         measure="list"
-        title={gettext("Stages")}
+        title={SettingsComponents.workflows_label()}
       >
         <div id="stages" class={["grid", @tab == :details && "gap-6"]}>
           <%!-- One row: the tabs, then the version line and the buttons at its right end. One
@@ -590,7 +593,7 @@ defmodule ApiaryWeb.StagesLive.Index do
             <.button
               id="stages-export-button"
               href={
-                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/stages/process.yaml"
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/workflows/process.yaml"
               }
               download="process.yaml"
             >
@@ -679,7 +682,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 :if={@may_harness}
                 id="stages-harness-change"
                 navigate={
-                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/workflow"
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/harness"
                 }
                 class="font-medium text-accent underline underline-offset-[3px]"
                 aria-label={gettext("Change the harness")}

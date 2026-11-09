@@ -1,5 +1,5 @@
 defmodule Apiary.Stacks.SourcesTest do
-  # The harness sources Workspace settings › Workflow offers (`Apiary.Stacks.Sources`),
+  # The harness sources Workspace settings › Harness offers (`Apiary.Stacks.Sources`),
   # read through stub adapters (`Req.Test`): the linked repositories that have a stack,
   # the instance's assignments, a typed address and its refusals, the stacks and
   # workflows each has, the templates each offers, the save of the runs' workflow, the

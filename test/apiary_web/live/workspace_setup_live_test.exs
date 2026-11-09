@@ -1615,7 +1615,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#harness-repository")
 
       assert words(lv, "#set-up-later") ==
-               "You can change this later in Workspace settings › Stages."
+               "You can change this later in Workspace settings › Harness."
 
       # About this step has the five paragraphs, and no text the step dropped shows.
       assert words(lv, "#set-up-context-h") == "About this step"
@@ -5830,8 +5830,8 @@ end
 
 defmodule ApiaryWeb.WorkspaceSetupLive.HarnessLaterTest do
   # The Harness step's last line shows where the harness changes later: the settings'
-  # Stages with the `workflow_model` feature, Workflow without it, and the settings list
-  # that page. Not async: the features are the whole node's.
+  # Harness, with the `workflow_model` feature or without it, and the settings list that
+  # page. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -5860,14 +5860,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.HarnessLaterTest do
   end
 
   @tag with_features: [:observability, :security, :secrets, :factory, :workflow_model]
-  test "with the workflow model: Stages, which the settings list", ctx do
-    assert later(ctx) == "You can change this later in Workspace settings › Stages."
-    assert "stages" in tabs(ctx)
+  test "with the workflow model: Harness, which the settings list beside Workflows", ctx do
+    assert later(ctx) == "You can change this later in Workspace settings › Harness."
+    assert "harness" in tabs(ctx)
+    assert "workflows" in tabs(ctx)
   end
 
   @tag with_features: [:observability, :security, :secrets, :factory]
-  test "without it: Workflow, which the settings list", ctx do
-    assert later(ctx) == "You can change this later in Workspace settings › Workflow."
-    assert "workflow" in tabs(ctx)
+  test "without it: Harness, which the settings list", ctx do
+    assert later(ctx) == "You can change this later in Workspace settings › Harness."
+    assert "harness" in tabs(ctx)
+    refute "workflows" in tabs(ctx)
   end
 end

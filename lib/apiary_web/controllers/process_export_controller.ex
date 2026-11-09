@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.ProcessExportController do
   # A workspace's process as a `process.yaml` (`Apiary.Processes.export/1`), for Export
-  # process.yaml on the Stages page. Not a page.
+  # process.yaml on the Workflows page. Not a page.
   #
   #     GET /:org/:workspace/settings/stages/process.yaml
   #

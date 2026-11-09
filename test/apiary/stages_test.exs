@@ -314,7 +314,7 @@ defmodule Apiary.StagesTest do
 
       # The waiting line has no time of a read, and Check again is not its fix.
       assert Stages.status(work_item).gaps ==
-               "Choose another workflow for Explore in Workspace settings › Stages. To " <>
+               "Choose another workflow for Explore in Workspace settings › Workflows. To " <>
                  "keep capture-demo, change the harness on that page's Details tab to one " <>
                  "that lists it under workflows. Explore uses capture-demo, which the Qory " <>
                  "harness does not list."

@@ -296,8 +296,8 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
               </h2>
               <p class="text-[13px]/5 text-muted">
                 {gettext(
-                  "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › %{stages}.",
-                  stages: SettingsComponents.stages_label()
+                  "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › %{workflows}.",
+                  workflows: SettingsComponents.workflows_label()
                 )}
               </p>
             </section>

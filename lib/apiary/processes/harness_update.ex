@@ -17,7 +17,7 @@ defmodule Apiary.Processes.HarnessUpdate do
   of the commit as its `template` (`Apiary.Processes.save_harness/5`), adds the artifact
   types the workspace does not have, and copies the template's stack. The version replaces every edit saved since:
   nothing is merged. A save turns the switch below on; a save with `trial: true` saves a
-  trial, as the Stages page saves one, and leaves the switch as it is. Work items in
+  trial, as the Workflows page saves one, and leaves the switch as it is. Work items in
   progress stay on their version, and work items taken in after a save follow the version
   it saved.
 

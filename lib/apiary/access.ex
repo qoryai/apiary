@@ -606,7 +606,7 @@ defmodule Apiary.Access do
       asked_of: :organisation,
       audited:
         {:not,
-         "Workspace settings › Workflow saves the workspace's document through Apiary.Stacks.Sources.save/3, which writes no entry, as Apiary.Stacks.put_stack/3 writes none"}
+         "Workspace settings › Harness saves the workspace's document through Apiary.Stacks.Sources.save/3, which writes no entry, as Apiary.Stacks.put_stack/3 writes none"}
     ),
     Action.new(
       :"harness.assigned",

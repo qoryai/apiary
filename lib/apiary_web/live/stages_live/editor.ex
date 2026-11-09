@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.StagesLive.Editor do
   # The edits of a process document on the Stages canvas and its inspector, for every
-  # page that edits one: the Stages page and Instance settings › Workspace types. The
+  # page that edits one: the Workflows page and Instance settings › Workspace types. The
   # page's socket has `draft` (the document), `selected` (a stage's id), `declared` (the
   # workflows offered), `types` (the artifact types offered, each with a `name`),
   # `notice`, `save_note`, `save_errors`, `stage_errors`, `rounds_errors`,

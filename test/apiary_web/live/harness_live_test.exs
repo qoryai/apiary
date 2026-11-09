@@ -1,6 +1,6 @@
-defmodule ApiaryWeb.WorkflowLiveTest do
+defmodule ApiaryWeb.HarnessLiveTest do
   @moduledoc """
-  Workspace settings › Workflow (`ApiaryWeb.WorkflowLive`) against stub adapters
+  Workspace settings › Harness (`ApiaryWeb.HarnessLive`) against stub adapters
   (`Req.Test`): who opens it and where it is in the list; About this step, with the
   paragraphs on the harness; the harness choice and its version; the destinations' Stack
   selects under the choice, their saves and refusals; each kind of source, read when
@@ -62,7 +62,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       adapter: adapter,
       covered: covered,
       linked_id: "linked:" <> harness.public_id,
-      path: workspace_path(scope, "/settings/workflow")
+      path: workspace_path(scope, "/settings/harness")
     }
   end
 
@@ -109,11 +109,12 @@ defmodule ApiaryWeb.WorkflowLiveTest do
     } do
       view = open(conn, path)
 
-      assert has_element?(view, "#settings-section-title", "Workflow")
-      assert has_element?(view, ~s(#settings-tab-workflow[href="#{path}"][aria-current="page"]))
+      assert has_element?(view, "#settings-section-title", "Harness")
+      assert has_element?(view, ~s(#settings-tab-harness[href="#{path}"][aria-current="page"]))
+      refute has_element?(view, "#settings-tab-workflows")
 
       html = render(view)
-      [before, _after] = String.split(html, ~s(id="settings-tab-workflow"), parts: 2)
+      [before, _after] = String.split(html, ~s(id="settings-tab-harness"), parts: 2)
       assert before =~ ~s(id="settings-tab-general")
       refute before =~ ~s(id="settings-tab-runs")
       assert html =~ ~s(id="settings-tab-runs")
@@ -132,7 +133,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
 
       {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/runs"))
-      refute has_element?(view, "#settings-tab-workflow")
+      refute has_element?(view, "#settings-tab-harness")
     end
 
     test "another organisation's owner finds no such page", %{path: path} do
@@ -407,7 +408,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
         Sources.choose(scope, {:repository, %{git: @harness}, "triage", {:branch, "main"}})
 
       assert Processes.declared_snapshot(scope.workspace) == nil
-      open(conn, workspace_path(scope, "/settings/workflow"))
+      open(conn, workspace_path(scope, "/settings/harness"))
 
       assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
     end
@@ -1409,31 +1410,37 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, "#workflow-harness-form")
     end
 
-    test "the sidebar's Stages entry takes the place of Workflow", %{
+    test "the sidebar lists Workflows, then Harness, the current section", %{
       conn: conn,
       path: path,
       scope: scope
     } do
       view = open(conn, path)
 
-      stages = workspace_path(scope, "/settings/stages")
-      assert has_element?(view, ~s(#settings-tab-stages[href="#{stages}"][aria-current="page"]))
-      refute has_element?(view, "#settings-tab-workflow")
+      assert has_element?(view, "#settings-section-title", "Harness")
+      assert has_element?(view, ~s(#settings-tab-harness[href="#{path}"][aria-current="page"]))
+
+      workflows = workspace_path(scope, "/settings/workflows")
+      assert has_element?(view, ~s(#settings-tab-workflows[href="#{workflows}"]), "Workflows")
+      refute has_element?(view, ~s(#settings-tab-workflows[aria-current="page"]))
+
+      [before, _after] = String.split(render(view), ~s(id="settings-tab-harness"), parts: 2)
+      assert before =~ ~s(id="settings-tab-workflows")
     end
 
-    test "the page links to Stages", %{conn: conn, path: path, scope: scope} do
+    test "the page links to Workflows", %{conn: conn, path: path, scope: scope} do
       view = open(conn, path)
 
       assert has_element?(
                view,
                "#workflow-stages",
-               "Set the stages of #{scope.workspace.name}, and the workflows each stage runs, on the Stages page."
+               "Set the stages of #{scope.workspace.name}, and the workflows each stage runs, on the Workflows page."
              )
 
       assert has_element?(
                view,
-               ~s(#workflow-stages-link[href="#{workspace_path(scope, "/settings/stages")}"]),
-               "Open Stages"
+               ~s(#workflow-stages-link[href="#{workspace_path(scope, "/settings/workflows")}"]),
+               "Open Workflows"
              )
     end
   end

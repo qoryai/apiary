@@ -534,7 +534,7 @@ defmodule Apiary.ProcessesTest do
   end
 
   describe "the workflows a workspace declares" do
-    test "are explore-a-ticket and the workflow saved on the Workflow page, with its access" do
+    test "are explore-a-ticket and the workflow saved on the Harness page, with its access" do
       %{scope: scope} = sign_up_fixture()
       assert Processes.declared_workflows(scope.workspace) == ["explore-a-ticket"]
 

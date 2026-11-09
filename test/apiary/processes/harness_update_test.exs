@@ -176,7 +176,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                )
     end
 
-    test "drops the edits saved on the Stages page, and turns the switch on again", ctx do
+    test "drops the edits saved on the Workflows page, and turns the switch on again", ctx do
       edit!(ctx.scope, ctx.workspace)
       assert keep(ctx.workspace) == false
       refute HarnessUpdate.keep_latest?(ctx.workspace)
@@ -306,7 +306,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert Processes.diff(v1, v2) == []
     end
 
-    test "edits saved on the Stages page stop it", ctx do
+    test "edits saved on the Workflows page stop it", ctx do
       edit!(ctx.scope, ctx.workspace)
       main_at!(described())
       assert :ok = HarnessUpdate.follow_all()

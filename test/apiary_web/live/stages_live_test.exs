@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.StagesLiveTest do
   @moduledoc """
-  Workspace settings › Stages (`ApiaryWeb.StagesLive.Index`), the sidebar's Stages entry
-  and the Workflow page's link to it: not found while the feature `workflow_model` is off;
+  Workspace settings › Workflows (`ApiaryWeb.StagesLive.Index`), the sidebar's Workflows entry
+  and the Harness page's link to it: not found while the feature `workflow_model` is off;
   the canvas, the editor, with the inspector of the selected stage; adding a stage at a
   place ("+"), renaming, moving and removing it; a stage's sequence, loop, inputs, outputs
   and gate; the placement check; a save, a trial and the history; a member's page, with
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.StagesLiveTest do
   setup :register_and_log_in_user
 
   setup %{scope: scope} do
-    %{path: workspace_path(scope, "/settings/stages")}
+    %{path: workspace_path(scope, "/settings/workflows")}
   end
 
   # The adapter calls the stub adapters received (`Apiary.HarnessReadsFixtures`).
@@ -91,21 +91,21 @@ defmodule ApiaryWeb.StagesLiveTest do
 
   describe "the feature" do
     @tag with_features: Apiary.Features.all() -- [:workflow_model]
-    test "off: Stages is not found, and the Workflow page keeps its workflow choice", %{
+    test "off: Workflows is not found, and the Harness page keeps its workflow choice", %{
       conn: conn,
       path: path,
       scope: scope
     } do
       assert status(conn, path) == 404
 
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/workflow"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/harness"))
       assert has_element?(view, "#workflow-form")
       refute has_element?(view, "#workflow-stages")
     end
 
-    test "on: the Workflow page keeps the harness, drops the workflow choice and links to Stages",
+    test "on: the Harness page keeps the harness, drops the workflow choice and links to Workflows",
          %{conn: conn, path: path, scope: scope} do
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/workflow"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/harness"))
       assert has_element?(view, "#workflow-harness")
       refute has_element?(view, "#workflow-form")
       refute has_element?(view, "#workflow-what")
@@ -120,8 +120,15 @@ defmodule ApiaryWeb.StagesLiveTest do
       # The Qory harness's names, recorded when the page opens.
       render_async(view)
 
-      assert has_element?(view, "#settings-section-title", "Stages")
-      assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
+      assert has_element?(view, "#settings-section-title", "Workflows")
+
+      assert has_element?(
+               view,
+               ~s(#settings-tab-workflows[href="#{path}"][aria-current="page"]),
+               "Workflows"
+             )
+
+      assert has_element?(view, "#settings-tab-harness", "Harness")
       refute has_element?(view, "#settings-tab-workflow")
       assert names(view) == ~w(Explore Shape Build Verify Release)
 
@@ -150,7 +157,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert has_element?(
                view,
-               ~s(#stages-harness-change[href="#{workspace_path(scope, "/settings/workflow")}"]),
+               ~s(#stages-harness-change[href="#{workspace_path(scope, "/settings/harness")}"]),
                "Change"
              )
 
@@ -2042,8 +2049,9 @@ defmodule ApiaryWeb.StagesLiveTest do
     } do
       {:ok, view, _html} = live(conn, path)
 
-      # The sidebar's Stages entry, for a member too.
-      assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
+      # The sidebar's Workflows entry, for a member too, with no Harness entry.
+      assert has_element?(view, ~s(#settings-tab-workflows[href="#{path}"][aria-current="page"]))
+      refute has_element?(view, "#settings-tab-harness")
 
       details(view, path)
       assert has_element?(view, "#stages-harness", "Harness: Qory harness, stack software")

@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.StagesLive.Words do
-  # The words of the Stages page that more than one place shows: a stage card's lines, the
+  # The words of the Workflows page that more than one place shows: a stage card's lines, the
   # placement check's lines, a version's changes and a refused save. The canvas gets
   # them as text, never as markup.
   @moduledoc false
@@ -174,7 +174,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def add_before(name), do: gettext("Add a stage before %{stage}", stage: name)
 
   # A workflow the harness does not list under `workflows` (spec addition 2): the red
-  # cross's line. On the Stages page, `:workspace` for a harness repository and
+  # cross's line. On the Workflows page, `:workspace` for a harness repository and
   # `:qory_workspace` for the Qory harness; `:qory` for the Qory harness on Instance
   # settings › Workspace types.
   @doc false
@@ -199,14 +199,14 @@ defmodule ApiaryWeb.StagesLive.Words do
   def undeclared(stage_name, workflow, :qory),
     do:
       gettext(
-        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Stages page, or someone uses Check again on a work item.",
+        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Workflows page, or someone uses Check again on a work item.",
         stage: stage_name,
         workflow: workflow
       )
 
   # A workflow's mark, in words beside the check or the cross: a check for a name a stage
   # may run (`Apiary.Processes.declared_workflows/1`: the Qory harness's names, the names
-  # the harness listed at its last read, and the workflows saved on the Workflow page), a
+  # the harness listed at its last read, and the workflows saved on the Harness page), a
   # cross for any other.
   @doc false
   def mark_text(true), do: gettext("A stage can run it")

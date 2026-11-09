@@ -430,7 +430,7 @@ defmodule Apiary.Stages do
   # run_workflow/1 is the workflow a run of a stage starts, its `workflow`, with the
   # workflow model on: the name its harness walk, its documents, its time limits and its
   # model choice are read by. nil for a run the stage runner did not queue, or with the
-  # workflow model off, which keep the workflow the Workflow page saved
+  # workflow model off, which keep the workflow the Harness page saved
   # (`Apiary.Stacks.workflow/2`).
   @doc false
   @spec run_workflow(DispatchRun.t()) :: String.t() | nil
@@ -2253,7 +2253,7 @@ defmodule Apiary.Stages do
   @doc false
   @spec not_in_qory(String.t(), String.t()) :: String.t()
   def not_in_qory(stage, workflow) do
-    "Choose another workflow for #{stage} in Workspace settings › Stages. " <>
+    "Choose another workflow for #{stage} in Workspace settings › Workflows. " <>
       "To keep #{workflow}, change the harness on that page's Details tab to one that " <>
       "lists it under workflows. #{stage} uses #{workflow}, which the Qory harness does " <>
       "not list."
