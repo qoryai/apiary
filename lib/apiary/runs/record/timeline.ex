@@ -132,7 +132,8 @@ defmodule Apiary.Runs.Record.Timeline do
   `:type`, `:time` and, where the event has them, `:tool_use_id`, `:agent_id`,
   `:agent_type`, `:text_kind` (on a text event: its `kind`, `"prompt"` for a text whose
   `role` is `user`, or `"empty"` for a block with no text), `:bare` (true on a session's
-  start whose `bare` is `true`), `:background_tasks` (a list,
+  start whose `bare` is `true`), `:session` (the number of the session that sent the
+  event, nil without one), `:background_tasks` (a list,
   or nil when the event has none), `:host`, `:port`, `:decision` and, on an egress event
   that has one, `:tool`, the tool whose host it was for; with `:decision` allowed it is a
   tool invocation (`Apiary.Runs.tool_invocation?/2`). `alive:` is whether the record
@@ -142,9 +143,10 @@ defmodule Apiary.Runs.Record.Timeline do
   Returns a map:
 
     * `:items`: the light items in order, each `%{seq, kind, at, seqs, end_seq, inner,
-      inner_count, tool_state, lane, rails, link, who, open_calls}`; `seq` is the item's
-      id, the sequence of its first event, `at` that event's time, and `seqs` the
-      sequences `build/3` needs for it, at most #{@max_inner + 2}. A tool call's item
+      inner_count, tool_state, lane, rails, link, who, open_calls, session}`; `seq` is the
+      item's id, the sequence of its first event, `at` that event's time, `session` that
+      event's session number, nil without one, and `seqs` the sequences `build/3` needs
+      for it, at most #{@max_inner + 2}. A tool call's item
       also has `end_type`, the type of the call's end: `:finished`, `:failed` or
       `:denied`, nil while the record has no end;
     * `:by_seq`: every sequence that belongs to an item, to that item's `seq`;
@@ -621,6 +623,7 @@ defmodule Apiary.Runs.Record.Timeline do
           started_seq: nil,
           previous_seq: nil,
           session_seq: nil,
+          session: event[:session],
           lane: lane,
           open_rails: rails,
           opens: false,

@@ -103,25 +103,39 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Qory Apiary keeps each step of a run from `dev.qory.run.step_started` and
   `dev.qory.run.step_exited`: a fetch, compose, image, setup, join or wall, with its state,
   exit code and duration, and its log lines under the step's number.
-- A run's Timeline starts with **Run**, the run as one list with its total time:
-  **Queued** and **Machine requested**, with the pool and the machine type, for a run a
-  node pool claimed; **Machine started**; **Prepare**, a row for each step that ran
-  before the session; **Session started**, which opens to the run's events: open while
-  the run runs, closed once it has ended; **Session finished**; **Outputs saved**, with
-  the artifact versions the run pushed and its push steps; and **Machine removed**. Each
-  row shows its start time and how long it took.
+- A run's Timeline starts with **Run**, the run as one list of steps in the order they
+  ran, on every pool, with its total time and a heading with the pool and the run's
+  state, such as “Run on Qory Pool · Failed”: **Queue the run** and **Request a
+  machine**, with the pool and the machine type, for a run a node pool claimed; **Start
+  the machine**; **Prepare the machine**, a row for each step that ran before the first
+  agent session, except the joins and walls; for each agent session, **Agent session
+  <n>** with **Prepare the session**, the session's join and wall and any step that ran
+  after the start of the session before, **Run the agent**, with when the session
+  started and finished, its result and its model, which opens to the Timeline of that
+  session's events and its **Main session** row, open while the run runs and closed once
+  it has ended, and **Save the outputs**, with the artifact versions the session saved
+  and its push steps; and **Remove the machine**. A session whose runtime is not Claude
+  Code shows, above its Timeline, that only Claude Code sends session events and where
+  its output and connections are. A prebuild has **Build the image**, its session, with
+  its join as **Start the build**, and **Save the outputs**, the image it built, as
+  steps of the run, with no Agent session. Each top-level row shows its start time and
+  how long it took; the rows inside a step show no times. After a failed step, the steps
+  that did not run show as **Skipped** until a step after it runs; **Remove the
+  machine** still shows its result. The step that copies the run's work back, and the
+  join and wall steps of the helper session it starts, have no row.
   Owners, admins and members open a step's row to read its output, the last 64 KiB. A
-  failed step's row is open, with what happened and who fixes it, such as “<step> failed
-  with exit code 1.” and “An admin of Main reads the cause in the step's output.” An
-  instance admin also reads the machine log under **Machine started**. A run that stopped
-  before its session started shows “The run stopped before its session started, at the
-  step <step>.” above the Timeline. The list updates without a reload while the run runs.
-- **Machine removed** shows what the node pool reported about removing the run's machine:
-  "Machine removal requested" or "Removal failed: the machine still exists", or, once the
-  machine is gone, how long the removal took and why: "Run ended" or "Keep-alive lost".
-  With no report, a run that ended shows "Waiting for a report" for 15 minutes, then "No
-  removal report". A run on a permanent machine ends with **Machine stays registered** in
-  place of **Machine removed**. A pool's starter reports at
+  failed step's row is open, with what happened and no advice, such as “Start the wall
+  failed with exit code 125.” “How it ended” in the header shows the same line, or the
+  line of a failed push; when the copy of the run's work back fails, it reads “The run's
+  work did not come back from the machine.” A run that stopped before its session
+  started has no note above the Timeline. An instance admin also reads the machine log
+  under **Start the machine**. The list updates without a reload while the run runs.
+- **Remove the machine** shows what the node pool reported about removing the run's
+  machine: "Machine removal requested" or "Removal failed: the machine still exists",
+  or, once the machine is gone, how long the removal took and why: "Run ended" or
+  "Keep-alive lost". With no report, a run that ended shows "Waiting for a report" for
+  15 minutes, then "No removal report". A run on a permanent machine ends with **Machine
+  stays registered** in place of **Remove the machine**. A pool's starter reports at
   `POST /v1/dispatches/<dispatch_id>/machine-end`, and the audit log records its first
   report, its first failed removal and the removal.
 - **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as JSON,
@@ -762,8 +776,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of runs and in any round: a stage no longer escalates them at its last round.
 - `GET work-item` returns the run's number in `run.number`.
 <!-- /feature -->
-- The **Run** list in a run's Timeline shows the run's `push` steps under **Outputs
-  saved**, as they happen. A failed push opens its row with the step's output, and it does
+- The **Run** list in a run's Timeline shows the run's `push` steps under **Save the
+  outputs**, as they happen. A failed push opens its row with the step's output, and it does
   not count as a failed preparation.
 <!-- feature: factory -->
 - Qory Apiary reads a harness source's templates: `process.yaml` in each of the first 20
@@ -807,9 +821,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “No pool can take the run.” The page shows the run as queued again once a machine
   enrols a key that makes a pool ready.
 <!-- /feature -->
-- On a run's page, **Start machine** under **Machine started** shows an instance admin
-  the machine type that the node pool started, such as “Started as (instance admins)
-  example-type”, above the machine log. Nobody else sees it, and the line is absent when
+- On a run's page, **Start the machine** shows an instance admin the machine type that
+  the node pool started, such as “Started as (instance admins) example-type”, above the
+  machine log. Nobody else sees it, and the line is absent when
   the pool reports no type. A pool's starter reports the type as the optional
   `machine_type` of `POST /v1/dispatches/<dispatch_id>/dispatched`: 1 to 64 printable
   ASCII characters with no space. Qory Apiary keeps the type from the first `dispatched`
@@ -857,7 +871,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A work item whose queued run is on a type that no pool of its workspace can start
   shows “Waiting: no pool can start machine type <name>” in its header.
 - The runs list reads `machine-type:<name>`: the runs queued on that type.
-- On a run's page, **Machine requested** shows the run's type and its spec, such as
+- On a run's page, **Request a machine** shows the run's type and its spec, such as
   “large (4 vCPUs, 16 GiB, 60 GiB disk)”, and **Details** show **Machine type** after
   **Host**.
 <!-- /feature -->
@@ -899,7 +913,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `504`, the run stays queued, and it ends if the reads still fail 10 minutes after the
   first failure. A run on a harness repository runs at the commit Qory Apiary read when
   the run was queued.
-- **Machine requested** on a run's page shows “pool default” only for a run whose pool
+- **Request a machine** on a run's page shows “pool default” only for a run whose pool
   sent no offers in its claim. A run on a machine type shows the type and its spec.
 - A run's page shows the run's work item first on the line under the title, such as
   “#1 Add currency to orders”, with a link to the work item's page, as the runs list
@@ -1154,10 +1168,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   on its page and in the runs list's preview, “The run's settings did not pass a check on
   the machine (image_unknown).” in place of “did not start: image_unknown”, and for
   `engine_unreachable`, “The machine could not check an earlier run's container
-  (engine_unreachable).” Any other code keeps “did not start: <code>”. For a machine of
-  the Qory Pool, the cause line in the **Run** list of the run's Timeline ends with
-  “Contact support with run <id>.” when the pool made no machine, the machine stopped
-  before it started the run, or the machine did not start the run within 15 minutes.
+  (engine_unreachable).” Any other code keeps “did not start: <code>”.
 <!-- feature: factory -->
 - With a private image registry set (`QORY_REGISTRY` and the `registry` feature), Qory
   Apiary sends each prebuild the image address of its target, under the instance and the
@@ -1250,6 +1261,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Explore's tab does, with raw HTML dropped and links only to http, https and mailto
   addresses.
 <!-- /feature -->
+- In a run's **Details**, the image a run started in has an **Image** row after
+  **Wall**, and **Policy** and **Policy in force** show only for a run whose policy
+  event arrived.
 
 ### Fixed
 
@@ -1394,6 +1408,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `machine`. The first migration adds the check without a scan, and the second validates
   it with a scan that does not block writes. It changes no row. A rollback sets `kind` to
   NULL on each row of kind `machine`.
+- `run_steps` (20261108090000 and 20261108090100): the check on `kind` also allows
+  `copy`. The first migration adds the check without a scan, and the second validates it
+  with a scan that does not block writes. It changes no row. A rollback sets `kind` to
+  NULL on each row of kind `copy`.
+- `run_steps` (20261108090200): a step with no `kind` and the name that qory sends for
+  its copy step gets the kind `copy`, so a copy step recorded before the kind existed
+  has no row on the run page. A rollback changes no row; the rollback of 20261108090000
+  sets `kind` to NULL on each row of kind `copy`.
 - `qory_harness_files` and `qory_harness_heads` (20261106190000): two new tables, with
   the files of the Qory harness by repository address, commit and path, and the commit
   each branch or tag was at when it was last read.

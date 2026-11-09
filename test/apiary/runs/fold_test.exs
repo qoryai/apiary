@@ -1482,7 +1482,7 @@ defmodule Apiary.Runs.FoldTest do
       assert %{1 => %{kind: nil, state: "failed"}, 2 => %{kind: nil, state: "failed"}} = steps
       assert %{3 => %{state: "failed"}} = steps
 
-      for kind <- ~w(fetch compose image build setup join wall push machine) do
+      for kind <- ~w(fetch compose image build setup join wall push machine copy) do
         assert %{1 => %{kind: ^kind}} =
                  Fold.fold(@run, [step_started(2, 1, %{"kind" => kind})]).steps
       end

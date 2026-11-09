@@ -1,58 +1,74 @@
 defmodule ApiaryWeb.PreparationComponents do
   @moduledoc """
-  The **Run** list of a run's Timeline (`docs/ui.md`, The run page): the run's phases from its
-  queue to the removal of its machine, from `Apiary.Runs.Preparation`. One row per phase,
-  in time order, each with its state, its start time and its duration, and only the
-  phases that happened:
+  The **Run** list of a run's Timeline (`docs/ui.md`, The run page): the run's steps from
+  its queue to the removal of its machine, from `Apiary.Runs.Preparation`. Each step is
+  named as an action, in the order the steps run, with its state, its start time and its
+  duration:
 
-    * Queued, from the queue to the claim, for a run a node pool claimed;
-    * Machine requested, from the claim to the starter's `dispatched`, with the pool and
-      the machine type;
-    * Machine started, from `dispatched` to the redemption of the run's code: a group that
-      opens to Start machine, whose lines are those of the step of the kind `machine`,
-      after a first line that Qory Apiary writes when the step started no later than the
-      redemption, `create machine` and the seconds from `dispatched` to that step's
-      start, at the time of `dispatched`. Start machine is failed once that step failed;
-    * Prepare, a group of the steps that started before the first session
-      (`step_label/1`), every step while no session has started;
-    * Session started, a group from the first session's start to its exit, that opens to
-      the run's Timeline (the `session` slot). It is open when it appears on a live run,
-      and closed on a run that ended;
-    * then, by time: a later session's steps, such as its join; Session finished, from the
-      runtime's result to the session's exit, with the result and the model; and Outputs
-      saved, the artifact versions the run pushed, and its push steps;
-    * Machine removed, last (`clean_up/3`); for a run on a permanent machine, Machine
-      stays registered in its place.
+    * Queue the run, from the queue to the claim, for a run a node pool claimed, with
+      Queued;
+    * Request a machine, from the claim to the starter's `dispatched`, with Machine
+      requested, the pool and the machine type;
+    * Start the machine, from `dispatched` to the redemption of the run's code, with
+      Machine started once the machine started, and the lines of the step of the kind
+      `machine`, after a first line that Qory Apiary writes when the step started no later
+      than the redemption, `create machine` and the seconds from `dispatched` to that
+      step's start, at the time of `dispatched`. It is failed once that step failed. It
+      has Started as and the machine log for an instance admin;
+    * Prepare the machine, the steps that ran before the first agent session
+      (`step_label/1`);
+    * Agent session 1, 2 and on, one per agent session (`Apiary.Runs.Preparation`): Prepare
+      the session, with Start the agent, Start the wall and any other step of the session,
+      in the order they ran; Run the agent, from the session's start to its exit, with
+      Started, Finished, the result and the model, then the session's Timeline (the
+      `session` slot); and Save the outputs, the artifact versions the session saved and
+      its push steps. A prebuild, a run of the queue for the step `prebuild`, has in their
+      place Build the image, its session, with the session's join and wall, Started,
+      Finished and the session's Timeline, and Save the outputs, its `dev.qory.run.built`
+      with the image, as steps of the run (`prebuild_nodes/3`);
+    * Remove the machine, last (`clean_up/3`), with Machine removed, the cause and the
+      machine's time alive; for a run on a permanent machine, Machine stays registered in
+      its place.
+
+  The steps inside a step show no time. A step that did not run has no row, but after a
+  failed step: once the run has ended, each step after it that did not run has a grey
+  row, Skipped. Remove the machine is not skipped when the machine was removed. A helper
+  step (`Apiary.Runs.Preparation`) has no row: a `copy` step, and the join and the wall
+  of a bare session. The list is not drawn when it has no row.
+
+  The heading is "Run on" and the pool, with the run's state in the word of its badge:
+  Pending, Running, Completed, Failed, Cancelled or Lost. A run no pool claimed has "Run",
+  with its state.
 
   A step's output is its lines, each with its number and its time, at most 2,500 lines.
 
-  A failed or running row is open when it appears, and so is Start machine while its
-  `machine` step runs or once that step failed. Prepare is running, and open, on a live
-  run until its first session starts or the preparation stops, so it shows no end between
-  two steps, where no clock counts. The others are closed. After that, a person's open or
-  close stays. A failed row has the cause line under its output. Under Start machine, for
-  a machine that did not start, the line is its second sentence alone, who fixes the
-  cause: the run's header shows the first as the run's reason. While the run is alive, a
-  running row has a clock that ticks in the browser, and the heading has the run's time
-  so far, from the first row's start; once the run has ended, the heading has the time
-  from the first row's start to the end of the last row.
+  A failed or running row is open when it appears, and so is Start the machine while its
+  `machine` step runs or once that step failed. Prepare the machine is running, and open,
+  on a live run until a step of an agent session begins or the preparation stops, so it
+  shows no end between two steps, where no clock counts; Prepare the session is running
+  until its session starts. An Agent session and its Run the agent are open while the run
+  is alive. The others are closed. After that, a person's open or close stays. A failed
+  step has the cause line under its output, which states what happened, with no advice.
+  While the run is alive, a running row has a clock that ticks in the browser, and the
+  heading has the run's time so far, from the first row's start; once the run has ended,
+  the heading has the time from the first row's start to the end of the last row.
 
-  Machine removed shows what the pool's starter reported about the removal of the machine
-  (`clean_up/3`): the removal's time from the run's end to a `gone` report, with the
-  cause and the machine's time alive; else the state of the last report; else, once the
-  run has ended and a machine existed for its dispatch, that a report is awaited for 15
-  minutes after the run ended, then that none came. The 15 minutes are counted at render,
-  against the time the caller passes (`now`); the caller renders again when they pass
-  (`clean_up_due/3`).
+  Remove the machine shows what the pool's starter reported about the removal of the
+  machine (`clean_up/3`): the removal's time from the run's end to a `gone` report, with
+  the cause and the machine's time alive; else the state of the last report; else, once
+  the run has ended and a machine existed for its dispatch, that a report is awaited for
+  15 minutes after the run ended, then that none came. The 15 minutes are counted at
+  render, against the time the caller passes (`now`); the caller renders again when they
+  pass (`clean_up_due/3`).
 
-  A push step's row opens when the push fails on an open page. A failed push is no
-  failed preparation (`Apiary.Runs.Preparation`).
+  A push step's row, and its Save the outputs, open when the push fails on an open page.
+  A failed push is no failed preparation (`Apiary.Runs.Preparation`).
 
   A step's name and output came from the run and are untrusted: they are interpolated,
   so they are escaped, and shown as a page shows a text an external system sent
-  (`Apiary.ExternalText`). So are an artifact's type and the model. The machine log is
-  shown to an instance admin alone, under Start machine; the caller reads it for an
-  instance admin and hands it over.
+  (`Apiary.ExternalText`). So are an artifact's type, the pool's name and the model. The
+  machine log is shown to an instance admin alone, under Start the machine; the caller
+  reads it for an instance admin and hands it over.
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
@@ -64,13 +80,13 @@ defmodule ApiaryWeb.PreparationComponents do
 
   alias Apiary.ExternalText
   alias Apiary.Runs.Preparation
-  alias ApiaryWeb.{Format, MachineTypeWords, RunPageComponents, Support}
+  alias ApiaryWeb.{Format, MachineTypeWords, RunPageComponents}
   alias Phoenix.LiveView.JS
 
   # The most of a machine log the list shows, in bytes.
   @machine_log_bytes 65_536
 
-  # How long after the run ended the Machine removed row waits for a report, in seconds.
+  # How long after the run ended Remove the machine waits for a report, in seconds.
   @clean_up_wait_seconds 15 * 60
 
   @typedoc """
@@ -85,15 +101,15 @@ defmodule ApiaryWeb.PreparationComponents do
           | :stays
 
   @doc """
-  Whether a preparation has a row to show: a machine, a step, or an artifact version the
-  run pushed.
+  Whether a preparation has a row to show: a machine, a step with a row, a push, or an
+  artifact version the run pushed.
   """
   @spec shown?(Preparation.t() | nil) :: boolean
   def shown?(nil), do: false
 
   def shown?(preparation) do
-    preparation.machine != nil or preparation.steps != [] or
-      Map.get(preparation, :after_session, []) != [] or Map.get(preparation, :outputs, []) != []
+    preparation.machine != nil or Enum.any?(preparation.steps, &(not helper?(&1))) or
+      pushes(preparation) != [] or Map.get(preparation, :outputs, []) != []
   end
 
   @doc """
@@ -104,8 +120,9 @@ defmodule ApiaryWeb.PreparationComponents do
   def shown?(preparation, clean_up), do: shown?(preparation) or clean_up != nil
 
   @doc """
-  Whether the run's Timeline is drawn inside the Session started row: the list is shown
-  (`shown?/2`) and the session started. Else the Timeline follows the list.
+  Whether the run's Timeline is drawn inside the Run the agent rows, or a prebuild's Build
+  the image: the list is shown (`shown?/2`) and an agent session started. Else the
+  Timeline follows the list.
   """
   @spec session_group?(Preparation.t() | nil, clean_up | nil) :: boolean
   def session_group?(preparation, clean_up),
@@ -162,7 +179,7 @@ defmodule ApiaryWeb.PreparationComponents do
   def clean_up(_preparation, _run, _now), do: nil
 
   @doc """
-  When the Machine removed row of `preparation` changes from waiting for a report to no
+  When Remove the machine of `preparation` changes from waiting for a report to no
   report, as `clean_up/3` shows it at `now`: the time, or nil when the row is not waiting.
   """
   @spec clean_up_due(Preparation.t() | nil, Apiary.Runs.Run.t(), DateTime.t()) ::
@@ -184,53 +201,49 @@ defmodule ApiaryWeb.PreparationComponents do
   once a log that arrived can have been deleted (`days` is the machine logs' retention),
   `:unreadable` for one whose file cannot be read, and `:hidden` for anyone else.
   `alive` is whether the run is alive: nothing ticks once it has ended. `clean_up` is
-  what the last row shows (`clean_up/3`), nil for no row. `session_open` opens
-  Session started when it appears on a run that ended, as for a link to an event inside
-  it. The `session` slot is the run's Timeline, inside Session started.
+  what Remove the machine shows (`clean_up/3`), nil for no report. `session_open` is the
+  `sequence` of the start of the agent session whose Agent session and Run the agent
+  open when they appear on a run that ended, as for a link to an event inside it; nil
+  for none. `run_state` is the run's state, for the heading. `wall` is whether the run
+  has a wall: only then does a Start the wall that did not run have a row. The `session`
+  slot is a session's Timeline, inside its Run the agent, called with that `sequence`.
   """
   attr :id, :string, default: "prepare-machine"
   attr :preparation, :map, required: true
   attr :machine_log, :any, default: :hidden
   attr :alive, :boolean, required: true
   attr :clean_up, :any, default: nil
-  attr :session_open, :boolean, default: false
+  attr :session_open, :integer, default: nil
+  attr :run_state, :string, default: nil
+  attr :wall, :boolean, default: true
   slot :session
 
   def run_list(assigns) do
     preparation = assigns.preparation
+    alive = assigns.alive
     machine = preparation.machine
-    {grouped, later} = split_steps(preparation)
-    prepare_steps = if machine, do: Enum.reject(grouped, &(&1.kind == "machine")), else: grouped
-    group = session_row(preparation, assigns.alive)
-    finished = finished_row(preparation, group, assigns.alive)
-    outputs = outputs_row(preparation)
     removed = removed_row(assigns.clean_up, machine)
 
-    trailing =
-      Enum.map(later, &{:step, &1.started_at || &1.exited_at, &1}) ++
-        if(finished, do: [{:finished, finished.at, finished}], else: []) ++
-        if(outputs, do: [{:outputs, outputs.at, outputs}], else: [])
+    shown = %{
+      machine: machine,
+      steps: Enum.reject(preparation.steps, &helper?/1),
+      pairs: pairs(preparation, alive),
+      outputs: outputs_row(preparation)
+    }
 
     assigns =
       assign(assigns,
-        machine: machine,
-        total: run_total(preparation, removed, assigns.alive),
-        started: started_row(preparation),
-        start_state: start_state(preparation),
-        start_open: start_open?(preparation),
+        nodes: nodes(preparation, removed, alive, assigns.session_open, assigns.wall),
+        heading: heading(machine, assigns.run_state, alive),
+        total: run_total(shown, removed, alive),
         machine_step: machine_step(preparation),
-        start_output: start_output(preparation),
-        prepare_steps: prepare_steps,
-        prepare: prepare_row(prepare_steps, preparation, assigns.alive),
-        group: group,
-        trailing: Enum.sort_by(trailing, &elem(&1, 1), &earlier?/2),
-        removed: removed
+        start_output: start_output(preparation)
       )
 
     ~H"""
-    <section id={@id} class="q-prep" aria-labelledby={"#{@id}-h"}>
+    <section :if={@nodes != []} id={@id} class="q-prep" aria-labelledby={"#{@id}-h"}>
       <div class="q-prep-hd">
-        <h2 id={"#{@id}-h"}>{gettext("Run")}</h2>
+        <h2 id={"#{@id}-h"}>{@heading}</h2>
         <.duration
           :if={@total[:ms]}
           id={"#{@id}-total"}
@@ -248,214 +261,60 @@ defmodule ApiaryWeb.PreparationComponents do
       </div>
       <.time_legend first={gettext("Started")} second={gettext("Took")} />
       <ol class="q-prep-steps">
-        <li :if={@machine && @machine.queued_at}>
-          <div id={"#{@id}-queued"} class="q-hd q-prep-row">
-            <span class="size-3"></span>
-            <.state_mark state="succeeded" />
-            <span class="q-k q-prep-name">{gettext("Queued")}</span>
-            <span class="q-t">
-              <span class="q-tc1 q-prep-cell"><.clock at={@machine.queued_at} /></span>
-              <span class="q-tc2 q-prep-cell">
-                <.duration
-                  :if={ms_between(@machine.queued_at, @machine.requested_at)}
-                  ms={ms_between(@machine.queued_at, @machine.requested_at)}
-                  class="q-d"
-                />
-              </span>
-            </span>
-          </div>
-        </li>
-        <li :if={@machine}>
-          <.row
-            id={"#{@id}-requested"}
-            state="succeeded"
-            name={gettext("Machine requested")}
-            at={@machine.requested_at}
-            duration_ms={@machine.requested_ms}
-          >
-            <dl class="q-prep-facts">
-              <dt>{gettext("Pool")}</dt>
-              <dd><.external_text text={@machine.pool.name} /></dd>
-              <dt>{gettext("Machine type")}</dt>
-              <dd>
-                <span :if={@machine.machine_type}>
-                  {MachineTypeWords.requested(@machine.machine_type.name, @machine.machine_type.spec)}
-                </span>
-                <span :if={!@machine.machine_type}>{gettext("pool default")}</span>
-              </dd>
-            </dl>
-          </.row>
-        </li>
-        <li :if={@machine}>
-          <.row
-            id={"#{@id}-started"}
-            state={@start_state}
-            name={gettext("Machine started")}
-            at={@machine.started.started_at}
-            since={@machine.started.started_at || @machine.requested_at}
-            alive={@alive}
-            duration_ms={@machine.started.duration_ms}
-            open={@started.open}
-          >
-            <ol class="q-prep-steps">
-              <li>
-                <.row
-                  id={"#{@id}-start-machine"}
-                  state={@start_state}
-                  name={gettext("Start machine")}
-                  at={@machine.started.started_at}
-                  since={@machine.started.started_at || @machine.requested_at}
+        <li :for={node <- @nodes}>
+          <.flow id={"#{@id}-#{node.key}"} node={node} alive={@alive}>
+            <.events :if={node.kind != :build} lines={node.events} />
+            <%= if node.kind == :start do %>
+              <.output
+                :if={@start_output}
+                id={"#{@id}-start-machine-output"}
+                output={@start_output}
+                pruned_at={@preparation.log_pruned_at}
+              />
+              <%!-- The vendor's type of the machine, for an instance admin alone
+              (`Apiary.Runs.Preparation`), labelled as the machine log is. --%>
+              <dl
+                :if={@preparation.machine.started_as}
+                id={"#{@id}-started-as"}
+                class="q-prep-facts"
+              >
+                <dt>{gettext("Started as (instance admins)")}</dt>
+                <dd><.external_text text={@preparation.machine.started_as} /></dd>
+              </dl>
+              <.machine_log id={"#{@id}-machine-log"} log={@machine_log} />
+              <.cause
+                :if={@preparation.stopped && @preparation.stopped.step == nil}
+                id={"#{@id}-cause"}
+                text={@preparation.stopped.what}
+              />
+              <.cause
+                :if={
+                  @preparation.stopped && @machine_step &&
+                    @preparation.stopped.step == @machine_step.number
+                }
+                id={"#{@id}-cause"}
+                text={cause_what(@preparation.stopped)}
+              />
+            <% end %>
+            <ol :if={node.children != []} class="q-prep-steps">
+              <li :for={child <- node.children}>
+                <.inner_step
+                  id={@id}
+                  node={child}
+                  preparation={@preparation}
                   alive={@alive}
-                  duration_ms={@machine.started.duration_ms}
-                  open={@start_open}
-                >
-                  <.output
-                    :if={@start_output}
-                    id={"#{@id}-start-machine-output"}
-                    output={@start_output}
-                    pruned_at={@preparation.log_pruned_at}
-                  />
-                  <%!-- The vendor's type of the machine, for an instance admin alone
-                  (`Apiary.Runs.Preparation`), labelled as the machine log is. --%>
-                  <dl
-                    :if={@preparation.machine.started_as}
-                    id={"#{@id}-started-as"}
-                    class="q-prep-facts"
-                  >
-                    <dt>{gettext("Started as (instance admins)")}</dt>
-                    <dd><.external_text text={@preparation.machine.started_as} /></dd>
-                  </dl>
-                  <.machine_log id={"#{@id}-machine-log"} log={@machine_log} />
-                  <.cause
-                    :if={@preparation.stopped && @preparation.stopped.step == nil}
-                    id={"#{@id}-cause"}
-                    text={Support.stored_line(@preparation.stopped.fix)}
-                  />
-                  <.cause
-                    :if={
-                      @preparation.stopped && @machine_step &&
-                        @preparation.stopped.step == @machine_step.number
-                    }
-                    id={"#{@id}-cause"}
-                    text={[
-                      cause_what(@preparation.stopped),
-                      " ",
-                      Support.stored_line(@preparation.stopped.fix)
-                    ]}
-                  />
-                </.row>
-              </li>
-            </ol>
-          </.row>
-        </li>
-        <li :if={@prepare}>
-          <.row
-            id={"#{@id}-prepare"}
-            state={@prepare.state}
-            name={gettext("Prepare")}
-            at={@prepare.at}
-            since={@prepare.at}
-            alive={@alive and @prepare.ticking}
-            duration_ms={@prepare.duration_ms}
-            open={open?(@prepare.state)}
-          >
-            <ol class="q-prep-steps">
-              <li :for={step <- @prepare_steps}>
-                <.prep_step id={@id} step={step} preparation={@preparation} alive={@alive} />
-              </li>
-            </ol>
-          </.row>
-        </li>
-        <li :if={@group}>
-          <details
-            id={"#{@id}-session"}
-            class="q-tool q-prep-step"
-            data-state={@group.state}
-            open={@alive or @session_open}
-            phx-mounted={JS.ignore_attributes(["open"])}
-          >
-            <summary class="q-hd q-prep-row">
-              <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
-              <.state_mark state={@group.state} pulse={@alive and @group.state == "running"} />
-              <span class="q-k q-prep-name">{gettext("Session started")}</span>
-              <span class="q-t">
-                <span :if={@group.state == "running"} class="q-running">
-                  {gettext("Running")}
-                </span>
-                <span class="q-tc1 q-prep-cell"><.clock at={@group.at} /></span>
-                <span class="q-tc2 q-prep-cell">
-                  <.duration :if={@group.duration_ms} ms={@group.duration_ms} class="q-d" />
-                  <.duration
-                    :if={@alive and @group.state == "running"}
-                    id={"#{@id}-session-clock"}
-                    elapsed_seconds={0}
-                    elapsed_at={@group.at}
-                    class="q-d"
-                  />
-                </span>
-              </span>
-            </summary>
-            <div class="q-xb">{render_slot(@session)}</div>
-          </details>
-        </li>
-        <li :for={{kind, _at, item} <- @trailing}>
-          <.prep_step
-            :if={kind == :step}
-            id={@id}
-            step={item}
-            preparation={@preparation}
-            alive={@alive}
-          />
-          <.row
-            :if={kind == :finished}
-            id={"#{@id}-session-finished"}
-            state={item.state}
-            name={gettext("Session finished")}
-            at={item.at}
-            since={item.at}
-            alive={@alive}
-            duration_ms={item.duration_ms}
-          >
-            <dl class="q-prep-facts">
-              <dt :if={item.result != ""}>{gettext("Result")}</dt>
-              <dd :if={item.result != ""}>{item.result}</dd>
-              <dt :if={item.model}>{gettext("Model")}</dt>
-              <dd :if={item.model} class="font-mono text-[12.5px]">
-                <.external_text text={item.model} />
-              </dd>
-            </dl>
-          </.row>
-          <.row
-            :if={kind == :outputs}
-            id={outputs_id(@id, item.state)}
-            state={item.state}
-            name={gettext("Outputs saved")}
-            at={item.at}
-            since={item.at}
-            alive={@alive and item.ticking}
-            duration_ms={item.duration_ms}
-            open={open?(item.state)}
-          >
-            <dl :if={item.versions != []} class="q-prep-facts">
-              <%= for version <- item.versions do %>
-                <dt><.external_text text={version.type} /></dt>
-                <dd>{gettext("Version %{number}", number: Format.number(version.number))}</dd>
-              <% end %>
-            </dl>
-            <ol :if={item.steps != []} class="q-prep-steps">
-              <li :for={step <- item.steps}>
-                <.step_row
-                  id={push_row(@id, step)}
-                  step={step}
-                  alive={@alive}
-                  pruned_at={@preparation.log_pruned_at}
+                  session={@session}
                 />
               </li>
             </ol>
-          </.row>
-        </li>
-        <li :if={@removed}>
-          <.removed_row id={"#{@id}-removed"} removed={@removed} />
+            <%!-- A prebuild's Build the image: after its steps, its session's events, the
+            session's cause line and its Timeline, as Run the agent has them. --%>
+            <%= if node.kind == :build do %>
+              <.events lines={node.events} />
+              <.cause :if={node.cause} id={"#{@id}-cause"} text={node.cause} />
+              {if node.session, do: render_slot(@session, node.session.sequence)}
+            <% end %>
+          </.flow>
         </li>
       </ol>
     </section>
@@ -463,28 +322,831 @@ defmodule ApiaryWeb.PreparationComponents do
   end
 
   attr :id, :string, required: true, doc: "the list's id"
-  attr :step, :map, required: true
+  attr :node, :map, required: true
   attr :preparation, :map, required: true
   attr :alive, :boolean, required: true
+  attr :session, :list, default: [], doc: "the `session` slot of `run_list/1`"
 
-  # A step of the preparation: open while it runs or once it failed, with its cause line.
-  defp prep_step(assigns) do
+  # A step inside a step, with no start or duration shown: a step of the run, with its output
+  # and cause line; a step made of steps, as Prepare the session; Run the agent, with its
+  # session's Timeline; or a step that did not run.
+  defp inner_step(%{node: %{step: %{} = step}} = assigns) do
+    assigns = assign(assigns, :step, step)
+
     ~H"""
     <.step_row
-      id={"#{@id}-step-#{@step.number}"}
+      id={"#{@id}-#{@node.key}"}
       step={@step}
       alive={@alive}
       pruned_at={@preparation.log_pruned_at}
       open={open?(@step.state)}
       label={step_label(@step)}
+      times={false}
     >
       <.cause
         :if={@preparation.stopped && @preparation.stopped.step == @step.number}
         id={"#{@id}-cause"}
-        text={[cause_what(@preparation.stopped), " ", Support.stored_line(@preparation.stopped.fix)]}
+        text={cause_what(@preparation.stopped)}
       />
     </.step_row>
     """
+  end
+
+  defp inner_step(assigns) do
+    ~H"""
+    <.flow id={"#{@id}-#{@node.key}"} node={@node} alive={@alive} times={false}>
+      <.events lines={@node.events} />
+      <ol :if={@node.children != []} class="q-prep-steps">
+        <li :for={child <- @node.children}>
+          <.inner_step id={@id} node={child} preparation={@preparation} alive={@alive} />
+        </li>
+      </ol>
+      {if @node.kind == :agent and @node.session != nil,
+        do: render_slot(@session, @node.session.sequence)}
+    </.flow>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :node, :map, required: true
+  attr :alive, :boolean, required: true
+  attr :times, :boolean, default: true, doc: "whether the row shows its start and duration"
+  slot :inner_block
+
+  # One step's row. A step that did not run is a grey row with "Skipped" and no content.
+  # Remove the machine with no event to show is a row with no content too: its words
+  # contain the report's state, so its mark has no text for a screen reader. Any other
+  # step opens to its events and its steps.
+  defp flow(%{node: %{state: "skipped"}} = assigns) do
+    ~H"""
+    <div id={@id} class="q-hd q-prep-row q-prep-skipped" data-state="skipped">
+      <span class="size-3"></span>
+      <.state_mark state="skipped" />
+      <span class="q-k q-prep-name">{@node.name}</span>
+      <span class="q-t">
+        <span class="q-tc1 q-prep-cell"></span>
+        <span class="q-tc2 q-prep-cell q-prep-skip">{gettext("Skipped")}</span>
+      </span>
+    </div>
+    """
+  end
+
+  defp flow(%{node: %{clean_up: kind, events: []}} = assigns) when kind != nil do
+    ~H"""
+    <div id={@id} class="q-hd q-prep-row" data-state={@node.state} data-clean-up={@node.clean_up}>
+      <span class="size-3"></span>
+      <.flow_head node={@node} alive={@alive} times={@times} id={@id} />
+    </div>
+    """
+  end
+
+  defp flow(assigns) do
+    ~H"""
+    <details
+      id={@id}
+      class="q-tool q-prep-step"
+      data-state={@node.state}
+      data-clean-up={@node.clean_up}
+      open={flow_open?(@node)}
+      phx-mounted={JS.ignore_attributes(["open"])}
+    >
+      <summary class="q-hd q-prep-row">
+        <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
+        <.flow_head node={@node} alive={@alive} times={@times} id={@id} />
+      </summary>
+      <div class={["q-xb", @node.state == "failed" && "q-xb-bad"]}>
+        {render_slot(@inner_block)}
+      </div>
+    </details>
+    """
+  end
+
+  # A row is open when it appears while it runs or once it failed, unless its `open` is set.
+  defp flow_open?(%{open: open}) when is_boolean(open), do: open
+  defp flow_open?(%{state: state}), do: open?(state)
+
+  attr :id, :string, required: true
+  attr :node, :map, required: true
+  attr :alive, :boolean, required: true
+  attr :times, :boolean, required: true
+
+  # A step row's mark, name, words, start and duration; while it runs, a clock that ticks
+  # from its start.
+  defp flow_head(assigns) do
+    assigns = assign(assigns, :ticking, assigns.alive and assigns.node.ticking)
+
+    ~H"""
+    <.clean_up_mark :if={@node.clean_up} kind={@node.clean_up} />
+    <.state_mark :if={!@node.clean_up} state={@node.state} pulse={@ticking} />
+    <span class="q-k q-prep-name">{@node.name}</span>
+    <span :if={@node.text} class="q-s">{@node.text}</span>
+    <span class="q-t">
+      <span :if={@node.state == "running" and !@node.clean_up} class="q-running">
+        {gettext("Running")}
+      </span>
+      <span class="q-tc1 q-prep-cell"><.clock :if={@times && @node.at} at={@node.at} /></span>
+      <span class="q-tc2 q-prep-cell">
+        <.duration :if={@times && @node.duration_ms} ms={@node.duration_ms} class="q-d" />
+        <.duration
+          :if={@times and @ticking and @node.since != nil}
+          id={"#{@id}-clock"}
+          elapsed_seconds={0}
+          elapsed_at={@node.since}
+          class="q-d"
+        />
+      </span>
+    </span>
+    """
+  end
+
+  attr :kind, :atom, required: true
+
+  # Remove the machine's mark, from the pool starter's last report (`clean_up/3`).
+  defp clean_up_mark(assigns) do
+    ~H"""
+    <%= case @kind do %>
+      <% :gone -> %>
+        <.icon name="hero-check-circle-micro" class="q-prep-ok size-4 self-center" />
+        <span class="sr-only">{gettext("Succeeded")}</span>
+      <% :delete_failed -> %>
+        <.icon name="hero-x-circle-micro" class="q-prep-bad size-4 self-center" />
+        <span class="sr-only">{gettext("Failed")}</span>
+      <% kind when kind in [:deleting, :waiting] -> %>
+        <.icon name="hero-ellipsis-horizontal-circle-micro" class="q-running size-4 self-center" />
+      <% _none -> %>
+        <.icon name="hero-minus-circle-micro" class="text-faint size-4 self-center" />
+    <% end %>
+    """
+  end
+
+  attr :lines, :list, required: true, doc: "`{label, value}` each"
+
+  # A step's events and facts: an event with its time, a fact with its words.
+  defp events(assigns) do
+    ~H"""
+    <dl :if={@lines != []} class="q-prep-facts">
+      <%= for {label, value} <- @lines do %>
+        <dt :if={match?({:external, _text}, label)}><.external_text text={elem(label, 1)} /></dt>
+        <dt :if={!match?({:external, _text}, label)}>{label}</dt>
+        <dd>
+          <%= case value do %>
+            <% {:at, at} -> %>
+              <.clock at={at} />
+            <% {:external, text} -> %>
+              <.external_text text={text} />
+            <% {:mono, text} -> %>
+              <span class="font-mono text-[12.5px]"><.external_text text={text} /></span>
+            <% {:duration, ms} -> %>
+              <.duration ms={ms} />
+            <% text -> %>
+              {text}
+          <% end %>
+        </dd>
+      <% end %>
+    </dl>
+    """
+  end
+
+  # The heading: the run, the pool it ran on, and its state. A run no pool claimed has
+  # "Run" alone, with its state.
+  defp heading(machine, state, alive) do
+    run =
+      if machine,
+        do: gettext("Run on %{pool}", pool: ExternalText.line(machine.pool.name)),
+        else: gettext("Run")
+
+    case heading_state(state, alive) do
+      nil -> run
+      word -> [run, " · ", word]
+    end
+  end
+
+  # The run's state in the word of its badge (`ApiaryWeb.RunComponents.state_label/1`),
+  # so the two agree; with no state given, Running while the run is alive.
+  defp heading_state(nil, true), do: gettext("Running")
+  defp heading_state(nil, _alive), do: nil
+  defp heading_state(state, _alive), do: ApiaryWeb.RunComponents.state_label(state)
+
+  ## The steps
+
+  # The list's steps in the order they run: Queue the run, Request a machine, Start the
+  # machine, Prepare the machine, one Agent session per agent session, and Remove the
+  # machine. A step that did not run has a row only after a failed step (`after_failure/1`).
+  defp nodes(preparation, removed, alive, session_open, wall) do
+    machine = preparation.machine
+    plan = plan(preparation)
+    going_on = alive and is_nil(preparation.stopped)
+
+    middle =
+      if preparation[:prebuild],
+        do: prebuild_nodes(preparation, plan, {alive, going_on, session_open}),
+        else: Enum.map(plan.sessions, &session_node(&1, alive, going_on, session_open, wall))
+
+    # Prepare the machine runs, on a live run, until a step of an agent session, or of a
+    # prebuild's Build the image, begins.
+    machine_going_on = going_on and Enum.all?(plan.sessions, &unbegun?/1)
+
+    ([
+       queue_node(machine),
+       request_node(machine),
+       start_node(preparation),
+       prepare_machine_node(plan.machine, alive, machine_going_on)
+     ] ++ middle ++ [remove_node(removed, machine, alive)])
+    |> after_failure()
+    |> elem(0)
+  end
+
+  # A prebuild (the preparation's `prebuild`): `qory` builds its image in one session,
+  # so the session is the step Build the image, and its `dev.qory.run.built` the step
+  # Save the outputs, with no Agent session. One Build the image per place, as a run
+  # has one session.
+  defp prebuild_nodes(preparation, plan, {alive, going_on, session_open}) do
+    places = plan.sessions
+
+    builds =
+      for place <- places,
+          do: build_node(place, length(places), alive, going_on, session_open)
+
+    builds ++ [built_node(preparation[:built], alive)]
+  end
+
+  # Build the image: the session's join, its wall and any other step of the session, then
+  # Started and Finished as Run the agent has them, and the session's Timeline. Failed
+  # when one of its steps failed or the session failed, with the session's cause line
+  # (`Apiary.Runs.Preparation.build_what/1`) when none of its steps failed, as a failed
+  # step has a cause line.
+  defp build_node(place, count, alive, going_on, session_open) do
+    key = if place.index == 1 or count == 1, do: "build", else: "build-#{place.index}"
+    sequence = place.session && place.session.sequence
+    open = if alive or (sequence != nil and sequence == session_open), do: true
+
+    steps =
+      [place.join, place.wall | place.extra]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.sort_by(&{sequence(&1) || 0, &1.number})
+      |> Enum.map(&step_node/1)
+
+    session = agent_node(key, place, alive, open)
+    fields = [key: key, kind: :build, name: gettext("Build the image")]
+    node = group(fields, steps ++ [session], going_on and is_nil(place.session) and steps != [])
+    ran? = session != nil and session.state != "skipped"
+    step_failed? = Enum.any?(steps, &(&1.state == "failed"))
+
+    %{
+      node
+      | children: steps,
+        events: if(ran?, do: session.events, else: []),
+        session: session && session.session,
+        open: open,
+        cause:
+          if(ran? and session.state == "failed" and not step_failed?,
+            do: Preparation.build_what(place.end || %{})
+          )
+    }
+  end
+
+  # Save the outputs of a prebuild: its `dev.qory.run.built`, with the image it reports.
+  # One event, so the row has its time and no duration.
+  defp built_node(nil, alive), do: missing("outputs", gettext("Save the outputs"), alive)
+
+  defp built_node(%{at: at, image: image}, _alive) do
+    entry(
+      key: "outputs",
+      kind: :outputs,
+      name: gettext("Save the outputs"),
+      state: "succeeded",
+      at: at,
+      ended_at: at,
+      duration_ms: nil,
+      events:
+        [{gettext("Outputs saved"), {:at, at}}] ++
+          if(image, do: [{gettext("Image"), {:mono, image}}], else: [])
+    )
+  end
+
+  defp unbegun?(place),
+    do: is_nil(place.session) and is_nil(place.join) and is_nil(place.wall) and place.extra == []
+
+  # Where each step of the run goes: `machine`, the steps of Prepare the machine, and
+  # `sessions`, one place per agent session in the order they started, each with its
+  # join, its wall, the other steps between it and the session before, its pushes and the
+  # versions it saved. A join, and any step but a wall that runs after the first
+  # session's start, belong to the first agent session that starts after it; a wall to
+  # the session of the last join before it when no agent session started between the
+  # two, else to the last session that started before it; a push to the last session
+  # that started before it; a version to the last that started before its time. A step
+  # or a push with no such session, as on a run that failed before any session started,
+  # goes to a session that has not started, after the others. A step with only its exit
+  # goes to the last session that started before its exit. A prebuild's `image` step,
+  # which Forager writes in the session's join after the session's start, goes to
+  # Prepare the machine. Helper steps, and the step of the kind `machine` of a run a pool
+  # claimed, which is Start the machine, have no place.
+  defp plan(preparation) do
+    steps =
+      preparation.steps
+      |> Enum.reject(&helper?/1)
+      |> Enum.reject(&(preparation.machine != nil and &1.kind == "machine"))
+
+    places =
+      for {session, index} <- Enum.with_index(sessions(preparation), 1) do
+        place(index, session, session.end)
+      end
+
+    # The session that has not started; for a run with no session's start at all, it has
+    # how the run's session ended (`Apiary.Runs.Preparation`).
+    next =
+      place(length(places) + 1, nil, if(places == [], do: Map.get(preparation, :session_end)))
+
+    {machine, places, next} =
+      Enum.reduce(steps, {[], places, next}, fn step, {machine, places, next} ->
+        case place_of(step, places, steps, preparation[:prebuild]) do
+          :machine -> {[step | machine], places, next}
+          :next -> {machine, places, put_step(next, step)}
+          index -> {machine, update_place(places, index, &put_step(&1, step)), next}
+        end
+      end)
+
+    {places, next} =
+      Enum.reduce(pushes(preparation), {places, next}, fn push, {places, next} ->
+        case started_before(places, sequence(push)) do
+          nil -> {places, %{next | pushes: next.pushes ++ [push]}}
+          %{index: i} -> {update_place(places, i, &%{&1 | pushes: &1.pushes ++ [push]}), next}
+        end
+      end)
+
+    {places, next} =
+      Enum.reduce(Map.get(preparation, :outputs, []), {places, next}, fn version, acc ->
+        {places, next} = acc
+
+        case started_by(places, version.at) do
+          nil ->
+            {places, %{next | versions: next.versions ++ [version]}}
+
+          %{index: i} ->
+            {update_place(places, i, &%{&1 | versions: &1.versions ++ [version]}), next}
+        end
+      end)
+
+    used? =
+      places == [] or next.join != nil or next.wall != nil or next.extra != [] or
+        next.pushes != [] or next.versions != []
+
+    %{machine: Enum.reverse(machine), sessions: if(used?, do: places ++ [next], else: places)}
+  end
+
+  defp place(index, session, finished),
+    do: %{
+      index: index,
+      session: session,
+      end: finished,
+      join: nil,
+      wall: nil,
+      extra: [],
+      pushes: [],
+      versions: []
+    }
+
+  defp put_step(place, %{kind: "join"} = step) when is_nil(place.join), do: %{place | join: step}
+  defp put_step(place, %{kind: "wall"} = step) when is_nil(place.wall), do: %{place | wall: step}
+  defp put_step(place, step), do: %{place | extra: place.extra ++ [step]}
+
+  defp update_place(places, index, fun),
+    do: Enum.map(places, &if(&1.index == index, do: fun.(&1), else: &1))
+
+  # A step's place among the events: the sequence of its start, else of its exit.
+  defp sequence(step), do: step.started_sequence || step.exited_sequence
+
+  defp place_of(%{kind: "image"}, _places, _steps, true), do: :machine
+  defp place_of(step, places, steps, _prebuild), do: place_of(step, places, steps)
+
+  defp place_of(step, places, steps) do
+    seq = sequence(step)
+    first = List.first(places)
+
+    cond do
+      step.kind == "join" ->
+        next_place(places, seq)
+
+      step.kind == "wall" ->
+        case wall_join(steps, places, seq) do
+          %{} = join -> place_of(join, places, steps)
+          nil when first == nil -> :next
+          nil -> started_before(places, seq).index
+        end
+
+      first == nil or seq == nil or first.session.sequence == nil or
+          seq < first.session.sequence ->
+        :machine
+
+      # A step with only its exit may have started before the session: it stays with the
+      # last session that started before its exit.
+      is_nil(step.started_sequence) ->
+        started_before(places, seq).index
+
+      true ->
+        next_place(places, seq)
+    end
+  end
+
+  # The place of the first agent session that started after `seq`, else the session that
+  # has not started.
+  defp next_place(places, seq) do
+    case started_after(places, seq) do
+      nil -> :next
+      %{index: i} -> i
+    end
+  end
+
+  # The join a wall at `seq` starts the wall of: the last join before it, when no agent
+  # session started between the two. Nil for none, as for a wall whose sequence is not
+  # known.
+  defp wall_join(_steps, _places, nil), do: nil
+
+  defp wall_join(steps, places, seq) do
+    join =
+      steps
+      |> Enum.filter(&(&1.kind == "join" and is_integer(sequence(&1)) and sequence(&1) < seq))
+      |> Enum.max_by(&sequence/1, fn -> nil end)
+
+    if join != nil and
+         not Enum.any?(
+           places,
+           &(is_integer(&1.session.sequence) and
+               &1.session.sequence > sequence(join) and
+               &1.session.sequence < seq)
+         ),
+       do: join
+  end
+
+  # The first place whose session started after `seq`; nil for none.
+  defp started_after(_places, nil), do: nil
+
+  defp started_after(places, seq),
+    do: Enum.find(places, &(is_integer(&1.session.sequence) and &1.session.sequence > seq))
+
+  # The last place whose session started before `seq`, else the first; nil for no place.
+  defp started_before(places, nil), do: List.first(places)
+
+  defp started_before(places, seq) do
+    places
+    |> Enum.filter(&(is_integer(&1.session.sequence) and &1.session.sequence < seq))
+    |> List.last() || List.first(places)
+  end
+
+  # The last place whose session started no later than `at`, else the first; nil for no
+  # place.
+  defp started_by(places, at) do
+    places
+    |> Enum.filter(&(DateTime.compare(&1.session.started_at, at) != :gt))
+    |> List.last() || List.first(places)
+  end
+
+  # The steps in order, each step that did not run kept, as skipped, only when a failed
+  # step comes before it and no step ran between the two; any other is left out, as a
+  # session's Save the outputs when the session saved nothing. A step that ran and did not
+  # fail clears the failure for the steps after it, as a later session that ran does. A
+  # step made of steps counts as failed after its steps. Returns the steps and whether
+  # the last step that ran failed.
+  defp after_failure(nodes, failed \\ false) do
+    {kept, failed} =
+      Enum.map_reduce(nodes, failed, fn
+        nil, failed ->
+          {nil, failed}
+
+        %{state: "skipped"} = node, failed ->
+          {if(failed, do: node), failed}
+
+        %{children: []} = node, _failed ->
+          {node, node.state == "failed"}
+
+        node, failed ->
+          {children, failed_inside} = after_failure(node.children, failed)
+          {%{node | children: children}, failed_inside or node.state == "failed"}
+      end)
+
+    {Enum.reject(kept, &is_nil/1), failed}
+  end
+
+  # A step of the list. `at` is its start, `since` when its clock starts while it runs,
+  # `ended_at` its end. `ticking` is whether its clock counts while it runs. `open` is
+  # whether it is open when it appears, nil for open while it runs or once it failed.
+  # `step` is the run's step it shows, `session` the agent session of Run the agent, and
+  # `clean_up` the starter's report that Remove the machine shows.
+  defp entry(fields) do
+    fields = Map.new(fields)
+    state = fields.state
+
+    defaults = %{
+      at: nil,
+      ended_at: nil,
+      events: [],
+      children: [],
+      text: nil,
+      open: nil,
+      ticking: state == "running",
+      step: nil,
+      session: nil,
+      clean_up: nil,
+      cause: nil
+    }
+
+    node = Map.merge(defaults, fields)
+
+    node
+    |> Map.put_new(:since, node.at)
+    |> Map.put_new_lazy(:duration_ms, fn ->
+      if state != "running", do: ms_between(node.at, node.ended_at)
+    end)
+  end
+
+  # A step that did not run: skipped once the run has ended, no row while it is alive.
+  defp missing(_key, _name, true), do: nil
+
+  defp missing(key, name, false),
+    do: entry(key: key, kind: :skipped, name: name, state: "skipped")
+
+  # A step made of steps: failed when one failed; else running when one runs or
+  # `going_on`, so it shows no end between two of its steps; else cancelled when one was
+  # cancelled; else succeeded. Skipped when none ran. It spans from the first one's start
+  # to the last one's end, and its clock counts while one of its steps counts.
+  defp group(fields, children, going_on) do
+    ran = Enum.reject(children, &(is_nil(&1) or &1.state == "skipped"))
+    states = Enum.map(ran, & &1.state)
+
+    state =
+      cond do
+        ran == [] -> "skipped"
+        "failed" in states -> "failed"
+        "running" in states or going_on -> "running"
+        "cancelled" in states -> "cancelled"
+        true -> "succeeded"
+      end
+
+    ends = ran |> Enum.map(& &1.ended_at) |> Enum.reject(&is_nil/1)
+
+    entry(
+      Keyword.merge(fields,
+        state: state,
+        at: ran |> Enum.map(& &1.at) |> earliest(),
+        ended_at: if(ends != [], do: Enum.max(ends, DateTime)),
+        children: Enum.reject(children, &is_nil/1),
+        ticking: Enum.any?(ran, & &1.ticking)
+      )
+    )
+  end
+
+  # A step of the run. A push's row is a new row once it failed, so it opens on an open
+  # page (`flow/1` keeps the `open` a row mounted with).
+  defp step_node(step) do
+    key =
+      if step.kind == "push" and step.state == "failed",
+        do: "step-#{step.number}-failed",
+        else: "step-#{step.number}"
+
+    entry(
+      key: key,
+      kind: :step,
+      name: Preparation.row_name(step),
+      state: step.state,
+      at: step.started_at || step.exited_at,
+      ended_at: step.exited_at,
+      duration_ms: step.duration_ms,
+      step: step
+    )
+  end
+
+  defp queue_node(%{queued_at: %DateTime{} = at} = machine) do
+    entry(
+      key: "queue",
+      kind: :queue,
+      name: gettext("Queue the run"),
+      state: "succeeded",
+      at: at,
+      ended_at: machine.requested_at,
+      events: [{gettext("Queued"), {:at, at}}]
+    )
+  end
+
+  defp queue_node(_machine), do: nil
+
+  defp request_node(nil), do: nil
+
+  defp request_node(machine) do
+    type =
+      if machine.machine_type,
+        do: MachineTypeWords.requested(machine.machine_type.name, machine.machine_type.spec),
+        else: gettext("pool default")
+
+    entry(
+      key: "request",
+      kind: :request,
+      name: gettext("Request a machine"),
+      state: "succeeded",
+      at: machine.requested_at,
+      ended_at: machine.started.started_at,
+      duration_ms: machine.requested_ms,
+      events: [
+        {gettext("Machine requested"), {:at, machine.requested_at}},
+        {gettext("Pool"), {:external, machine.pool.name}},
+        {gettext("Machine type"), type}
+      ]
+    )
+  end
+
+  # Start the machine: from `dispatched` to the redemption of the run's code, with
+  # Machine started once the machine started, the `machine` step's lines, Started as and
+  # the machine log. Its clock counts from the request until `dispatched` arrives.
+  defp start_node(%{machine: nil}), do: nil
+
+  defp start_node(%{machine: machine} = preparation) do
+    state = start_state(preparation)
+    started = machine.started
+
+    entry(
+      key: "start",
+      kind: :start,
+      name: gettext("Start the machine"),
+      state: state,
+      at: started.started_at,
+      since: started.started_at || machine.requested_at,
+      ended_at: started.ended_at,
+      duration_ms: started.duration_ms,
+      events:
+        if(state == "succeeded" and started.ended_at,
+          do: [{gettext("Machine started"), {:at, started.ended_at}}],
+          else: []
+        ),
+      open: start_open?(preparation)
+    )
+  end
+
+  defp prepare_machine_node([], alive, _going_on),
+    do: missing("prepare", gettext("Prepare the machine"), alive)
+
+  defp prepare_machine_node(steps, _alive, going_on) do
+    group(
+      [key: "prepare", kind: :prepare, name: gettext("Prepare the machine")],
+      Enum.map(steps, &step_node/1),
+      going_on
+    )
+  end
+
+  # An Agent session: Prepare the session, its steps in the order they ran; Run the
+  # agent; and Save the outputs. The first session's key is `session`, the nth's
+  # `session-n`. It and its Run the agent are open while the run is alive, and on a run
+  # that ended when a link points inside it (`session_open`).
+  defp session_node(place, alive, going_on, session_open, wall) do
+    key = if place.index == 1, do: "session", else: "session-#{place.index}"
+    sequence = place.session && place.session.sequence
+    open = if alive or (sequence != nil and sequence == session_open), do: true
+
+    ran =
+      [place.join, place.wall | place.extra]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.sort_by(&{sequence(&1) || 0, &1.number})
+      |> Enum.map(&step_node/1)
+
+    not_ran = [
+      if(is_nil(place.join), do: missing("#{key}-join", gettext("Start the agent"), alive)),
+      if(wall and is_nil(place.wall),
+        do: missing("#{key}-wall", gettext("Start the wall"), alive)
+      )
+    ]
+
+    prepare =
+      group(
+        [key: "#{key}-prepare", kind: :prepare_session, name: gettext("Prepare the session")],
+        ran ++ not_ran,
+        going_on and is_nil(place.session) and ran != []
+      )
+
+    group(
+      [key: key, kind: :session, name: gettext("Agent session %{n}", n: place.index), open: open],
+      [
+        prepare,
+        agent_node(key, place, alive, open),
+        outputs_node("#{key}-outputs", place, alive)
+      ],
+      false
+    )
+  end
+
+  # Run the agent: the session from its start to its exit, Started, Finished, Result and
+  # Model, and the session's Timeline. For a run with no session's start at all, from the
+  # session's end alone. A missing step while the session has neither.
+  defp agent_node(key, %{session: nil, end: nil}, alive, _open),
+    do: missing("#{key}-agent", gettext("Run the agent"), alive)
+
+  defp agent_node(key, %{session: nil, end: finished}, alive, _open) do
+    row = finished_row(finished, nil, alive)
+
+    entry(
+      key: "#{key}-agent",
+      kind: :agent,
+      name: gettext("Run the agent"),
+      state: row.state,
+      at: row.at,
+      ended_at: row.exited_at,
+      duration_ms: row.duration_ms,
+      events: finished_events(row)
+    )
+  end
+
+  defp agent_node(key, %{session: session}, alive, open) do
+    row = session_row(session.started_at, session.end, alive)
+    finished = finished_row(session.end, row, alive)
+
+    entry(
+      key: "#{key}-agent",
+      kind: :agent,
+      name: gettext("Run the agent"),
+      state: row.state,
+      at: session.started_at,
+      ended_at: finished && finished.exited_at,
+      duration_ms: row.duration_ms,
+      events: [{gettext("Started"), {:at, session.started_at}} | finished_events(finished)],
+      session: session,
+      open: open
+    )
+  end
+
+  defp finished_events(nil), do: []
+
+  defp finished_events(finished) do
+    [{gettext("Finished"), {:at, finished.at}}] ++
+      if(finished.result != "", do: [{gettext("Result"), finished.result}], else: []) ++
+      if(finished.model, do: [{gettext("Model"), {:mono, finished.model}}], else: [])
+  end
+
+  # Save the outputs: the versions the session's agent saved and the session's pushes,
+  # with the key `key`. A new row once a push failed, so it opens on an open page.
+  defp outputs_node(key, %{pushes: [], versions: []}, alive),
+    do: missing(key, gettext("Save the outputs"), alive)
+
+  defp outputs_node(key, place, _alive) do
+    row = outputs_row(%{after_session: place.pushes, outputs: place.versions})
+
+    events =
+      if(place.versions != [],
+        do: [{gettext("Outputs saved"), {:at, List.first(place.versions).at}}],
+        else: []
+      ) ++
+        for version <- place.versions do
+          {{:external, version.type},
+           gettext("Version %{number}", number: Format.number(version.number))}
+        end
+
+    entry(
+      key: if(row.state == "failed", do: "#{key}-failed", else: key),
+      kind: :outputs,
+      name: gettext("Save the outputs"),
+      state: row.state,
+      at: row.at,
+      ended_at: outputs_end(row),
+      duration_ms: row.duration_ms,
+      ticking: row.ticking,
+      events: events,
+      children: Enum.map(place.pushes, &step_node/1)
+    )
+  end
+
+  # Remove the machine, from what the pool's starter reported (`clean_up/3`): Machine
+  # removed, the cause and the time alive, once the machine is gone; else the words of
+  # the report or of the wait. A permanent machine's row is Machine stays registered. A
+  # missing step for a machine with no report.
+  defp remove_node(nil, nil, _alive), do: nil
+
+  defp remove_node(nil, _machine, alive),
+    do: missing("remove", gettext("Remove the machine"), alive)
+
+  defp remove_node(removed, _machine, _alive) do
+    state =
+      case removed.kind do
+        :gone -> "succeeded"
+        :delete_failed -> "failed"
+        kind when kind in [:deleting, :waiting] -> "running"
+        _none -> "cancelled"
+      end
+
+    events =
+      if(removed.gone_at, do: [{gettext("Machine removed"), {:at, removed.gone_at}}], else: []) ++
+        if(removed.cause, do: [{gettext("Cause"), removed.cause}], else: []) ++
+        if removed.alive_ms, do: [{gettext("Alive"), {:duration, removed.alive_ms}}], else: []
+
+    entry(
+      key: "remove",
+      kind: :remove,
+      name: removed.name,
+      state: state,
+      at: removed.at,
+      ended_at: removed.gone_at,
+      duration_ms: removed.duration_ms,
+      ticking: false,
+      events: events,
+      text: removed.text,
+      clean_up: removed.kind,
+      open: false
+    )
   end
 
   @doc "What a row of the preparation calls a step (`Apiary.Runs.Preparation.step_label/1`)."
@@ -527,8 +1189,8 @@ defmodule ApiaryWeb.PreparationComponents do
   defp machine_step(%{machine: nil}), do: nil
   defp machine_step(%{steps: steps}), do: Enum.find(steps, &(&1.kind == "machine"))
 
-  # Start machine's state: the machine's, from `dispatched` to the redemption, or failed
-  # once its `machine` step failed. Machine started has the same state.
+  # Start the machine's state: the machine's, from `dispatched` to the redemption, or
+  # failed once its `machine` step failed.
   defp start_state(%{machine: nil}), do: nil
 
   defp start_state(%{machine: machine} = preparation) do
@@ -538,31 +1200,55 @@ defmodule ApiaryWeb.PreparationComponents do
     end
   end
 
-  # Start machine is open when it appears while it or its `machine` step runs, or once
-  # either failed.
+  # Start the machine is open when it appears while it or its `machine` step runs, or
+  # once either failed.
   defp start_open?(preparation) do
     step = machine_step(preparation)
     open?(start_state(preparation)) or (step != nil and open?(step.state))
   end
 
-  # Machine started is open when it appears while Start machine is open.
-  defp started_row(%{machine: nil}), do: nil
-  defp started_row(preparation), do: %{open: start_open?(preparation)}
+  defp helper?(step), do: Map.get(step, :helper, false)
 
-  # The steps in Prepare, and the steps after the first session's start. Prepare has the
-  # steps that started before the first session, every step while no session has
-  # started; a later session's steps, such as its join, follow Session started.
-  defp split_steps(%{session_started_at: nil, steps: steps}), do: {steps, []}
+  # The push steps among the steps after the last agent session: a copy has no row.
+  defp pushes(preparation),
+    do: preparation |> Map.get(:after_session, []) |> Enum.reject(&helper?/1)
 
-  defp split_steps(%{session_started_at: session, steps: steps}) do
-    Enum.split_with(steps, fn step ->
-      # A step with only its exit recorded is placed by its exit.
-      at = step.started_at || step.exited_at
-      is_nil(at) or DateTime.before?(at, session)
-    end)
+  # The run's agent sessions (`Apiary.Runs.Preparation`); for a preparation read without
+  # them, the one session from `session_started_at` to `session_end`.
+  defp sessions(%{sessions: sessions}), do: sessions
+  defp sessions(%{session_started_at: nil}), do: []
+
+  defp sessions(%{session_started_at: at} = preparation),
+    do: [%{session: nil, sequence: nil, started_at: at, end: Map.get(preparation, :session_end)}]
+
+  # Each agent session's times, for the heading's time (`run_total/3`), in the order they
+  # started: `started`, from its start to its exit (`session_row/3`), and `finished`,
+  # from its result to its exit (`finished_row/3`), nil while it has neither a result nor
+  # an exit. A run with no session's start at all has one with no `started` when its
+  # session ended.
+  defp pairs(preparation, alive) do
+    case sessions(preparation) do
+      [] ->
+        case finished_row(Map.get(preparation, :session_end), nil, alive) do
+          nil -> []
+          row -> [%{index: 1, key: nil, started: nil, finished: row}]
+        end
+
+      sessions ->
+        for {session, index} <- Enum.with_index(sessions, 1) do
+          started = session_row(session.started_at, session.end, alive)
+
+          %{
+            index: index,
+            key: session.sequence,
+            started: started,
+            finished: finished_row(session.end, started, alive)
+          }
+        end
+    end
   end
 
-  # Start machine's lines for a run with a step of the kind `machine`, nil without one or
+  # Start the machine's lines for a run with a step of the kind `machine`, nil without one or
   # for a reader who may not read the run's log: `create machine` first, when the step
   # started no later than the redemption, then the step's lines, numbered after it.
   # `empty` is whether the step has no line, which decides "No output." and the pruned
@@ -607,51 +1293,15 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp create_line(_started, _step_started_at), do: []
 
-  # Prepare spans from its first step's start to the end of its last step. It is failed
-  # when a step failed; else running when one runs, and, on a live run, until its first
-  # session starts or the preparation stops, so it shows no end between two steps; else
-  # cancelled when one was cancelled; else succeeded. Its duration is nil while it is
-  # running. `ticking` is whether a step runs: between two steps no clock counts. Nil for
-  # no step.
-  defp prepare_row([], _preparation, _alive), do: nil
-
-  defp prepare_row(steps, preparation, alive) do
-    states = Enum.map(steps, & &1.state)
-    ticking = "running" in states
-
-    going_on =
-      alive and is_nil(preparation.session_started_at) and is_nil(preparation.stopped)
+  # Run the agent spans from a session's start to its exit. Its state is the exit's,
+  # succeeded for an exit with no state of a step; running while the run is alive with no
+  # exit; cancelled once the run ended with none.
+  defp session_row(at, finished, alive) do
+    exited_at = finished && finished.exited_at
 
     state =
       cond do
-        "failed" in states -> "failed"
-        ticking or going_on -> "running"
-        "cancelled" in states -> "cancelled"
-        true -> "succeeded"
-      end
-
-    at = steps |> Enum.map(&(&1.started_at || &1.exited_at)) |> earliest()
-    ends = steps |> Enum.map(& &1.exited_at) |> Enum.reject(&is_nil/1)
-
-    duration_ms =
-      if state != "running" and at != nil and ends != [],
-        do: ms_between(at, Enum.max(ends, DateTime))
-
-    %{state: state, at: at, duration_ms: duration_ms, ticking: ticking}
-  end
-
-  # Session started spans from the first session's start to the session's exit. Its state
-  # is the exit's, succeeded for an exit with no state of a step; running while the run is
-  # alive with no exit; cancelled once the run ended with none. Nil before the session
-  # starts.
-  defp session_row(%{session_started_at: nil}, _alive), do: nil
-
-  defp session_row(%{session_started_at: at} = preparation, alive) do
-    exited_at = preparation |> Map.get(:session_end) |> then(&(&1 && &1.exited_at))
-
-    state =
-      cond do
-        exited_at -> exit_state(preparation.session_end)
+        exited_at -> exit_state(finished)
         alive -> "running"
         true -> "cancelled"
       end
@@ -664,12 +1314,12 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp exit_state(_session_end), do: "succeeded"
 
-  # Session finished, from the runtime's result to the session's exit, with the result's
-  # words and the model; from the exit alone for a session with no result. Its state is
-  # Session started's. Nil while the session has neither.
-  defp finished_row(preparation, session, alive) do
-    case Map.get(preparation, :session_end) do
-      %{} = finished ->
+  # Finished, from the runtime's result to the session's exit, with the result's words
+  # and the model; from the exit alone for a session with no result. Its state is the
+  # session's (`session_row/3`). Nil while the session has neither.
+  defp finished_row(finished, session, alive) do
+    case finished do
+      %{} ->
         state =
           cond do
             finished.exited_at && session -> session.state
@@ -681,6 +1331,7 @@ defmodule ApiaryWeb.PreparationComponents do
         %{
           state: state,
           at: finished.result_at || finished.exited_at,
+          exited_at: finished.exited_at,
           duration_ms: finished.result_at && ms_between(finished.result_at, finished.exited_at),
           result: result_words(finished),
           model: finished.model
@@ -705,14 +1356,14 @@ defmodule ApiaryWeb.PreparationComponents do
     [exit, result] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" · ")
   end
 
-  # Outputs saved: the artifact versions the run pushed, and its push steps. It starts at
+  # Save the outputs: the artifact versions saved, and the push steps. It starts at
   # the first push's start and ends at the end of the last push; with no push step, it
   # spans from the first version pushed to the last. It is failed when a push failed; else
   # running when one runs; else cancelled when one was cancelled; else succeeded. Its
   # duration is nil while a push runs, and when it starts and ends at one moment. Nil
   # with neither.
   defp outputs_row(preparation) do
-    steps = Map.get(preparation, :after_session, [])
+    steps = pushes(preparation)
     versions = Map.get(preparation, :outputs, [])
 
     if steps == [] and versions == [] do
@@ -752,18 +1403,10 @@ defmodule ApiaryWeb.PreparationComponents do
     end
   end
 
-  # A row's `id` changes when a push fails, as on an open page. `row/1` keeps the `open` a
-  # row mounted with, so only a new row opens; after that, a person's open or close stays.
-  defp outputs_id(id, "failed"), do: "#{id}-outputs-failed"
-  defp outputs_id(id, _state), do: "#{id}-outputs"
-
-  defp push_row(id, %{state: "failed", number: number}), do: "#{id}-step-#{number}-failed"
-  defp push_row(id, %{number: number}), do: "#{id}-step-#{number}"
-
-  # Machine removed, from the Machine removed value (`clean_up/3`): from the run's end to
-  # the starter's `gone` report, with the cause and the machine's time alive, from
-  # `dispatched` to that report. Any other report, and the wait for one, show their words
-  # and no duration. A permanent machine's row is Machine stays registered, with no time.
+  # Remove the machine, from the `clean_up/3` value: from the run's end to the starter's
+  # `gone` report, with the cause and the machine's time alive, from `dispatched` to that
+  # report. Any other report, and the wait for one, show their words and no duration. A
+  # permanent machine's row is Machine stays registered, with no time.
   defp removed_row(nil, _machine), do: nil
 
   defp removed_row(:stays, _machine) do
@@ -792,7 +1435,7 @@ defmodule ApiaryWeb.PreparationComponents do
 
     %{
       kind: kind,
-      name: gettext("Machine removed"),
+      name: gettext("Remove the machine"),
       text: if(kind != :gone, do: clean_up_text(kind)),
       at: from,
       gone_at: gone_at,
@@ -811,89 +1454,18 @@ defmodule ApiaryWeb.PreparationComponents do
   defp cause_text(:run_ended), do: gettext("Run ended")
   defp cause_text(_cause), do: nil
 
-  attr :id, :string, required: true
-  attr :removed, :map, required: true
-
-  # The Machine removed row: a mark, its name, the words of a report that is no `gone` or
-  # of the wait, its start and its duration. It opens to the cause and the time alive,
-  # and is no `details` without either. The words contain the state, so the mark is an
-  # icon with no text for a screen reader.
-  defp removed_row(%{removed: %{cause: nil, alive_ms: nil}} = assigns) do
-    ~H"""
-    <div id={@id} class="q-hd q-prep-row" data-clean-up={@removed.kind}>
-      <span class="size-3"></span>
-      <.removed_head removed={@removed} />
-    </div>
-    """
-  end
-
-  defp removed_row(assigns) do
-    ~H"""
-    <details
-      id={@id}
-      class="q-tool q-prep-step"
-      data-clean-up={@removed.kind}
-      phx-mounted={JS.ignore_attributes(["open"])}
-    >
-      <summary class="q-hd q-prep-row">
-        <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
-        <.removed_head removed={@removed} />
-      </summary>
-      <div class="q-xb">
-        <dl class="q-prep-facts">
-          <dt :if={@removed.cause}>{gettext("Cause")}</dt>
-          <dd :if={@removed.cause}>{@removed.cause}</dd>
-          <dt :if={@removed.alive_ms}>{gettext("Alive")}</dt>
-          <dd :if={@removed.alive_ms}><.duration ms={@removed.alive_ms} /></dd>
-        </dl>
-      </div>
-    </details>
-    """
-  end
-
-  attr :removed, :map, required: true
-
-  defp removed_head(assigns) do
-    ~H"""
-    <.clean_up_mark kind={@removed.kind} />
-    <span class="q-k q-prep-name">{@removed.name}</span>
-    <span :if={@removed.text} class="q-s">{@removed.text}</span>
-    <span class="q-t">
-      <span class="q-tc1 q-prep-cell"><.clock :if={@removed.at} at={@removed.at} /></span>
-      <span class="q-tc2 q-prep-cell">
-        <.duration :if={@removed.duration_ms} ms={@removed.duration_ms} class="q-d" />
-      </span>
-    </span>
-    """
-  end
-
-  attr :kind, :atom, required: true
-
-  defp clean_up_mark(assigns) do
-    ~H"""
-    <%= case @kind do %>
-      <% :gone -> %>
-        <.icon name="hero-check-circle-micro" class="q-prep-ok size-4 self-center" />
-      <% :delete_failed -> %>
-        <.icon name="hero-x-circle-micro" class="q-prep-bad size-4 self-center" />
-      <% kind when kind in [:deleting, :waiting] -> %>
-        <.icon name="hero-ellipsis-horizontal-circle-micro" class="q-running size-4 self-center" />
-      <% _none -> %>
-        <.icon name="hero-minus-circle-micro" class="text-faint size-4 self-center" />
-    <% end %>
-    """
-  end
-
-  # The run's time for the heading: `%{from: at}` while the run is alive, a clock that
-  # counts from the first row's start; `%{ms: ms}` once it has ended, from the first row's
-  # start to the end of the last row; `%{}` without a start or an end.
-  defp run_total(preparation, removed, alive) do
-    from = first_at(preparation)
+  # The run's time for the heading, over the rows the list shows (`shown`: the machine
+  # whose rows are shown, the steps with a row, the sessions and Save the outputs):
+  # `%{from: at}` while the run is alive, a clock that counts from the first row's start;
+  # `%{ms: ms}` once it has ended, from the first row's start to the end of the last row;
+  # `%{}` without a start or an end.
+  defp run_total(shown, removed, alive) do
+    from = first_at(shown)
 
     cond do
       is_nil(from) -> %{}
       alive -> %{from: from}
-      to = last_end(preparation, removed) -> %{ms: ms_between(from, to)}
+      to = last_end(shown, removed) -> %{ms: ms_between(from, to)}
       true -> %{}
     end
   end
@@ -901,27 +1473,43 @@ defmodule ApiaryWeb.PreparationComponents do
   defp first_at(%{machine: %{queued_at: %DateTime{} = at}}), do: at
   defp first_at(%{machine: %{requested_at: %DateTime{} = at}}), do: at
 
-  defp first_at(preparation) do
-    preparation.steps
-    |> Enum.map(&(&1.started_at || &1.exited_at))
-    |> Kernel.++([preparation.session_started_at])
+  defp first_at(shown) do
+    Enum.map(shown.steps, &(&1.started_at || &1.exited_at))
+    |> Kernel.++(for %{started: %{at: at}} <- shown.pairs, do: at)
+    |> Kernel.++(for %{finished: %{at: at}} <- shown.pairs, do: at)
+    |> Kernel.++([shown.outputs && shown.outputs.at])
     |> earliest()
   end
 
   # The end of the last row: the `gone` report, else the latest end among the machine's,
-  # the steps', the session's and the pushes'.
-  defp last_end(_preparation, %{gone_at: %DateTime{} = at}), do: at
+  # the steps', the sessions' and Save the outputs': its last push's, else its last
+  # version's.
+  defp last_end(_shown, %{gone_at: %DateTime{} = at}), do: at
 
-  defp last_end(preparation, _removed) do
-    machine = preparation.machine
-    session_end = Map.get(preparation, :session_end)
+  defp last_end(shown, _removed) do
+    machine = shown.machine
 
     [
       machine && machine.ended_at,
       machine && machine.started.ended_at,
-      session_end && session_end.exited_at
-      | Enum.map(preparation.steps ++ Map.get(preparation, :after_session, []), & &1.exited_at)
+      outputs_end(shown.outputs)
+      | Enum.map(shown.steps, & &1.exited_at) ++ Enum.map(shown.pairs, &pair_end/1)
     ]
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      ends -> Enum.max(ends, DateTime)
+    end
+  end
+
+  defp pair_end(%{finished: %{exited_at: %DateTime{} = at}}), do: at
+  defp pair_end(%{finished: %{at: at}}), do: at
+  defp pair_end(_pair), do: nil
+
+  defp outputs_end(nil), do: nil
+
+  defp outputs_end(%{steps: steps, versions: versions}) do
+    (Enum.map(steps, & &1.exited_at) ++ Enum.map(versions, & &1.at))
     |> Enum.reject(&is_nil/1)
     |> case do
       [] -> nil
@@ -936,17 +1524,12 @@ defmodule ApiaryWeb.PreparationComponents do
     end
   end
 
-  # Rows with no time sort last.
-  defp earlier?(nil, _b), do: false
-  defp earlier?(_a, nil), do: true
-  defp earlier?(a, b), do: DateTime.compare(a, b) != :gt
-
   defp ms_between(%DateTime{} = from, %DateTime{} = to),
     do: max(DateTime.diff(to, from, :millisecond), 0)
 
   defp ms_between(_from, _to), do: nil
 
-  # Whether a row starts and ends at one moment, such as Outputs saved with one version
+  # Whether a row starts and ends at one moment, such as Save the outputs with one version
   # and no push step.
   defp same_moment?(%DateTime{} = at, %DateTime{} = to), do: DateTime.compare(at, to) == :eq
   defp same_moment?(_at, _to), do: false
@@ -957,6 +1540,7 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :pruned_at, :any, default: nil, doc: "when retention deleted the run's log lines"
   attr :open, :boolean, default: nil, doc: "whether the row is open when it appears"
   attr :label, :string, default: nil, doc: "the row's name in place of the step's"
+  attr :times, :boolean, default: true, doc: "whether the row shows its start and duration"
   slot :inner_block, doc: "what follows the step's output"
 
   # A step's row: its name came from the run, unless it has a label, and its output is
@@ -973,6 +1557,7 @@ defmodule ApiaryWeb.PreparationComponents do
       duration_ms={@step.duration_ms}
       sent={is_nil(@label)}
       open={@open}
+      times={@times}
     >
       <.output
         :if={@step.output}
@@ -994,6 +1579,7 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :duration_ms, :integer, default: nil
   attr :sent, :boolean, default: false, doc: "whether the name came from the run"
   attr :open, :boolean, default: nil, doc: "whether the row is open when it appears; failed"
+  attr :times, :boolean, default: true, doc: "whether the row shows its start and duration"
   slot :inner_block, required: true
 
   defp row(assigns) do
@@ -1018,11 +1604,11 @@ defmodule ApiaryWeb.PreparationComponents do
         <span :if={!@sent} class="q-k q-prep-name">{@name}</span>
         <span class="q-t">
           <span :if={@state == "running"} class="q-running">{gettext("Running")}</span>
-          <span class="q-tc1 q-prep-cell"><.clock :if={@at} at={@at} /></span>
+          <span class="q-tc1 q-prep-cell"><.clock :if={@times && @at} at={@at} /></span>
           <span class="q-tc2 q-prep-cell">
-            <.duration :if={@duration_ms} ms={@duration_ms} class="q-d" />
+            <.duration :if={@times && @duration_ms} ms={@duration_ms} class="q-d" />
             <.duration
-              :if={@ticking and @since != nil}
+              :if={@times and @ticking and @since != nil}
               id={"#{@id}-clock"}
               elapsed_seconds={0}
               elapsed_at={@since}
@@ -1053,6 +1639,8 @@ defmodule ApiaryWeb.PreparationComponents do
       <% "cancelled" -> %>
         <.icon name="hero-minus-circle-micro" class="text-faint size-4 self-center" />
         <span class="sr-only">{gettext("Cancelled")}</span>
+      <% "skipped" -> %>
+        <.icon name="hero-no-symbol-micro" class="text-faint size-4 self-center" />
       <% _running -> %>
         <.icon
           name="hero-ellipsis-horizontal-circle-micro"
@@ -1098,7 +1686,8 @@ defmodule ApiaryWeb.PreparationComponents do
 
   # The note over a cut output (`t:Apiary.Runs.Preparation.output/0`). A cut of lines
   # leaves exactly `Apiary.Runs.Preparation.output_lines/0` lines of the step, so the
-  # sentence has no singular. Under Start machine, `create machine` is no line of the step.
+  # sentence has no singular. Under Start the machine, `create machine` is no line of the
+  # step.
   defp cut_note(%{lines_cut: true}),
     do:
       gettext("The output is cut: these are its last %{lines} lines.",
