@@ -269,6 +269,30 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                )
     end
 
+    test "shows a hidden standard type the template lists, with an audit entry", ctx do
+      {:ok, _type} = Artifacts.switch_type(ctx.scope, ctx.workspace, "mockup", false)
+      main_at!(described())
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert %{"name" => "mockup"} in update.added_types
+
+      assert {:ok, _version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+      assert "mockup" in Repo.reload!(ctx.workspace).shown_standard_types
+
+      entries =
+        Repo.all(
+          from e in Entry,
+            where: e.workspace_id == ^ctx.workspace.id and e.action == "artifact_type.edit",
+            select: {e.details["change"], e.details["type"]}
+        )
+
+      assert Enum.sort(entries) == [
+               {"create", "branch"},
+               {"create", "spec"},
+               {"hide", "mockup"},
+               {"show", "mockup"}
+             ]
+    end
+
     test "drops the edits saved on the Workflows page, and turns the switch on again", ctx do
       edit!(ctx.scope, ctx.workspace)
       assert keep(ctx.workspace) == false

@@ -570,7 +570,8 @@ defmodule Apiary.Processes.HarnessUpdate do
       added ->
         {standard, custom} = Enum.split_with(added, &(map_size(&1) == 1))
 
-        with :ok <- show_standard(workspace, Enum.map(standard, & &1["name"])) do
+        with :ok <-
+               Artifacts.show_template_types(scope, workspace, Enum.map(standard, & &1["name"])) do
           Enum.reduce_while(custom, :ok, fn entry, :ok ->
             case Artifacts.insert_template_type(scope, workspace, entry) do
               {:ok, _type} -> {:cont, :ok}
@@ -579,20 +580,6 @@ defmodule Apiary.Processes.HarnessUpdate do
           end)
         end
     end
-  end
-
-  # The standard types `names` shown too, in the order of `Type.standard_names/0`.
-  defp show_standard(_workspace, []), do: :ok
-
-  defp show_standard(%Workspace{shown_standard_types: shown} = workspace, names) do
-    shown = Enum.filter(Type.standard_names() -- Type.always_on(), &(&1 in (shown ++ names)))
-
-    {1, _rows} =
-      Repo.update_all(from(w in Workspace, where: w.id == ^workspace.id),
-        set: [shown_standard_types: shown, updated_at: DateTime.utc_now()]
-      )
-
-    :ok
   end
 
   defp copy_stack(_scope, _workspace, nil), do: :ok

@@ -382,6 +382,37 @@ defmodule Apiary.Artifacts do
     end)
   end
 
+  @doc false
+  # show_template_types/3 shows the standard types `names` in `workspace` too, for a save
+  # of its harness's template (Apiary.Processes.HarnessUpdate), inside the caller's
+  # transaction, which holds the workspace: `shown_standard_types` in the order of
+  # `Type.standard_names/0`, and an audit entry `show` for each type it shows, as
+  # `switch_type/4` writes one. `:ok`.
+  @spec show_template_types(Scope.t(), Workspace.t(), [String.t()]) :: :ok
+  def show_template_types(%Scope{}, %Workspace{}, []), do: :ok
+
+  def show_template_types(%Scope{} = scope, %Workspace{} = workspace, names) do
+    held = Repo.get!(Workspace, workspace.id)
+    hideable = Type.standard_names() -- Type.always_on()
+    added = Enum.filter(hideable, &(&1 in names and not shown?(&1, held.shown_standard_types)))
+
+    if added != [] do
+      shown = Enum.filter(hideable, &(&1 in added or shown?(&1, held.shown_standard_types)))
+
+      {1, _rows} =
+        Repo.update_all(from(w in Workspace, where: w.id == ^held.id),
+          set: [shown_standard_types: shown, updated_at: DateTime.utc_now()]
+        )
+
+      for name <- added do
+        type = Enum.find(Type.standard(), &(&1.name == name))
+        {:ok, _entry} = audit_type(scope, held, :show, type)
+      end
+    end
+
+    :ok
+  end
+
   # The scope's places and the workspace held, the workspace `FOR NO KEY UPDATE`, and the
   # scope read again, in the order of `Apiary.Processes`: `{:ok, scope, workspace}`, or
   # `{:error, :not_found}` for a workspace other than the scope's.
