@@ -399,6 +399,15 @@ defmodule ApiaryWeb.StagesLive.Words do
         "The versions changed since this page loaded, so nothing was changed. The page shows them again; check them, then try again."
       )
 
+  # A save from the harness, or a trial of it made current, with a stack to copy into the
+  # harness the organisation shares (`Apiary.Processes.HarnessUpdate`).
+  @doc false
+  def shared_stack,
+    do:
+      gettext(
+        "Change the stack of the harness your organisation shares, then save again. Every workspace that takes that harness uses its stack."
+      )
+
   @doc false
   def trial_exists(trial),
     do:

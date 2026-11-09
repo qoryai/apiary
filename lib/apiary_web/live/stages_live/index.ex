@@ -457,6 +457,10 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp refused(socket, :forbidden),
     do: assign(socket, save_errors: [Words.refusal(:forbidden, nil)])
 
+  # Make current of a trial from the harness, with a stack for the shared harness.
+  defp refused(socket, :shared),
+    do: assign(socket, save_errors: [Words.shared_stack()])
+
   defp refused(socket, _reason),
     do: socket |> reload() |> assign(save_errors: [Words.stale()])
 

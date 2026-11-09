@@ -7,30 +7,35 @@ defmodule Apiary.Processes.HarnessUpdate do
   ## Update from harness
 
   `read/2` reads the harness's template at the chosen version and compares it with the
-  workspace's current version: the stages (`Apiary.Processes.diff/2`), the artifact types
-  the template lists that the workspace does not have, and the stack, where the
+  workspace's current version: the stages (`Apiary.Processes.diff/2`), the artifact
+  types the template lists that the workspace does not have, and the stack, where the
   template's differs from the one the workspace's harness choice has. For the Qory
   harness, the template is the one of its stored files at the commit the choice's
   version was at when last read, and is read once where none is stored; for a harness
   repository, it is read as the scope's person reads a source's templates, from the
-  module the process came from. `save/4` saves it as the current version, with the record
-  of the commit as its `template` (`Apiary.Processes.save_harness/5`), adds the artifact
-  types the workspace does not have, and copies the template's stack. The version
-  replaces every edit saved since: nothing is merged. A save turns the switch below on; a
-  save with `trial: true` saves a trial, as the Workflows page saves one, adds the
-  artifact types too, and copies no stack and leaves the switch as it is. Work items in
-  progress stay on their version, and work items taken in after a save follow the version
-  it saved.
+  module the process came from, or, for a process that came from another harness, the
+  one template of the workspace's type the repository has. `save/4` saves it as the
+  current version, with the record of the commit as its `template`
+  (`Apiary.Processes.save_harness/5`), adds the artifact types the workspace does not
+  have, and copies the template's stack. The version replaces every edit saved since:
+  nothing is merged. A save turns the switch below on; a save with `trial: true` saves a
+  trial, as the Workflows page saves one, adds the artifact types too, and copies no
+  stack and leaves the switch as it is, until the trial is made current
+  (`Apiary.Processes.make_current/2`), which counts as a Save: it copies the stack then,
+  and turns the switch on. Work items in progress stay on their version, and work items
+  taken in after a save follow the version it saved.
 
   ## Keep the process at the latest
 
   A switch of the workspace, `workspaces.keep_process_latest` (`keep_latest?/1`,
   `set_keep_latest/3`). It applies where the harness follows a branch (`following/1`),
-  never to one pinned to a tag or a commit. Until it is set, it is on for the Qory harness
-  and off for a harness repository. A person's save of edits turns it off
-  (`Apiary.Processes.save/4`). A trial changes it only when it becomes current
-  (`Apiary.Processes.make_current/2`): a trial of edits turns it off, and a trial saved
-  from the harness turns it on.
+  never to one pinned to a tag or a commit. Until it is set, it is on for the Qory
+  harness and off for a harness repository, and off where version 1 is a version of the
+  workspace type's default process that an instance admin saved (Instance settings ›
+  Workspace types), which counts as a person's saved edit. A person's save of edits
+  turns it off (`Apiary.Processes.save/4`). A trial changes it only when it becomes
+  current (`Apiary.Processes.make_current/2`): a trial of edits turns it off, and a
+  trial saved from the harness turns it on and copies the template's stack.
 
   While it is on, each later commit of the followed branch is saved as a version, with no
   author, even when the process is unchanged (`follow_all/0`), every five minutes, after
@@ -581,6 +586,23 @@ defmodule Apiary.Processes.HarnessUpdate do
         end
     end
   end
+
+  @doc false
+  # copy_template_stack/3 copies `stack`, the stack of a trial's template, to the scope's
+  # workspace, where its harness choice has another stack, as `save/4` copies a stack:
+  # under `harness.save`, and `{:error, :shared}` for the harness the organisation shares.
+  # `Apiary.Processes.make_current/2` calls it, in its transaction, for a trial saved
+  # from the harness. `:ok`, or the error.
+  @spec copy_template_stack(Scope.t(), %Workspace{}, String.t() | nil) :: :ok | {:error, term}
+  def copy_template_stack(%Scope{} = scope, %Workspace{} = workspace, stack)
+      when is_binary(stack) do
+    case Sources.chosen(workspace) do
+      %{stack: ^stack} -> :ok
+      %{stack: from} -> copy_stack(scope, workspace, %{from: from, to: stack})
+    end
+  end
+
+  def copy_template_stack(%Scope{}, %Workspace{}, nil), do: :ok
 
   defp copy_stack(_scope, _workspace, nil), do: :ok
 

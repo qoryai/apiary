@@ -655,6 +655,36 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert keep(ctx.workspace) == true
     end
 
+    test "a trial from the harness, made current, copies the template's stack", ctx do
+      main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      {:ok, trial} = HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+      assert Workspace.qory_stack(Repo.reload!(ctx.workspace)) == "software"
+
+      assert {:ok, %Version{status: :current}} = Processes.make_current(ctx.scope, trial)
+      assert Workspace.qory_stack(Repo.reload!(ctx.workspace)) == "core"
+      assert keep(ctx.workspace) == true
+    end
+
+    test "a trial from the harness is not made current with a stack for the shared harness",
+         ctx do
+      main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      {:ok, trial} = HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+
+      Stacks.put_stack(
+        ctx.scope,
+        {:organisation, %Apiary.Organisations.Organisation{id: ctx.workspace.organisation_id}},
+        ~s(extends:\n  git: "#{Qory.git()}"\n  ref: "main"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:branch, "main"}
+      )
+
+      assert Processes.make_current(ctx.scope, trial) == {:error, :shared}
+      assert %Version{status: :trial} = Repo.reload!(trial)
+      assert Processes.current(ctx.workspace).number == 1
+    end
+
     test "follows a harness repository's branch, read as public at each refresh", ctx do
       repository = repository_harness!(ctx.workspace, "main")
 

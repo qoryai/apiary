@@ -791,13 +791,16 @@ defmodule Apiary.Processes do
   make_current/2 makes the trial `trial` the workspace's current version, under
   `process.edit`; the version that was current is past. Its work items stay on it, and
   every other work item stays on its version. It counts as a person's save: it turns the
-  switch Keep the process at the latest off (`Apiary.Processes.HarnessUpdate`), and on
-  for a trial saved from the harness, which has the harness commit as its `template`.
-  `{:ok, version}`; `{:error, :not_trial}` for a version that is not a trial, made current
-  or dropped since it was read; or a reason of `Apiary.Access`.
+  switch Keep the process at the latest off (`Apiary.Processes.HarnessUpdate`); for a
+  trial saved from the harness, which has the harness commit as its `template`, it
+  copies the template's stack, as a Save under Update from harness does, under
+  `harness.save` too, and turns the switch on. `{:ok, version}`; `{:error, :not_trial}`
+  for a version that is not a trial, made current or dropped since it was read;
+  `{:error, :shared}` for a stack to copy into the harness the organisation shares; or a
+  reason of `Apiary.Access`.
   """
   @spec make_current(Scope.t(), Version.t()) ::
-          {:ok, Version.t()} | {:error, :not_trial | Access.reason()}
+          {:ok, Version.t()} | {:error, :not_trial | :shared | :invalid | Access.reason()}
   def make_current(%Scope{} = scope, %Version{} = trial) do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, trial),
@@ -806,7 +809,7 @@ defmodule Apiary.Processes do
            replaced = current_row(workspace, :update),
            _retired = retire_current(workspace),
            {:ok, version} <- trial |> Ecto.Changeset.change(status: :current) |> Repo.update(),
-           :ok <- put_keep_latest(workspace, is_binary((version.template || %{})["commit"])),
+           :ok <- made_current(scope, workspace, version),
            {:ok, _entry} <-
              record(scope, workspace, version, "make_current", %{
                replaced: replaced && replaced.number
@@ -815,6 +818,19 @@ defmodule Apiary.Processes do
       end
     end)
   end
+
+  # A trial made current counts as a person's save: a trial of edits turns the switch
+  # Keep the process at the latest off; a trial saved from the harness, whose `template`
+  # has its commit, copies the template's stack as Save under Update from harness does,
+  # under `harness.save` (Apiary.Processes.HarnessUpdate.copy_template_stack/3), and
+  # turns the switch on.
+  defp made_current(scope, workspace, %Version{template: %{"commit" => commit} = template})
+       when is_binary(commit) do
+    with :ok <- HarnessUpdate.copy_template_stack(scope, workspace, template["stack"]),
+         do: put_keep_latest(workspace, true)
+  end
+
+  defp made_current(_scope, workspace, _version), do: put_keep_latest(workspace, false)
 
   @doc """
   drop_trial/2 drops the trial `trial`, under `process.edit`, and moves its work items
