@@ -800,7 +800,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item whose run waits in the queue while no pool of its workspace is ready
-  shows “Queued: no pool can take the run” in its header. Explore's tab shows why, with
+  shows “Waiting: no pool can take the run” in its header. Explore's tab shows why, with
   the step to take on the Machines page and **Open Machines**, and the step card shows
   “No pool can take the run.” The page shows the run as queued again once a machine
   enrols a key that makes a pool ready.
@@ -858,6 +858,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - On a run's page, **Request a machine** shows the run's type and its spec, such as
   “large (4 vCPUs, 16 GiB, 60 GiB disk)”, and **Details** show **Machine type** after
   **Host**.
+- A run that waits in the queue for a machine shows on the runs list and has its page
+  from the moment it is queued, with its number. The list shows it first, newest first,
+  as **Queued**, and the **State** filter and `state:queued` select it. Its page shows
+  **Queue the run** running, the steps to come, and why it waits, such as “Waiting for
+  a machine: build-pool runs 3 of its 3 machines.” At the claim, the page becomes the
+  page of the running run without a reload. A run that ends while it waits keeps its
+  number.
 <!-- /feature -->
 
 ### Changed
@@ -1342,6 +1349,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `runs` (20261109100000): writes a run record for each run of the queue that waits, in
+  the order the runs were queued, numbered after the workspace's highest number, and
+  raises each workspace's count of runs to match. A run of the queue that ended or was
+  taken gets none. It locks `run_counters` and the waiting runs of the queue until it
+  ends, so no run is numbered or claimed meanwhile. Rolling back deletes these records;
+  the counts stay. While an older release still runs beside this one, its claim of a run
+  that has a record fails, and a claim of this release takes the run.
 - `machine_types` (20261107110000): a new table of the instance's machine types, with
   the type `standard` as the default: 2 vCPUs, 4096 MiB, 30 GiB of disk, amd64, no
   virtualization.

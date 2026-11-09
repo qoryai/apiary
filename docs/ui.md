@@ -638,9 +638,16 @@ version in force is exported; another version's path sends on to it.
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
   other is. Ended badly counts the runs that failed or were lost. The Filter menu's State
-  section lists the six states under their four families, each heading a checkbox for the
-  whole family: Alive (Pending, Running), Ended well (Completed), Cancelled (Cancelled) and
-  Ended badly (Failed, Lost). A cancelled run counts neither as ended well nor as ended
+  section lists the six states and Queued under their four families, each heading a
+  checkbox for the whole family: Alive (Queued, Pending, Running), Ended well (Completed),
+  Cancelled (Cancelled) and Ended badly (Failed, Lost). Queued is a pending run that waits
+  in the queue for a machine (`Apiary.Runs.Run.queued?/1`): it has its run record and its
+  number from the moment it is queued (`Apiary.Dispatches.Queued`), with no node and no
+  registration; Pending is any other pending run. Newest first, the queued runs come
+  first, newest queued first, then the rest. A queued run's row has the badge Queued with
+  a hollow dot, its work item, its workflow and who started it, Started its queue time and
+  Duration n/a. Alive and the sidebar's count of runs alive count the queued runs, and
+  the list follows a run queued, claimed or ended while it waits, without a reload. A cancelled run counts neither as ended well nor as ended
   badly. A filter of whole families says their words ("ended badly"), and an empty list
   of one family says so ("No runs cancelled."). A run stored under a state's older name
   counts and lists as its new state. A view's filter is not repeated as a token. The
@@ -657,7 +664,7 @@ version in force is exported; another version's path sends on to it.
   case (a run's id, title or target; a destination's host or path). A run's id is the start
   of its `rn_` id, four characters after `rn_` at least, or of the run id on the machine, four
   hexadecimal characters at least; a run page's address finds that run. `state:` takes a
-  state or a family (`state:completed`, `state:ended_badly`). A word it cannot read is said in a notice, never dropped in silence. On Network
+  state or a family (`state:completed`, `state:queued`, `state:ended_badly`). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
   from the host filter's query, narrowed as the list is); choosing one adds `host:`.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
@@ -1912,7 +1919,34 @@ Forager claimed for the run, when it claimed one, under "Machine id".
 
   The heading is "Run on" and the pool's name, then the run's state in the word of the
   run's badge: "Run on Qory Pool · Completed", or Pending, Running, Failed, Cancelled or
-  Lost. A run no pool claimed is headed "Run", with its state: "Run · Completed".
+  Lost. A run no pool claimed is headed "Run", with its state: "Run · Completed", or
+  "Run · Queued" for a queued run.
+
+  A queued run's list is Queue the run, running with its time counting from when the run
+  was queued, then Request a machine, Start the machine, Prepare the machine, Agent
+  session 1 and Remove the machine as grey rings with no time. A muted line under Queue
+  the run says why the run waits, the first that applies (`Apiary.Runs.Waiting`), and is
+  read again when the queue changes, a slot frees, a build ends or a machine's key
+  changes:
+  1. "Waiting until Qory Apiary reads the harness." while its harness walk is not done.
+  2. "Waiting: no pool can take the run" while no pool that serves the workspace is ready.
+  3. "Waiting: no pool can start machine type large" while no such pool takes its type.
+  4. "Waiting for the environment image: a build of acme/shop is queued." (or "is
+     running."), or "Waiting for the environment image of acme/shop." with no build
+     live, while it is held for its target's build.
+  5. "Waiting for a machine: build-pool runs 3 of its 3 machines." while every pool runs
+     as many machines as its limit allows; "Waiting for a machine: Qory Pool runs all of
+     its machines." on the Qory Pool, whose count covers other organisations' runs.
+  6. "Waiting for a machine: 2 runs were queued before this one."
+  7. "Waiting for build-pool to run it." otherwise.
+
+  The page of a queued run has no duration in its header. Details has a Workflow row,
+  for a queued run alone, Arguments and Run id on the machine read n/a, and the empty
+  Timeline says "Waiting for the run to start" and "Listening for the run's first
+  event." with no sentence that Forager pinged. At the claim the page becomes the page of
+  the run the pool registered, without a reload. A run that ends while it waits keeps
+  its number: Cancelled when its work item was closed or undone, or a prebuild was
+  superseded or its pool deleted; Failed with its cause otherwise.
 
   The list has one row per step of the run, each named as an action, in the order the
   steps ran, as in GitHub Actions. A step that is made of steps opens to them, and a step
