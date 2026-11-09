@@ -391,6 +391,8 @@ defmodule Apiary.Dispatches.ReleaseTest do
   end
 
   describe "a prebuild" do
+    @describetag needs: [:factory, :registry]
+
     test "waits again with its ref, and no failure is recorded", ctx do
       {_collection, record, queued} = prebuild!(ctx)
       dispatch = started!(ctx)
