@@ -320,7 +320,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     # its run starts.
     workspace = dana_scope.workspace
     chosen = Apiary.Stacks.Sources.chosen(workspace)
-    :ok = Processes.record_declared(workspace, Processes.qory_workflows(chosen))
+    :ok = Processes.record_declared(workspace, Processes.qory_workflows(chosen, workspace))
 
     Shell.info(
       "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"

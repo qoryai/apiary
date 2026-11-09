@@ -451,10 +451,12 @@ defmodule Apiary.StagesTest do
   end
 
   describe "whether a run is a run of Explore" do
-    # No commit or file of the Qory harness kept, as before its first read.
+    # No commit or file of the Qory harness kept, as before its first read, and so no
+    # process version made from a commit of it.
     defp no_harness_kept! do
       {_count, _rows} = Repo.delete_all("qory_harness_heads")
       {_count, _rows} = Repo.delete_all("qory_harness_files")
+      Repo.query!("UPDATE process_versions SET template = template - 'commit'")
       :ok
     end
 

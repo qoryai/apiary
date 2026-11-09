@@ -72,7 +72,8 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   # turned on: the repository, `%{dir, commit}`.
   defp repository_harness!(workspace, branch, opts \\ []) do
     unique = %{".test-#{System.unique_integer([:positive])}" => ""}
-    repository = PublicGitServer.repository!(Map.merge(QoryHarnessFixture.files(), unique), opts)
+    {files, opts} = Keyword.pop(opts, :files, QoryHarnessFixture.files())
+    repository = PublicGitServer.repository!(Map.merge(files, unique), opts)
     PublicGitServer.serve(%{@repository => repository.dir})
 
     Repo.insert!(%Stack{
@@ -387,6 +388,82 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert {:ok, _version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
       assert Repo.reload!(ctx.workspace).qory_stack == nil
       assert Workspace.qory_stack(Repo.reload!(ctx.workspace)) == "core"
+    end
+  end
+
+  describe "the workflows at the commit in use" do
+    # The fixture's files with a second workflow in the stack software.
+    defp plan_added do
+      Map.update!(described(), "stacks/software/qory-stack.yaml", fn stack ->
+        String.replace(
+          stack,
+          "  explore-a-ticket: {access: read}\n",
+          "  explore-a-ticket: {access: read}\n  plan-a-ticket: {access: read}\n"
+        )
+      end)
+    end
+
+    test "a workflow main adds is listed once Update from harness saves its commit", ctx do
+      {:ok, _workspace} = HarnessUpdate.set_keep_latest(ctx.scope, ctx.workspace, false)
+      commit = main_at!(plan_added())
+      assert Qory.workflows(commit, "software") == ["explore-a-ticket", "plan-a-ticket"]
+
+      assert HarnessUpdate.in_use_commit(ctx.workspace) == {:qory, QoryHarnessFixture.commit()}
+      assert Processes.declared_workflows(ctx.workspace) == ["explore-a-ticket"]
+
+      assert Stacks.Sources.chosen_workflows(ctx.scope, ctx.workspace) ==
+               {:ok, ["explore-a-ticket"]}
+
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      {:ok, _version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      assert HarnessUpdate.in_use_commit(ctx.workspace) == {:qory, commit}
+      assert Processes.declared_workflows(ctx.workspace) == ["explore-a-ticket", "plan-a-ticket"]
+
+      assert Stacks.Sources.chosen_workflows(ctx.scope, ctx.workspace) ==
+               {:ok, ["explore-a-ticket", "plan-a-ticket"]}
+
+      assert Apiary.Stages.explore_workflow(ctx.workspace) == "explore-a-ticket"
+    end
+
+    test "a harness repository's branch is read at the commit in use", ctx do
+      # The fixture exports the stack authoring, with no file of it: a read of every stack
+      # needs one, here a copy of the stack core.
+      core = QoryHarnessFixture.files()["stacks/core/qory-stack.yaml"]
+
+      authoring = %{
+        "stacks/authoring/qory-stack.yaml" =>
+          String.replace(core, "name: core\n", "name: authoring\n", global: false)
+      }
+
+      repository =
+        repository_harness!(ctx.workspace, "main",
+          files: Map.merge(QoryHarnessFixture.files(), authoring)
+        )
+
+      {1, _rows} =
+        Repo.update_all(workspace_row(ctx.workspace), set: [keep_process_latest: false])
+
+      commit = PublicGitServer.commit!(repository.dir, Map.merge(plan_added(), authoring))
+
+      assert HarnessUpdate.in_use_commit(ctx.workspace) == {:repository, repository.commit}
+
+      assert Stacks.Sources.chosen_workflows(ctx.scope, ctx.workspace) ==
+               {:ok, ["explore-a-ticket"]}
+
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert update.commit == commit
+      {:ok, _version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      assert Stacks.Sources.chosen_workflows(ctx.scope, ctx.workspace) ==
+               {:ok, ["explore-a-ticket", "plan-a-ticket"]}
+    end
+
+    test "a pinned harness has no commit in use: its runs compose the pin", ctx do
+      {:ok, _row} =
+        Stacks.Sources.choose(ctx.scope, {:qory, {:commit, QoryHarnessFixture.commit()}})
+
+      assert HarnessUpdate.in_use_commit(ctx.workspace) == nil
     end
   end
 

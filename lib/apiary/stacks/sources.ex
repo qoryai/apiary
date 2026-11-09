@@ -1513,8 +1513,10 @@ defmodule Apiary.Stacks.Sources do
   @doc false
   # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
   # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
-  # where the choice names none. The Qory harness is not read: its names are those of
-  # its stored files at the choice's version (`Apiary.Processes.qory_workflows/1`). The
+  # where the choice names none. A harness that follows a branch is read at the commit
+  # the runs of the workspace's current version compose, where it has one
+  # (`Apiary.Processes.HarnessUpdate.in_use_commit/2`). The Qory harness is not read: its
+  # names are those of its stored files (`Apiary.Processes.qory_workflows/2`). The
   # Workflows page, the Harness page and Check again on a work item read the snapshot
   # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
   # `{:error, reason}`.
@@ -1522,13 +1524,22 @@ defmodule Apiary.Stacks.Sources do
   def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
     case chosen(workspace) do
       %{choice: :qory} = qory ->
-        {:ok, Apiary.Processes.qory_workflows(qory)}
+        {:ok, Apiary.Processes.qory_workflows(qory, workspace)}
 
-      _repository ->
+      repository ->
         with {:ok, source, stack} <- chosen_source(workspace),
-             {:ok, stacks} <- read(scope, source) do
+             {:ok, stacks} <- read(scope, at_in_use(source, workspace, repository)) do
           {:ok, workflows_of(stacks, stack)}
         end
+    end
+  end
+
+  # `source` at the commit the runs of the workspace's current version compose, where
+  # its harness follows a branch and the version has a commit of it.
+  defp at_in_use(source, workspace, chosen) do
+    case Apiary.Processes.HarnessUpdate.in_use_commit(workspace, chosen) do
+      {:repository, commit} -> %{source | ref: commit}
+      _other -> source
     end
   end
 

@@ -1161,10 +1161,17 @@ defmodule Apiary.Dispatches.HandoverTest do
       queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
       QoryHarnessFixture.serve!()
 
-      # Queued before the first read of the Qory harness: no files kept, and the column NULL.
+      # Queued before the first read of the Qory harness: no files kept, the column NULL,
+      # and a process version made from no commit of the harness.
       {1, _rows} =
         Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
           set: [explore: nil, workflow: "explore-a-ticket"]
+        )
+
+      {_count, _rows} =
+        Repo.update_all(
+          from(v in Apiary.Processes.Version, where: v.workspace_id == ^queued.workspace_id),
+          set: [template: %{"type" => "qory.software", "version" => 1}]
         )
 
       {_count, _rows} = Repo.delete_all("qory_harness_heads")

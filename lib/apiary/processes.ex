@@ -67,7 +67,7 @@ defmodule Apiary.Processes do
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
-  alias Apiary.Processes.{Export, TypeTemplate, TypeTemplates, Version}
+  alias Apiary.Processes.{Export, HarnessUpdate, TypeTemplate, TypeTemplates, Version}
   alias Apiary.Stacks.{Sources, Stack}
   alias Apiary.WorkItems.WorkItem
 
@@ -214,7 +214,7 @@ defmodule Apiary.Processes do
   at `commit` (Apiary.Harnesses.Qory.workflows/2), as the stored files have it: for what
   has no workspace, at the commit of `main`, and for the name that makes a run Explore
   (Apiary.Stages.explore_workflow/1), at the workspace's commit. Empty for a commit whose
-  files are not kept. A workspace's marks read `qory_workflows/1` with its harness
+  files are not kept. A workspace's marks read `qory_workflows/2` with its harness
   choice.
 
   Given the harness as Apiary.Stacks.Sources.chosen/1 returns it, it is the workflows the
@@ -237,6 +237,26 @@ defmodule Apiary.Processes do
       nil -> []
     end
   end
+
+  @doc """
+  qory_workflows/2 is the workflows the stack of `workspace` on the Qory harness lists,
+  given its harness as Apiary.Stacks.Sources.chosen/1 returns it, as `qory_workflows/1`
+  has them for that choice, at the commit the runs of its current version compose
+  (Apiary.Processes.HarnessUpdate.in_use_commit/2) where its harness follows a branch:
+  a workflow that a later commit of the branch adds is listed once Update from harness,
+  or the switch Keep the process at the latest, saves a version from that commit.
+  """
+  @spec qory_workflows(%{choice: :qory, stack: String.t() | nil}, %Workspace{}) ::
+          [String.t()]
+  def qory_workflows(%{choice: :qory, stack: stack} = chosen, %Workspace{} = workspace)
+      when is_binary(stack) do
+    case HarnessUpdate.in_use_commit(workspace, chosen) do
+      {:qory, commit} -> Qory.workflows(commit, stack)
+      _other -> qory_workflows(chosen)
+    end
+  end
+
+  def qory_workflows(%{choice: :qory}, %Workspace{}), do: []
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
@@ -1091,8 +1111,8 @@ defmodule Apiary.Processes do
   (`declared_snapshot/1`). Call it with the names that
   Apiary.Stacks.Sources.chosen_workflows/2 returns for the workspace's harness: its
   choice, else the harness the organisation shares, else the Qory harness, whose names
-  are `qory_workflows/1`, with no read. The Workflows page calls it on open, Workspace
-  settings > Workflow on open and after a harness choice is saved, and Check again on a
+  are `qory_workflows/2`, with no read. The Workflows page calls it on open, Workspace
+  settings › Harness on open and after a harness choice is saved, and Check again on a
   work item; a saved workflow does not change it. Each name is kept once, sorted, at
   most 1,000. `:ok`.
   """
@@ -1135,7 +1155,7 @@ defmodule Apiary.Processes do
 
   @doc """
   declared_workflows/1 is the names of the workflows the workspace may place in a stage,
-  sorted: for a workspace on the Qory harness, `qory_workflows/1`; the names of the
+  sorted: for a workspace on the Qory harness, `qory_workflows/2`; the names of the
   workspace's snapshot (`declared_snapshot/1`), which covers only the workspace's harness,
   as Apiary.Stacks.Sources.chosen_workflows/2 finds it; and the workflow saved on the
   workspace's Harness page, at the workspace or a target of it. Before the first
@@ -1155,7 +1175,7 @@ defmodule Apiary.Processes do
   defp declared_names(workspace, saved) do
     harness =
       case Sources.chosen(workspace) do
-        %{choice: :qory} = qory -> qory_workflows(qory)
+        %{choice: :qory} = qory -> qory_workflows(qory, workspace)
         _repository -> []
       end
 

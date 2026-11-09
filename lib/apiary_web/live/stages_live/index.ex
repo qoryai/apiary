@@ -69,7 +69,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         may: Apiary.Access.can?(scope, :"process.edit", workspace),
         harness: harness_name(Sources.chosen(workspace)),
         cross: cross(Sources.chosen(workspace)),
-        qory_workflows: qory_workflows(Sources.chosen(workspace)),
+        qory_workflows: qory_workflows(Sources.chosen(workspace), workspace),
         may_harness: Apiary.Access.can?(scope, :"harness.save", workspace),
         declared: Processes.declared_workflows(workspace),
         snapshot: Processes.declared_snapshot(workspace),
@@ -1016,9 +1016,12 @@ defmodule ApiaryWeb.StagesLive.Index do
   defp cross(%{choice: :qory}), do: :qory_workspace
   defp cross(_chosen), do: :workspace
 
-  # The workflows of the workspace's Qory harness, none for a harness repository.
-  defp qory_workflows(%{choice: :qory} = chosen), do: Processes.qory_workflows(chosen)
-  defp qory_workflows(_chosen), do: []
+  # The workflows of the workspace's Qory harness, at the commit the runs of its current
+  # version compose (`Apiary.Processes.qory_workflows/2`); none for a harness repository.
+  defp qory_workflows(%{choice: :qory} = chosen, workspace),
+    do: Processes.qory_workflows(chosen, workspace)
+
+  defp qory_workflows(_chosen, _workspace), do: []
 
   defp problem_words({:missing_workflow, id, name}, doc, cross),
     do: Words.undeclared(stage_name(doc, id), name, cross)

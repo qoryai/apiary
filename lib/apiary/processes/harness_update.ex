@@ -281,6 +281,51 @@ defmodule Apiary.Processes.HarnessUpdate do
     }
   end
 
+  @doc false
+  # in_use_commit/2 is the harness commit the runs of the workspace's current version
+  # compose (Apiary.Dispatches.HarnessReads), where its harness, `chosen`
+  # (Apiary.Stacks.Sources.chosen/1, read when nil), follows a branch: the commit the
+  # current version came from (`status/1`'s `in_use`), as `{:qory, commit}` or
+  # `{:repository, commit}`. Nil for a harness pinned to a tag or a commit, which the
+  # runs compose at that version, and for a current version with no commit of that
+  # harness. It reads the database only, and inserts no version.
+  @spec in_use_commit(%Workspace{}, map | nil) :: {:qory | :repository, String.t()} | nil
+  def in_use_commit(%Workspace{} = workspace, chosen \\ nil) do
+    chosen = chosen || Sources.chosen(workspace)
+
+    with {source, _branch} <- branch(version(workspace, chosen)),
+         %Version{} = current <-
+           Repo.one(
+             from v in Version, where: v.workspace_id == ^workspace.id and v.status == :current
+           ),
+         commit when is_binary(commit) <- in_use(current, chosen) do
+      {source, commit}
+    else
+      _none -> nil
+    end
+  end
+
+  @doc false
+  # qory_in_use/1 is the commit of the Qory harness at which the Workflows page lists and
+  # checks the workflows of `workspace`, a workspace or its id, and at which a run is
+  # Explore (Apiary.Stages.explore_workflow/1): the commit the runs of its current version
+  # compose (`in_use_commit/2`), else the commit its harness settings choose
+  # (Apiary.Harnesses.Qory.workspace_commit/1).
+  @spec qory_in_use(%Workspace{} | Ecto.UUID.t()) :: String.t() | nil
+  def qory_in_use(%Workspace{} = workspace) do
+    case in_use_commit(workspace) do
+      {:qory, commit} -> commit
+      _other -> Qory.workspace_commit(workspace)
+    end
+  end
+
+  def qory_in_use(workspace_id) when is_binary(workspace_id) do
+    case Repo.get(Workspace, workspace_id) do
+      %Workspace{} = workspace -> qory_in_use(workspace)
+      nil -> Qory.workspace_commit(workspace_id)
+    end
+  end
+
   # The commit `version` was made from, where it is a commit of the harness `chosen`.
   defp in_use(version, chosen) do
     template = Processes.harness_template(version)

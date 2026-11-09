@@ -443,8 +443,9 @@ defmodule Apiary.Stages do
   # Transition (D1): explore_workflow/1 is the workflow whose runs return today's explore
   # v1 result in `workspace`, a workspace or its id: the first workflow of the process of
   # the Qory harness's template that the template's stack lists, in stage order, at the
-  # commit of the workspace's harness settings, as the stored files have it
-  # (`Apiary.Harnesses.Qory.workspace_commit/1`). It reads the database only. Nil for
+  # commit the runs of the workspace's current version compose, else at the commit of the
+  # workspace's harness settings, as the stored files have it
+  # (`Apiary.Processes.HarnessUpdate.qory_in_use/1`). It reads the database only. Nil for
   # none, and then no stage is Explore.
   # Where that commit's files are not kept, as before the first read of the harness or
   # after the instance's harness address changed, the newest commit kept stands in
@@ -452,7 +453,7 @@ defmodule Apiary.Stages do
   @doc false
   @spec explore_workflow(Workspace.t() | Ecto.UUID.t()) :: String.t() | nil
   def explore_workflow(workspace) do
-    commit = Qory.workspace_commit(workspace)
+    commit = Processes.HarnessUpdate.qory_in_use(workspace)
     commit = if Processes.template_process(commit), do: commit, else: Qory.newest()
     listed = Processes.qory_workflows(commit)
 

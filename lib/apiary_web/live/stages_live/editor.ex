@@ -290,14 +290,15 @@ defmodule ApiaryWeb.StagesLive.Editor do
     end
   end
 
-  # The first workflow offered, else the first of the Qory harness at the commit the
-  # workspace's harness settings choose (`Apiary.Harnesses.Qory.workspace_commit/1`), at
-  # `main`'s on a page of no workspace.
+  # The first workflow offered, else the first of the Qory harness at the commit the runs
+  # of the workspace's current version compose, else at the commit its harness settings
+  # choose (`Apiary.Processes.HarnessUpdate.qory_in_use/1`), at `main`'s on a page of no
+  # workspace.
   defp first_workflow(socket) do
     commit =
       case socket.assigns do
         %{current_scope: %{workspace: %Apiary.Organisations.Workspace{} = workspace}} ->
-          Apiary.Harnesses.Qory.workspace_commit(workspace)
+          Apiary.Processes.HarnessUpdate.qory_in_use(workspace)
 
         _no_workspace ->
           Apiary.Harnesses.Qory.current()
