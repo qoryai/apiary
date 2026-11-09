@@ -138,7 +138,10 @@ defmodule Apiary.Dispatches.Handover do
   # (`Apiary.Dispatches.HarnessReads`), never from the commits Qory Apiary keeps; its
   # walk's pin records that commit. An explore run of a
   # harness repository on a branch or at a tag has in its documents the commit its walk's
-  # pin records, read when the run was queued.
+  # pin records, read when the run was queued. A run of a process version whose harness
+  # follows a branch has in its documents, in place of either, the commit its version was
+  # made from (`Apiary.Processes.harness_template/1`), with no read, and its walk's pin
+  # records that commit.
   #
   # **The registered run lives as long as the claim.** While its run of the queue is
   # claimed, a registered run has neither attached nor had its code redeemed. When the run

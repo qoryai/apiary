@@ -258,6 +258,11 @@ msgstr[1] ""
 msgid "%{attempt} · %{workflow} · round %{round} · %{verdict}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{branch} is now at %{commit}"
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{collections} assigned to %{workspace}"
@@ -625,6 +630,16 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{filter}: %{value}, change"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{first}, %{second}"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{first}, %{second}, %{third}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -1141,6 +1156,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{ms} ms"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{names} and %{last}"
 msgstr ""
 
 #: lib/apiary_web/machine_type_words.ex
@@ -1884,6 +1904,7 @@ msgid_plural "%{number} calls so far"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -2279,6 +2300,20 @@ msgid_plural "%{number} more to add"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} new"
+msgid_plural "%{number} new"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} new artifact type"
+msgid_plural "%{number} new artifact types"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} new event"
@@ -2501,6 +2536,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} so far"
 msgid_plural "%{number} so far"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} stage change"
+msgid_plural "%{number} stage changes"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2846,6 +2888,21 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{person}, %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{person}, updated from %{branch} at %{commit}, %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{person}, updated from harness version %{commit}, %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{person}, updated from tag %{tag} at %{commit}, %{date}"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
@@ -3279,11 +3336,13 @@ msgstr ""
 msgid "%{type} v%{number}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "%{type}, optional"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "%{type}, required"
@@ -3505,7 +3564,7 @@ msgstr ""
 
 #: lib/apiary_web/components/workspace_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{workspace} starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{stages}."
+msgid "%{workspace} starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{workflows}."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3770,6 +3829,7 @@ msgid "A harness is the skills and workflows the agent runs with."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
 msgid "A harness source"
 msgstr ""
@@ -4029,6 +4089,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "A run reloads the policy at its next heartbeat."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new harness version. A fixed version uses that version."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -4801,6 +4866,13 @@ msgstr ""
 msgid "Added by %{person}, %{date}"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Added the artifact type %{names}."
+msgid_plural "Added the artifact types %{names}."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Added the stage %{name}."
@@ -4816,6 +4888,7 @@ msgstr ""
 msgid "Added version %{number} of %{type} %{name}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -5720,6 +5793,11 @@ msgstr ""
 msgid "Assigning a %{collection} here adds its target to the workspace's Targets, which list what its runs change. Unassigning or moving it leaves the target there."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "At each new harness version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it."
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -5950,14 +6028,15 @@ msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/components/spend_dialog.ex
+#: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
-#: lib/apiary_web/live/workflow_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel"
@@ -6093,12 +6172,11 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/policy_live/views.ex
-#: lib/apiary_web/live/stages_live/index.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/target_live/show.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Change"
 msgstr ""
@@ -6144,11 +6222,6 @@ msgstr ""
 msgid "Change the %{collections}"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Change the harness"
-msgstr ""
-
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Change the model choices that use %{provider} first: %{places}."
@@ -6157,6 +6230,16 @@ msgstr ""
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change the name in the process.yaml of %{module} in %{repository}. %{error}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Change the stack of the harness your organisation shares, then save again. Every workspace that takes that harness uses its stack."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -6379,6 +6462,11 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "Changed the description of %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "Changed the gate of %{name}: %{person} approves."
 msgstr ""
 
@@ -6583,6 +6671,11 @@ msgstr ""
 msgid "Check the questions and your answers, then click Run another round again. The questions changed after the page showed them, so no answer was sent."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Check the removed lines before you save: they are edits saved on the Workflows page, and version %{number} does not keep them."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Check the sender address, and that the relay allows this server's IP address, then send the test link again. The relay refused the email at %{time} (reply code %{code})."
@@ -6677,17 +6770,22 @@ msgid_plural "Choose files"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a harness with a process for this type of workspace. The harness has no template of this workspace's type at this version."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a machine type from the list."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a source"
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a source and a workflow, then save."
 msgstr ""
@@ -6717,7 +6815,7 @@ msgstr ""
 msgid "Choose a type from the list."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a workflow"
 msgstr ""
@@ -6774,12 +6872,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Stages page, or someone uses Check again on a work item."
+msgid "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Workflows page, or someone uses Check again on a work item."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another workflow for %{stage}. To keep %{workflow}, change the harness on the Details tab to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run."
+msgid "Choose another workflow for %{stage}. To keep %{workflow}, change the harness in Workspace settings › Harness to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -7057,7 +7155,22 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Commit this file to a harness repository. Only new workspaces made from it use it."
+msgid "Commit this file to a harness repository. Workspaces that use that harness get it at their next update."
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Compare version %{number} of the stages with the process at %{branch}, then save it as a new version."
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Compare version %{number} of the stages with the process at harness version %{commit}, then save it as a new version."
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Compare version %{number} of the stages with the process at tag %{tag}, then save it as a new version."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -7483,6 +7596,11 @@ msgstr ""
 msgid "Correct the address: write the host name without a percent-encoding."
 msgstr ""
 
+#: lib/apiary_web/live/harness_live.ex
+#, elixir-autogen, elixir-format
+msgid "Correct the artifact type %{type} in the harness, then save again."
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Correct the exports section of %{file} in %{source}: %{problem}."
@@ -7506,6 +7624,16 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Correct the harness in %{source}: its modules come from more than %{n} accounts, and a run can read at most %{n}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct the process.yaml of the harness, then press Update from harness again. %{reasons}"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct the process.yaml of the harness, then press Update from harness again: %{reasons}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -9626,6 +9754,11 @@ msgstr[1] ""
 msgid "Following"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Follows %{branch}"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Follows %{workspace}"
@@ -10127,7 +10260,7 @@ msgid "Handed to %{tool}, path %{path}"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Harness"
 msgstr ""
@@ -10153,9 +10286,19 @@ msgstr ""
 msgid "Harness version"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Harness version in use: %{commit}, process version %{number}"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Harness: %{harness}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Harness: %{harness}, version %{commit}"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_type_live.ex
@@ -11265,9 +11408,20 @@ msgstr ""
 msgid "Keep me signed in"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Keep one template of this workspace's type in the harness, or choose another harness. At this commit the harness has more than one."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Keep the key's secret in a secret store."
+msgstr ""
+
+#: lib/apiary_web/live/harness_live.ex
+#, elixir-autogen, elixir-format
+msgid "Keep the process at the latest"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -12829,6 +12983,7 @@ msgstr ""
 msgid "No artifacts yet."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
@@ -13976,12 +14131,12 @@ msgstr ""
 #: lib/apiary_web/components/tick_list_components.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/choose_collections_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/harness_targets.ex
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/workflow_live.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -14365,7 +14520,7 @@ msgstr ""
 msgid "Only owners and admins can change the stages."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins can change the workflow."
 msgstr ""
@@ -14566,14 +14721,19 @@ msgstr ""
 msgid "Open %{workspace}"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Open Harness"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open Machines"
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
-msgid "Open Stages"
+msgid "Open Workflows"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -15247,6 +15407,11 @@ msgstr ""
 msgid "Prepare the session"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Press %{button} to bring in %{branch} at %{commit}. Edits saved on the Workflows page stop the automatic update."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Press Enter to open the stage beside the canvas."
@@ -15255,6 +15420,21 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Press Enter to open the stage beside the canvas. Move it with the up and down arrow keys."
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Press Update from harness again later. Reading the harness from %{url} failed: %{cause}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Press Update from harness again. The harness choice changed after you opened this difference."
+msgstr ""
+
+#: lib/apiary_web/live/harness_live.ex
+#, elixir-autogen, elixir-format
+msgid "Press Update from harness again. The stages changed after you opened this difference."
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
@@ -15342,7 +15522,7 @@ msgid "Pruned log output from before %{log_date}, events from before %{events_da
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Public address"
 msgstr ""
@@ -15432,6 +15612,7 @@ msgstr ""
 msgid "Qory Apiary allows these hosts for every run. Host rules do not remove them."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary cannot read its process.yaml"
@@ -15457,7 +15638,7 @@ msgstr ""
 msgid "Qory Apiary could not read %{source} because of an error in Qory Apiary. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Qory Apiary could not read the linked repositories. Reload the page to try again."
@@ -15515,6 +15696,7 @@ msgstr ""
 msgid "Qory Apiary has no result from the run. There is nothing to show or approve."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary has no workspace type %{type}"
@@ -15634,6 +15816,7 @@ msgid "Qory Pool: machines Qory Apiary provides for the runs of every workspace 
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory harness"
@@ -15764,7 +15947,7 @@ msgid "Reading the record"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Reading the stack of %{source}…"
 msgstr ""
@@ -16251,6 +16434,7 @@ msgstr ""
 msgid "Removed the stage %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -17044,7 +17228,7 @@ msgstr ""
 msgid "Runs in %{workspace} then wait for this pool."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Runs in %{workspace} use the workflow you choose here, from a harness repository."
@@ -17085,7 +17269,7 @@ msgstr ""
 msgid "Runs of %{target} now read no other target."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of %{workspace} follow the workflow %{workflow}."
 msgstr ""
@@ -17191,8 +17375,10 @@ msgid "SMTP relay"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/integration_components.ex
 #: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
@@ -17208,7 +17394,6 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/user_live/settings.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Save"
 msgstr ""
@@ -17216,6 +17401,11 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Save again later. Reading the harness from %{url} failed: %{cause}. If it fails again, %{contact_support}."
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Save also turns Keep the process at the latest on again."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -17273,11 +17463,17 @@ msgstr ""
 msgid "Saved as version %{number}, a trial. Assign work items to it below."
 msgstr ""
 
+#: lib/apiary_web/live/harness_live.ex
+#, elixir-autogen, elixir-format
+msgid "Saved as version %{number}, a trial. Assign work items to it on the Workflows page."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "Saved as version %{number}. New workspaces of this type start with it."
 msgstr ""
 
+#: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Saved as version %{number}. Work items taken in from now on use it."
@@ -17308,13 +17504,14 @@ msgstr ""
 msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Saved. Runs of %{workspace} now follow the workflow %{workflow}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/live/artifact_live/types.ex
+#: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/general.ex
@@ -17331,7 +17528,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/user_live/settings.ex
-#: lib/apiary_web/live/workflow_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Saving"
@@ -17759,9 +17955,9 @@ msgstr ""
 msgid "Set the run's pool to go through the Qory Gateway in the pool's Settings, or %{contact_support} with work item #%{number}. The gateway for this run is not allowed to receive the secrets the run needs; only the Qory Gateway is."
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
-msgid "Set the stages of %{workspace}, and the workflows each stage runs, on the Stages page."
+msgid "Set the stages of %{workspace}, and the workflows each stage runs, on the Workflows page."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -18294,12 +18490,12 @@ msgstr ""
 msgid "Sort: %{order}"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/policy_live/rule_list.ex
 #: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Source"
 msgstr ""
@@ -18320,6 +18516,7 @@ msgid "Sources (%{count})"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
 msgid "Stack"
 msgstr ""
@@ -18329,7 +18526,6 @@ msgstr ""
 msgid "Stage"
 msgstr ""
 
-#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/instance_live/workspace_types.ex
@@ -18725,6 +18921,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/markdown.ex
 #, elixir-autogen, elixir-format
 msgid "Table in the document"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Tag %{tag}"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -19856,7 +20057,7 @@ msgid_plural "The list continues in %{count} seconds. Qory Apiary reads at most 
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "The list shows the repositories connected to %{organisation}, and the harness sources Qory Apiary provides to %{organisation}. If your harness repository is missing, connect it to %{organisation}, or %{contact_support}."
@@ -20218,7 +20419,7 @@ msgid "The rendered bytes stayed the same, so no version was made."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "The repository's address, without a password or token in it."
@@ -20451,7 +20652,7 @@ msgstr ""
 msgid "The size the runtime ran at"
 msgstr ""
 
-#: lib/apiary_web/live/workflow_live.ex
+#: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "The stack of %{source} lists no workflow: add one under %{key} in its %{file}."
 msgstr ""
@@ -20698,12 +20899,12 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
-msgid "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › %{stages}."
+msgid "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › %{workflows}."
 msgstr ""
 
 #: lib/apiary_web/components/workspace_components.ex
 #, elixir-autogen, elixir-format
-msgid "The workspace starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{stages}."
+msgid "The workspace starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{workflows}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -21459,6 +21660,11 @@ msgstr ""
 msgid "Try again?"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Try first"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Turn failed"
@@ -21725,6 +21931,27 @@ msgstr ""
 msgid "Until it is set up, organisations can't install it."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Update from %{branch} at %{commit}"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#: lib/apiary_web/live/harness_live.ex
+#, elixir-autogen, elixir-format
+msgid "Update from harness"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Update from harness version %{commit}"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Update from tag %{tag}"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/backlog_live/index.ex
 #: lib/apiary_web/live/work_item_live/index.ex
@@ -21735,6 +21962,21 @@ msgstr ""
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Updated as batches land."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Updated from %{branch} at %{commit}, %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Updated from harness version %{commit}, %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Updated from tag %{tag} at %{commit}, %{date}"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -21851,6 +22093,7 @@ msgid "Variables, %{number}"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/artifact_live/show.ex
 #: lib/apiary_web/live/integration_live/index.ex
@@ -21860,6 +22103,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Version"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{commit}"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -22593,6 +22841,11 @@ msgstr ""
 msgid "Work items at a stage of the process. A finished one moves to Closed."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Work items in progress stay on version %{number}. Work items taken in after the save follow version %{next}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "Work items that wait for you to approve the proposal. Oldest first."
@@ -22629,12 +22882,21 @@ msgid "Work sources is set to All for this account. Change it there first."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
-#: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workflow"
+msgstr ""
+
+#: lib/apiary_web/live/harness_live.ex
+#, elixir-autogen, elixir-format
+msgid "Workflow source"
+msgstr ""
+
+#: lib/apiary_web/components/settings_components.ex
+#, elixir-autogen, elixir-format
+msgid "Workflows"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
@@ -23107,7 +23369,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "You can change this later in Workspace settings › %{stages}."
+msgid "You can change this later in Workspace settings › %{page}."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -23118,11 +23380,6 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "You can change this later in Workspace settings › Work sources."
-msgstr ""
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "You can change this later in Workspace settings › Workflow."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -23551,6 +23808,11 @@ msgstr ""
 msgid "Zoom out"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "a changed stack"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
@@ -23692,6 +23954,11 @@ msgid_plural "application/json · %{number} bytes"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "artifact types"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "asked for by %{person}"
@@ -23773,6 +24040,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "cancelled %{when}"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "changed"
 msgstr ""
 
 #: lib/apiary_web/components/source_components.ex
@@ -24246,6 +24518,7 @@ msgstr ""
 msgid "its root has no qory-stack.yaml and no harness section"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "its stack is not exported"
@@ -24803,6 +25076,16 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "source n/a"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "stack"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "stages"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

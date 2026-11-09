@@ -1,6 +1,6 @@
 defmodule Apiary.Stacks.Sources do
-  # The harness sources Workspace settings › Workflow offers a workspace
-  # (`ApiaryWeb.WorkflowLive`), the stacks each has, the workflows each stack lists, and
+  # The harness sources Workspace settings › Harness offers a workspace
+  # (`ApiaryWeb.HarnessLive`), the stacks each has, the workflows each stack lists, and
   # the save of the workspace's document. Every read goes through the adapters' calls
   # (`Apiary.Adapters.Calls`: `resolve` and `read`), or reads a public repository from
   # its host with no adapter (`Apiary.Harnesses.PublicGit`), as a run's walk reads
@@ -389,6 +389,10 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # One of the person's reads of `kind` in the window of a minute, `limit` at most.
+  # The instance's scope reads as the switch's update (Apiary.Processes.HarnessUpdate),
+  # at most once a refresh for each workspace, so no person's limit applies.
+  defp spend(%Scope{instance: true, user: nil}, _kind, _limit), do: :ok
+
   defp spend(%Scope{user: %{id: user_id}}, kind, limit) do
     case RateLimit.reserve({__MODULE__, kind, user_id}, limit, @minute) do
       {:ok, _started_at} -> :ok
@@ -1509,22 +1513,33 @@ defmodule Apiary.Stacks.Sources do
   @doc false
   # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
   # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
-  # where the choice names none. The Qory harness is not read: its names are those of
-  # its stored files at the choice's version (`Apiary.Processes.qory_workflows/1`). The
-  # Stages page, the Workflow page and Check again on a work item read the snapshot
+  # where the choice has none. A harness that follows a branch is read at the commit
+  # the runs of the workspace's current version compose, where it has one
+  # (`Apiary.Processes.HarnessUpdate.in_use_commit/2`). The Qory harness is not read: its
+  # names are those of its stored files (`Apiary.Processes.qory_workflows/2`). The
+  # Workflows page, the Harness page and Check again on a work item read the snapshot
   # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
   # `{:error, reason}`.
   @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
   def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
     case chosen(workspace) do
       %{choice: :qory} = qory ->
-        {:ok, Apiary.Processes.qory_workflows(qory)}
+        {:ok, Apiary.Processes.qory_workflows(qory, workspace)}
 
-      _repository ->
+      repository ->
         with {:ok, source, stack} <- chosen_source(workspace),
-             {:ok, stacks} <- read(scope, source) do
+             {:ok, stacks} <- read(scope, at_in_use(source, workspace, repository)) do
           {:ok, workflows_of(stacks, stack)}
         end
+    end
+  end
+
+  # `source` at the commit the runs of the workspace's current version compose, where
+  # its harness follows a branch and the version has a commit of it.
+  defp at_in_use(source, workspace, chosen) do
+    case Apiary.Processes.HarnessUpdate.in_use_commit(workspace, chosen) do
+      {:repository, commit} -> %{source | ref: commit}
+      _other -> source
     end
   end
 
@@ -2276,9 +2291,69 @@ defmodule Apiary.Stacks.Sources do
 
   defp shares_another?(%Stack{}, _base), do: true
 
+  @doc false
+  # put_template_stack/3 sets the stack of `workspace`'s harness to `stack`, the stack of
+  # the template an update from the harness saved (`Apiary.Processes.HarnessUpdate`),
+  # inside the caller's transaction, under the lock of the workspace's saves. With no
+  # row, the workspace takes the Qory harness at `workspaces.qory_stack`, nil for `core`.
+  # The workspace's choice is saved again with the stack in its document, with its choice,
+  # version and owner. The harness the organisation shares sets the stack of every
+  # workspace that takes it, so it is not changed: `{:error, :shared}`. `:ok`, or
+  # `{:error, :invalid}` for a row that fails the save rules.
+  @spec put_template_stack(Scope.t(), Workspace.t(), String.t()) ::
+          :ok | {:error, :shared | :invalid | :forbidden}
+  def put_template_stack(%Scope{} = scope, %Workspace{} = workspace, stack)
+      when is_binary(stack) do
+    lock_saves(workspace)
+
+    case Stacks.choice(workspace) do
+      %Stack{} = row ->
+        version = if row.version_kind, do: {row.version_kind, row.version_name}
+        owner = if row.owner_organisation_id, do: [owner: row.owner_organisation_id], else: []
+        harness = row.harness |> extended() |> Map.put("stack", stack) |> document()
+
+        scope
+        |> Stacks.put_stack(
+          {:workspace, workspace},
+          harness,
+          [choice: row.choice, version: version] ++ owner
+        )
+        |> saved()
+        |> case do
+          {:ok, _row} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      nil ->
+        if Stacks.shared(%Organisation{id: workspace.organisation_id}) do
+          {:error, :shared}
+        else
+          value = if stack == Qory.default_stack(), do: nil, else: stack
+
+          {1, _rows} =
+            Repo.update_all(from(w in Workspace, where: w.id == ^workspace.id),
+              set: [qory_stack: value, updated_at: DateTime.utc_now()]
+            )
+
+          :ok
+        end
+    end
+  end
+
   # A row the save rules refuse: the caller's `{:error, changeset}` is for a workspace's.
   defp saved({:error, %Ecto.Changeset{}}), do: {:error, :invalid}
   defp saved(result), do: result
+
+  @doc false
+  # hold_saves/1 takes the lock of the saves of `workspace`'s harness choice inside the
+  # caller's transaction, until it ends: a choice saved after it waits for that end. An
+  # update from the harness checks under it that the choice it read is still the one
+  # saved (`Apiary.Processes.HarnessUpdate`). `:ok`.
+  @spec hold_saves(Workspace.t()) :: :ok
+  def hold_saves(%Workspace{} = workspace) do
+    lock_saves(workspace)
+    :ok
+  end
 
   # Saves of one workspace take turns: the second waits for the first's transaction, then
   # sees its row and replaces it, so the workspace keeps one workflow.

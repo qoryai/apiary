@@ -73,8 +73,8 @@ and `package/LICENSE`. Replace the version and checksums above.
 
 ## React Flow (`flow/`)
 
-The canvas of Workspace settings › Stages: `@xyflow/react` with React and React DOM.
-Bundled through the separate entry `assets/js/canvas.js`, so only the Stages page
+The canvas of Workspace settings › Workflows: `@xyflow/react` with React and React DOM.
+Bundled through the separate entry `assets/js/canvas.js`, so only the Workflows page
 downloads it. Core has no npm and no `package.json`: the `--alias` arguments in
 `config/config.exs` point `react`, `react/jsx-runtime`, `react-dom`, `react-dom/client`
 and `scheduler` straight at the production files below, in dev builds too. The build sets

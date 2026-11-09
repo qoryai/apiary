@@ -26,9 +26,22 @@ defmodule Apiary.Dispatches.HarnessReadsTest do
     Map.put(handover_place_fixture(scope), :scope, scope)
   end
 
+  # A run of a work item, queued, with no process version, as with the feature
+  # `workflow_model` off: its harness is read at the claim, not taken from a version.
+  defp queued!(ctx) do
+    {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+
+    {1, _rows} =
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+        set: [process_version_id: nil]
+      )
+
+    run
+  end
+
   test "a host that does not answer within the session's time leaves the reads after it no time, and their runs queued",
        ctx do
-    {:ok, qory_run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+    qory_run = queued!(ctx)
     git = Qory.git()
 
     walk_resolved!(qory_run,
@@ -72,7 +85,7 @@ defmodule Apiary.Dispatches.HarnessReadsTest do
   test "a read the session left no request leaves the run queued, with no failure recorded",
        ctx do
     Application.put_env(:apiary, HarnessReads, read_requests: 1)
-    {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+    run = queued!(ctx)
     git = Qory.git()
 
     walk_resolved!(run,
@@ -94,7 +107,7 @@ defmodule Apiary.Dispatches.HarnessReadsTest do
        ctx do
     # The older run, of a type larger than the offers, with a base on the Qory harness's
     # `main`, which a claim reads.
-    {:ok, too_large} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+    too_large = queued!(ctx)
     git = Qory.git()
 
     walk_resolved!(too_large,

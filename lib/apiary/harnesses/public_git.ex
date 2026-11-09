@@ -2,7 +2,7 @@ defmodule Apiary.Harnesses.PublicGit do
   # Reads a file of a public git repository the way anyone may: git's smart-HTTP protocol
   # over HTTPS, with no credential and no adapter, through `Apiary.Integrations.Fetch`,
   # which connects only to public addresses, pinned, at the port the address has. A run's
-  # harness walk (`Apiary.Harnesses.Walk`) and Workspace settings › Workflow
+  # harness walk (`Apiary.Harnesses.Walk`) and Workspace settings › Harness
   # (`Apiary.Stacks.Sources`) read a harness source no link reaches with it.
   #
   # ## The requests

@@ -493,7 +493,7 @@ operator (`Apiary.Edition.operated?/1`, which the core edition, `Apiary.Edition.
 answers `false`), or when a stored document applies and its owner is not the run's
 organisation. A document the instance's organisation owns is hidden from the runs of
 every other organisation, whether the instance has one organisation or several, and an
-unknown owner is never the run's organisation. Workspace settings › Workflow and the
+unknown owner is never the run's organisation. Workspace settings › Harness and the
 set-up's Harness step write a stored stack at the workspace's level, and so do tests and
 the demo (`mix apiary.demo.console`, which stores one for the workspace Main); no
 endpoint sets one. A stored document's `bind` is set by kind, then by role, as the run

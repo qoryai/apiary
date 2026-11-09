@@ -126,7 +126,7 @@ defmodule ApiaryWeb.CollectionsLiveTest do
 
   defp save(lv), do: lv |> form("#choose-form") |> render_submit()
 
-  test "both pages are in the settings' list after Model, Work sources first, before Workflow",
+  test "both pages are in the settings' list after Model, Work sources first, before Harness",
        ctx do
     {:ok, lv, html} = live(ctx.conn, ctx.sources)
 
@@ -144,11 +144,12 @@ defmodule ApiaryWeb.CollectionsLiveTest do
 
     tabs = for [_, key] <- Regex.scan(~r/id="settings-tab-([a-z_]+)"/, html), do: key
 
-    # With `workflow_model`, Stages takes the place of Workflow.
-    last = if Apiary.Features.on?(:workflow_model), do: "stages", else: "workflow"
+    # With `workflow_model`, Workflows comes before Harness.
+    next =
+      if Apiary.Features.on?(:workflow_model), do: ~w(workflows harness), else: ~w(harness)
 
-    assert Enum.drop_while(tabs, &(&1 != "model")) |> Enum.take(4) ==
-             ~w(model work_sources destinations) ++ [last]
+    assert Enum.drop_while(tabs, &(&1 != "model")) |> Enum.take(3 + length(next)) ==
+             ~w(model work_sources destinations) ++ next
 
     {:ok, lv, _html} = live(ctx.conn, ctx.destinations)
     assert has_element?(lv, "#settings-section-title", "Destinations")

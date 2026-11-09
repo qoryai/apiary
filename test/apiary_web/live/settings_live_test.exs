@@ -546,13 +546,12 @@ defmodule ApiaryWeb.SettingsLiveTest do
       secrets? = Apiary.Features.on?(:secrets)
       factory? = Apiary.Features.on?(:factory)
 
-      # With `workflow_model`, Stages takes the place of Workflow.
+      # With `workflow_model`, Workflows comes before Harness.
       process =
-        cond do
-          Apiary.Features.on?(:workflow_model) -> [stages: base <> "/stages"]
-          factory? -> [workflow: base <> "/workflow"]
-          true -> []
-        end
+        if(Apiary.Features.on?(:workflow_model),
+          do: [workflows: base <> "/workflows"],
+          else: []
+        ) ++ if(factory?, do: [harness: base <> "/harness"], else: [])
 
       sections =
         [general: base, people: base <> "/people"] ++
@@ -584,8 +583,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       # In the nav's order: General, People, with the `secrets` feature Integrations and
       # Secrets and variables, with `secrets` and `factory` Model, with `factory` Work
-      # sources, Destinations and Workflow, with `workflow_model` Stages in Workflow's place
-      # and then Artifact types, and Runs last. The access keys are on their nodes' pages.
+      # sources, Destinations and Harness, with `workflow_model` Workflows before Harness
+      # and Artifact types after it, and Runs last. The access keys are on their nodes' pages.
       assert lv
              |> element("#settings-tabs")
              |> render()

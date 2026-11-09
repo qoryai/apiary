@@ -186,7 +186,7 @@ defmodule ApiaryWeb.StagesLive.CanvasTest do
         selector =~ ~r/q-canvas-focus|:fullscreen/
       end)
 
-    # Workspace settings › Stages (`#stages-editor`) and Instance settings › Workspace types
+    # Workspace settings › Workflows (`#stages-editor`) and Instance settings › Workspace types
     # (`#type-editor`): from 1328 px, the sidebar (240), the settings menu (216), a 360 px
     # card with 16 px at each side (392) and the side (480).
     assert Enum.all?(wide, fn {selector, _} ->
