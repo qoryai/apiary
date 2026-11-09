@@ -38,6 +38,19 @@ defmodule Apiary.Harnesses.QoryTest do
     )
   end
 
+  # The row of `qory_harness_heads` of the branch `name`. Its `xmin` and `xmax` change
+  # when a statement writes the row or locks it.
+  defp head_row(name) do
+    %{rows: [[commit, read_at, xmin, xmax]]} =
+      Repo.query!(
+        "SELECT commit, read_at, xmin::text, xmax::text FROM qory_harness_heads " <>
+          "WHERE git = $1 AND ref = $2",
+        [Qory.git(), "refs/heads/#{name}"]
+      )
+
+    %{commit: commit, read_at: read_at, xmin: xmin, xmax: xmax}
+  end
+
   test "the address is QORY_HARNESS_URL's default when it is not set" do
     assert Qory.git() == "https://github.com/qoryai/harness"
   end
@@ -192,6 +205,26 @@ defmodule Apiary.Harnesses.QoryTest do
       assert Qory.read("main") == {:error, {:unreadable, :invalid, nil}}
       assert stored_paths(repository.commit) == []
       assert Qory.current() == QoryHarnessFixture.commit()
+    end
+
+    test "of a branch still at the stored commit writes nothing and locks no row" do
+      repository = serve_harness!(branches: ["steady"])
+
+      assert Qory.read({:branch, "steady"}) == {:ok, repository.commit}
+      before = head_row("steady")
+
+      assert Qory.read({:branch, "steady"}) == {:ok, repository.commit}
+      assert head_row("steady") == before
+    end
+
+    test "of a branch at a new commit keeps the new commit and the time of the read" do
+      repository = serve_harness!()
+      newer = PublicGitServer.commit!(repository.dir, %{"NOTES.md" => "newer"})
+      before = head_row("main")
+
+      assert Qory.read("main") == {:ok, newer}
+      assert %{commit: ^newer, read_at: read_at} = head_row("main")
+      assert NaiveDateTime.compare(read_at, before.read_at) == :gt
     end
   end
 
