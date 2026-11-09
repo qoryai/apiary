@@ -650,6 +650,7 @@ defmodule Apiary.Dispatches.SettleTest do
   end
 
   describe "what is never settled" do
+    @tag needs: [:factory, :registry]
     test "a prebuild, whatever ends it", ctx do
       place = handover_place_fixture(ctx.scope)
       handed = prebuild_handed_over!(ctx.scope, place.key)

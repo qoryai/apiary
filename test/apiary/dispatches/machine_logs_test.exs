@@ -240,6 +240,7 @@ defmodule Apiary.Dispatches.MachineLogsTest do
                Repo.one!(from r in Run, where: r.dispatch_id == ^dispatch.id)
     end
 
+    @tag needs: [:factory, :registry]
     test "of a prebuild records its build lost, as the code's expiry would", ctx do
       %{dispatch: dispatch, run: run, collection: collection} =
         prebuild_handed_over!(ctx.scope, ctx.key)

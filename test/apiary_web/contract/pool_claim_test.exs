@@ -238,6 +238,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
   end
 
   describe "a claim of a prebuild or of a run without a target" do
+    @tag needs: [:factory, :registry]
     test "takes a prebuild held for its pool, answered 200, signed, its machine living 90 minutes",
          ctx do
       collection = collection_fixture(ctx.scope, target_path: "acme/shop")
