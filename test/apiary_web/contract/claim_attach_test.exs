@@ -172,10 +172,11 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
     assert %DispatchRun{state: :ended, end_cause: :run_ended} =
              Repo.get!(DispatchRun, queued.id)
 
-    assert %Dispatch{end_cause: :run_ended, slot_freed_at: %DateTime{}} =
+    # Its dispatched came: the slot waits for the machine to be reported gone.
+    assert %Dispatch{end_cause: :run_ended, slot_freed_at: nil} =
              Repo.get!(Dispatch, dispatch.id)
 
-    assert Slots.held(ctx.pool.id) == 0
+    assert Slots.held(ctx.pool.id) == 1
   end
 
   test "the attach answer's labels carry the repository and its further repositories", ctx do

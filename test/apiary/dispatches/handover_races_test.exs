@@ -144,9 +144,9 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
   # The undo's part of the queue, inside the transaction it is given or its own.
   defp undo(%{work_item: work_item}), do: fn -> Dispatches.cancel_for_undo(work_item) end
 
-  # The run handed over, then ended by its exit, so the next round's claim finds the slot
-  # free again: committed.
-  defp exited!(%{registered: %Run{id: id}}) do
+  # The run handed over, then ended by its exit, and its machine reported gone, so the
+  # next round's claim finds the slot free again: committed.
+  defp exited!(ctx, %{registered: %Run{id: id}} = claimed) do
     now = DateTime.utc_now()
 
     {1, _rows} =
@@ -155,6 +155,31 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
       )
 
     RunEnd.run_ended(Repo.get!(Run, id))
+    gone!(ctx, claimed)
+  end
+
+  defp gone!(ctx, %{dispatch: dispatch}),
+    do: :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :gone})
+
+  # The run of the queue and its stale dispatch ended with `cause`, never handed over, the
+  # run the claim registered deleted, and the slot the lapse freed held again by a late
+  # dispatched until its machine is gone: committed.
+  defp ended_held!(ctx, claimed, cause, dispatch_cause) do
+    assert %DispatchRun{state: :ended, end_cause: ^cause} =
+             Repo.get!(DispatchRun, claimed.dispatch_run.id)
+
+    assert %Dispatch{
+             end_cause: ^dispatch_cause,
+             handed_over_at: nil,
+             stale_at: %DateTime{},
+             ended_at: %DateTime{},
+             slot_freed_at: nil
+           } = Repo.get!(Dispatch, claimed.dispatch.id)
+
+    assert runs(claimed) == []
+    assert Slots.held(ctx.pool.id) == 1
+    gone!(ctx, claimed)
+    assert Slots.held(ctx.pool.id) == 0
   end
 
   # Past the lease of the dispatch, as the clock would have it ten minutes and more after
@@ -193,7 +218,8 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
   end
 
   # The run of the queue and its dispatch ended with `cause`, never handed over, the run
-  # the claim registered deleted, the slot freed once, at the dispatch's end.
+  # the claim registered deleted, the slot freed once at the dispatch's end, or held for a
+  # late machine until it is gone.
   defp ended!(ctx, claimed, cause, dispatch_cause \\ nil) do
     assert %DispatchRun{state: :ended, end_cause: ^cause} =
              Repo.get!(DispatchRun, claimed.dispatch_run.id)
@@ -205,10 +231,20 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
              handed_over_at: nil,
              ended_at: %DateTime{} = ended_at,
              slot_freed_at: freed_at
-           } = Repo.get!(Dispatch, claimed.dispatch.id)
+           } = dispatch = Repo.get!(Dispatch, claimed.dispatch.id)
 
-    assert freed_at && DateTime.compare(freed_at, ended_at) != :gt
     assert runs(claimed) == []
+
+    # A dispatched refused after the end is a late machine: the slot is held until the
+    # machine is reported gone, which this reports.
+    if dispatch.late_machine_at do
+      assert freed_at == nil
+      assert Slots.held(ctx.pool.id) == 1
+      gone!(ctx, claimed)
+    else
+      assert freed_at && DateTime.compare(freed_at, ended_at) != :gt
+    end
+
     assert Slots.held(ctx.pool.id) == 0
   end
 
@@ -220,7 +256,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
 
         assert Enum.all?(answers, &(&1 == :ok))
         handed_over!(ctx, claimed)
-        exited!(claimed)
+        exited!(ctx, claimed)
       end
     end
 
@@ -248,7 +284,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
         assert sent == :ok
         assert {:ok, %{run_key: _run_key}} = redeemed
         handed_over!(ctx, claimed)
-        exited!(claimed)
+        exited!(ctx, claimed)
       end
     end
   end
@@ -270,11 +306,12 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
 
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, claimed.dispatch_run.id)
 
-      assert %Dispatch{stale_at: %DateTime{}, handed_over_at: nil, slot_freed_at: %DateTime{}} =
+      # The lapse freed the slot; the late dispatched took it back for its machine.
+      assert %Dispatch{stale_at: %DateTime{}, handed_over_at: nil, slot_freed_at: nil} =
                Repo.get!(Dispatch, claimed.dispatch.id)
 
       assert runs(claimed) == []
-      assert Slots.held(ctx.pool.id) == 0
+      assert Slots.held(ctx.pool.id) == 1
     end
 
     test "dispatched first: the sweep after the lease waits, and leaves the run handed over",
@@ -311,7 +348,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
       commit(first)
 
       assert Task.await(second.task) == {:error, :gone}
-      ended!(ctx, claimed, :superseded, :run_ended)
+      ended_held!(ctx, claimed, :superseded, :run_ended)
     end
 
     test "a lapsed prebuild: dispatched and the sweep at once, none deadlocks", ctx do
@@ -328,7 +365,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
         [sent, _swept] = together([dispatched(ctx, claimed), sweep(DateTime.utc_now())])
 
         assert sent == {:error, :gone}
-        ended!(ctx, claimed, :superseded, :run_ended)
+        ended_held!(ctx, claimed, :superseded, :run_ended)
 
         # The prebuild that waits ends, so the next round's claim takes the next round's.
         {_count, _rows} =
@@ -427,7 +464,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
           assert Enum.all?(sent, &(&1 == :ok))
           assert Enum.all?(redeemed, &match?({:ok, %{run_key: _}}, &1))
           handed_over!(ctx, claimed)
-          exited!(claimed)
+          exited!(ctx, claimed)
 
         %DispatchRun{state: :ended} ->
           assert Enum.all?(sent, &(&1 == {:error, :gone}))
