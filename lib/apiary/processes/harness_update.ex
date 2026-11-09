@@ -722,8 +722,8 @@ defmodule Apiary.Processes.HarnessUpdate do
   defp follow(:qory, workspace, branch) do
     with head when is_binary(head) <- Qory.head({:branch, branch}),
          base = Processes.current(workspace),
-         %{"commit" => in_use} = harness when in_use != head <- Processes.harness_template(base),
-         true <- same_harness?(harness, %{choice: :qory}),
+         %{"source" => "qory", "commit" => in_use} when in_use != head <-
+           Processes.harness_template(base),
          {:ok, template} <- qory_template(workspace, head) do
       update_to(workspace, base, {branch, head}, template, :qory)
     else

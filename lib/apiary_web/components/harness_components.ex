@@ -93,7 +93,7 @@ defmodule ApiaryWeb.HarnessComponents do
     </p>
     <p :if={@process} id="harness-about-versions">
       {gettext(
-        "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new version of the harness. A fixed version uses that version."
+        "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new harness version. A fixed version uses that version."
       )}
     </p>
     """

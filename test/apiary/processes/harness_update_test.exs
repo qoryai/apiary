@@ -546,6 +546,19 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert HarnessUpdate.set_keep_latest(ctx.scope, ctx.workspace, true) == {:error, :pinned}
     end
 
+    test "follows the Qory harness after the instance changed its address", ctx do
+      v1 = Processes.current(ctx.workspace)
+      old = Map.put(v1.template, "git", "https://git.example.com/old/harness")
+      Repo.update!(Ecto.Changeset.change(v1, template: old))
+
+      main_at!(described())
+      assert :ok = HarnessUpdate.follow_all()
+
+      assert [_v1, v2] = versions(ctx.workspace)
+      assert %{"source" => "qory", "git" => git} = v2.template
+      assert git == Qory.git()
+    end
+
     test "is off where version 1 is a workspace type an instance admin saved", ctx do
       newest = TypeTemplates.newest("qory.software")
 

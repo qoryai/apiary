@@ -2194,6 +2194,28 @@ defmodule ApiaryWeb.StagesLiveTest do
       %{trial: trial}
     end
 
+    test "with a stack for the shared harness says to change that stack", ctx do
+      Apiary.Stacks.put_stack(
+        ctx.scope,
+        {:organisation, ctx.scope.organisation},
+        ~s(extends:\n  git: "#{Apiary.Harnesses.Qory.git()}"\n  ref: "main"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:branch, "main"}
+      )
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      details(view, ctx.path)
+      view |> element("#stages-make-current") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
+             )
+
+      assert %{status: :trial} = Repo.reload!(ctx.trial)
+    end
+
     test "after the harness choice changed says to press Update from harness again", ctx do
       {:ok, view, _html} = live(ctx.conn, ctx.path)
       details(view, ctx.path)

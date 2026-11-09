@@ -70,9 +70,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of the workspace's type that the harness repository has.
 - A run on a harness that follows a branch composes the commit its process version
   came from. The Workflows page lists and checks the workflows at that commit, so a
-  workflow that the branch adds is listed after Update from harness saves it. Before, a run on the Qory harness
-  composed the commit `main` was at when a machine claimed the run, and a run on a
-  harness repository the commit read when the run was queued.
+  workflow that the branch adds is listed after Update from harness saves it.
+  Before, a run on the Qory harness composed the commit `main` was at when a machine
+  claimed the run, and a run on a harness repository the commit read when the run was
+  queued.
 - Workflows › **Details** shows the harness with the commit the current version came
   from, and **Open Harness**. Its History lists a version saved from the harness as
   “Updated from main at 4960195”, with a person's name before it when a person saved

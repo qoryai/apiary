@@ -385,9 +385,9 @@ defmodule Apiary.Artifacts do
   @doc false
   # show_template_types/3 shows the standard types `names` in `workspace` too, for a save
   # of its harness's template (Apiary.Processes.HarnessUpdate), inside the caller's
-  # transaction, which holds the workspace: `shown_standard_types` in the order of
-  # `Type.standard_names/0`, and an audit entry `show` for each type it shows, as
-  # `switch_type/4` writes one. `:ok`.
+  # transaction, in which the caller has locked the workspace: `shown_standard_types` in
+  # the order of `Type.standard_names/0`, and an audit entry `show` for each type it
+  # shows, as `switch_type/4` writes one. `:ok`.
   @spec show_template_types(Scope.t(), Workspace.t(), [String.t()]) :: :ok
   def show_template_types(%Scope{}, %Workspace{}, []), do: :ok
 

@@ -408,6 +408,15 @@ defmodule ApiaryWeb.StagesLive.Words do
         "Press Update from harness again. The harness choice changed after you opened this difference."
       )
 
+  # A trial from the harness made current, with a stack to copy into the harness the
+  # organisation shares.
+  @doc false
+  def shared_stack_make_current,
+    do:
+      gettext(
+        "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
+      )
+
   # A save from the harness, or a trial of it made current, with a stack to copy into the
   # harness the organisation shares (`Apiary.Processes.HarnessUpdate`).
   @doc false

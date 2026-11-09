@@ -4092,7 +4092,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new version of the harness. A fixed version uses that version."
+msgid "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new harness version. A fixed version uses that version."
 msgstr "A run uses the commit its process version came from. Keep the process at the latest moves that commit at each new commit on the branch. A fixed version uses that tag or commit."
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -6203,6 +6203,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Change the name in the process.yaml of %{module} in %{repository}. %{error}"
 msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
+msgstr "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format

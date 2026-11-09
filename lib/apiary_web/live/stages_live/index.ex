@@ -459,7 +459,7 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   # Make current of a trial from the harness, with a stack for the shared harness.
   defp refused(socket, :shared),
-    do: assign(socket, save_errors: [Words.shared_stack()])
+    do: assign(socket, save_errors: [Words.shared_stack_make_current()])
 
   # Make current of a trial from the harness, after the harness choice changed.
   defp refused(socket, :choice_changed),
