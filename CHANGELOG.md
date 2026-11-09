@@ -1355,6 +1355,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `runs` (20261108120100): an index in the order of the run list, `GET /v1/runs`, built
+  concurrently, so it does not block writes. It changes no row.
 - `machine_types` (20261107110000): a new table of the instance's machine types, with
   the type `standard` as the default: 2 vCPUs, 4096 MiB, 30 GiB of disk, amd64, no
   virtualization.
