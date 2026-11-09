@@ -538,6 +538,8 @@ defmodule ApiaryWeb.HarnessLive do
         "Press Update from harness again. The stages changed after you opened this difference."
       )
 
+  defp save_words(:choice_changed, _update), do: StagesWords.choice_changed()
+
   defp save_words({:trial_exists, trial}, _update), do: StagesWords.trial_exists(trial)
 
   defp save_words(:shared, _update), do: StagesWords.shared_stack()

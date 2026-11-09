@@ -796,11 +796,13 @@ defmodule Apiary.Processes do
   copies the template's stack, as a Save under Update from harness does, under
   `harness.save` too, and turns the switch on. `{:ok, version}`; `{:error, :not_trial}`
   for a version that is not a trial, made current or dropped since it was read;
-  `{:error, :shared}` for a stack to copy into the harness the organisation shares; or a
-  reason of `Apiary.Access`.
+  `{:error, :choice_changed}` for a trial saved from a harness choice that is no longer
+  the workspace's; `{:error, :shared}` for a stack to copy into the harness the
+  organisation shares; or a reason of `Apiary.Access`.
   """
   @spec make_current(Scope.t(), Version.t()) ::
-          {:ok, Version.t()} | {:error, :not_trial | :shared | :invalid | Access.reason()}
+          {:ok, Version.t()}
+          | {:error, :not_trial | :choice_changed | :shared | :invalid | Access.reason()}
   def make_current(%Scope{} = scope, %Version{} = trial) do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, trial),
@@ -822,11 +824,12 @@ defmodule Apiary.Processes do
   # A trial made current counts as a person's save: a trial of edits turns the switch
   # Keep the process at the latest off; a trial saved from the harness, whose `template`
   # has its commit, copies the template's stack as Save under Update from harness does,
-  # under `harness.save` (Apiary.Processes.HarnessUpdate.copy_template_stack/3), and
-  # turns the switch on.
+  # under `harness.save`, where the workspace's harness choice is still the one of the
+  # template (Apiary.Processes.HarnessUpdate.copy_template_stack/3), and turns the switch
+  # on.
   defp made_current(scope, workspace, %Version{template: %{"commit" => commit} = template})
        when is_binary(commit) do
-    with :ok <- HarnessUpdate.copy_template_stack(scope, workspace, template["stack"]),
+    with :ok <- HarnessUpdate.copy_template_stack(scope, workspace, template),
          do: put_keep_latest(workspace, true)
   end
 

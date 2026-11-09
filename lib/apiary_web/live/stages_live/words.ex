@@ -399,6 +399,15 @@ defmodule ApiaryWeb.StagesLive.Words do
         "The versions changed since this page loaded, so nothing was changed. The page shows them again; check them, then try again."
       )
 
+  # A save from the harness, or a trial of it made current, where the workspace's harness
+  # choice changed after the person read the difference (`Apiary.Processes.HarnessUpdate`).
+  @doc false
+  def choice_changed,
+    do:
+      gettext(
+        "Press Update from harness again. The harness choice changed after you opened this difference."
+      )
+
   # A save from the harness, or a trial of it made current, with a stack to copy into the
   # harness the organisation shares (`Apiary.Processes.HarnessUpdate`).
   @doc false

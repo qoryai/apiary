@@ -28,6 +28,8 @@ defmodule ApiaryWeb.StagesLiveTest do
 
   @moduletag with_features: Apiary.Features.all()
 
+  @harness_process "modules/software-factory/process.yaml"
+
   setup :register_and_log_in_user
 
   setup %{scope: scope} do
@@ -2171,6 +2173,49 @@ defmodule ApiaryWeb.StagesLiveTest do
       render_hook(view, "reorder", %{"ids" => Enum.reverse(ids(view))})
       render_hook(view, "move", %{"id" => hd(ids(view)), "by" => "1"})
       assert names(view) == ~w(Explore Shape Build Verify Release)
+    end
+  end
+
+  describe "Make current of a trial from the harness" do
+    # A trial saved from the Qory harness at a commit whose template has the stack core.
+    setup %{scope: scope} do
+      files =
+        Map.update!(Apiary.QoryHarnessFixture.files(), @harness_process, fn process ->
+          String.replace(process, "stack: software\n", "stack: core\n", global: false)
+        end)
+
+      Apiary.QoryHarnessFixture.serve!(files)
+      {:ok, _commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
+      {:ok, update} = Apiary.Processes.HarnessUpdate.read(scope, scope.workspace)
+
+      {:ok, trial} =
+        Apiary.Processes.HarnessUpdate.save(scope, scope.workspace, update, trial: true)
+
+      %{trial: trial}
+    end
+
+    test "after the harness choice changed says to press Update from harness again", ctx do
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      details(view, ctx.path)
+
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        harness: "extends:\n  git: https://code.example.com/acme/harness\n  stack: web\n",
+        choice: :repository,
+        version_kind: :branch,
+        version_name: "main"
+      })
+
+      view |> element("#stages-make-current") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Press Update from harness again. The harness choice changed after you opened this difference."
+             )
+
+      assert %{status: :trial} = Repo.reload!(ctx.trial)
     end
   end
 

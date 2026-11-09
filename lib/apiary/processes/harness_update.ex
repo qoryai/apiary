@@ -510,8 +510,9 @@ defmodule Apiary.Processes.HarnessUpdate do
   artifact types the workspace does not have, each with its audit entry, and, unless
   `opts` has `trial: true`, the template's stack, under `harness.save` too, and the switch
   Keep the process at the latest turned on. `{:ok, version}`; `{:error, :stale}` where
-  the current version is no longer the one `update` compared with, or the workspace's
-  harness choice is no longer the one it was read from; `{:error, :shared}` for a stack
+  the current version is no longer the one `update` compared with;
+  `{:error, :choice_changed}` where the workspace's harness choice is no longer the one
+  `update` was read from; `{:error, :shared}` for a stack
   to copy into the harness the organisation shares; `{:error, {:types, {:invalid,
   name}}}` for a custom type whose insert fails, with its name; or the errors of
   `Apiary.Processes.save_harness/5`.
@@ -555,7 +556,7 @@ defmodule Apiary.Processes.HarnessUpdate do
     if version(workspace, chosen) == {update.source, update.version} and
          chosen.git == update.git,
        do: :ok,
-       else: {:error, :stale}
+       else: {:error, :choice_changed}
   end
 
   # The record the version keeps, with `added_types`, the names of the artifact types the
@@ -588,21 +589,38 @@ defmodule Apiary.Processes.HarnessUpdate do
   end
 
   @doc false
-  # copy_template_stack/3 copies `stack`, the stack of a trial's template, to the scope's
-  # workspace, where its harness choice has another stack, as `save/4` copies a stack:
-  # under `harness.save`, and `{:error, :shared}` for the harness the organisation shares.
-  # `Apiary.Processes.make_current/2` calls it, in its transaction, for a trial saved
-  # from the harness. `:ok`, or the error.
-  @spec copy_template_stack(Scope.t(), %Workspace{}, String.t() | nil) :: :ok | {:error, term}
-  def copy_template_stack(%Scope{} = scope, %Workspace{} = workspace, stack)
-      when is_binary(stack) do
-    case Sources.chosen(workspace) do
-      %{stack: ^stack} -> :ok
-      %{stack: from} -> copy_stack(scope, workspace, %{from: from, to: stack})
+  # copy_template_stack/3 copies the stack of `template`, a trial's template, to the
+  # scope's workspace, where its harness choice has another stack, as `save/4` copies a
+  # stack: under `harness.save`, and `{:error, :shared}` for the harness the organisation
+  # shares. First, under the lock of the choice's saves, it checks that the choice is
+  # still the one the template was read from, its harness and its version:
+  # `{:error, :choice_changed}` where it is not. `Apiary.Processes.make_current/2` calls
+  # it, in its transaction, for a trial saved from the harness. `:ok`, or the error.
+  @spec copy_template_stack(Scope.t(), %Workspace{}, map) :: :ok | {:error, term}
+  def copy_template_stack(%Scope{} = scope, %Workspace{} = workspace, %{} = template) do
+    :ok = Sources.hold_saves(workspace)
+    chosen = Sources.chosen(workspace)
+
+    cond do
+      not same_harness?(template, chosen) or
+          version(workspace, chosen) != template_version(template) ->
+        {:error, :choice_changed}
+
+      not is_binary(template["stack"]) or template["stack"] == chosen.stack ->
+        :ok
+
+      true ->
+        copy_stack(scope, workspace, %{from: chosen.stack, to: template["stack"]})
     end
   end
 
-  def copy_template_stack(%Scope{}, %Workspace{}, nil), do: :ok
+  # The harness version a template was read at, as `version/2` gives a choice's.
+  defp template_version(%{"source" => source, "ref_kind" => kind, "ref" => ref})
+       when source in ["qory", "repository"] and kind in ["branch", "tag", "commit"] and
+              is_binary(ref),
+       do: {String.to_existing_atom(source), {String.to_existing_atom(kind), ref}}
+
+  defp template_version(_template), do: nil
 
   defp copy_stack(_scope, _workspace, nil), do: :ok
 

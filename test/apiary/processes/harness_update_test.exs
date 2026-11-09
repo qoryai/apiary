@@ -346,7 +346,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert length(versions(ctx.workspace)) == 2
     end
 
-    test "is stale once the harness choice changed after the read", ctx do
+    test "fails with choice_changed once the harness choice changed after the read", ctx do
       main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
       {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
 
@@ -360,7 +360,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
           harness: "extends:\n  git: #{@repository}\n  stack: software\n"
         })
 
-      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :stale}
+      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :choice_changed}
       assert length(versions(ctx.workspace)) == 1
       assert Repo.reload!(row).harness == row.harness
 
@@ -376,7 +376,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
         version: {:tag, "v2.4.0"}
       )
 
-      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :stale}
+      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :choice_changed}
       assert length(versions(ctx.workspace)) == 1
     end
 
@@ -683,6 +683,43 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert Processes.make_current(ctx.scope, trial) == {:error, :shared}
       assert %Version{status: :trial} = Repo.reload!(trial)
       assert Processes.current(ctx.workspace).number == 1
+    end
+
+    test "a trial from the harness is not made current after the harness choice changed",
+         ctx do
+      main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      {:ok, trial} = HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+
+      row =
+        Repo.insert!(%Stack{
+          organisation_id: ctx.workspace.organisation_id,
+          workspace_id: ctx.workspace.id,
+          choice: :repository,
+          version_kind: :branch,
+          version_name: "main",
+          harness: "extends:\n  git: #{@repository}\n  stack: web\n"
+        })
+
+      assert Processes.make_current(ctx.scope, trial) == {:error, :choice_changed}
+      assert %Version{status: :trial} = Repo.reload!(trial)
+      assert Processes.current(ctx.workspace).number == 1
+      assert Repo.reload!(row).harness == row.harness
+
+      # A pin of the same harness is another choice too.
+      Repo.delete!(row)
+
+      Stacks.put_stack(
+        ctx.scope,
+        {:workspace, ctx.workspace},
+        ~s(extends:\n  git: "#{Qory.git()}"\n  ref: "v2.4.0"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:tag, "v2.4.0"}
+      )
+
+      assert Processes.make_current(ctx.scope, trial) == {:error, :choice_changed}
+      assert %Version{status: :trial} = Repo.reload!(trial)
+      assert Workspace.qory_stack(Repo.reload!(ctx.workspace)) == "software"
     end
 
     test "follows a harness repository's branch, read as public at each refresh", ctx do

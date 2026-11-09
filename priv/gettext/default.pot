@@ -15391,6 +15391,11 @@ msgstr ""
 msgid "Press Update from harness again later. Reading the harness from %{url} failed: %{cause}."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Press Update from harness again. The harness choice changed after you opened this difference."
+msgstr ""
+
 #: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Press Update from harness again. The stages changed after you opened this difference."

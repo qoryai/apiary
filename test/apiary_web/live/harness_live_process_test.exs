@@ -222,6 +222,28 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
       assert Processes.current(ctx.scope.workspace).number == 2
     end
 
+    test "a save after the harness choice changed says to press again", ctx do
+      main_moved!()
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+
+      Apiary.Stacks.put_stack(
+        ctx.scope,
+        {:workspace, ctx.scope.workspace},
+        ~s(extends:\n  git: "#{Qory.git()}"\n  ref: "v2.4.0"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:tag, "v2.4.0"}
+      )
+
+      view |> element("#harness-update-save") |> render_click()
+
+      assert text(view, "#harness-update-error") ==
+               "Press Update from harness again. The harness choice changed after you opened this difference."
+
+      assert Processes.current(ctx.scope.workspace).number == 1
+    end
+
     test "a save with a stack for the shared harness says to change that stack", ctx do
       Apiary.Stacks.put_stack(
         ctx.scope,

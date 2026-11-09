@@ -29,6 +29,7 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Harness version in use: %{commit}, process version %{number}",
     "Harness: %{harness}, version %{commit}",
     "Keep a policy file outside the folder the runs work in.",
+    "Press Update from harness again. The harness choice changed after you opened this difference.",
     "Set a version that exists in the workspace's harness settings. %{url} has no %{ref}.",
     "Set a version that exists. %{url} has no tag or version %{ref}.",
     "Set a version that exists. %{url} has no version %{ref}.",
