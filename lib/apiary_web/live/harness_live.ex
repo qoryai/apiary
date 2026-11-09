@@ -105,7 +105,8 @@ defmodule ApiaryWeb.HarnessLive do
         update_reading: false,
         update_error: nil,
         update_notice: nil,
-        branch_head: nil
+        branch_head: nil,
+        branch_read: nil
       )
       |> assign_status()
       |> assign_harness_form(nil)
@@ -150,12 +151,15 @@ defmodule ApiaryWeb.HarnessLive do
 
   # Where a harness repository follows a branch with Keep the process at the latest off,
   # its branch is read once the page connects, outside the page's process, as Update from
-  # harness reads it, so Version shows the commit it is at now.
+  # harness reads it, so Version shows the commit it is at now. The read is one of the
+  # person's reads (`Apiary.Stacks.Sources`), so it runs once per harness choice: a
+  # change of the switch reads nothing, and the first Update from harness shows the
+  # difference this read returned (`kept_read/1`).
   defp read_branch_head(socket) do
     %{status: status, current_scope: scope, may_process: may} = socket.assigns
 
     if may and status.source == :repository and is_binary(status.following) and
-         status.keep_latest == false do
+         status.keep_latest == false and is_nil(socket.assigns.branch_head) do
       socket
       |> cancel_async(:branch_head)
       |> start_async(:branch_head, fn -> HarnessUpdate.read(scope, scope.workspace) end)
@@ -163,6 +167,14 @@ defmodule ApiaryWeb.HarnessLive do
       socket
     end
   end
+
+  # The difference the read of the branch returned (`read_branch_head/1`), where the
+  # current version is still the one it compared with; nil for none.
+  defp kept_read(%{assigns: %{branch_read: %{base: base} = update}} = socket) do
+    if Processes.current(socket.assigns.current_scope.workspace).id == base.id, do: update
+  end
+
+  defp kept_read(_socket), do: nil
 
   # The words a read of the harness that failed shows with: the harness repository's
   # source, else the Qory harness by its name.
@@ -233,7 +245,8 @@ defmodule ApiaryWeb.HarnessLive do
 
     socket
     |> assign(chosen: chosen, editing: false, harness_refusal: nil)
-    |> assign(update: nil, update_error: nil, update_notice: nil, branch_head: nil)
+    |> assign(update: nil, update_error: nil, update_notice: nil)
+    |> assign(branch_head: nil, branch_read: nil)
     |> assign_status()
     |> assign_harness_form(nil)
     |> load_targets()
@@ -466,11 +479,18 @@ defmodule ApiaryWeb.HarnessLive do
         %{assigns: %{may_process: true, update_reading: false}} = socket
       ) do
     scope = socket.assigns.current_scope
+    socket = assign(socket, update: nil, update_error: nil, update_notice: nil)
 
-    {:noreply,
-     socket
-     |> assign(update: nil, update_reading: true, update_error: nil, update_notice: nil)
-     |> start_async(:update, fn -> HarnessUpdate.read(scope, scope.workspace) end)}
+    case kept_read(socket) do
+      %{} = update ->
+        {:noreply, socket |> assign(branch_read: nil) |> show_update(update)}
+
+      nil ->
+        {:noreply,
+         socket
+         |> assign(update_reading: true, branch_read: nil)
+         |> start_async(:update, fn -> HarnessUpdate.read(scope, scope.workspace) end)}
+    end
   end
 
   def handle_event("update_cancel", _params, socket),
@@ -489,8 +509,7 @@ defmodule ApiaryWeb.HarnessLive do
         {:noreply,
          socket
          |> assign(update: nil, update_error: nil, update_notice: saved_words(version, trial?))
-         |> assign_status()
-         |> read_branch_head()}
+         |> assign_status()}
 
       {:error, reason} ->
         {:noreply, assign(socket, update_error: save_words(reason, update))}
@@ -698,14 +717,8 @@ defmodule ApiaryWeb.HarnessLive do
 
   def handle_async(:declared, _failed, socket), do: {:noreply, socket}
 
-  def handle_async(:update, {:ok, {:ok, update}}, socket) do
-    workspace = socket.assigns.current_scope.workspace
-
-    {:noreply,
-     socket
-     |> assign(update: update, update_reading: false, next: next_number(workspace))
-     |> assign_status()}
-  end
+  def handle_async(:update, {:ok, {:ok, update}}, socket),
+    do: {:noreply, socket |> assign(update_reading: false) |> show_update(update)}
 
   def handle_async(:update, {:ok, {:error, reason}}, socket),
     do: {:noreply, update_failed(socket, reason)}
@@ -713,8 +726,8 @@ defmodule ApiaryWeb.HarnessLive do
   def handle_async(:update, {:exit, _reason}, socket),
     do: {:noreply, update_failed(socket, :exited)}
 
-  def handle_async(:branch_head, {:ok, {:ok, %{commit: commit}}}, socket),
-    do: {:noreply, socket |> assign(:branch_head, commit) |> assign_status()}
+  def handle_async(:branch_head, {:ok, {:ok, %{commit: commit} = update}}, socket),
+    do: {:noreply, socket |> assign(branch_head: commit, branch_read: update) |> assign_status()}
 
   # No commit to show: Update from harness shows why, once pressed.
   def handle_async(:branch_head, _failed, socket), do: {:noreply, socket}
@@ -739,6 +752,20 @@ defmodule ApiaryWeb.HarnessLive do
 
   def handle_async(:target_save, {:exit, _reason}, socket),
     do: {:noreply, HarnessTargets.save_failed(socket)}
+
+  # The difference `update` shown under Update from harness; for a harness repository,
+  # its commit is where the branch is now.
+  defp show_update(socket, update) do
+    workspace = socket.assigns.current_scope.workspace
+
+    socket
+    |> assign(update: update, next: next_number(workspace))
+    |> assign(
+      branch_head:
+        if(update.source == :repository, do: update.commit, else: socket.assigns.branch_head)
+    )
+    |> assign_status()
+  end
 
   defp update_failed(socket, reason) do
     scope = socket.assigns.current_scope
