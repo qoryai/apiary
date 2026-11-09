@@ -1,0 +1,42 @@
+{
+  "runs": [
+    {
+      "id": "rn_0123456789abcdeh",
+      "number": 42,
+      "organisation": {
+        "slug": "example-org"
+      },
+      "workspace": {
+        "id": "ws_0123456789abcdef",
+        "slug": "example"
+      },
+      "workflow": "hello",
+      "work_item_number": 7,
+      "work_item_title": "Fix the login page",
+      "state": "completed",
+      "created_at": "2026-11-01T10:00:00Z",
+      "started_at": "2026-11-01T10:02:10Z",
+      "duration_seconds": 812
+    },
+    {
+      "id": "rn_0123456789abcdeg",
+      "number": 41,
+      "organisation": {
+        "slug": "example-org"
+      },
+      "workspace": {
+        "id": "ws_0123456789abcdef",
+        "slug": "example"
+      },
+      "workflow": "hello",
+      "work_item_number": 6,
+      "work_item_title": "Add a search box",
+      "state": "failed",
+      "reason": "start_failure",
+      "created_at": "2026-11-01T09:00:00Z",
+      "started_at": "2026-11-01T09:01:00Z",
+      "duration_seconds": 95
+    }
+  ],
+  "next": "rn_0123456789abcdeg"
+}
