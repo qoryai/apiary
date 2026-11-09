@@ -327,7 +327,11 @@ defmodule ApiaryWeb.ActivityLive do
           with {:ok, page} <-
                  Audit.list_entries(
                    scope,
-                   %{workspace_id: filters.workspace_id, action: filters.action},
+                   %{
+                     workspace_id: filters.workspace_id,
+                     action: filters.action,
+                     first_versions: Features.visible?(scope, :security)
+                   },
                    filters.page
                  ) do
             {:ok, page, Audit.names(scope, page.entries)}

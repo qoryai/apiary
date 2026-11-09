@@ -667,7 +667,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                  start(source, %{artifact_types: [type]})
                )
 
-      assert ["workspace.create", "artifact_type.edit"] =
+      assert ["workspace.create", "artifact_type.edit", "security_policy.edit"] =
                Enum.drop(Repo.all(trail(scope)), length(before))
     end
 
@@ -884,7 +884,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
       assert [%Type{name: "branch", standard: false, base_view: :structured}] =
                Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
 
-      assert ["workspace.create", "artifact_type.edit"] = actions_since(scope, before)
+      assert ["workspace.create", "artifact_type.edit", "security_policy.edit"] =
+               actions_since(scope, before)
     end
 
     test "a sign-up's first workspace gets them, after the entry that begins the trail" do
@@ -914,7 +915,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
                  where: e.organisation_id == ^workspace.organisation_id,
                  order_by: [asc: e.inserted_at, asc: e.id],
                  select: e.action
-             ) == ["organisation.create", "artifact_type.edit"]
+             ) == ["organisation.create", "artifact_type.edit", "security_policy.edit"]
     end
   end
 

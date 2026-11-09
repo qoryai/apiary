@@ -157,7 +157,8 @@ defmodule Apiary.AuditCase do
     %{scope: scope, subject: subject, before: before} =
       made = maker(modules, action).make(action, ctx)
 
-    assert [entry] = entries() -- before
+    # A new workspace's policy version 1 has an entry beside the workspace's.
+    assert [entry] = Enum.reject(entries() -- before, &(&1.details["change"] == "first_version"))
     assert entry.action == Atom.to_string(action)
     assert Audit.action(entry) == action
     assert entry.organisation_id == organisation_id(scope)

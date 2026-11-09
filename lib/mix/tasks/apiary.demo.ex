@@ -30,7 +30,7 @@ defmodule Mix.Tasks.Apiary.Demo do
   exited; one that does not has just beaten, and is found lost once its heartbeats have
   been missing for three of its intervals, like any run that stops talking.
 
-  Once the runs are in, a workspace that has no security policy yet is given one, through
+  Once the runs are in, a workspace with only its version 1 of the policy is given more, through
   `Apiary.Policy` as a page would and in the name of the workspace's first owner: enforce,
   a baseline of hosts, one held to paths, a locked deny, and in the target
   `codeberg.org/acme/shop` an added host, a disabled one, an allow the lock
@@ -112,15 +112,14 @@ defmodule Mix.Tasks.Apiary.Demo do
   end
 
   @doc """
-  Gives the key's workspace the demo's security policy, when nobody has made its policy
-  yet (`Apiary.Policy.managed?/1`; a workspace whose rules were all removed again has
-  been): `{:ok, changes}` with how many changes were made, `:kept` for a workspace with
-  any change, or `{:error, sentence}`. Synthetic hosts only, the ones the recorded runs
-  reach.
+  Gives the key's workspace the demo's security policy, when nobody has changed its policy
+  yet (a workspace whose rules were all removed again has been): `{:ok, changes}` with how
+  many changes were made, `:kept` for a workspace with any change, or `{:error, sentence}`.
+  Synthetic hosts only, the ones the recorded runs reach.
   """
   def policy(%AccessKey{workspace_id: workspace_id}) do
     with %Scope{} = scope <- owner_scope(workspace_id),
-         false <- Policy.managed?(scope) do
+         true <- untouched?(scope) do
       shop =
         Repo.get_by(Target,
           workspace_id: workspace_id,
@@ -163,8 +162,14 @@ defmodule Mix.Tasks.Apiary.Demo do
       end)
     else
       nil -> {:error, "the workspace has no owner"}
-      true -> :kept
+      false -> :kept
     end
+  end
+
+  # Whether the workspace's policy has only the version 1 it was created with.
+  defp untouched?(scope) do
+    %{items: changes} = Policy.list_changes(scope, nil, 1)
+    Enum.all?(changes, &(&1.action == "first_version"))
   end
 
   defp remove(scope, host) do

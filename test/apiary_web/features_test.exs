@@ -147,7 +147,9 @@ defmodule ApiaryWeb.FeaturesTest do
         assert {:error, %Policy.Error{reason: :not_found}} = write.()
       end
 
-      refute Policy.managed?(scope)
+      # The workspace has its version 1 from its creation, and it stays the only one.
+      assert {:ok, %{version: 1}} = Policy.current_configuration(scope, nil)
+      assert Policy.list_rules(scope, nil) == []
     end
   end
 

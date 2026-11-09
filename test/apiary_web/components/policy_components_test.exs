@@ -880,7 +880,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
                "No workspace or repository may observe: Eight Wonders requires enforce."
     end
 
-    test "a workspace not served yet says so in its fact line" do
+    test "with no fact there is no fact line" do
       assigns = %{scope: @scope}
 
       doc =
@@ -891,7 +891,6 @@ defmodule ApiaryWeb.PolicyComponentsTest do
             scope={@scope}
             mode="observe"
             can_edit={true}
-            served={false}
           />
           """)
         )
@@ -899,9 +898,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert text_of(doc, "#policy-mode-value") == "Observe"
       assert [_] = all(doc, ".q-modecard-tile .hero-eye")
 
-      assert text_of(doc, "#policy-mode-fact") ==
-               "Not served yet: it applies from the first change here."
-
+      assert all(doc, "#policy-mode-fact") == []
       assert [_] = all(doc, "#policy-mode-change")
     end
 

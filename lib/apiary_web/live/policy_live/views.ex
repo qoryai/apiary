@@ -80,9 +80,6 @@ defmodule ApiaryWeb.PolicyLive.Views do
             )}
           <% else %>
             {gettext("No changes yet.")}
-            <span :if={@scope == :workspace}>
-              {gettext("Qory Apiary serves no policy for this workspace until the first one.")}
-            </span>
             <span :if={@scope == :target}>
               {gettext("The first rule here, or a mode override, starts this target's history.")}
             </span>
@@ -183,11 +180,13 @@ defmodule ApiaryWeb.PolicyLive.Views do
         >
           <.relative_time at={@v.configuration.rendered_at} />
         </.kv>
-        <.kv label={gettext("Changed by")}>
+        <.kv :if={!@v.first_version?} label={gettext("Changed by")}>
           <.avatar :if={@v.changed_by} email={@v.changed_by} reader={@reader} size="xs" />
           {if !@v.changed_by, do: gettext("n/a")}
         </.kv>
-        <.kv label={gettext("Change")}>{@v.change_words || gettext("First render")}</.kv>
+        <.kv :if={!@v.first_version?} label={gettext("Change")}>
+          {@v.change_words || gettext("First render")}
+        </.kv>
         <.kv :if={@v.mode} label={gettext("Mode")}>
           {@v.mode}
           <:sub :if={@v.mode_source}>
@@ -344,9 +343,10 @@ defmodule ApiaryWeb.PolicyLive.Views do
               aria-current={entry_current(@v, item)}
             >
               <span class="q-vlist-v">v{item.version}</span>
-              <%!-- Only the words are cut: a cut would clip the letter's tooltip. --%>
+              <%!-- Only the words are cut: a cut would clip the letter's tooltip. The
+                   title has the words in full. --%>
               <span class="min-w-0">
-                <span class="block truncate">{item.words}</span>
+                <span class="block truncate" title={item.words}>{item.words}</span>
                 <small class="block">
                   <.avatar
                     :if={item.who}

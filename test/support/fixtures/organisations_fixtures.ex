@@ -51,6 +51,23 @@ defmodule Apiary.OrganisationsFixtures do
 
   def organisation_fixture(attrs \\ %{}), do: sign_up_fixture(attrs).organisation
 
+  @doc """
+  Takes away a workspace's policy versions and their entries: a workspace with no row, as
+  the previous release can create during an upgrade (`Apiary.Policy.managed?/1`).
+  """
+  def no_policy_version!(%Apiary.Organisations.Workspace{id: id} = workspace) do
+    import Ecto.Query
+
+    Apiary.Repo.delete_all(from c in Apiary.Policy.RunConfiguration, where: c.workspace_id == ^id)
+
+    Apiary.Repo.delete_all(
+      from e in Apiary.Audit.Entry,
+        where: e.workspace_id == ^id and e.action == "security_policy.edit"
+    )
+
+    workspace
+  end
+
   # The instance's set-up, then its organisation's first workspace, Main, made by its
   # first owner.
   defp set_up(attrs) do
@@ -179,10 +196,14 @@ defmodule Apiary.OrganisationsFixtures do
   def workspace_fixture(%Organisation{} = organisation, name \\ nil) do
     name = name || "Workspace #{System.unique_integer([:positive])}"
 
-    %Workspace{organisation_id: organisation.id}
-    |> Workspace.create_changeset(%{name: name, domain: "software"})
-    |> Workspace.put_slug(Slug.from_name(name))
-    |> Repo.insert!()
+    workspace =
+      %Workspace{organisation_id: organisation.id}
+      |> Workspace.create_changeset(%{name: name, domain: "software"})
+      |> Workspace.put_slug(Slug.from_name(name))
+      |> Repo.insert!()
+
+    {:ok, _changes} = Repo.transact(fn -> Apiary.Policy.first_version(workspace) end)
+    workspace
   end
 
   @doc """

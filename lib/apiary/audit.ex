@@ -523,6 +523,7 @@ defmodule Apiary.Audit do
         )
         |> filter_workspace(filters[:workspace_id])
         |> filter_action(filters[:action])
+        |> filter_first_versions(filters[:first_versions])
         |> Repo.all()
 
       {:ok, %{entries: Enum.take(rows, @page_size), page: page, more?: length(rows) > @page_size}}
@@ -539,6 +540,20 @@ defmodule Apiary.Audit do
   end
 
   defp filter_workspace(query, _id), do: query
+
+  # `first_versions: false` leaves out each workspace's `first_version` entry of its policy,
+  # for a reader who is not shown the policy. No person made it, so it is the one entry of the
+  # policy's actions that a workspace has where the `security` feature is off.
+  defp filter_first_versions(query, false) do
+    where(
+      query,
+      [e],
+      e.action != "security_policy.edit" or
+        fragment("?->>'change' IS DISTINCT FROM 'first_version'", e.details)
+    )
+  end
+
+  defp filter_first_versions(query, _first_versions), do: query
 
   defp filter_action(query, action) when is_atom(action) and not is_nil(action),
     do: filter_action(query, Atom.to_string(action))

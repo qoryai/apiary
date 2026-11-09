@@ -189,9 +189,9 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
            ) == ctx.own
   end
 
-  test "a workspace nobody has given a policy names no run configuration, and renders none",
-       _ctx do
+  test "a workspace with no row answers with no run configuration, and renders none", _ctx do
     %{scope: scope} = sign_up_fixture()
+    no_policy_version!(scope.workspace)
     %{access_key: key, secret: secret} = contract_key_fixture(scope)
     {subject, [started]} = first_events()
     reported = "sha256=" <> String.duplicate("a", 64)

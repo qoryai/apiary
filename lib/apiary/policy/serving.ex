@@ -7,8 +7,8 @@ defmodule Apiary.Policy.Serving do
   query that verifies it (`Apiary.AccessKeys.fetch_for_verification/1`), so naming the
   target costs no separate read.
 
-  A workspace serves a run configuration only once somebody has made its policy
-  (`Apiary.Policy.managed?/1`). Until then `fetch/2` is `{:error, :unmanaged}`,
+  A workspace with no row yet (`Apiary.Policy.managed?/1`) serves no run configuration:
+  `fetch/2` is `{:error, :unmanaged}`,
   `digest_for/4` is nil, and nothing is rendered from here: the workspace's machines use
   their local policy, from their `forager.yaml`. The same holds for every workspace on an
   instance without the `security` feature (`Apiary.Features.on?/1`): nothing is served,
@@ -17,8 +17,8 @@ defmodule Apiary.Policy.Serving do
 
   `fetch/2` is the run endpoint's (`Apiary.Runs.Registration`), for a registration and a
   reload: the stored bytes and their digest for the target the labels name, the
-  baseline's for a target the workspace does not know or that has no rules. A managed workspace always has a baseline: its first change
-  rendered one, and nothing here renders anything.
+  baseline's for a target the workspace does not know or that has no rules. A managed
+  workspace always has a baseline, and nothing here renders anything.
 
   `digest_for/4` is the events endpoint's, on the path the receiver answers from, so it
   reads and never renders: the digest in force for the run's target, after the read

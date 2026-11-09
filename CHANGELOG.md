@@ -875,6 +875,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- Every workspace has a security policy, version 1, and each machine applies it narrowed
+  by the `egress` section of its Forager file. With version 1, a run gets no tools and no
+  credentials from the Forager file, and a machine in observe no longer reaches a private
+  host in `gateway.egress.allow`.
 - The run page's **Timeline** shows an overview of the run: its stages, a row for each
   agent, the agents' messages, the artifact versions the run pushed, failures, denials,
   and the tool calls that were the only call running when a network connection was made.
@@ -1399,6 +1403,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `run_configurations` and `audit_entries`: each workspace with no security policy gets
+  version 1, observe with no rules, and its entry in the audit log, by Qory Apiary. No
+  migration writes these rows. Qory Apiary writes them when it starts, after the
+  migrations and the key check, one workspace per transaction, and `bin/migrate` writes
+  them after the migrations. With `MIGRATE_ON_BOOT=false`, only `bin/migrate` writes them.
+  A workspace whose version 1 fails is logged and has no version until the next start or
+  `bin/migrate`. Going back to the previous release keeps the versions, so its machines
+  keep the workspace's policy.
 - `dispatches` (20261108130000): a nullable column `late_machine_at`, the last time a
   machine showed up for a claim that takes none. It changes no row.
 - `runs` (20261108120100): an index in the order of the run list, `GET /v1/runs`, built
