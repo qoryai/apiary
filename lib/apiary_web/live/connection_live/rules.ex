@@ -22,7 +22,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   use Gettext, backend: ApiaryWeb.Gettext
 
   alias Apiary.Policy
-  alias Apiary.Policy.{Above, Effective, Entry, Grammar}
+  alias Apiary.Policy.{Above, Effective, Entry, Grammar, RequiredHosts}
   alias ApiaryWeb.TargetComponents
 
   ## Paths of the policy pages
@@ -275,6 +275,27 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
       true ->
         %{rule_option: :can_allow, host: host, entry: nil, deny: true}
+    end
+  end
+
+  @doc """
+  The rule option of a row on Network access and on a run's Network tab, given
+  `Apiary.Policy.RequiredHosts.first_hosts`:
+  `:required` where enforce lets the row through whatever the rules say, so no rule can
+  change it; `rule_option` otherwise. The wall, a host no rule can name, a locked allow and
+  a rule just added keep their option: each has what the row needs.
+  """
+  def required_option(%{rule_option: option} = rule_option, _row, _effective, _first)
+      when option in [:wall, :unnameable, :locked_allow, {:rule_added, :allow}],
+      do: rule_option
+
+  def required_option(rule_option, row, %Effective{paths: paths}, first) do
+    if RequiredHosts.covers?(first, paths, rule_option.host, read(row).path) do
+      rule_option
+      |> Map.take([:host, :entry])
+      |> Map.put(:rule_option, :required)
+    else
+      rule_option
     end
   end
 

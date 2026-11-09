@@ -9,6 +9,10 @@ defmodule Apiary.Policy.Error do
   reaching the place requires, a model provider's API endpoints included
   (`Apiary.Policy.check_deny/3`). Its `details` are
   `%{connection: %{id:, public_id:, name:}, host: host}`.
+
+  `:runtime_host` refuses a deny rule (`field` `:host`, `Apiary.Policy.check_deny/3`) or a
+  rule held to paths (`field` `:paths`, `Apiary.Policy.check_paths/1`) on a host that a
+  runtime requires. Its `details` are `%{runtime: %{name:, title:}, host: host}`.
   """
 
   @type reason ::
@@ -22,6 +26,7 @@ defmodule Apiary.Policy.Error do
           | :unmanaged
           | :not_implemented
           | :integration_host
+          | :runtime_host
 
   @type t :: %__MODULE__{
           reason: reason,

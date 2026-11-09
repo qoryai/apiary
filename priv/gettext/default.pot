@@ -3617,6 +3617,12 @@ msgstr ""
 msgid "587 for STARTTLS; 465 for TLS from the start."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/views.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A %{suffix} deny still blocks a runtime's host that the text lists as allowed."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A build is running."
@@ -5133,6 +5139,8 @@ msgid "Allowed / denied"
 msgstr ""
 
 #: lib/apiary_web/components/host_components.ex
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Allowed for every run"
 msgstr ""
@@ -8830,6 +8838,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Every day, %{from}–%{to} %{zone}"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Every destination that runs reached in the last 14 days is covered by a rule or allowed for every run."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -12913,6 +12926,11 @@ msgstr ""
 msgid "No destination matches them in this range."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "No destination that runs reached in the last 14 days was denied."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "No end recorded"
@@ -16127,6 +16145,11 @@ msgstr ""
 msgid "Remove the machine"
 msgstr ""
 
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the paths from the rule. %{runtime} needs every path on this host, so no rule can limit it."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the pool %{pool}? Runs in %{workspace} then use the Qory Pool."
@@ -17156,6 +17179,7 @@ msgstr ""
 msgid "Runtime"
 msgstr ""
 
+#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runtimes"

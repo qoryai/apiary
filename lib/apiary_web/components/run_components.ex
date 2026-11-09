@@ -4133,7 +4133,8 @@ defmodule ApiaryWeb.RunComponents do
 
   Where no rule here can change the row, the Allow slot holds a faint lock whose hint says
   why, reachable by the keyboard: a deny of the level above (`:above_deny`), the wall
-  (`:wall`, `wall_tip/1`), a host no rule can name (`:unnameable`, `unnameable_tip/0`). A
+  (`:wall`, `wall_tip/1`), a host no rule can name (`:unnameable`, `unnameable_tip/0`), a
+  host enforce lets through whatever the rules say (`:required`, on Network access). A
   locked rule of the workspace (`:locked_deny`, `:locked_allow`) is a lock button whose
   hint says who locked it and when, where known (`locked`), and which opens the refusal
   in place. A row a rule answers (`{:rule_added, _}`) has its way to the rule in its
@@ -4262,6 +4263,20 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
+  # The hint sits above the lock: to its left it would cover the row's reason.
+  def rule_actions(%{rule_option: :required} = assigns) do
+    ~H"""
+    <span class="q-acts-pair">
+      <.act_lock
+        id={"#{@id}-lock"}
+        tip={gettext("Allowed for every run")}
+        placement="tooltip-top q-tip-inset"
+      />
+      <.act_gap />
+    </span>
+    """
+  end
+
   def rule_actions(%{rule_option: :wall} = assigns) do
     c = assigns.connection
 
@@ -4355,13 +4370,18 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :id, :string, required: true
   attr :tip, :string, required: true
+  attr :placement, :string, default: "tooltip-left"
 
-  # Why no rule here changes the row: a faint lock, its hint reachable by the keyboard.
-  defp act_lock(assigns) do
+  @doc """
+  Why no rule here changes the row: a faint lock, its hint (`data-tip`) reachable by the
+  keyboard. The Overview's To review list draws the same lock for a host that every run
+  is allowed.
+  """
+  def act_lock(assigns) do
     ~H"""
     <span
       id={@id}
-      class="q-act-lock tooltip tooltip-left"
+      class={["q-act-lock tooltip", @placement]}
       tabindex="0"
       role="img"
       aria-label={@tip}

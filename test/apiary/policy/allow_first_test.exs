@@ -22,7 +22,7 @@ defmodule Apiary.Policy.AllowFirstTest do
 
   # The policy files vendored from qoryai/forager at the commit in `.forager-contract-ref`,
   # by their SHA-256 there.
-  @forager_ref "96e4986daa634e91c8f9ede44476445fe9202f2d"
+  @forager_ref "893cb7e19bb02f3f7ba6defc05989579f8b9e417"
   @vendored_sha256 %{
     "priv/contract/policy.schema.json" =>
       "92fe37372ff19aafe5cbf642e975cb9ee8c8edfc04a6ef0f776cb6b20f169a82",
@@ -182,7 +182,7 @@ defmodule Apiary.Policy.AllowFirstTest do
       digest = configuration.digest
 
       assert Jason.decode!(configuration.document)["security_policy"]["egress"]["allow_first"] ==
-               ["api.example.com"]
+               ["api.anthropic.com", "api.example.com"]
 
       run = run_fixture(scope, %{reported_run_configuration_digest: digest})
 

@@ -26,6 +26,8 @@ defmodule ApiaryWeb.PolicyLive.Reading do
       fields' order, `field` being `:host` or `:paths`;
     * `preview`: what the form's "What this rule does" says, `{kind, text}` with `kind`
       `:idle`, `:ok` or `:note`; nil under a refusal, which the form shows in its place.
+      `ApiaryWeb.PolicyLive.Common.read/2` sets it to `{:refusal, text}` where the save
+      refuses the rule for a runtime's host.
 
   The line of the composer shows `text`, `fix` and `acts`; the form shows `errors`,
   `preview` and, for a refusal, `text` and `acts`.

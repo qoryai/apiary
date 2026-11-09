@@ -99,6 +99,41 @@ defmodule ApiaryWeb.PolicyLive.RequiredHostsTest do
     end
   end
 
+  describe "the runtimes" do
+    test "are listed with the runtime's title, required by Qory Apiary, locked", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, scope)
+
+      assert text(view, "#required-hosts-runtimes") ==
+               "Runtimes api.anthropic.com Claude Code Qory Apiary"
+
+      assert has_element?(
+               view,
+               "#required-hosts-runtimes [aria-label='Host rules do not remove this host.']"
+             )
+
+      assert has_element?(
+               view,
+               "#required-hosts-line",
+               "Qory Apiary allows these hosts for every run. Host rules do not remove them."
+             )
+
+      refute has_element?(view, "#policy-rules", "api.anthropic.com")
+    end
+
+    @tag needs: :factory
+    test "come right after the harness sources", %{conn: conn, scope: scope} do
+      html = render(open(conn, scope))
+
+      {harness, _} = :binary.match(html, ~s(id="required-hosts-harness"))
+      {runtimes, _} = :binary.match(html, ~s(id="required-hosts-runtimes"))
+
+      assert harness < runtimes
+    end
+  end
+
   describe "the harness sources" do
     @describetag needs: :factory
 

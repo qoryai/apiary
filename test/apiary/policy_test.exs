@@ -41,7 +41,13 @@ defmodule Apiary.PolicyTest do
       assert Policy.get_mode(scope) == "observe"
       assert Policy.managed?(scope)
       assert %{version: 1, changed_by_id: nil} = first = current!(scope, nil)
-      assert policy(first)["egress"] == %{"mode" => "observe", "allow" => []}
+
+      assert policy(first)["egress"] == %{
+               "mode" => "observe",
+               "allow" => [],
+               "allow_first" => ["api.anthropic.com"]
+             }
+
       assert %{in_force: digest, drift: false} = Policy.digests(scope, run_fixture(scope))
       assert digest == first.digest
 
@@ -272,6 +278,7 @@ defmodule Apiary.PolicyTest do
         assert policy(current!(scope, target))["egress"] == %{
                  "mode" => mode,
                  "allow" => ["api.example"],
+                 "allow_first" => ["api.anthropic.com"],
                  "deny" => ["mcp.example"]
                }
       end
@@ -385,6 +392,7 @@ defmodule Apiary.PolicyTest do
       assert policy(current!(scope, nil))["egress"] == %{
                "mode" => "observe",
                "allow" => ["api.example"],
+               "allow_first" => ["api.anthropic.com"],
                "paths" => %{"api.example" => ["/a", "/b/*"]}
              }
 
@@ -507,6 +515,7 @@ defmodule Apiary.PolicyTest do
       assert policy(current!(scope, nil))["egress"] == %{
                "mode" => "observe",
                "allow" => ["*.s.example"],
+               "allow_first" => ["api.anthropic.com"],
                "deny" => ["a.s.example"]
              }
 
@@ -523,6 +532,7 @@ defmodule Apiary.PolicyTest do
       assert policy(current!(scope, nil))["egress"] == %{
                "mode" => "observe",
                "allow" => [],
+               "allow_first" => ["api.anthropic.com"],
                "deny" => ["ads.example"]
              }
     end
@@ -1210,12 +1220,14 @@ defmodule Apiary.PolicyTest do
 
       assert policy(current!(scope, nil))["egress"] == %{
                "mode" => "enforce",
-               "allow" => ["10.0.0.1"]
+               "allow" => ["10.0.0.1"],
+               "allow_first" => ["api.anthropic.com"]
              }
 
       assert policy(current!(scope, target))["egress"] == %{
                "mode" => "enforce",
-               "allow" => ["10.0.0.1", "api.example"]
+               "allow" => ["10.0.0.1", "api.example"],
+               "allow_first" => ["api.anthropic.com"]
              }
 
       for configuration <- Repo.all(RunConfiguration) do
@@ -1570,6 +1582,7 @@ defmodule Apiary.PolicyTest do
                egress:
                  mode: enforce
                  allow:
+                   - "api.anthropic.com"
                    - "api.example"
                    - "*.example"
              """
@@ -1590,6 +1603,7 @@ defmodule Apiary.PolicyTest do
                egress:
                  mode: observe
                  allow:
+                   - "api.anthropic.com"
                    - "*.example"
                  deny:
                    - "tracker.example"
@@ -1605,6 +1619,7 @@ defmodule Apiary.PolicyTest do
              egress:
                mode: observe
                allow:
+                 - "api.anthropic.com"
                  - "git.example"
                  - "*.example"
                deny:
@@ -1650,6 +1665,7 @@ defmodule Apiary.PolicyTest do
              egress:
                mode: observe
                allow:
+                 - "api.anthropic.com"
                  - "git.example"
                paths:
                  "git.example":

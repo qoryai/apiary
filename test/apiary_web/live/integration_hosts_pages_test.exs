@@ -1,11 +1,12 @@
 defmodule ApiaryWeb.IntegrationHostsPagesTest do
   @moduledoc """
   The pages' rule lists show no integration's host (`Apiary.Policy.effective/2`): the
-  policy page's rule list, the rule form's reading, Network access and a run's
-  connections tab show a workspace with an integration host as they showed it before the
-  integration was added. Only the version that the change rendered differs, which the
-  sections compared here do not show. The Policy page's "Allowed for every run" list is
-  where those hosts appear, apart from the rules
+  policy page's rule list and the rule form's reading show a workspace with an
+  integration host as they showed it before the integration was added. Only the version
+  that the change rendered differs, which the sections compared here do not show. On
+  Network access and on a run's Network tab, the row of each of the integration's hosts
+  has a lock in place of Allow and Deny, and every other row is unchanged. The Policy
+  page's "Allowed for every run" list is where those hosts appear, apart from the rules
   (`ApiaryWeb.PolicyLive.RequiredHostsTest`).
   """
   use ApiaryWeb.ConnCase, async: true
@@ -66,6 +67,8 @@ defmodule ApiaryWeb.IntegrationHostsPagesTest do
 
   defp html(view, selector), do: view |> element(selector) |> render()
 
+  defp row(host), do: ApiaryWeb.RunComponents.destination_id(%{host: host, port: 443, path: ""})
+
   # A time on a page is said relative to the moment it is drawn.
   defp untimed(html), do: String.replace(html, ~r{<time[^>]*>[^<]*</time>}, "<time/>")
 
@@ -109,22 +112,61 @@ defmodule ApiaryWeb.IntegrationHostsPagesTest do
     same(before, read.())
   end
 
+  # The rows of the integration's hosts change: each has a lock with the hint "Allowed for
+  # every run" in place of Allow and Deny (`ApiaryWeb.RequiredHostRowsTest`). The row of a
+  # host the integration does not reach stays as it was.
   test "Network access", ctx do
     %{conn: conn, scope: scope} = ctx
     path = workspace_path(scope, "/network")
+    [api, files, docs] = Enum.map(~w(api.example.com files.example.org docs.example.com), &row/1)
 
-    before = html(page(conn, path), "#destinations")
+    view = page(conn, path)
+    before = html(view, "##{docs}")
+    refute has_element?(view, ~s(##{api}-lock[data-tip="Allowed for every run"]))
+    assert has_element?(view, "##{files}-allow")
+
     add_integration(ctx)
-    same(before, html(page(conn, path), "#destinations"))
+    view = page(conn, path)
+
+    for id <- [api, files] do
+      assert has_element?(view, ~s(##{id}-lock[data-tip="Allowed for every run"]))
+      refute has_element?(view, "##{id}-allow")
+      refute has_element?(view, "##{id}-deny")
+    end
+
+    same(before, html(view, "##{docs}"))
+    refute html(view, "#destinations") =~ "acme-tracker"
   end
 
+  # The rows of the integration's hosts change as on Network access: each has the lock
+  # with the hint "Allowed for every run" in place of Allow and Deny. The row of a host
+  # the integration does not reach stays as it was.
   test "a run's connections tab", ctx do
     %{conn: conn, scope: scope} = ctx
     [run | _] = Apiary.Repo.all(Apiary.Runs.Run)
     path = workspace_path(scope, "/runs/#{run.number}/network")
 
-    before = html(page(conn, path), "#run-connections")
+    ids =
+      Map.new(Apiary.Runs.Record.connections(scope, run).rows, &{&1.host, "cx-#{&1.id}"})
+
+    [api, files, docs] =
+      Enum.map(~w(api.example.com files.example.org docs.example.com), &Map.fetch!(ids, &1))
+
+    view = page(conn, path)
+    before = html(view, "##{docs}")
+    refute has_element?(view, ~s(##{api}-lock[data-tip="Allowed for every run"]))
+    assert has_element?(view, "##{files}-allow")
+
     add_integration(ctx)
-    same(before, html(page(conn, path), "#run-connections"))
+    view = page(conn, path)
+
+    for id <- [api, files] do
+      assert has_element?(view, ~s(##{id}-lock[data-tip="Allowed for every run"]))
+      refute has_element?(view, "##{id}-allow")
+      refute has_element?(view, "##{id}-deny")
+    end
+
+    same(before, html(view, "##{docs}"))
+    refute html(view, "#run-connections") =~ "acme-tracker"
   end
 end

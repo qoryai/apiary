@@ -299,7 +299,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :fact, :any,
     default: nil,
     doc:
-      "the workspace's: :loading, nil, %{denied:, destinations:} or %{uncovered:, destinations:} or :none"
+      "the workspace's: :loading, nil, %{denied:, destinations:}, %{uncovered:, destinations:}, :covered (observe: runs reached out, every destination covered), :none_denied (enforce: runs reached out, none denied) or :none (no run reached out)"
 
   attr :setting, :string,
     default: "follow",
@@ -727,6 +727,20 @@ defmodule ApiaryWeb.PolicyComponents do
   defp mode_fact(%{fact: :none} = assigns) do
     ~H"""
     {gettext("No run has reached out in the last 14 days.")}
+    """
+  end
+
+  defp mode_fact(%{fact: :covered} = assigns) do
+    ~H"""
+    {gettext(
+      "Every destination that runs reached in the last 14 days is covered by a rule or allowed for every run."
+    )}
+    """
+  end
+
+  defp mode_fact(%{fact: :none_denied} = assigns) do
+    ~H"""
+    {gettext("No destination that runs reached in the last 14 days was denied.")}
     """
   end
 
@@ -1276,10 +1290,18 @@ defmodule ApiaryWeb.PolicyComponents do
           aria-relevant="additions"
         >
           <h2 class="q-rule-preview-h">{gettext("What this rule does")}</h2>
-          <p id={"#{@id}-preview-#{elem(@reading.preview, 0)}"} class="q-reads">
+          <p
+            :if={elem(@reading.preview, 0) != :refusal}
+            id={"#{@id}-preview-#{elem(@reading.preview, 0)}"}
+            class="q-reads"
+          >
             <.icon name={preview_icon(elem(@reading.preview, 0))} class="size-3.5" />
             <span id={"#{@id}-reads"}><.rich text={elem(@reading.preview, 1)} /></span>
           </p>
+          <%!-- What the save refuses, as the form shows a refusal. --%>
+          <.notice :if={elem(@reading.preview, 0) == :refusal} kind={:error}>
+            <span id={"#{@id}-preview-refusal"}><.rich text={elem(@reading.preview, 1)} /></span>
+          </.notice>
         </div>
         <div :if={@refusal?} id={"#{@id}-refusal"} class="q-refusal" role="alert">
           <.notice kind={:error}>

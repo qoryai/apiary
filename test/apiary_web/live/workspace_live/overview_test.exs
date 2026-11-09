@@ -2296,6 +2296,41 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "a denied runtime's host has the lock of a host allowed for every run, and no Allow",
+         %{conn: conn, scope: scope} do
+      run =
+        started_run(scope, shop(),
+          egress: [%{"host" => "api.anthropic.com", "decision" => "denied", "rule" => ""}]
+        )
+
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
+      view = open(conn, scope)
+
+      [item] =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#attention-list li[data-kind=denied]")
+        |> LazyHTML.attribute("id")
+
+      # The lock of Network access: its styled hint, and the same name for a screen reader.
+      # The hint opens above the lock, flush with its right edge, inside the card.
+      assert has_element?(view, "span##{item}-act.tooltip-top.q-tip-end")
+
+      assert has_element?(
+               view,
+               ~s(span##{item}-act.q-act-lock[data-tip="Allowed for every run"][aria-label="Allowed for every run"])
+             )
+
+      refute has_element?(view, "##{item}-act[title]")
+      refute has_element?(view, "##{item} .q-ar-act a, ##{item} .q-ar-act button")
+
+      # Asked anyway, the panel does not open, and no rule is written.
+      render_hook(view, "rule_open", %{"id" => item, "level" => "target"})
+      refute has_element?(view, "#rule-panel")
+      assert Policy.list_rules(scope, target) == []
+    end
+
+    @tag needs: :security
     test "a denied host longer than 255 bytes is listed with the host cut and marked, and offers no act",
          %{conn: conn, scope: scope} do
       long = String.duplicate("a", 292) <> ".example"

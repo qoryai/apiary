@@ -585,6 +585,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
           ),
         editing: socket.assigns[:rule_edit] != nil
       })
+      |> runtime_refusal(params)
 
     assign(socket,
       composer: to_form(params, as: :rule),
@@ -592,6 +593,27 @@ defmodule ApiaryWeb.PolicyLive.Common do
       reading: reading
     )
   end
+
+  # A rule the save refuses for a runtime's host, a deny of it or paths on it: the save's
+  # refusal (`Policy.check_runtime_deny/1`, `Policy.check_paths/1`) in place of the
+  # read-back of "What this rule does".
+  defp runtime_refusal(%{kind: kind} = reading, params) when kind in [:ok, :note] do
+    host = String.trim(params["host"] || "")
+
+    check =
+      cond do
+        params["action"] == "deny" -> Policy.check_runtime_deny(host)
+        Reading.split(params["paths"]) != [] -> Policy.check_paths(host)
+        true -> :ok
+      end
+
+    case check do
+      {:error, %Policy.Error{message: message}} -> %{reading | preview: {:refusal, [message]}}
+      :ok -> reading
+    end
+  end
+
+  defp runtime_refusal(reading, _params), do: reading
 
   defp own_for_reading(socket) do
     for rule <- socket.assigns.own do
@@ -1146,11 +1168,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   A refused write: the domain's sentence above the composer, as an alert; the list is read
-  again. A deny of an integration's host is refused with the sentence under the Host
-  field (`write_error_field: :host`).
+  again. A deny of an integration's or a runtime's host is refused with the sentence
+  under the Host field (`write_error_field: :host`).
   """
   def refused(socket, %Policy.Error{message: message} = error) do
-    field = if error.reason == :integration_host, do: error.field
+    field = if error.reason in [:integration_host, :runtime_host], do: error.field
 
     socket.assigns.reload.(socket)
     |> assign(write_error: message, write_error_field: field)
@@ -2051,6 +2073,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       policy_file: export.policy_file && head <> export.policy_file,
       forager_file: head <> export.forager_file,
       notes: export.notes,
+      runtime_blocked: export.runtime_blocked,
       command: ~s(qory run --local --policy ~/#{file_name} -- -p "…")
     }
   end

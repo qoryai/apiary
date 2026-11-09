@@ -869,6 +869,11 @@
     }
   }
 
+  /* A hint above a lock at a row's end: moved left, so the table's edge does not cut it. */
+  .q-tip-inset[data-tip]::before {
+    translate: -1.5rem 0;
+  }
+
   /* ---- Dropdown and menu ---- */
   :where(.dropdown-content) {
     z-index: 50;
@@ -9352,6 +9357,11 @@
   .tooltip-bottom.q-tip-end[data-tip]::before {
     inset: var(--tt-off) 0 auto auto;
     transform: translateY(var(--tt-pos, -0.25rem));
+  }
+  /* The same above the control, for a row whose card would cut a hint under it. */
+  .tooltip-top.q-tip-end[data-tip]::before {
+    inset: auto 0 var(--tt-off) auto;
+    transform: translateY(var(--tt-pos, 0.25rem));
   }
   /* The hint a copy changes while it is confirmed: Copy, then Copied, shown for as long
      as the confirmation lasts, pointed at or not. */

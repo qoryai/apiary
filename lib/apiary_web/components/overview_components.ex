@@ -767,6 +767,19 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  # A host that every run is allowed today, such as a runtime's: no rule changes it, so it
+  # has the lock with the hint of its row's lock on Network access. The hint opens above
+  # the lock, flush with its right edge (`q-tip-end`), so the card's edge does not cut it.
+  defp attention_act(%{item: %{kind: :denied, required: true}} = assigns) do
+    ~H"""
+    <ApiaryWeb.RunComponents.act_lock
+      id={"#{@item.id}-act"}
+      tip={gettext("Allowed for every run")}
+      placement="tooltip-top q-tip-end"
+    />
+    """
+  end
+
   defp attention_act(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
     ~H"""

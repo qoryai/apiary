@@ -1285,6 +1285,81 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute view |> element("#mode-would") |> render() =~ "\u202E"
     end
 
+    test "the fact line says no run reached out only when none did", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, scope)
+      assert text(view, "#policy-mode-fact") == "No run has reached out in the last 14 days."
+
+      # A runtime's host: allowed for every run, so nothing is uncovered, but a run reached out.
+      started_run(scope, shop(),
+        egress: [%{"host" => "api.anthropic.com", "decision" => "allowed", "rule" => ""}]
+      )
+
+      view = open(conn, scope)
+
+      assert text(view, "#policy-mode-fact") ==
+               "Every destination that runs reached in the last 14 days is covered by a rule or allowed for every run."
+    end
+
+    test "the fact line says nothing for the runs of a target that overrides the workspace's mode",
+         %{
+           conn: conn,
+           scope: scope
+         } do
+      run =
+        started_run(scope, shop(),
+          egress: [
+            %{"host" => "api.anthropic.com", "decision" => "allowed", "rule" => ""},
+            %{"host" => "tracker.example", "decision" => "denied", "rule" => ""}
+          ]
+        )
+
+      target = Apiary.Repo.get!(Apiary.Runs.Target, run.target_id)
+      {:ok, _} = Policy.set_mode(scope, target, "enforce")
+
+      view = open(conn, scope)
+      refute has_element?(view, "#policy-mode-fact")
+    end
+
+    test "the fact line says nothing for a host denied with no rule before observe", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "api.anthropic.com", "decision" => "allowed", "rule" => ""},
+          %{"host" => "tracker.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      {:ok, _} = Policy.set_mode(scope, "observe")
+
+      view = open(conn, scope)
+      refute has_element?(view, "#policy-mode-fact")
+    end
+
+    test "under enforce the fact line says no run reached out only when none did", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      view = open(conn, scope)
+      assert text(view, "#policy-mode-fact") == "No run has reached out in the last 14 days."
+
+      started_run(scope, shop(),
+        egress: [%{"host" => "api.anthropic.com", "decision" => "allowed", "rule" => ""}]
+      )
+
+      view = open(conn, scope)
+
+      assert text(view, "#policy-mode-fact") ==
+               "No destination that runs reached in the last 14 days was denied."
+    end
+
     test "the fact line and what enforce would deny leave out the run API", %{
       conn: conn,
       scope: scope
@@ -1837,6 +1912,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
   describe "history" do
     setup %{scope: scope} do
+      # The diff's lines around a change: with no list between the mode and the deny.
+      Apiary.ConnectionsFixtures.no_runtime_hosts!()
       {:ok, rule} = Policy.allow(scope, nil, %{host: "registry.example"})
       # A deny is in the document, so it renders a version; a lock renders the same bytes.
       {:ok, _} = Policy.deny(scope, nil, %{host: "telemetry.example"})
@@ -2092,6 +2169,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-export") =~
                "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
 
+      # No *. deny covers a runtime's host: no note about one.
+      refute text(view, "#policy-export") =~ "still blocks a runtime's host"
+      refute has_element?(view, "#policy-export p span.font-mono", "*.")
+
       # The notes read as sentences, a space at each join, as a browser shows the text.
       notes =
         view
@@ -2129,6 +2210,32 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_patch(view, workspace_path(scope, "/policy/versions/4/export"))
       assert page_title(view) =~ "Export · Version 4 · Policy"
       assert_push_event(view, "policy:focus", %{id: "policy-export-h"})
+    end
+
+    test "export says a *. deny blocks a runtime's host only when one covers it",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "*.tracker.example"})
+      assert {:ok, %{runtime_blocked: false}} = Policy.export(scope, nil)
+      view = open(conn, scope, "/policy/versions/4/export")
+      refute text(view, "#policy-export") =~ "still blocks a runtime's host"
+
+      {:ok, _} = Policy.deny(scope, nil, %{host: "*.anthropic.com"})
+      assert {:ok, %{runtime_blocked: true}} = Policy.export(scope, nil)
+      view = open(conn, scope, "/policy/versions/5/export")
+
+      # The text of the note and the suffix in code font, after the sentence before it.
+      notes =
+        view
+        |> element("#policy-export")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.replace(~r/\s+/, " ")
+
+      assert notes =~
+               "what remains allowed. A *. deny still blocks a runtime's host that the text lists as allowed."
+
+      assert has_element?(view, "#policy-export p span.font-mono", "*.")
     end
 
     test "the Document tab's document has Copy and Download in its bar, the tab no Export",

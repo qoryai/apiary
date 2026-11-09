@@ -546,8 +546,9 @@ defmodule Apiary.ModelChoicesTest do
       {:ok, rule} = Policy.deny(scope, nil, %{host: "*.anthropic.com"})
       {:ok, _} = Policy.lock(scope, rule)
 
-      # An exact deny of the provider's host is refused at save (Apiary.Policy.check_deny/3).
-      assert {:error, %Policy.Error{reason: :integration_host}} =
+      # An exact deny of the provider's host, which is also the runtime's, is refused at save
+      # (Apiary.Policy.check_deny/3).
+      assert {:error, %Policy.Error{reason: :runtime_host}} =
                Policy.deny(scope, target, %{host: "api.anthropic.com"})
 
       assert {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))

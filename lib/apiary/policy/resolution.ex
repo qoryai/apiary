@@ -73,6 +73,14 @@ defmodule Apiary.Policy.Resolution do
      in force together. Where the level above allows only the hosts on its list, an
      integration's host is not struck. A `*.` allow held to paths, of any level, leaves
      it on every path: the document has the host in `paths` with `/*`.
+  8. **A runtime's host** (source `:runtime`, in `integrations` of `resolve/6` with its
+     runtime in place of a connection) resolves as an integration's host (point 7), and a
+     runtime and an integration that list one host stay in force together. A `*.` allow
+     held to paths leaves it on every path also where a rule's allow on the host decides
+     it, or was overridden by that `*.` allow. A rule's allow held to paths on the host,
+     saved before the host became a runtime's or at the level above, limits nothing:
+     `paths` has no entry for the host, or `/*` where a `*.` key covers it. The rule's
+     entry stays in `entries`. `Apiary.Policy.check_paths/1` refuses such a rule at save.
 
   `allow` and `deny` are sorted with names before `*.` suffixes, each alphabetically, so
   the rule the gateway reports for a connection is the most exact one; `paths` is sorted by
@@ -108,7 +116,7 @@ defmodule Apiary.Policy.Resolution do
           [Rule.t()],
           Ecto.UUID.t() | nil,
           Above.t() | nil,
-          [integration_host]
+          [integration_host | runtime_host]
         ) ::
           {:ok, Effective.t()} | {:error, Error.t()}
   def resolve_for(
@@ -144,13 +152,68 @@ defmodule Apiary.Policy.Resolution do
           connection: %{id: Ecto.UUID.t(), public_id: String.t(), name: String.t()}
         }
 
+  @typedoc """
+  A host a runtime requires, as `Apiary.Kinds.Runtimes.egress_hosts/0` reads it: the host,
+  and the runtime that lists it.
+  """
+  @type runtime_host :: %{
+          host: String.t(),
+          runtime: %{name: String.t(), title: String.t()}
+        }
+
+  @doc """
+  runtime_paths/2 is `paths` of an effective policy resolved with no runtime's host
+  (`Apiary.Policy.effective/2`), as a document with `runtime_hosts` has it (point 8): a
+  rule's paths on such a host limit nothing, so the host has no entry, or `/*` where a
+  `*.` key covers it. The paths of every other host stay: under `enforce` the gateway
+  denies a path outside them.
+  """
+  @spec runtime_paths(%{optional(String.t()) => [String.t()]}, [String.t()]) ::
+          %{optional(String.t()) => [String.t()]}
+  def runtime_paths(paths, runtime_hosts) when is_map(paths) and is_list(runtime_hosts) do
+    held = Map.drop(paths, runtime_hosts)
+
+    every_path =
+      for host <- runtime_hosts,
+          Enum.any?(Map.keys(held), &Grammar.covers?(&1, host)),
+          into: %{},
+          do: {host, ["/*"]}
+
+    Map.merge(held, every_path)
+  end
+
+  @doc """
+  runtime_deny/2 is `deny` of an effective policy resolved with no runtime's host
+  (`Apiary.Policy.effective/2`), as a document with `runtime_hosts` has it (point 8):
+  a deny of such a host loses to the host, so the entry is left out. A `*.` deny that
+  covers the host stays, as in a document.
+  """
+  @spec runtime_deny([String.t()], [String.t()]) :: [String.t()]
+  def runtime_deny(deny, runtime_hosts) when is_list(deny) and is_list(runtime_hosts) do
+    Enum.reject(deny, &(&1 in runtime_hosts))
+  end
+
+  @doc """
+  runtime_allow/2 is `allow` of an effective policy resolved with no runtime's host
+  (`Apiary.Policy.effective/2`), with each of `runtime_hosts` added once, for a text
+  with no `allow_first` (`Apiary.Policy.Export`): under `enforce` the gateway reaches a
+  host only by an entry of `allow`. The hosts are sorted in with the others, names
+  before `*.` suffixes, so the order is the order of a document's `allow`. A `*.` deny
+  that covers such a host is decided before `allow`, and still denies the host there.
+  """
+  @spec runtime_allow([String.t()], [String.t()]) :: [String.t()]
+  def runtime_allow(allow, runtime_hosts) when is_list(allow) and is_list(runtime_hosts) do
+    (allow ++ runtime_hosts) |> Enum.uniq() |> Enum.sort_by(&sort_key/1)
+  end
+
   @doc """
   Resolves the rules. `target_rules` is `[]` for the baseline and for a target
   with no rules; `above` is the level above the workspace, with its rules,
   or nil where the edition keeps none. A level that carries variables only
   (`Apiary.Policy.Above`'s `policy: false`) resolves as nil, here and in `resolve_for/7`.
   `integrations` is the hosts the integrations that reach the workspace require, each
-  an entry with source `:integration`.
+  an entry with source `:integration`, and the hosts the runtimes require, each an entry
+  with source `:runtime`.
   """
   @spec resolve(
           String.t(),
@@ -158,7 +221,7 @@ defmodule Apiary.Policy.Resolution do
           [Rule.t()],
           Ecto.UUID.t() | nil,
           Above.t() | nil,
-          [integration_host]
+          [integration_host | runtime_host]
         ) ::
           {:ok, Effective.t()} | {:error, Error.t()}
   def resolve(
@@ -224,21 +287,30 @@ defmodule Apiary.Policy.Resolution do
     }
   end
 
-  defp integration?(%Entry{source: source}), do: source == :integration
+  defp integration_entry(%{host: host, runtime: runtime}) do
+    %Entry{kind: :host, action: :allow, host: host, source: :runtime, runtime: runtime}
+  end
+
+  # An integration's host or a runtime's: a host that comes from no rule.
+  defp integration?(%Entry{source: source}), do: source in [:integration, :runtime]
 
   # The precedence is not one rank. Against a deny, the level above's deny is above
   # every rule and its allow below every rule: a lower deny narrows it, and its `*.`
   # allow never overrides a lower deny. An integration's host is above every deny. Among
   # allows alone, the level above holds, paths included: its allow is never widened; and
   # an integration's host is below every rule's allow.
-  defp rank_vs_deny(%Entry{source: :integration}), do: @integration_vs_deny
+  defp rank_vs_deny(%Entry{source: source}) when source in [:integration, :runtime],
+    do: @integration_vs_deny
+
   defp rank_vs_deny(%Entry{source: :organisation, action: :deny}), do: @above_deny
   defp rank_vs_deny(%Entry{source: :organisation}), do: @above_allow
   defp rank_vs_deny(%Entry{source: :workspace, locked: true}), do: @locked
   defp rank_vs_deny(%Entry{source: :target}), do: @target
   defp rank_vs_deny(%Entry{}), do: @workspace
 
-  defp rank_among_allows(%Entry{source: :integration}), do: @integration_among_allows
+  defp rank_among_allows(%Entry{source: source}) when source in [:integration, :runtime],
+    do: @integration_among_allows
+
   defp rank_among_allows(%Entry{source: :organisation}), do: @above_among_allows
   defp rank_among_allows(%Entry{source: :workspace, locked: true}), do: @locked
   defp rank_among_allows(%Entry{source: :target}), do: @target
@@ -250,7 +322,7 @@ defmodule Apiary.Policy.Resolution do
   defp only_above_allows(entries, %Above{own_allows: false}) do
     Map.new(entries, fn
       {index, %Entry{kind: :host, action: :allow, source: source} = entry}
-      when source not in [:organisation, :integration] ->
+      when source not in [:organisation, :integration, :runtime] ->
         {index, %{entry | in_force: false, reason: :only_above_allows}}
 
       pair ->
@@ -350,9 +422,10 @@ defmodule Apiary.Policy.Resolution do
     end
   end
 
-  # The hosts of every integration entry, in force or not.
+  # The hosts of every integration entry and runtime entry, in force or not.
   defp integration_hosts(entries) do
-    for {_index, %Entry{source: :integration, host: host}} <- entries,
+    for {_index, %Entry{source: source, host: host}} <- entries,
+        source in [:integration, :runtime],
         into: MapSet.new(),
         do: host
   end
@@ -396,7 +469,7 @@ defmodule Apiary.Policy.Resolution do
 
     Enum.reduce(in_force(entries, :host), entries, fn
       {index, %{action: :allow, source: source} = allow}, entries
-      when source not in [:organisation, :integration] ->
+      when source not in [:organisation, :integration, :runtime] ->
         held
         |> Enum.filter(fn {_index, above} ->
           above.host != allow.host and Grammar.covers?(above.host, allow.host)
@@ -424,7 +497,7 @@ defmodule Apiary.Policy.Resolution do
     bare = fn entry -> %{entry | overridden_by: nil, overrides: []} end
 
     Enum.reduce(in_force(entries, :host), entries, fn
-      {index, %{source: :integration} = allow}, entries ->
+      {index, %{source: source} = allow}, entries when source in [:integration, :runtime] ->
         covering =
           for {_index, deny} <- denies,
               deny.host != allow.host and Grammar.covers?(deny.host, allow.host),
@@ -661,15 +734,23 @@ defmodule Apiary.Policy.Resolution do
         )
       end)
 
+    # A runtime's host counts in force or not: a rule's allow that overrode its entry may
+    # itself be overridden by a `*.` allow held to paths.
+    runtime_hosts = for {_index, %Entry{source: :runtime, host: host}} <- entries, do: host
+    integration_hosts = for %{source: :integration, host: host} <- hosts, do: host
+
+    # A rule's paths do not limit a runtime's host (point 8).
     held =
       for %{paths: paths} = entry when is_list(paths) <- hosts,
+          entry.host not in runtime_hosts,
           into: %{},
           do: {entry.host, Enum.sort(Enum.uniq(paths))}
 
-    # An integration's host that a `*.` allow held to paths covers would be held to that
-    # allow's paths: `/*` keeps it on every path.
+    # An integration's host or a runtime's that a `*.` allow held to paths covers would be
+    # held to that allow's paths: `/*` keeps it on every path. An integration's host in
+    # `held` keeps the paths of the rule that decides it.
     every_path =
-      for %{source: :integration, host: host} <- hosts,
+      for host <- integration_hosts ++ runtime_hosts,
           not Map.has_key?(held, host),
           Enum.any?(Map.keys(held), &(&1 != host and Grammar.covers?(&1, host))),
           into: %{},
@@ -700,9 +781,10 @@ defmodule Apiary.Policy.Resolution do
   defp sort_key(host), do: {Grammar.wildcard?(host), host}
 
   # On one subject, the level above's entry first, then the workspace's, then the
-  # target's, then the integrations'.
+  # target's, then the integrations', then the runtimes'.
   defp source_order(:organisation), do: 0
   defp source_order(:workspace), do: 1
   defp source_order(:target), do: 2
   defp source_order(:integration), do: 3
+  defp source_order(:runtime), do: 4
 end

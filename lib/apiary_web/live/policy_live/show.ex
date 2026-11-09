@@ -160,10 +160,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp unwrap({:ok, value}), do: value
   defp unwrap(_unavailable), do: :unavailable
 
+  # Nothing denied: either no run reached out, or no destination the runs reached was.
   defp fact(scope, "enforce") do
     case Policy.denied_summary(scope, Common.since()) do
       {:ok, %{denied: 0}} ->
-        :none
+        if Policy.reached?(scope, Common.since()), do: :none_denied, else: :none
 
       {:ok, %{denied: denied, destinations: destinations}} ->
         %{denied: denied, destinations: destinations}
@@ -173,10 +174,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
+  # Nothing uncovered (`Policy.uncovered/2`): either no run reached out, or every
+  # destination the runs reached has a rule or is one every run is allowed. Where neither
+  # holds, for runs of a target that overrides the workspace's mode or a host denied with
+  # no rule, the card says nothing (`Policy.covered/2`).
   defp fact(scope, _observe) do
     case Policy.uncovered(scope, Common.since()) do
       {:ok, []} ->
-        :none
+        case Policy.covered(scope, Common.since()) do
+          {:ok, :none} -> :none
+          {:ok, :covered} -> :covered
+          _partly -> nil
+        end
 
       {:ok, destinations} ->
         %{

@@ -23,8 +23,10 @@ defmodule Apiary.Policy.FirstVersionTest do
   alias Apiary.Policy.{Above, Change, Error, Render, Rule, RunConfiguration}
   alias Apiary.Runs.Target
 
+  # Version 1 allows the host of the vendored contract's runtime (`Apiary.Kinds.Runtimes`).
   @document ~s({"version":1,"security_policy":) <>
-              ~s({"version":1,"egress":{"mode":"observe","allow":[]}}})
+              ~s({"version":1,"egress":{"mode":"observe","allow":[],) <>
+              ~s("allow_first":["api.anthropic.com"]}}})
 
   # The core's edition allows one workspace in use.
   setup do
@@ -231,7 +233,7 @@ defmodule Apiary.Policy.FirstVersionTest do
       workspace = second_workspace!(scope)
 
       assert [%RunConfiguration{version: 1, document: document}] = rows(workspace)
-      assert document =~ ~s("allow":[],"allow_first":["api.example.com"])
+      assert document =~ ~s("allow":[],"allow_first":["api.anthropic.com","api.example.com"])
     end
 
     @tag needs: :secrets
@@ -385,7 +387,7 @@ defmodule Apiary.Policy.FirstVersionTest do
 
       assert Policy.first_versions() == %{@none | written: 1}
       assert written(reached) == expected
-      assert expected.document =~ ~s("allow_first":["api.example.com"])
+      assert expected.document =~ ~s("allow_first":["api.anthropic.com","api.example.com"])
     end
 
     test "writes a target's mode in the same version" do
@@ -465,8 +467,8 @@ defmodule Apiary.Policy.FirstVersionTest do
 
       assert log =~
                "Set APIARY_ENCRYPTION_SECRET and APIARY_SIGNING_SECRET to the instance's " <>
-                 "keys and run bin/migrate again: policy version 1 is not written, because " <>
-                 "the key check failed."
+                 "keys and run bin/migrate again: policy version 1 is not written and no " <>
+                 "policy is rendered again, because the key check failed."
 
       assert log =~ KeyCheck.encryption_message()
 
@@ -539,6 +541,8 @@ defmodule Apiary.Policy.FirstVersionTest do
       assert log =~
                "policy version 1 not written at boot: ERROR 42P01 (undefined_table) " <>
                  ~s(relation "workspaces" does not exist)
+
+      assert log =~ "policy not rendered again at boot: ERROR 42P01 (undefined_table) "
 
       assert rows(workspace) == []
 
