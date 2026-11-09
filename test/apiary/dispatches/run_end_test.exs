@@ -554,6 +554,8 @@ defmodule Apiary.Dispatches.RunEndTest do
   end
 
   describe "a prebuild after its handover" do
+    @describetag needs: [:factory, :registry]
+
     # A collection, the pool's environment record of it, `env-1` queued and a good build
     # kept, and a prebuild of it queued for a pool with a gateway, claimed, said started
     # and handed over: its registered run, its gateway not yet attached.
@@ -775,7 +777,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert %DispatchRun{state: :waiting} = queue_run!(unheld)
     end
 
-    @tag needs: [:factory, :security]
+    @tag needs: [:factory, :security, :registry]
     test "its failed exit ends no run whose target's run configuration names an image",
          ctx do
       held = [held!(ctx)]

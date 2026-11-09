@@ -12,6 +12,8 @@ defmodule Apiary.Environments.RebuildRacesTest do
   # `FOR UPDATE` and then changes them, and a Rebuild, take turns, and neither deadlocks.
   use ExUnit.Case, async: false
 
+  @before_compile Apiary.TestSetup
+
   import Ecto.Query
   import Apiary.NodesFixtures
   import Apiary.Races
@@ -27,7 +29,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
   alias Apiary.Runs.Target
   alias Ecto.Adapters.SQL.Sandbox
 
-  @moduletag needs: :factory
+  @moduletag needs: [:factory, :registry]
 
   @system "code.example.com"
   @path "acme/shop"

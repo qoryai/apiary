@@ -91,6 +91,7 @@ defmodule Apiary.Environments.RebuildTest do
 
   defp sorted(pools), do: pools |> Enum.map(& &1.id) |> Enum.sort()
 
+  @tag needs: [:factory, :registry]
   test "queues a prebuild for each node pool, held for it, and makes each record",
        %{scope: scope, mac: mac, linux: linux, shop: shop, target: target} do
     assert Environments.rebuild(scope, target) == {:ok, 2}
@@ -102,6 +103,7 @@ defmodule Apiary.Environments.RebuildTest do
     end
   end
 
+  @tag needs: [:factory, :registry]
   test "leaves one audit entry about the target, with how many it queued, and none when it queued none",
        %{scope: scope, target: target} do
     {:ok, 2} = Environments.rebuild(scope, target)
@@ -115,6 +117,7 @@ defmodule Apiary.Environments.RebuildTest do
     assert [^entry] = entries(target)
   end
 
+  @tag needs: [:factory, :registry]
   test "changed or not: a record queued for the same ref and target, its prebuild claimed, is queued again",
        %{scope: scope, mac: mac, linux: linux, shop: shop, target: target} do
     _queued = Apiary.DispatchedRunsFixtures.queue_builds!(shop)
@@ -131,6 +134,7 @@ defmodule Apiary.Environments.RebuildTest do
     assert %DispatchRun{state: :claimed} = Repo.get!(DispatchRun, claimed.id)
   end
 
+  @tag needs: [:factory, :registry]
   test "does nothing for a pool whose prebuild waits unclaimed; every pool's waiting, it queues none",
        %{scope: scope, mac: mac, linux: linux, shop: shop, target: target} do
     {:ok, {:ok, _run}} =
@@ -149,6 +153,7 @@ defmodule Apiary.Environments.RebuildTest do
     assert waiting_ids(shop) == ids
   end
 
+  @tag needs: [:factory, :registry]
   test "queues for each collection of the target that names an environment, and leaves out the others",
        %{scope: scope, mac: mac, linux: linux, shop: shop, target: target} do
     second = shop_collection(scope, external_ref: "SHOP2", environment_ref: "env-9")
@@ -168,6 +173,7 @@ defmodule Apiary.Environments.RebuildTest do
     for left_out <- [none, elsewhere, ended], do: assert(waiting(left_out) == [])
   end
 
+  @tag needs: [:factory, :registry]
   test "every member may", %{scope: scope, target: target} do
     %{scope: member} = member_fixture(scope, :member)
     assert Environments.rebuild(member, target) == {:ok, 2}

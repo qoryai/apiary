@@ -620,6 +620,8 @@ defmodule Apiary.Runs.RunCredentialsTest do
   end
 
   describe "a prebuild" do
+    @describetag needs: [:factory, :registry]
+
     test "gets read access to its collection's target", ctx do
       # Its collection's adapter has never said `targets`, and another collection of the
       # workspace can change the same target: the prebuild takes its collection still.

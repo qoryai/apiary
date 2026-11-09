@@ -1627,6 +1627,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert Slots.held(ctx.pool.id) == 0
     end
 
+    @tag needs: [:factory, :registry]
     test "the net of a prebuild whose dispatched came 70 minutes after its claim counts from that dispatched",
          ctx do
       {_collection, _run} = prebuild!(ctx)

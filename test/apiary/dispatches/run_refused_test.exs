@@ -143,6 +143,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
       assert_ended(handed, :run_refused, nil)
     end
 
+    @tag needs: [:factory, :registry]
     test "of a prebuild ends nothing of the queue", ctx do
       handed = prebuild_handed_over!(ctx.scope, ctx.key)
       refuse!(handed.run, "model_key_missing")

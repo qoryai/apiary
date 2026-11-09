@@ -22,6 +22,8 @@ defmodule Apiary.DispatchesRacesTest do
   # for good.
   use ExUnit.Case, async: false
 
+  @before_compile Apiary.TestSetup
+
   import Ecto.Query
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures, only: [registry_image: 2, workspace_gateway!: 1]
@@ -553,6 +555,7 @@ defmodule Apiary.DispatchesRacesTest do
       assert waiting(collection, pool) == ~w(env-1 env-2)
     end
 
+    @tag needs: [:factory, :registry]
     test "a lapse waits for a build of its ref queued under the record, then ends the claimed one superseded",
          ctx do
       pool = pool_fixture(ctx.scope)
@@ -921,6 +924,8 @@ defmodule Apiary.DispatchesRacesTest do
   end
 
   describe "a claim of a run held for its build" do
+    @describetag needs: [:factory, :registry]
+
     # The image the build of `round` records: under the registry's place of its
     # organisation, the only place a claim gives an image from.
     defp built(round), do: registry_image(round.build.organisation_id, String.duplicate("5e", 32))
