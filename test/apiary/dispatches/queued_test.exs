@@ -324,6 +324,21 @@ defmodule Apiary.Dispatches.QueuedTest do
 
       assert_queued(waiting, length(ends) + 1)
     end
+
+    test "a second lost-run check over the same ended run changes nothing", ctx do
+      queued = queued!(ctx.scope)
+
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+        set: [state: :ended, end_cause: :closed]
+      )
+
+      Liveness.check(Dispatches.now())
+      assert %Run{state: "cancelled", reason: "closed"} = ended = record(queued)
+
+      assert Apiary.Dispatches.Queued.sweep(Dispatches.now()) == []
+      Liveness.check(Dispatches.now())
+      assert record(queued) == ended
+    end
   end
 
   defp record_by_number(ctx, number),

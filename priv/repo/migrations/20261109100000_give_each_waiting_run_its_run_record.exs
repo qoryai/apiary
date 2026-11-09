@@ -33,12 +33,12 @@ defmodule Apiary.Repo.Migrations.GiveEachWaitingRunItsRunRecord do
   # on (`workspace_id`, `number`).
   #
   # While a node of the previous release runs beside this one, its claim of a run whose
-  # record this release wrote inserts a second record, which the unique index of
-  # `runs.dispatch_run_id` refuses: the claim raises, its transaction rolls back and the
-  # claim is answered 503 `unavailable`. The run stays queued with its record, and a claim
-  # of this release takes it. The previous release claims the oldest waiting run first, so
-  # while that run has a record, every claim of the previous release for that queue fails,
-  # until the nodes run this release.
+  # record this release wrote inserts a second record, and the insert fails on the unique
+  # index of `runs.dispatch_run_id`: the claim raises, its transaction rolls back and the
+  # claim gets a 503 `unavailable` response. The run stays queued with its record, and a
+  # claim of this release takes it. The previous release claims the oldest waiting run
+  # first, so while that run has a record, every claim of the previous release for that
+  # queue fails, until the nodes run this release.
   #
   # `down` deletes the records of the runs that still wait, which the previous release
   # writes at the claim: pending, a run of the queue, with no node and no registration. A

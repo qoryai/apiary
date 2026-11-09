@@ -1248,9 +1248,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   queue. A machine that shows up after the slot was freed takes the slot back, even past
   the limit, so the pool's next claims wait: after a lapse, a release, a close or an
   undo, a `dispatched` refused with `409` or `410`, or a report other than `gone`; after
-  a lapse or a release, a run code redemption refused because the claim is stale or
-  ended. A close or an undo deletes the run code, so a redemption after one is not
-  counted. The 1,530 or 150 minutes are the machine's lifetime (1,470 or 90) plus 60,
+  a lapse, a release or a close, a run code redemption refused because the claim is
+  stale or ended. The 1,530 or 150 minutes are the machine's lifetime (1,470 or 90) plus 60,
   counted from the last `dispatched`, handover, report or late machine, or from the
   claim when there is none. The endpoints' responses do not change.
 <!-- /feature -->
@@ -1404,7 +1403,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   taken gets none. It locks the waiting runs of the queue, then `run_counters`, until it
   ends, so no run is claimed or numbered meanwhile. Rolling back deletes these records;
   the counts stay. While a node of the previous release runs beside this one, its claim
-  of a run that has a record raises and is answered 503 `unavailable`; the run stays
+  of a run that has a record raises and gets a 503 `unavailable` response; the run stays
   queued, and a claim of this release takes it. The previous release claims the oldest
   waiting run first, so while that run has a record, every claim of the previous release
   for that queue fails until the nodes run this release. The migration takes its locks in
