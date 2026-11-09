@@ -1,9 +1,11 @@
 defmodule ApiaryWeb.PreparationStepsTest do
-  # Machine started and Prepare in the Run list (`ApiaryWeb.PreparationComponents`):
-  # Machine started opens to Start machine, Prepare to the run's steps in order, each with
-  # its label or its name; a step's log lines with their numbers and times; the machine log
-  # for an instance admin alone, numbered with no time; which rows are open; each group's
-  # state and span.
+  # Start the machine and Prepare the machine in the Run list
+  # (`ApiaryWeb.PreparationComponents`): Start the machine is one row, with Machine
+  # started and the lines of the step of the kind `machine`; Prepare the machine has the
+  # run's steps before the first agent session in order, each with its label or its name,
+  # and Prepare the session the wall and the join; a step's log lines with their numbers
+  # and times; the machine log for an instance admin alone, numbered with no time; which
+  # rows are open; each group's state and span.
   use ExUnit.Case, async: true
 
   import Phoenix.LiveViewTest, only: [render_component: 2]
@@ -14,6 +16,10 @@ defmodule ApiaryWeb.PreparationStepsTest do
   @redeemed ~U[2026-11-06 00:32:25.000000Z]
 
   defp at(seconds), do: DateTime.add(@dispatched, round(seconds * 1000), :millisecond)
+
+  # A step's or a session's place among the run's events, its sequence: the tenths of
+  # seconds from `dispatched` to its start.
+  defp sequence(seconds), do: round(seconds * 10)
 
   defp machine(started \\ %{}) do
     %{
@@ -51,6 +57,8 @@ defmodule ApiaryWeb.PreparationStepsTest do
         exit_code: 0,
         started_at: at(started),
         exited_at: at(started + took),
+        started_sequence: sequence(started),
+        exited_sequence: sequence(started + took),
         duration_ms: round(took * 1000),
         output: %{lines: [], truncated: false, lines_cut: false}
       },
@@ -69,18 +77,44 @@ defmodule ApiaryWeb.PreparationStepsTest do
     ]
   end
 
+  # How the agent session ended: its exit at 2,400 s.
+  defp session_end do
+    %{
+      result_at: nil,
+      outcome: nil,
+      turns: nil,
+      duration_ms: nil,
+      cost_usd: nil,
+      exited_at: at(2_400),
+      state: "succeeded",
+      exit_code: 0,
+      model: nil
+    }
+  end
+
+  # A run whose agent session started 133 s after `dispatched`, unless `sessions` or
+  # `session_started_at` is given. A run with no session's start has no session's end.
   defp preparation(changes \\ %{}) do
-    Map.merge(
-      %{
-        machine: machine(),
-        steps: steps(),
-        after_session: [],
-        log_pruned_at: nil,
-        session_started_at: at(133),
-        stopped: nil
-      },
-      changes
-    )
+    started = Map.get(changes, :session_started_at, at(133))
+
+    %{
+      machine: machine(),
+      steps: steps(),
+      after_session: [],
+      log_pruned_at: nil,
+      session_started_at: started,
+      session_end: if(started, do: session_end()),
+      stopped: nil
+    }
+    |> Map.merge(changes)
+    |> then(&Map.put_new(&1, :sessions, sessions(&1)))
+  end
+
+  defp sessions(%{session_started_at: nil}), do: []
+
+  defp sessions(%{session_started_at: at, session_end: finished}) do
+    seconds = DateTime.diff(at, @dispatched, :millisecond) / 1000
+    [%{session: 1, sequence: sequence(seconds), started_at: at, end: finished}]
   end
 
   defp section(preparation, opts \\ []),
@@ -100,63 +134,75 @@ defmodule ApiaryWeb.PreparationStepsTest do
 
   defp text(html), do: html |> LazyHTML.text() |> String.split() |> Enum.join(" ")
 
-  # The rows directly in Machine started's group, and in Prepare.
-  @started "#prepare-machine-started > .q-xb > ol > li > details > summary .q-prep-name"
+  # The rows directly in Prepare the machine, and in the first Prepare the session.
   @grouped "#prepare-machine-prepare > .q-xb > ol > li > details > summary .q-prep-name"
+  @session_steps "#prepare-machine-session-prepare > .q-xb > ol > li > details > summary .q-prep-name"
 
-  # Start machine's lines.
-  @start_lines "#prepare-machine-start-machine #prepare-machine-start-machine-output-lines"
+  # Start the machine's lines.
+  @start_lines "#prepare-machine-start #prepare-machine-start-machine-output-lines"
   # The rows directly in the section.
   @section "#prepare-machine > ol > li > details > summary .q-prep-name"
 
-  test "Machine started opens to Start machine; Prepare to the run's steps in their order" do
+  test "Start the machine is one row; Prepare the machine has the run's steps in order" do
     html = section(preparation())
 
     assert names(html, @section) == [
-             "Machine requested",
-             "Machine started",
-             "Prepare",
-             "Session started"
+             "Request a machine",
+             "Start the machine",
+             "Prepare the machine",
+             "Agent session 1"
            ]
 
-    assert names(html, @started) == ["Start machine"]
+    assert html |> LazyHTML.query("#prepare-machine-start details") |> Enum.count() == 0
 
     assert names(html, @grouped) == [
-             "Clone repository",
-             "Pull images",
+             "Clone the repository",
+             "Pull the images",
              "Compose the harness",
-             "Set up dev container",
-             "Start the wall",
-             "Start agent"
+             "Set up the dev container"
            ]
+
+    assert names(html, @session_steps) == ["Start the wall", "Start the agent"]
 
     ids =
       html
       |> LazyHTML.query("#prepare-machine-prepare > .q-xb > ol > li > details")
       |> LazyHTML.attribute("id")
 
-    assert ids == for(n <- 1..6, do: "prepare-machine-step-#{n}")
+    assert ids == for(n <- 1..4, do: "prepare-machine-step-#{n}")
+
+    ids =
+      html
+      |> LazyHTML.query("#prepare-machine-session-prepare > .q-xb > ol > li > details")
+      |> LazyHTML.attribute("id")
+
+    assert ids == ["prepare-machine-step-5", "prepare-machine-step-6"]
   end
 
   test "a step of a kind the labels have is its label; any other kind keeps qory's name" do
-    assert PreparationComponents.step_label(%{kind: "fetch"}) == "Clone repository"
-    assert PreparationComponents.step_label(%{kind: "image"}) == "Pull images"
-    assert PreparationComponents.step_label(%{kind: "setup"}) == "Set up dev container"
-    assert PreparationComponents.step_label(%{kind: "join"}) == "Start agent"
+    assert PreparationComponents.step_label(%{kind: "fetch"}) == "Clone the repository"
+    assert PreparationComponents.step_label(%{kind: "compose"}) == "Compose the harness"
+    assert PreparationComponents.step_label(%{kind: "image"}) == "Pull the images"
+    assert PreparationComponents.step_label(%{kind: "build"}) == "Build the image"
+    assert PreparationComponents.step_label(%{kind: "setup"}) == "Set up the dev container"
+    assert PreparationComponents.step_label(%{kind: "join"}) == "Start the agent"
+    assert PreparationComponents.step_label(%{kind: "wall"}) == "Start the wall"
 
-    for kind <- ["compose", "build", "wall", "push", nil],
+    for kind <- ["push", "check", nil],
         do: assert(PreparationComponents.step_label(%{kind: kind}) == nil)
 
-    html = section(preparation())
+    check = step(7, "check", "Check the storefront", 90, 1)
+    html = section(preparation(%{steps: steps() ++ [check]}))
 
     # A label is a text of the page; a name came from the run, isolated as sent text.
     assert html |> LazyHTML.query("#prepare-machine-step-1 summary bdi") |> Enum.count() == 0
-    assert names(html, "#prepare-machine-step-3 summary bdi") == ["Compose the harness"]
+    assert html |> LazyHTML.query("#prepare-machine-step-3 summary bdi") |> Enum.count() == 0
+    assert names(html, "#prepare-machine-step-7 summary bdi") == ["Check the storefront"]
   end
 
-  test "Start machine has Machine started's time from `dispatched` to the redemption" do
+  test "Start the machine spans from `dispatched` to the redemption" do
     html = section(preparation())
-    start = LazyHTML.query(html, "#prepare-machine-start-machine > summary")
+    start = LazyHTML.query(html, "#prepare-machine-start > summary")
 
     assert start |> LazyHTML.query(".q-tc1 time") |> LazyHTML.attribute("datetime") ==
              [DateTime.to_iso8601(@dispatched)]
@@ -164,25 +210,23 @@ defmodule ApiaryWeb.PreparationStepsTest do
     assert text(LazyHTML.query(start, ".q-tc2")) == "41 s"
   end
 
-  test "Machine started spans from `dispatched` to the redemption" do
+  test "Start the machine has Machine started at the redemption" do
     html = section(preparation())
-    group = LazyHTML.query(html, "#prepare-machine-started > summary")
+    start = LazyHTML.query(html, "#prepare-machine-start > .q-xb > dl")
 
-    assert group |> LazyHTML.query(".q-tc1 time") |> LazyHTML.attribute("datetime") ==
-             [DateTime.to_iso8601(@dispatched)]
-
-    assert text(LazyHTML.query(group, ".q-tc2")) == "41 s"
+    assert text(LazyHTML.query(start, "dt")) == "Machine started"
+    assert text(LazyHTML.query(start, "dd")) == Format.time(@redeemed, seconds: true)
   end
 
-  test "Prepare spans from its first step's start to the end of its last step" do
+  test "Prepare the machine spans from its first step's start to the end of its last step" do
     html = section(preparation())
     group = LazyHTML.query(html, "#prepare-machine-prepare > summary")
 
     assert group |> LazyHTML.query(".q-tc1 time") |> LazyHTML.attribute("datetime") ==
              [DateTime.to_iso8601(at(42))]
 
-    # The fetch starts 42 s after `dispatched`; the join ends at 133 s.
-    assert text(LazyHTML.query(group, ".q-tc2")) == "1 m 31 s"
+    # The fetch starts 42 s after `dispatched`; the set-up ends at 131 s.
+    assert text(LazyHTML.query(group, ".q-tc2")) == "1 m 29 s"
 
     assert html
            |> LazyHTML.query("#prepare-machine-prepare[data-state=succeeded]")
@@ -190,22 +234,20 @@ defmodule ApiaryWeb.PreparationStepsTest do
              1
   end
 
-  test "a run no node pool claimed has Prepare with its steps, and no machine rows" do
+  test "a run no node pool claimed has Prepare the machine with its steps, no machine rows" do
     html = section(preparation(%{machine: nil}))
 
-    assert names(html, @section) == ["Prepare", "Session started"]
+    assert names(html, @section) == ["Prepare the machine", "Agent session 1"]
 
     assert names(html, @grouped) == [
-             "Clone repository",
-             "Pull images",
+             "Clone the repository",
+             "Pull the images",
              "Compose the harness",
-             "Set up dev container",
-             "Start the wall",
-             "Start agent"
+             "Set up the dev container"
            ]
 
-    assert html |> LazyHTML.query("#prepare-machine-started") |> Enum.count() == 0
-    assert html |> LazyHTML.query("#prepare-machine-requested") |> Enum.count() == 0
+    assert html |> LazyHTML.query("#prepare-machine-start") |> Enum.count() == 0
+    assert html |> LazyHTML.query("#prepare-machine-request") |> Enum.count() == 0
   end
 
   test "a step's log: each line's number and its time to the tenth of a second" do
@@ -235,12 +277,12 @@ defmodule ApiaryWeb.PreparationStepsTest do
   end
 
   describe "the machine log" do
-    test "is Start machine's log for an instance admin, its lines numbered with no time" do
+    test "is in Start the machine for an instance admin, its lines numbered with no time" do
       log = "qory-machine-start: Docker started\r\n\nready\n"
       html = section(preparation(), machine_log: {:ok, log, false})
 
       lines =
-        LazyHTML.query(html, "#prepare-machine-start-machine #prepare-machine-machine-log-lines")
+        LazyHTML.query(html, "#prepare-machine-start #prepare-machine-machine-log-lines")
 
       assert text(LazyHTML.query(html, "#prepare-machine-machine-log")) =~
                "Machine log (instance admins)"
@@ -265,10 +307,10 @@ defmodule ApiaryWeb.PreparationStepsTest do
       for {number, text} <- tl(Enum.zip(numbers, texts)), do: assert(text == "#{number} #{line}")
     end
 
-    test "is not there for anyone else: Start machine has no log" do
+    test "is not there for anyone else: Start the machine has no log" do
       html = section(preparation())
       assert html |> LazyHTML.query("#prepare-machine-machine-log") |> Enum.count() == 0
-      assert text(LazyHTML.query(html, "#prepare-machine-start-machine > .q-xb")) == ""
+      assert html |> LazyHTML.query("#prepare-machine-start .q-well") |> Enum.count() == 0
     end
   end
 
@@ -302,25 +344,21 @@ defmodule ApiaryWeb.PreparationStepsTest do
       preparation(%{steps: [step | Enum.map(steps(), &%{&1 | number: &1.number + 1})]})
     end
 
-    test "is no row: its lines are Start machine's, after create machine and its seconds" do
+    test "is no row: its lines are Start the machine's, after create machine and its seconds" do
       html = section(with_machine_step(machine_step(parts())))
 
-      assert names(html, @started) == ["Start machine"]
+      assert html |> LazyHTML.query("#prepare-machine-start details") |> Enum.count() == 0
 
       assert names(html, @grouped) == [
-               "Clone repository",
-               "Pull images",
+               "Clone the repository",
+               "Pull the images",
                "Compose the harness",
-               "Set up dev container",
-               "Start the wall",
-               "Start agent"
+               "Set up the dev container"
              ]
 
-      lines =
-        LazyHTML.query(
-          html,
-          "#prepare-machine-start-machine #prepare-machine-start-machine-output-lines"
-        )
+      assert names(html, @session_steps) == ["Start the wall", "Start the agent"]
+
+      lines = LazyHTML.query(html, @start_lines)
 
       assert names(lines, ".q-log-n") == ["1", "2", "3", "4"]
 
@@ -334,9 +372,8 @@ defmodule ApiaryWeb.PreparationStepsTest do
       assert lines |> LazyHTML.query(".q-log-t time") |> LazyHTML.attribute("datetime") ==
                Enum.map([@dispatched, at(14.8), at(29.6), at(31.0)], &DateTime.to_iso8601/1)
 
-      # Start machine's mark and time stay from `dispatched` to the redemption.
-      assert text(LazyHTML.query(html, "#prepare-machine-start-machine > summary .q-tc2")) ==
-               "41 s"
+      # Start the machine's mark and time stay from `dispatched` to the redemption.
+      assert text(LazyHTML.query(html, "#prepare-machine-start > summary .q-tc2")) == "41 s"
     end
 
     test "a member reads the lines; an instance admin reads them and the machine log" do
@@ -360,10 +397,10 @@ defmodule ApiaryWeb.PreparationStepsTest do
       assert names(admin, "#prepare-machine-machine-log-lines .q-log-x") == ["Docker started"]
     end
 
-    test "a run with none has Start machine as before: no lines but the machine log" do
+    test "a run with none has Start the machine as before: no lines but the machine log" do
       html = section(preparation(), machine_log: {:ok, "Docker started\n", false})
       assert html |> LazyHTML.query("#prepare-machine-start-machine-output") |> Enum.count() == 0
-      assert names(html, "#prepare-machine-start-machine .q-log-x") == ["Docker started"]
+      assert names(html, "#prepare-machine-start .q-log-x") == ["Docker started"]
       refute LazyHTML.text(html) =~ "create machine"
     end
 
@@ -380,7 +417,7 @@ defmodule ApiaryWeb.PreparationStepsTest do
                ]
     end
 
-    test "a failed or running machine step opens Start machine; a failure has its cause" do
+    test "a failed or running machine step opens Start the machine; a failure has its cause" do
       failed = %{machine_step(parts()) | state: "failed", exit_code: 1}
 
       stopped = %{
@@ -388,30 +425,27 @@ defmodule ApiaryWeb.PreparationStepsTest do
         step: 1,
         fixer: :workspace_admin,
         text: "",
-        what: "Start machine failed with exit code 1.",
+        what: "Start the machine failed with exit code 1.",
         fix: "An admin of Storefront reads the cause in the step's output."
       }
 
       html =
-        section(%{with_machine_step(failed) | stopped: stopped, session_started_at: nil})
+        section(preparation(%{steps: [failed], stopped: stopped, session_started_at: nil}))
 
-      assert open_ids(html) == ["prepare-machine-started", "prepare-machine-start-machine"]
+      assert open_ids(html) == ["prepare-machine-start"]
 
-      for id <- ["prepare-machine-started", "prepare-machine-start-machine"] do
-        assert html |> LazyHTML.query("##{id}[data-state=failed]") |> Enum.count() == 1
-      end
+      assert html |> LazyHTML.query("#prepare-machine-start[data-state=failed]") |> Enum.count() ==
+               1
 
-      assert text(LazyHTML.query(html, "#prepare-machine-start-machine #prepare-machine-cause")) =~
-               "Start machine failed with exit code 1."
+      assert text(LazyHTML.query(html, "#prepare-machine-start #prepare-machine-cause")) ==
+               "Start the machine failed with exit code 1."
 
       running = %{machine_step(parts()) | state: "running", exited_at: nil, duration_ms: nil}
 
       html =
-        section(%{with_machine_step(running) | steps: [running], session_started_at: nil},
-          alive: true
-        )
+        section(preparation(%{steps: [running], session_started_at: nil}), alive: true)
 
-      assert open_ids(html) == ["prepare-machine-started", "prepare-machine-start-machine"]
+      assert open_ids(html) == ["prepare-machine-start"]
     end
 
     test "sent after the redemption, its lines have no create machine line" do
@@ -477,7 +511,7 @@ defmodule ApiaryWeb.PreparationStepsTest do
       assert open_ids(section(preparation())) == []
     end
 
-    test "a run still starting: Machine started and Start machine run, open and ticking" do
+    test "a run still starting: Start the machine runs, open and ticking" do
       preparation =
         preparation(%{
           machine: machine(%{state: "running", ended_at: nil, duration_ms: nil}),
@@ -487,13 +521,13 @@ defmodule ApiaryWeb.PreparationStepsTest do
 
       html = section(preparation, alive: true)
 
-      assert open_ids(html) == ["prepare-machine-started", "prepare-machine-start-machine"]
+      assert open_ids(html) == ["prepare-machine-start"]
 
-      for id <- ["prepare-machine-started", "prepare-machine-start-machine"] do
-        summary = LazyHTML.query(html, "##{id} > summary")
-        assert text(summary) =~ "Running"
-        assert summary |> LazyHTML.query("##{id}-clock[data-tick]") |> Enum.count() == 1
-      end
+      summary = LazyHTML.query(html, "#prepare-machine-start > summary")
+      assert text(summary) =~ "Running"
+
+      assert summary |> LazyHTML.query("#prepare-machine-start-clock[data-tick]") |> Enum.count() ==
+               1
     end
 
     test "a running step is open in an open group, the steps before it closed" do
@@ -514,7 +548,7 @@ defmodule ApiaryWeb.PreparationStepsTest do
                1
     end
 
-    test "a live run between two steps: Prepare is running and open, no clock" do
+    test "a live run between two steps: Prepare the machine is running and open, no clock" do
       steps = Enum.take(steps(), 2)
       html = section(preparation(%{steps: steps, session_started_at: nil}), alive: true)
 
@@ -544,7 +578,7 @@ defmodule ApiaryWeb.PreparationStepsTest do
         step: 4,
         fixer: :workspace_admin,
         text: "",
-        what: "Set up dev container failed with exit code 1 (postCreateCommand: npm ci).",
+        what: "Set up the dev container failed with exit code 1 (postCreateCommand: npm ci).",
         fix: "An admin of Storefront reads the cause in the step's output.",
         detail: "postCreateCommand: npm ci"
       }
@@ -558,8 +592,8 @@ defmodule ApiaryWeb.PreparationStepsTest do
 
       cause = LazyHTML.query(html, "#prepare-machine-step-4 #prepare-machine-cause")
 
-      assert text(cause) =~
-               "Set up dev container failed with exit code 1 (postCreateCommand: npm ci)."
+      assert text(cause) ==
+               "Set up the dev container failed with exit code 1 (postCreateCommand: npm ci)."
 
       # The set-up command is in code font; the hook's name and the sentence are not.
       assert cause |> LazyHTML.query("code") |> Enum.map(&text/1) == ["npm ci"]
@@ -576,7 +610,7 @@ defmodule ApiaryWeb.PreparationStepsTest do
         step: 1,
         fixer: :workspace_admin,
         text: "",
-        what: "Clone repository failed with exit code 128 (git.example.com/acme/storefront).",
+        what: "Clone the repository failed with exit code 128 (git.example.com/acme/storefront).",
         fix: "An admin of Storefront reads the cause in the step's output.",
         detail: "git.example.com/acme/storefront"
       }
@@ -584,13 +618,13 @@ defmodule ApiaryWeb.PreparationStepsTest do
       html = section(preparation(%{steps: steps, stopped: stopped, session_started_at: nil}))
       cause = LazyHTML.query(html, "#prepare-machine-step-1 #prepare-machine-cause")
 
-      assert text(cause) =~
-               "Clone repository failed with exit code 128 (git.example.com/acme/storefront)."
+      assert text(cause) ==
+               "Clone the repository failed with exit code 128 (git.example.com/acme/storefront)."
 
       assert cause |> LazyHTML.query("code") |> Enum.count() == 0
     end
 
-    test "a machine that did not start: Start machine is open with who fixes it" do
+    test "a machine that did not start: Start the machine is open with what happened" do
       stopped = %{
         cause: :machine_not_made,
         step: nil,
@@ -610,10 +644,10 @@ defmodule ApiaryWeb.PreparationStepsTest do
 
       html = section(preparation)
 
-      assert open_ids(html) == ["prepare-machine-started", "prepare-machine-start-machine"]
+      assert open_ids(html) == ["prepare-machine-start"]
 
-      assert text(LazyHTML.query(html, "#prepare-machine-start-machine #prepare-machine-cause")) ==
-               "An admin of Storefront reads why in the log of build-pool on its host."
+      assert text(LazyHTML.query(html, "#prepare-machine-start #prepare-machine-cause")) ==
+               "No machine was made: No capacity."
     end
   end
 
@@ -631,42 +665,58 @@ defmodule ApiaryWeb.PreparationStepsTest do
       do:
         html |> LazyHTML.query("#prepare-machine > ol > li > details") |> LazyHTML.attribute("id")
 
-    test "are rows after Session started; Prepare ends with the first session's steps" do
+    defp step_ids(html, id),
+      do:
+        html
+        |> LazyHTML.query("##{id} > .q-xb > ol > li > details")
+        |> LazyHTML.attribute("id")
+
+    test "a later join is in Agent session 2; Prepare the machine ends before the first" do
       html =
         section(
           preparation(%{steps: first_steps() ++ [later_join()], session_started_at: at(48)})
         )
 
-      assert names(html, @grouped) == ["Clone repository", "Start agent"]
+      assert names(html, @grouped) == ["Clone the repository"]
+      assert names(html, @session_steps) == ["Start the agent"]
 
       assert section_rows(html) == [
-               "prepare-machine-requested",
-               "prepare-machine-started",
+               "prepare-machine-request",
+               "prepare-machine-start",
                "prepare-machine-prepare",
                "prepare-machine-session",
-               "prepare-machine-step-3"
+               "prepare-machine-session-2"
              ]
 
+      assert step_ids(html, "prepare-machine-session-2-prepare") == ["prepare-machine-step-3"]
+
       group = LazyHTML.query(html, "#prepare-machine-prepare > summary")
-      assert text(LazyHTML.query(group, ".q-tc2")) == "5 s"
+      assert text(LazyHTML.query(group, ".q-tc2")) == "4 s"
 
       assert html
              |> LazyHTML.query("#prepare-machine-prepare[data-state=succeeded]")
              |> Enum.count() == 1
     end
 
-    test "a step with only its exit, after the session's start, is a row after the group" do
-      exit_only = later_join(%{name: nil, kind: nil, started_at: nil})
+    test "a step with only its exit, after the session's start, is in that session" do
+      exit_only = later_join(%{name: nil, kind: nil, started_at: nil, started_sequence: nil})
 
       html =
         section(preparation(%{steps: first_steps() ++ [exit_only], session_started_at: at(48)}))
 
-      assert List.last(section_rows(html)) == "prepare-machine-step-3"
+      assert List.last(section_rows(html)) == "prepare-machine-session"
+
+      assert step_ids(html, "prepare-machine-session-prepare") == [
+               "prepare-machine-step-2",
+               "prepare-machine-step-3"
+             ]
+
+      assert names(html, @session_steps) == ["Start the agent", "Step 3"]
       group = LazyHTML.query(html, "#prepare-machine-prepare > summary")
-      assert text(LazyHTML.query(group, ".q-tc2")) == "5 s"
+      assert text(LazyHTML.query(group, ".q-tc2")) == "4 s"
     end
 
-    test "while a later join runs, Prepare stays closed, with its end and no clock" do
+    test "while a later join runs, Prepare the machine stays closed, with its end, no clock" do
       running = later_join(%{state: "running", exited_at: nil, duration_ms: nil})
 
       html =
@@ -674,9 +724,16 @@ defmodule ApiaryWeb.PreparationStepsTest do
           alive: true
         )
 
-      assert open_ids(html) == ["prepare-machine-session", "prepare-machine-step-3"]
+      assert open_ids(html) == [
+               "prepare-machine-session",
+               "prepare-machine-session-agent",
+               "prepare-machine-session-2",
+               "prepare-machine-session-2-prepare",
+               "prepare-machine-step-3"
+             ]
+
       group = LazyHTML.query(html, "#prepare-machine-prepare > summary")
-      assert text(LazyHTML.query(group, ".q-tc2")) == "5 s"
+      assert text(LazyHTML.query(group, ".q-tc2")) == "4 s"
       assert html |> LazyHTML.query("#prepare-machine-prepare-clock") |> Enum.count() == 0
 
       assert html

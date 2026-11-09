@@ -1,9 +1,10 @@
 defmodule ApiaryWeb.RunLive.ShowRunListTest do
   @moduledoc """
   The Run list on a run's Timeline tab (`ApiaryWeb.PreparationComponents.run_list/1`):
-  the Timeline inside Session started, closed on a run that ended and open on a running
-  run or for a `?seq=` link; the move of the Timeline into Session started when the
-  session starts on an open page; and Session finished from the session's events.
+  the Timeline inside Run the agent of Agent session 1, both closed on a run that ended
+  and open on a running run or for a `?seq=` link; the move of the Timeline into Run the
+  agent when the session starts on an open page; Finished, the result and the model in
+  Run the agent from the session's events; and Save the outputs.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -14,6 +15,9 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
   alias Apiary.Runs.Projector
 
   @moduletag needs: :factory
+
+  # Run the agent's lines of Agent session 1: Started, Finished, Result and Model.
+  @agent_facts "#prepare-machine-session-agent > .q-xb > .q-prep-facts"
 
   setup :register_and_log_in_user
 
@@ -56,11 +60,16 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     lv
   end
 
-  test "a run that ended has Session started closed, with the Timeline inside it", ctx do
+  test "a run that ended has Agent session 1 and Run the agent closed, with the Timeline inside",
+       ctx do
     run = ctx.scope |> run_fixture() |> project!(prepared() ++ session() ++ ended())
     lv = open(ctx.conn, run_path(ctx.scope, run))
 
-    assert has_element?(lv, "#prepare-machine-session:not([open]) > .q-xb #timeline #e-6")
+    assert has_element?(
+             lv,
+             "#prepare-machine-session:not([open]) #prepare-machine-session-agent:not([open]) > .q-xb #timeline #e-6"
+           )
+
     # The Timeline is in the list alone, not after it too.
     assert lv
            |> render()
@@ -70,28 +79,38 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
              1
   end
 
-  test "a link to an event inside it opens Session started on a run that ended", ctx do
+  test "a link to an event inside it opens Agent session 1 and Run the agent on a run that ended",
+       ctx do
     run = ctx.scope |> run_fixture() |> project!(prepared() ++ session() ++ ended())
     lv = open(ctx.conn, run_path(ctx.scope, run) <> "?seq=6")
 
-    assert has_element?(lv, "#prepare-machine-session[open] #e-6")
+    assert has_element?(
+             lv,
+             "#prepare-machine-session[open] #prepare-machine-session-agent[open] #e-6"
+           )
   end
 
-  test "a running run has Session started open", ctx do
+  test "a running run has Agent session 1 and Run the agent open, with no Finished", ctx do
     run = ctx.scope |> run_fixture() |> project!(prepared() ++ session())
     lv = open(ctx.conn, run_path(ctx.scope, run))
 
-    assert has_element?(lv, "#prepare-machine-session[open][data-state='running'] #e-6")
-    refute has_element?(lv, "#prepare-machine-session-finished")
+    assert has_element?(
+             lv,
+             "#prepare-machine-session[open][data-state='running'] #prepare-machine-session-agent[open][data-state='running'] #e-6"
+           )
+
+    assert has_element?(lv, "#{@agent_facts} dt", "Started")
+    refute has_element?(lv, "#{@agent_facts} dt", "Finished")
   end
 
-  test "Session finished has the result's words and the model", ctx do
+  test "Run the agent has Finished, the result's words and the model", ctx do
     run = ctx.scope |> run_fixture() |> project!(prepared() ++ session() ++ ended())
     lv = open(ctx.conn, run_path(ctx.scope, run))
 
-    row = lv |> element("#prepare-machine-session-finished") |> render()
-    assert row =~ "exit 0 · success · 14 turns · 3 m 49 s · $0.84"
-    assert row =~ "model-large-1"
+    facts = lv |> element(@agent_facts) |> render()
+    assert facts =~ "Finished"
+    assert facts =~ "exit 0 · success · 14 turns · 3 m 49 s · $0.84"
+    assert facts =~ "model-large-1"
   end
 
   test "the session's start on an open page moves the Timeline, with the items it shows, into it",
@@ -103,7 +122,9 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     run = ctx.scope |> run_fixture() |> project!(prepared() ++ policies)
 
     lv = open(ctx.conn, run_path(ctx.scope, run))
-    refute has_element?(lv, "#prepare-machine-session")
+    # The session's join ran: Agent session 1 has it, and no Run the agent yet.
+    assert has_element?(lv, "#prepare-machine-session #prepare-machine-step-1")
+    refute has_element?(lv, "#prepare-machine-session-agent")
 
     shown =
       lv
@@ -131,7 +152,7 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     :erlang.trace(lv.pid, false, [:send])
 
     for id <- shown,
-        do: assert(has_element?(lv, "#prepare-machine-session[open] #timeline ##{id}"))
+        do: assert(has_element?(lv, "#prepare-machine-session-agent[open] #timeline ##{id}"))
 
     sent = sent_ids(lv.pid)
     for id <- shown, do: assert(~s("#{id}") in sent, id)
@@ -157,7 +178,7 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     send(lv.pid, :flush)
     render(lv)
 
-    assert has_element?(lv, "#prepare-machine-session #timeline")
+    assert has_element?(lv, "#prepare-machine-session-agent #timeline")
     assert :sys.get_state(lv.pid).socket.assigns.new_count == count
     assert lv |> element("#new-events") |> render() =~ Integer.to_string(count)
   end
@@ -166,7 +187,7 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     run = ctx.scope |> run_fixture() |> project!(prepared() ++ session())
     lv = open(ctx.conn, run_path(ctx.scope, run))
     assert :sys.get_state(lv.pid).socket.assigns.preparation_settled
-    refute has_element?(lv, "#prepare-machine-session-finished")
+    refute has_element?(lv, "#{@agent_facts} dt", "Finished")
 
     project!(run, [
       {7, "runtime.result",
@@ -174,18 +195,19 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     ])
 
     send(lv.pid, :flush)
-    assert has_element?(lv, "#prepare-machine-session-finished", "success · 14 turns")
-    refute has_element?(lv, "#prepare-machine-session-finished", "exit 0")
+    assert has_element?(lv, "#{@agent_facts} dt", "Finished")
+    assert has_element?(lv, "#{@agent_facts} dd", "success · 14 turns")
+    refute has_element?(lv, "#{@agent_facts} dd", "exit 0")
 
     project!(run, [
       {8, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}
     ])
 
     send(lv.pid, :flush)
-    assert has_element?(lv, "#prepare-machine-session-finished", "exit 0 · success")
+    assert has_element?(lv, "#{@agent_facts} dd", "exit 0 · success")
   end
 
-  test "a version the run pushes with no push step reaches Outputs saved at once", ctx do
+  test "a version the run pushes with no push step reaches Save the outputs at once", ctx do
     pool = Apiary.NodesFixtures.pool_fixture(ctx.scope, name: "build-pool")
     %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, pool)
 
@@ -195,7 +217,7 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     run = project!(run, prepared() ++ session())
     lv = open(ctx.conn, run_path(ctx.scope, run))
     assert :sys.get_state(lv.pid).socket.assigns.preparation_settled
-    refute has_element?(lv, "#prepare-machine-outputs")
+    refute has_element?(lv, "#prepare-machine-session-outputs")
 
     dispatch_run = Apiary.Repo.get!(Apiary.Dispatches.DispatchRun, dispatch_run.id)
     work_item = Apiary.Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id)
@@ -204,7 +226,11 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     {:ok, _version} =
       Apiary.Artifacts.push({:run, dispatch_run}, work_item, "proposal", [file], name: "main")
 
-    assert has_element?(lv, "#prepare-machine-outputs dd", "Version 1")
+    assert has_element?(
+             lv,
+             "#prepare-machine-session #prepare-machine-session-outputs dd",
+             "Version 1"
+           )
   end
 
   test "a version the run pushed is a Pushed row among the Timeline's rows by time, and shows live",
