@@ -19,8 +19,10 @@ defmodule Apiary.KeyCheck do
 
   **At boot.** `check/0` runs once the migrations have run: this module is the child of the
   application's supervisor after `Apiary.Release.Migrator`, and it runs with
-  `MIGRATE_ON_BOOT=false` too, where `bin/migrate` has run before the start. A value the
-  row does not hold yet is recorded, so the first boot records both. Before the check
+  `MIGRATE_ON_BOOT=false` too, where `bin/migrate` has run before the start. `bin/migrate`
+  runs the same check before it writes policy version 1 (`Apiary.Release.migrate/1`), so it
+  records and accepts as a start does. A value the row does not hold yet is recorded, so
+  the first boot records both. Before the check
   value is recorded on a database that holds data, the oldest row with a key id derived
   from `APIARY_ENCRYPTION_SECRET`, across the tables that hold one (`key_id_columns/0`),
   must carry the current secret's key id. The instance holds one secret at a time, so a

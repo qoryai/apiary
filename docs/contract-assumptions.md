@@ -116,18 +116,18 @@ node pool, by workspace, never by the workspace's policy, and so does its digest
 in every answer to a batch. A gateway's digest changes only when the members it has
 change.
 Whether a workspace has a policy shows in the answer to a run's registration instead (The
-run endpoint, below). A
-workspace nobody has given a policy answers every registration `{"version":1}`, no policy,
-and its machines run under the policy of their `forager.yaml`, as the contract has it
-for a server with no policy. So an upgrade, or a workspace nobody has looked at, never
-replaces a machine's local enforcement with an empty policy. A workspace has a policy once
-somebody makes it, by the first rule or the first change of mode, in the workspace or in
-any one target: the first change anywhere starts serving every target of the
-workspace, the others the workspace's baseline. From that change the answers to a run's
-batches carry `X-Qory-Run-Configuration`: a run in flight that was registered with no
-policy holds another digest, reloads its run configuration and applies it, narrowed by the
-machine's local policy. It does not go back: a workspace whose rules were all removed again
-still serves its (empty) policy. Sections the gateway does not know are to be ignored.
+run endpoint, below). Every workspace has version 1 from its creation
+(`Apiary.Policy.first_version/1`), and each start that migrates, after the migrations, and
+`bin/migrate` write it for each workspace with none (`Apiary.Policy.first_versions/0`), so
+every target of a workspace is served: the target's version, or the workspace's baseline.
+A workspace has no row only until that write, when the previous release created it during
+an upgrade, or when its render fails. Such a workspace answers every registration
+`{"version":1}`, no policy, and its machines run under the policy of their `forager.yaml`,
+as the contract has it for a server with no policy. From its first version the answers to
+a run's batches carry `X-Qory-Run-Configuration`: a run in flight that was registered with
+no policy holds another digest, reloads its run configuration and applies it, narrowed by
+the machine's local policy. A workspace whose rules were all removed again still serves
+its (empty) policy. Sections the gateway does not know are to be ignored.
 
 ## Signed POST: the events endpoint
 
@@ -763,7 +763,7 @@ holds in a target's document whatever its mode, and a deny holds in either mode,
 nothing else, and `allow` says what `enforce` would reach. `about` never selects a policy:
 the policy is chosen by the registration's labels alone.
 
-A workspace whose policy nobody has made, or any workspace on an instance without the
+A workspace with no version yet, or any workspace on an instance without the
 `security` feature, and a key `Apiary.Access` refuses `run_configuration.fetch` serve no
 run configuration: a registration is answered `{"version":1}`, the document of no policy
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.

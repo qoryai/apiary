@@ -882,6 +882,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- Every workspace has a security policy, version 1, and each machine applies it narrowed
+  by the `egress` section of its Forager file. With version 1, a run gets no tools and no
+  credentials from the Forager file, and a machine in observe no longer reaches a private
+  host in `gateway.egress.allow`.
 - The run page's **Timeline** shows an overview of the run: its stages, a row for each
   agent, the agents' messages, the artifact versions the run pushed, failures, denials,
   and the tool calls that were the only call running when a network connection was made.
@@ -1397,8 +1401,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `runs` (20261109100000): writes a run record for each run of the queue that waits, in
   the order the runs were queued, numbered after the workspace's highest number, and
   raises each workspace's count of runs to match. A run of the queue that ended or was
-  taken gets none. It locks `run_counters` and the waiting runs of the queue until it
-  ends, so no run is numbered or claimed meanwhile. Rolling back deletes these records;
+  taken gets none. It locks the waiting runs of the queue, then `run_counters`, until it
+  ends, so no run is claimed or numbered meanwhile. Rolling back deletes these records;
   the counts stay. While a node of the previous release runs beside this one, its claim
   of a run that has a record raises and is answered 503 `unavailable`; the run stays
   queued, and a claim of this release takes it. The previous release claims the oldest
@@ -1406,6 +1410,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   for that queue fails until the nodes run this release. The migration takes its locks in
   the order a claim does, with a 5-second `lock_timeout`: a migration that cannot take
   them fails, changes nothing, and can be run again.
+- `run_configurations` and `audit_entries`: each workspace with no security policy gets
+  version 1, observe with no rules, and its entry in the audit log, by Qory Apiary. No
+  migration writes these rows. Qory Apiary writes them when it starts, after the
+  migrations and the key check, one workspace per transaction, and `bin/migrate` writes
+  them after the migrations. With `MIGRATE_ON_BOOT=false`, only `bin/migrate` writes them.
+  A workspace whose version 1 fails is logged and has no version until the next start or
+  `bin/migrate`. Going back to the previous release keeps the versions, so its machines
+  keep the workspace's policy.
 - `dispatches` (20261108130000): a nullable column `late_machine_at`, the last time a
   machine showed up for a claim that takes none. It changes no row.
 - `runs` (20261108120100): an index in the order of the run list, `GET /v1/runs`, built

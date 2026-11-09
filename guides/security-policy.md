@@ -6,16 +6,15 @@ into a run configuration for every repository, and served to the workspace's mac
 which apply it to the runs they start and to the runs already in flight. In the code it is
 `Apiary.Policy`.
 
-> #### A workspace is served a policy only after its first change {: .warning}
+> #### Every workspace has a policy from its creation {: .warning}
 >
-> Installing or upgrading the server changes no machine's policy. Until somebody makes the
-> workspace's policy, by the first rule or the first change of mode, the server answers
-> every run's registration with no policy, `{"version":1}`, and every machine keeps its
-> local policy, the `egress` section of its Forager file, enforcement included. From the first change,
-> every machine of the workspace applies the workspace's policy narrowed by its local
-> policy: a run enforces when either side enforces, a host is allowed only where
-> both sides allow it, and what either side denies is denied. Read [The first change](#the-first-change) before
-> you make it.
+> A workspace starts with version 1: observe, with no rules, so everything is allowed
+> implicitly. When Qory Apiary starts, and from `bin/migrate`, it writes version 1 for each
+> workspace that has none. Every machine of
+> the workspace applies the workspace's policy narrowed by its local policy, the `egress`
+> section of its Forager file: a run enforces when either side enforces, a host is allowed
+> only where both sides allow it, and what either side denies is denied. Read
+> [Version 1](#version-1).
 
 ## Rules
 
@@ -344,18 +343,16 @@ With a server configured, `qory run` refuses `--policy` unless `--local` is give
 
 A change that would pass a limit is refused, and nothing is changed.
 
-## The first change
+## Version 1
 
-Until somebody has made the workspace's policy:
+Every workspace has version 1 from its creation: observe, with no rules. A run reaches
+every host, and each connection is recorded. The document also allows the hosts of the
+integrations that reach the workspace. When Qory Apiary starts, after the migrations, it
+writes version 1 for each workspace that has none, with no step by you. With
+`MIGRATE_ON_BOOT=false`, `bin/migrate` writes it. No person made it, so its row in the
+history shows no name. The workspace's first change makes version 2.
 
-- the server answers every run's registration with no policy, `{"version":1}`;
-- a reload of a run's configuration answers `404`;
-- every machine runs under its local policy, the `egress` section of its Forager file, in that section's mode,
-  enforcement included;
-- the repository's Policy tab says: "Runs use each machine's local policy until the first change in this workspace."
-
-The first rule or the first change of mode, the workspace's or a repository's, is the
-moment the workspace's policy applies:
+The workspace's policy applies:
 
 - to every machine under the workspace's access keys, and to the runs in flight, which
   reload within a heartbeat;
@@ -363,11 +360,11 @@ moment the workspace's policy applies:
   when either side enforces, a host is allowed only where both sides allow it (a side in
   observe allows every host), and the deny rules are both sides' together;
 - in the mode the workspace is in, which is observe until an owner or an admin sets it,
-  unless the machine enforces. A machine whose local policy enforced stays in enforce after the
-  first change: while the workspace observes, its runs reach the hosts on its local
-  list, less what a deny rule of the workspace names.
+  unless the machine enforces. A machine whose local policy enforces stays in enforce:
+  while the workspace observes, its runs reach the hosts on its local list, less what a
+  deny rule of the workspace names.
 
-So before the first change:
+So to bring a machine's list into the workspace:
 
 1. Collect what the machines' local lists say, the `gateway.egress.allow` of every Forager file.
 2. Say all of it in the workspace. The first rule you add already applies, so add the
@@ -380,6 +377,5 @@ To keep one machine on its local policy, start its runs with `qory run --local`:
 recorded to files only, under the machine's policy, and the server is not contacted, so
 that run does not appear in the console.
 
-It does not go back by removing the rules. A workspace that was given a policy keeps
-serving it: with every rule removed it serves an empty policy, under which a run in
-enforce mode reaches nothing.
+Removing the rules does not take the policy away. With every rule removed, the workspace
+serves an empty policy, under which a run in enforce mode reaches nothing.

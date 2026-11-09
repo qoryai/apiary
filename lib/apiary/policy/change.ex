@@ -12,7 +12,9 @@ defmodule Apiary.Policy.Change do
   workspace changed the hosts it requires (`Apiary.Connections.egress_hosts/1`). An `above_changed` change is likewise no change of the
   holder's rules: the level above the workspace changed (`Apiary.Policy.Above`), and the
   holder's bytes with it; `cause` is the id of the entry of that change, where the
-  edition recorded one.
+  edition recorded one. A `first_version` change is the version 1 every workspace has from
+  its creation, in `observe` with no rules: nobody made it (`changed_by_id` nil), and its
+  `before` equals its `after`.
 
   A change is an entry of the audit trail (`Apiary.Audit.Entry`), read by `from_entry/1`:
   its `id` is the entry's, which the run configurations it rendered name
@@ -22,7 +24,8 @@ defmodule Apiary.Policy.Change do
 
   alias Apiary.Audit.Entry
 
-  @actions ~w(rule_added rule_changed rule_removed rule_locked rule_unlocked mode_changed rerendered above_changed)
+  @actions ~w(rule_added rule_changed rule_removed rule_locked rule_unlocked mode_changed
+              rerendered above_changed first_version)
 
   @type t :: %__MODULE__{}
 

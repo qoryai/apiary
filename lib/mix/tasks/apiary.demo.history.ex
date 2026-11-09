@@ -45,8 +45,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   last ran on. A dozen people who joined by invitation,
   owners, admins and members, one suspended, and two invitations pending
   (`--skip-members` leaves the people alone). Last, when the instance serves the security
-  feature, the workspace is given `mix apiary.demo`'s policy if nobody has made one, the
-  hosts its history reaches, and rules and mode overrides for a few repositories.
+  feature, the workspace is given `mix apiary.demo`'s policy if nobody has changed its
+  version 1, the hosts its history reaches, and rules and mode overrides for a few repositories.
 
   Running it again adds another history beside the first.
   """
