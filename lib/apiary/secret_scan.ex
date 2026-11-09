@@ -213,8 +213,10 @@ defmodule Apiary.SecretScan do
   def identify(:run_key, value, organisation_id) do
     case RunKey.verify(value) do
       {:ok, %{workspace: workspace, run_id: run_id}, _payload} ->
+        # A queued run's record, the retry of a run whose start failed, is not the run the
+        # run key was issued for (`Run.registered/0`).
         Repo.one(
-          from r in Run,
+          from r in Run.registered(),
             join: w in Workspace,
             on: w.id == r.workspace_id,
             where: w.public_id == ^workspace and r.node_run_id == ^run_id,
