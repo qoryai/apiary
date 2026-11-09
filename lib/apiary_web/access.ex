@@ -32,7 +32,9 @@ defmodule ApiaryWeb.Access do
   A page that refuses anyone else a change, or offers them no way to make it, says who may
   with `who_may/3`: the core's sentence names the levels that may, and the edition may
   say it instead. Where the core's sentence first says something else, such as that a
-  rule is locked, `who_may_after/4` keeps that lead before an edition's sentence.
+  rule is locked, `who_may_after/4` keeps that lead before an edition's sentence. Where
+  the core's sentence says something after who may, such as why a pool is refused,
+  `who_may_before/4` puts the edition's sentence before that tail.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -86,6 +88,29 @@ defmodule ApiaryWeb.Access do
     case edition.who_may_sentence(about, scope) do
       nil -> default
       sentence -> lead <> " " <> sentence
+    end
+  end
+
+  @doc """
+  who_may_before/4 is `who_may/3` for a sentence of the core's that says something after
+  who may: the edition's sentence (`c:ApiaryWeb.Edition.who_may_sentence/2`), then
+  `tail`, or `default`, the core's whole text, where the edition has none. `default`
+  stays one text to translate, so a translation of it keeps its order; `tail` is said only
+  after an edition's sentence.
+  """
+  @spec who_may_before(Apiary.Accounts.Scope.t(), atom, String.t(), String.t()) :: String.t()
+  def who_may_before(scope, about, default, tail),
+    do: who_may_before(ApiaryWeb.Edition, scope, about, default, tail)
+
+  @doc false
+  # The same, asked of `edition`: the configured edition, or a test's.
+  @spec who_may_before(module, Apiary.Accounts.Scope.t(), atom, String.t(), String.t()) ::
+          String.t()
+  def who_may_before(edition, scope, about, default, tail)
+      when is_atom(about) and is_binary(default) and is_binary(tail) do
+    case edition.who_may_sentence(about, scope) do
+      nil -> default
+      sentence -> sentence <> " " <> tail
     end
   end
 

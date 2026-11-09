@@ -846,7 +846,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item whose run waits in the queue while no pool of its workspace is ready
-  shows “Queued: no pool can take the run” in its header. Explore's tab shows why, with
+  shows “Waiting: no pool can take the run” in its header. Explore's tab shows why, with
   the step to take on the Machines page and **Open Machines**, and the step card shows
   “No pool can take the run.” The page shows the run as queued again once a machine
   enrols a key that makes a pool ready.
@@ -904,10 +904,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - On a run's page, **Request a machine** shows the run's type and its spec, such as
   “large (4 vCPUs, 16 GiB, 60 GiB disk)”, and **Details** show **Machine type** after
   **Host**.
+- A run that waits in the queue for a machine shows on the runs list and has its page
+  from the moment it is queued, with its number. The list shows it first, newest first,
+  as **Queued**, and the **State** filter and `state:queued` select it. Its page shows
+  **Queue the run** running, the steps to come, and why it waits, such as “Waiting for
+  a machine: build-pool runs 3 of its 3 machines.” At the claim, the page becomes the
+  page of the running run without a reload. A run that ends while it waits keeps its
+  number.
 <!-- /feature -->
 
 ### Changed
 
+- Making a pool needs `node.set_limit`, the action that sets a pool's machine limit,
+  with a limit or without one. One who may make machines and pools but may not set the
+  limit is refused the pool; before, such a pool was made with a limit of 1. That person
+  sees no **New pool** on **Machines**, in the **New** menu or in the workspace
+  overview's **Send your first run**, and no **Add pool** on the set-up's **Machines**
+  step. On an empty **Machines**, they read “Add a machine for one computer that stays
+  registered.”, and `/machines/new-pool` shows “Ask an owner or admin to add the pool.
+  Adding a pool needs the right to set its machine limit.” Owners and admins hold both
+  actions, so what they can do stays the same. A machine's limit stays 1.
 - Every workspace has a security policy, version 1, and each machine applies it narrowed
   by the `egress` section of its Forager file. With version 1, a run gets no tools and no
   credentials from the Forager file, and a machine in observe no longer reaches a private
@@ -1275,9 +1291,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   queue. A machine that shows up after the slot was freed takes the slot back, even past
   the limit, so the pool's next claims wait: after a lapse, a release, a close or an
   undo, a `dispatched` refused with `409` or `410`, or a report other than `gone`; after
-  a lapse or a release, a run code redemption refused because the claim is stale or
-  ended. A close or an undo deletes the run code, so a redemption after one is not
-  counted. The 1,530 or 150 minutes are the machine's lifetime (1,470 or 90) plus 60,
+  a lapse, a release or a close, a run code redemption refused because the claim is
+  stale or ended. The 1,530 or 150 minutes are the machine's lifetime (1,470 or 90) plus 60,
   counted from the last `dispatched`, handover, report or late machine, or from the
   claim when there is none. The endpoints' responses do not change.
 <!-- /feature -->
@@ -1373,6 +1388,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   verdict's gaps, as a run of any other workflow does, and the work item page shows no
   **Approve**. Before, such a run read as a run with no verdict, and the work item page
   showed **Approve** on the newest proposal, also one an earlier run wrote.
+- Make `qory run verdict passed` the last step of each workflow entry outside a loop. A run
+  of such an entry that ends with no verdict and no open question stops the stage with "The
+  run stopped before its verdict.", **Run another round** and, where an output has a
+  version or no output is required, **Accept as it is**. Before, the stage went on to the
+  next entry, and after the last entry to its checks and its gate. **Accept as it is** goes
+  on to the next entry. After the last entry the stage reaches its gate. At a gate `none`,
+  it enters the next stage, or closes the work item at the last stage. `changes-requested`
+  goes on. A test work item's run needs no verdict. Nor does a run of Explore whose take in
+  has a proposal, or that left open questions.
+- While the stage card at Explore shows **Waits for a person**, whatever the cause, the page
+  shows no **Confirm**, and a confirmation from a page opened earlier writes nothing.
+  **Confirm** shows again once the stage reaches its gate.
 <!-- /feature -->
 <!-- feature: factory -->
 - **Take in again** on a Backlog row brings the work item back and opens its page, or
@@ -1425,6 +1452,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `runs` (20261109100000): writes a run record for each run of the queue that waits, in
+  the order the runs were queued, numbered after the workspace's highest number, and
+  raises each workspace's count of runs to match. A run of the queue that ended or was
+  taken gets none. It locks the waiting runs of the queue, then `run_counters`, until it
+  ends, so no run is claimed or numbered meanwhile. Rolling back deletes these records;
+  the counts stay. While a node of the previous release runs beside this one, its claim
+  of a run that has a record raises and gets a 503 `unavailable` response; the run stays
+  queued, and a claim of this release takes it. The previous release claims the oldest
+  waiting run first, so while that run has a record, every claim of the previous release
+  for that queue fails until the nodes run this release. The migration takes its locks in
+  the order a claim does, with a 5-second `lock_timeout`: a migration that cannot take
+  them fails, changes nothing, and can be run again.
 - `run_configurations` and `audit_entries`: each workspace with no security policy gets
   version 1, observe with no rules, and its entry in the audit log, by Qory Apiary. No
   migration writes these rows. Qory Apiary writes them when it starts, after the

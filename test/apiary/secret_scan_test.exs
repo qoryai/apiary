@@ -282,6 +282,42 @@ defmodule Apiary.SecretScanTest do
       assert SecretScan.identify(:run_key, forged, ctx.scope.organisation.id) == nil
     end
 
+    test "a run key for the run id of a queued run is no run's", ctx do
+      queued =
+        %Apiary.Dispatches.DispatchRun{
+          organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id
+        }
+        |> Apiary.Dispatches.DispatchRun.queue_changeset(%{
+          work_item_id: Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope).id,
+          step: "explore",
+          take_in: 1,
+          attempt: 1,
+          of: 3,
+          queued_at: DateTime.utc_now()
+        })
+        |> Repo.insert!()
+
+      {:ok, record} = Repo.transact(fn -> {:ok, Apiary.Dispatches.Queued.insert!(queued)} end)
+      assert record.node_run_id == queued.run_id
+      now = DateTime.utc_now()
+
+      {:ok, run_key, _payload} =
+        RunKey.issue(%{
+          run_id: queued.run_id,
+          workspace: ctx.scope.workspace.public_id,
+          node_id: "np_0000000000000000",
+          gateway: "ng_0000000000000000",
+          gateway_url: "https://gateway.example:8443",
+          gateway_public_keys: [:crypto.strong_rand_bytes(32)],
+          instance_id: "i_build-01",
+          issued: now,
+          attach_by: DateTime.add(now, 600, :second)
+        })
+
+      assert SecretScan.identify(:run_key, run_key, ctx.scope.organisation.id) == nil
+    end
+
     test "is nil for any other kind", ctx do
       assert SecretScan.identify(
                :github_token,

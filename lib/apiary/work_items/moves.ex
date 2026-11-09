@@ -68,8 +68,10 @@ defmodule Apiary.WorkItems.Moves do
   # then, only right after the work item, the workspace's counter of numbers
   # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then the runs of
   # the queue (`Apiary.Dispatches`); then the adapter's feed counter
-  # (`Apiary.Adapters.Feed`); then, last, for a work item that moves, the target's counter
-  # of run numbers (`Apiary.Runs.Number.raise_past/2`). A comment at take in, written
+  # (`Apiary.Adapters.Feed`); then, last, the target's counter of run numbers: raised for
+  # a work item that moves (`Apiary.Runs.Number.raise_past/2`), then taken by the take in's
+  # first run, which a take in queues as its last step, as its run record takes the next
+  # number (`Apiary.Dispatches.Queued`). A comment at take in, written
   # after the feed counter, locks the ticket's record `FOR KEY SHARE` through its key; a
   # write of the record's comments (`Apiary.Sources.Ingest`) locks the record
   # `FOR UPDATE` and waits on none of the locks above. An undo and a close take no
@@ -252,9 +254,10 @@ defmodule Apiary.WorkItems.Moves do
   #     proposal waiting.
   #   * A confirmation (`confirm/3`) works where the latest run's proposal waits, for a
   #     member among the approvers of the stage the work item is in, where the stage lists
-  #     them (`work_item.confirm`, `Apiary.Access`, else `:not_approver`). It keeps
-  #     the proposal's version (`Apiary.WorkItems.Confirmation`); the work item is then ready
-  #     for Shape. Its event, `:confirmed`, has the take in and the attempt.
+  #     them (`work_item.confirm`, `Apiary.Access`, else `:not_approver`), and, with the
+  #     workflow model on, while the stage is not escalated (else `:not_waiting`). It
+  #     keeps the proposal's version (`Apiary.WorkItems.Confirmation`); the work item is
+  #     then ready for Shape. Its event, `:confirmed`, has the take in and the attempt.
   #   * A run of Explore again (`explore_again/3`) works after a run that gave no result,
   #     was lost or was cancelled, while a run is left: it queues the take in's next run.
   #     Its event, `:explore_again`, has the take in and the attempt of the new run.
@@ -392,19 +395,20 @@ defmodule Apiary.WorkItems.Moves do
     with {:ok, changeset} <- valid(changeset),
          {:ok, work_item} <- insert(changeset, workspace, ticket),
          :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
-         {:ok, _run} <- Dispatches.queue(work_item, 1),
          {:ok, _seq} <- feed(adapter, work_item, "taken_in"),
          :ok <- write_comment(scope, ticket, comment, now),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
              after: %{state: :exploring},
              details: %{"take_in" => 1}
-           }) do
+           }),
+         {:ok, _run} <- Dispatches.queue(work_item, 1) do
       {:ok,
        {work_item,
         %{
           work_items: [{work_item.workspace_id, work_item.public_id}],
-          tickets: [{collection.workspace_id, item.public_id}]
+          tickets: [{collection.workspace_id, item.public_id}],
+          queues: [work_item.workspace_id]
         }}}
     end
   end
@@ -469,14 +473,19 @@ defmodule Apiary.WorkItems.Moves do
     with {:ok, changeset} <- valid(changeset),
          {:ok, work_item} <- insert_test(changeset, workspace),
          :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
-         {:ok, _run} <- Dispatches.queue(work_item, 1),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
              after: %{state: :exploring},
              details: %{"take_in" => 1, "test" => true}
-           }) do
+           }),
+         {:ok, _run} <- Dispatches.queue(work_item, 1) do
       {:ok,
-       {work_item, %{work_items: [{work_item.workspace_id, work_item.public_id}], tickets: []}}}
+       {work_item,
+        %{
+          work_items: [{work_item.workspace_id, work_item.public_id}],
+          tickets: [],
+          queues: [work_item.workspace_id]
+        }}}
     end
   end
 
@@ -649,7 +658,6 @@ defmodule Apiary.WorkItems.Moves do
              "take_in" => take_in,
              "before" => before(ended)
            }),
-         {:ok, _run} <- Dispatches.queue(work_item, take_in),
          {:ok, _seq} <- feed_if(ended.state == :undone, adapter, work_item, "taken_in"),
          :ok <- write_comment(scope, ticket, comment, now),
          {:ok, _entry} <-
@@ -658,7 +666,8 @@ defmodule Apiary.WorkItems.Moves do
              after: %{state: :exploring},
              details: %{"again" => true, "take_in" => take_in}
            }),
-         :ok <- raise_run_numbers(ended, workspace) do
+         :ok <- raise_run_numbers(ended, workspace),
+         {:ok, _run} <- Dispatches.queue(work_item, take_in) do
       {:ok,
        {work_item,
         %{
@@ -667,7 +676,8 @@ defmodule Apiary.WorkItems.Moves do
               {work_item.workspace_id, work_item.public_id},
               {ended.workspace_id, work_item.public_id}
             ]),
-          tickets: [{collection.workspace_id, item.public_id}]
+          tickets: [{collection.workspace_id, item.public_id}],
+          queues: [work_item.workspace_id]
         }}}
     end
   end
@@ -743,7 +753,12 @@ defmodule Apiary.WorkItems.Moves do
         end
       end)
 
-    finish(result)
+    # The runs the undo ended while they waited have run records (`Apiary.Dispatches.Queued`):
+    # the workspace's queue is told once the undo commits, so the Runs list reads them again.
+    with {:ok, work_item} <- finish(result) do
+      Dispatches.broadcast([work_item.workspace_id])
+      {:ok, work_item}
+    end
   end
 
   defp undone(scope, held) do
@@ -1330,6 +1345,7 @@ defmodule Apiary.WorkItems.Moves do
 
         with {:ok, held, current} <- hold_step(scope, :"work_item.confirm", work_item, now),
              :ok <- waiting(current, [:confirm], attempt),
+             :ok <- not_escalated(held),
              :ok <- keep_confirmation(held, scope, current.step, now),
              data = %{"take_in" => held.take_in, "attempt" => attempt},
              :ok <- event(held, :confirmed, scope, now, data),
@@ -1490,6 +1506,13 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   defp waiting(_current, _places, _attempt), do: {:error, :stale}
+
+  # With the workflow model off, no stage runner reads the row, and the check does not apply
+  # to an escalated stage left on it.
+  defp not_escalated(%WorkItem{stage_state: :escalated}),
+    do: if(Apiary.Stages.on?(), do: {:error, :not_waiting}, else: :ok)
+
+  defp not_escalated(%WorkItem{}), do: :ok
 
   defp invalid({:ok, _checked} = ok), do: ok
   defp invalid({:error, :invalid}), do: {:error, {:invalid, :form}}

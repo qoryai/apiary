@@ -470,6 +470,10 @@ defmodule Apiary.DispatchesTest do
 
       assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}
       assert %DispatchRun{state: :ended, end_cause: :collection_ended} = run!(run)
+
+      # The claim's pick ended its record with it.
+      assert %Apiary.Runs.Run{state: "failed", reason: "collection_ended"} =
+               Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id)
     end
   end
 
@@ -897,7 +901,7 @@ defmodule Apiary.DispatchesTest do
                {:error, :no_gateway}
 
       assert run!(run).state == :waiting
-      assert Repo.aggregate(Apiary.Runs.Run, :count) == 0
+      assert Repo.aggregate(Apiary.RunEventsFixtures.registered_runs(), :count) == 0
 
       Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
         set: [gateway_choice: :default]
@@ -1324,6 +1328,14 @@ defmodule Apiary.DispatchesTest do
 
       assert %DispatchRun{state: :ended, end_cause: :build_failed, result_outcome: :error} =
                run!(held)
+
+      # The records of the runs that ended while they waited end with them, their numbers
+      # kept (`Apiary.Dispatches.Queued`).
+      assert %Apiary.Runs.Run{state: "cancelled", reason: "lost"} =
+               Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: prebuild.id)
+
+      assert %Apiary.Runs.Run{state: "failed", reason: "build_failed"} =
+               Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: held.id)
 
       # The live pool's prebuild and a run of another target wait.
       assert run!(mine).state == :waiting

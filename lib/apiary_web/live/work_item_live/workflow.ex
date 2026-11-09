@@ -209,7 +209,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     rows =
       Repo.all(
-        from r in Run,
+        from r in Run.registered(),
           where: r.public_id in ^ids,
           select: {r.public_id, %{number: r.number, workspace_id: r.workspace_id}}
       )
@@ -252,7 +252,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       MapSet.new()
     else
       Repo.all(
-        from r in Run,
+        from r in Run.registered(),
           where: r.public_id in ^ids and r.dispatch_run_id in ^Enum.uniq(queued),
           select: r.public_id
       )
@@ -290,7 +290,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       get(escalation, :build_run) ||
         (queued &&
            Repo.one(
-             from r in Run, where: r.dispatch_run_id == ^queued, select: r.public_id, limit: 1
+             from r in Run.registered(),
+               where: r.dispatch_run_id == ^queued,
+               select: r.public_id,
+               limit: 1
            ))
 
     Enum.find(runs, &(is_binary(id) and &1.id == id))
@@ -333,20 +336,28 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
     cause = Map.get(@causes, cause, :escalate)
 
+    run = escalated_run(escalation, runs)
+
     %{
       cause: cause,
-      result: result?(cause, outputs),
+      result: result?(cause, outputs, lines(get(escalation, :gaps)), run),
       gaps: lines(get(escalation, :gaps)),
       round: get(escalation, :round),
-      run: escalated_run(escalation, runs),
+      run: run,
       harness_path: harness_path(scope, get(escalation, :set_up_step))
     }
   end
 
-  # Whether the stage has a result to accept as it is: a version of one of its outputs, or,
-  # for a stage with no outputs, a run that did not stop before its verdict.
-  defp result?(cause, []), do: cause != :run_stopped
-  defp result?(_cause, outputs), do: Enum.any?(outputs, & &1.version_id)
+  # Whether the stage has a result to accept as it is: a version of one of its outputs; for
+  # a stage with no outputs, a run that did not stop before its verdict; or a run of the
+  # stage that ended with no verdict (`run_stopped` with no cause in its gaps) where no
+  # output is required. The run of an escalation the migration placed has no stage, so the
+  # page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to it.
+  defp result?(:run_stopped, outputs, [], %{}),
+    do: Enum.any?(outputs, & &1.version_id) or not Enum.any?(outputs, & &1.required)
+
+  defp result?(cause, [], _gaps, _run), do: cause != :run_stopped
+  defp result?(_cause, outputs, _gaps, _run), do: Enum.any?(outputs, & &1.version_id)
 
   # An artifact of the index with its approval marks: the number of the version a gate
   # approved, and of a newer one where there is one.

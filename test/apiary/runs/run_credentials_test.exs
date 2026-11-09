@@ -127,7 +127,13 @@ defmodule Apiary.Runs.RunCredentialsTest do
     assert Repo.all(from d in Dispatch, where: d.dispatch_run_id == ^id and is_nil(d.ended_at)) ==
              []
 
-    assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^id), :count) == 0
+    assert Repo.aggregate(
+             from(r in Apiary.RunEventsFixtures.registered_runs(),
+               where: r.dispatch_run_id == ^id
+             ),
+             :count
+           ) == 0
+
     assert entries() == []
   end
 
@@ -744,7 +750,13 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert %DispatchRun{state: :ended, end_cause: :secrets_not_allowed} =
                Repo.get!(DispatchRun, queued.id)
 
-      assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^queued.id), :count) == 0
+      assert Repo.aggregate(
+               from(r in Apiary.RunEventsFixtures.registered_runs(),
+                 where: r.dispatch_run_id == ^queued.id
+               ),
+               :count
+             ) == 0
+
       assert entries() == []
     end
 

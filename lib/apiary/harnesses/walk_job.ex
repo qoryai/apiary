@@ -279,6 +279,8 @@ defmodule Apiary.Harnesses.WalkJob do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
+    _ended = Apiary.Dispatches.Queued.ended([run.id], now)
+
     if failure.call_failure, do: :ok = Calls.record_failure(Repo, run, failure.call_failure)
 
     [run.workspace_id | Settle.told(run.work_item_id)]

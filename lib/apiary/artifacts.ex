@@ -1019,7 +1019,11 @@ defmodule Apiary.Artifacts do
     module = if type == "questions", do: Questions, else: ReviewComments
 
     number =
-      Repo.one(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run_id, select: r.number)
+      Repo.one(
+        from r in Apiary.Runs.Run.registered(),
+          where: r.dispatch_run_id == ^run_id,
+          select: r.number
+      )
 
     with {:ok, newest} <- newest_document(module, artifact),
          {:ok, question_ids} <- question_ids(module, artifact) do
@@ -1323,7 +1327,7 @@ defmodule Apiary.Artifacts do
   # preload needs to match each run to its run of the queue.
   defp runs_query,
     do:
-      from(r in Apiary.Runs.Run,
+      from(r in Apiary.Runs.Run.registered(),
         select: struct(r, [:id, :public_id, :number, :dispatch_run_id])
       )
 

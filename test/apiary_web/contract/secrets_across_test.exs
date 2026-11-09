@@ -201,7 +201,12 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
     assert %DispatchRun{state: :ended, end_cause: :secrets_not_allowed, result_outcome: :error} =
              Repo.get!(DispatchRun, queued.id)
 
-    assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^queued.id), :count) == 0
+    assert Repo.aggregate(
+             from(r in Apiary.RunEventsFixtures.registered_runs(),
+               where: r.dispatch_run_id == ^queued.id
+             ),
+             :count
+           ) == 0
   end
 
   describe "a provider of the organisation's chain" do

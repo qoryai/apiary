@@ -13,6 +13,13 @@ defmodule ApiaryWeb.LayoutsTest do
     Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
   end
 
+  defmodule NoLimitSetUpFinished do
+    # Nobody sets a pool's instance limit (`Apiary.EditionStubs.NoLimit`), and every
+    # workspace's set-up is finished (`Apiary.EditionStubs.SetUpFinished`).
+    defdelegate check(scope, action, subject), to: Apiary.EditionStubs.NoLimit
+    defdelegate test_run_passed?(workspace), to: Apiary.EditionStubs.SetUpFinished
+  end
+
   defp attribute(html, selector, name) do
     html
     |> LazyHTML.from_fragment()
@@ -162,6 +169,19 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "#new-menu-invite")
       refute has_element?(view, "#new-menu-key")
       refute has_element?(view, "#new-menu-node")
+    end
+
+    test "New offers no pool to one an edition keeps a pool's limit from",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(NoLimitSetUpFinished)
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
+
+      assert has_element?(
+               view,
+               "#new-menu-node[href='#{workspace_path(scope, "/machines/new")}']"
+             )
+
+      refute has_element?(view, "#new-menu-node_pool")
     end
 
     test "the account menu: who you are, your settings and organisations, the theme, log out",

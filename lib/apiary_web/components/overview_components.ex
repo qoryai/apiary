@@ -1873,6 +1873,11 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
 
+  attr :may_set_limit, :boolean,
+    default: false,
+    doc:
+      "whether the reader may set a pool's limit (`node.set_limit`), which adding a pool needs too"
+
   attr :target, :any,
     default: nil,
     doc: "the newest node or pool in use that holds no active key, or nil"
@@ -1939,7 +1944,9 @@ defmodule ApiaryWeb.OverviewComponents do
         </p>
         <.steps current={@current} class="my-5">
           <:step title={gettext("Add a machine")}>
-            {gettext("One per machine, or a pool of machines that share one key.")}
+            {if @may_set_limit,
+              do: gettext("One per machine, or a pool of machines that share one key."),
+              else: gettext("One per machine.")}
           </:step>
           <:step title={gettext("Connect it")}>
             {pgettext(
@@ -1965,6 +1972,7 @@ defmodule ApiaryWeb.OverviewComponents do
             <.icon name="hero-server" class="size-4" /> {gettext("New machine")}
           </.button>
           <.button
+            :if={@may_set_limit}
             id={"#{@id}-new-pool"}
             navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/new-pool"}
             class="max-[479px]:w-full"

@@ -506,6 +506,8 @@ defmodule Apiary.Dispatches.RunEndTest do
         set: [run_id: run_id, state: :handed_over]
       )
 
+      :ok = forget_queued!(queued.id)
+
       Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
         set: [dispatch_run_id: queued.id]
       )

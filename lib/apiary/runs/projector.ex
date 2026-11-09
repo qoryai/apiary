@@ -147,7 +147,8 @@ defmodule Apiary.Runs.Projector do
 
   A run whose events retention has deleted, or is due to delete (`Apiary.Retention.due_or_pruned?/1`),
   is returned as it is: its projection is all that is left of it, and nothing here deletes
-  it. A run that lost only its log events is rebuilt from the rest; its log chunks were
+  it. So is a run of a workspace's queue that has no events, queued or ended before it
+  started: its state is the one recorded for it. A run that lost only its log events is rebuilt from the rest; its log chunks were
   deleted with them, and `projected_sequence` does not fall back to the first of the gaps
   they left. A rebuild stores no image a prebuild reported (`dev.qory.run.built`): only
   the projection that first folded the report stores it.
@@ -162,7 +163,7 @@ defmodule Apiary.Runs.Projector do
           {:error, :not_found}
 
         %Run{} = current ->
-          if Apiary.Retention.due_or_pruned?(current),
+          if Apiary.Retention.due_or_pruned?(current) or recorded_only?(current),
             do: {:ok, {:kept, current}},
             else: reset(current)
       end
@@ -180,6 +181,14 @@ defmodule Apiary.Runs.Projector do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # A run of a workspace's queue with no events: its state is what Qory Apiary recorded
+  # while it waited or at its claim (`Apiary.Dispatches.Queued`), queued or ended before
+  # it started, and nothing is folded from events it does not have.
+  defp recorded_only?(%Run{id: id} = run) do
+    (is_binary(run.dispatch_run_id) or is_binary(run.dispatch_id)) and
+      not Repo.exists?(from e in Event, where: e.run_id == ^id)
   end
 
   # The run as it was before the reset, so the caller knows where it stood.

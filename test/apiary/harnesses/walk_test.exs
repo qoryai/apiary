@@ -2673,6 +2673,10 @@ defmodule Apiary.Harnesses.WalkTest do
                result_outcome: :error,
                adapter_failure: nil
              } = Repo.get!(DispatchRun, run.id)
+
+      # The run's record, written when it was queued, ended with it.
+      assert %Apiary.Runs.Run{state: "failed", reason: "harness_unresolved"} =
+               Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id)
     end
 
     test "a call that fails otherwise ends the run adapter_failed, with the call it stopped at",

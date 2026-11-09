@@ -102,7 +102,7 @@ defmodule ApiaryWeb.TargetComponents do
   as a header does. A running run that is `quiet` has the still amber dot of the run's
   alive line (`ApiaryWeb.RunComponents.alive/1`), in place of the dot that pulses.
   """
-  attr :state, :string, required: true, values: Apiary.Runs.Run.states()
+  attr :state, :string, required: true, values: Apiary.Runs.Run.shown_states()
   attr :word, :boolean, default: false, doc: "show the word whatever the state"
   attr :quiet, :boolean, default: false, doc: "the run's heartbeat is late"
   attr :class, :any, default: nil

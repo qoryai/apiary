@@ -40,6 +40,29 @@ defmodule Apiary.Stages.FeatureOffTest do
            ] = Repo.all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
   end
 
+  test "a row left escalated: a confirmation is written, as no stage runner reads the row", %{
+    scope: scope
+  } do
+    work_item =
+      scope |> taken_in_fixture() |> end_run!(Apiary.WorkItemsFixtures.understood_result())
+
+    assert WorkItems.explore(scope, work_item).status == :confirm
+
+    {1, _rows} =
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [
+          process_version_id: Apiary.Processes.current(scope.workspace).id,
+          stage_id: "st_r79kph11eg",
+          stage_state: :escalated
+        ]
+      )
+
+    assert {:ok, %WorkItem{}} =
+             WorkItems.confirm(scope, Repo.get!(WorkItem, work_item.id), 1)
+
+    assert Repo.get_by(Confirmation, work_item_id: work_item.id)
+  end
+
   test "a run with no row gets a walk resolved with no origin, and no job", %{scope: scope} do
     run = scope |> taken_in_fixture() |> newest_run()
 

@@ -907,7 +907,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # the pool's key as a gateway posts them: it starts and exits. `result` is
   # `{:proposal, markdown}`, with `:reply` a third element when the run also replies to
   # each open review comment and closes it; `{:questions, questions}`, the questions it
-  # adds; `:failed`, a run that exits failed; or `:workflow_not_in_harness`. The exit,
+  # adds; `:failed`, a run that exits failed; or `:workflow_not_in_harness`. A proposal
+  # ends with the verdict `passed`, as a normal end with no open question does. The exit,
   # once projected, ends the run of the queue, which reads what the run pushed. Returns
   # the run of the queue.
   defp record_result!(%{key: key}, %WorkItem{} = work_item, result) do
@@ -923,6 +924,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     if result == :workflow_not_in_harness, do: walked_file!(dispatch_run)
     run = hand_over!(dispatch_run, work_item, key, now)
     push_run!(dispatch_run, run, work_item, result, now)
+    push_verdict!(dispatch_run, work_item, result)
 
     meta = %{
       contract_version: 1,
@@ -1005,6 +1007,16 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   defp push_run!(_dispatch_run, _run, _work_item, _result, _now), do: :ok
 
+  defp push_verdict!(dispatch_run, work_item, result) when elem(result, 0) == :proposal do
+    run_push!(dispatch_run, work_item, "verdict", %{
+      filename: "verdict.json",
+      content_type: "application/json",
+      binary: Jason.encode!(%{"verdict" => "passed"})
+    })
+  end
+
+  defp push_verdict!(_dispatch_run, _work_item, _result), do: :ok
+
   defp run_push!(dispatch_run, work_item, type, file) do
     ok!(
       Artifacts.push({:run, dispatch_run}, current_row(work_item), type, [file],
@@ -1029,36 +1041,52 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
             set: [state: :handed_over]
           )
 
+        registered = %{
+          organisation_id: dispatch_run.organisation_id,
+          workspace_id: dispatch_run.workspace_id,
+          node_run_id: dispatch_run.run_id,
+          node_id: key.node_id,
+          access_key_id: key.id,
+          state: "pending",
+          registered_at: now,
+          # A direct registration has every registration column set.
+          registration_labels: %{},
+          registration_about: %{"kind" => "Explore", "title" => work_item.title},
+          registration_digest: :crypto.hash(:sha256, dispatch_run.run_id),
+          registration_interval_seconds: 60,
+          registration_answer_digest:
+            "sha256=" <> Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower),
+          projected_sequence: Run.projected_from(%{registered_at: now}),
+          dispatch_run_id: dispatch_run.id,
+          updated_at: now
+        }
+
+        # The run's record written when it was queued (`Apiary.Dispatches.Queued`), as a
+        # claim registers it: it keeps its id, its number and when it was queued.
         run =
-          Repo.insert!(%Run{
-            public_id: Run.new_public_id(),
-            number:
-              Apiary.Runs.Number.next(
-                %Workspace{
-                  id: dispatch_run.workspace_id,
-                  organisation_id: dispatch_run.organisation_id
-                },
-                %Nodes.Node{id: key.node_id}
-              ),
-            organisation_id: dispatch_run.organisation_id,
-            workspace_id: dispatch_run.workspace_id,
-            node_run_id: dispatch_run.run_id,
-            node_id: key.node_id,
-            access_key_id: key.id,
-            state: "pending",
-            registered_at: now,
-            # A direct registration has every registration column set.
-            registration_labels: %{},
-            registration_about: %{"kind" => "Explore", "title" => work_item.title},
-            registration_digest: :crypto.hash(:sha256, dispatch_run.run_id),
-            registration_interval_seconds: 60,
-            registration_answer_digest:
-              "sha256=" <> Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower),
-            projected_sequence: Run.projected_from(%{registered_at: now}),
-            dispatch_run_id: dispatch_run.id,
-            inserted_at: now,
-            updated_at: now
-          })
+          case Repo.one(from r in Run, where: r.dispatch_run_id == ^dispatch_run.id) do
+            %Run{} = queued ->
+              queued |> Ecto.Changeset.change(registered) |> Repo.update!()
+
+            nil ->
+              Repo.insert!(
+                struct!(
+                  %Run{
+                    public_id: Run.new_public_id(),
+                    number:
+                      Apiary.Runs.Number.next(
+                        %Workspace{
+                          id: dispatch_run.workspace_id,
+                          organisation_id: dispatch_run.organisation_id
+                        },
+                        %Nodes.Node{id: key.node_id}
+                      ),
+                    inserted_at: now
+                  },
+                  registered
+                )
+              )
+          end
 
         {:ok, run}
       end)

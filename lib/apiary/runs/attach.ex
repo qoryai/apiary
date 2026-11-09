@@ -304,12 +304,15 @@ defmodule Apiary.Runs.Attach do
     end
   end
 
-  # The run the run key names, in its workspace. One whose record is gone has ended.
+  # The run of the run key's run id, in its workspace. One whose record is gone has ended. A
+  # queued run's record, which no claim registered, is none (`Run.registered/0`): after a
+  # failed start the retry waits under the run key's run id, and the old key finds it gone.
   defp held(%{workspace: public_id, run_id: run_id}) do
     with %Workspace{} = workspace <- Repo.get_by(Workspace, public_id: public_id),
          %Run{} = run <-
            Repo.one(
-             from r in Run, where: r.workspace_id == ^workspace.id and r.node_run_id == ^run_id
+             from r in Run.registered(),
+               where: r.workspace_id == ^workspace.id and r.node_run_id == ^run_id
            ) do
       {:ok, workspace, run}
     else
