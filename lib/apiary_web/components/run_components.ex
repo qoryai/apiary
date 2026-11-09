@@ -77,7 +77,7 @@ defmodule ApiaryWeb.RunComponents do
   `quiet_for` (seconds since the last heartbeat, set by the server once it
   is over one interval) turns a running badge amber and adds the note beside it.
   """
-  attr :state, :string, required: true, values: Apiary.Runs.Run.states()
+  attr :state, :string, required: true, values: Apiary.Runs.Run.shown_states()
   attr :exit_code, :integer, default: nil, doc: "after Failed when not 0 and not -1"
   attr :signal, :string, default: nil, doc: "shown instead of the exit code"
   attr :quiet_for, :integer, default: nil
@@ -103,7 +103,7 @@ defmodule ApiaryWeb.RunComponents do
         color={@color}
         class={[
           "q-state",
-          @state == "pending" && "q-state-pending",
+          @state in ["pending", "queued"] && "q-state-pending",
           @state == "running" && !@quiet? && "q-state-running"
         ]}
       >
@@ -147,6 +147,7 @@ defmodule ApiaryWeb.RunComponents do
   @spec state_label(String.t() | atom()) :: String.t()
   def state_label(state) do
     case state_name(state) do
+      "queued" -> gettext("Queued")
       "pending" -> gettext("Pending")
       "running" -> gettext("Running")
       "completed" -> gettext("Completed")
@@ -1957,7 +1958,7 @@ defmodule ApiaryWeb.RunComponents do
   `quiet_for` turns a running run's dot amber and adds the note, as `run_state/1` does;
   `code` follows the word (why it ended, or its exit, for the preview).
   """
-  attr :state, :string, required: true, values: Apiary.Runs.Run.states()
+  attr :state, :string, required: true, values: Apiary.Runs.Run.shown_states()
   attr :quiet_for, :integer, default: nil
   attr :quiet_since, :any, default: nil
   attr :interval, :integer, default: nil
@@ -2285,7 +2286,7 @@ defmodule ApiaryWeb.RunComponents do
     >
       <td class="q-rl-st" role="cell">
         <.run_mark
-          state={@run.state}
+          state={Run.shown_state(@run)}
           quiet_for={if @quiet, do: quiet_for(@run) || 0}
           quiet_since={heard_at(@run)}
           interval={beat(@run)}
@@ -2514,7 +2515,7 @@ defmodule ApiaryWeb.RunComponents do
     >
       <td class="q-rl-st" role="cell">
         <.run_mark
-          state={@run.state}
+          state={Run.shown_state(@run)}
           quiet_for={if @quiet, do: quiet_for(@run) || 0}
           quiet_since={heard_at(@run)}
           interval={beat(@run)}
@@ -2658,7 +2659,7 @@ defmodule ApiaryWeb.RunComponents do
       <%= if @preview do %>
         <div class="q-pv-h">
           <.run_mark
-            state={@preview.run.state}
+            state={Run.shown_state(@preview.run)}
             word
             code={exit_note(@preview.run)}
             quiet_for={if @preview.quiet, do: quiet_for(@preview.run) || 0}

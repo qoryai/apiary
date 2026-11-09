@@ -244,7 +244,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # and no pool that serves the workspace's runs is ready: words and the error mark, for a
   # run of Explore and of a later stage alike.
   def no_pool_status,
-    do: %{words: gettext("Queued: no pool can take the run"), mark: :err}
+    do: %{words: gettext("Waiting: no pool can take the run"), mark: :err}
 
   # The status on the work item's page, where a queued or running run has a link. The
   # Work items list uses `status_words/1`: its whole row is a link to the work item.

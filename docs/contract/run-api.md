@@ -127,7 +127,7 @@ Returns `200` with the work item snapshot:
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
   `state` are null; `inputs` and `outputs` are empty lists.
 - `run.number` is the run's number in its workspace, from 1, the number in the address of
-  the run's page. No two runs of a workspace have the same number, and each workspace
+  the run's page. A run takes its number when it is queued, before a machine takes it. No two runs of a workspace have the same number, and each workspace
   counts its runs apart from the others. A work item that moves into a workspace whose
   count is lower raises that count to the work item's highest number, so the workspace's
   numbers jump.

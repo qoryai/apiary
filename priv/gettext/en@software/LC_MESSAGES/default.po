@@ -15683,6 +15683,7 @@ msgid "Queue the run"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -15692,11 +15693,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Queued again after a missing image"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Queued: no pool can take the run"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -22057,8 +22053,28 @@ msgid "Waiting for %{name} to run it. This page shows when it is connected."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for %{node} to run it."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a machine: %{count} run was queued before this one."
+msgid_plural "Waiting for a machine: %{count} runs were queued before this one."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a machine: %{pool} runs %{in_use} of its %{count} machine."
+msgid_plural "Waiting for a machine: %{pool} runs %{in_use} of its %{count} machines."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a machine: Qory Pool runs all of its machines."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -22076,6 +22092,21 @@ msgstr ""
 msgid "Waiting for the command to run. This page shows when the key arrives."
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for the environment image of %{target}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for the environment image: a build of %{target} is queued."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for the environment image: a build of %{target} is running."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for the run to start"
@@ -22086,9 +22117,21 @@ msgstr ""
 msgid "Waiting on you"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting until Qory Apiary reads the harness."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting: no pool can start machine type %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting: no pool can take the run"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
@@ -22597,6 +22640,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/workflow_live.ex
 #, elixir-autogen, elixir-format

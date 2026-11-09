@@ -157,7 +157,7 @@ defmodule Apiary.Stages.StopCause do
       from d in DispatchRun,
         join: c in Collection,
         on: c.id == d.source_collection_id,
-        join: r in Run,
+        join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == d.id,
         where: d.workspace_id == ^work_item.workspace_id and d.step == ^@prebuild,
         where: c.target_system == ^system and c.target_path == ^path,
@@ -336,7 +336,9 @@ defmodule Apiary.Stages.StopCause do
   # id, or, for a run that ended before a claim registered it, the work item's number.
   # Support finds the details in the instance's log by either.
   defp support(%{run: %DispatchRun{id: id}} = n) when is_binary(id) do
-    case Repo.one(from r in Run, where: r.dispatch_run_id == ^id, select: r.public_id) do
+    case Repo.one(
+           from r in Run.registered(), where: r.dispatch_run_id == ^id, select: r.public_id
+         ) do
       nil -> support(Map.delete(n, :run))
       public_id -> "Contact support with run #{public_id}."
     end

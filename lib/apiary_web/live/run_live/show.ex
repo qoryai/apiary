@@ -161,13 +161,13 @@ defmodule ApiaryWeb.RunLive.Show do
                 <.state_mark
                   :if={!outcome_sentence(@run)}
                   id="run-state"
-                  state={@run.state}
+                  state={Run.shown_state(@run)}
                   quiet={@quiet_for != nil}
                   word
                 />
                 <.end_reason run={@run} id="run-reason" />
                 <.alive
-                  :if={@run.state in ~w(pending running)}
+                  :if={Run.shown_state(@run) in ~w(pending running)}
                   state={@run.state}
                   last_heartbeat_at={@run.last_heartbeat_at}
                   last_event_at={@run.last_event_at}
@@ -203,8 +203,9 @@ defmodule ApiaryWeb.RunLive.Show do
                   <span class="sr-only">{gettext("Started")}</span>
                   <.relative_time id="run-started" at={@run.started_at} />
                 </span>
-                <%!-- A run that was refused never ran: it has no duration to say, not even n/a. --%>
-                <span :if={!Run.refused?(@run)} id="run-duration-line"><.run_duration
+                <%!-- A run that was refused never ran, and a queued run has not started: no
+                      duration to say, not even n/a. --%>
+                <span :if={!Run.refused?(@run) and !Run.queued?(@run)} id="run-duration-line"><.run_duration
                   run={@run}
                   quiet={@quiet_for != nil}
                 /></span>
@@ -351,7 +352,7 @@ defmodule ApiaryWeb.RunLive.Show do
           digests={@digests}
           security={@security}
           instance={@instance}
-          machine_type={@preparation && @preparation.machine && @preparation.machine.machine_type}
+          machine_type={machine_type(@preparation)}
         />
 
         <%!-- A thing's tabs (`page_tabs/1`), each `run-tab-<key>`. --%>
@@ -401,11 +402,24 @@ defmodule ApiaryWeb.RunLive.Show do
                 machine_log={@machine_log}
                 alive={alive?(@run)}
                 clean_up={@clean_up}
-                run_state={@run.state}
+                run_state={Run.shown_state(@run)}
                 wall={is_binary(@run.wall)}
               />
+              <%!-- A queued run's empty Timeline under its steps: it has not pinged, so the
+                    sentence that Forager pinged is left out. --%>
+              <.limits
+                :if={Run.queued?(@run)}
+                reason={:not_started}
+                variant="empty"
+                sentence={false}
+              />
             <% @run.state == "pending" and @index.items == [] -> %>
-              <.limits reason={:not_started} variant="empty" registered={!!@run.registered_at} />
+              <.limits
+                reason={:not_started}
+                variant="empty"
+                registered={!!@run.registered_at}
+                sentence={!Run.queued?(@run)}
+              />
             <% @run.events_pruned_at && @index.items == [] && @tab == :timeline -> %>
               <.limits reason={:pruned} variant="empty" at={@run.events_pruned_at} />
             <% @tab == :timeline -> %>
@@ -652,7 +666,7 @@ defmodule ApiaryWeb.RunLive.Show do
         machine_log={@machine_log}
         alive={alive?(@run)}
         clean_up={@clean_up}
-        run_state={@run.state}
+        run_state={Run.shown_state(@run)}
         wall={is_binary(@run.wall)}
         session_open={@focused && row_session(@preparation, focused_row(@index, @focused))}
       >
@@ -1059,7 +1073,10 @@ defmodule ApiaryWeb.RunLive.Show do
           assigns.run.terminal_cols && Access.can?(assigns.scope, :"run.read_log", assigns.run),
         # The command and its arguments are shown only to a reader of the log, as the
         # Terminal is.
-        command_shown: Access.can?(assigns.scope, :"run.read_log", assigns.run)
+        command_shown: Access.can?(assigns.scope, :"run.read_log", assigns.run),
+        # The workflow of a queued run, as the runs list reads it: a run that started
+        # shows what it runs instead.
+        workflow: Run.queued?(assigns.run) && queued_workflow(assigns.scope, assigns.run)
       )
 
     ~H"""
@@ -1073,8 +1090,8 @@ defmodule ApiaryWeb.RunLive.Show do
         <dl id="run-facts" class="q-rail-kv">
           <dt>{gettext("State")}</dt>
           <dd>
-            <.state_mark state={@run.state} quiet={@quiet} word />
-            <span :if={@run.state == "pending"} class="q-rail-sub">
+            <.state_mark state={Run.shown_state(@run)} quiet={@quiet} word />
+            <span :if={Run.shown_state(@run) == "pending"} class="q-rail-sub">
               {if @run.registered_at, do: gettext("Registered only"), else: gettext("Ping only")}
             </span>
             <.end_reason run={@run} id="rail-reason" class="q-rail-sub q-rail-sub-wrap" />
@@ -1118,6 +1135,8 @@ defmodule ApiaryWeb.RunLive.Show do
           <% end %>
           <dt :if={@machine_type}>{gettext("Machine type")}</dt>
           <dd :if={@machine_type} id="rail-machine-type">{@machine_type.name}</dd>
+          <dt :if={@workflow}>{gettext("Workflow")}</dt>
+          <dd :if={@workflow} id="rail-workflow"><.external_text text={@workflow} /></dd>
           <dt>
             <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
           </dt>
@@ -1224,8 +1243,9 @@ defmodule ApiaryWeb.RunLive.Show do
             <.external_text text={@run.command} />{if !@run.command, do: na()}
           </dd>
           <dt>{gettext("Arguments")}</dt>
-          <dd :if={!@command_shown} id="run-args">{na()}</dd>
-          <dd :if={@command_shown} id="run-args" class="font-mono">
+          <%!-- A queued run has no arguments yet: n/a rather than none. --%>
+          <dd :if={!@command_shown or Run.queued?(@run)} id="run-args">{na()}</dd>
+          <dd :if={@command_shown and !Run.queued?(@run)} id="run-args" class="font-mono">
             <span :if={@run.args == []} class="font-sans text-faint">{gettext("none")}</span>
             <span
               :for={arg <- Enum.take(@run.args, 64)}
@@ -1262,7 +1282,10 @@ defmodule ApiaryWeb.RunLive.Show do
             />
           </dd>
           <dt>{gettext("Run id on the machine")}</dt>
-          <dd id="run-node-run-id" class="font-mono">{@run.node_run_id}</dd>
+          <%!-- A run of the queue no claim registered, waiting or ended while it waited,
+            has no run on a machine. --%>
+          <dd :if={!on_machine?(@run)} id="run-node-run-id">{na()}</dd>
+          <dd :if={on_machine?(@run)} id="run-node-run-id" class="font-mono">{@run.node_run_id}</dd>
           <dt>{gettext("Events")}</dt>
           <dd>
             <.rich text={
@@ -1364,6 +1387,19 @@ defmodule ApiaryWeb.RunLive.Show do
       </section>
     </aside>
     """
+  end
+
+  # The machine type of the claim answer, else the one a queued run was queued on.
+  defp machine_type(%{machine: %{machine_type: type}}), do: type
+  defp machine_type(%{queued: %{machine_type: type}}), do: type
+  defp machine_type(_preparation), do: nil
+
+  # The workflow the runs list shows for the run, nil for none.
+  defp queued_workflow(scope, run) do
+    case Runs.list_facts(scope, [run])[run.id] do
+      %{workflow: name} when is_binary(name) -> name
+      _none -> nil
+    end
   end
 
   # Whether the rail has the Image row: for a run behind a wall, with the image Qory gave
@@ -1515,6 +1551,11 @@ defmodule ApiaryWeb.RunLive.Show do
     <.na :if={!@at} />
     """
   end
+
+  # Whether the run has a run on a machine: any run but a run of a workspace's queue that
+  # no claim registered (`Run.registered?/1`).
+  defp on_machine?(%Run{dispatch_run_id: nil}), do: true
+  defp on_machine?(%Run{} = run), do: Run.registered?(run)
 
   defp na(assigns \\ %{}), do: ~H|<span class="text-faint">{gettext("n/a")}</span>|
 
@@ -1736,6 +1777,7 @@ defmodule ApiaryWeb.RunLive.Show do
           # Subscribed before the read, so nothing projected after it is missed.
           Runs.subscribe(scope, run)
           subscribe_outputs(scope, run)
+          listen_to_queue(scope, run)
           Process.send_after(self(), :quiet_tick, @quiet_tick_ms)
 
           security = socket.assigns.security
@@ -3350,8 +3392,30 @@ defmodule ApiaryWeb.RunLive.Show do
   ## The run's topic
 
   @impl true
+  def handle_info(
+        {:run_changed, %Run{id: id}},
+        %{assigns: %{run: %Run{id: id} = old, loaded: true}} = socket
+      )
+      when old.state == "pending" and is_nil(old.registered_at) and is_nil(old.node_id),
+      do: {:noreply, read_queued(socket)}
+
   def handle_info({:run_changed, %Run{} = run}, socket),
     do: {:noreply, socket |> follow_run(run) |> schedule_flush()}
+
+  # While the run is queued, a change of its workspace's queue, or a key a machine enrolled
+  # on a pool that serves the workspace, may change why it waits, or end it: the run and
+  # its preparation are read again.
+  def handle_info({Apiary.Dispatches, :changed}, %{assigns: %{run: %Run{} = run}} = socket) do
+    if socket.assigns[:loaded] && Run.queued?(run),
+      do: {:noreply, read_queued(socket)},
+      else: {:noreply, socket}
+  end
+
+  def handle_info({:key_enrolled, _key}, %{assigns: %{run: %Run{} = run}} = socket) do
+    if socket.assigns[:loaded] && Run.queued?(run),
+      do: {:noreply, read_queued(socket)},
+      else: {:noreply, socket}
+  end
 
   # At most one read per run per #{@coalesce_ms} ms, however many batches land: the ranges
   # that arrive in between are joined.
@@ -3466,6 +3530,50 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp follow_run(socket, _run), do: socket
+
+  # The page of a queued run listens to its workspace's queue (`Apiary.Dispatches`) and to
+  # the access keys of the pools that serve the workspace's runs and of the gateways their
+  # choices lead to, as the work item page listens while no pool can take its run. A
+  # topic the scope may not read is not listened to.
+  defp listen_to_queue(scope, %Run{} = run) do
+    if Run.queued?(run) do
+      Apiary.Dispatches.subscribe(run.workspace_id)
+
+      for pool <- Apiary.WorkspaceSetup.serving_pools(scope.workspace),
+          node <- [pool, Apiary.Gateways.chosen(pool)],
+          listenable?(scope, node),
+          do: Apiary.AccessKeys.subscribe(scope, node)
+    end
+
+    :ok
+  end
+
+  defp listenable?(%{workspace: %{id: id}}, %{workspace_id: id}), do: true
+
+  defp listenable?(%{organisation: %{id: id}}, %{workspace_id: nil, organisation_id: id}),
+    do: true
+
+  defp listenable?(_scope, %{workspace_id: nil, organisation_id: nil}), do: true
+  defp listenable?(_scope, _node), do: false
+
+  # A queued run read again with what its page loads beside it (`Apiary.Runs.Record`): its
+  # node changes at the claim, which the broadcast row does not have. The page then shows
+  # it as any run: queued, registered by a claim, or ended while it waited.
+  defp read_queued(%{assigns: %{current_scope: scope, run: %Run{} = old}} = socket) do
+    case Record.reload(scope, old) do
+      %Run{} = run ->
+        socket
+        |> assign_run(run)
+        |> assign_target_page(run)
+        |> assign(:instance, Nodes.instance_of(scope, run))
+        |> assign_preparation()
+        |> refresh_outputs()
+        |> schedule_flush()
+
+      nil ->
+        socket
+    end
+  end
 
   # A heartbeat changes nothing here. What the run reports, what it applied and whether it
   # is alive do: then, and only then, the facts are read again.

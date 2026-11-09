@@ -324,10 +324,12 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
-  # The run of this id the key's workspace holds, its row locked; nil for none.
+  # The run of this id in the key's workspace, its row locked; nil for none. A queued
+  # run's record, which no claim registered, is no run here (`Run.registered/0`): a batch
+  # for it is a batch for a run of the queue.
   defp workspace_run(access_key, batch) do
     Repo.one(
-      from r in Run,
+      from r in Run.registered(),
         where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject,
         lock: "FOR UPDATE"
     )
@@ -345,7 +347,7 @@ defmodule Apiary.Runs.Ingest do
       Repo.one(
         from d in DispatchRun,
           where: d.run_id == ^run_id,
-          left_join: r in Run,
+          left_join: r in subquery(Run.registered()),
           on: r.dispatch_run_id == d.id,
           left_join: w in Workspace,
           on: w.id == r.workspace_id,
@@ -365,7 +367,7 @@ defmodule Apiary.Runs.Ingest do
 
   defp own_run(access_key, batch) do
     Repo.one(
-      from r in Run,
+      from r in Run.registered(),
         where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject
     )
   end

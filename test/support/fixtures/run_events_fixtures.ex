@@ -39,7 +39,105 @@ defmodule Apiary.RunEventsFixtures do
       node_run_id: Ecto.UUID.generate()
     }
     |> Ecto.Changeset.change(Map.new(attrs))
-    |> Repo.insert!()
+    |> insert_run!()
+  end
+
+  @doc """
+  Inserts the run of `changeset`, or, when its `dispatch_run_id` has a queued run record
+  (`Apiary.Dispatches.Queued`), writes it onto that record, as the claim does: the record
+  keeps its id, its `rn_` id, its number and its `inserted_at` unless the changeset changes
+  it. A run of the queue gets a registration, as a claim writes one
+  (`Apiary.Runs.Run.registered?/1`), at the changeset's `registered_at`, else its
+  `inserted_at`, else now.
+  `queued: true` in `opts` leaves it out, for a record no claim registered.
+  """
+  def insert_run!(%Ecto.Changeset{data: %Run{}} = changeset, opts \\ []) do
+    changeset = registered(changeset, Keyword.get(opts, :queued, false))
+
+    case queued_record(Ecto.Changeset.get_field(changeset, :dispatch_run_id)) do
+      %Run{} = queued ->
+        run = Ecto.Changeset.apply_changes(changeset)
+        kept = [:id, :public_id, :number, :inserted_at, :updated_at]
+        fields = Run.__schema__(:fields) -- kept
+
+        queued
+        |> Ecto.Changeset.change(Map.take(Map.from_struct(run), fields))
+        |> Ecto.Changeset.change(Map.take(changeset.changes, [:inserted_at, :updated_at]))
+        |> Repo.update!()
+
+      nil ->
+        Repo.insert!(changeset)
+    end
+  end
+
+  defp registered(changeset, true), do: changeset
+
+  defp registered(changeset, false) do
+    if is_nil(Ecto.Changeset.get_field(changeset, :dispatch_run_id)) or
+         Ecto.Changeset.get_field(changeset, :registered_at) do
+      changeset
+    else
+      at = Ecto.Changeset.get_change(changeset, :inserted_at) || DateTime.utc_now()
+
+      # A registration sets its columns together (`runs_registration_check`).
+      Enum.reduce(registration(at), changeset, fn {field, value}, changeset ->
+        if Ecto.Changeset.get_field(changeset, field),
+          do: changeset,
+          else: Ecto.Changeset.put_change(changeset, field, value)
+      end)
+    end
+  end
+
+  defp registration(at) do
+    [
+      registered_at: at,
+      registration_labels: %{},
+      registration_about: %{},
+      registration_digest: :crypto.hash(:sha256, "registration"),
+      registration_interval_seconds: 30,
+      registration_answer_digest: "sha256=" <> String.duplicate("0", 64)
+    ]
+  end
+
+  @doc """
+  The runs a registration or a claim wrote: every run but the record of a run of the queue
+  written when it was queued (`Apiary.Dispatches.Queued`) that no claim registered, waiting
+  or ended while it waited. What a test counted as the runs before a queued run had a
+  record.
+  """
+  def registered_runs do
+    import Ecto.Query, only: [from: 2]
+
+    from r in Run,
+      where:
+        is_nil(r.dispatch_run_id) or not is_nil(r.registered_at) or not is_nil(r.node_id) or
+          not is_nil(r.started_at) or not is_nil(r.attached_at)
+  end
+
+  @doc """
+  Deletes the record of the run of the queue `dispatch_run_id` written when it was queued,
+  while no claim registered it, for a test that links another run to that run of the
+  queue, as the queue was before it wrote records.
+  """
+  def forget_queued!(dispatch_run_id) do
+    case queued_record(dispatch_run_id) do
+      %Run{} = run -> Repo.delete!(run)
+      nil -> nil
+    end
+
+    :ok
+  end
+
+  defp queued_record(nil), do: nil
+
+  defp queued_record(dispatch_run_id) do
+    import Ecto.Query, only: [from: 2]
+
+    Repo.one(
+      from r in Run,
+        where: r.dispatch_run_id == ^dispatch_run_id and r.state == "pending",
+        where: is_nil(r.node_id) and is_nil(r.registered_at)
+    )
   end
 
   @doc """

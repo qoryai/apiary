@@ -169,6 +169,7 @@ defmodule Apiary.Runs.ListFactsTest do
     # claim would.
     defp run_of!(scope, queued) do
       run = started_run(scope)
+      :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
 
       {1, _rows} =
         Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
@@ -428,6 +429,7 @@ defmodule Apiary.Runs.ListFactsTest do
         Repo.all(from d in Apiary.Dispatches.DispatchRun, where: d.work_item_id == ^work_item.id)
 
       run = started_run(scope)
+      :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
 
       {1, _rows} =
         Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),

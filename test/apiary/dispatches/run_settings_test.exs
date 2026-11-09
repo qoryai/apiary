@@ -95,7 +95,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
              Repo.get!(DispatchRun, queued.id)
 
     assert %Dispatch{end_cause: ^cause, handed_over_at: nil} = Repo.get!(Dispatch, dispatch.id)
-    assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^queued.id), :count) == 0
+
+    assert Repo.aggregate(
+             from(r in Apiary.RunEventsFixtures.registered_runs(),
+               where: r.dispatch_run_id == ^queued.id
+             ),
+             :count
+           ) == 0
   end
 
   describe "a claim with no choice at any level" do

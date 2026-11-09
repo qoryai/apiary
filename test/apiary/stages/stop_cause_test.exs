@@ -254,7 +254,7 @@ defmodule Apiary.Stages.StopCauseTest do
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
       {:ok, run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
 
-      Repo.insert!(%Apiary.Runs.Run{
+      %Apiary.Runs.Run{
         number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
@@ -264,7 +264,9 @@ defmodule Apiary.Stages.StopCauseTest do
         state: "failed",
         exit_state: "failed",
         reason: reason
-      })
+      }
+      |> Ecto.Changeset.change()
+      |> Apiary.RunEventsFixtures.insert_run!()
 
       {%{run | state: :ended, end_cause: :run_ended, result_outcome: :none}, work_item}
     end
@@ -324,7 +326,7 @@ defmodule Apiary.Stages.StopCauseTest do
           set: Keyword.merge([state: :resolved, workflow: "explore-a-ticket"], walk)
         )
 
-      Repo.insert!(%Apiary.Runs.Run{
+      %Apiary.Runs.Run{
         number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
@@ -333,7 +335,9 @@ defmodule Apiary.Stages.StopCauseTest do
         state: "failed",
         exit_state: "failed",
         reason: reason
-      })
+      }
+      |> Ecto.Changeset.change()
+      |> Apiary.RunEventsFixtures.insert_run!()
 
       run = %{run | state: :ended, end_cause: :run_ended, result_outcome: :none}
       {run, %{work_item | target_path: "acme/web-shop"}}

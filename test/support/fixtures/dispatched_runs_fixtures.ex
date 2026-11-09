@@ -84,7 +84,9 @@ defmodule Apiary.DispatchedRunsFixtures do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id), set: [state: :handed_over])
 
-    attrs = gateway_run_attrs(DateTime.utc_now())
+    # The run keeps the time the claim registered it, as a claim writes it on the record of
+    # the queued run (`Apiary.Dispatches.Queued`).
+    attrs = Map.delete(gateway_run_attrs(DateTime.utc_now()), :registered_at)
 
     # Its code redeemed: a run with a code has a run key payload with the public key that
     # redeemed it.

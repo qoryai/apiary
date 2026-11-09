@@ -372,7 +372,7 @@ defmodule Apiary.WorkItemsFixtures do
           dispatch_run_id: dispatch_run.id
         }
         |> Ecto.Changeset.change(Map.merge(defaults, Map.new(Keyword.get(opts, :run, %{}))))
-        |> Repo.insert!()
+        |> Apiary.RunEventsFixtures.insert_run!()
       end
 
     case {run, Keyword.get(opts, :result)} do

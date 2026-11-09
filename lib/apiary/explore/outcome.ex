@@ -85,7 +85,7 @@ defmodule Apiary.Explore.Outcome do
   defp stopped?(%DispatchRun{id: id}),
     do:
       Repo.exists?(
-        from r in Apiary.Runs.Run,
+        from r in Apiary.Runs.Run.registered(),
           where: r.dispatch_run_id == ^id and r.exit_state in ["failed", "lost", "cancelled"]
       )
 

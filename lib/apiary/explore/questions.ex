@@ -302,7 +302,7 @@ defmodule Apiary.Explore.Questions do
   @spec take_in_runs(Ecto.UUID.t(), pos_integer) :: MapSet.t(pos_integer)
   def take_in_runs(work_item_id, take_in) when is_integer(take_in) do
     Repo.all(
-      from r in Run,
+      from r in Run.registered(),
         join: d in DispatchRun,
         on: d.id == r.dispatch_run_id,
         where: d.work_item_id == ^work_item_id and d.take_in == ^take_in,

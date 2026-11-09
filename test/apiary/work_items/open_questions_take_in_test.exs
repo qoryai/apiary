@@ -255,7 +255,7 @@ defmodule Apiary.WorkItems.OpenQuestionsTakeInTest do
         dispatch_run_id: run.id
       }
       |> Ecto.Changeset.change(state: "running", started_at: DateTime.add(now, -30, :second))
-      |> Repo.insert!()
+      |> Apiary.RunEventsFixtures.insert_run!()
 
     push_result!(run, registered, result)
 
