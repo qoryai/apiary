@@ -220,13 +220,13 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's page or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's: on a workspace's page a node, a node pool, with the `security` feature
-  a network access rule, and with the `secrets` feature an integration, a secret and a
-  variable; on an organisation's page a gateway, where the console offers the
-  organisation's (`ApiaryWeb.NodeComponents.organisation_gateways?/0`); and everywhere an
-  invitation; of them,
-  only what the reader may do there, each entry's action asked of the workspace or the
-  organisation as its `place` says.
+  then the core's: on a workspace's page a node, a node pool for one who may set its
+  limit too (`node.set_limit`), with the `security` feature a network access rule, and
+  with the `secrets` feature an integration, a secret and a variable; on an
+  organisation's page a gateway, where the console offers the organisation's
+  (`ApiaryWeb.NodeComponents.organisation_gateways?/0`); and everywhere an invitation; of
+  them, only what the reader may do there, each entry's action asked of the workspace or
+  the organisation as its `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
           [Entry.t()]
@@ -240,15 +240,9 @@ defmodule ApiaryWeb.Layouts do
             icon: "hero-server",
             path: ~p"/#{organisation}/#{workspace}/machines/new",
             action: :"node.create"
-          },
-          %Entry{
-            key: :node_pool,
-            label: gettext("New pool"),
-            icon: "hero-server-stack",
-            path: ~p"/#{organisation}/#{workspace}/machines/new-pool",
-            action: :"node.create"
           }
         ] ++
+          pool_entries(scope, organisation, workspace) ++
           security_entries(scope, organisation, workspace) ++
           secrets_entries(scope, organisation, workspace)
       else
@@ -288,6 +282,24 @@ defmodule ApiaryWeb.Layouts do
   end
 
   def new_entries(_scope, _place), do: []
+
+  # New's entry of a node pool, shown for `node.set_limit` beside the entry's
+  # `node.create`, as making a pool needs both (`Apiary.Nodes.create_node/2`).
+  defp pool_entries(scope, organisation, workspace) do
+    if Access.can?(scope, :"node.set_limit", workspace) do
+      [
+        %Entry{
+          key: :node_pool,
+          label: gettext("New pool"),
+          icon: "hero-server-stack",
+          path: ~p"/#{organisation}/#{workspace}/machines/new-pool",
+          action: :"node.create"
+        }
+      ]
+    else
+      []
+    end
+  end
 
   # New's entry of the `security` feature, which asks `visible?(scope, :security)`: a rule of
   # the workspace's policy, on its New rule page.

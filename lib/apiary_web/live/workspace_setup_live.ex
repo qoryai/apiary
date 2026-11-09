@@ -155,9 +155,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     a pool of the workspace, its name links to its page for a person whom
   #     `access_key.create_code` allows on it. Anyone else reads who acts
   #     (`c:Apiary.Edition.machines_who_may/2`). While the workspace has no pool, a person
-  #     whom `node.create` allows on it chooses: Qory Pool, the instance's pool, chosen
-  #     first, or A pool for the workspace, with the line that the Qory Pool then stops
-  #     taking its runs, and Add pool, which makes a pool of the workspace
+  #     whom `node.create` and `node.set_limit` allow on it, as making a pool needs both,
+  #     chooses: Qory Pool, the instance's pool, chosen first, or A pool for the
+  #     workspace, with the line that the Qory Pool then stops taking its runs, and Add
+  #     pool, which makes a pool of the workspace
   #     (`Apiary.Nodes.create_node/2`) named `Apiary.WorkspaceSetup.pool_name/1`. Where
   #     another node of the workspace has that name, no pool is made, and the line under
   #     Add pool says to rename that node. Anyone else sees the instance's pool, read
@@ -563,14 +564,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   # Each pool's line, who may act on a pool that is not ready, and who acts for anyone
-  # else. `makes_pool` is of Add pool (`node.create`); `pool_codes` has, for each pool
-  # of the workspace whose command the person may get (`access_key.create_code`), its
-  # outstanding codes and its keys. The command got stays while its code is outstanding,
-  # on a read again of the step; an entry to the step, which assigns `step` anew, starts
-  # without it. The choice and the line on a taken name stay while the workspace has no
-  # pool. `shared_line` is the line of the instance's pool, for a person who keeps the
-  # choice once the
-  # workspace has its one pool (`keeps_choice?/2`); `pool_removable` is the pool that
+  # else. `makes_pool` is of Add pool (`node.create` and `node.set_limit`, as making a
+  # pool needs both); `pool_codes` has, for each pool of the workspace whose command the
+  # person may get (`access_key.create_code`), its outstanding codes and its keys. The
+  # command got stays while its code is outstanding, on a read again of the step; an
+  # entry to the step, which assigns `step` anew, starts without it. The choice and the
+  # line on a taken name stay while the workspace has no pool. `shared_line` is the line
+  # of the instance's pool, for a person who keeps the choice once the workspace has its
+  # one pool (`keeps_choice?/2`); `pool_removable` is the pool that
   # Qory Pool offers to remove (`removable_pool/2`); the confirmation of its removal stays open
   # on a read again of the step (`pool_removing`), and an entry to the step starts with it
   # closed. The page listens to each pool of the workspace once (`pool_listened`), and reads
@@ -625,7 +626,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       qory_pool_ready: qory_pool_ready,
       qory_pool_hidden: qory_pool_hidden,
       enrols: MapSet.new(Map.keys(pool_codes)),
-      makes_pool: Access.can?(scope, :"node.create", workspace),
+      makes_pool:
+        Access.can?(scope, :"node.create", workspace) and
+          Access.can?(scope, :"node.set_limit", workspace),
       pool_codes: pool_codes,
       pool_issued: issued,
       pool_choice: pool_choice(socket, workspace_pools, qory_pool_hidden),

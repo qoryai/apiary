@@ -875,6 +875,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- Making a pool needs `node.set_limit`, the action that sets a pool's machine limit,
+  with a limit or without one. One who may make machines and pools but may not set the
+  limit is refused the pool; before, such a pool was made with a limit of 1. That person
+  sees no **New pool** on **Machines**, in the **New** menu or in the workspace
+  overview's **Send your first run**, and no **Add pool** on the set-up's **Machines**
+  step. On an empty **Machines**, they read “Add a machine for one computer that stays
+  registered.”, and `/machines/new-pool` shows “Ask an owner or admin to add the pool.
+  Adding a pool needs the right to set its machine limit.” Owners and admins hold both
+  actions, so what they can do stays the same. A machine's limit stays 1.
 - Every workspace has a security policy, version 1, and each machine applies it narrowed
   by the `egress` section of its Forager file. With version 1, a run gets no tools and no
   credentials from the Forager file, and a machine in observe no longer reaches a private
