@@ -158,6 +158,7 @@ defmodule Apiary.Application do
       retention() ++
       installer() ++
       Apiary.Edition.children() ++
+      first_versions() ++
       setup() ++
       [
         # Start to serve requests, typically the last entry
@@ -208,6 +209,18 @@ defmodule Apiary.Application do
   defp migrator do
     if Application.get_env(:apiary, :migrate_on_boot, false) do
       [Apiary.Release.Migrator]
+    else
+      []
+    end
+  end
+
+  # Version 1 of the policy of each workspace that has none, after the key check, because a
+  # version 1 has the hosts of the integrations that reach the workspace, and after the
+  # caches and the edition's processes, before the endpoint. Only where the migrator runs:
+  # with MIGRATE_ON_BOOT=false, `bin/migrate` writes them.
+  defp first_versions do
+    if Application.get_env(:apiary, :migrate_on_boot, false) do
+      [Apiary.Release.FirstVersions]
     else
       []
     end

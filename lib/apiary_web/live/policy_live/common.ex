@@ -1261,6 +1261,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
     diff = Policy.diff(change)
 
     case {change.action, diff} do
+      {"first_version", _} ->
+        [first_version_words()]
+
       {"mode_changed", %{mode: {from, to}}} when is_nil(change.target_id) ->
         rich_gettext("%{who} switched the workspace's default mode from %{from} to %{to}",
           who: who,
@@ -1408,11 +1411,17 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp paths_words([]), do: [gettext("no path")]
   defp paths_words(paths), do: paths |> Enum.map(&{:code, &1}) |> Enum.intersperse(" ")
 
+  # The version 1 every workspace has from its creation, which no person made.
+  defp first_version_words, do: gettext("Version 1: observe, with no rules")
+
   @doc "A change in a few plain words, for the versions list and the version's strip."
   def change_words(change) do
     diff = Policy.diff(change)
 
     case {change.action, diff} do
+      {"first_version", _} ->
+        first_version_words()
+
       {"mode_changed", %{mode: {_from, to}}} when is_nil(change.target_id) ->
         gettext("Workspace's default set to %{mode}", mode: to)
 
@@ -1600,15 +1609,21 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp inline(list) when is_list(list), do: "[" <> Enum.map_join(list, ", ", &inline/1) <> "]"
   defp inline(value), do: Jason.encode!(value)
 
-  @doc "A line diff of two texts: `[{:add | :del | :ctx, line}]`."
+  @doc """
+  A line diff of two texts: `[{:add | :del | :ctx, line}]`. An empty text has no line, so
+  version 1, diffed against nothing, has only added lines.
+  """
   def line_diff(old, new) do
-    List.myers_difference(String.split(old, "\n"), String.split(new, "\n"))
+    List.myers_difference(text_lines(old), text_lines(new))
     |> Enum.flat_map(fn
       {:eq, lines} -> Enum.map(lines, &{:ctx, &1})
       {:ins, lines} -> Enum.map(lines, &{:add, &1})
       {:del, lines} -> Enum.map(lines, &{:del, &1})
     end)
   end
+
+  defp text_lines(""), do: []
+  defp text_lines(text), do: String.split(text, "\n")
 
   @doc "Folds a long run of unchanged array items to its first two and how many more."
   def fold(lines) do
@@ -1882,6 +1897,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
          mode_required_by:
            if(latest.version == configuration.version, do: above_name(socket.assigns[:effective])),
          change_words: change && change_words(change),
+         first_version?: first_version?(change, configuration),
          view: view,
          compare: compare,
          compare_options:
@@ -1914,6 +1930,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
     else
       _ -> :error
     end
+  end
+
+  # Version 1 of the workspace, which no person made, also once retention has pruned its
+  # entry in the audit trail.
+  defp first_version?(%{action: action}, _configuration), do: action == "first_version"
+
+  defp first_version?(nil, configuration) do
+    configuration.version == 1 and is_nil(configuration.target_id) and
+      is_nil(configuration.changed_by_id)
   end
 
   # The mode a served document says: the version's fact, not today's setting.
@@ -1974,13 +1999,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
       )
 
   @doc """
-  The version a holder is served, one read and no document: `{configuration, own?}`, `own?` false when
-  a target is served the workspace's baseline. Only for a workspace somebody has changed:
-  before that nothing is served, and nothing is read (`nil`).
+  The version a holder is served, one read and no document: `{configuration, own?}`, `own?`
+  false when a target is served the workspace's baseline; `nil` for a workspace with no
+  version yet (`Apiary.Policy.managed?/1`), which serves none.
   """
-  def served_version(_scope, _holder, false), do: nil
-
-  def served_version(scope, holder, true) do
+  def served_version(scope, holder) do
     versions = Policy.newest_versions(scope, [nil | List.wrap(holder)])
     own = holder && versions[holder.id]
 

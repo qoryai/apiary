@@ -590,7 +590,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     own = Enum.filter(targets, &(&1.own_mode != nil))
 
     version =
-      case Common.served_version(scope, nil, summary.managed?) do
+      case Common.served_version(scope, nil) do
         {configuration, _own?} -> configuration
         nil -> nil
       end
@@ -1457,9 +1457,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       end) or (facts && facts.runs > 0)
 
     cond do
-      not policy.summary.managed? and (facts && facts.runs > 0) ->
-        %{id: "att-policy-unmanaged", kind: :unmanaged, runs: facts.runs}
-
       policy.summary.managed? and policy.summary.mode == "observe" and policy.allow_rules > 0 and
           recent_run? ->
         uncovered =
@@ -1634,7 +1631,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         }
 
       # The policy page, where the reader may read it: the policy items are dealt with there.
-      kind when kind in [:enforce, :unmanaged] ->
+      :enforce ->
         if Common.may?(scope, :"security_policy.read"), do: policy_more(scope, count)
 
       # The nodes page, where the reader is shown it: an edition may hide the nodes.
@@ -1697,9 +1694,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     %{mark: :resolved, what: what, done: nil}
   end
-
-  defp resolution(%{kind: :unmanaged}, _assigns),
-    do: %{mark: :resolved, what: gettext("Qory Apiary serves the policy now."), done: nil}
 
   defp resolution(%{kind: :idle_key, key: key}, %{keys: keys}) do
     what =

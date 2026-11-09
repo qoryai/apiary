@@ -298,6 +298,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
     test "a prebuild given the default policy of a workspace that serves none shows its digest, never the document of no policy's",
          %{conn: conn, scope: scope} do
+      no_policy_version!(scope.workspace)
       {:ok, document} = Policy.default_document(scope.workspace.id)
 
       {:ok, composed} =
@@ -332,6 +333,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
     test "a prebuild given the default policy keeps its tooltip after the workspace makes version 1",
          %{conn: conn, scope: scope} do
+      no_policy_version!(scope.workspace)
       {:ok, document} = Policy.default_document(scope.workspace.id)
 
       {:ok, composed} =
@@ -1222,7 +1224,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
 
       assert text(view, "#cx-#{id}-after") =~
-               "Rule changed Allowed for the workspace in v2 · of the workspace's policy by you"
+               "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
 
       refute text(view, "#cx-#{id}-after") =~ "Rule added"
     end
@@ -1239,7 +1241,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       letter = String.upcase(String.first(admin.user.email))
 
       assert text(view, "#cx-#{id}-after") =~
-               "Denied for the workspace in v2 · of the workspace's policy by #{letter} #{admin.user.email} "
+               "Denied for the workspace in v3 · of the workspace's policy by " <>
+                 "#{letter} #{admin.user.email} "
 
       assert has_element?(view, ~s{#cx-#{id}-after abbr[data-tip="#{admin.user.email}"]})
     end
@@ -1255,10 +1258,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
 
       assert text(view, "#cx-#{id}-after") =~
-               "Rule changed Denied for the workspace in v2 · of the workspace's policy by you"
+               "Rule changed Denied for the workspace in v3 · of the workspace's policy by you"
     end
 
-    test "the newest change decides: a rule added in v1 whose paths changed in v2", %{
+    test "the newest change decides: a rule added in v2 whose paths changed in v3", %{
       conn: conn,
       scope: scope
     } do
@@ -1267,7 +1270,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example", paths: ["/v1/*"]})
 
       # the history's newest page, newest first
-      assert [{"rule_changed", 2}, {"rule_added", 1}] =
+      assert [{"rule_changed", 3}, {"rule_added", 2}] =
                for(
                  change <- Policy.list_changes(scope, nil, 1).items,
                  change.subject == "files.cdn.example",
@@ -1279,7 +1282,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#cx-#{id}-after .badge") == "Rule changed"
 
       assert text(view, "#cx-#{id}-after") =~
-               "Rule changed Allowed for the workspace in v2 · of the workspace's policy by you"
+               "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
     end
 
     test "a denied row with no rule, which a changed rule now allows, gives its reason in the past tense",
@@ -1310,7 +1313,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
       assert text(view, "#cx-#{id}-after .badge") == "In force in this run"
-      assert text(view, "#cx-#{id}-after") =~ "Allowed for the workspace in v2"
+      assert text(view, "#cx-#{id}-after") =~ "Allowed for the workspace in v3"
       refute text(view, "#cx-#{id}-after") =~ "Rule changed"
     end
   end

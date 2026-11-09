@@ -789,6 +789,44 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       assert workspaces(organisation) == []
     end
 
+    test "a refused render of the new workspace's policy is the general error, and nothing is made",
+         %{conn: conn, user: user, organisation: organisation, template_path: path} do
+      on_exit(fn -> Application.delete_env(:apiary, Apiary.Policy.Above) end)
+
+      # A document over the 1 MiB the gateway reads.
+      above = %Apiary.Policy.Above{
+        id: Ecto.UUID.generate(),
+        name: "Northwind",
+        slug: "northwind",
+        rules:
+          for n <- 1..11 do
+            %Apiary.Policy.Rule{
+              id: Ecto.UUID.generate(),
+              kind: "host",
+              action: "allow",
+              host: "h#{n}.example",
+              paths: for(m <- 1..100, do: "/" <> String.duplicate("a", 1000) <> "/#{n}/#{m}"),
+              locked: false
+            }
+          end
+      }
+
+      Application.put_env(:apiary, Apiary.Policy.Above, answer: fn _workspace -> above end)
+
+      view =
+        open(
+          conn,
+          user,
+          organisation,
+          String.replace_prefix(path, ~p"/#{organisation}/workspaces/new/", "")
+        )
+
+      view |> element("#workspace-type-create") |> render_click()
+
+      assert flash_error(view) =~ squash("Nothing was changed. Try again.")
+      assert workspaces(organisation) == []
+    end
+
     test "a person who lost the right to create goes to the overview", %{
       conn: conn,
       user: user,

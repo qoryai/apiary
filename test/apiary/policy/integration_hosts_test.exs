@@ -78,12 +78,12 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   end
 
   describe "a connection that applies to every workspace" do
-    test "adds its hosts to the baseline's egress.allow_first, once the workspace is managed",
-         %{scope: scope} do
+    test "adds its hosts to the baseline's egress.allow_first", %{scope: scope} do
       connection = integration!(scope, "acme-tracker", ["api.example.com"])
 
-      # A workspace nobody has changed is not served a policy: its machines use theirs.
-      refute Policy.managed?(scope)
+      assert document(scope, nil) ==
+               ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe",) <>
+                 ~s("allow":[],"allow_first":["api.example.com"]}}})
 
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "docs.example.com"})
 

@@ -2722,7 +2722,7 @@ defmodule ApiaryWeb.Layouts do
   defp nav_count_title(_entry, _count), do: nil
 
   # The mode in force is a word, not a colour: observe is not a fault. Absent while the
-  # workspace has no policy of Qory's yet.
+  # workspace has no policy version yet.
   defp policy_mode(%{mode: mode}) when mode in ["observe", "enforce"], do: mode
   defp policy_mode(_counts), do: nil
 

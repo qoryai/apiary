@@ -345,16 +345,20 @@ defmodule Apiary.AuditTest do
       {:ok, _} = Organisations.update_workspace(scope, %{name: "Second"})
       {:ok, _} = Organisations.update_workspace(other, %{name: "Elsewhere"})
 
-      assert {:ok, %{entries: [second, first, type, created], more?: false, page: 1}} =
+      assert {:ok, %{entries: [second, first, version_1, type, created], more?: false, page: 1}} =
                Audit.list_entries(scope)
 
       assert second.after == %{"name" => "Second", "slug" => "second"}
       assert first.after == %{"name" => "First", "slug" => "first"}
+
+      assert %{action: "security_policy.edit", details: %{"change" => "first_version"}} =
+               version_1
+
       assert %{action: "artifact_type.edit", details: %{"type" => "branch"}} = type
       assert created.action == "organisation.create"
 
       assert Enum.all?(
-               [second, first, type, created],
+               [second, first, version_1, type, created],
                &(&1.organisation_id == scope.organisation.id)
              )
 
@@ -363,7 +367,7 @@ defmodule Apiary.AuditTest do
 
       assert only.id == created.id
 
-      assert {:ok, %{entries: [_, _, _]}} =
+      assert {:ok, %{entries: [_, _, _, _]}} =
                Audit.list_entries(scope, workspace_id: scope.workspace.id)
 
       # Another organisation's workspace names none of these.

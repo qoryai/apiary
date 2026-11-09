@@ -152,16 +152,13 @@ gateway:
 It applies:
 
 - on a machine with no `server` section;
-- with `qory run --local`, which records to files only and does not contact Qory Apiary;
-- while the workspace of the access key's machine or pool has no policy yet. Qory Apiary then answers
-  each run's registration with no policy, `{"version":1}`, and the machine's local policy
-  stands, enforcement included.
+- with `qory run --local`, which records to files only and does not contact Qory Apiary.
 
-From the first change of the workspace's policy in the console, Qory Apiary's run
-configuration, narrowed by the file's `egress` section (enforce when either enforces;
-allowed only where both allow; denied where either denies), is the policy of every run
-under the keys of the workspace's machines and pools. [The security policy](security-policy.md) says
-what to do before that first change.
+Every workspace has a policy from its creation. Qory Apiary's run configuration, narrowed
+by the file's `egress` section (enforce when either enforces; allowed only where both
+allow; denied where either denies), is the policy of every run under the keys of the
+workspace's machines and pools. [The security policy](security-policy.md#version-1) says what
+that means for a machine with a local list.
 
 With a server configured, `qory run --policy <file>` is refused unless `--local` is given
 too.

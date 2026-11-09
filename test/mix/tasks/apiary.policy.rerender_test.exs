@@ -72,8 +72,9 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     own = age!(scope, target)
     changes_before = length(changes(scope, nil)) + length(changes(scope, target))
 
+    # The two: this workspace, and Main of the instance's organisation, which every test sees.
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 2 new versions."]}
+    assert_received {:mix_shell, :info, ["Rendered 2 workspaces again: 2 new versions."]}
     assert_received {:policy_changed, %{action: "rerendered"}}
 
     assert %{version: version} = configuration = current!(scope, nil)
@@ -100,25 +101,26 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
 
     # Run again: the bytes are current, nothing is written and nothing is announced.
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 0 new versions."]}
+    assert_received {:mix_shell, :info, ["Rendered 2 workspaces again: 0 new versions."]}
     refute_received {:policy_changed, _}
     assert current!(scope, nil).version == baseline + 1
     assert current!(scope, target).version == own + 1
     assert length(changes(scope, nil)) + length(changes(scope, target)) == changes_before + 2
   end
 
-  test "a workspace without deny rules renders the bytes it had, and an unmanaged workspace is untouched",
+  test "a workspace without deny rules renders the bytes it had, and one with no row is untouched",
        %{scope: scope} do
     {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
     version = current!(scope, nil).version
     %{scope: unmanaged} = sign_up_fixture()
+    no_policy_version!(unmanaged.workspace)
     refute Policy.managed?(unmanaged)
 
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 0 new versions."]}
+    assert_received {:mix_shell, :info, ["Rendered 2 workspaces again: 0 new versions."]}
 
     assert current!(scope, nil).version == version
-    assert Enum.map(changes(scope, nil), & &1.action) == ["rule_added"]
+    assert Enum.map(changes(scope, nil), & &1.action) == ["rule_added", "first_version"]
     refute Policy.managed?(unmanaged)
     assert {:error, _} = Policy.current_configuration(unmanaged, nil)
 
