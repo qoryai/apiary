@@ -20,9 +20,10 @@ defmodule ApiaryWeb.NodeLive.Index do
   name or by Last seen (`?sort=seen`: running first, then the last seen first, never seen
   last), all in the URL.
 
-  Owners and admins make a node, a node pool or a gateway here (`node.create`), a pool's
-  instance limit asked only of one who sets it (`node.set_limit`), each a separate
-  page, `/machines/new`, `/machines/new-pool` and `/machines/new-gateway`, on the pattern of a form
+  Owners and admins make a node, a node pool or a gateway here (`node.create`), each a
+  separate page, `/machines/new`, `/machines/new-pool` and `/machines/new-gateway`. Making
+  a pool asks `node.set_limit` too, with a limit or without one, so New pool shows, and
+  its path opens, only for one who may set it. Each page follows the pattern of a form
   page (`docs/ui.md`, A form is a page): the breadcrumb `Machines / New machine`, the page's
   heading and one sentence, the form in the 720 px column, its button and Cancel back to
   the list (`ApiaryWeb.PageComponents.page_form/1`). A gateway's form asks its name and

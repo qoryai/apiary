@@ -256,15 +256,23 @@ defmodule Apiary.NodesTest do
     end
 
     test "a node and a gateway are made", %{scope: scope} do
-      # A node's limit is 1, whoever makes it.
-      assert {:ok, %Node{kind: :node, instance_limit: 1}} =
-               Nodes.create_node(scope, %{kind: "node", name: "build-09", instance_limit: 4})
+      # A node's limit is 1, whoever makes it, with a limit given, an empty one or none.
+      for {name, attrs} <- [
+            {"build-07", %{instance_limit: 4}},
+            {"build-08", %{instance_limit: ""}},
+            {"build-09", %{}}
+          ] do
+        assert {:ok, %Node{kind: :node, instance_limit: 1}} =
+                 Nodes.create_node(scope, Map.merge(%{kind: "node", name: name}, attrs))
+      end
 
+      # A gateway's is none, a limit given or not.
       assert {:ok, %Node{kind: :gateway, instance_limit: nil}} =
                Nodes.create_node(scope, %{
                  kind: "gateway",
                  name: "edge-09",
-                 url: "https://gateway.example"
+                 url: "https://gateway.example",
+                 instance_limit: 3
                })
     end
   end

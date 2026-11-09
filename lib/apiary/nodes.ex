@@ -633,9 +633,8 @@ defmodule Apiary.Nodes do
     if rest == %{} and limit != [], do: limit, else: [:"node.edit" | limit]
   end
 
-  # A new pool asks `node.set_limit` too, whether or not a limit is given, as it is made
-  # with the limit given or with none; a node's limit is 1 and a gateway's none, whoever
-  # makes it.
+  # A new pool asks `node.set_limit` too, with a limit or without one; a node's limit is 1
+  # and a gateway's none, whoever makes them.
   defp check_limit_set(scope, changeset, workspace) do
     if Ecto.Changeset.get_field(changeset, :kind) == :pool,
       do: Access.check(scope, :"node.set_limit", workspace),
