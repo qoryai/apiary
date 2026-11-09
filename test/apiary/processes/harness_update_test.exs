@@ -104,6 +104,25 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     repository
   end
 
+  # The workspace's harness choice turned to a harness repository with `files`, served as
+  # public, at main, with its process still from the Qory harness: the repository.
+  defp repository_choice!(workspace, files) do
+    unique = %{".test-#{System.unique_integer([:positive])}" => ""}
+    repository = PublicGitServer.repository!(Map.merge(files, unique))
+    PublicGitServer.serve(%{@repository => repository.dir})
+
+    Repo.insert!(%Stack{
+      organisation_id: workspace.organisation_id,
+      workspace_id: workspace.id,
+      choice: :repository,
+      version_kind: :branch,
+      version_name: "main",
+      harness: "extends:\n  git: #{@repository}\n  ref: main\n  stack: software\n"
+    })
+
+    repository
+  end
+
   # A person's save of edits: Shape renamed Plan.
   defp edit!(scope, workspace) do
     document = Processes.current(workspace).document
@@ -187,16 +206,43 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert HarnessUpdate.read(member, ctx.workspace) == {:error, :forbidden}
     end
 
-    test "a harness repository with no template the process came from has none", ctx do
-      Repo.insert!(%Stack{
-        organisation_id: ctx.workspace.organisation_id,
-        workspace_id: ctx.workspace.id,
-        choice: :repository,
-        version_kind: :branch,
-        version_name: "main",
-        harness: "extends:\n  git: #{@repository}\n  stack: core\n"
-      })
+    test "a harness repository updates a process from the Qory harness from its template",
+         ctx do
+      repository = repository_choice!(ctx.workspace, QoryHarnessFixture.files())
 
+      assert {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert %{source: :repository, git: @repository, in_use: nil, changes: []} = update
+      assert update.commit == repository.commit
+
+      assert %{
+               "source" => "repository",
+               "module" => "software-factory",
+               "type" => "qory.software"
+             } =
+               update.template
+
+      assert {:ok, version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+      assert version.template["commit"] == repository.commit
+    end
+
+    test "a harness repository with no template of the workspace's type, or several, has none",
+         ctx do
+      process = Map.fetch!(QoryHarnessFixture.files(), @process)
+
+      several =
+        QoryHarnessFixture.files()
+        |> Map.put("modules/other-factory/process.yaml", process)
+        |> Map.update!(
+          "qory.yaml",
+          &String.replace(&1, "harness-authoring]", "harness-authoring, other-factory]")
+        )
+
+      repository_choice!(ctx.workspace, several)
+      assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, :no_template}
+
+      Repo.delete_all(from s in Stack, where: s.workspace_id == ^ctx.workspace.id)
+      repository_choice!(ctx.workspace, Map.delete(QoryHarnessFixture.files(), @process))
       assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, :no_template}
     end
   end

@@ -108,7 +108,8 @@ defmodule Apiary.Processes.HarnessUpdate do
   Why `read/2` found nothing to save:
 
     * `:no_template`: the harness has no template of the workspace's type at that
-      version, of the module the process came from;
+      version, of the module the process came from; for a process that came from another
+      harness, none of the workspace's type, or several;
     * `{:qory, failure}`: a read of the Qory harness that failed
       (Apiary.Harnesses.Qory);
     * `{:read, reason}`: a read of a harness repository that failed
@@ -357,11 +358,26 @@ defmodule Apiary.Processes.HarnessUpdate do
   defp read_repository(scope, workspace, chosen, base, version) do
     in_use = Processes.harness_template(base)
 
-    with true <- same_harness?(in_use, chosen) || {:error, :no_template},
-         {:ok, source, _stack} <- chosen_source(workspace),
+    with {:ok, source, _stack} <- chosen_source(workspace),
          {:ok, %{commit: commit} = read} <- templates(scope, source),
-         {:ok, template} <- module_template(read, in_use["module"], workspace.type) do
+         {:ok, template} <- repository_template(read, in_use, chosen, workspace.type) do
       {:ok, update(workspace, chosen, base, version, commit, template, :repository)}
+    end
+  end
+
+  # The template of the read: of the module the process came from, where it came from
+  # this harness; else the one template of the workspace's type, for a process that came
+  # from another harness, `:no_template` where the read has none of that type or several.
+  defp repository_template(read, in_use, chosen, type) do
+    if same_harness?(in_use, chosen),
+      do: module_template(read, in_use["module"], type),
+      else: type_template(read, type)
+  end
+
+  defp type_template(read, type) do
+    case Enum.filter(read.templates, &(&1.type == type)) do
+      [template] -> {:ok, template}
+      _none_or_several -> {:error, :no_template}
     end
   end
 
