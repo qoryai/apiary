@@ -2558,7 +2558,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <.acts :if={!@may} steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
       <:context>
-        <HarnessComponents.about />
+        <HarnessComponents.about process={Features.visible?(@current_scope, :workflow_model)} />
       </:context>
     </SetUpComponents.frame>
     """
