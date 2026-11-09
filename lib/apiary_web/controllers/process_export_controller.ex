@@ -2,7 +2,7 @@ defmodule ApiaryWeb.ProcessExportController do
   # A workspace's process as a `process.yaml` (`Apiary.Processes.export/1`), for Export
   # process.yaml on the Workflows page. Not a page.
   #
-  #     GET /:org/:workspace/settings/stages/process.yaml
+  #     GET /:org/:workspace/settings/workflows/process.yaml
   #
   # Scoped like the run log (`ApiaryWeb.RunLogController`): the pipeline resolves the
   # organisation and the workspace of the path for a member, and sends `404` to anybody
