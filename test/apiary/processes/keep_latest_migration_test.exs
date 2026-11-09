@@ -11,7 +11,7 @@ defmodule Apiary.Processes.KeepLatestMigrationTest do
 
   alias Apiary.Processes.{TypeTemplate, TypeTemplates, Version}
 
-  @migration {20_261_108_120_000,
+  @migration {20_261_108_140_000,
               Apiary.Repo.Migrations.KeepWhetherAWorkspaceKeepsItsProcessAtTheLatest,
               "keep_whether_a_workspace_keeps_its_process_at_the_latest"}
 
