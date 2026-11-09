@@ -1932,14 +1932,15 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   A queued run's list is Queue the run, running with its time counting from when the run
   was queued, then Request a machine, Start the machine, Prepare the machine, Agent
   session 1 and Remove the machine as grey rings with no time. A muted line under Queue
-  the run says why the run waits, the first that applies (`Apiary.Runs.Waiting`), and is
-  read again when the queue changes, a slot frees, a build ends or a machine's key
+  the run shows why the run waits, the first reason that applies (`Apiary.Runs.Waiting`),
+  and is read again when the queue changes, a slot frees, a build ends or a machine's key
   changes:
   1. "Waiting until Qory Apiary reads the harness." while its harness walk is not done.
   2. "Waiting: no pool can take the run" while no pool that serves the workspace is ready.
   3. "Waiting: no pool can start machine type large" while no such pool takes its type.
-  4. "Waiting for the environment image: a build of acme/shop is queued." (or "is
-     running."), or "Waiting for the environment image of acme/shop." with no build
+  4. "Waiting for the environment image: a build of northwind/storefront is queued." (or
+     "is running."), or "Waiting for the environment image of northwind/storefront." with
+     no build
      live, while it is held for its target's build.
   5. "Waiting for a machine: build-pool runs 3 of its 3 machines." while every pool runs
      as many machines as its limit allows; "Waiting for a machine: Qory Pool runs all of
@@ -1949,8 +1950,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
 
   The page of a queued run has no duration in its header. Details has a Workflow row,
   for a queued run alone, Arguments and Run id on the machine read n/a, and the empty
-  Timeline says "Waiting for the run to start" and "Listening for the run's first
-  event." with no sentence that Forager pinged. At the claim the page becomes the page of
+  Timeline shows "Waiting for the run to start" and "Listening for the run's first
+  event." with no sentence that Forager pinged. Run id on the machine stays n/a for a run
+  that ended while it waited. At the claim the page becomes the page of
   the run the pool registered, without a reload. A run that ends while it waits keeps
   its number: Cancelled when its work item was closed or undone, or a prebuild was
   superseded or its pool deleted; Failed with its cause otherwise.

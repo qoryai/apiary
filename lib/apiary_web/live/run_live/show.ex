@@ -405,8 +405,8 @@ defmodule ApiaryWeb.RunLive.Show do
                 run_state={Run.shown_state(@run)}
                 wall={is_binary(@run.wall)}
               />
-              <%!-- A queued run's empty Timeline under its steps: it has not pinged, so no
-                    sentence says it did. --%>
+              <%!-- A queued run's empty Timeline under its steps: it has not pinged, so the
+                    sentence that Forager pinged is left out. --%>
               <.limits
                 :if={Run.queued?(@run)}
                 reason={:not_started}
@@ -1282,9 +1282,10 @@ defmodule ApiaryWeb.RunLive.Show do
             />
           </dd>
           <dt>{gettext("Run id on the machine")}</dt>
-          <%!-- A queued run has no run on a machine yet. --%>
-          <dd :if={Run.queued?(@run)} id="run-node-run-id">{na()}</dd>
-          <dd :if={!Run.queued?(@run)} id="run-node-run-id" class="font-mono">{@run.node_run_id}</dd>
+          <%!-- A run of the queue no claim registered, waiting or ended while it waited,
+            has no run on a machine. --%>
+          <dd :if={!on_machine?(@run)} id="run-node-run-id">{na()}</dd>
+          <dd :if={on_machine?(@run)} id="run-node-run-id" class="font-mono">{@run.node_run_id}</dd>
           <dt>{gettext("Events")}</dt>
           <dd>
             <.rich text={
@@ -1550,6 +1551,11 @@ defmodule ApiaryWeb.RunLive.Show do
     <.na :if={!@at} />
     """
   end
+
+  # Whether the run has a run on a machine: any run but a run of a workspace's queue that
+  # no claim registered (`Run.registered?/1`).
+  defp on_machine?(%Run{dispatch_run_id: nil}), do: true
+  defp on_machine?(%Run{} = run), do: Run.registered?(run)
 
   defp na(assigns \\ %{}), do: ~H|<span class="text-faint">{gettext("n/a")}</span>|
 

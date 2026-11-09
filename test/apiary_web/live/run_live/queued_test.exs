@@ -178,7 +178,20 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
       refute render(view) =~ "Forager has pinged"
     end
 
-    test "says a second run waits behind the first, and updates when the first is claimed",
+    test "a run that ended while it waited has no run id on a machine", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, queued} = queue!(scope)
+      assert {:ok, _undone} = Apiary.WorkItems.undo(scope, Repo.get!(WorkItem, work_item.id))
+      run = record(queued)
+      assert run.state == "cancelled"
+
+      view = open(conn, workspace_path(scope, "/runs/#{run.number}"))
+      assert text(view, "#run-node-run-id") == "n/a"
+    end
+
+    test "shows that a second run waits behind the first, and updates when the first is claimed",
          %{conn: conn, scope: scope} = ctx do
       queue!(scope)
       {_work_item, second} = queue!(scope)
