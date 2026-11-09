@@ -187,9 +187,6 @@ defmodule Apiary.Processes.HarnessUpdate do
     end
   end
 
-  @doc """
-  set_keep_latest/3 turns the switch Keep the process at the latest on or off for the
-  scope's workspace, under `process.edit`, with one audit entry. `{:ok, workspace}`;
   # Whether version 1 of the workspace's process is a version of its workspace type's
   # default process that an instance admin saved (`Apiary.Processes.TypeTemplate`, with
   # an author): its `template` has the type's key and the version's number.
@@ -204,6 +201,9 @@ defmodule Apiary.Processes.HarnessUpdate do
     )
   end
 
+  @doc """
+  set_keep_latest/3 turns the switch Keep the process at the latest on or off for the
+  scope's workspace, under `process.edit`, with one audit entry. `{:ok, workspace}`;
   `{:error, :pinned}` for a harness pinned to a tag or a commit, where the switch does not
   apply; or a reason of `Apiary.Access`.
   """
@@ -469,12 +469,27 @@ defmodule Apiary.Processes.HarnessUpdate do
                based_on: update.base
              ),
            held = Repo.get!(Workspace, workspace.id),
+           :ok <- same_choice(held, update),
            :ok <- if(trial?, do: :ok, else: after_save.(held)),
            :ok <- add_types(scope, held, update.artifact_types),
            :ok <- if(trial?, do: :ok, else: copy_stack(scope, held, update.stack)) do
         {:ok, version}
       end
     end)
+  end
+
+  # The harness choice `update` was read from is still the workspace's: its choice, its
+  # address and its version, under the lock of the choice's saves
+  # (`Apiary.Stacks.Sources.hold_saves/1`), so a choice saved between the read and the
+  # save gets neither the process nor the stack of the harness read before it.
+  defp same_choice(workspace, update) do
+    :ok = Sources.hold_saves(workspace)
+    chosen = Sources.chosen(workspace)
+
+    if version(workspace, chosen) == {update.source, update.version} and
+         chosen.git == update.git,
+       do: :ok,
+       else: {:error, :stale}
   end
 
   # The record the version keeps, with `added_types`, the names of the artifact types the
@@ -532,7 +547,6 @@ defmodule Apiary.Processes.HarnessUpdate do
   defp keep_on(%Workspace{id: id}) do
     {1, _rows} =
       Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [keep_process_latest: true])
-           :ok <- same_choice(held, update),
 
     :ok
   end
@@ -541,20 +555,6 @@ defmodule Apiary.Processes.HarnessUpdate do
   # turned the switch off.
   defp still_on(%Workspace{keep_process_latest: false}), do: {:error, :stopped}
   defp still_on(%Workspace{}), do: :ok
-  # The harness choice `update` was read from is still the workspace's: its choice, its
-  # address and its version, under the lock of the choice's saves
-  # (`Apiary.Stacks.Sources.hold_saves/1`), so a choice saved between the read and the
-  # save gets neither the process nor the stack of the harness read before it.
-  defp same_choice(workspace, update) do
-    :ok = Sources.hold_saves(workspace)
-    chosen = Sources.chosen(workspace)
-
-    if version(workspace, chosen) == {update.source, update.version} and
-         chosen.git == update.git,
-       do: :ok,
-       else: {:error, :stale}
-  end
-
 
   ## The switch's updates
 

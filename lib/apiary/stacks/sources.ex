@@ -2333,17 +2333,6 @@ defmodule Apiary.Stacks.Sources do
   defp saved({:error, %Ecto.Changeset{}}), do: {:error, :invalid}
   defp saved(result), do: result
 
-  # Saves of one workspace take turns: the second waits for the first's transaction, then
-  # sees its row and replaces it, so the workspace keeps one workflow.
-  defp lock_saves(%Workspace{id: workspace_id}) do
-    {:ok, uuid} = Ecto.UUID.dump(workspace_id)
-
-    Repo.query!(
-      "SELECT pg_advisory_xact_lock(hashtextextended('apiary:workflow-save:' || $1::uuid::text, 0))",
-      [uuid]
-    )
-  end
-
   @doc false
   # hold_saves/1 takes the lock of the saves of `workspace`'s harness choice inside the
   # caller's transaction, until it ends: a choice saved after it waits for that end. An
@@ -2353,6 +2342,17 @@ defmodule Apiary.Stacks.Sources do
   def hold_saves(%Workspace{} = workspace) do
     lock_saves(workspace)
     :ok
+  end
+
+  # Saves of one workspace take turns: the second waits for the first's transaction, then
+  # sees its row and replaces it, so the workspace keeps one workflow.
+  defp lock_saves(%Workspace{id: workspace_id}) do
+    {:ok, uuid} = Ecto.UUID.dump(workspace_id)
+
+    Repo.query!(
+      "SELECT pg_advisory_xact_lock(hashtextextended('apiary:workflow-save:' || $1::uuid::text, 0))",
+      [uuid]
+    )
   end
 
   # Shares of one organisation take turns: the second waits for the first's transaction,
