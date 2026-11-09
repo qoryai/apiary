@@ -898,9 +898,10 @@ defmodule ApiaryWeb.Routes do
               live "/settings/work-sources", CollectionsLive, :sources
               live "/settings/destinations", CollectionsLive, :destinations
               live "/settings/choose", ChooseCollectionsLive, :settings
-              # The workflow of the workspace's runs and the harness source it comes from,
-              # with the `factory` feature.
-              live "/settings/workflow", WorkflowLive, :edit
+              # The workspace's harness: its source, stack and version, with the `factory`
+              # feature; with `workflow_model`, also Keep the process at the latest and
+              # Update from harness, else the workflow of the workspace's runs.
+              live "/settings/harness", HarnessLive, :edit
               # The workspace's artifact types, with the `workflow_model` feature: the list,
               # `?name=<type>` opening Add a type with that name; each form a page, and
               # Delete confirmed on its row. A type is named by its public id (`at_…`).
@@ -908,9 +909,9 @@ defmodule ApiaryWeb.Routes do
               live "/settings/artifact-types/new", ArtifactLive.Types, :new
               live "/settings/artifact-types/:type_id/edit", ArtifactLive.Types, :edit
               live "/settings/artifact-types/:type_id/delete", ArtifactLive.Types, :delete
-              # The workspace's stages, with the `factory` feature and the feature
-              # `workflow_model`; the Workflow page links to it.
-              live "/settings/stages", StagesLive.Index, :edit
+              # The Workflows page: the workspace's stages, with the `factory` feature and
+              # the feature `workflow_model`; the Harness page links to it.
+              live "/settings/workflows", StagesLive.Index, :edit
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by
@@ -993,8 +994,8 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/runs/:run_id/diagnostics", RunDiagnosticsController, :show
 
           # The workspace's process as a `process.yaml`, as an attachment, for Export
-          # process.yaml on the Stages page, with the `workflow_model` feature. Not a page.
-          get "/:org/:workspace/settings/stages/process.yaml", ProcessExportController, :show
+          # process.yaml on the Workflows page, with the `workflow_model` feature. Not a page.
+          get "/:org/:workspace/settings/workflows/process.yaml", ProcessExportController, :show
 
           # A target's policy had a page of its own, by the target row's id; it is the
           # Policy tab of the target's page now, where these send on to.

@@ -46,9 +46,38 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - The stages canvas lays the stages out from top to bottom on a dotted background, and
   fills the window beside its side panel. **Focus** (`f`) and **Full screen** enlarge it.
-  On a workspace type's page the canvas is view-only. Workspace settings › Stages and
+  On a workspace type's page the canvas is view-only. Workspace settings › Workflows and
   Instance settings › Workspace types show the canvas on a **Stages** tab and the other
   settings on a **Details** tab.
+- With this feature on, the settings menu lists **Workflows**, at `/settings/workflows`, the
+  page that sets the stages. It replaces **Stages** at `/settings/stages`, which is gone,
+  with no redirect. The settings menu lists **Harness** with this feature on or off.
+- With this feature on, the Harness page shows the commit in use and the process version
+  under **Version**, and “main is now at 4960195” where the branch the harness follows
+  is at another commit. For a harness that follows a branch, it has the switch **Keep
+  the process at the latest**: on by default for the Qory harness, and off by default
+  for a harness repository and for a workspace whose first process version is a version
+  of its workspace type that an instance admin saved. With the switch on, each new
+  commit on that branch is saved as a new version of the stages. Edits saved on the
+  Workflows page turn the switch off.
+- **Update from harness** on the Harness page compares the current version of the
+  stages with the process at the version the workspace follows: the changed stages,
+  the artifact types it adds and a changed stack. **Save** saves it as the current
+  version, copies the stack and turns the switch on again. **Try first** saves it as a
+  trial with the artifact types, and copies no stack; making that trial current copies
+  the stack and turns the switch on. Work items in progress stay on their version.
+  Where the process came from another harness, the comparison takes the one template
+  of the workspace's type that the harness repository has.
+- A run on a harness that follows a branch composes the commit its process version
+  came from. The Workflows page lists and checks the workflows at that commit, so a
+  workflow that the branch adds is listed after Update from harness saves it.
+  Before, a run on the Qory harness composed the commit `main` was at when a machine
+  claimed the run, and a run on a harness repository the commit read when the run was
+  queued.
+- Workflows › **Details** shows the harness with the commit the current version came
+  from, and **Open Harness**. Its History lists a version saved from the harness as
+  “Updated from main at 4960195”, with a person's name before it when a person saved
+  it, and the stages and artifact types it changed.
 - Each stage has an optional **Description** under its name in the stage editor: plain
   text of at most 500 characters, with line breaks. A stage's card on the canvas shows it
   under the name, cut to three lines. A template's `process.yaml` may set `description` on
@@ -231,7 +260,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workspace. Each step is a page of the workspace, such as `/acme/main/set-up/harness`,
   and opens in any order; an address with a step you do not see is not found. **Work
   sources**, **Destinations**, **Model** and **Harness** each show where you change them
-  later, such as “You can change this later in Workspace settings › Workflow.” Where the
+  later, such as “You can change this later in Workspace settings › Harness.” Where the
   edition allows more than one workspace, a workspace added later goes through the same 7
   steps.
 - Where the edition shows the setting “Available to every workspace in Acme”, **Model**,
@@ -371,7 +400,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   set”; and an error in Qory Apiary, with “Qory Apiary could not read acme/tools because
   of an error in Qory Apiary. Try again. If it repeats, tell an instance admin.” A run on
   a branch uses the branch's newest commit: on the Qory harness, the commit when a machine
-  claims the run; on a harness repository, the commit when the run is queued. A workspace
+  claims the run; on a harness repository, the commit when the run is queued. With the
+  `workflow_model` feature, a run on a branch uses the commit its process version came
+  from instead. A workspace
   with no saved choice uses the Qory harness. Owners and admins choose. The test run
   keeps its built-in harness.
 - Under the choices, **Repositories** lists the workspace's repositories from
@@ -505,15 +536,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   step shows “Choose the shared harness, or turn off “Available to every workspace in
   Acme”. Acme shares a harness already.” Where Acme shares the Qory harness, sharing a
   harness repository replaces it. The core shows the setting nowhere.
-- **Workspace settings › Workflow**, for owners and admins, shows the workspace's
-  **Harness** on two lines, such as “Qory harness, stack software” over “main”, or
-  the harness the organisation shares where the workspace has no saved choice.
+- **Workspace settings › Harness**, at `/settings/harness`, for owners and admins, replaces
+  **Workflow** at `/settings/workflow`, which is gone, with no redirect. It shows
+  the workspace's harness in the rows **Source**, with the harness's address as a link,
+  **Stack** and **Version**, such as “Follows main” or “Tag v2.4.0”. Where the workspace
+  has no saved choice, the rows show the harness the organisation shares.
   **Change** opens the two choices of the set-up's **Harness** step, with **Save** and
   **Cancel**. Under the harness, **Repositories** shows the same rows as the Harness
   step, with the same **Stack** field. **About this step** also has the Harness step's
   five paragraphs.
   Under it, the page sets the workflow of the workspace's runs, from a harness
-  repository: **Source** lists the repositories connected to the organisation, and the
+  repository: **Workflow source** lists the repositories connected to the organisation, and the
   harness sources an instance admin assigned to it;
   **Enter an address** takes a **Public address**. **Save** sets the workflow the runs
   use; no run reads that source's stack as its harness. When an adapter's result
@@ -809,7 +842,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A workspace made from the software template gets the artifact type `branch`, and every
   standard type stays shown.
 <!-- feature: factory, workflow_model -->
-- Owners and admins can export a workspace's process as process.yaml from the Stages page.
+- Owners and admins can export a workspace's process as process.yaml from the Workflows page.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item whose run waits in the queue while no pool of its workspace is ready
@@ -929,7 +962,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   out, finds no address or connection, or the host returns `429`, `500`, `502`, `503` or
   `504`, the run stays queued, and it ends if the reads still fail 10 minutes after the
   first failure. A run on a harness repository runs at the commit Qory Apiary read when
-  the run was queued.
+  the run was queued. With the `workflow_model` feature, a run on a branch composes the
+  commit its process version came from, with no read at claim.
 - **Request a machine** on a run's page shows “pool default” only for a run whose pool
   sent no offers in its claim. A run on a machine type shows the type and its spec.
 - A run's page shows the run's work item first on the line under the title, such as
@@ -939,7 +973,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The hint “It does not choose the machine that runs it.” under **Default machine type**
-  on Stages and on Instance settings › Workspace types is gone. On Stages it reads
+  on Workflows and on Instance settings › Workspace types is gone. On Workflows it reads
   “Workflows that pick no machine type run on this one. The people who run this Qory
   Apiary add machine types.” On Workspace types it reads “New workspaces of this type
   start with this default. Add machine types in Instance settings › Machine types.”
@@ -995,7 +1029,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gate's button, the stage name, the status lines, the Thread, the audit label and the
   permission.
 <!-- /feature -->
-- A harness document's `bind`, in Workspace settings › Workflow and the set-up's Harness
+- A harness document's `bind`, in Workspace settings › Harness and the set-up's Harness
   step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
   the kinds `agents`, `commands` and `skills` are taken, with one name per role. A save
   of a flat key fails with “Write bind by kind, then by role, such as bind: {agents:
@@ -1043,7 +1077,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   such as "Taken in by dana". The Host column is gone, and the Target column and the
   rail show only where a run has a target. `item:3` in the query, or the Filter menu's
   Work item section, keeps the runs of work item 3. Below 640 px a run is a card.
-- A run's harness, Workspace settings › Workflow and the set-up's Harness step read a
+- A run's harness, Workspace settings › Harness and the set-up's Harness step read a
   public harness repository from its host over HTTPS, with no connection and no
   adapter: a repository the host serves to anyone is public. A harness source that is
   neither linked nor public fails with “… is not public, or does not exist, and no
@@ -1149,8 +1183,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   beside the form, or under it below 1024 px, that shows what the step does.
 <!-- feature: factory -->
 - **Organisation settings › Model providers**, **Workspace settings › Model** and
-  **Workspace settings › Workflow** have a column **About this step** beside the form.
-  **Provider**, **Model** and **Source** are choice fields.
+  **Workspace settings › Harness** have a column **About this step** beside the form.
+  **Provider**, **Model** and **Workflow source** are choice fields.
 - The `factory` feature needs `secrets` as well as `observability` and `security`: a
   `QORY_FEATURES` list with `factory` and without `secrets` stops the boot. Set
   `QORY_FEATURES=observability,security,secrets,factory`; `all` leaves `factory` off, as
@@ -1343,10 +1377,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   one shown as waiting for a workflow when you click **Check again**. Before, runs of such
   a workspace used the Qory harness at the stack `core`, which lists no workflow, so the
   work item stayed waiting for `explore-a-ticket`.
-- A workspace made from a template runs Explore with no workflow saved on the Workflow
-  page. The Stages page checks each workflow against the stack the workspace's runs use.
+- A workspace made from a template runs Explore with no workflow saved on the Harness
+  page. The Workflows page checks each workflow against the stack the workspace's runs use.
 - Texts about a workflow the Qory harness does not list, and the quickstart guide, point
-  to **Workspace settings › Stages** and its **Details** tab. Before, they pointed to the
+  to **Workspace settings › Workflows** and its **Details** tab. Before, they pointed to the
   Workflow page, which the settings menu does not list with this feature on.
 - The stage's Runs list shows a run that an undo ended as undone, not as ended without a
   verdict.
@@ -1438,6 +1472,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   A workspace whose version 1 fails is logged and has no version until the next start or
   `bin/migrate`. Going back to the previous release keeps the versions, so its machines
   keep the workspace's policy.
+- `workspaces` (20261108140000): a nullable column `keep_process_latest`, the switch
+  Keep the process at the latest. Empty means on for the Qory harness and off for a
+  harness repository, and off where the first process version is a version of the
+  workspace type that an instance admin saved. The migration sets it off for each
+  workspace whose current process version a person saved, and for each workspace whose
+  first process version an instance admin saved, and changes no other row.
 - `dispatches` (20261108130000): a nullable column `late_machine_at`, the last time a
   machine showed up for a claim that takes none. It changes no row.
 - `runs` (20261108120100): an index in the order of the run list, `GET /v1/runs`, built

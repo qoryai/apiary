@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.HarnessTargets do
   # The handling of a workspace's destinations, each with its Stack select
   # (`ApiaryWeb.HarnessComponents.targets/1`), shared by the set-up's Harness step
-  # (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Workflow
-  # (`ApiaryWeb.WorkflowLive`).
+  # (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Harness
+  # (`ApiaryWeb.HarnessLive`).
   #
   # The functions take and return the page's socket. They read the assigns
   # `current_scope`; `chosen`, the workspace's harness (`Apiary.Stacks.Sources.chosen/1`);

@@ -15,7 +15,7 @@ defmodule ApiaryWeb.WorkspaceTypePreviewTest do
 
   @moduletag with_features: Apiary.Features.all()
 
-  @line "The workspace starts with these stages. After you create it, owners and admins can change them in Workspace settings › Stages."
+  @line "The workspace starts with these stages. After you create it, owners and admins can change them in Workspace settings › Workflows."
 
   setup do
     {:ok, %{user: user, organisation: organisation}} =
@@ -38,7 +38,7 @@ defmodule ApiaryWeb.WorkspaceTypePreviewTest do
       })
 
     assert html =~
-             "Web shop starts with these stages. After you create it, owners and admins can change them in Workspace settings › Stages."
+             "Web shop starts with these stages. After you create it, owners and admins can change them in Workspace settings › Workflows."
 
     html =
       render_component(&WorkspaceComponents.process_preview/1, %{

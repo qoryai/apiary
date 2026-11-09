@@ -173,28 +173,27 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-arrow-up-tray",
           path: ~p"/#{organisation}/#{workspace}/settings/destinations"
         },
-      # The workflow of the workspace's runs, with the `factory` feature, for whoever may
-      # save it. With `workflow_model`, Stages takes its place, for every member: the
-      # Stages page's Change leads to the harness choice that the Workflow page keeps.
-      if Features.visible?(scope, :workflow_model) do
+      # The Workflows page, the workspace's stages, with the `workflow_model` feature, for
+      # every member.
+      Features.visible?(scope, :workflow_model) &&
         Access.can?(scope, :"work_item.read", workspace) &&
-          %Entry{
-            section: :main,
-            key: :stages,
-            label: stages_label(),
-            icon: "hero-arrow-path-rounded-square",
-            path: ~p"/#{organisation}/#{workspace}/settings/stages"
-          }
-      else
-        Access.can?(scope, :"harness.save", workspace) &&
-          %Entry{
-            section: :main,
-            key: :workflow,
-            label: gettext("Workflow"),
-            icon: "hero-arrow-path-rounded-square",
-            path: ~p"/#{organisation}/#{workspace}/settings/workflow"
-          }
-      end,
+        %Entry{
+          section: :main,
+          key: :workflows,
+          label: workflows_label(),
+          icon: "hero-arrow-path-rounded-square",
+          path: ~p"/#{organisation}/#{workspace}/settings/workflows"
+        },
+      # The workspace's harness, with the `factory` feature, for whoever may save it, with
+      # `workflow_model` on or off.
+      Access.can?(scope, :"harness.save", workspace) &&
+        %Entry{
+          section: :main,
+          key: :harness,
+          label: harness_label(),
+          icon: "hero-wrench-screwdriver",
+          path: ~p"/#{organisation}/#{workspace}/settings/harness"
+        },
       # The workspace's artifact types, with the `workflow_model` feature, for whoever may
       # edit them.
       Access.can?(scope, :"artifact_type.edit", workspace) &&
@@ -976,9 +975,16 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   @doc """
-  stages_label/0 is the name of Workspace settings › Stages, as its sidebar entry shows it,
-  for a text that leads a person there.
+  workflows_label/0 is the name of Workspace settings › Workflows, as its sidebar entry
+  shows it, for a text that leads a person there.
   """
-  @spec stages_label() :: String.t()
-  def stages_label, do: gettext("Stages")
+  @spec workflows_label() :: String.t()
+  def workflows_label, do: gettext("Workflows")
+
+  @doc """
+  harness_label/0 is the name of Workspace settings › Harness, as its sidebar entry shows
+  it, for a text that leads a person there.
+  """
+  @spec harness_label() :: String.t()
+  def harness_label, do: gettext("Harness")
 end

@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.StagesLiveTest do
   @moduledoc """
-  Workspace settings › Stages (`ApiaryWeb.StagesLive.Index`), the sidebar's Stages entry
-  and the Workflow page's link to it: not found while the feature `workflow_model` is off;
+  Workspace settings › Workflows (`ApiaryWeb.StagesLive.Index`), the sidebar's Workflows entry
+  and the Harness page's link to it: not found while the feature `workflow_model` is off;
   the canvas, the editor, with the inspector of the selected stage; adding a stage at a
   place ("+"), renaming, moving and removing it; a stage's sequence, loop, inputs, outputs
   and gate; the placement check; a save, a trial and the history; a member's page, with
@@ -28,10 +28,12 @@ defmodule ApiaryWeb.StagesLiveTest do
 
   @moduletag with_features: Apiary.Features.all()
 
+  @harness_process "modules/software-factory/process.yaml"
+
   setup :register_and_log_in_user
 
   setup %{scope: scope} do
-    %{path: workspace_path(scope, "/settings/stages")}
+    %{path: workspace_path(scope, "/settings/workflows")}
   end
 
   # The adapter calls the stub adapters received (`Apiary.HarnessReadsFixtures`).
@@ -91,21 +93,21 @@ defmodule ApiaryWeb.StagesLiveTest do
 
   describe "the feature" do
     @tag with_features: Apiary.Features.all() -- [:workflow_model]
-    test "off: Stages is not found, and the Workflow page keeps its workflow choice", %{
+    test "off: Workflows is not found, and the Harness page keeps its workflow choice", %{
       conn: conn,
       path: path,
       scope: scope
     } do
       assert status(conn, path) == 404
 
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/workflow"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/harness"))
       assert has_element?(view, "#workflow-form")
       refute has_element?(view, "#workflow-stages")
     end
 
-    test "on: the Workflow page keeps the harness, drops the workflow choice and links to Stages",
+    test "on: the Harness page keeps the harness, drops the workflow choice and links to Workflows",
          %{conn: conn, path: path, scope: scope} do
-      {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/workflow"))
+      {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/harness"))
       assert has_element?(view, "#workflow-harness")
       refute has_element?(view, "#workflow-form")
       refute has_element?(view, "#workflow-what")
@@ -120,8 +122,15 @@ defmodule ApiaryWeb.StagesLiveTest do
       # The Qory harness's names, recorded when the page opens.
       render_async(view)
 
-      assert has_element?(view, "#settings-section-title", "Stages")
-      assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
+      assert has_element?(view, "#settings-section-title", "Workflows")
+
+      assert has_element?(
+               view,
+               ~s(#settings-tab-workflows[href="#{path}"][aria-current="page"]),
+               "Workflows"
+             )
+
+      assert has_element?(view, "#settings-tab-harness", "Harness")
       refute has_element?(view, "#settings-tab-workflow")
       assert names(view) == ~w(Explore Shape Build Verify Release)
 
@@ -150,8 +159,15 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert has_element?(
                view,
-               ~s(#stages-harness-change[href="#{workspace_path(scope, "/settings/workflow")}"]),
-               "Change"
+               ~s(#stages-harness-open[href="#{workspace_path(scope, "/settings/harness")}"]),
+               "Open Harness"
+             )
+
+      # The commit version 1 was copied from.
+      assert has_element?(
+               view,
+               "#stages-harness",
+               "commit #{String.slice(Apiary.QoryHarnessFixture.commit(), 0, 7)}"
              )
 
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
@@ -404,7 +420,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       select(view, "Build")
 
       undeclared =
-        "Choose another workflow for Build. To keep capture-demo, change the harness on the Details tab to one that lists it under workflows. The Qory harness does not list capture-demo, so Build waits and starts no run."
+        "Choose another workflow for Build. To keep capture-demo, change the harness in Workspace settings › Harness to one that lists it under workflows. The Qory harness does not list capture-demo, so Build waits and starts no run."
 
       assert has_element?(view, "#stage-panel [data-stage-alert]", undeclared)
       assert undeclared in card(view, "Build")["alerts"]
@@ -964,7 +980,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stages-export-line",
-               "Commit this file to a harness repository. Only new workspaces made from it use it."
+               "Commit this file to a harness repository. Workspaces that use that harness get it at their next update."
              )
 
       refute has_element?(view, "#stages-export-people")
@@ -2042,12 +2058,13 @@ defmodule ApiaryWeb.StagesLiveTest do
     } do
       {:ok, view, _html} = live(conn, path)
 
-      # The sidebar's Stages entry, for a member too.
-      assert has_element?(view, ~s(#settings-tab-stages[href="#{path}"][aria-current="page"]))
+      # The sidebar's Workflows entry, for a member too, with no Harness entry.
+      assert has_element?(view, ~s(#settings-tab-workflows[href="#{path}"][aria-current="page"]))
+      refute has_element?(view, "#settings-tab-harness")
 
       details(view, path)
       assert has_element?(view, "#stages-harness", "Harness: Qory harness, stack software")
-      refute has_element?(view, "#stages-harness-change")
+      refute has_element?(view, "#stages-harness-open")
 
       assert has_element?(
                view,
@@ -2156,6 +2173,71 @@ defmodule ApiaryWeb.StagesLiveTest do
       render_hook(view, "reorder", %{"ids" => Enum.reverse(ids(view))})
       render_hook(view, "move", %{"id" => hd(ids(view)), "by" => "1"})
       assert names(view) == ~w(Explore Shape Build Verify Release)
+    end
+  end
+
+  describe "Make current of a trial from the harness" do
+    # A trial saved from the Qory harness at a commit whose template has the stack core.
+    setup %{scope: scope} do
+      files =
+        Map.update!(Apiary.QoryHarnessFixture.files(), @harness_process, fn process ->
+          String.replace(process, "stack: software\n", "stack: core\n", global: false)
+        end)
+
+      Apiary.QoryHarnessFixture.serve!(files)
+      {:ok, _commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
+      {:ok, update} = Apiary.Processes.HarnessUpdate.read(scope, scope.workspace)
+
+      {:ok, trial} =
+        Apiary.Processes.HarnessUpdate.save(scope, scope.workspace, update, trial: true)
+
+      %{trial: trial}
+    end
+
+    test "with a stack for the shared harness says to change that stack", ctx do
+      Apiary.Stacks.put_stack(
+        ctx.scope,
+        {:organisation, ctx.scope.organisation},
+        ~s(extends:\n  git: "#{Apiary.Harnesses.Qory.git()}"\n  ref: "main"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:branch, "main"}
+      )
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      details(view, ctx.path)
+      view |> element("#stages-make-current") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
+             )
+
+      assert %{status: :trial} = Repo.reload!(ctx.trial)
+    end
+
+    test "after the harness choice changed says to press Update from harness again", ctx do
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      details(view, ctx.path)
+
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        harness: "extends:\n  git: https://code.example.com/acme/harness\n  stack: web\n",
+        choice: :repository,
+        version_kind: :branch,
+        version_name: "main"
+      })
+
+      view |> element("#stages-make-current") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Press Update from harness again. The harness choice changed after you opened this difference."
+             )
+
+      assert %{status: :trial} = Repo.reload!(ctx.trial)
     end
   end
 
@@ -2741,9 +2823,11 @@ defmodule ApiaryWeb.StagesLiveTest do
         |> Draft.update_stage(id_of("Shape"), &Map.put(&1, "name", "Plan"))
         |> Draft.move(id_of("Release"), -1)
         |> Draft.update_stage(id_of("Build"), &Draft.add_entry(&1, "explore-a-ticket", nil))
+        |> Draft.update_stage(id_of("Verify"), &Map.put(&1, "description", "Check it."))
 
       lines = for change <- Processes.diff(old, new), do: Words.change(change, old, new)
 
+      assert "Changed the description of Verify." in lines
       assert "Changed the default machine type from Default to large." in lines
       assert "Renamed the stage Shape to Plan." in lines
       assert "Changed the sequence of Build." in lines

@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.StagesLive.Editor do
   # The edits of a process document on the Stages canvas and its inspector, for every
-  # page that edits one: the Stages page and Instance settings › Workspace types. The
+  # page that edits one: the Workflows page and Instance settings › Workspace types. The
   # page's socket has `draft` (the document), `selected` (a stage's id), `declared` (the
   # workflows offered), `types` (the artifact types offered, each with a `name`),
   # `notice`, `save_note`, `save_errors`, `stage_errors`, `rounds_errors`,
@@ -290,14 +290,15 @@ defmodule ApiaryWeb.StagesLive.Editor do
     end
   end
 
-  # The first workflow offered, else the first of the Qory harness at the commit the
-  # workspace's harness settings choose (`Apiary.Harnesses.Qory.workspace_commit/1`), at
-  # `main`'s on a page of no workspace.
+  # The first workflow offered, else the first of the Qory harness at the commit the runs
+  # of the workspace's current version compose, else at the commit its harness settings
+  # choose (`Apiary.Processes.HarnessUpdate.qory_in_use/1`), at `main`'s on a page of no
+  # workspace.
   defp first_workflow(socket) do
     commit =
       case socket.assigns do
         %{current_scope: %{workspace: %Apiary.Organisations.Workspace{} = workspace}} ->
-          Apiary.Harnesses.Qory.workspace_commit(workspace)
+          Apiary.Processes.HarnessUpdate.qory_in_use(workspace)
 
         _no_workspace ->
           Apiary.Harnesses.Qory.current()

@@ -351,7 +351,7 @@ test("a canvas whose cards open nothing draws cards a click does not select", ()
   const preview = {...view, editable: false, selectable: false}
   assert.ok(stages(preview).every(node => node.selectable === false))
   // Tab stops on no card of the preview (React Flow gives a node that is not focusable no
-  // tabindex), and on each card of the Stages page; each card stays a labelled group.
+  // tabindex), and on each card of the Workflows page; each card stays a labelled group.
   assert.ok(stages(preview).every(node => node.focusable === false))
   assert.ok(stages(view).every(node => node.focusable === true))
   assert.ok([...stages(view), ...stages(preview)].every(n => n.ariaRole === "group" && n.ariaLabel))

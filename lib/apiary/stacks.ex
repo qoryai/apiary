@@ -31,7 +31,7 @@ defmodule Apiary.Stacks do
   #
   # `put_stack/3` and `delete_stack/1` set and remove the stack at one place. They check no
   # access and write no audit entry. Tests call them, the demo (`mix apiary.demo.console`)
-  # calls `put_stack/3`, and Workspace settings › Workflow calls both through
+  # calls `put_stack/3`, and Workspace settings › Harness calls both through
   # `Apiary.Stacks.Sources.save/3`, which asks `harness.save`, the access action for a
   # save, first. A new workspace's harness calls `put_stack/4` through
   # `Apiary.Stacks.Sources.save_start/3` and `save_qory_start/2`, after the checks of

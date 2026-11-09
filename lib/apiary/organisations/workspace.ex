@@ -47,6 +47,10 @@ defmodule Apiary.Organisations.Workspace do
     # The stack of the Qory harness the workspace uses, recorded when it is made from the
     # Qory template, nil for `core` (`qory_stack/1`). Never cast.
     field :qory_stack, :string
+    # Whether each later commit of the branch the workspace's harness follows is saved as
+    # a version of its process, nil for the harness's default
+    # (`Apiary.Processes.HarnessUpdate.keep_latest?/1`). Never cast.
+    field :keep_process_latest, :boolean
 
     belongs_to :organisation, Apiary.Organisations.Organisation
 

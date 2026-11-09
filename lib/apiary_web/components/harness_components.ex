@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.HarnessComponents do
   # The harness choice of a workspace (`Apiary.Stacks.Sources.choose/3`), as the set-up's
-  # Harness step (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Workflow
-  # (`ApiaryWeb.WorkflowLive`) show it, and the stacks chosen for the workspace's
+  # Harness step (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Harness
+  # (`ApiaryWeb.HarnessLive`) show it, and the stacks chosen for the workspace's
   # destinations (`Apiary.Stacks.Sources.choose_target/3`), as both pages show them; both
   # handle the destinations' events with `ApiaryWeb.HarnessTargets`.
   #
@@ -26,8 +26,7 @@ defmodule ApiaryWeb.HarnessComponents do
   # commit id. With `shared`, as the Harness step passes it, `choices/1` lists a harness
   # repository the organisation shares first, as the `choice` `shared`, with its version as
   # one line under its title and no field. A shared Qory harness shows as the `qory`
-  # choice, the same row as in a workspace with no shared harness. `line/1` is the choice
-  # as Workflow shows it.
+  # choice, the same row as in a workspace with no shared harness.
   # `form_params/2` is the form's values for a saved choice, `fill/3` the values sent with
   # the saved choice's where a field is absent, `choice/3` the choice the values come to,
   # and `refusal_words/4` why a save was refused.
@@ -59,8 +58,16 @@ defmodule ApiaryWeb.HarnessComponents do
   # for a root file that is no mapping.
   @section_words elem(Document.unreadable(:invalid_stack), 0)
 
+  attr :process, :boolean,
+    default: false,
+    doc:
+      "whether a run uses the commit its process version came from, as with the " <>
+        "`workflow_model` feature on Workspace settings › Harness"
+
   @doc false
   # about/1 is the side note of the Harness step, the paragraphs under About this step.
+  # With `process`, the last paragraph is on the version of the harness a process
+  # version came from (`Apiary.Processes.harness_template/1`).
   def about(assigns) do
     ~H"""
     <p id="harness-about-what">
@@ -79,9 +86,14 @@ defmodule ApiaryWeb.HarnessComponents do
         "A harness source exports stacks in the qory.yaml or harness.yaml at its root. Qory Apiary reads that file in the target you pick, and offers only the stacks it exports."
       )}
     </p>
-    <p id="harness-about-versions">
+    <p :if={!@process} id="harness-about-versions">
       {gettext(
         "Always the latest: a run uses the newest version. On the Qory harness, that is the version when a machine claims the run. On a harness source, it is the version when the run is queued. A fixed version uses that version."
+      )}
+    </p>
+    <p :if={@process} id="harness-about-versions">
+      {gettext(
+        "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new harness version. A fixed version uses that version."
       )}
     </p>
     """
@@ -333,23 +345,6 @@ defmodule ApiaryWeb.HarnessComponents do
     """
   end
 
-  attr :chosen, :map, required: true, doc: "the choice, `t:Apiary.Stacks.Sources.chosen/0`"
-
-  # The choice and its version: "Qory harness, stack software", then its version, such as
-  # "main"; a harness repository, then its stack, repository and version.
-  def line(assigns) do
-    ~H"""
-    <span id="harness-line" class="grid gap-0.5">
-      <span>{chosen_title(@chosen)}</span>
-      <span id="harness-line-version" class="text-muted">
-        {if @chosen.choice == :qory,
-          do: version_line(@chosen),
-          else: chosen_line(@chosen)}
-      </span>
-    </span>
-    """
-  end
-
   @doc false
   # qory_line/1 is the Qory harness of a choice with its stack, "Qory harness, stack
   # software"; with no stack, "Qory harness".
@@ -358,9 +353,6 @@ defmodule ApiaryWeb.HarnessComponents do
     do: gettext("Qory harness, stack %{stack}", stack: stack)
 
   def qory_line(_chosen), do: gettext("Qory harness")
-
-  defp chosen_title(%{choice: :qory} = chosen), do: qory_line(chosen)
-  defp chosen_title(%{choice: choice}), do: choice_title(choice)
 
   @doc false
   # chosen_line/1 is a stack as a page shows it, "%{stack} · %{harness} · %{version}":
