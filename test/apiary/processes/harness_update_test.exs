@@ -7,6 +7,8 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
+  import Apiary.HarnessReadsFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -52,6 +54,15 @@ defmodule Apiary.Processes.HarnessUpdateTest do
         "  - name: spec\n    base_view: document\n    size_limit: 65536\n    max_files: 1\n"
       )
     end)
+  end
+
+  # The adapter calls the stub adapters received (`Apiary.HarnessReadsFixtures`).
+  defp calls do
+    receive do
+      {:harness_call, path, call} -> [{path, call} | calls()]
+    after
+      0 -> []
+    end
   end
 
   defp versions(workspace),
@@ -757,6 +768,46 @@ defmodule Apiary.Processes.HarnessUpdateTest do
 
       assert Processes.stage(v2, @shape)["description"] == "Plan it."
       assert Artifacts.type(ctx.workspace, "spec")
+    end
+
+    test "follows a harness repository's branch read through an adapter link", ctx do
+      adapter = call_adapter_fixture()
+      {connection, _nonce} = connection_fixture(ctx.scope, adapter.adapter, :listed)
+      live_grant_fixture(ctx.workspace.organisation_id, adapter.adapter, connection, "G_acme")
+      harness_collection_fixture(connection, @repository, "acme/harness")
+      covered = %{adapter.adapter.id => %{@repository => {"G_acme", "R_harness"}}}
+      first = String.duplicate("a", 40)
+      next = String.duplicate("b", 40)
+
+      serve = fn files, commit ->
+        serve_calls([adapter],
+          covered: covered,
+          files: Map.new(files, fn {path, content} -> {{"R_harness", path}, content} end),
+          versions: %{"R_harness" => commit}
+        )
+      end
+
+      repository_harness!(ctx.workspace, "main")
+      v1 = Processes.current(ctx.workspace)
+      Repo.update!(Ecto.Changeset.change(v1, template: %{v1.template | "commit" => first}))
+      serve.(QoryHarnessFixture.files(), first)
+
+      # The switch's update reads under the instance's scope, which no person's limit of
+      # reads a minute applies to: the refresh after ten still reads through the adapter.
+      for _n <- 1..10, do: assert(:ok = HarnessUpdate.follow_all())
+      calls()
+      assert :ok = HarnessUpdate.follow_all()
+      assert {"read", _call} = List.keyfind(calls(), "read", 0)
+      assert length(versions(ctx.workspace)) == 1
+
+      serve.(described(), next)
+      assert :ok = HarnessUpdate.follow_all()
+
+      assert [_v1, %Version{number: 2, status: :current, author_id: nil} = v2] =
+               versions(ctx.workspace)
+
+      assert %{"source" => "repository", "git" => @repository, "commit" => ^next} = v2.template
+      assert Processes.stage(v2, @shape)["description"] == "Plan it."
     end
 
     test "follows a branch other than main", ctx do
