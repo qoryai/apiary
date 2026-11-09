@@ -1872,9 +1872,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     }
   end
 
-  # With the workflow model on, the work item with its process version loaded, the
-  # workspace's current one for a work item with none, so that each `Apiary.Access` check
-  # of the page reads no version (`Apiary.Stages.Approvers`). Off, the checks read none.
+  # With the workflow model on, loads the work item's process version, or puts the
+  # workspace's current one on a work item with none, so the `Apiary.Access` checks of the
+  # page read no version (`Apiary.Stages.Approvers`). With it off, those checks read none.
   defp with_version(row, scope) do
     if Apiary.Features.on?(:workflow_model) do
       case Apiary.Repo.preload(row, :process_version) do

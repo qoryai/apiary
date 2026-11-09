@@ -501,8 +501,32 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
-  # The process version on the work item the page at `view` keeps.
+  # The `process_version` field of the work item in the assigns of the LiveView `view`.
   defp loaded_version(view), do: :sys.get_state(view.pid).socket.assigns.row.process_version
+
+  # How many reads of `process_versions` this process ran while `fun` ran, with the result
+  # of `fun`.
+  defp version_reads_in(fun) do
+    handler = "workflow-version-reads-in-#{System.unique_integer([:positive])}"
+    me = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, meta, _config ->
+          if meta.source == "process_versions", do: send(me, {:version_read, self()})
+        end,
+        nil
+      )
+
+    try do
+      result = fun.()
+      {count_version_reads([me], 0), result}
+    after
+      :telemetry.detach(handler)
+    end
+  end
 
   defp count_version_reads(pids, n) do
     receive do
@@ -541,6 +565,31 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert reads == 0
       assert %Ecto.Association.NotLoaded{} = loaded_version(view)
       assert has_element?(view, "#work-item-step")
+    end
+
+    test "after a move back, Build's run is at another stage, with one read of Explore's stage",
+         %{scope: scope} do
+      # The fixtures move the work item with the feature on, as before it was turned off.
+      off = Apiary.Features.enabled()
+      Application.put_env(:apiary, :features, Apiary.Features.all())
+      work_item = moved_back!(scope)
+      {explore, _dispatch_run} = registered!(work_item, newest_run(work_item), :handed_over)
+      {build, _dispatch_run} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+      Application.put_env(:apiary, :features, off)
+
+      row = Repo.get!(WorkItem, work_item.id)
+      read = WorkItems.explore(scope, row, DateTime.utc_now())
+
+      # The one read is Explore's stage (`Apiary.Stages.explore_stage_id/1`).
+      {reads, page} =
+        version_reads_in(fn -> ApiaryWeb.WorkItemLive.View.page(scope, row, read, [], %{}) end)
+
+      other_stage =
+        Map.new([page.work_item.run | page.earlier_runs], &{&1.number, &1.other_stage})
+
+      assert reads == 1
+      assert other_stage[build.number] == true
+      assert other_stage[explore.number] == false
     end
 
     test "the page has the step card and the stages as before it", %{conn: conn, scope: scope} do
@@ -616,9 +665,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       scope: scope
     } do
       work_item = work_item_fixture(scope)
-      {reads, view} = version_reads(conn, page(scope, work_item.number))
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert reads > 2
       assert %Processes.Version{status: :current} = loaded_version(view)
       assert has_element?(view, "#work-item-step")
     end
@@ -945,8 +993,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, ~s(#work-item-explore-wait-h a[href="#{path.(explore)}"]))
     end
 
-    test "after a move back, a later stage's run is another stage's, and Explore's runs are not",
-         %{scope: scope} do
+    test "after a move back, Build's run is at another stage and Explore's run is not", %{
+      scope: scope
+    } do
       work_item = moved_back!(scope)
       {explore, _dispatch_run} = registered!(work_item, newest_run(work_item), :handed_over)
       {build, _dispatch_run} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
