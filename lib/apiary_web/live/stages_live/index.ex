@@ -922,7 +922,8 @@ defmodule ApiaryWeb.StagesLive.Index do
       )
 
   defp updated_line(_commit_pin, commit, date),
-    do: rich_gettext("Updated from version %{commit}, %{date}", commit: commit, date: date)
+    do:
+      rich_gettext("Updated from harness version %{commit}, %{date}", commit: commit, date: date)
 
   defp updated_line({"branch", branch}, commit, date, person),
     do:
@@ -944,7 +945,7 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   defp updated_line(_commit_pin, commit, date, person),
     do:
-      rich_gettext("%{person}, updated from version %{commit}, %{date}",
+      rich_gettext("%{person}, updated from harness version %{commit}, %{date}",
         person: person,
         commit: commit,
         date: date

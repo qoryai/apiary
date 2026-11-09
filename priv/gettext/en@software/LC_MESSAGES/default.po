@@ -2902,13 +2902,13 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{person}, updated from tag %{tag} at %{commit}, %{date}"
-msgstr ""
+msgid "%{person}, updated from harness version %{commit}, %{date}"
+msgstr "%{person}, updated from commit %{commit}, %{date}"
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{person}, updated from version %{commit}, %{date}"
-msgstr "%{person}, updated from commit %{commit}, %{date}"
+msgid "%{person}, updated from tag %{tag} at %{commit}, %{date}"
+msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
@@ -4092,7 +4092,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "A run uses the harness version its process version came from. Keep the process at the latest moves that version at each new version of the harness. A fixed version uses that version."
+msgid "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new version of the harness. A fixed version uses that version."
 msgstr "A run uses the commit its process version came from. Keep the process at the latest moves that commit at each new commit on the branch. A fixed version uses that tag or commit."
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -5767,7 +5767,7 @@ msgstr "Assigning a %{collection} here adds its repository to the workspace's Re
 
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
-msgid "At each new version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it."
+msgid "At each new harness version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it."
 msgstr "At each new commit on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it."
 
 #: lib/apiary_web/components/core_components.ex
@@ -6202,6 +6202,11 @@ msgstr ""
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change the name in the process.yaml of %{module} in %{repository}. %{error}"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Change the stack of the harness your organisation shares, then save again. Every workspace that takes that harness uses its stack."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -7127,13 +7132,13 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
-msgid "Compare version %{number} of the stages with the process at tag %{tag}, then save it as a new version."
-msgstr ""
+msgid "Compare version %{number} of the stages with the process at harness version %{commit}, then save it as a new version."
+msgstr "Compare version %{number} of the stages with the process at commit %{commit}, then save it as a new version."
 
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
-msgid "Compare version %{number} of the stages with the process at version %{commit}, then save it as a new version."
-msgstr "Compare version %{number} of the stages with the process at commit %{commit}, then save it as a new version."
+msgid "Compare version %{number} of the stages with the process at tag %{tag}, then save it as a new version."
+msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -7589,7 +7594,12 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
-msgid "Correct the process.yaml of the harness, then press Update from harness again: %{reasons}"
+msgid "Correct the process.yaml of the harness, then press Update from harness again. %{reasons}"
+msgstr ""
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Correct the process.yaml of the harness, then press Update from harness again: %{reasons}."
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -10236,6 +10246,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Harness version"
 msgstr "Branch or tag"
+
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Harness version in use: %{commit}, process version %{number}"
+msgstr "Commit in use: %{commit}, process version %{number}"
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
@@ -15556,6 +15571,7 @@ msgstr ""
 msgid "Qory Apiary allows these hosts for every run. Host rules do not remove them."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary cannot read its process.yaml"
@@ -15639,6 +15655,7 @@ msgstr ""
 msgid "Qory Apiary has no result from the run. There is nothing to show or approve."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary has no workspace type %{type}"
@@ -17402,11 +17419,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Save variable"
-msgstr ""
-
-#: lib/apiary_web/live/harness_live.ex
-#, elixir-autogen, elixir-format
-msgid "Save without the stack, or change the stack of the harness your organisation shares. Every workspace that takes that harness uses its stack."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -21867,13 +21879,13 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
-msgid "Update from tag %{tag}"
-msgstr ""
+msgid "Update from harness version %{commit}"
+msgstr "Update from commit %{commit}"
 
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
-msgid "Update from version %{commit}"
-msgstr "Update from commit %{commit}"
+msgid "Update from tag %{tag}"
+msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/backlog_live/index.ex
@@ -21894,13 +21906,13 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Updated from tag %{tag} at %{commit}, %{date}"
-msgstr ""
+msgid "Updated from harness version %{commit}, %{date}"
+msgstr "Updated from commit %{commit}, %{date}"
 
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Updated from version %{commit}, %{date}"
-msgstr "Updated from commit %{commit}, %{date}"
+msgid "Updated from tag %{tag} at %{commit}, %{date}"
+msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
@@ -22139,11 +22151,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Version %{version}. You approved it %{when}."
 msgstr ""
-
-#: lib/apiary_web/components/harness_update_components.ex
-#, elixir-autogen, elixir-format
-msgid "Version in use: %{commit}, process version %{number}"
-msgstr "Commit in use: %{commit}, process version %{number}"
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -24351,7 +24358,6 @@ msgstr ""
 msgid "its host is an IP address or a local name: give a public host name"
 msgstr ""
 
-#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "its process is not valid"
@@ -24372,6 +24378,7 @@ msgstr ""
 msgid "its root has no qory-stack.yaml and no harness section"
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "its stack is not exported"

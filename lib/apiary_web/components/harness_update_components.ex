@@ -63,7 +63,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
           <span id="harness-row-version-line">{harness_version_words(@status.version)}</span>
           <span :if={@process && @status.in_use} id="harness-in-use" class="text-muted">
             <.rich text={
-              rich_gettext("Version in use: %{commit}, process version %{number}",
+              rich_gettext("Harness version in use: %{commit}, process version %{number}",
                 commit: {:code, short(@status.in_use)},
                 number: @status.number
               )
@@ -151,7 +151,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   def compare_words(number, {:commit, id}),
     do:
       gettext(
-        "Compare version %{number} of the stages with the process at version %{commit}, then save it as a new version.",
+        "Compare version %{number} of the stages with the process at harness version %{commit}, then save it as a new version.",
         number: number,
         commit: short(id)
       )
@@ -176,7 +176,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   def latest_words(branch),
     do:
       gettext(
-        "At each new version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it.",
+        "At each new harness version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it.",
         branch: branch
       )
 
@@ -354,7 +354,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   defp heading(%{version: {:tag, name}}), do: rich_gettext("Update from tag %{tag}", tag: name)
 
   defp heading(%{commit: commit}),
-    do: rich_gettext("Update from version %{commit}", commit: {:code, short(commit)})
+    do: rich_gettext("Update from harness version %{commit}", commit: {:code, short(commit)})
 
   # "9 stage changes, 2 new artifact types, a changed stack", each part where it applies.
   defp summary(update) do
@@ -480,22 +480,38 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   def reason_words({:not_readable, {:types, refusals}}, source, scope),
     do: reason_words({:types, refusals}, source, scope)
 
-  def reason_words({:not_readable, _reason}, _source, _scope),
-    do: invalid_words([gettext("its process is not valid")])
+  def reason_words({:not_readable, {:invalid, errors}}, source, scope) when is_list(errors),
+    do: reason_words(errors, source, scope)
 
+  def reason_words({:not_readable, :stack_not_exported}, _source, _scope),
+    do: invalid_words([gettext("its stack is not exported")])
+
+  def reason_words({:not_readable, {:unknown_type, type}}, _source, _scope),
+    do: invalid_words([gettext("Qory Apiary has no workspace type %{type}", type: type)])
+
+  def reason_words({:not_readable, _unreadable}, _source, _scope),
+    do: invalid_words([gettext("Qory Apiary cannot read its process.yaml")])
+
+  # The checks' sentences, each with its period.
   def reason_words(errors, _source, _scope) when is_list(errors),
-    do: invalid_words(Enum.map(errors, &Words.refusal(&1, %{})))
+    do:
+      gettext(
+        "Correct the process.yaml of the harness, then press Update from harness again. %{reasons}",
+        reasons: Enum.map_join(errors, " ", &Words.refusal(&1, %{}))
+      )
 
   def reason_words(:forbidden, _source, _scope), do: Words.refusal(:forbidden, nil)
 
   def reason_words(_exited, source, scope),
     do: HarnessComponents.read_words(:exited, source, scope.organisation.name)
 
+  # The reasons, each a phrase with no period, as Apiary.Artifacts.TemplateTypes.message/1
+  # gives one.
   defp invalid_words(reasons),
     do:
       gettext(
-        "Correct the process.yaml of the harness, then press Update from harness again: %{reasons}",
-        reasons: Enum.join(reasons, " ")
+        "Correct the process.yaml of the harness, then press Update from harness again: %{reasons}.",
+        reasons: Enum.join(reasons, "; ")
       )
 
   defp commit?(name), do: Qory.commit?(name)
