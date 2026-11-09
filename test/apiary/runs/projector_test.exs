@@ -964,7 +964,11 @@ defmodule Apiary.Runs.ProjectorTest do
 
       assert run.runtime == "claude"
       assert Repo.get_by!(LogChunk, run_id: run.id).sequence == 5
-      assert Record.session_started_at(scope, run) == at(2)
+
+      assert [%{sequence: 2, time: first, bare: false}, %{sequence: 4, bare: true}] =
+               Record.session_starts(scope, run)
+
+      assert first == at(2)
       assert [%{kind: :run_started, session_seq: 2}] = Record.timeline(scope, run).items
     end
   end

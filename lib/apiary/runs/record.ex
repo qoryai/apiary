@@ -315,6 +315,15 @@ defmodule Apiary.Runs.Record do
           # True on any event whose `bare` is `true`. The timeline reads it on a session's
           # start alone, where the fold reads the same value (`Apiary.Runs.Fold`).
           bare: fragment("? -> 'bare' = 'true'::jsonb", e.data),
+          # The number of the session that sent the event, nil without one: the run page
+          # places each item in the Timeline of its session by it.
+          session:
+            fragment(
+              "CASE WHEN jsonb_typeof(? -> 'session') = 'number' AND (? ->> 'session') ~ '^[0-9]{1,10}$' THEN (? ->> 'session')::bigint END",
+              e.data,
+              e.data,
+              e.data
+            ),
           # A text event's kind, "prompt" for a user's text, or "empty" for a block with no
           # text, which makes no item.
           text_kind:
@@ -365,7 +374,13 @@ defmodule Apiary.Runs.Record do
         query
       end
 
-    query |> Repo.all() |> Enum.map(&Timeline.egress_host/1)
+    query
+    |> Repo.all()
+    |> Enum.map(
+      &(&1
+        |> Map.update!(:session, fn n -> session_number(n) end)
+        |> Timeline.egress_host())
+    )
   end
 
   @doc """
@@ -815,37 +830,104 @@ defmodule Apiary.Runs.Record do
   end
 
   @doc """
-  The run's last `dev.qory.runtime.started`, `dev.qory.runtime.result` and
-  `dev.qory.session.exited`, by type: `%{time, data}` each, where `data` has only the
-  members that the end of a session shows (`state`, `exit_code`, `outcome`, `turns`,
-  `duration_ms`, `cost_usd` and `model`). A type the run has no event of is left out.
+  The run's first `dev.qory.run.built` by sequence: `%{time, image}`, `image` the
+  event's `image` as it is, nil when that is no text; nil for a run with none, and once
+  retention deleted the run's events.
   """
-  @spec session_end(Scope.t(), Run.t()) :: %{String.t() => %{time: DateTime.t(), data: map}}
-  def session_end(%Scope{} = scope, %Run{} = run) do
+  @spec built(Scope.t(), Run.t()) :: %{time: DateTime.t(), image: String.t() | nil} | nil
+  def built(%Scope{} = scope, %Run{} = run) do
+    Repo.one(
+      from e in events(scope, run),
+        where: e.type == "dev.qory.run.built",
+        order_by: e.sequence,
+        limit: 1,
+        select: %{time: e.time, image: fragment("left(? ->> 'image', 400)", e.data)}
+    )
+  end
+
+  @doc """
+  The run's `dev.qory.session.started` events in sequence order: `%{sequence, time,
+  session, bare, runtime}` each. `session` is the session's number, nil when the event
+  has none that is an integer; `bare` is true for a session started with no runtime, whose
+  `bare` is `true`; `runtime` is the event's `runtime`, its first 1,024 characters, nil
+  when it is no text. None once retention deleted the run's events.
+  """
+  @spec session_starts(Scope.t(), Run.t()) :: [
+          %{
+            sequence: integer,
+            time: DateTime.t(),
+            session: integer | nil,
+            bare: boolean,
+            runtime: String.t() | nil
+          }
+        ]
+  def session_starts(%Scope{} = scope, %Run{} = run) do
+    Repo.all(
+      from e in events(scope, run),
+        where: e.type == ^@session_started,
+        order_by: e.sequence,
+        select: %{
+          sequence: e.sequence,
+          time: e.time,
+          session: fragment("? -> 'session'", e.data),
+          bare: fragment("coalesce(? -> 'bare' = 'true'::jsonb, false)", e.data),
+          runtime:
+            fragment(
+              "CASE WHEN jsonb_typeof(? -> 'runtime') = 'string' THEN left(? ->> 'runtime', 1024) END",
+              e.data,
+              e.data
+            )
+        }
+    )
+    |> Enum.map(&%{&1 | session: session_number(&1.session)})
+  end
+
+  @doc """
+  The run's `dev.qory.runtime.started`, `dev.qory.runtime.result` and
+  `dev.qory.session.exited` events in sequence order: `%{type, sequence, time, session,
+  data}` each. `session` is the session's number, nil when the event has none that is an
+  integer, as in a record written before Forager sent it on every runtime event. `data`
+  has only the members that the end of a session shows (`state`, `exit_code`, `outcome`,
+  `turns`, `duration_ms`, `cost_usd` and `model`).
+  """
+  @spec session_end_events(Scope.t(), Run.t()) :: [
+          %{
+            type: String.t(),
+            sequence: integer,
+            time: DateTime.t(),
+            session: integer | nil,
+            data: map
+          }
+        ]
+  def session_end_events(%Scope{} = scope, %Run{} = run) do
     Repo.all(
       from e in events(scope, run),
         where: e.type in ^@session_end_types,
-        distinct: e.type,
-        order_by: [asc: e.type, desc: e.sequence],
-        select:
-          {e.type,
-           %{
-             time: e.time,
-             data:
-               fragment(
-                 "jsonb_strip_nulls(jsonb_build_object('state', ? -> 'state', 'exit_code', ? -> 'exit_code', 'outcome', ? -> 'outcome', 'turns', ? -> 'turns', 'duration_ms', ? -> 'duration_ms', 'cost_usd', ? -> 'cost_usd', 'model', ? -> 'model'))",
-                 e.data,
-                 e.data,
-                 e.data,
-                 e.data,
-                 e.data,
-                 e.data,
-                 e.data
-               )
-           }}
+        order_by: e.sequence,
+        select: %{
+          type: e.type,
+          sequence: e.sequence,
+          time: e.time,
+          session: fragment("? -> 'session'", e.data),
+          data:
+            fragment(
+              "jsonb_strip_nulls(jsonb_build_object('state', ? -> 'state', 'exit_code', ? -> 'exit_code', 'outcome', ? -> 'outcome', 'turns', ? -> 'turns', 'duration_ms', ? -> 'duration_ms', 'cost_usd', ? -> 'cost_usd', 'model', ? -> 'model'))",
+              e.data,
+              e.data,
+              e.data,
+              e.data,
+              e.data,
+              e.data,
+              e.data
+            )
+        }
     )
-    |> Map.new()
+    |> Enum.map(&%{&1 | session: session_number(&1.session)})
   end
+
+  # A session's number as the events send it: an integer from 1, else nil.
+  defp session_number(n) when is_integer(n) and n in 1..@max_step, do: n
+  defp session_number(_value), do: nil
 
   ## The log
 

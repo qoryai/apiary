@@ -4067,7 +4067,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-test-failed[data-cause=ended]")
 
       assert words(lv, "#set-up-test-failed") ==
-               "The test run stopped at Clone repository. Clone repository failed with " <>
+               "The test run stopped at Clone the repository. Clone the repository failed with " <>
                  "exit code 128 (git.example.com/acme/shop). An admin of " <>
                  "#{scope.workspace.name} reads the cause in the step's output. Open the " <>
                  "run's Timeline"
@@ -4103,7 +4103,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(conn, test_path(scope))
 
       assert words(lv, "#set-up-test-failed") ==
-               "The test run stopped at Set up dev container. Set up dev container failed " <>
+               "The test run stopped at Set up the dev container. Set up the dev container failed " <>
                  "with exit code 1 (postCreateCommand: npm ci). An admin of " <>
                  "#{scope.workspace.name} reads the cause in the step's output. Open the " <>
                  "run's Timeline"
@@ -4111,7 +4111,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert lv |> element("#set-up-test-failed code") |> render() =~ ">npm ci</code>"
     end
 
-    test "a run whose machine stopped before it started the run: Start machine, and its cause line",
+    test "a run whose machine stopped before it started the run: Start the machine, and its cause line",
          %{conn: conn, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
       {:ok, item} = WorkItems.take_in_test(scope, @line)
@@ -4145,7 +4145,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(conn, test_path(scope))
 
       assert words(lv, "#set-up-test-failed") ==
-               "The test run stopped at Start machine. The machine stopped before it " <>
+               "The test run stopped at Start the machine. The machine stopped before it " <>
                  "started the run. An admin of #{scope.workspace.name} reads why in the log " <>
                  "of build-pool on its host. Open the run's Timeline"
 

@@ -365,7 +365,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
                }
              } = document["preparation"]
 
-      assert text =~ "Set up dev container failed with exit code 2."
+      assert text =~ "Set up the dev container failed with exit code 2."
     end
 
     test "lists every step in number order, a push step too, and a failed push is no stop",
@@ -399,6 +399,31 @@ defmodule Apiary.Runs.DiagnosticsTest do
              ] = document["preparation"]["steps"]
 
       refute Map.has_key?(document["preparation"], "stopped")
+    end
+
+    test "has the time of the first session's start, also when that session's wall failed",
+         %{schema: schema} do
+      %{scope: scope} = sign_up_fixture()
+      run = run_fixture(scope, %{public_id: Run.new_public_id()})
+
+      events_fixture(run, [
+        {1, "run.started", started_data()},
+        {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+        {3, "run.step_exited",
+         %{"step" => 1, "state" => "succeeded", "exit_code" => -1, "duration_ms" => 300}},
+        {4, "session.started", session_started_data(), time: at(4.7)},
+        {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+        {6, "run.step_exited",
+         %{"step" => 2, "state" => "failed", "exit_code" => 125, "duration_ms" => 2700}}
+      ])
+
+      {:ok, run} = Apiary.Runs.Projector.project(run)
+      document = valid!(schema, Diagnostics.document(run, :instance))
+
+      assert document["preparation"]["session_started_at"] ==
+               at(4) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+      assert %{"cause" => "step_failed", "step" => 2} = document["preparation"]["stopped"]
     end
   end
 

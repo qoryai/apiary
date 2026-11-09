@@ -338,3 +338,60 @@ test("x and Shift+x from a Pushed row, which has no sequence, go to the calls af
   assert.ok(pressed(hook, pushedRow, "X"))
   assert.equal(globalThis.document.activeElement, at(el, 6))
 })
+
+// g e (`end`): with one Timeline per agent session, the live end is the last item of the
+// last list on the page, also from a key pressed in an earlier session's list.
+
+const endList = (id, seqs) => {
+  const el = deniedTimeline(seqs.map(seq => [seq, {}]))
+  el.id = id
+  el.parentElement = null
+  return el
+}
+
+test("g e from the first session's list focuses the last item of the last list", t => {
+  const {querySelector, querySelectorAll} = globalThis.document
+  const window = globalThis.window
+  t.after(() => {
+    Object.assign(globalThis.document, {querySelector, querySelectorAll})
+    globalThis.window = window
+  })
+  const first = endList("timeline", [1, 3, 4])
+  const second = endList("timeline-2", [13, 14, 16])
+  globalThis.document.querySelector = () => null
+  globalThis.document.querySelectorAll = selector => (selector === "ol.q-tl" ? [first, second] : [])
+  globalThis.document.documentElement.scrollHeight = 1000
+  globalThis.window = {scrollTo: () => {}}
+
+  const hook = mount(first)
+  at(first, 3).focus()
+  assert.ok(pressed(hook, at(first, 3), "g"))
+  assert.ok(pressed(hook, at(first, 3), "e"))
+  assert.equal(globalThis.document.activeElement, at(second, 16))
+})
+
+test("g e with a Timeline after the list focuses the run's end in the last agent session's list", t => {
+  const {querySelector, querySelectorAll} = globalThis.document
+  const window = globalThis.window
+  t.after(() => {
+    Object.assign(globalThis.document, {querySelector, querySelectorAll})
+    globalThis.window = window
+  })
+  // Session 1 ran and holds the run's end, 17; session 2's wall failed after its start, so
+  // its item 15 is in the Timeline after the list, which comes last on the page.
+  const first = endList("timeline", [1, 7, 17])
+  const agent = {open: false, parentElement: null}
+  first.parentElement = {closest: selector => (selector === "details" ? agent : null)}
+  const after = endList("timeline-after-list", [15])
+  globalThis.document.querySelector = () => null
+  globalThis.document.querySelectorAll = selector => (selector === "ol.q-tl" ? [first, after] : [])
+  globalThis.document.documentElement.scrollHeight = 1000
+  globalThis.window = {scrollTo: () => {}}
+
+  const hook = mount(after)
+  at(after, 15).focus()
+  assert.ok(pressed(hook, at(after, 15), "g"))
+  assert.ok(pressed(hook, at(after, 15), "e"))
+  assert.equal(globalThis.document.activeElement, at(first, 17))
+  assert.equal(agent.open, true, "session 1's Run the agent opens")
+})

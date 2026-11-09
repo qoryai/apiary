@@ -12,7 +12,7 @@
 //   g e              the live end                  g t             the top
 //   c                copy the focused item's link
 //
-// The timeline can be inside a closed row, Session started of the Run list. The item
+// The timeline can be inside a closed row, Run the agent of the Run list. The item
 // ?seq= points at and the live end open that row, and so do j, k and g e with focus on
 // the row's summary: j moves to the first item, k to the last.
 import {singleKeys} from "./shortcuts.js"
@@ -29,6 +29,13 @@ export const openAround = el => {
     if (!d.open) d.open = true
   }
 }
+
+// The highest sequence among a list's items, -Infinity for a list with none.
+const lastSeq = list =>
+  Array.from(list.children).reduce(
+    (max, li) => (li.dataset.seq ? Math.max(max, Number(li.dataset.seq)) : max),
+    -Infinity,
+  )
 
 export const TimelineKeys = {
   mounted() {
@@ -48,7 +55,7 @@ export const TimelineKeys = {
 
   // The row the timeline is inside, if any, has a keydown listener for j, k and g e on its
   // summary. When the session starts on an open page, the timeline's list moves into
-  // Session started with no new mount, so `updated` finds the row again.
+  // Run the agent with no new mount, so `updated` finds the row again.
   bindGroup() {
     const group = (this.el.parentElement && this.el.parentElement.closest("details")) || null
     if (group === this.group) return
@@ -81,8 +88,8 @@ export const TimelineKeys = {
     clearTimeout(this.chord)
   },
 
-  items() {
-    return Array.from(this.el.children).filter(li => !li.inert && li.offsetParent !== null)
+  items(list = this.el) {
+    return Array.from(list.children).filter(li => !li.inert && li.offsetParent !== null)
   },
 
   apply() {
@@ -257,12 +264,19 @@ export const TimelineKeys = {
     tools.forEach(d => (d.open = open))
   },
 
+  // The live end is the last item of the list that has the run's latest loaded item,
+  // whichever list the key was pressed in: the last agent session's once the run has
+  // ended. The Timeline after the list, of a session whose wall failed, comes last on
+  // the page but ends before the run's end in the last agent session's list.
   end() {
-    openAround(this.el)
+    const lists = Array.from(document.querySelectorAll("ol.q-tl"))
+    const last =
+      lists.reduce((best, list) => (best && lastSeq(best) > lastSeq(list) ? best : list), null) || this.el
+    openAround(last)
     const pill = document.querySelector(".q-newpill-show[phx-click]")
     if (pill) return pill.click()
     window.scrollTo({top: document.documentElement.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth"})
-    const items = this.items()
+    const items = this.items(last)
     if (items.length) items[items.length - 1].focus({preventScroll: true})
   },
 

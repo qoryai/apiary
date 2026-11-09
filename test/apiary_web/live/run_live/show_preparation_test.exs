@@ -1,11 +1,12 @@
 defmodule ApiaryWeb.RunLive.ShowPreparationTest do
   @moduledoc """
-  The Run list of a run's Timeline (`ApiaryWeb.PreparationComponents`): its rows in
-  the order the steps ran, Start machine in Machine started, the steps in Prepare,
-  a step's log lines with their numbers and times, a failed or running row open, a failed
-  row with its cause line, and the machine log under Start machine for an instance admin
-  alone. Not async: the instance admin's tests hide the instance's organisation and set
-  the machine logs' folder.
+  The Run list of a run's Timeline (`ApiaryWeb.PreparationComponents`): its heading, its
+  rows in the order the steps ran, on every pool, the steps before the first session in
+  Prepare the machine and a session's join and wall in its Prepare the session, a step's
+  log lines with their numbers and times, a failed or running row open, a failed row with
+  its cause line of what happened, and Started as and the machine log under Start the
+  machine for an instance admin alone. Not async: the instance admin's tests hide the
+  instance's organisation and set the machine logs' folder.
   """
   use ApiaryWeb.ConnCase, async: false
 
@@ -28,6 +29,22 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
   @admin_only "The instance admin can read the machine&#39;s log."
   @machine_log "qory-machine-start: Docker started\n"
+
+  # The rows of `pool_run/2`, on every pool.
+  @pool_rows [
+    "Queue the run",
+    "Request a machine",
+    "Start the machine",
+    "Prepare the machine",
+    "Clone the repository",
+    "Pull the images",
+    "Agent session 1",
+    "Prepare the session",
+    "Start the agent",
+    "Start the wall",
+    "Run the agent",
+    "Remove the machine"
+  ]
 
   setup %{tmp_dir: tmp_dir} do
     before = Application.fetch_env(:apiary, :machine_logs_dir)
@@ -124,6 +141,72 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       )
   end
 
+  # The dispatch of a claimed run moved to `pool`.
+  defp on_pool!(%Dispatch{id: id}, pool) do
+    {1, _rows} =
+      Apiary.Repo.update_all(from(d in Dispatch, where: d.id == ^id), set: [pool_id: pool.id])
+  end
+
+  # A run that ended on `pool`: a fetch and an image step before its session, the join of
+  # its session, and the session's wall after its start.
+  defp pool_run(ctx, pool) do
+    %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+    on_pool!(dispatch, pool)
+
+    exited = fn sequence, step ->
+      {sequence, "run.step_exited",
+       %{"step" => step, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+    end
+
+    run =
+      project!(run, [
+        {1, "run.started", started_data()},
+        {2, "run.step_started",
+         %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}},
+        exited.(3, 1),
+        {4, "run.step_started",
+         %{"step" => 2, "name" => "registry.example.com/shop:1", "kind" => "image"}},
+        exited.(5, 2),
+        {6, "run.step_started", %{"step" => 3, "name" => "join session 1", "kind" => "join"}},
+        exited.(7, 3),
+        {8, "session.started", session_started_data()},
+        {9, "run.step_started", %{"step" => 4, "name" => "start the wall", "kind" => "wall"}},
+        exited.(10, 4),
+        {11, "runtime.result", %{"session" => 1, "outcome" => "success", "turns" => 2}},
+        {12, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+        {13, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+      ])
+
+    %{run: run, dispatch: dispatch}
+  end
+
+  # The names of the list's rows, the rows inside a row included, in the page's order.
+  defp row_names(lv) do
+    lv
+    |> element("#prepare-machine")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(".q-prep-name")
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
+
+  # Every row of `pool_run/2`, each step in its place.
+  defp assert_pool_rows(lv) do
+    assert row_names(lv) == @pool_rows
+    assert has_element?(lv, "#prepare-machine-prepare #prepare-machine-step-2", "Pull the images")
+
+    for {step, name} <- [{3, "Start the agent"}, {4, "Start the wall"}] do
+      assert has_element?(
+               lv,
+               "#prepare-machine-session #prepare-machine-session-prepare #prepare-machine-step-#{step}",
+               name
+             )
+    end
+
+    assert has_element?(lv, "#prepare-machine-session-agent #timeline")
+    assert has_element?(lv, "#prepare-machine-remove[data-clean-up]")
+  end
+
   # Written with no broadcast, as when the broadcast after the commit failed.
   defp dispatched_quietly!(%Dispatch{id: id}) do
     {1, _rows} =
@@ -140,34 +223,37 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       run = project!(run, steps(false))
       lv = open(ctx.conn, ctx.scope, run)
 
-      section = lv |> element("#prepare-machine") |> render()
-      assert has_element?(lv, "#prepare-machine-h", "Run")
-
-      rows =
-        section
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query(".q-prep-name")
-        |> Enum.map(&LazyHTML.text/1)
-
-      assert rows == [
-               "Queued",
-               "Machine requested",
-               "Machine started",
-               "Start machine",
-               "Prepare",
-               "Clone repository",
-               "Session started"
+      assert row_names(lv) == [
+               "Queue the run",
+               "Request a machine",
+               "Start the machine",
+               "Prepare the machine",
+               "Clone the repository",
+               "Agent session 1",
+               "Run the agent"
              ]
 
-      assert has_element?(lv, "#prepare-machine-started #prepare-machine-start-machine")
+      assert has_element?(lv, "#prepare-machine-start")
+      refute has_element?(lv, "#prepare-machine-started")
+      refute has_element?(lv, "#prepare-machine-start-machine")
       assert has_element?(lv, "#prepare-machine-prepare #prepare-machine-step-1")
-      # The run goes on: Session started is open, with the Timeline inside it.
-      assert has_element?(lv, "#prepare-machine-session[open] #timeline")
-      refute has_element?(lv, "#prepare-machine details[open]:not(#prepare-machine-session)")
+
+      # The run goes on: Agent session 1 and its Run the agent are open, with the Timeline
+      # inside them.
+      assert has_element?(
+               lv,
+               "#prepare-machine-session[open] #prepare-machine-session-agent[open] #timeline"
+             )
+
+      refute has_element?(
+               lv,
+               "#prepare-machine details[open]:not(#prepare-machine-session):not(#prepare-machine-session-agent)"
+             )
+
       refute has_element?(lv, "#prepare-machine-machine-log")
       refute render(lv) =~ @admin_only
-      assert lv |> element("#prepare-machine-requested") |> render() =~ "build-pool"
-      assert lv |> element("#prepare-machine-requested") |> render() =~ "pool default"
+      assert lv |> element("#prepare-machine-request") |> render() =~ "build-pool"
+      assert lv |> element("#prepare-machine-request") |> render() =~ "pool default"
 
       assert lv |> element("#prepare-machine-step-1-output .q-log-x") |> render() =~
                "Cloning into &#39;shop&#39;..."
@@ -175,7 +261,45 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute has_element?(lv, "#prepare-machine-cause")
     end
 
-    test "a run of a machine type: Machine requested has its spec, Details its name, the peak the type's memory",
+    test "a run on the Qory Pool shows every row of the pool to a member, with no Started as and no machine log",
+         ctx do
+      %{run: run, dispatch: dispatch} =
+        pool_run(ctx, instance_pool_fixture(%{name: "qory-pool"}))
+
+      vendor_type!(dispatch, "example-type")
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert_pool_rows(lv)
+      assert lv |> element("#prepare-machine-request") |> render() =~ "qory-pool"
+      refute has_element?(lv, "#prepare-machine-started-as")
+      refute has_element?(lv, "#prepare-machine-machine-log")
+      refute render(lv) =~ "example-type"
+    end
+
+    test "the heading has the pool and the run's state: Running while it is alive, then Completed",
+         ctx do
+      heading = fn lv ->
+        lv
+        |> element("#prepare-machine-h")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+      end
+
+      %{run: run} = claimed_run(ctx.scope)
+      run = project!(run, steps(false))
+      assert heading.(open(ctx.conn, ctx.scope, run)) == "Run on build-pool · Running"
+
+      run =
+        project!(run, [
+          {6, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      assert run.state == "completed"
+      assert heading.(open(ctx.conn, ctx.scope, run)) == "Run on build-pool · Completed"
+    end
+
+    test "a run of a machine type: Request a machine has its spec, Details its name, the peak the type's memory",
          ctx do
       %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
 
@@ -201,7 +325,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
         )
 
       lv = open(ctx.conn, ctx.scope, run)
-      requested = lv |> element("#prepare-machine-requested") |> render()
+      requested = lv |> element("#prepare-machine-request") |> render()
       assert requested =~ "large (4 vCPUs, 16 GiB, 60 GiB disk)"
       refute requested =~ "pool default"
 
@@ -215,7 +339,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       refute has_element?(lv, "#rail-machine-type")
-      assert lv |> element("#prepare-machine-requested") |> render() =~ "pool default"
+      assert lv |> element("#prepare-machine-request") |> render() =~ "pool default"
     end
 
     test "the vendor's machine type is not shown to a member", ctx do
@@ -229,7 +353,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute render(lv) =~ "Started as"
     end
 
-    test "Prepare groups the steps, in order, with their labels",
+    test "Prepare the machine groups the steps before the session, in order, with their labels; the join is the session's",
          ctx do
       zone = reader_at_noon(ctx.scope.user)
       %{run: run} = claimed_run(ctx.scope)
@@ -270,11 +394,16 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
         |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
 
       assert grouped == [
-               "Clone repository",
+               "Clone the repository",
                "Compose the harness",
-               "Set up dev container",
-               "Start agent"
+               "Set up the dev container"
              ]
+
+      assert has_element?(
+               lv,
+               "#prepare-machine-session #prepare-machine-session-prepare #prepare-machine-step-4",
+               "Start the agent"
+             )
 
       lines = "#prepare-machine-step-3-output-lines"
       assert has_element?(lv, "#{lines} .q-log-ln:nth-child(1) .q-log-n", "1")
@@ -314,7 +443,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert has_element?(lv, "#prepare-machine-prepare[open][data-state='running']")
       assert has_element?(lv, "#prepare-machine-step-2[open][data-state='running']")
       refute has_element?(lv, "#prepare-machine-step-1[open]")
-      refute has_element?(lv, "#prepare-machine-start-machine[open]")
+      refute has_element?(lv, "#prepare-machine-start[open]")
       assert lv |> element("#prepare-machine-step-2 > summary") |> render() =~ "Running"
       assert has_element?(lv, "#prepare-machine-prepare-clock[data-tick='duration']")
       refute has_element?(lv, "#prepare-machine-step-2-output-lines .q-log-n", "2")
@@ -326,7 +455,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert has_element?(lv, "#prepare-machine-step-2-output-lines .q-log-n", "2")
       assert has_element?(lv, "#prepare-machine-step-2-output-lines .q-log-x", "added 1184")
 
-      # The step ends and the next starts: it is a row of the group, open while it runs.
+      # The step ends and the session's join starts: it is a row of Agent session 1, open
+      # while it runs, and Prepare the machine has ended.
       events_fixture(run, [
         {7, "run.step_exited",
          %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 48_000}},
@@ -338,11 +468,12 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       assert has_element?(
                lv,
-               "#prepare-machine-prepare #prepare-machine-step-3[open]",
-               "Start agent"
+               "#prepare-machine-session[open] #prepare-machine-session-prepare #prepare-machine-step-3[open]",
+               "Start the agent"
              )
 
-      assert lv |> element("#prepare-machine-step-2 > summary") |> render() =~ "48 s"
+      assert has_element?(lv, "#prepare-machine-step-2[data-state='succeeded']")
+      assert has_element?(lv, "#prepare-machine-prepare[data-state='succeeded']")
     end
 
     test "a step of 5,000 lines shows its last 2,500, numbered, in one scrolled box", ctx do
@@ -381,7 +512,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
              )
     end
 
-    test "a machine step: its lines under Start machine, after create machine", ctx do
+    test "a machine step: its lines under Start the machine, after create machine", ctx do
       %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
       started = DateTime.add(dispatch.dispatched_at, 14_800, :millisecond)
 
@@ -408,7 +539,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       refute has_element?(lv, "#prepare-machine-step-1")
-      lines = "#prepare-machine-start-machine #prepare-machine-start-machine-output-lines"
+      lines = "#prepare-machine-start #prepare-machine-start-machine-output-lines"
 
       # `has_element?/3` matches the text with its runs of spaces made one.
       assert has_element?(
@@ -420,7 +551,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert has_element?(lv, "#{lines} .q-log-ln:nth-child(2) .q-log-x", "boot 14.8 s")
       assert has_element?(lv, "#{lines} .q-log-ln:nth-child(6) .q-log-x", "write run code 0.1 s")
       assert has_element?(lv, "#{lines} .q-log-ln:nth-child(6) .q-log-n", "6")
-      assert has_element?(lv, "#prepare-machine-step-2", "Clone repository")
+      assert has_element?(lv, "#prepare-machine-step-2", "Clone the repository")
       refute has_element?(lv, "#prepare-machine-machine-log")
     end
 
@@ -435,28 +566,26 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert has_element?(lv, "#run-timeline .q-tlegend .q-tc1", "Since run start")
       assert has_element?(lv, "#run-timeline .q-tlegend .q-tc2", "Event")
 
-      # Session started has no duration: its second cell stays, so its time keeps its column.
+      # Agent session 1 runs, with no duration: its second cell stays, so its time keeps its
+      # column.
       assert has_element?(lv, "#prepare-machine-session .q-t > .q-tc1 time")
       assert has_element?(lv, "#prepare-machine-session .q-t > .q-tc2")
       assert has_element?(lv, "#timeline .q-t > .q-t-at.q-tc1")
       assert has_element?(lv, "#timeline .q-t > .q-q.q-tc2")
     end
 
-    test "a failed step is open, with its output and its cause line", ctx do
+    test "a failed step is open, with its output and its cause line of what happened", ctx do
       %{run: run} = claimed_run(ctx.scope)
       run = project!(run, steps(true))
       lv = open(ctx.conn, ctx.scope, run)
 
       assert has_element?(lv, "#prepare-machine-step-1[open]")
       assert has_element?(lv, "#prepare-machine-prepare[open][data-state='failed']")
-      refute has_element?(lv, "#prepare-machine-started[open]")
-      refute has_element?(lv, "#prepare-machine-start-machine[open]")
+      refute has_element?(lv, "#prepare-machine-start[open]")
       assert has_element?(lv, "#prepare-machine-step-1 #prepare-machine-step-1-output")
 
       assert lv |> element("#prepare-machine-step-1 #prepare-machine-cause") |> render() =~
-               "Clone repository failed with exit code 128 (git.example.com/acme/shop). " <>
-                 "An admin of " <>
-                 "#{ctx.scope.workspace.name} reads the cause in the step&#39;s output."
+               ">Clone the repository failed with exit code 128 (git.example.com/acme/shop).</p>"
     end
 
     test "a step whose output retention deleted shows when it was pruned", ctx do
@@ -487,13 +616,10 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
                  "retention. The timeline and the connections are whole."
 
       assert lv |> element("#prepare-machine-cause") |> render() =~
-               "Clone repository failed with exit code 128 (git.example.com/acme/shop). " <>
-                 "The step&#39;s " <>
-                 "output was deleted under the workspace&#39;s log retention, so the cause is " <>
-                 "no longer shown."
+               ">Clone the repository failed with exit code 128 (git.example.com/acme/shop).</p>"
     end
 
-    test "a released run: Machine started is open with who fixes it, the header the cause",
+    test "a released run: Start the machine is open with what happened, the header the cause",
          ctx do
       pool = pool_fixture(ctx.scope, name: "build-pool")
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
@@ -510,15 +636,16 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       :ok = Dispatches.release(key, dispatch.public_id, %{reason: "No capacity in the region."})
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert has_element?(lv, "#prepare-machine-started[open]")
-      assert has_element?(lv, "#prepare-machine-start-machine[open]")
-      refute has_element?(lv, "#prepare-machine-requested[open]")
+      assert has_element?(lv, "#prepare-machine-start[open][data-state='failed']")
+      refute has_element?(lv, "#prepare-machine-request[open]")
 
-      assert lv |> element("#prepare-machine-start-machine #prepare-machine-cause") |> render() =~
-               ">An admin of #{ctx.scope.workspace.name} reads why in the log of build-pool on its host.</p>"
+      assert lv |> element("#prepare-machine-start #prepare-machine-cause") |> render() =~
+               ">No machine was made: No capacity in the region.</p>"
 
-      assert render(lv) =~ "No machine was made: No capacity in the region."
-      refute lv |> element("#prepare-machine") |> render() =~ "No machine was made"
+      assert lv |> element("#run-reason") |> render() =~
+               "No machine was made: No capacity in the region."
+
+      refute render(lv) =~ "reads why"
     end
 
     test "a release reason's run key is filtered on the page, and kept in the diagnostics",
@@ -555,7 +682,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
                "No machine was made: Key #{run_key} refused"
     end
 
-    test "a stop on the Qory Pool links Contact support and has no line on a machine log",
+    test "a stop on the Qory Pool shows the pool's rows, no note, and no advice",
          ctx do
       before = Application.get_env(:apiary, :support_address)
       Application.put_env(:apiary, :support_address, "https://help.example.com")
@@ -586,16 +713,216 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert has_element?(
-               lv,
-               ~s(#prepare-machine a[href="https://help.example.com"]),
-               "Contact support"
-             )
+      # The pool's rows are shown, as on any pool, with no note above the Timeline, and
+      # the page shows no line about who fixes the cause.
+      assert has_element?(lv, "#prepare-machine-request")
+
+      assert lv |> element("#prepare-machine-start[open] #prepare-machine-cause") |> render() =~
+               ">The machine did not start the run within 15 minutes of the request.</p>"
+
+      refute has_element?(lv, ".q-limits")
 
       html = render(lv)
-      assert html =~ "with run #{run.public_id}."
-      refute has_element?(lv, "#prepare-machine-machine-log")
+      refute html =~ "Contact support"
       refute html =~ "nstance admin"
+      assert lv |> element("#run-reason") |> render() =~ "15 minutes"
+    end
+
+    # A run whose wall failed to start, on `pool` or the claim's pool, in the contract's
+    # order: the join, the session's start, then the wall.
+    defp wall_failed(ctx, pool \\ nil) do
+      %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+
+      if pool, do: on_pool!(dispatch, pool)
+
+      project!(run, [
+        {1, "run.started", started_data(%{"wall" => "docker"})},
+        {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+        {3, "run.step_exited",
+         %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+        {4, "session.started", session_started_data()},
+        {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+        {6, "run.step_exited",
+         %{"step" => 2, "state" => "failed", "exit_code" => 125, "duration_ms" => 100}},
+        {7, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+      ])
+    end
+
+    # The failed wall's row in Agent session 1, its cause line and How it ended: what
+    # happened alone, with no advice; Run the agent and Save the outputs Skipped, as the
+    # agent never ran, with the Timeline after the list; and no note above the Timeline.
+    defp assert_wall_failed(lv) do
+      what = "Start the wall failed with exit code 125."
+
+      assert lv
+             |> element(
+               "#prepare-machine-session-prepare #prepare-machine-step-2[open] #prepare-machine-cause"
+             )
+             |> render() =~ ">#{what}</p>"
+
+      assert has_element?(lv, "#prepare-machine-session-agent[data-state=skipped]")
+      assert has_element?(lv, "#prepare-machine-session-outputs[data-state=skipped]")
+      refute has_element?(lv, "#prepare-machine-session-agent dl")
+      refute has_element?(lv, "#prepare-machine #timeline")
+      assert has_element?(lv, "#timeline")
+
+      assert lv |> element("#run-why .q-run-why-whole") |> render() =~ ">#{what}</span>"
+      refute has_element?(lv, "#run-why-jump")
+
+      refute has_element?(lv, ".q-limits")
+
+      html = render(lv)
+      refute html =~ "Contact support"
+      refute html =~ "reads the cause"
+    end
+
+    test "a failed step of the workspace's pool: its row and How it ended state what happened alone",
+         ctx do
+      assert_wall_failed(open(ctx.conn, ctx.scope, wall_failed(ctx)))
+    end
+
+    test "a failed step of the Qory Pool: its row and How it ended state what happened alone",
+         ctx do
+      before = Application.get_env(:apiary, :support_address)
+      Application.put_env(:apiary, :support_address, "https://help.example.com")
+      on_exit(fn -> Application.put_env(:apiary, :support_address, before) end)
+
+      lv = open(ctx.conn, ctx.scope, wall_failed(ctx, instance_pool_fixture(%{name: "qory"})))
+      assert_wall_failed(lv)
+    end
+
+    test "a wall that fails after an agent session ran keeps the note about that session's events",
+         ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data(%{"wall" => "docker"})},
+          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {4, "session.started", session_started_data()},
+          {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+          {6, "run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {7, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {8, "run.step_started", %{"step" => 3, "name" => "join session 2", "kind" => "join"}},
+          {9, "run.step_exited",
+           %{"step" => 3, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {10, "session.started", session_started_data(%{"session" => 2})},
+          {11, "run.step_started", %{"step" => 4, "name" => "start the wall", "kind" => "wall"}},
+          {12, "run.step_exited",
+           %{"step" => 4, "state" => "failed", "exit_code" => 125, "duration_ms" => 100}},
+          {13, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      # Session 1 ran behind the wall with no hook events, so the wall's note stays; session
+      # 2 never ran its agent.
+      assert has_element?(lv, ".q-limits")
+      assert has_element?(lv, "#prepare-machine-session-agent[data-state=succeeded]")
+      assert has_element?(lv, "#prepare-machine-session-2-agent[data-state=skipped]")
+    end
+
+    test "the items of a session whose wall failed are in the Timeline after the list, not in session 1's",
+         ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data(%{"wall" => "docker"})},
+          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {4, "session.started", session_started_data()},
+          {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+          {6, "run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {7, "runtime.started", %{"session" => 1, "session_id" => "session-0001"}},
+          {8, "runtime.ended", %{"session" => 1, "reason" => "other"}},
+          {9, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {10, "run.step_started", %{"step" => 3, "name" => "join session 2", "kind" => "join"}},
+          {11, "run.step_exited",
+           %{"step" => 3, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {12, "session.started", session_started_data(%{"session" => 2})},
+          {13, "run.step_started", %{"step" => 4, "name" => "start the wall", "kind" => "wall"}},
+          {14, "run.step_exited",
+           %{"step" => 4, "state" => "failed", "exit_code" => 125, "duration_ms" => 100}},
+          # An item with session 2's number, as any event of that session makes one.
+          {15, "runtime.ended", %{"session" => 2, "reason" => "other"}},
+          {16, "session.exited", %{"session" => 2, "state" => "failed", "exit_code" => -1}},
+          {17, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      # Session 1's Timeline, inside its Run the agent, has its items and none of session 2's.
+      assert has_element?(lv, "#prepare-machine-session-agent #timeline #e-7")
+      refute has_element?(lv, "#timeline #e-15")
+
+      # Session 2's item is in the Timeline after the list.
+      refute has_element?(lv, "#prepare-machine #timeline-after-list")
+      assert has_element?(lv, "#timeline-after-list #e-15")
+      refute has_element?(lv, "#timeline-after-list #e-7")
+      assert has_element?(lv, "#prepare-machine-session-2-agent[data-state=skipped]")
+    end
+
+    test "a live session's items move from its Timeline to the one after the list when its wall fails",
+         ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data(%{"wall" => "docker"})},
+          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {4, "session.started", session_started_data()},
+          {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+          {6, "run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {7, "runtime.started", %{"session" => 1, "session_id" => "session-0001"}},
+          {8, "runtime.ended", %{"session" => 1, "reason" => "other"}},
+          {9, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {10, "run.step_started", %{"step" => 3, "name" => "join session 2", "kind" => "join"}},
+          {11, "run.step_exited",
+           %{"step" => 3, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+      refute has_element?(lv, "#timeline-2")
+      # The reader is at the live end, so the items that arrive are inserted.
+      render_hook(element(lv, "#live-end"), "live_end", %{"at_end" => true})
+
+      # Session 2 starts and its wall starts: its item is in its Timeline.
+      events_fixture(run, [
+        {12, "session.started", session_started_data(%{"session" => 2})},
+        {13, "run.step_started", %{"step" => 4, "name" => "start the wall", "kind" => "wall"}},
+        {14, "runtime.notification", %{"session" => 2, "kind" => "idle"}}
+      ])
+
+      {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
+      assert has_element?(lv, "#prepare-machine-session-2-agent #timeline-2 #e-14")
+      refute has_element?(lv, "#timeline-after-list")
+
+      # The wall fails: session 2 never ran its agent, and its item moves after the list.
+      events_fixture(run, [
+        {15, "run.step_exited",
+         %{"step" => 4, "state" => "failed", "exit_code" => 125, "duration_ms" => 100}}
+      ])
+
+      {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
+      refute has_element?(lv, "#timeline-2")
+      refute has_element?(lv, "#timeline #e-14")
+
+      after_list =
+        lv |> element("#timeline-after-list") |> render() |> LazyHTML.from_fragment()
+
+      assert after_list |> LazyHTML.query("#e-14") |> Enum.count() == 1
+      assert has_element?(lv, "#prepare-machine-session-agent #timeline #e-7")
     end
 
     test "a pending run with no event shows the section in place of the wait", ctx do
@@ -608,8 +935,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert has_element?(lv, "#prepare-machine-requested")
-      assert has_element?(lv, "#prepare-machine-started")
+      assert has_element?(lv, "#prepare-machine-request")
+      assert has_element?(lv, "#prepare-machine-start")
       refute has_element?(lv, "#prepare-machine-session")
     end
 
@@ -624,62 +951,62 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      row = lv |> element("#prepare-machine-started > summary") |> render()
+      row = lv |> element("#prepare-machine-start > summary") |> render()
       assert row =~ "Running"
       assert row =~ "q-prep-pulse"
-      refute has_element?(lv, "#prepare-machine-started .q-tc1 time")
+      refute has_element?(lv, "#prepare-machine-start > summary .q-tc1 time")
 
-      # A run still starting: Machine started and Start machine run, both open.
-      assert has_element?(lv, "#prepare-machine-started[open]")
-      assert has_element?(lv, "#prepare-machine-start-machine[open][data-state='running']")
-      assert lv |> element("#prepare-machine-start-machine > summary") |> render() =~ "Running"
+      # A run still starting: Start the machine runs, open.
+      assert has_element?(lv, "#prepare-machine-start[open][data-state='running']")
 
       assert has_element?(
                lv,
-               ~s(#prepare-machine-started-clock[phx-hook="Ticker"][data-tick="duration"][data-since="#{claimed_at}"])
+               ~s(#prepare-machine-start-clock[phx-hook="Ticker"][data-tick="duration"][data-since="#{claimed_at}"])
              )
 
-      # The heading counts from the start of Queued.
-      assert has_element?(lv, ~s(#prepare-machine-queued .q-tc1 time[datetime="#{queued_at}"]))
+      # The heading counts from the start of Queue the run.
+      assert has_element?(
+               lv,
+               ~s(#prepare-machine-queue > summary .q-tc1 time[datetime="#{queued_at}"])
+             )
+
       assert has_element?(lv, ~s(#prepare-machine-total[data-since="#{queued_at}"]))
       assert lv |> element(".q-prep-hd") |> render() =~ "so far"
 
-      # Before `dispatched`, Machine requested has no time under Took.
-      refute has_element?(lv, "#prepare-machine-requested .q-tc2 .q-d")
+      # Before `dispatched`, Request a machine has no time under Took.
+      refute has_element?(lv, "#prepare-machine-request .q-tc2 .q-d")
 
       # `dispatched` is broadcast on the run's topic: the page's next flush shows it, with
       # no quiet tick.
       :ok = Dispatches.dispatched(claimed.key, dispatch.public_id, %{external: nil})
       send(lv.pid, :flush)
-      assert has_element?(lv, "#prepare-machine-started > summary .q-tc1 time")
-      assert lv |> element("#prepare-machine-started > summary") |> render() =~ "Running"
+      assert has_element?(lv, "#prepare-machine-start > summary .q-tc1 time")
+      assert lv |> element("#prepare-machine-start > summary") |> render() =~ "Running"
 
       dispatch = Apiary.Repo.get!(Dispatch, dispatch.id)
 
       assert has_element?(
                lv,
-               ~s(#prepare-machine-started-clock[data-since="#{DateTime.to_iso8601(dispatch.dispatched_at)}"])
+               ~s(#prepare-machine-start-clock[data-since="#{DateTime.to_iso8601(dispatch.dispatched_at)}"])
              )
 
       took = DateTime.diff(dispatch.dispatched_at, dispatch.claimed_at, :millisecond)
 
-      assert lv |> element("#prepare-machine-requested .q-tc2 .q-d") |> render() =~
+      assert lv |> element("#prepare-machine-request .q-tc2 .q-d") |> render() =~
                ApiaryWeb.RunComponents.format_duration_ms(took)
 
-      # So is the redemption of the run's code: Start machine and Machine started end, with
-      # their time, and no clock.
+      # So is the redemption of the run's code: Start the machine ends, with its time, and
+      # no clock.
       redeem!(claimed)
       send(lv.pid, :flush)
-      refute lv |> element("#prepare-machine-start-machine > summary") |> render() =~ "Running"
-      refute lv |> element("#prepare-machine-started > summary") |> render() =~ "Running"
+      refute lv |> element("#prepare-machine-start > summary") |> render() =~ "Running"
 
       assert has_element?(
                lv,
-               "#prepare-machine-started[data-state='succeeded'] > summary .q-tc2 .q-d"
+               "#prepare-machine-start[data-state='succeeded'] > summary .q-tc2 .q-d"
              )
 
-      refute has_element?(lv, "#prepare-machine-started-clock")
-      refute has_element?(lv, "#prepare-machine-start-machine-clock")
+      refute has_element?(lv, "#prepare-machine-start-clock")
     end
 
     test "the quiet tick reads the machine's start on the Timeline tab alone", ctx do
@@ -690,16 +1017,16 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       dispatched_quietly!(dispatch)
       send(lv.pid, :quiet_tick)
       render_patch(lv, path)
-      refute has_element?(lv, "#prepare-machine-started .q-tc1 time")
+      refute has_element?(lv, "#prepare-machine-start > summary .q-tc1 time")
 
       send(lv.pid, :quiet_tick)
-      assert has_element?(lv, "#prepare-machine-started .q-tc1 time")
+      assert has_element?(lv, "#prepare-machine-start > summary .q-tc1 time")
     end
 
     test "the quiet tick's note above the timeline is of the run it read", ctx do
       %{dispatch: dispatch, registered: run} = claimed(ctx.scope)
       lv = open(ctx.conn, ctx.scope, run)
-      assert has_element?(lv, "#prepare-machine-started")
+      assert has_element?(lv, "#prepare-machine-start")
 
       # The run's row changes with no broadcast: the tick reads it with the machine's start.
       dispatched_quietly!(dispatch)
@@ -711,7 +1038,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute html =~ "first event has not arrived"
     end
 
-    test "a running step ticks from its start, and the heading counts so far", ctx do
+    test "a running step pulses, Prepare the machine ticks from its start, and the heading counts so far",
+         ctx do
       %{run: run} = claimed_run(ctx.scope)
       started = DateTime.utc_now()
 
@@ -728,10 +1056,13 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       assert row =~ "Running"
       assert row =~ "q-prep-pulse"
-      assert has_element?(lv, "#prepare-machine-step-1-clock[data-tick='duration']")
+      # A step inside a step shows no time: the clock is Prepare the machine's.
+      refute has_element?(lv, "#prepare-machine-step-1-clock")
+
+      assert has_element?(lv, "#prepare-machine-prepare-clock[data-tick='duration']")
       assert has_element?(lv, "#prepare-machine-total[data-tick='duration']")
 
-      # A step's exit reaches the page as an event: its duration, no clock.
+      # A step's exit reaches the page as an event: no pulse, no clock.
       events_fixture(run, [
         {3, "run.step_exited",
          %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 72_000}}
@@ -740,9 +1071,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       {:ok, _run} = Projector.project(run)
       send(lv.pid, :flush)
       row = lv |> element("#prepare-machine-step-1 summary") |> render()
-      assert row =~ "1 m 12 s"
-      refute has_element?(lv, "#prepare-machine-step-1-clock")
+      assert has_element?(lv, "#prepare-machine-step-1[data-state='succeeded']")
       refute row =~ "q-prep-pulse"
+      refute has_element?(lv, "#prepare-machine-prepare-clock")
     end
 
     test "a lost run's step stays running, with no clock and no pulse", ctx do
@@ -784,7 +1115,11 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute lv |> element("#prepare-machine-step-1 summary") |> render() =~ "Running"
       refute has_element?(lv, "#prepare-machine-step-1-clock")
       refute has_element?(lv, "#prepare-machine time[data-tick]")
-      assert lv |> element("#prepare-machine-step-2 summary") |> render() =~ "48 s"
+
+      assert has_element?(
+               lv,
+               "#prepare-machine-session-prepare #prepare-machine-step-2[data-state='succeeded']"
+             )
     end
 
     test "a live run between two steps: no row ticks, and the heading counts up", ctx do
@@ -809,7 +1144,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert has_element?(lv, "#prepare-machine-total[data-tick='duration']")
       assert lv |> element(".q-prep-hd") |> render() =~ "so far"
 
-      # Once the next step starts, its row ticks.
+      # Once the session's join starts, its Agent session ticks.
       events_fixture(run, [
         {4, "run.step_started", %{"step" => 2, "name" => "join session 1", "kind" => "join"},
          time: DateTime.add(exited, 1, :second)}
@@ -817,7 +1152,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       {:ok, _run} = Projector.project(run)
       send(lv.pid, :flush)
-      assert has_element?(lv, "#prepare-machine-step-2-clock[data-tick='duration']")
+      assert has_element?(lv, "#prepare-machine-session-clock[data-tick='duration']")
+      refute has_element?(lv, "#prepare-machine-step-2-clock")
       assert has_element?(lv, "#prepare-machine-total[data-tick='duration']")
     end
 
@@ -845,7 +1181,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       |> Enum.join(" ")
     end
 
-    test "a walled run that stopped at a step before its session: the step, no wall note",
+    test "a walled run that stopped at a step before its session: no note, no wall note",
          ctx do
       run =
         ctx.scope
@@ -861,11 +1197,10 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert limits_text(lv) ==
-               "The run stopped before its session started, at the step Clone repository."
+      refute has_element?(lv, ".q-limits")
     end
 
-    test "a released run: the step is Start machine", ctx do
+    test "a released run: no note, its row Start the machine states the cause", ctx do
       pool = pool_fixture(ctx.scope, name: "build-pool")
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
       _gateway = gateway_for!(ctx.scope, pool)
@@ -881,8 +1216,8 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       :ok = Dispatches.release(key, dispatch.public_id, %{reason: "No capacity in the region."})
       lv = open(ctx.conn, ctx.scope, run)
 
-      assert limits_text(lv) ==
-               "The run stopped before its session started, at the step Start machine."
+      refute has_element?(lv, ".q-limits")
+      assert has_element?(lv, "#prepare-machine-start[data-state=failed] #prepare-machine-cause")
     end
 
     test "a walled run whose session never started has no wall note", ctx do
@@ -918,6 +1253,186 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
     end
   end
 
+  describe "the note on a session's runtime" do
+    setup :register_and_log_in_user
+
+    @runtime_note "Only Claude Code sends session events. This session ran qory: its output " <>
+                    "is under Terminal, and its connections under Network access."
+
+    defp note_text(lv, selector) do
+      lv
+      |> element(selector)
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
+    defp note_count(lv),
+      do:
+        lv |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(".q-limits") |> Enum.count()
+
+    # Agent session `n`, from the sequence `seq`, on `runtime`: its join, its start, its
+    # wall, a prompt for Claude Code, whose hooks send it, and its exit. Ten sequences.
+    defp agent_session(seq, n, runtime) do
+      step = 2 * n - 1
+
+      prompt =
+        if runtime == "claude",
+          do: [
+            {seq + 5, "runtime.prompt_submitted",
+             %{"session" => n, "session_id" => "s#{n}", "prompt" => "fix the build"}}
+          ],
+          else: []
+
+      [
+        {seq, "run.step_started",
+         %{"step" => step, "name" => "join session #{n}", "kind" => "join"}},
+        {seq + 1, "run.step_exited",
+         %{"step" => step, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+        {seq + 2, "session.started",
+         session_started_data(%{"session" => n, "runtime" => runtime, "command" => runtime})},
+        {seq + 3, "run.step_started",
+         %{"step" => step + 1, "name" => "start the wall", "kind" => "wall"}},
+        {seq + 4, "run.step_exited",
+         %{"step" => step + 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}}
+      ] ++
+        prompt ++
+        [{seq + 6, "session.exited", %{"session" => n, "state" => "succeeded", "exit_code" => 0}}]
+    end
+
+    defp sessions_run(scope, runtimes) do
+      sessions =
+        for {runtime, n} <- Enum.with_index(runtimes, 1),
+            event <- agent_session(10 * n, n, runtime),
+            do: event
+
+      exited =
+        {10 * length(runtimes) + 10, "run.exited",
+         %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+
+      scope
+      |> run_fixture()
+      |> project!([{1, "run.started", started_data()}] ++ sessions ++ [exited])
+    end
+
+    test "a session on another runtime: the note is in its Run the agent, above its Timeline, and none is above the steps",
+         ctx do
+      lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, ["qory"]))
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @runtime_note
+      assert has_element?(lv, "#prepare-machine-session-agent .q-limits code.q-rule", "qory")
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 1
+
+      agent = lv |> element("#prepare-machine-session-agent") |> render()
+      {note_at, _} = :binary.match(agent, "q-limits")
+      {timeline_at, _} = :binary.match(agent, ~s(id="timeline"))
+      assert note_at < timeline_at
+    end
+
+    test "for a reader without the Terminal, the note in Run the agent leaves the Terminal out",
+         ctx do
+      run = sessions_run(ctx.scope, ["qory"])
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([:"observability.terminal"])
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") ==
+               "Only Claude Code sends session events. This session ran qory: its " <>
+                 "connections are under Network access."
+
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      lv = open(ctx.conn, ctx.scope, run)
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @runtime_note
+    end
+
+    test "on a live run, a session on another runtime that starts gets the note in its Run the agent",
+         ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+      assert note_count(lv) == 0
+
+      events_fixture(run, [
+        {4, "session.started",
+         session_started_data(%{"session" => 1, "runtime" => "qory", "command" => "qory"})}
+      ])
+
+      {:ok, _run} = Projector.project(run)
+      send(lv.pid, :flush)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @runtime_note
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 1
+    end
+
+    test "a Claude Code session has no note", ctx do
+      lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, ["claude"]))
+
+      assert has_element?(lv, "#prepare-machine-session-agent #timeline")
+      assert note_count(lv) == 0
+      refute render(lv) =~ "Only Claude Code sends session events."
+    end
+
+    for runtimes <- [["qory", "claude"], ["claude", "qory"]] do
+      test "sessions on #{Enum.join(runtimes, " and ")}: the note is in the qory session's Run the agent alone",
+           ctx do
+        runtimes = unquote(runtimes)
+        lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, runtimes))
+
+        [qory, claude] =
+          if runtimes == ["qory", "claude"],
+            do: ["#prepare-machine-session-agent", "#prepare-machine-session-2-agent"],
+            else: ["#prepare-machine-session-2-agent", "#prepare-machine-session-agent"]
+
+        assert note_text(lv, "#{qory} .q-limits") == @runtime_note
+        refute has_element?(lv, "#{claude} .q-limits")
+        assert note_count(lv) == 1
+      end
+    end
+
+    @tag needs: [:factory, :registry]
+    test "a prebuild on another runtime: the note is in Build the image", ctx do
+      pool = pool_fixture(ctx.scope, name: "build-pool")
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      _gateway = gateway_for!(ctx.scope, pool)
+      %{run: run} = prebuild_handed_over!(ctx.scope, key)
+
+      run =
+        project!(run, [
+          {1, "run.started", started_data()},
+          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => -1, "duration_ms" => 100}},
+          {4, "session.started",
+           session_started_data(%{"runtime" => "qory", "command" => "qory", "bare" => true})},
+          {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+          {6, "run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {7, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {8, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-build .q-limits") == @runtime_note
+      assert has_element?(lv, "#prepare-machine-build #timeline")
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 1
+    end
+  end
+
   describe "for an instance admin" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()
@@ -950,7 +1465,23 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
     setup :register_and_log_in_user
 
-    test "Machine started shows the machine log", ctx do
+    test "a run on the Qory Pool shows every row of the pool, and Start the machine has Started as and the machine log",
+         ctx do
+      %{run: run, dispatch: dispatch} =
+        pool_run(ctx, instance_pool_fixture(%{name: "qory-pool"}))
+
+      vendor_type!(dispatch, "example-type")
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert_pool_rows(lv)
+
+      assert lv |> element("#prepare-machine-start #prepare-machine-started-as") |> render() =~
+               "example-type"
+
+      assert has_element?(lv, "#prepare-machine-start #prepare-machine-machine-log")
+    end
+
+    test "Start the machine shows the machine log", ctx do
       %{run: run, dispatch: dispatch, key: key} = claimed_run(ctx.scope)
       run = project!(run, steps(false))
 
@@ -962,8 +1493,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       lv = open(ctx.conn, ctx.scope, run)
 
-      log =
-        lv |> element("#prepare-machine-start-machine #prepare-machine-machine-log") |> render()
+      log = lv |> element("#prepare-machine-start #prepare-machine-machine-log") |> render()
 
       assert log =~ "Machine log (instance admins)"
       refute log =~ @admin_only
@@ -980,25 +1510,25 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute has_element?(lv, "#prepare-machine-machine-log-lines .q-log-t")
     end
 
-    test "Start machine shows the vendor's machine type above the machine log", ctx do
+    test "Start the machine shows the vendor's machine type above the machine log", ctx do
       %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
       vendor_type!(dispatch, "example-type")
       run = project!(run, steps(false))
       lv = open(ctx.conn, ctx.scope, run)
 
       started_as =
-        lv |> element("#prepare-machine-start-machine #prepare-machine-started-as") |> render()
+        lv |> element("#prepare-machine-start #prepare-machine-started-as") |> render()
 
       assert started_as =~ "Started as (instance admins)"
       assert started_as =~ "example-type"
 
-      html = lv |> element("#prepare-machine-start-machine") |> render()
+      html = lv |> element("#prepare-machine-start") |> render()
       {at, _length} = :binary.match(html, "prepare-machine-started-as")
       {log_at, _length} = :binary.match(html, "prepare-machine-machine-log")
       assert at < log_at
     end
 
-    test "with no machine type reported, Start machine has no Started as line", ctx do
+    test "with no machine type reported, Start the machine has no Started as line", ctx do
       %{run: run} = claimed_run(ctx.scope)
       run = project!(run, steps(false))
       lv = open(ctx.conn, ctx.scope, run)
