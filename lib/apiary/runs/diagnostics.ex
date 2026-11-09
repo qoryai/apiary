@@ -4,7 +4,9 @@ defmodule Apiary.Runs.Diagnostics do
   contract (`priv/contract/diagnostics/v1/diagnostics.schema.json`, vendored from the
   integrations at the commit in `test/fixtures/contract/diagnostics/v1/.contract-ref`),
   `version` 1. The run page's Copy diagnostics copies it, and
-  `GET /v1/runs/<run id>/diagnostics`, signed with a diagnostics key, answers with it.
+  `GET /v1/runs/<run id>/diagnostics`, signed with a diagnostics key, answers with it. The
+  same key lists the instance's runs, one page at a time, with `GET /v1/runs`, to find
+  the run id (`Apiary.Runs.RunList`, the run list of the same contract).
 
   **What it contains.** `instance`, the product's name in the edition and the version;
   `run`, the run's id, state, reason, exit, times, organisation, workspace, step,

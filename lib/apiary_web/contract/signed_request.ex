@@ -53,8 +53,9 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   (`ApiaryWeb.Contract.SignedAnswer.register/2`), whatever its status but `401`. A refusal
   after verification is coded: `application/json`, `{"error": "<code>"}`.
 
-  **A diagnostics key.** The run diagnostics route alone is given `kinds: [:diagnostics]`
-  (`ApiaryWeb.Contract.DiagnosticsController`), and no other pipeline takes that kind. Its
+  **A diagnostics key.** The run diagnostics route and the run list alone are given
+  `kinds: [:diagnostics]` (`ApiaryWeb.Contract.DiagnosticsController`,
+  `ApiaryWeb.Contract.RunListController`), and no other pipeline takes that kind. Their
   request is verified, refused and answered as any other GET, but nothing records an
   instance as seen on its node: the diagnostics node runs nothing.
 
