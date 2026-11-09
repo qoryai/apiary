@@ -380,7 +380,7 @@ defmodule Apiary.Processes.HarnessUpdate do
     end
   end
 
-  # The stored commit of `version`, else the commit a read of it gives now.
+  # The stored commit of `version`, else the commit a read of it returns now.
   defp qory_commit(version) do
     case Qory.version_commit(version) do
       commit when is_binary(commit) ->
@@ -619,7 +619,8 @@ defmodule Apiary.Processes.HarnessUpdate do
     end
   end
 
-  # The harness version a template was read at, as `version/2` gives a choice's.
+  # The harness version a template was read at, in the form `version/2` returns for a
+  # choice.
   defp template_version(%{"source" => source, "ref_kind" => kind, "ref" => ref})
        when source in ["qory", "repository"] and kind in ["branch", "tag", "commit"] and
               is_binary(ref),
@@ -734,7 +735,7 @@ defmodule Apiary.Processes.HarnessUpdate do
 
   # A harness repository: read through the adapters that link it to the organisation, or
   # as public, as a person's read on the Harness page reads it (`read/2`), with the
-  # instance's scope. The read gives the branch's newest commit; a version is saved where
+  # instance's scope. The read returns the branch's newest commit; a version is saved where
   # it differs from the commit of the current version, from the module the process came
   # from.
   defp follow(:repository, workspace, branch) do

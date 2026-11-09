@@ -1513,7 +1513,7 @@ defmodule Apiary.Stacks.Sources do
   @doc false
   # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
   # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
-  # where the choice names none. A harness that follows a branch is read at the commit
+  # where the choice has none. A harness that follows a branch is read at the commit
   # the runs of the workspace's current version compose, where it has one
   # (`Apiary.Processes.HarnessUpdate.in_use_commit/2`). The Qory harness is not read: its
   # names are those of its stored files (`Apiary.Processes.qory_workflows/2`). The

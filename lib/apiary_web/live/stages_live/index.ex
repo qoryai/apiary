@@ -185,7 +185,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     |> refresh()
   end
 
-  # The harness of the workspace's runs, as the Harness page names it.
+  # The harness of the workspace's runs, in the words the Harness page shows.
   defp harness_name(%{choice: :qory} = chosen), do: ApiaryWeb.HarnessComponents.qory_line(chosen)
   defp harness_name(chosen), do: ApiaryWeb.HarnessComponents.chosen_line(chosen)
 

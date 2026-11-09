@@ -513,8 +513,8 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   def reason_words(_exited, source, scope),
     do: HarnessComponents.read_words(:exited, source, scope.organisation.name)
 
-  # The reasons, each a phrase with no period, as Apiary.Artifacts.TemplateTypes.message/1
-  # gives one.
+  # The reasons, each a phrase with no period, in the form that
+  # Apiary.Artifacts.TemplateTypes.message/1 returns.
   defp invalid_words(reasons),
     do:
       gettext(
