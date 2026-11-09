@@ -1015,15 +1015,13 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_info({:run_changed, run}, socket), do: {:noreply, collect(socket, [run])}
 
   # The workspace's queue changed: the queued runs, and the runs of the page that were
-  # queued when it was read, are read again, in one query, and changed as any run.
-  def handle_info({Apiary.Dispatches, :changed}, socket) do
-    %{current_scope: scope, listing: listing} = socket.assigns
-    on_page = if listing, do: for(run <- listing.runs, Run.queued?(run), do: run.id), else: []
-    {:noreply, collect(socket, Runs.queued_or(scope, on_page))}
-  end
+  # queued when it was read, are read again, in one query, once a window however many
+  # changes land in it (`read_queue/1`), and changed as any run.
+  def handle_info({Apiary.Dispatches, :changed}, socket),
+    do: {:noreply, socket |> put_private(:queue_changed, true) |> window()}
 
   def handle_info(:flush_runs, socket) do
-    if map_size(socket.private[:changed] || %{}) > 0 do
+    if map_size(socket.private[:changed] || %{}) > 0 or socket.private[:queue_changed] do
       Process.send_after(self(), :flush_runs, @flush_window)
       {:noreply, flush(socket)}
     else
@@ -1050,12 +1048,13 @@ defmodule ApiaryWeb.RunLive.Index do
     end
   end
 
-  defp collect(socket, []), do: socket
-
   defp collect(socket, runs) do
     changed = Enum.reduce(runs, socket.private[:changed] || %{}, &Map.put(&2, &1.id, &1))
-    socket = put_private(socket, :changed, changed)
+    socket |> put_private(:changed, changed) |> window()
+  end
 
+  # A change waits for the open window to end, or opens one and is applied at once.
+  defp window(socket) do
     case socket.private[:flush_window] do
       :open ->
         socket
@@ -1066,9 +1065,24 @@ defmodule ApiaryWeb.RunLive.Index do
     end
   end
 
-  defp flush(%{assigns: %{listing: nil}} = socket), do: put_private(socket, :changed, %{})
+  # After a change of the workspace's queue, the queued runs and the runs of the page
+  # that were queued when it was read, in one query, among the changed runs.
+  defp read_queue(%{private: %{queue_changed: true}} = socket) do
+    %{current_scope: scope, listing: listing} = socket.assigns
+    on_page = for run <- listing.runs, Run.queued?(run), do: run.id
+    runs = Runs.queued_or(scope, on_page)
+    changed = Enum.reduce(runs, socket.private[:changed] || %{}, &Map.put(&2, &1.id, &1))
+    socket |> put_private(:changed, changed) |> put_private(:queue_changed, false)
+  end
+
+  defp read_queue(socket), do: socket
+
+  defp flush(%{assigns: %{listing: nil}} = socket),
+    do: socket |> put_private(:changed, %{}) |> put_private(:queue_changed, false)
 
   defp flush(socket) do
+    socket = read_queue(socket)
+
     %{listing: listing, filters: filters, current_scope: scope, new_ids: new_ids} =
       socket.assigns
 

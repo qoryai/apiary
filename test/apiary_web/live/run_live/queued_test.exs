@@ -153,6 +153,53 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
     end
   end
 
+  describe "the runs list's read of the queue" do
+    # The queries of `pid` that read the queued runs (`Apiary.Runs.queued_or/2`), sent to
+    # the test as they run.
+    defp count_queue_reads(pid) do
+      test = self()
+      id = "queue-reads-#{inspect(make_ref())}"
+
+      :ok =
+        :telemetry.attach(
+          id,
+          [:apiary, :repo, :query],
+          fn _event, _measurements, metadata, _config ->
+            if self() == pid and metadata.source == "runs" and
+                 metadata.query =~ ~r/"registered_at" IS NULL.*"id" = ANY/s,
+               do: send(test, :queue_read)
+          end,
+          nil
+        )
+
+      on_exit(fn -> :telemetry.detach(id) end)
+    end
+
+    defp queue_reads(count \\ 0) do
+      receive do
+        :queue_read -> queue_reads(count + 1)
+      after
+        0 -> count
+      end
+    end
+
+    test "several changes of the queue in one window cost one read", %{conn: conn, scope: scope} do
+      {_work_item, queued} = queue!(scope)
+      run = record(queued)
+      view = open(conn, workspace_path(scope, "/runs"))
+      count_queue_reads(view.pid)
+
+      # The first change is read at once and opens the window; the next five wait for
+      # its end, and are read together then.
+      for _change <- 1..6, do: send(view.pid, {Apiary.Dispatches, :changed})
+      _rendered = render(view)
+      assert queue_reads() == 1
+
+      assert eventually(fn -> queue_reads() == 1 end)
+      assert has_element?(view, "#run-#{run.public_id} .q-st-queued")
+    end
+  end
+
   describe "the run page" do
     test "has Queue the run running, the steps to come, why it waits and the Details of a queued run",
          %{conn: conn, scope: scope} do
