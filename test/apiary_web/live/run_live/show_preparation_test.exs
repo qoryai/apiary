@@ -940,6 +940,34 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute has_element?(lv, "#prepare-machine-session")
     end
 
+    test "a pending run with a Timeline item: the not started note after the list, above the Timeline",
+         ctx do
+      %{run: run} = claimed_run(ctx.scope)
+
+      run =
+        run
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "runtime.text", %{"kind" => "text", "text" => "checking the cache"}}
+        ])
+        |> Ecto.Changeset.change(unattached())
+        |> Apiary.Repo.update!()
+
+      lv = open(ctx.conn, ctx.scope, run)
+      note = "The run is registered. Its first event has not arrived."
+      html = render(lv)
+
+      assert has_element?(lv, "#prepare-machine")
+      assert has_element?(lv, "#timeline")
+      assert html =~ note
+      refute has_element?(lv, "#prepare-machine .q-limits")
+
+      {list_at, _} = :binary.match(html, ~s(id="prepare-machine"))
+      {note_at, _} = :binary.match(html, note)
+      {timeline_at, _} = :binary.match(html, ~s(id="timeline"))
+      assert list_at < note_at and note_at < timeline_at
+    end
+
     test "a machine before `dispatched` ticks from the claim, and its start shows at once",
          ctx do
       %{dispatch: dispatch, registered: run} = claimed = claimed(ctx.scope)
@@ -1276,7 +1304,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
     # Agent session `n`, from the sequence `seq`, on `runtime`: its join, its start, its
     # wall, a prompt for Claude Code, whose hooks send it unless `hooks` is false, and its
     # exit. Ten sequences.
-    defp agent_session(seq, n, runtime, hooks \\ true) do
+    defp agent_session(seq, n, runtime, hooks) do
       step = 2 * n - 1
 
       prompt =
@@ -1440,6 +1468,33 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert render(lv) =~ "No session events arrived."
       assert has_element?(lv, ".q-limits code.q-rule", "codex")
       assert before?(lv, "q-limits", ~s(id="timeline"))
+    end
+
+    test "with no Run list, a codex session, then a Claude Code one: both notes above the Timeline",
+         ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "session.started",
+           session_started_data(%{"session" => 1, "runtime" => "codex", "command" => "codex"})},
+          {3, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {4, "session.started", session_started_data(%{"session" => 2})},
+          {5, "session.exited", %{"session" => 2, "state" => "succeeded", "exit_code" => 0}},
+          {6, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      refute has_element?(lv, "#prepare-machine")
+      assert note_count(lv) == 2
+      assert render(lv) =~ "No session events arrived."
+      assert has_element?(lv, ".q-limits code.q-rule", "codex")
+
+      html = render(lv)
+      {timeline_at, _} = :binary.match(html, ~s(id="timeline"))
+      assert Enum.all?(:binary.matches(html, "q-limits"), fn {at, _} -> at < timeline_at end)
     end
 
     test "a session on another runtime: the note is in its Run the agent, above its Timeline, and none is above the steps",
@@ -1720,8 +1775,9 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
     @digest String.duplicate("4c1e", 16)
 
     # A prebuild on a pool of the workspace whose build session exited 0, with `report`
-    # as its `dev.qory.run.built`, if any, and its run's exit.
-    defp prebuild!(ctx, report, exited) do
+    # as its `dev.qory.run.built`, if any, and its run's exit. `items` are events of the
+    # build session, `{type, data}` each, before the session's exit.
+    defp prebuild!(ctx, report, exited, items \\ []) do
       pool = pool_fixture(ctx.scope, name: "build-pool")
       %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
       _gateway = gateway_for!(ctx.scope, pool)
@@ -1730,24 +1786,34 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       report =
         case report do
           nil -> []
-          report -> [{8, "run.built", report.(run)}]
+          report -> [{"run.built", report.(run)}]
         end
+
+      events =
+        [
+          {"run.started", started_data()},
+          {"run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+          {"run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {"session.started",
+           session_started_data(%{"runtime" => "qory", "command" => "qory", "bare" => true})},
+          {"run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+          {"run.step_exited",
+           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}}
+        ] ++
+          items ++
+          [{"session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}] ++
+          report ++ [{"run.exited", Map.put(exited, "duration_ms", 1000)}]
 
       project!(
         run,
-        [
-          {1, "run.started", started_data()},
-          {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
-          {3, "run.step_exited",
-           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
-          {4, "session.started",
-           session_started_data(%{"runtime" => "qory", "command" => "qory", "bare" => true})},
-          {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
-          {6, "run.step_exited",
-           %{"step" => 2, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
-          {7, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}}
-        ] ++ report ++ [{9, "run.exited", Map.put(exited, "duration_ms", 1000)}]
+        events |> Enum.with_index(1) |> Enum.map(fn {{type, data}, seq} -> {seq, type, data} end)
       )
+    end
+
+    defp set!(run, fields) do
+      {1, _rows} =
+        Apiary.Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id), set: fields)
     end
 
     test "a build that sent no image: Save the outputs failed, and How it ended", ctx do
@@ -1835,6 +1901,68 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert has_element?(lv, "#run-reason", "stopped responding")
       refute has_element?(lv, "#run-why")
       assert lv |> element("#prepare-machine-outputs-cause") |> render() =~ lost
+    end
+
+    test "a prebuild lost after its build with a failed turn: How it ended has the turn's line",
+         ctx do
+      failed = {"runtime.turn_failed", %{"session" => 1, "error" => "the build tool crashed"}}
+      run = prebuild!(ctx, nil, %{"state" => "failed", "exit_code" => -1}, [failed])
+      set!(run, state: "lost", lost_at: DateTime.add(run.exited_at, 30, :second))
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#prepare-machine-outputs[data-state=failed]")
+      assert lv |> element("#prepare-machine-outputs-cause") |> render() =~ "the run was lost"
+      assert has_element?(lv, "#run-why-jump")
+
+      why = lv |> element("#run-why") |> render()
+      assert why =~ "the build tool crashed"
+      refute why =~ "The image was not saved"
+    end
+
+    test "a prebuild cancelled after its build with its starter's outcome: no image line in How it ended",
+         ctx do
+      run = prebuild!(ctx, nil, %{"state" => "failed", "exit_code" => 1})
+
+      set!(run,
+        state: "cancelled",
+        exit_state: "failed",
+        outcome_state: "cancelled",
+        outcome_time: run.exited_at,
+        outcome_received_at: run.exited_at,
+        outcome_digest: :crypto.hash(:sha256, "outcome cancelled")
+      )
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(
+               lv,
+               "#run-outcome",
+               "Cancelled, as its starter said; the runtime exited 1"
+             )
+
+      assert has_element?(lv, "#prepare-machine-outputs[data-state=failed]")
+
+      assert lv |> element("#prepare-machine-outputs-cause") |> render() =~
+               "the run was cancelled before an image arrived"
+
+      refute has_element?(lv, "#run-why")
+    end
+
+    test "a prebuild cancelled after its build with an end reason: no image line in How it ended",
+         ctx do
+      run = prebuild!(ctx, nil, %{"state" => "cancelled", "exit_code" => -1})
+      set!(run, reason: "interrupted")
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert has_element?(lv, "#run-reason", "interrupted")
+      assert has_element?(lv, "#prepare-machine-outputs[data-state=failed]")
+
+      assert lv |> element("#prepare-machine-outputs-cause") |> render() =~
+               "the run was cancelled before an image arrived"
+
+      refute has_element?(lv, "#run-why")
     end
   end
 end
