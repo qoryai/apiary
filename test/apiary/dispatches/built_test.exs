@@ -442,7 +442,7 @@ defmodule Apiary.Dispatches.BuiltTest do
                {:refused, {:environment_image, other, {:image, sent_image}}}
     end
 
-    test "refuses a run whose documents have no destination, and a run that is no prebuild",
+    test "returns :no_destination for documents with none, and :not_prebuild for no prebuild",
          ctx do
       assert Built.check(%{ctx.run | run_documents: ~s({"step":"prebuild"})}, built(ctx)) ==
                {:refused, :no_destination}

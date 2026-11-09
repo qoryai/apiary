@@ -62,11 +62,12 @@ defmodule Apiary.Runs.Preparation do
       `dev.qory.run.built` by sequence, `at` its time, `image` the image it reports, nil
       when that is no text, and `refused` why the report fails the check that stores it,
       as Apiary.Dispatches.Built returns it, nil when it passes; else, once the prebuild
-      failed after its build session exited succeeded, `at` the run's exit, no image, and
-      `refused` `:not_sent`, as `qory` sends no report when its check of the build's
+      failed after its build session exited with success, `at` the run's exit, no image,
+      and `refused` `:not_sent`, as `qory` sends no report when its check of the build's
       result fails; or once it was lost or cancelled after that build, `at` when it was
-      found lost or its exit, and `refused` `:lost` or `:cancelled`. `fix` is what the reader of `scope` does about an image not saved
-      (`t:built_fix/0`). Nil otherwise, and for any other run.
+      found lost or its exit, and `refused` `:lost` or `:cancelled`. `fix` is what the
+      reader of `scope` does about an image not saved (`t:built_fix/0`). Nil otherwise,
+      and for any other run.
 
   Every read is scoped as `Apiary.Runs.Record` scopes it: the scope's organisation and
   workspace, and the run's row id.
@@ -788,7 +789,7 @@ defmodule Apiary.Runs.Preparation do
   defp prebuild_step(%{kind: "join"} = step), do: Map.put(step, :prebuild, true)
   defp prebuild_step(step), do: step
 
-  # A prebuild with no report whose build session exited succeeded: failed, lost or
+  # A prebuild with no report whose build session exited with success: failed, lost or
   # cancelled after its build, at its exit, or when it was found lost; nil while it goes
   # on, and once it completed.
   defp unsent(%Run{state: "failed", exited_at: at}), do: %{at: at, image: nil, refused: :not_sent}
@@ -803,7 +804,7 @@ defmodule Apiary.Runs.Preparation do
 
   # How a prebuild saved its image (`t:built/0`): its first `dev.qory.run.built` by
   # sequence, with the result of its check; else, for a prebuild that failed after its
-  # build session exited succeeded, no report; else nil.
+  # build session exited with success, no report; else nil.
   defp built(scope, run, session_end, machine) do
     built =
       case Record.built(scope, run) do

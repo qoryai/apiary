@@ -1046,7 +1046,7 @@ defmodule Apiary.Runs.PreparationTest do
       assert outputs_cause(html) == {line, [place <> "-x", place]}
     end
 
-    test "a report that breaks its form says which member and the rule, and support", ctx do
+    test "a report that breaks its form shows the member, the rule, and support", ctx do
       events =
         Enum.map(prebuild_events(image: destination_image(ctx.run, @digest)), fn
           {10, "run.built", data} -> {10, "run.built", Map.put(data, "commit", "ABC")}
