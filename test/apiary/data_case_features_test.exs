@@ -34,6 +34,7 @@ defmodule Apiary.DataCaseFeaturesTest do
   end
 
   describe "a sync test tagged with_features:" do
+    @tag :feature_sets
     test "with a list that is not valid raises with the fix, the cause, then the list" do
       previous = Application.get_env(:apiary, :features)
 
