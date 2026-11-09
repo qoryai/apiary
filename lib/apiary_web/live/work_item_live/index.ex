@@ -591,6 +591,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   defp work_item(row, people, scope, confirmers) do
     %{
       confirmers: row_confirmers(confirmers, people, scope),
+      at_explore: confirmers != :left_explore,
       number: row.number,
       title: row.title,
       test: row.test,
@@ -607,8 +608,10 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     }
   end
 
-  # Who confirms next on a row: `:you`, the approvers by name, or nil for the owner rule.
+  # Who confirms next on a row: `:you`, the approvers by name, or nil for the owner rule
+  # and for a work item that left Explore (`at_explore` false).
   defp row_confirmers([_ | _] = ids, people, scope), do: Enum.map(ids, &person(people, &1, scope))
+  defp row_confirmers(:left_explore, _people, _scope), do: nil
   defp row_confirmers(confirmers, _people, _scope), do: confirmers
 
   defp status(%{state: :exploring, status: status}), do: status

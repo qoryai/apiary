@@ -67,7 +67,7 @@ defmodule Apiary.WorkItems.WorkList do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Features, Processes, Repo, WorkItems}
+  alias Apiary.{Access, Features, Processes, Repo, Stages, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
@@ -91,14 +91,33 @@ defmodule Apiary.WorkItems.WorkList do
     end
   end
 
+  # Whether the work item `w` is at Explore's stage, as its page reads it: not placed, or
+  # placed at a stage of `gates.explore` (`gates/2`) on its process version, or the
+  # current one where it has none. Every work item is, where `gates.explore` is nil.
+  defmacrop at_explore(w, gates) do
+    quote do
+      fragment(
+        "coalesce(? IS NULL OR ?::varchar[] IS NULL OR coalesce(?::text, ?) || ':' || ? = ANY(?), false)",
+        unquote(w).stage_id,
+        type(^unquote(gates).explore, {:array, :string}),
+        unquote(w).process_version_id,
+        type(^unquote(gates).current, :string),
+        unquote(w).stage_id,
+        type(^unquote(gates).explore, {:array, :string})
+      )
+    end
+  end
+
   # Whether the work item `w`, at Confirm, waits for the reader of `gates` (`gates/2`): at
   # a gate that lists approvers, where the reader may confirm there; else where the reader
-  # owns it. An escalated work item never waits at Confirm, as its page hides Confirm.
+  # owns it. An escalated work item never waits at Confirm, as its page hides Confirm, and
+  # neither does one that left Explore (`at_explore/2`): no one confirms there.
   defmacrop waits_for_reader(w, gates) do
     quote do
       fragment(
-        "CASE WHEN ? THEN FALSE WHEN ? THEN TRUE WHEN ? THEN FALSE ELSE ? = ? END",
+        "CASE WHEN ? THEN FALSE WHEN NOT ? THEN FALSE WHEN ? THEN TRUE WHEN ? THEN FALSE ELSE ? = ? END",
         coalesce(unquote(w).stage_state == :escalated, false),
+        at_explore(unquote(w), unquote(gates)),
         at_gate(unquote(w), unquote(gates), unquote(gates).you),
         at_gate(unquote(w), unquote(gates), unquote(gates).listed),
         unquote(w).owner_id,
@@ -542,12 +561,15 @@ defmodule Apiary.WorkItems.WorkList do
   # `waits_for_reader/2` and `resolves_for_reader/2`, each as `version id:stage id`:
   # `listed`, all of them; `you`, those where `Apiary.Access` allows the reader
   # `work_item.confirm` on a work item at that gate; `resolve`, those where it allows the
-  # reader `gate.approve`, which resolves an escalation; `current`, the id of the current
-  # version; `reader`, the reader's account id.
+  # reader `gate.approve`, which resolves an escalation; `explore`, Explore's stage of each
+  # version (`Apiary.Stages.explore_stage_in/2`); `current`, the id of the current version;
+  # `reader`, the reader's account id.
   # A gate with an empty list stays with the owner, as the row does. None with the workflow
-  # model off, where `Apiary.Stages.Approvers.allows?/2` lists no one. One query.
+  # model off, where `Apiary.Stages.Approvers.allows?/2` lists no one, and `explore` nil.
   defp gates(%Scope{workspace: workspace} = scope, organisation_id) do
-    versions = if Features.on?(:workflow_model), do: Processes.list_versions(workspace), else: []
+    on = Features.on?(:workflow_model)
+    versions = if on, do: Processes.list_versions(workspace), else: []
+    explore = if versions != [], do: Stages.explore_workflow(workspace)
 
     listed =
       for version <- versions,
@@ -566,6 +588,12 @@ defmodule Apiary.WorkItems.WorkList do
       reader: scope.user.id,
       current: Enum.find_value(versions, &(&1.status == :current && &1.id)),
       listed: Enum.map(listed, &elem(&1, 0)),
+      explore:
+        if on do
+          for version <- versions,
+              id when is_binary(id) <- [Stages.explore_stage_in(version, explore)],
+              do: "#{version.id}:#{id}"
+        end,
       you: for({key, at} <- listed, Access.can?(scope, :"work_item.confirm", at), do: key),
       resolve: for({key, at} <- listed, Access.can?(scope, :"gate.approve", at), do: key)
     }
@@ -952,7 +980,7 @@ defmodule Apiary.WorkItems.WorkList do
       s.status,
       count(w.id),
       filter(count(w.id), waits_for_reader(w, gates)),
-      filter(count(w.id), at_gate(w, gates, gates.listed)),
+      filter(count(w.id), at_gate(w, gates, gates.listed) and at_explore(w, gates)),
       filter(count(w.id), for_reader(w, s, gates))
     })
     |> Repo.all()

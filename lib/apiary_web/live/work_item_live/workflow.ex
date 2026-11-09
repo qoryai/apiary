@@ -472,19 +472,38 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # proposal waits at Explore's gate, who confirms next where the stage the work item is
   # in lists its approvers, by the row's id: `:you` where the reader may confirm
   # (`work_item.confirm`, `Apiary.Access`), else the listed account ids, in the gate's
-  # order. A row whose stage lists no one, or that the stage runner did not place, is
-  # left out, and keeps the owner rule. The same queries for any number of rows
-  # (`placed/2`).
-  @spec row_confirmers(Scope.t(), [map]) :: %{String.t() => :you | [Ecto.UUID.t()]}
+  # order. `:left_explore` for a work item at a later stage, as the work item page reads
+  # it (`Apiary.Stages.explore_stage_id/1`): no one confirms there. A row whose stage
+  # lists no one, or that the stage runner did not place, is left out, and keeps the
+  # owner rule. The same queries for any number of rows (`placed/2`).
+  @spec row_confirmers(Scope.t(), [map]) ::
+          %{String.t() => :you | [Ecto.UUID.t()] | :left_explore}
   def row_confirmers(%Scope{workspace: workspace} = scope, rows) do
     ids = for %{id: id, state: :exploring, status: :confirm} <- rows, do: id
+    placed = placed(workspace, ids)
+    explore = if placed != %{}, do: Stages.explore_workflow(workspace)
 
-    for {id, work_item} <- placed(workspace, ids),
-        [_ | _] = listed <- [listed(placed_stage(work_item))],
-        into: %{} do
-      if Access.can?(scope, :"work_item.confirm", work_item),
-        do: {id, :you},
-        else: {id, listed}
+    for {id, work_item} <- placed,
+        confirmers when not is_nil(confirmers) <- [row_confirmer(scope, work_item, explore)],
+        into: %{},
+        do: {id, confirmers}
+  end
+
+  defp row_confirmer(scope, work_item, explore) do
+    listed = listed(placed_stage(work_item))
+
+    cond do
+      work_item.stage_id != Stages.explore_stage_in(work_item.process_version, explore) ->
+        :left_explore
+
+      not match?([_ | _], listed) ->
+        nil
+
+      Access.can?(scope, :"work_item.confirm", work_item) ->
+        :you
+
+      true ->
+        listed
     end
   end
 

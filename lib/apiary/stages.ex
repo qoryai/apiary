@@ -624,14 +624,23 @@ defmodule Apiary.Stages do
   @spec explore_stage_id(WorkItem.t()) :: String.t() | nil
   def explore_stage_id(%WorkItem{} = work_item) do
     case Processes.version_for(work_item) do
-      %{document: %{"stages" => stages}} ->
-        explore = explore_workflow(work_item.workspace_id)
-        Enum.find_value(stages, &(explore in Runner.workflows(&1) && &1["id"]))
+      %{document: %{"stages" => _stages}} = version ->
+        explore_stage_in(version, explore_workflow(work_item.workspace_id))
 
       _none ->
         nil
     end
   end
+
+  # explore_stage_in/2 is the id of the stage of the process version `version` that runs
+  # the workflow `explore` (`explore_workflow/1`); nil for none. A list reads `explore`
+  # once for all its work items.
+  @doc false
+  @spec explore_stage_in(map | nil, String.t() | nil) :: String.t() | nil
+  def explore_stage_in(%{document: %{"stages" => stages}}, explore) when is_list(stages),
+    do: Enum.find_value(stages, &(explore in Runner.workflows(&1) && &1["id"]))
+
+  def explore_stage_in(_version, _explore), do: nil
 
   ## What a person does
 

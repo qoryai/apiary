@@ -317,6 +317,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp mark_of(%{status: :queued}, _can_act), do: :todo
   defp mark_of(%{status: :running}, _can_act), do: :run
 
+  # A proposal can still wait after the work item left Explore (a gate `none` passes on):
+  # it waits for no one there (`at_explore` false).
+  defp mark_of(%{status: :confirm, at_explore: false}, _can_act), do: :wait_other
   defp mark_of(%{status: :confirm, confirmers: :you}, _can_act), do: :wait
   defp mark_of(%{status: :confirm, confirmers: [_ | _]}, _can_act), do: :wait_other
 
@@ -333,6 +336,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp mark_of(%{status: status}, _can_act) when status in [:closed, :undone], do: :closed
 
   @doc false
+  def hot?(%{status: :confirm, at_explore: false}), do: false
   def hot?(%{status: :confirm, confirmers: :you}), do: true
   def hot?(%{status: :confirm, confirmers: [_ | _]}), do: false
   def hot?(%{status: :confirm, owner: owner}), do: you?(owner)

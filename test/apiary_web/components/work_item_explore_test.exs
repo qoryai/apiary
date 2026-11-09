@@ -541,6 +541,18 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert C.status_words(%{w | run: %{failed | attempt: 3}}) == "Explore used its 3 runs"
     end
 
+    test "a proposal that waits after its work item left Explore waits for no one" do
+      # The reader (`@dana`) owns the work item, or may confirm.
+      for w <- [work_item(%{}), work_item(%{confirmers: :you})] do
+        assert C.hot?(w)
+        assert C.mark(w) == :wait
+
+        left = Map.put(w, :at_explore, false)
+        refute C.hot?(left)
+        assert C.mark(left) == :wait_other
+      end
+    end
+
     test "a run limit of one says run, not runs" do
       w = work_item(%{status: :used_up, run: run(%{attempt: 1, of: 1})})
       assert C.status_words(w) == "Explore used its 1 run"
