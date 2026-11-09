@@ -129,7 +129,7 @@ defmodule Apiary.Dispatches.QueuedTest do
       assert_queued(other, 2)
     end
 
-    test "a queue that rolls back gives its number back", ctx do
+    test "a queue that rolls back returns its number to the counter", ctx do
       work_item = work_item_fixture(ctx.scope)
 
       assert {:error, :rolled_back} =
@@ -283,6 +283,46 @@ defmodule Apiary.Dispatches.QueuedTest do
       assert %Run{state: "failed", reason: "lease_lapsed", number: 1} = record_by_number(ctx, 1)
       assert record(first) == nil
       assert_queued(second, 2)
+    end
+  end
+
+  describe "a run of the queue a node of the previous release ended" do
+    # The previous release ends a run of the queue without its record: a close, an undo,
+    # a walk that failed, a lapse that superseded a prebuild, a claim's pick.
+    test "the lost-run check ends its record as this release would have, its number kept",
+         ctx do
+      ends = [
+        closed: "cancelled",
+        undone: "cancelled",
+        harness_unresolved: "failed",
+        superseded: "cancelled",
+        collection_ended: "failed"
+      ]
+
+      ended =
+        for {cause, state} <- ends do
+          queued = queued!(ctx.scope)
+
+          # A walk that failed ends its run with the outcome `error`.
+          outcome = if cause == :harness_unresolved, do: :error
+
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+            set: [state: :ended, end_cause: cause, result_outcome: outcome]
+          )
+
+          assert Run.queued?(record(queued))
+          {queued, Atom.to_string(cause), state}
+        end
+
+      waiting = queued!(ctx.scope)
+
+      Liveness.check(Dispatches.now())
+
+      for {{queued, reason, state}, number} <- Enum.with_index(ended, 1) do
+        assert %Run{state: ^state, reason: ^reason, number: ^number} = record(queued)
+      end
+
+      assert_queued(waiting, length(ends) + 1)
     end
   end
 

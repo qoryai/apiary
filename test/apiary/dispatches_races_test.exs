@@ -526,6 +526,38 @@ defmodule Apiary.DispatchesRacesTest do
     assert numbers == Enum.to_list(1..count)
   end
 
+  test "a claim and a close of the run's work item at once: one record, its number kept, ended closed",
+       ctx do
+    pool = pool_fixture(ctx.scope)
+    key = key!(ctx, pool)
+
+    for _round <- 1..4 do
+      [run] = queued!(ctx, 1)
+      %Apiary.Runs.Run{id: record_id, number: number} = record!(run)
+      work_item = Repo.get!(WorkItem, run.work_item_id)
+
+      [closed, claimed] =
+        together([
+          fn -> Apiary.WorkItems.close(ctx.scope, work_item) end,
+          fn -> Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) end
+        ])
+
+      assert {:ok, %WorkItem{state: :closed}} = closed
+      assert match?({:ok, :none}, claimed) or taken([claimed]) == [run.id]
+
+      assert %DispatchRun{state: :ended, end_cause: :closed} = Repo.get!(DispatchRun, run.id)
+
+      # Whichever came first, the record written at the queue is the run's one record.
+      assert [%Apiary.Runs.Run{id: ^record_id, number: ^number} = ended] =
+               Repo.all(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run.id)
+
+      assert {ended.state, ended.reason} == {"cancelled", "closed"}
+    end
+  end
+
+  defp record!(%DispatchRun{id: id}),
+    do: Repo.one!(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^id)
+
   test "of two next runs at once for one take in, the second waits on the work item, finds the first's run waiting and writes none",
        ctx do
     # queue_next/2 locks the work item before it reads the take in's runs, so the second

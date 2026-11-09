@@ -1604,13 +1604,102 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert Slots.held(ctx.pool.id) == 0
     end
 
-    test "a redemption after a close finds no run: the close deleted it with its code", ctx do
+    test "after a failed start, a run key for the run id finds the run gone, and the run that waits again has no dispatch",
+         ctx do
+      {_work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, id(claimed), %{reason: "no capacity"})
+
+      waiting = Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
+      assert Run.queued?(waiting)
+      assert waiting.node_run_id == queued.run_id
+
+      # A run key this server signed for the run id, as one redeemed before the start
+      # failed would be: the run that waits again is no run it can attach.
+      now = DateTime.utc_now(:second)
+
+      {:ok, run_key, _payload} =
+        Apiary.Runs.RunKey.issue(%{
+          run_id: queued.run_id,
+          workspace: ctx.scope.workspace.public_id,
+          node_id: ctx.pool.public_id,
+          gateway: ctx.gateway.public_id,
+          gateway_url: "https://gateway.example:8443",
+          gateway_public_keys: [:crypto.strong_rand_bytes(32)],
+          instance_id: "i_build-01",
+          issued: now,
+          attach_by: DateTime.add(now, 600, :second)
+        })
+
+      {gateway_key, _seed} = ctx.gateway_key
+      {:ok, body} = Apiary.Runs.Attach.parse(Apiary.ContractFixtures.attach_body(run_key))
+      assert Apiary.Runs.Attach.attach(gateway_key, queued.run_id, body, %{}) == {:error, :gone}
+
+      # Diagnostics of the run that waits again show no dispatch, not the released one.
+      assert Apiary.Runs.Diagnostics.document(waiting, :instance)["dispatches"] == []
+    end
+
+    # What a run of the queue that left `claimed` leaves of the run its claim registered.
+    defp left(%Run{id: id} = run) do
+      %{
+        node_id: run.node_id,
+        gateway_id: run.gateway_id,
+        run_documents: run.run_documents,
+        run_key_payload: run.run_key_payload,
+        credentials:
+          Repo.aggregate(from(c in Apiary.Runs.RunCredential, where: c.run_id == ^id), :count)
+      }
+    end
+
+    test "a redemption after a close is refused, keeps the slot until gone, and issues no run key",
+         ctx do
       {work_item, _queued} = queued!(ctx)
       claimed = claimed!(ctx)
+      registered = claimed.registered
       close!(ctx, work_item)
 
+      # The run ended cancelled with its number, as a failed start leaves a run: its node,
+      # gateway and credential entries kept, no documents, a fresh run id on the machine.
+      closed = Repo.get!(Run, registered.id)
+      assert %Run{state: "cancelled", reason: "closed", number: number} = closed
+      assert number == registered.number
+      assert closed.node_run_id != registered.node_run_id
+      assert closed.node_instance_id == closed.node_run_id
+
+      assert left(closed) == %{
+               left(registered)
+               | run_documents: nil
+             }
+
       assert redeem(claimed) == {:error, :unauthorized}
-      assert %Dispatch{late_machine_at: nil, slot_freed_at: %DateTime{}} = dispatch!(claimed)
+      assert %Dispatch{late_machine_at: %DateTime{}, slot_freed_at: nil} = dispatch!(claimed)
+      assert Slots.held(ctx.pool.id) == 1
+
+      # No run key, so no run configuration and no secrets.
+      assert left(Repo.get!(Run, registered.id)) == left(closed)
+      assert %{run_key_payload: nil} = left(closed)
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "a release and a close leave the run the claim registered alike", ctx do
+      {first, _queued} = queued!(ctx)
+      released = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, id(released), %{reason: "no capacity"})
+      # The retry that waits ends too, so the next claim takes the next work item's run.
+      close!(ctx, first)
+
+      {work_item, _queued} = queued!(ctx)
+      closed = claimed!(ctx)
+      close!(ctx, work_item)
+
+      for %{registered: registered} <- [released, closed] do
+        run = Repo.get!(Run, registered.id)
+        assert left(run) == %{left(registered) | run_documents: nil}
+        assert run.node_run_id != registered.node_run_id
+        assert run.node_instance_id == run.node_run_id
+      end
     end
 
     test "a redemption after a release is refused, holds the slot, a claim waits, and gone frees it",

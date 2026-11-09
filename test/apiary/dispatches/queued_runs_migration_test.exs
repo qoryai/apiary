@@ -1,5 +1,5 @@
 defmodule Apiary.Dispatches.QueuedRunsMigrationTest do
-  # The migration that gives each run of the queue that still waits its run record, run
+  # The migration that writes a run record for each run of the queue that still waits, run
   # down and up again on real rows inside the test's transaction, which rolls it all back.
   # It changes the `runs` table under every other test, so it is not async.
   use Apiary.DataCase, async: false
@@ -53,7 +53,7 @@ defmodule Apiary.Dispatches.QueuedRunsMigrationTest do
     last
   end
 
-  test "up numbers each waiting run in queue order after the highest number; down deletes them" do
+  test "up numbers each waiting run in queue order after the highest number; down deletes them, and keeps the records of runs that ended while they waited" do
     %{scope: scope} = sign_up_fixture()
     %{scope: other} = sign_up_fixture()
 
@@ -71,10 +71,23 @@ defmodule Apiary.Dispatches.QueuedRunsMigrationTest do
     gone = queue!(scope)
     elsewhere = queue!(other)
 
+    # A run that failed while it waited keeps its record too, failed, number 5.
+    failed = queue!(scope)
+
+    {:ok, [_ended]} =
+      Repo.transact(fn ->
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^failed.id),
+          set: [state: :ended, end_cause: :harness_unresolved, result_outcome: :error]
+        )
+
+        {:ok, Apiary.Dispatches.Queued.ended([failed.id], DateTime.utc_now())}
+      end)
+
     # As the previous release left them: no record for a run that waits.
     down!()
     assert record(first) == nil and record(second) == nil and record(elsewhere) == nil
     assert %Run{state: "cancelled", number: 1} = record(ended)
+    assert %Run{state: "failed", reason: "harness_unresolved", number: 5} = record(failed)
 
     # A run of the queue that ended with no record gets none.
     Repo.update_all(from(r in DispatchRun, where: r.id == ^gone.id),
@@ -82,7 +95,7 @@ defmodule Apiary.Dispatches.QueuedRunsMigrationTest do
     )
 
     # The previous release took numbers since: the counter is past the highest number.
-    assert counter(scope.workspace.id) == 4
+    assert counter(scope.workspace.id) == 5
 
     Repo.query!("UPDATE run_counters SET last_number = 6 WHERE workspace_id = $1", [
       Ecto.UUID.dump!(scope.workspace.id)
@@ -98,6 +111,7 @@ defmodule Apiary.Dispatches.QueuedRunsMigrationTest do
     assert Run.queued?(first_run)
     assert record(gone) == nil
     assert %Run{state: "cancelled", number: 1} = record(ended)
+    assert %Run{state: "failed", number: 5} = record(failed)
     assert counter(scope.workspace.id) == 8
 
     assert %Run{number: 2} = record(elsewhere)
@@ -110,6 +124,7 @@ defmodule Apiary.Dispatches.QueuedRunsMigrationTest do
     down!()
     assert record(first) == nil and record(second) == nil
     assert %Run{state: "cancelled"} = record(ended)
+    assert %Run{state: "failed", number: 5} = record(failed)
     assert counter(scope.workspace.id) == 9
   end
 end
