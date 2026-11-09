@@ -636,7 +636,12 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       %{dispatch_run: run} =
         Apiary.WorkItemsFixtures.explore_run_fixture(work_item, state: :handed_over)
 
-      dir = Path.join(System.tmp_dir!(), "apiary-csp-#{System.unique_integer([:positive])}")
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "apiary-csp-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
       previous = Application.get_env(:apiary, :artifacts_dir)
       Application.put_env(:apiary, :artifacts_dir, dir)
 

@@ -254,9 +254,10 @@ defmodule Apiary.WorkItems.Moves do
   #     proposal waiting.
   #   * A confirmation (`confirm/3`) works where the latest run's proposal waits, for a
   #     member among the approvers of the stage the work item is in, where the stage lists
-  #     them (`work_item.confirm`, `Apiary.Access`, else `:not_approver`). It keeps
-  #     the proposal's version (`Apiary.WorkItems.Confirmation`); the work item is then ready
-  #     for Shape. Its event, `:confirmed`, has the take in and the attempt.
+  #     them (`work_item.confirm`, `Apiary.Access`, else `:not_approver`), and, with the
+  #     workflow model on, while the stage is not escalated (else `:not_waiting`). It
+  #     keeps the proposal's version (`Apiary.WorkItems.Confirmation`); the work item is
+  #     then ready for Shape. Its event, `:confirmed`, has the take in and the attempt.
   #   * A run of Explore again (`explore_again/3`) works after a run that gave no result,
   #     was lost or was cancelled, while a run is left: it queues the take in's next run.
   #     Its event, `:explore_again`, has the take in and the attempt of the new run.
@@ -1344,6 +1345,7 @@ defmodule Apiary.WorkItems.Moves do
 
         with {:ok, held, current} <- hold_step(scope, :"work_item.confirm", work_item, now),
              :ok <- waiting(current, [:confirm], attempt),
+             :ok <- not_escalated(held),
              :ok <- keep_confirmation(held, scope, current.step, now),
              data = %{"take_in" => held.take_in, "attempt" => attempt},
              :ok <- event(held, :confirmed, scope, now, data),
@@ -1504,6 +1506,13 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   defp waiting(_current, _places, _attempt), do: {:error, :stale}
+
+  # With the workflow model off, no stage runner reads the row, and the check does not apply
+  # to an escalated stage left on it.
+  defp not_escalated(%WorkItem{stage_state: :escalated}),
+    do: if(Apiary.Stages.on?(), do: {:error, :not_waiting}, else: :ok)
+
+  defp not_escalated(%WorkItem{}), do: :ok
 
   defp invalid({:ok, _checked} = ok), do: ok
   defp invalid({:error, :invalid}), do: {:error, {:invalid, :form}}

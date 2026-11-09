@@ -39,7 +39,12 @@ defmodule Apiary.PublicGitServer do
   build!/2 is `repository!/2` outside a test: the caller removes the folder, `dir`.
   """
   def build!(files, opts \\ []) do
-    dir = Path.join(System.tmp_dir!(), "public-git-#{System.unique_integer([:positive])}")
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "public-git-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(dir)
 
     git!(dir, ["init", "-q", "-b", "main"])
@@ -148,7 +153,12 @@ defmodule Apiary.PublicGitServer do
   end
 
   defp upload_pack(conn, dir, version) do
-    input = Path.join(System.tmp_dir!(), "public-git-in-#{System.unique_integer([:positive])}")
+    input =
+      Path.join(
+        System.tmp_dir!(),
+        "public-git-in-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
     File.write!(input, Req.Test.raw_body(conn))
 
     {out, _status} =

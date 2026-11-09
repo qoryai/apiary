@@ -413,12 +413,27 @@ defmodule Apiary.WorkItemsFixtures do
 
   @doc """
   Pushes what the run `run` of the run of the queue `dispatch_run` gave, as the run
-  pushes it through the run API: for `understood_result/1`, its `message` as a version of
-  the work item's proposal; for `questions_result/1`, its questions added, open, to the
-  newest questions, each with the id `q<n>` and asked by the run. A question of more than
-  one line keeps its first line as the question and the whole as its context.
+  pushes it through the run API: `push_output!/3`, then the verdict `passed`, which a
+  normal end writes, questions open or not.
   """
-  def push_result!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => verdict} = result) do
+  def push_result!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => _} = result) do
+    push_output!(dispatch_run, run, result)
+
+    push_as_run!(dispatch_run, Repo.get!(WorkItem, dispatch_run.work_item_id), "verdict", %{
+      filename: "verdict.json",
+      content_type: "application/json",
+      binary: Jason.encode!(%{"verdict" => "passed"})
+    })
+  end
+
+  @doc """
+  Pushes what the run gave and no verdict, as a run that stopped before its verdict does:
+  for `understood_result/1`, its `message` as a version of the work item's proposal; for
+  `questions_result/1`, its questions added, open, to the newest questions, each with the
+  id `q<n>` and asked by the run. A question of more than one line keeps its first line
+  as the question and the whole as its context.
+  """
+  def push_output!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => verdict} = result) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
 
     case verdict do

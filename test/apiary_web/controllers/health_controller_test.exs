@@ -17,7 +17,13 @@ defmodule ApiaryWeb.HealthControllerTest do
 
     test "answers the revision the release's file holds", %{conn: conn} do
       revision = String.duplicate("4f2a9c1e0b", 4)
-      path = Path.join(System.tmp_dir!(), "apiary-revision-#{System.unique_integer([:positive])}")
+
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "apiary-revision-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
       File.write!(path, revision <> "\n")
       previous = Apiary.Revision.get()
 
@@ -38,7 +44,12 @@ defmodule ApiaryWeb.HealthControllerTest do
     end
 
     test "answers no revision when the release has no file, or an empty one" do
-      path = Path.join(System.tmp_dir!(), "apiary-revision-#{System.unique_integer([:positive])}")
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "apiary-revision-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
       previous = Apiary.Revision.get()
 
       on_exit(fn ->

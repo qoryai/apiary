@@ -240,6 +240,8 @@ defmodule Apiary.Edition do
   # (`ApiaryWeb.WorkspaceSetupLive`) on who acts on a pool of `workspace` that is not ready,
   # or on adding one, for the person of `scope`, who may not act. Translated when it is
   # asked. The core answers "Only owners and admins add a pool and join a machine to it."
+  # An edition that withholds `node.set_limit` from owners or admins supplies this line;
+  # without it, an owner reads the core's line, which names owners.
   @doc false
   @callback machines_who_may(Scope.t(), %Workspace{}) :: String.t()
 

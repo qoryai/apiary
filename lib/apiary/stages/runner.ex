@@ -21,7 +21,14 @@ defmodule Apiary.Stages.Runner do
   #     or a run with no verdict, runs the next workflow of the ring; after the last one the
   #     ring goes back to the first, which starts the next round. At the round limit the
   #     stage escalates, `round_limit`, with the newest gaps.
-  #   * Outside a loop, the sequence goes on after each run, whatever its verdict.
+  #   * Outside a loop, the sequence goes on after a run with `passed` or
+  #     `changes-requested`. A run with no verdict escalates, `run_stopped`, with no gaps,
+  #     on a first run and on a rerun. A test work item's run with no verdict goes on
+  #     (`facts.test`): the built-in `hello` writes no verdict
+  #     (`Apiary.Harnesses.Builtin`). So does a run of Explore whose take in has a
+  #     proposal, or that left open questions (`facts.explore_result`), and a run of
+  #     Explore that pushed `passed` or `changes-requested`, which Explore counts as no
+  #     verdict (`facts.explore_verdict`): the stage's checks then read its outputs.
   #   * `escalate` escalates, `escalate`; a run that stopped escalates, `run_stopped`, with
   #     its cause as the gaps.
   #   * Questions wait for answers (`:waiting_answers`), in any round and at any count of
@@ -96,15 +103,21 @@ defmodule Apiary.Stages.Runner do
   What the caller read: the stage's required input types with no version
   (`missing_inputs`), the stage's workflow names the harness does not declare
   (`undeclared`), the required output types whose Exists check fails (`failed_checks`),
-  the document's machine type (`machine`) and the harness's declarations by workflow name
-  (`declarations`).
+  the document's machine type (`machine`), the harness's declarations by workflow name
+  (`declarations`), whether the work item is a test work item (`test`) and, at a run's
+  end, whether the run is a run of Explore whose take in has a proposal, or that left open
+  questions (`explore_result`), and whether it is a run of Explore that pushed `passed` or
+  `changes-requested` (`explore_verdict`).
   """
   @type facts :: %{
           optional(:missing_inputs) => [String.t()],
           optional(:undeclared) => [String.t()],
           optional(:failed_checks) => [String.t()],
           optional(:machine) => String.t() | nil,
-          optional(:declarations) => %{String.t() => map | nil}
+          optional(:declarations) => %{String.t() => map | nil},
+          optional(:test) => boolean,
+          optional(:explore_result) => boolean,
+          optional(:explore_verdict) => boolean
         }
 
   @typedoc "A run to queue, at the position it runs at."
@@ -287,10 +300,17 @@ defmodule Apiary.Stages.Runner do
   defp run_ended(_stage, position, {:verdict, :escalate, gaps}, _facts),
     do: escalate(:escalate, gaps, position)
 
-  defp run_ended(stage, position, {:verdict, _changes_or_none, gaps}, facts) do
-    if in_loop?(position),
-      do: ring(stage, position, gaps, facts),
-      else: start(stage, next(stage, position), facts)
+  defp run_ended(stage, position, {:verdict, verdict, gaps}, facts) do
+    cond do
+      in_loop?(position) ->
+        ring(stage, position, gaps, facts)
+
+      is_nil(verdict) and not no_verdict_goes_on?(facts) ->
+        escalate(:run_stopped, nil, position)
+
+      true ->
+        start(stage, next(stage, position), facts)
+    end
   end
 
   defp run_ended(_stage, position, {:stopped, cause}, _facts),
@@ -298,6 +318,15 @@ defmodule Apiary.Stages.Runner do
 
   defp run_ended(_stage, position, {:questions, _questions}, _facts),
     do: %{state: :waiting_answers, position: position, actions: []}
+
+  # Whether a run with no verdict outside a loop goes on: a test work item's run, a run of
+  # Explore whose take in has a proposal, or that left open questions, as Explore's result
+  # is its proposal or its questions, and a run of Explore that pushed `passed` or
+  # `changes-requested`.
+  defp no_verdict_goes_on?(facts) do
+    Map.get(facts, :test, false) or Map.get(facts, :explore_result, false) or
+      Map.get(facts, :explore_verdict, false)
+  end
 
   # The next workflow of the loop's ring, or the next round from its first, or the round
   # limit.

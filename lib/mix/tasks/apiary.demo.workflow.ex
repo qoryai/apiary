@@ -907,7 +907,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # the pool's key as a gateway posts them: it starts and exits. `result` is
   # `{:proposal, markdown}`, with `:reply` a third element when the run also replies to
   # each open review comment and closes it; `{:questions, questions}`, the questions it
-  # adds; `:failed`, a run that exits failed; or `:workflow_not_in_harness`. The exit,
+  # adds; `:failed`, a run that exits failed; or `:workflow_not_in_harness`. A proposal
+  # ends with the verdict `passed`, as a normal end with no open question does. The exit,
   # once projected, ends the run of the queue, which reads what the run pushed. Returns
   # the run of the queue.
   defp record_result!(%{key: key}, %WorkItem{} = work_item, result) do
@@ -923,6 +924,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     if result == :workflow_not_in_harness, do: walked_file!(dispatch_run)
     run = hand_over!(dispatch_run, work_item, key, now)
     push_run!(dispatch_run, run, work_item, result, now)
+    push_verdict!(dispatch_run, work_item, result)
 
     meta = %{
       contract_version: 1,
@@ -1004,6 +1006,16 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   end
 
   defp push_run!(_dispatch_run, _run, _work_item, _result, _now), do: :ok
+
+  defp push_verdict!(dispatch_run, work_item, result) when elem(result, 0) == :proposal do
+    run_push!(dispatch_run, work_item, "verdict", %{
+      filename: "verdict.json",
+      content_type: "application/json",
+      binary: Jason.encode!(%{"verdict" => "passed"})
+    })
+  end
+
+  defp push_verdict!(_dispatch_run, _work_item, _result), do: :ok
 
   defp run_push!(dispatch_run, work_item, type, file) do
     ok!(

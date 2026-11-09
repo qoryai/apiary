@@ -882,6 +882,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- Making a pool needs `node.set_limit`, the action that sets a pool's machine limit,
+  with a limit or without one. One who may make machines and pools but may not set the
+  limit is refused the pool; before, such a pool was made with a limit of 1. That person
+  sees no **New pool** on **Machines**, in the **New** menu or in the workspace
+  overview's **Send your first run**, and no **Add pool** on the set-up's **Machines**
+  step. On an empty **Machines**, they read “Add a machine for one computer that stays
+  registered.”, and `/machines/new-pool` shows “Ask an owner or admin to add the pool.
+  Adding a pool needs the right to set its machine limit.” Owners and admins hold both
+  actions, so what they can do stays the same. A machine's limit stays 1.
 - Every workspace has a security policy, version 1, and each machine applies it narrowed
   by the `egress` section of its Forager file. With version 1, a run gets no tools and no
   credentials from the Forager file, and a machine in observe no longer reaches a private
@@ -1345,6 +1354,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   verdict's gaps, as a run of any other workflow does, and the work item page shows no
   **Approve**. Before, such a run read as a run with no verdict, and the work item page
   showed **Approve** on the newest proposal, also one an earlier run wrote.
+- Make `qory run verdict passed` the last step of each workflow entry outside a loop. A run
+  of such an entry that ends with no verdict and no open question stops the stage with "The
+  run stopped before its verdict.", **Run another round** and, where an output has a
+  version or no output is required, **Accept as it is**. Before, the stage went on to the
+  next entry, and after the last entry to its checks and its gate. **Accept as it is** goes
+  on to the next entry. After the last entry the stage reaches its gate. At a gate `none`,
+  it enters the next stage, or closes the work item at the last stage. `changes-requested`
+  goes on. A test work item's run needs no verdict. Nor does a run of Explore whose take in
+  has a proposal, or that left open questions.
+- While the stage card at Explore shows **Waits for a person**, whatever the cause, the page
+  shows no **Confirm**, and a confirmation from a page opened earlier writes nothing.
+  **Confirm** shows again once the stage reaches its gate.
 <!-- /feature -->
 <!-- feature: factory -->
 - **Take in again** on a Backlog row brings the work item back and opens its page, or
