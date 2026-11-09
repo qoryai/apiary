@@ -50,7 +50,7 @@ defmodule Apiary.Dispatches.RunEndBatchTest do
     assert %DispatchRun{state: :ended, end_cause: :lost} =
              Repo.get!(DispatchRun, other.dispatch_run.id)
 
-    assert %Dispatch{end_cause: :lost, slot_freed_at: %DateTime{}} =
+    assert %Dispatch{end_cause: :lost, ended_at: %DateTime{}, slot_freed_at: nil} =
              Repo.get!(Dispatch, other.dispatch.id)
   end
 end

@@ -5,7 +5,9 @@ defmodule Apiary.Dispatches.Sweep do
   # dispatch whose lease lapsed before its handover, at or after `lease_until`, is marked
   # stale, its slot freed, and its run waits in its workspace's queue again, with the same
   # `run_id` and the same `queued_at`, so it takes back its place at the front of the
-  # queue; an ended dispatch whose slot is still held has it freed. Whatever the state of
+  # queue; an ended dispatch whose slot is still held has it freed where no machine is
+  # left for it, and the safety net frees the slot of a machine never reported `gone`
+  # an hour past its lifetime (`Apiary.Dispatches.Slots`). Whatever the state of
   # the pool or of the key that claimed it, so the run of a deleted pool or of a revoked
   # key waits for the workspace's other pools. A claim frees what is due on its pool
   # first too; the sweep frees the rest, of pools that claim nothing. It then ends the
