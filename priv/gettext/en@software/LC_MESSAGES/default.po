@@ -21371,6 +21371,7 @@ msgid "This workspace"
 msgstr ""
 
 #: lib/apiary/policy.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace has no policy version yet."
 msgstr ""
@@ -24108,6 +24109,7 @@ msgid "ended without a verdict"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "enforce"
 msgstr ""
@@ -24693,6 +24695,7 @@ msgid "now"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "observe"
 msgstr ""
