@@ -582,8 +582,8 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       assert_unauthorized(list(key, pair.secret, "limit=1"))
     end
 
-    # The contract refuses a query that is not valid UTF-8 after percent-decoding with
-    # 400 and a body it does not define. Plug's query decoding raises a 400 error
+    # Under the contract, a query that is not valid UTF-8 after percent-decoding gets 400
+    # with a body the contract does not define. Plug's query decoding raises a 400 error
     # (`Plug.Conn.InvalidQueryError`) before the router, so no parameter is refused.
     test "refuses a query that is not valid UTF-8 without invalid_request",
          %{key: key, seed: seed} do

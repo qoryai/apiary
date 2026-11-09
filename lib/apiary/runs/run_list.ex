@@ -82,7 +82,7 @@ defmodule Apiary.Runs.RunList do
         }
 
   @doc """
-  answer/2 is the page that `query`, the raw query string, requests, as the contract's
+  answer/2 is the page for `query`, the raw query string, as the contract's
   document: `{:ok, %{"runs" => rows, "next" => id or nil}}`, or `{:error, parameter}` with
   the name of a parameter the request breaks the rule of. `opts`: `now`, the time the
   answer is built (the current time).
