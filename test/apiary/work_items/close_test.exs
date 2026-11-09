@@ -297,6 +297,25 @@ defmodule Apiary.WorkItems.CloseTest do
       assert dispatch!(dispatch).slot_freed_at == freed_at
     end
 
+    test "a claimed run whose machine was reported ends closed, and its slot waits for gone",
+         ctx do
+      run = ctx.first |> taken!(ctx.first_connection) |> queue!()
+      dispatch = claimed!(ctx.key)
+
+      :ok =
+        Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :delete_failed})
+
+      remove!(ctx)
+
+      assert %DispatchRun{state: :ended, end_cause: :closed} = run!(run)
+      assert %Dispatch{end_cause: :closed, slot_freed_at: nil} = dispatch!(dispatch)
+      assert Slots.held(ctx.pool.id) == 1
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :gone})
+      assert %Dispatch{slot_freed_at: %DateTime{}} = dispatch!(dispatch)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
     test "a claimed run whose lease lapsed unswept: the dispatch lapses, then the run ends closed",
          ctx do
       run = ctx.first |> taken!(ctx.first_connection) |> queue!()
