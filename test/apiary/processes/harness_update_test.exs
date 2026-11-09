@@ -8,6 +8,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures
 
   alias Apiary.{Artifacts, Processes, Repo, Stacks}
   alias Apiary.Audit.Entry
@@ -16,6 +17,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   alias Apiary.Processes.{HarnessUpdate, Version}
   alias Apiary.{PublicGitServer, QoryHarnessFixture}
   alias Apiary.Stacks.Stack
+  alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :workflow_model
   @moduletag :capture_log
@@ -290,6 +292,26 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end
   end
 
+  describe "work items" do
+    test "in progress keep their version after an update; a new one takes the new version",
+         ctx do
+      v1 = Processes.current(ctx.workspace)
+      in_progress = work_item_fixture(ctx.scope)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^in_progress.id),
+          set: [process_version_id: v1.id]
+        )
+
+      main_at!(described())
+      assert :ok = HarnessUpdate.follow_all()
+      assert %Version{number: 2} = v2 = Processes.current(ctx.workspace)
+
+      assert Processes.version_for(Repo.reload!(in_progress)).id == v1.id
+      assert Processes.version_for(work_item_fixture(ctx.scope)).id == v2.id
+    end
+  end
+
   describe "the switch" do
     test "is on for the Qory harness, off for a harness repository, and absent when pinned",
          ctx do
@@ -464,6 +486,35 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       log = ExUnit.CaptureLog.capture_log(fn -> assert :ok = HarnessUpdate.follow_all() end)
       assert length(versions(ctx.workspace)) == 1
       assert log =~ "the process was not updated from the harness workspace=#{ctx.workspace.id}"
+    end
+
+    test "a process that fails Processes.validate/1 saves nothing", ctx do
+      main_at!(files(&String.replace(&1, "id: st_6ns22c4pav", "id: #{@shape}")))
+
+      assert {:error, [%{error: _error} | _more]} = HarnessUpdate.follow(ctx.workspace)
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "artifact types that fail the template check save nothing", ctx do
+      # Explore outputs a type the template does not list.
+      main_at!(
+        files(&String.replace(&1, "        - type: proposal\n", "        - type: blueprint\n"))
+      )
+
+      assert {:error, {:types, [_refusal | _more]}} = HarnessUpdate.follow(ctx.workspace)
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "a machine type the instance does not have saves nothing", ctx do
+      # The read of a harness file refuses any machine type but `default`
+      # (Apiary.Harnesses.Reader), before the check of the instance's machine types.
+      main_at!(files(&String.replace(&1, "  machine: default\n", "  machine: gpu-large\n")))
+
+      assert HarnessUpdate.follow(ctx.workspace) == {:error, :no_template}
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 1
     end
 
     test "a template that fails a check saves nothing", ctx do
