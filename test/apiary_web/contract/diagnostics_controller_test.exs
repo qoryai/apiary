@@ -550,8 +550,19 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       %{access_key: gateway_key, secret: gateway_seed} =
         contract_key_fixture(scope, node: gateway)
 
-      for {other, other_seed} <- [{node_key, node_seed}, {gateway_key, gateway_seed}] do
-        assert_unauthorized(list(other, other_seed, "limit=1"))
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+
+      %{access_key: pool_key, pair: pool_pair} =
+        Apiary.AccessKeysFixtures.node_key_fixture(scope, pool)
+
+      for {other, other_seed} <- [
+            {node_key, node_seed},
+            {gateway_key, gateway_seed},
+            {pool_key, pool_pair.secret}
+          ] do
+        conn = list(other, other_seed, "limit=1")
+        assert conn.status == 401, inspect(Repo.get!(Node, other.node_id).kind)
+        assert_unauthorized(conn)
       end
 
       assert page!(list(key, seed, "limit=1"))
@@ -559,6 +570,25 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       assert_unauthorized(list(key, seed, "limit=1"))
       # The query is read after the signed check: a bad one gets the same 401.
       assert_unauthorized(list(key, seed, "limit=0"))
+    end
+
+    @tag needs: :factory
+    test "refuses an adapter's key", %{admin: admin} do
+      {:ok, adapter} = Apiary.Adapters.create_adapter(admin, %{name: "acme-tracker"})
+
+      %{access_key: key, pair: pair} =
+        Apiary.AccessKeysFixtures.enrolled_key_fixture(admin, adapter)
+
+      assert_unauthorized(list(key, pair.secret, "limit=1"))
+    end
+
+    # The contract refuses a query that is not valid UTF-8 after percent-decoding with
+    # 400 and a body it does not define. Plug's query decoding raises a 400 error
+    # (`Plug.Conn.InvalidQueryError`) before the router, so no parameter is refused.
+    test "refuses a query that is not valid UTF-8 without invalid_request",
+         %{key: key, seed: seed} do
+      {400, _headers, body} = assert_error_sent(400, fn -> list(key, seed, "a%FFb=1") end)
+      refute body =~ "invalid_request"
     end
 
     # The router logs a route's dispatch at debug with its parameters, the query's among
