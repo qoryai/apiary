@@ -786,8 +786,9 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end
 
     test "a machine type the instance does not have saves nothing", ctx do
-      # The read of a harness file refuses any machine type but `default`
-      # (Apiary.Harnesses.Reader), before the check of the instance's machine types.
+      # The read of a harness file returns no template for a process with any machine type
+      # but `default` (Apiary.Harnesses.Reader), before the check of the instance's
+      # machine types.
       main_at!(files(&String.replace(&1, "  machine: default\n", "  machine: gpu-large\n")))
 
       assert HarnessUpdate.follow(ctx.workspace) == {:error, :no_template}
