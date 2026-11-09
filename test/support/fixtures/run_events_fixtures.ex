@@ -39,7 +39,42 @@ defmodule Apiary.RunEventsFixtures do
       node_run_id: Ecto.UUID.generate()
     }
     |> Ecto.Changeset.change(Map.new(attrs))
-    |> Repo.insert!()
+    |> insert_run!()
+  end
+
+  @doc """
+  Inserts the run of `changeset`, or, when its `dispatch_run_id` has a queued run record
+  (`Apiary.Dispatches.Queued`), writes it onto that record, as the claim does: the record
+  keeps its id, its `rn_` id, its number and its `inserted_at` unless the changeset changes
+  it.
+  """
+  def insert_run!(%Ecto.Changeset{data: %Run{}} = changeset) do
+    case queued_record(Ecto.Changeset.get_field(changeset, :dispatch_run_id)) do
+      %Run{} = queued ->
+        run = Ecto.Changeset.apply_changes(changeset)
+        kept = [:id, :public_id, :number, :inserted_at, :updated_at]
+        fields = Run.__schema__(:fields) -- kept
+
+        queued
+        |> Ecto.Changeset.change(Map.take(Map.from_struct(run), fields))
+        |> Ecto.Changeset.change(Map.take(changeset.changes, [:inserted_at, :updated_at]))
+        |> Repo.update!()
+
+      nil ->
+        Repo.insert!(changeset)
+    end
+  end
+
+  defp queued_record(nil), do: nil
+
+  defp queued_record(dispatch_run_id) do
+    import Ecto.Query, only: [from: 2]
+
+    Repo.one(
+      from r in Run,
+        where: r.dispatch_run_id == ^dispatch_run_id and r.state == "pending",
+        where: is_nil(r.node_id) and is_nil(r.registered_at)
+    )
   end
 
   @doc """

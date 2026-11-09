@@ -78,7 +78,7 @@ defmodule Apiary.Dispatches.Release do
   alias Apiary.{Audit, Environments, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Queued, Slots}
   alias Apiary.Organisations.Organisation
   alias Apiary.Runs.{LeakedSecrets, Run}
   alias Apiary.WorkItems.WorkItem
@@ -143,6 +143,8 @@ defmodule Apiary.Dispatches.Release do
         do: %{"superseded" => true},
         else: %{"waits" => true}
 
+    _queued = Queued.requeue!([run.id], locked.now)
+
     record(locked, release, came, locked.key.node)
     {:done, {:ok, %{run: nil, failed: failed}}, changed}
   end
@@ -156,6 +158,9 @@ defmodule Apiary.Dispatches.Release do
         set: [state: :waiting, updated_at: locked.now]
       )
 
+    # The run that waits again is a new queued run, with the next number: its run record
+    # failed above (`Apiary.Dispatches.Queued`).
+    _queued = Queued.requeue!([run.id], locked.now)
     record(locked, release, %{"waits" => true}, locked.key.node)
     {:done, {:ok, %{run: nil, failed: failed}}, changed}
   end

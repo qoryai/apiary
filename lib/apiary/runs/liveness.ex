@@ -15,7 +15,9 @@ defmodule Apiary.Runs.Liveness do
     * a `pending` run, one that has registered or whose events have begun, and whose
       `run.started` has not come, is measured from its attach, for a run through a gateway,
       or else from the moment the workspace first heard of it (`inserted_at`, which for a
-      run that registered is its `registered_at`);
+      run that registered is its `registered_at`). A queued run, which waits in its
+      workspace's queue for a machine (`Apiary.Runs.Run.queued?/1`), is never lost: it
+      waits until a claim takes it or its run of the queue ends;
     * a run through a gateway that its gateway has not attached is lost at the end of its
       attach window (`attach_by`), and not before, whatever its interval;
     * a run whose attach set a deadline for its end (`backstop_at`) is lost once that
@@ -243,9 +245,13 @@ defmodule Apiary.Runs.Liveness do
 
   # The two rules, as conditions on a run named `:run`: a running run silent since its
   # last heartbeat, its run.started's arrival or its first event; a pending run silent
-  # since its first event. Either past its `backstop_at`, whatever was heard.
+  # since its first event. Either past its `backstop_at`, whatever was heard. A queued run
+  # (`Apiary.Runs.Run.queued?/1`) is never silent: it waits for a machine for as long as
+  # it waits, and ends with its run of the queue.
   defp silent(:running, now), do: dynamic(^heard(:running, now) or ^past_backstop(now))
-  defp silent(:pending, now), do: dynamic(^heard(:pending, now) or ^past_backstop(now))
+
+  defp silent(:pending, now),
+    do: dynamic(not (^Run.queued_condition()) and (^heard(:pending, now) or ^past_backstop(now)))
 
   # Null for a run with none, which no comparison with null may leave unknown: `alive/2`
   # negates the rule.

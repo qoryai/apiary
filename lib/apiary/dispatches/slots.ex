@@ -188,7 +188,7 @@ defmodule Apiary.Dispatches.Slots do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Queued}
   alias Apiary.Environments.Record
   alias Apiary.Repo
 
@@ -302,6 +302,10 @@ defmodule Apiary.Dispatches.Slots do
           )
 
         _superseded = wait_again(prebuilds, now)
+
+        # Each run that waits again is a new queued run, with the next number: its run
+        # record failed above (`Apiary.Dispatches.Queued`).
+        _queued = claimed |> Enum.map(& &1.id) |> Queued.requeue!(now)
         workspaces = Enum.uniq(stale_workspaces ++ workspaces)
 
         # Another batch, after the last run of this one, while a whole one lapsed.
@@ -415,6 +419,7 @@ defmodule Apiary.Dispatches.Slots do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
+    _ended = Queued.ended(superseded, now)
     superseded
   end
 

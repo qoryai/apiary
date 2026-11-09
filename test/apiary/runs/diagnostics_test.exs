@@ -427,6 +427,26 @@ defmodule Apiary.Runs.DiagnosticsTest do
     end
   end
 
+  describe "a queued run" do
+    @describetag needs: :factory
+
+    test "is valid, pending, with its queue row waiting and no dispatch", %{schema: schema} do
+      Apiary.EditionKit.hide_instance_organisation()
+      %{scope: scope} = sign_up_fixture()
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      run = Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
+
+      document = valid!(schema, Diagnostics.document(run, :instance))
+
+      assert %{"state" => "pending", "id" => id, "step" => "explore"} = document["run"]
+      assert id == run.public_id
+      assert document["run"]["work_item"] == work_item.public_id
+      assert document["queue"] == %{"state" => "waiting"}
+      assert document["dispatches"] == []
+    end
+  end
+
   describe "a run of a workspace's queue" do
     @describetag needs: :factory
     @describetag :tmp_dir

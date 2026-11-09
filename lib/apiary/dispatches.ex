@@ -10,6 +10,11 @@ defmodule Apiary.Dispatches do
   #
   # ## Queueing: `queue/2`, `queue_next/3`, `cancel_for_undo/1` and `cancel_for_close/2`
   #
+  # Every run written to the queue, a prebuild included, is written with its run record,
+  # in the same transaction, as its last step: `pending`, with no machine, its `rn_` id
+  # and the next number of its workspace (`Apiary.Dispatches.Queued`). A run of the queue
+  # that ends before its handover ends its record too, which keeps its number.
+  #
   # `queue(work_item, take_in)` writes, inside the caller's transaction, the first run of a
   # take in of `work_item`: waiting, `attempt` 1 of `of/0`, for the step `step/0`, in the
   # workspace the work item is in as the transaction reads it, its row locked
@@ -79,9 +84,10 @@ defmodule Apiary.Dispatches do
   # cause `run_ended`; a claimed run's live dispatch, neither stale nor handed over, ends
   # with it, end cause `closed`: a dispatch that ended, which the provisioner contract
   # answers `410 gone`. The slot each ended dispatch held is freed once
-  # (`Apiary.Dispatches.Slots.free/2`), and a claimed run's registered run is deleted
-  # with its run code (`Apiary.Dispatches.Handover.drop/1`). A handed-over run is left as
-  # it is: it goes on to its end, and its exit and its result are taken as before.
+  # (`Apiary.Dispatches.Slots.free/2`), and the run record of each ends cancelled, end
+  # reason `closed`, a claimed run's run code with it (`Apiary.Dispatches.Queued`). A
+  # handed-over run is left as it is: it goes on to its end, and its exit and its result
+  # are taken as before.
   #
   # ## Claiming: `claim/4`
   #
@@ -244,7 +250,7 @@ defmodule Apiary.Dispatches do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, HarnessReads, MachineEnds}
-  alias Apiary.Dispatches.{MachineLogs, Release}
+  alias Apiary.Dispatches.{MachineLogs, Queued, Release}
   alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Environments.Record
@@ -460,6 +466,7 @@ defmodule Apiary.Dispatches do
 
     with {:ok, run} <- result,
          {:ok, _walk} <- WalkJob.queue(run, harness_place(work_item)) do
+      Queued.insert!(run)
       broadcast([workspace_id])
       {:ok, run}
     end
@@ -567,7 +574,14 @@ defmodule Apiary.Dispatches do
         returning: true
       )
 
-    with {:ok, _run} <- result, do: broadcast([workspace_id])
+    # A prebuild that repeats one already waiting is that run: only a new one is written
+    # with its run record, and so takes a number. The upsert keeps the waiting run's
+    # `queued_at`, so a run whose `queued_at` is this call's is new.
+    with {:ok, run} <- result do
+      if DateTime.compare(run.queued_at, now) == :eq, do: Queued.insert!(run)
+      broadcast([workspace_id])
+    end
+
     result
   end
 
@@ -618,6 +632,8 @@ defmodule Apiary.Dispatches do
         ),
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
+
+    _ended = Queued.ended(run_ids, now)
 
     told =
       case ended_work_items do
@@ -785,6 +801,7 @@ defmodule Apiary.Dispatches do
           set: [ended_at: now, end_cause: :run_ended, updated_at: now]
         )
 
+      _ended = Queued.ended(waiting, now)
       broadcast(freed)
       :ok
     end
@@ -843,8 +860,9 @@ defmodule Apiary.Dispatches do
             set: [ended_at: now, end_cause: :closed, updated_at: now]
           )
 
-        # A claimed run's registered run goes with its run code (`Handover.drop/1`).
-        _dropped = Handover.drop(run_ids)
+        # The run record of each run ends cancelled, `closed`, and keeps its number; a
+        # claimed run's run code redeems no more (`Apiary.Dispatches.Queued`).
+        _ended = Queued.ended(run_ids, now)
         freed = Slots.free({:runs, run_ids}, now)
         {:ok, Enum.uniq(workspace_ids ++ lapsed ++ freed)}
     end
@@ -1066,6 +1084,7 @@ defmodule Apiary.Dispatches do
             set: [ended_at: now, end_cause: :run_ended, updated_at: now]
           )
 
+        _ended = Queued.ended([run.id], now)
         ended = [run.workspace_id | staged(run) ++ ended]
         pick(key, pool, through, now, default, max - 1, ended, skipped)
     end
@@ -1538,6 +1557,8 @@ defmodule Apiary.Dispatches do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
+    _ended = Queued.ended([id], now)
+
     case held do
       {:build, %Record{} = record, collections, work_item_ids} ->
         if Environments.newer_build?(record, run) or Environments.built_by?(record, run) do
@@ -1569,7 +1590,8 @@ defmodule Apiary.Dispatches do
     do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id))
 
   # broadcast/1 tells each workspace whose id `told` holds that its queue or its slots
-  # changed, and the instance's topic once when `told` has any workspace id, and each
+  # changed, on its topic and on the topic of its touched runs, and the instance's topic
+  # once when `told` has any workspace id, and each
   # work item `told` names as `{:work_item, workspace_id, public_id}`, whose run settled
   # (`Apiary.Dispatches.Settle`), that it changed, on the topic of the work items of its
   # workspace (`Apiary.WorkItems.topic/1`): `{:work_items_changed, ids}`, public ids
@@ -1588,6 +1610,16 @@ defmodule Apiary.Dispatches do
 
     for workspace_id <- workspace_ids,
         do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(workspace_id), {__MODULE__, :changed})
+
+    # A queued run is a run record too (`Apiary.Dispatches.Queued`): the workspace's count
+    # of alive runs is counted again (`Apiary.Runs.touched_topic/1`).
+    for workspace_id <- workspace_ids,
+        do:
+          Phoenix.PubSub.broadcast(
+            Apiary.PubSub,
+            Apiary.Runs.touched_topic(workspace_id),
+            {:runs_touched, workspace_id}
+          )
 
     if workspace_ids != [],
       do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(:instance), {__MODULE__, :changed})

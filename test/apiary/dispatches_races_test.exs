@@ -421,6 +421,36 @@ defmodule Apiary.DispatchesRacesTest do
     assert run.workspace_id == ctx.scope.workspace.id
   end
 
+  test "of many runs queued at once in one workspace, each run record has a different number, 1 to N",
+       ctx do
+    # Each queue takes its number from the workspace's counter as its last step
+    # (`Apiary.Dispatches.Queued`), so the second waits for the first's commit.
+    count = sides(8)
+
+    work_items =
+      for _side <- 1..count do
+        work_item = work_item_fixture(ctx.scope)
+        Agent.update(ctx.made, &%{&1 | adapters: [work_item.adapter_id | &1.adapters]})
+        work_item
+      end
+
+    answers =
+      together(for w <- work_items, do: fn -> Repo.transact(fn -> Dispatches.queue(w, 1) end) end)
+
+    ids = for {:ok, %DispatchRun{id: id}} <- answers, do: id
+    assert length(ids) == count
+
+    numbers =
+      Repo.all(
+        from r in Apiary.Runs.Run,
+          where: r.dispatch_run_id in ^ids,
+          order_by: r.number,
+          select: r.number
+      )
+
+    assert numbers == Enum.to_list(1..count)
+  end
+
   test "of two next runs at once for one take in, the second waits on the work item, finds the first's run waiting and writes none",
        ctx do
     # queue_next/2 locks the work item before it reads the take in's runs, so the second

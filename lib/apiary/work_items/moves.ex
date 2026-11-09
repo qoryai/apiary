@@ -68,8 +68,10 @@ defmodule Apiary.WorkItems.Moves do
   # then, only right after the work item, the workspace's counter of numbers
   # (`Apiary.WorkItems.Number`), for a new work item or one that moves; then the runs of
   # the queue (`Apiary.Dispatches`); then the adapter's feed counter
-  # (`Apiary.Adapters.Feed`); then, last, for a work item that moves, the target's counter
-  # of run numbers (`Apiary.Runs.Number.raise_past/2`). A comment at take in, written
+  # (`Apiary.Adapters.Feed`); then, last, the target's counter of run numbers: raised for
+  # a work item that moves (`Apiary.Runs.Number.raise_past/2`), then taken by the take in's
+  # first run, which a take in queues as its last step, as its run record takes the next
+  # number (`Apiary.Dispatches.Queued`). A comment at take in, written
   # after the feed counter, locks the ticket's record `FOR KEY SHARE` through its key; a
   # write of the record's comments (`Apiary.Sources.Ingest`) locks the record
   # `FOR UPDATE` and waits on none of the locks above. An undo and a close take no
@@ -392,19 +394,20 @@ defmodule Apiary.WorkItems.Moves do
     with {:ok, changeset} <- valid(changeset),
          {:ok, work_item} <- insert(changeset, workspace, ticket),
          :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
-         {:ok, _run} <- Dispatches.queue(work_item, 1),
          {:ok, _seq} <- feed(adapter, work_item, "taken_in"),
          :ok <- write_comment(scope, ticket, comment, now),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
              after: %{state: :exploring},
              details: %{"take_in" => 1}
-           }) do
+           }),
+         {:ok, _run} <- Dispatches.queue(work_item, 1) do
       {:ok,
        {work_item,
         %{
           work_items: [{work_item.workspace_id, work_item.public_id}],
-          tickets: [{collection.workspace_id, item.public_id}]
+          tickets: [{collection.workspace_id, item.public_id}],
+          queues: [work_item.workspace_id]
         }}}
     end
   end
@@ -469,14 +472,19 @@ defmodule Apiary.WorkItems.Moves do
     with {:ok, changeset} <- valid(changeset),
          {:ok, work_item} <- insert_test(changeset, workspace),
          :ok <- event(work_item, :taken_in, scope, now, %{"take_in" => 1, "before" => nil}),
-         {:ok, _run} <- Dispatches.queue(work_item, 1),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.take_in", work_item, %{
              after: %{state: :exploring},
              details: %{"take_in" => 1, "test" => true}
-           }) do
+           }),
+         {:ok, _run} <- Dispatches.queue(work_item, 1) do
       {:ok,
-       {work_item, %{work_items: [{work_item.workspace_id, work_item.public_id}], tickets: []}}}
+       {work_item,
+        %{
+          work_items: [{work_item.workspace_id, work_item.public_id}],
+          tickets: [],
+          queues: [work_item.workspace_id]
+        }}}
     end
   end
 
@@ -649,7 +657,6 @@ defmodule Apiary.WorkItems.Moves do
              "take_in" => take_in,
              "before" => before(ended)
            }),
-         {:ok, _run} <- Dispatches.queue(work_item, take_in),
          {:ok, _seq} <- feed_if(ended.state == :undone, adapter, work_item, "taken_in"),
          :ok <- write_comment(scope, ticket, comment, now),
          {:ok, _entry} <-
@@ -658,7 +665,8 @@ defmodule Apiary.WorkItems.Moves do
              after: %{state: :exploring},
              details: %{"again" => true, "take_in" => take_in}
            }),
-         :ok <- raise_run_numbers(ended, workspace) do
+         :ok <- raise_run_numbers(ended, workspace),
+         {:ok, _run} <- Dispatches.queue(work_item, take_in) do
       {:ok,
        {work_item,
         %{
@@ -667,7 +675,8 @@ defmodule Apiary.WorkItems.Moves do
               {work_item.workspace_id, work_item.public_id},
               {ended.workspace_id, work_item.public_id}
             ]),
-          tickets: [{collection.workspace_id, item.public_id}]
+          tickets: [{collection.workspace_id, item.public_id}],
+          queues: [work_item.workspace_id]
         }}}
     end
   end

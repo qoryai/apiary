@@ -24,6 +24,7 @@ defmodule Apiary.Runs.Run do
   as well.
   """
   use Ecto.Schema
+  require Ecto.Query
 
   @typedoc "A run of a workspace."
   @type t :: run()
@@ -299,6 +300,41 @@ defmodule Apiary.Runs.Run do
 
   @doc "The states of a run that has not ended: the workspace counts these as alive."
   def alive_states, do: ~w(pending running)
+
+  @doc """
+  Whether the run waits in its workspace's queue for a machine: pending, a run of the
+  queue (`dispatch_run_id`) with no node and no registration, as it was written when it
+  was queued. The pages show it as queued, which is no stored state: the claim that
+  takes it registers it, and it stays pending until it starts.
+  """
+  @spec queued?(t() | map()) :: boolean()
+  def queued?(%{state: "pending", dispatch_run_id: id, node_id: nil, registered_at: nil})
+      when is_binary(id),
+      do: true
+
+  def queued?(_run), do: false
+
+  @doc """
+  `queued?/1` as a query's condition on the run, the binding named `:run`.
+  """
+  @spec queued_condition() :: Ecto.Query.dynamic_expr()
+  def queued_condition,
+    do:
+      Ecto.Query.dynamic(
+        [run: r],
+        r.state == "pending" and not is_nil(r.dispatch_run_id) and is_nil(r.node_id) and
+          is_nil(r.registered_at)
+      )
+
+  @doc """
+  The state the pages show: `queued` for a queued run (`queued?/1`), else the run's
+  `state`.
+  """
+  @spec shown_state(t() | map()) :: String.t()
+  def shown_state(run), do: if(queued?(run), do: "queued", else: run.state)
+
+  @doc "Every state the pages show: `queued`, then the six stored states (`states/0`)."
+  def shown_states, do: ["queued" | @states]
 
   @doc "The states of a run that ended well: completed, its outcome a success."
   def ended_well_states, do: ~w(completed)
