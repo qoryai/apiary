@@ -338,6 +338,32 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert head != in_use
     end
 
+    test "a trial of edits leaves it on until the trial becomes current, then turns it off",
+         ctx do
+      document = Processes.current(ctx.workspace).document
+      stages = Enum.map(document["stages"], &Map.put(&1, "description", "Edited."))
+
+      {:ok, trial} =
+        Processes.save(ctx.scope, ctx.workspace, %{document | "stages" => stages}, trial: true)
+
+      assert HarnessUpdate.keep_latest?(ctx.workspace)
+
+      {:ok, _current} = Processes.make_current(ctx.scope, trial)
+      assert keep(ctx.workspace) == false
+    end
+
+    test "a trial from the harness, made current, turns it on", ctx do
+      edit!(ctx.scope, ctx.workspace)
+      main_at!(described())
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      {:ok, trial} = HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+      assert keep(ctx.workspace) == false
+
+      {:ok, current} = Processes.make_current(ctx.scope, trial)
+      assert current.number == 3
+      assert keep(ctx.workspace) == true
+    end
+
     test "a template that fails a check saves nothing", ctx do
       main_at!(files(&String.replace(&1, "type: qory.software\n", "type: qory.other\n")))
       assert :ok = HarnessUpdate.follow_all()

@@ -28,7 +28,9 @@ defmodule Apiary.Processes.HarnessUpdate do
   `set_keep_latest/3`). It applies where the harness follows a branch (`following/1`),
   never to one pinned to a tag or a commit. Until it is set, it is on for the Qory harness
   and off for a harness repository. A person's save of edits turns it off
-  (`Apiary.Processes.save/4`).
+  (`Apiary.Processes.save/4`). A trial changes it only when it becomes current
+  (`Apiary.Processes.make_current/2`): a trial of edits turns it off, and a trial saved
+  from the harness turns it on.
 
   While it is on, for the Qory harness, each later commit of the followed branch that the
   refresh of the Qory harness reads is saved as a version, with no author, even when the

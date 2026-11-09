@@ -557,7 +557,7 @@ defmodule Apiary.Processes do
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
            {:ok, version} <- insert_version(scope, workspace, base, document, trial?, nil),
-           :ok <- stop_keep_latest(workspace),
+           :ok <- if(trial?, do: :ok, else: put_keep_latest(workspace, false)),
            {:ok, _entry} <-
              record(scope, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
                based_on: base.number
@@ -567,11 +567,12 @@ defmodule Apiary.Processes do
     end)
   end
 
-  # A person's save of edits turns off the switch that keeps the process at the latest
-  # commit of its harness (`Apiary.Processes.HarnessUpdate`).
-  defp stop_keep_latest(%Workspace{id: id}) do
+  # The switch that keeps the process at the latest commit of its harness
+  # (`Apiary.Processes.HarnessUpdate`): a person's save of edits turns it off, and a
+  # trial changes it only when it becomes current (`make_current/2`).
+  defp put_keep_latest(%Workspace{id: id}, on?) do
     {1, _rows} =
-      Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [keep_process_latest: false])
+      Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [keep_process_latest: on?])
 
     :ok
   end
@@ -769,9 +770,11 @@ defmodule Apiary.Processes do
   @doc """
   make_current/2 makes the trial `trial` the workspace's current version, under
   `process.edit`; the version that was current is past. Its work items stay on it, and
-  every other work item stays on its version. `{:ok, version}`; `{:error, :not_trial}`
-  for a version that is not a trial, made current or dropped since it was read; or a
-  reason of `Apiary.Access`.
+  every other work item stays on its version. It counts as a person's save: it turns the
+  switch Keep the process at the latest off (`Apiary.Processes.HarnessUpdate`), and on
+  for a trial saved from the harness, which has the harness commit as its `template`.
+  `{:ok, version}`; `{:error, :not_trial}` for a version that is not a trial, made current
+  or dropped since it was read; or a reason of `Apiary.Access`.
   """
   @spec make_current(Scope.t(), Version.t()) ::
           {:ok, Version.t()} | {:error, :not_trial | Access.reason()}
@@ -783,6 +786,7 @@ defmodule Apiary.Processes do
            replaced = current_row(workspace, :update),
            _retired = retire_current(workspace),
            {:ok, version} <- trial |> Ecto.Changeset.change(status: :current) |> Repo.update(),
+           :ok <- put_keep_latest(workspace, is_binary((version.template || %{})["commit"])),
            {:ok, _entry} <-
              record(scope, workspace, version, "make_current", %{
                replaced: replaced && replaced.number
