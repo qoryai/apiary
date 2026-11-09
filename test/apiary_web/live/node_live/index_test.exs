@@ -12,6 +12,13 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
   defp nodes_path(scope, query \\ ""),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/machines" <> query
 
+  # Whether the flash refuses a pool to one who may not set its limit; the flash shows the
+  # first sentence over the second.
+  defp pool_refused?(lv) do
+    has_element?(lv, "#flash-error", "Ask an owner or admin to add the pool.") and
+      has_element?(lv, "#flash-error", "Adding one needs the right to set its machine limit.")
+  end
+
   # A member of the scope's organisation, signed in on a connection of their own.
   defp member_conn(scope, level \\ :member) do
     %{user: user} = member_fixture(scope, level)
@@ -276,25 +283,41 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
                Nodes.list_nodes(scope)
     end
 
-    test "a pool is refused to one an edition keeps its limit from",
+    test "one an edition keeps a pool's limit from has no New pool, and no pool form",
          %{conn: conn, scope: scope} do
       # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`).
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+      assert has_element?(lv, "#nodes-empty a", "New machine")
+      refute has_element?(lv, "#nodes-empty a", "New pool")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-pool")) |> follow_redirect(conn)
+      assert pool_refused?(lv)
+      refute has_element?(lv, "#new-node-form")
+
+      node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+      assert has_element?(lv, "#new-node")
+      refute has_element?(lv, "#new-node-pool")
+
+      {:ok, _lv, _html} = live(conn, nodes_path(scope, "/new"))
+    end
+
+    test "a pool refused once the form is open leads to the list without New pool",
+         %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-pool"))
 
-      refute has_element?(lv, "#new-node-form input[name='node[instance_limit]']")
+      # `node.set_limit` refused from now on (`Apiary.EditionStubs.NoLimit`).
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
 
-      # Sent all the same, as the page never sends it.
-      html =
-        render_hook(lv, "create", %{"node" => %{"name" => "spot-09", "instance_limit" => "3"}})
+      lv
+      |> form("#new-node-form", node: %{name: "spot-runners", instance_limit: "3"})
+      |> render_submit()
 
-      assert html =~ "You can&#39;t change the machine limit."
-      assert Nodes.list_nodes(scope) == []
-
-      # Without a limit, the form stays on the page and makes no pool.
-      lv |> form("#new-node-form", node: %{name: "spot-runners"}) |> render_submit()
-
-      assert has_element?(lv, "#new-node-form")
+      assert_patch(lv, nodes_path(scope))
+      assert pool_refused?(lv)
+      refute has_element?(lv, "#new-node-pool")
       assert Nodes.list_nodes(scope) == []
     end
 

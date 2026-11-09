@@ -5576,6 +5576,11 @@ msgstr ""
 msgid "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin to add the pool. Adding one needs the right to set its machine limit."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Ask for a release again"

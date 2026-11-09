@@ -5084,6 +5084,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert name == WorkspaceSetup.pool_name(ctx.scope.workspace)
   end
 
+  test "an owner an edition keeps a pool's limit from has no Add pool", ctx do
+    # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`).
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
+    lv = open(ctx)
+
+    refute has_element?(lv, "#set-up-pool-workspace-radio")
+    refute has_element?(lv, "#set-up-pool-add-button")
+
+    assert words(lv, "#set-up-pool-who-may") ==
+             "Only owners and admins add a pool and join a machine to it."
+
+    # Sent all the same, as the page never sends it.
+    render_click(lv, "add_pool", %{})
+    assert workspace_pools(ctx.scope.workspace) == []
+  end
+
   test "a member sees no Qory Pool until it is ready, and reads who adds a pool", ctx do
     member = member(ctx.organisation)
     lv = open(ctx, member)

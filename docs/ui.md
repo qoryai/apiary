@@ -93,8 +93,8 @@ page and an Instance page, the one the person came from (Two levels, below).
   reader may take. Every word of it comes from the server; words Forager reported are written
   as text.
 - **New** offers only what the reader may do where the page is
-  (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New machine and New pool,
-  then, on every page, Invite people; before the core's, whatever the edition
+  (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New machine, and New pool
+  for one who may set a pool's limit too (`node.set_limit`), then, on every page, Invite people; before the core's, whatever the edition
   offers there (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or
   the organisation as its place says. **The account menu** holds who they are, their email
   over "Your personal account" (`#user-menu-account`; an account has no name), then
@@ -970,16 +970,20 @@ address under `/machines`, with what followed `/nodes` and the query.
   or Last seen (`?sort=seen`: running first, never seen last). Owners and admins have
   **New machine**, **New pool** and **New gateway**, side by side and alike, in the
   header; with none of any kind yet, the empty state, "No machines yet", offers the first
-  two, and tells a member that an owner or admin adds machines.
+  two, and tells a member that an owner or admin adds machines. New pool, in the header
+  and the empty state, is only for one who may set a pool's limit too (`node.set_limit`),
+  as making a pool asks it.
 - **New machine and New pool** are pages of the Machines section at separate paths,
   `/machines/new` and `/machines/new-pool`, on the pattern of a form page (Settings, A form is a
   page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending
   `Machines / New machine` (Machines a link back to the list), the page's heading
   (`PageComponents.page_form/1`, no Back link) and one sentence of what the kind is, with
   "You can't change the kind later"; then the form, a name (it takes the focus), and for a
-  pool its machine limit (a whole number up to 10,000, or empty for none), left out for
-  one who may not set it (`node.set_limit`), whose Add pool is refused, and its foot,
-  Add machine or Add pool with Cancel back to the list (`page_form_foot/1`). Once the
+  pool its machine limit (a whole number up to 10,000, or empty for none), and its foot,
+  Add machine or Add pool with Cancel back to the list (`page_form_foot/1`). One who may
+  not set a pool's limit (`node.set_limit`) and opens `/machines/new-pool`, or whose Add
+  pool is refused, is sent to the list with "Ask an owner or admin to add the pool.
+  Adding one needs the right to set its machine limit." Once the
   workspace has a gateway, a machine's and a pool's form ask its **Gateway** too, a select
   (`NodeComponents.gateway_field/1`): Default gateway, offered only while a default
   resolves for the workspace, and then the one the form starts on; Direct, which it

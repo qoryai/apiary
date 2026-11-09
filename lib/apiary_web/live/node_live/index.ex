@@ -112,7 +112,7 @@ defmodule ApiaryWeb.NodeLive.Index do
     do: assign(socket, form: nil, kind: nil, page_title: gettext("Machines"))
 
   defp apply_action(socket, action) when action in [:new, :new_pool, :new_gateway] do
-    if socket.assigns.may_create do
+    if socket.assigns.may_create and (action != :new_pool or socket.assigns.may_set_limit) do
       kind = form_kind(action)
       scope = socket.assigns.current_scope
 
@@ -130,8 +130,13 @@ defmodule ApiaryWeb.NodeLive.Index do
       |> assign_form(Nodes.change_new_node(first_node(kind, default)))
       |> assign(kind: kind, page_title: form_title(kind) <> " · " <> gettext("Machines"))
     else
+      refusal =
+        if socket.assigns.may_create,
+          do: pool_refused(),
+          else: only_admins_add(socket.assigns.current_scope)
+
       socket
-      |> put_flash(:error, only_admins_add(socket.assigns.current_scope))
+      |> put_flash(:error, refusal)
       |> push_patch(to: list_path(socket.assigns.current_scope, socket.assigns.filters))
     end
   end
@@ -382,19 +387,29 @@ defmodule ApiaryWeb.NodeLive.Index do
       else: {:noreply, refused(socket)}
   end
 
-  # A creation refused: one who still makes nodes was refused the pool's limit alone, and
-  # the form no longer asks it; anyone else is refused the creation.
+  # A creation refused: one who still makes nodes was refused the pool, as making one asks
+  # `node.set_limit` too, and is shown the list without New pool; anyone else is refused
+  # the creation.
   defp refused_create(socket) do
     scope = Access.reload(socket.assigns.current_scope)
 
     if Access.can?(scope, :"node.create", scope.workspace) do
       socket
       |> assign(:may_set_limit, false)
-      |> put_flash(:error, NodeComponents.limit_refused(scope))
+      |> put_flash(:error, pool_refused())
+      |> push_patch(to: list_path(socket.assigns.current_scope, socket.assigns.filters))
     else
       refused(socket)
     end
   end
+
+  # What one who makes nodes but may not set a pool's limit (`node.set_limit`) is told
+  # where they would add a pool.
+  defp pool_refused,
+    do:
+      gettext(
+        "Ask an owner or admin to add the pool. Adding one needs the right to set its machine limit."
+      )
 
   # Who may add a node, or who manages the nodes, in the edition's words where it has some.
   defp only_admins_add(scope),
@@ -606,7 +621,11 @@ defmodule ApiaryWeb.NodeLive.Index do
           <.button id="new-node" patch={new_path(@current_scope, :node)}>
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New machine")}
           </.button>
-          <.button id="new-node-pool" patch={new_path(@current_scope, :pool)}>
+          <.button
+            :if={@may_set_limit}
+            id="new-node-pool"
+            patch={new_path(@current_scope, :pool)}
+          >
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New pool")}
           </.button>
           <.button id="new-gateway" patch={new_path(@current_scope, :gateway)}>
@@ -628,7 +647,9 @@ defmodule ApiaryWeb.NodeLive.Index do
           </p>
           <:actions :if={@may_create}>
             <.button patch={new_path(@current_scope, :node)}>{gettext("New machine")}</.button>
-            <.button patch={new_path(@current_scope, :pool)}>{gettext("New pool")}</.button>
+            <.button :if={@may_set_limit} patch={new_path(@current_scope, :pool)}>
+              {gettext("New pool")}
+            </.button>
           </:actions>
         </.empty_state>
       </div>

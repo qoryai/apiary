@@ -561,12 +561,11 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       render_hook(lv, "save", %{"node" => %{"name" => "spot-runners", "instance_limit" => "9"}})
       assert lv |> element("#flash-group") |> render() =~ "Edition owners alone set a node pool"
 
-      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-pool"))
-
-      html =
-        render_hook(lv, "create", %{"node" => %{"name" => "spot-09", "instance_limit" => "3"}})
-
-      assert html =~ "Edition owners alone set a node pool"
+      # Making a pool asks the limit too: New pool's path refuses the form, in the core's
+      # words.
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-pool")) |> follow_redirect(conn)
+      assert has_element?(lv, "#flash-error", "Ask an owner or admin to add the pool.")
+      refute has_element?(lv, "#new-node-form")
     end
   end
 end
