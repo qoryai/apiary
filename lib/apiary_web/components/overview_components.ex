@@ -1905,7 +1905,7 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :may_set_limit, :boolean,
     default: false,
     doc:
-      "whether the reader may set a pool's limit (`node.set_limit`), which adding a pool asks too"
+      "whether the reader may set a pool's limit (`node.set_limit`), which adding a pool needs too"
 
   attr :target, :any,
     default: nil,
@@ -1973,7 +1973,9 @@ defmodule ApiaryWeb.OverviewComponents do
         </p>
         <.steps current={@current} class="my-5">
           <:step title={gettext("Add a machine")}>
-            {gettext("One per machine, or a pool of machines that share one key.")}
+            {if @may_set_limit,
+              do: gettext("One per machine, or a pool of machines that share one key."),
+              else: gettext("One per machine.")}
           </:step>
           <:step title={gettext("Connect it")}>
             {pgettext(

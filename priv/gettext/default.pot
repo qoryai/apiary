@@ -4831,7 +4831,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Adding one needs the right to set its machine limit."
+msgid "Adding a pool needs the right to set its machine limit."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -5588,7 +5588,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Ask an owner or admin to add the pool. Adding one needs the right to set its machine limit."
+msgid "Ask an owner or admin to add the pool. Adding a pool needs the right to set its machine limit."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -14231,6 +14231,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "One per machine, or a pool of machines that share one key."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "One per machine."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

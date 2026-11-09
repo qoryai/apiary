@@ -283,8 +283,8 @@ defmodule ApiaryWeb.Layouts do
 
   def new_entries(_scope, _place), do: []
 
-  # New's entry of a node pool, which asks `node.set_limit` beside the entry's
-  # `node.create`, as making a pool asks both (`Apiary.Nodes.create_node/2`).
+  # New's entry of a node pool, shown for `node.set_limit` beside the entry's
+  # `node.create`, as making a pool needs both (`Apiary.Nodes.create_node/2`).
   defp pool_entries(scope, organisation, workspace) do
     if Access.can?(scope, :"node.set_limit", workspace) do
       [

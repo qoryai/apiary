@@ -4856,6 +4856,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     def machines_who_may(_scope, _workspace), do: "Harbour Ops enrols the pool."
   end
 
+  defmodule NoLimitWorded do
+    # An edition that keeps a pool's limit from everyone (`Apiary.EditionStubs.NoLimit`),
+    # owners included, and so says who adds a pool in its words, as `Worded` has them.
+    defdelegate check(scope, action, subject), to: Apiary.EditionStubs.NoLimit
+    defdelegate machines_who_may(scope, workspace), to: Worded
+  end
+
   setup %{conn: conn} do
     admin = instance_admin_scope()
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -5090,15 +5097,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert has_element?(lv, "#set-up-pool-add-button")
     refute has_element?(lv, "#set-up-pool-who-may")
 
-    # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`).
-    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
+    # `node.set_limit` refused whoever asks, and who adds a pool in the edition's words
+    # (`NoLimitWorded`): the core's line names owners, who hold `node.set_limit` there.
+    :ok = Apiary.Edition.put_test_stub(NoLimitWorded)
     lv = open(ctx)
 
     refute has_element?(lv, "#set-up-pool-workspace-radio")
     refute has_element?(lv, "#set-up-pool-add-button")
-
-    assert words(lv, "#set-up-pool-who-may") ==
-             "Only owners and admins add a pool and join a machine to it."
+    assert words(lv, "#set-up-pool-who-may") == "Harbour Ops enrols the pool."
 
     assert has_element?(lv, "#set-up-skip")
 

@@ -171,6 +171,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")
       assert has_element?(view, "#onboarding .q-step-current", "Add a machine")
 
+      assert has_element?(
+               view,
+               "#onboarding .q-steps li:nth-child(1)",
+               "One per machine, or a pool of machines that share one key."
+             )
+
       assert text(view, "#onboarding") =~
                "Nothing has posted to this workspace yet. A machine posts once it is connected."
 
@@ -234,6 +240,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#onboarding-new-node", "New machine")
       refute has_element?(view, "#onboarding-new-pool")
       refute has_element?(view, "#onboarding-members")
+
+      assert has_element?(view, "#onboarding .q-steps li:nth-child(1)", "One per machine.")
+      refute text(view, "#onboarding") =~ "a pool of machines that share one key"
     end
 
     test "no node, a member: no buttons, who adds one instead", %{scope: scope} = ctx do
@@ -248,6 +257,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
              )
 
       assert text(view, "#onboarding") =~ @step_2_text
+      # A member, who may not set a pool's limit, sees no New pool and reads the step so.
+      assert has_element?(view, "#onboarding .q-steps li:nth-child(1)", "One per machine.")
       refute has_element?(view, "#onboarding-new-node")
       refute has_element?(view, "#onboarding-new-pool")
       refute has_element?(view, "#onboarding-members-key")

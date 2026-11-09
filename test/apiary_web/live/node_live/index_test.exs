@@ -16,7 +16,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
   # first sentence over the second.
   defp pool_refused?(lv) do
     has_element?(lv, "#flash-error", "Ask an owner or admin to add the pool.") and
-      has_element?(lv, "#flash-error", "Adding one needs the right to set its machine limit.")
+      has_element?(lv, "#flash-error", "Adding a pool needs the right to set its machine limit.")
   end
 
   # A member of the scope's organisation, signed in on a connection of their own.

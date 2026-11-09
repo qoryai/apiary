@@ -975,7 +975,7 @@ address under `/machines`, with what followed `/nodes` and the query.
   header; with none of any kind yet, the empty state, "No machines yet", offers the first
   two, and tells a member that an owner or admin adds machines. New pool, in the header
   and the empty state, is only for one who may set a pool's limit too (`node.set_limit`),
-  as making a pool asks it; one who may not reads "Add a machine for one computer that
+  as making a pool needs it; one who may not reads "Add a machine for one computer that
   stays registered." in the empty state, in place of the sentence that offers a pool.
 - **New machine and New pool** are pages of the Machines section at separate paths,
   `/machines/new` and `/machines/new-pool`, on the pattern of a form page (Settings, A form is a
@@ -987,9 +987,9 @@ address under `/machines`, with what followed `/nodes` and the query.
   Add machine or Add pool with Cancel back to the list (`page_form_foot/1`). One who may
   not set a pool's limit (`node.set_limit`) and opens `/machines/new-pool`, or whose Add
   pool is refused, is sent to the list with "Ask an owner or admin to add the pool.
-  Adding one needs the right to set its machine limit.", or, where the edition says who
-  sets the limit (`c:ApiaryWeb.Edition.who_may_sentence/2`), its sentence and then
-  "Adding one needs the right to set its machine limit." Once the
+  Adding a pool needs the right to set its machine limit.", or, where the edition has a
+  sentence on who sets the limit (`c:ApiaryWeb.Edition.who_may_sentence/2`), that
+  sentence and then "Adding a pool needs the right to set its machine limit." Once the
   workspace has a gateway, a machine's and a pool's form ask its **Gateway** too, a select
   (`NodeComponents.gateway_field/1`): Default gateway, offered only while a default
   resolves for the workspace, and then the one the form starts on; Direct, which it

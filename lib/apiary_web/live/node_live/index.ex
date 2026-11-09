@@ -22,7 +22,7 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   Owners and admins make a node, a node pool or a gateway here (`node.create`), each a
   separate page, `/machines/new`, `/machines/new-pool` and `/machines/new-gateway`. Making
-  a pool asks `node.set_limit` too, with a limit or without one, so New pool shows, and
+  a pool needs `node.set_limit` too, with a limit or without one, so New pool shows, and
   its path opens, only for one who may set it. Each page follows the pattern of a form
   page (`docs/ui.md`, A form is a page): the breadcrumb `Machines / New machine`, the page's
   heading and one sentence, the form in the 720 px column, its button and Cancel back to
@@ -388,7 +388,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       else: {:noreply, refused(socket)}
   end
 
-  # A creation refused: one who still makes nodes was refused the pool, as making one asks
+  # A creation refused: one who still makes nodes was refused the pool, as making one needs
   # `node.set_limit` too, and is shown the list without New pool; anyone else is refused
   # the creation.
   defp refused_create(socket) do
@@ -413,9 +413,9 @@ defmodule ApiaryWeb.NodeLive.Index do
         scope,
         :"node.set_limit",
         gettext(
-          "Ask an owner or admin to add the pool. Adding one needs the right to set its machine limit."
+          "Ask an owner or admin to add the pool. Adding a pool needs the right to set its machine limit."
         ),
-        gettext("Adding one needs the right to set its machine limit.")
+        gettext("Adding a pool needs the right to set its machine limit.")
       )
 
   # Who may add a node, or who manages the nodes, in the edition's words where it has some.

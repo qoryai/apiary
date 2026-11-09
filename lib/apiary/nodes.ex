@@ -248,7 +248,7 @@ defmodule Apiary.Nodes do
   create_node/2 makes a node of the scope's workspace (`node.create`, owners and
   admins) from `attrs`: its `kind`, `node`, `pool` or `gateway`, which is fixed from then
   on, its `name`, a pool's `instance_limit`, empty for none, a gateway's `url`, and a
-  node's or a pool's `gateway_choice` (`named` with its `gateway_id`). A pool asks
+  node's or a pool's `gateway_choice` (`named` with its `gateway_id`). A pool needs
   `node.set_limit` too, whether or not a limit is given. A node or a pool given no choice
   starts on `default` when a default gateway resolves for the workspace, and on `direct`
   otherwise. A gateway made when no default gateway resolves for the workspace is made
@@ -633,8 +633,8 @@ defmodule Apiary.Nodes do
     if rest == %{} and limit != [], do: limit, else: [:"node.edit" | limit]
   end
 
-  # A new pool asks `node.set_limit` too, with a limit or without one; a node's limit is 1
-  # and a gateway's none, whoever makes them.
+  # A new pool needs `node.set_limit` too, with a limit or without one; a node's limit is
+  # 1 and a gateway's none, whoever makes them.
   defp check_limit_set(scope, changeset, workspace) do
     if Ecto.Changeset.get_field(changeset, :kind) == :pool,
       do: Access.check(scope, :"node.set_limit", workspace),

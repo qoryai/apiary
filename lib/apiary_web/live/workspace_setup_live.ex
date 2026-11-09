@@ -155,7 +155,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     a pool of the workspace, its name links to its page for a person whom
   #     `access_key.create_code` allows on it. Anyone else reads who acts
   #     (`c:Apiary.Edition.machines_who_may/2`). While the workspace has no pool, a person
-  #     whom `node.create` and `node.set_limit` allow on it, as making a pool asks both,
+  #     whom `node.create` and `node.set_limit` allow on it, as making a pool needs both,
   #     chooses: Qory Pool, the instance's pool, chosen first, or A pool for the
   #     workspace, with the line that the Qory Pool then stops taking its runs, and Add
   #     pool, which makes a pool of the workspace
@@ -565,7 +565,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # Each pool's line, who may act on a pool that is not ready, and who acts for anyone
   # else. `makes_pool` is of Add pool (`node.create` and `node.set_limit`, as making a
-  # pool asks both); `pool_codes` has, for each pool of the workspace whose command the
+  # pool needs both); `pool_codes` has, for each pool of the workspace whose command the
   # person may get (`access_key.create_code`), its outstanding codes and its keys. The
   # command got stays while its code is outstanding, on a read again of the step; an
   # entry to the step, which assigns `step` anew, starts without it. The choice and the
