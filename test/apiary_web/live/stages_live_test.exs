@@ -420,7 +420,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       select(view, "Build")
 
       undeclared =
-        "Choose another workflow for Build. To keep capture-demo, change the harness on the Details tab to one that lists it under workflows. The Qory harness does not list capture-demo, so Build waits and starts no run."
+        "Choose another workflow for Build. To keep capture-demo, change the harness in Workspace settings › Harness to one that lists it under workflows. The Qory harness does not list capture-demo, so Build waits and starts no run."
 
       assert has_element?(view, "#stage-panel [data-stage-alert]", undeclared)
       assert undeclared in card(view, "Build")["alerts"]

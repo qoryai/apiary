@@ -191,7 +191,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def undeclared(stage_name, workflow, :qory_workspace),
     do:
       gettext(
-        "Choose another workflow for %{stage}. To keep %{workflow}, change the harness on the Details tab to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run.",
+        "Choose another workflow for %{stage}. To keep %{workflow}, change the harness in Workspace settings › Harness to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run.",
         stage: stage_name,
         workflow: workflow
       )

@@ -6859,7 +6859,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another workflow for %{stage}. To keep %{workflow}, change the harness on the Details tab to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run."
+msgid "Choose another workflow for %{stage}. To keep %{workflow}, change the harness in Workspace settings › Harness to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
