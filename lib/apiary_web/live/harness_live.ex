@@ -103,7 +103,6 @@ defmodule ApiaryWeb.HarnessLive do
         update: nil,
         next: nil,
         update_reading: false,
-        update_saving: false,
         update_error: nil,
         update_notice: nil,
         branch_head: nil
@@ -474,13 +473,13 @@ defmodule ApiaryWeb.HarnessLive do
      |> start_async(:update, fn -> HarnessUpdate.read(scope, scope.workspace) end)}
   end
 
-  def handle_event("update_cancel", _params, %{assigns: %{update_saving: false}} = socket),
+  def handle_event("update_cancel", _params, socket),
     do: {:noreply, assign(socket, update: nil, update_error: nil)}
 
   def handle_event(
         "update_save",
         params,
-        %{assigns: %{may_process: true, update: %{} = update, update_saving: false}} = socket
+        %{assigns: %{may_process: true, update: %{} = update}} = socket
       ) do
     scope = socket.assigns.current_scope
     trial? = params["trial"] == "true"
@@ -997,7 +996,6 @@ defmodule ApiaryWeb.HarnessLive do
             update={@update}
             next={@next}
             switch_off={is_binary(@status.following) and @status.keep_latest == false}
-            saving={@update_saving}
           />
         </div>
 

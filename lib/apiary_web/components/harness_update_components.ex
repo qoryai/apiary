@@ -183,7 +183,6 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   attr :update, :map, required: true, doc: "`t:Apiary.Processes.HarnessUpdate.update/0`"
   attr :next, :integer, required: true, doc: "the number the saved version gets"
   attr :switch_off, :boolean, required: true, doc: "whether Save turns the switch on again"
-  attr :saving, :boolean, default: false
 
   def update(assigns) do
     %{update: update} = assigns
@@ -281,7 +280,6 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
           size="sm"
           phx-click="update_save"
           phx-value-trial="false"
-          disabled={@saving}
         >
           {gettext("Save")}
         </.button>
@@ -290,11 +288,10 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
           size="sm"
           phx-click="update_save"
           phx-value-trial="true"
-          disabled={@saving}
         >
           {gettext("Try first")}
         </.button>
-        <.button id="harness-update-cancel" size="sm" phx-click="update_cancel" disabled={@saving}>
+        <.button id="harness-update-cancel" size="sm" phx-click="update_cancel">
           {gettext("Cancel")}
         </.button>
       </div>
