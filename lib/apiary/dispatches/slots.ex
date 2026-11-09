@@ -46,9 +46,9 @@ defmodule Apiary.Dispatches.Slots do
   # `gone` (`Apiary.Dispatches.Handover`), a redemption of its run code refused because
   # the dispatch is stale or ended (`Apiary.Runs.RunCode`), both through
   # `late_machine/2`, or a report other than `gone` (`hold_again/2`). A `gone` that came
-  # first leaves the slot freed. A close deletes the run its claim registered, with its
-  # run code (`Apiary.Dispatches.Handover.drop/1`), so a redemption after a close finds
-  # no run and marks no dispatch.
+  # first leaves the slot freed. A close ends the run its claim registered, cancelled,
+  # as a failed start leaves a run (`Apiary.Dispatches.Queued`): a redemption of its run
+  # code after the close is a late machine, as after a release.
   #
   # - `held/1` counts the slots a pool's dispatches hold, read from the partial index on
   #   the held ones. `Apiary.Nodes.check_instance_limit/3` adds them to the pool's live
@@ -277,8 +277,13 @@ defmodule Apiary.Dispatches.Slots do
     in_transaction!()
     records = lock_records(pool, now)
     :ok = records_made.()
-    lapsed = lapse(pool, now, records, nil, [])
+    {lapsed, requeued} = lapse(pool, now, records, nil, {[], []})
     freed = free_due(pool, now)
+    # Each run that waits again is a new queued run, with the next number: its run record
+    # failed in its batch (`Apiary.Dispatches.Queued`). The counters are taken last, once
+    # every batch locked its runs, by workspace: no counter is held while a batch locks
+    # runs of the queue, and two lapses take the counters in the same order.
+    _queued = Queued.requeue!(requeued, now)
     Enum.uniq(lapsed ++ freed)
   end
 
@@ -391,7 +396,7 @@ defmodule Apiary.Dispatches.Slots do
   # One batch of the lapsed dispatches, by run id, after the run `after_id`, then the
   # next, while a whole one lapsed. The environment records were locked before the first
   # (`lock_records/2`); then the runs, then their dispatches (the moduledoc).
-  defp lapse(pool, now, records, after_id, workspaces) do
+  defp lapse(pool, now, records, after_id, {workspaces, requeued}) do
     candidates =
       pool
       |> candidates(now, records)
@@ -400,7 +405,7 @@ defmodule Apiary.Dispatches.Slots do
 
     case candidates do
       [] ->
-        workspaces
+        {workspaces, requeued}
 
       run_ids ->
         runs =
@@ -455,15 +460,14 @@ defmodule Apiary.Dispatches.Slots do
 
         _superseded = wait_again(prebuilds, now)
 
-        # Each run that waits again is a new queued run, with the next number: its run
-        # record failed above (`Apiary.Dispatches.Queued`).
-        _queued = claimed |> Enum.map(& &1.id) |> Queued.requeue!(now)
+        # The runs that wait again get their new records after the last batch (`free/2`).
+        requeued = Enum.map(claimed, & &1.id) ++ requeued
         workspaces = Enum.uniq(stale_workspaces ++ workspaces)
 
         # Another batch, after the last run of this one, while a whole one lapsed.
         if length(candidates) == @batch,
-          do: lapse(pool, now, records, List.last(run_ids), workspaces),
-          else: workspaces
+          do: lapse(pool, now, records, List.last(run_ids), {workspaces, requeued}),
+          else: {workspaces, requeued}
     end
   end
 

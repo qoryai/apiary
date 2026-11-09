@@ -14,28 +14,40 @@ defmodule Apiary.Repo.Migrations.GiveEachWaitingRunItsRunRecord do
   # gets nothing. `id` is a random UUID, and `public_id` comes from the column's default,
   # `run_public_id()`.
   #
-  # Locks, held until the migration's transaction ends:
+  # Locks, held until the migration's transaction ends, taken in the order a claim takes
+  # them, so the migration and a claim never wait on each other in a cycle:
   #
-  # - `run_counters` in `SHARE ROW EXCLUSIVE` mode, so no run takes a number meanwhile:
-  #   the trigger `runs_number_from_counter` and `Apiary.Runs.Number` both write the
-  #   counter's row.
-  # - The waiting runs of the queue `FOR UPDATE`, so no claim takes one meanwhile: a claim
-  #   locks the run it takes `FOR UPDATE SKIP LOCKED`, and passes over these.
+  # 1. The waiting runs of the queue `FOR UPDATE`, so no claim takes one meanwhile. A
+  #    claim locks the run it takes `FOR UPDATE SKIP LOCKED` first, then the counter
+  #    (`Apiary.Runs.Number`): a claim that has locked a run finishes, and the migration
+  #    then locks that run.
+  # 2. `run_counters` in `SHARE ROW EXCLUSIVE` mode, so no run takes a number meanwhile:
+  #    the trigger `runs_number_from_counter` and `Apiary.Runs.Number` both write the
+  #    counter's row.
+  #
+  # `lock_timeout` is 5 seconds: a lock not granted by then fails the migration, which
+  # changes nothing, and running it again takes the locks again.
   #
   # Only the waiting runs are read and written: the anti-join reads `runs` by its unique
   # index on `dispatch_run_id`, and the highest number of a workspace by the unique index
   # on (`workspace_id`, `number`).
   #
-  # A previous release that claims a run whose record this release wrote fails its claim
-  # on the unique index of `runs.dispatch_run_id`, and the claim is refused; a claim of
-  # this release takes that run.
+  # While a node of the previous release runs beside this one, its claim of a run whose
+  # record this release wrote inserts a second record, which the unique index of
+  # `runs.dispatch_run_id` refuses: the claim raises, its transaction rolls back and the
+  # claim is answered 503 `unavailable`. The run stays queued with its record, and a claim
+  # of this release takes it. The previous release claims the oldest waiting run first, so
+  # while that run has a record, every claim of the previous release for that queue fails,
+  # until the nodes run this release.
   #
   # `down` deletes the records of the runs that still wait, which the previous release
-  # writes at the claim: pending, a run of the queue, with no node and no registration.
-  # The counters stay as they are, so no number is given twice.
+  # writes at the claim: pending, a run of the queue, with no node and no registration. A
+  # record of a run that ended while it waited stays, with its number. The counters stay
+  # as they are, so no number is given twice.
   def up do
-    execute "LOCK TABLE run_counters IN SHARE ROW EXCLUSIVE MODE"
+    execute "SET LOCAL lock_timeout = '5s'"
     execute "SELECT id FROM dispatch_runs WHERE state = 'waiting' FOR UPDATE"
+    execute "LOCK TABLE run_counters IN SHARE ROW EXCLUSIVE MODE"
 
     execute """
     WITH waiting AS (

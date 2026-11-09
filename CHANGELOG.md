@@ -1399,8 +1399,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   raises each workspace's count of runs to match. A run of the queue that ended or was
   taken gets none. It locks `run_counters` and the waiting runs of the queue until it
   ends, so no run is numbered or claimed meanwhile. Rolling back deletes these records;
-  the counts stay. While an older release still runs beside this one, its claim of a run
-  that has a record fails, and a claim of this release takes the run.
+  the counts stay. While a node of the previous release runs beside this one, its claim
+  of a run that has a record raises and is answered 503 `unavailable`; the run stays
+  queued, and a claim of this release takes it. The previous release claims the oldest
+  waiting run first, so while that run has a record, every claim of the previous release
+  for that queue fails until the nodes run this release. The migration takes its locks in
+  the order a claim does, with a 5-second `lock_timeout`: a migration that cannot take
+  them fails, changes nothing, and can be run again.
 - `dispatches` (20261108130000): a nullable column `late_machine_at`, the last time a
   machine showed up for a claim that takes none. It changes no row.
 - `runs` (20261108120100): an index in the order of the run list, `GET /v1/runs`, built
