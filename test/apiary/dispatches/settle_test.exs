@@ -21,6 +21,7 @@ defmodule Apiary.Dispatches.SettleTest do
   alias Apiary.{Dispatches, WorkItems}
   alias Apiary.Dispatches.{DispatchRun, RunEnd, Settle}
   alias Apiary.Runs.{Event, Liveness, Projector, Run}
+  alias Apiary.Stages.Escalation
   alias Apiary.WorkItems.{Confirmation, Explore, WorkItem}
 
   @moduletag needs: :factory
@@ -545,6 +546,15 @@ defmodule Apiary.Dispatches.SettleTest do
                queue_run!(handed)
 
       assert %WorkItem{stage_state: :escalated} = work_item!(handed)
+
+      assert %Escalation{cause: :escalate, points: [%{"text" => ^text}]} =
+               Repo.one(
+                 from(e in Escalation,
+                   where:
+                     e.work_item_id == ^handed.dispatch_run.work_item_id and is_nil(e.resolved_at)
+                 )
+               )
+
       assert Apiary.Runs.StuckLog.lines() == %{}
     end
 

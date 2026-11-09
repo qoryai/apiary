@@ -1384,7 +1384,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The stage's Runs list shows a run that an undo ended as undone, not as ended without a
   verdict.
 - A run of Explore that pushes the verdict `escalate` escalates its stage with the
-  verdict's gaps, as a run of any other workflow does, and the work item page shows no
+  verdict's points, as a run of any other workflow does, and the work item page shows no
   **Approve**. Before, such a run read as a run with no verdict, and the work item page
   showed **Approve** on the newest proposal, also one an earlier run wrote.
 - Make `qory run verdict passed` the last step of each workflow entry outside a loop. A run

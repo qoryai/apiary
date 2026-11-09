@@ -95,7 +95,6 @@ defmodule Apiary.Stages.Runner do
   """
   @type run_result ::
           {:verdict, :passed | :changes_requested | :escalate | nil, [point] | nil}
-          | {:questions, String.t()}
           | {:questions, String.t(), [point] | nil}
           | {:stopped, [point]}
 
@@ -326,9 +325,6 @@ defmodule Apiary.Stages.Runner do
 
   defp run_ended(_stage, position, {:stopped, points}, _facts),
     do: escalate(:run_stopped, points, position)
-
-  defp run_ended(_stage, position, {:questions, _questions}, _facts),
-    do: %{state: :waiting_answers, position: position, actions: []}
 
   # Open questions first: the stage waits for answers, and the escalation is kept.
   defp run_ended(_stage, position, {:questions, _questions, [_ | _] = points}, _facts),

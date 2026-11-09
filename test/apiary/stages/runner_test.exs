@@ -293,7 +293,7 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "questions wait for answers, which rerun the same workflow" do
-      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:questions, "Which page?"}})
+      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:questions, "Which page?", nil}})
       assert %{state: :waiting_answers, position: %{entry: 0}, actions: []} = outcome
       assert queued(Runner.step(build(), outcome.position, :answered)) == {"implement", 0, nil, 1}
     end
@@ -369,7 +369,7 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "questions wait; the answers run the same workflow as the next round" do
-      outcome = Runner.step(explore(), pos(0, 0, 1), {:run, {:questions, "Which page?"}})
+      outcome = Runner.step(explore(), pos(0, 0, 1), {:run, {:questions, "Which page?", nil}})
       assert outcome.state == :waiting_answers
 
       assert queued(Runner.step(explore(), outcome.position, :answered)) ==
@@ -377,7 +377,7 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "questions in the loop's last round wait for answers too" do
-      outcome = Runner.step(explore(), pos(0, 0, 3), {:run, {:questions, "Which page?"}})
+      outcome = Runner.step(explore(), pos(0, 0, 3), {:run, {:questions, "Which page?", nil}})
       assert %{state: :waiting_answers, actions: []} = outcome
     end
 
