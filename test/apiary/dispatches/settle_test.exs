@@ -479,6 +479,74 @@ defmodule Apiary.Dispatches.SettleTest do
       assert Apiary.Runs.StuckLog.lines() == %{}
     end
 
+    # The stage runner reads the verdict of a run of a workflow other than Explore at its
+    # exit (`Apiary.Stages`), in the transaction that ends and settles the run: it raises,
+    # the exit's transaction rolls back, and the lost-run check ends the run again at each
+    # tick.
+    @tag needs: [:factory, :workflow_model]
+    test "with its verdict unreadable: the exit not stored, then ended at a check after", ctx do
+      {:ok, _version} =
+        Apiary.Processes.save(ctx.scope, ctx.scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => [
+            %{
+              "id" => "st_r79kph11eg",
+              "name" => "Explore",
+              "inputs" => [],
+              "sequence" => [%{"workflow" => "capture-demo"}],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            }
+          ]
+        })
+
+      handed = handed_over!(ctx)
+      dispatch_run = queue_run!(handed)
+      assert %DispatchRun{workflow: "capture-demo", explore: false} = dispatch_run
+      id = dispatch_run.id
+
+      # Gaps no other test writes, so no other test stores the same file.
+      gaps = "The demo skips step #{System.unique_integer([:positive])}."
+
+      {:ok, version} =
+        Apiary.Stages.Artifacts.push_json(
+          {:run, dispatch_run},
+          work_item!(handed),
+          "verdict",
+          %{"verdict" => "passed", "gaps" => gaps},
+          stage_id: dispatch_run.stage_id
+        )
+
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+      )
+
+      assert_raise Apiary.Stages.VerdictUnreadable, fn -> RunEnd.run_ended(run!(handed)) end
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      now = Dispatches.now()
+      log = ExUnit.CaptureLog.capture_log(fn -> RunEnd.lose(now) end)
+      assert log =~ "run end failed dispatch_run=#{id} error=Apiary.Stages.VerdictUnreadable"
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      File.rename!(path <> ".away", path)
+      RunEnd.lose(now)
+
+      assert %DispatchRun{state: :ended, end_cause: :run_ended, result_outcome: :none} =
+               queue_run!(handed)
+
+      assert %WorkItem{stage_state: :at_gate} = work_item!(handed)
+      assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
     # A lost run the stage runner does not read, as its stage is not running: Settle's
     # read alone logs, and the run ends with no outcome.
     @tag needs: [:factory, :workflow_model]

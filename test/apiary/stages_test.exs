@@ -1793,9 +1793,11 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{explore: false, result_outcome: :none} = newest_run(work_item)
     end
 
-    test "a verdict the store cannot read raises, and the settle sweep reads it later", %{
-      scope: scope
-    } do
+    # Not an end by the exit, whose end, settle and stage share one transaction
+    # (`Apiary.Dispatches.SettleTest`): an exit stored with no outcome (`end_run!/3`), as
+    # Settle leaves one it cannot settle yet, then its settle.
+    test "an exit stored with no outcome: an unreadable verdict raises, the sweep settles it",
+         %{scope: scope} do
       save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
       # Gaps no other test writes, so no other test stores the same file.
       gaps = "The demo skips step #{System.unique_integer([:positive])}."
