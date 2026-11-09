@@ -227,7 +227,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert version.template["commit"] == repository.commit
     end
 
-    test "a harness repository with no template of the workspace's type, or several, has none",
+    test "a harness repository with several templates of the workspace's type, or none, has none",
          ctx do
       process = Map.fetch!(QoryHarnessFixture.files(), @process)
 
@@ -240,7 +240,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
         )
 
       repository_choice!(ctx.workspace, several)
-      assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, :no_template}
+      assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, :several_templates}
 
       Repo.delete_all(from s in Stack, where: s.workspace_id == ^ctx.workspace.id)
       repository_choice!(ctx.workspace, Map.delete(QoryHarnessFixture.files(), @process))

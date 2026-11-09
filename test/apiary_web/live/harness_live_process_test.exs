@@ -289,6 +289,39 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
                "Choose a harness with a process for this type of workspace. The harness has no template of this workspace's type at this commit."
     end
 
+    test "a harness repository with several templates of this type says to keep one", ctx do
+      git = "https://code.example.com/acme/harness"
+      process = Map.fetch!(QoryHarnessFixture.files(), @process)
+
+      files =
+        QoryHarnessFixture.files()
+        |> Map.put("modules/other-factory/process.yaml", process)
+        |> Map.update!(
+          "qory.yaml",
+          &String.replace(&1, "harness-authoring]", "harness-authoring, other-factory]")
+        )
+        |> Map.put(".test-#{System.unique_integer([:positive])}", "")
+
+      repository = Apiary.PublicGitServer.repository!(files)
+      Apiary.PublicGitServer.serve(%{git => repository.dir})
+
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        harness: "extends:\n  git: #{git}\n  ref: main\n  stack: software\n",
+        choice: :repository,
+        version_kind: :branch,
+        version_name: "main"
+      })
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+
+      assert text(view, "#harness-update-error") ==
+               "Keep one template of this workspace's type in the harness, or choose another harness. At this commit the harness has more than one."
+    end
+
     test "artifact types that fail the template check say what to correct", ctx do
       files =
         Map.update!(QoryHarnessFixture.files(), @process, fn process ->

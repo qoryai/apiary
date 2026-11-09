@@ -474,6 +474,14 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
         "Choose a harness with a process for this type of workspace. The harness has no template of this workspace's type at this version."
       )
 
+  # The same words in every domain: the harness is a git repository in each.
+  def reason_words(:several_templates, _source, _scope),
+    do:
+      pgettext(
+        "plain",
+        "Keep one template of this workspace's type in the harness, or choose another harness. At this commit the harness has more than one."
+      )
+
   def reason_words({:types, refusals}, _source, _scope),
     do: invalid_words(Enum.map(refusals, &Apiary.Artifacts.TemplateTypes.message/1))
 
