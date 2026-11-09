@@ -811,6 +811,13 @@ defmodule Apiary.DispatchesTest do
       assert Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) == {:ok, :none}
       assert run!(second).state == :waiting
 
+      # A slot is freed only once its dispatch is done.
+      {:ok, false} = Repo.transact(fn -> {:ok, Slots.free_slot(dispatch, Dispatches.now())} end)
+
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [ended_at: Dispatches.now(), end_cause: :closed]
+      )
+
       {:ok, true} = Repo.transact(fn -> {:ok, Slots.free_slot(dispatch, Dispatches.now())} end)
 
       assert {:ok, %{run: %{id: id}}} =
@@ -1035,6 +1042,245 @@ defmodule Apiary.DispatchesTest do
     end
   end
 
+  describe "the slots of the machines made" do
+    @describetag needs: :factory
+
+    # The dispatch handed over at `at`, by its `dispatched`, and its run of the queue.
+    defp hand_over!(dispatch, at) do
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [dispatched_at: at, handed_over_at: at]
+      )
+
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^dispatch.dispatch_run_id),
+        set: [state: :handed_over]
+      )
+    end
+
+    defp end!(dispatch) do
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [ended_at: Dispatches.now(), end_cause: :run_ended]
+      )
+    end
+
+    defp report!(key, dispatch, state),
+      do: :ok = Dispatches.report_machine_end(key, dispatch.public_id, %{state: state})
+
+    defp dispatched(key, dispatch),
+      do: Dispatches.dispatched(key, dispatch.public_id, %{external: nil})
+
+    # The time the safety net frees the slot of a dispatch of a run that is not a
+    # prebuild, whose last sign of a machine was at `at`: 1470 + 60 minutes later.
+    defp net(at), do: DateTime.add(at, (1470 + 60) * 60, :second)
+
+    test "a dispatch handed over holds its slot after its end; deleting and delete_failed keep it, gone frees it",
+         ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      hand_over!(dispatch, dispatch.claimed_at)
+      end!(dispatch)
+
+      assert Dispatches.sweep(Dispatches.now()) == []
+      assert %Dispatch{slot_freed_at: nil} = dispatch!(dispatch)
+
+      for state <- [:deleting, :delete_failed, :deleting] do
+        report!(ctx.key, dispatch, state)
+        Dispatches.sweep(Dispatches.now())
+        assert Slots.held(ctx.pool.id) == 1, inspect(state)
+      end
+
+      report!(ctx.key, dispatch, :gone)
+      assert %Dispatch{slot_freed_at: %DateTime{}, machine_end_state: :gone} = dispatch!(dispatch)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "a dispatch with no machine frees its slot at its end", ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      end!(dispatch)
+
+      assert Dispatches.sweep(Dispatches.now()) == [ctx.scope.workspace.id]
+      assert %Dispatch{slot_freed_at: %DateTime{}} = dispatch!(dispatch)
+    end
+
+    test "a lapse frees the slot; a late dispatched takes it back, and the pool's claims wait until gone",
+         ctx do
+      pool = pool_fixture(ctx.scope, instance_limit: 1)
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      first = queued!(ctx.scope)
+      dispatch = claimed!(key)
+
+      Dispatches.sweep(dispatch.lease_until)
+      assert Slots.held(pool.id) == 0
+      assert run!(first).state == :waiting
+
+      assert dispatched(key, dispatch) == {:error, :lease_expired}
+      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: nil} = dispatch!(dispatch)
+      assert Slots.held(pool.id) == 1
+
+      # Past the pool's limit: the run waits, and the next claim takes nothing.
+      assert Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) == {:ok, :none}
+      assert run!(first).state == :waiting
+
+      report!(key, dispatch, :deleting)
+      Dispatches.sweep(Dispatches.now())
+      assert Slots.held(pool.id) == 1
+
+      report!(key, dispatch, :gone)
+      assert Slots.held(pool.id) == 0
+
+      assert {:ok, %{run: %{id: id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
+      assert id == first.id
+    end
+
+    test "a report after a lapse takes the slot back; a gone first leaves it freed", ctx do
+      queued!(ctx.scope)
+      reported = claimed!(ctx.key)
+      queued!(ctx.scope)
+      gone_first = claimed!(ctx.key)
+
+      Dispatches.sweep(gone_first.lease_until)
+      assert Slots.held(ctx.pool.id) == 0
+
+      report!(ctx.key, reported, :delete_failed)
+      assert %Dispatch{slot_freed_at: nil} = dispatch!(reported)
+
+      report!(ctx.key, gone_first, :gone)
+      %Dispatch{slot_freed_at: freed_at} = dispatch!(gone_first)
+      assert %DateTime{} = freed_at
+
+      assert dispatched(ctx.key, gone_first) == {:error, :lease_expired}
+      report!(ctx.key, gone_first, :deleting)
+
+      assert %Dispatch{machine_end_state: :gone, slot_freed_at: ^freed_at} =
+               dispatch!(gone_first)
+
+      assert Slots.held(ctx.pool.id) == 1
+    end
+
+    test "a lapse keeps the slot of a machine already reported, and its run waits again", ctx do
+      run = queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      report!(ctx.key, dispatch, :deleting)
+
+      Dispatches.sweep(dispatch.lease_until)
+
+      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: nil} = dispatch!(dispatch)
+      assert run!(run).state == :waiting
+      assert Slots.held(ctx.pool.id) == 1
+    end
+
+    test "a pool with no limit claims whatever slots its machines hold", ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      hand_over!(dispatch, dispatch.claimed_at)
+      end!(dispatch)
+      Dispatches.sweep(Dispatches.now())
+      assert Slots.held(ctx.pool.id) == 1
+
+      next = queued!(ctx.scope)
+
+      assert {:ok, %{run: %{id: id}}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
+      assert id == next.id
+      assert Slots.held(ctx.pool.id) == 2
+    end
+
+    test "the safety net frees the slot at the machine's lifetime and 60 minutes, not before; a late gone frees nothing more",
+         ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      at = DateTime.add(dispatch.claimed_at, 1, :second)
+      hand_over!(dispatch, at)
+      end!(dispatch)
+
+      Dispatches.sweep(DateTime.add(net(at), -1, :microsecond))
+      assert %Dispatch{slot_freed_at: nil} = dispatch!(dispatch)
+
+      assert Dispatches.sweep(net(at)) == [ctx.scope.workspace.id]
+      assert %Dispatch{slot_freed_at: freed_at} = dispatch!(dispatch)
+      assert freed_at == net(at)
+
+      report!(ctx.key, dispatch, :gone)
+
+      assert %Dispatch{machine_end_state: :gone, slot_freed_at: ^freed_at} =
+               dispatch!(dispatch)
+    end
+
+    test "the safety net frees a dispatch handed over by its run code's redemption alone",
+         ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      at = DateTime.add(dispatch.claimed_at, 2, :second)
+
+      # No dispatched and no report: the redemption alone handed it over.
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [handed_over_at: at]
+      )
+
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^dispatch.dispatch_run_id),
+        set: [state: :handed_over]
+      )
+
+      end!(dispatch)
+      Dispatches.sweep(Dispatches.now())
+
+      assert %Dispatch{dispatched_at: nil, machine_end_state: nil, slot_freed_at: nil} =
+               dispatch!(dispatch)
+
+      Dispatches.sweep(DateTime.add(net(at), -1, :microsecond))
+      assert Slots.held(ctx.pool.id) == 1
+
+      Dispatches.sweep(net(at))
+      assert dispatch!(dispatch).slot_freed_at == net(at)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "the safety net counts from the last report; a deleting after it takes the slot back",
+         ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      hand_over!(dispatch, dispatch.claimed_at)
+      end!(dispatch)
+
+      Dispatches.sweep(net(dispatch.claimed_at))
+      assert Slots.held(ctx.pool.id) == 0
+
+      report!(ctx.key, dispatch, :deleting)
+      assert %Dispatch{slot_freed_at: nil, machine_end_at: reported_at} = dispatch!(dispatch)
+      assert DateTime.compare(reported_at, dispatch.claimed_at) == :gt
+
+      # The net counts from the report now, not from the dispatched.
+      Dispatches.sweep(net(dispatch.claimed_at))
+      Dispatches.sweep(DateTime.add(net(reported_at), -1, :microsecond))
+      assert Slots.held(ctx.pool.id) == 1
+
+      Dispatches.sweep(net(reported_at))
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "the safety net frees a stale dispatch held again, counted from its late machine",
+         ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      Dispatches.sweep(dispatch.lease_until)
+
+      assert dispatched(ctx.key, dispatch) == {:error, :lease_expired}
+      assert %Dispatch{late_machine_at: late, slot_freed_at: nil} = dispatch!(dispatch)
+      assert DateTime.compare(late, dispatch.claimed_at) == :gt
+
+      Dispatches.sweep(net(dispatch.claimed_at))
+      Dispatches.sweep(DateTime.add(net(late), -1, :microsecond))
+      assert Slots.held(ctx.pool.id) == 1
+
+      Dispatches.sweep(net(late))
+      assert dispatch!(dispatch).slot_freed_at == net(late)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+  end
+
   describe "the sweep and a deleted pool's prebuilds" do
     @describetag needs: :factory
 
@@ -1209,6 +1455,29 @@ defmodule Apiary.DispatchesTest do
                Repo.transact(fn ->
                  {:ok, Nodes.check_instance_limit(pool, "i_1", Dispatches.now())}
                end)
+    end
+
+    test "a registration counts the slot of a dispatch that ended while its machine is not gone",
+         ctx do
+      pool = pool_fixture(ctx.scope, instance_limit: 1)
+      %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
+      queued!(ctx.scope)
+      dispatch = claimed!(key)
+      at = dispatch.claimed_at
+
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [dispatched_at: at, handed_over_at: at, ended_at: at, end_cause: :run_ended]
+      )
+
+      check = fn ->
+        Repo.transact(fn -> {:ok, Nodes.check_instance_limit(pool, "i_1", Dispatches.now())} end)
+      end
+
+      Dispatches.sweep(Dispatches.now())
+      assert check.() == {:ok, {:error, :instance_limit}}
+
+      :ok = Dispatches.report_machine_end(key, dispatch.public_id, %{state: :gone})
+      assert check.() == {:ok, :ok}
     end
 
     test "a dispatched run counts by its slot, not again by its instance", ctx do

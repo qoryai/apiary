@@ -773,33 +773,38 @@ defmodule Apiary.Runs.PreparationTest do
     # marks the session's start `bare` from its commit c6c20c6b on, so each case runs
     # with and without the mark.
     @describetag needs: [:factory, :registry]
+    # A report that fails its check is logged as a warning (`Apiary.Dispatches.Built`).
+    @describetag :capture_log
 
-    @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("4c1e", 16)
+    @digest String.duplicate("4c1e", 16)
 
     # Remove the machine as the pool's starter reports a machine that is gone.
     @gone {:report, :gone, ~U[2026-11-08 06:05:00.000000Z]}
 
     setup ctx do
       _gateway = gateway_for!(ctx.scope, ctx.pool)
-      %{run: run} = prebuild_handed_over!(ctx.scope, ctx.key)
-      %{run: run}
+      %{run: run, dispatch: dispatch} = prebuild_handed_over!(ctx.scope, ctx.key)
+      %{run: run, dispatch: dispatch}
     end
 
     # The run's events: the session's join, its start, the image step and its wall with
     # `wall_state`;
     # after a wall that succeeded, the session's exit with `exit_code` and, for 0,
-    # `dev.qory.run.built`; then the run's exit.
+    # `dev.qory.run.built` with `image`, unless `report` is false; then the run's exit,
+    # failed with -1 when the build sent no report, as `qory` exits when its check of the
+    # build's result fails.
     defp prebuild_events(opts) do
       bare = if Keyword.get(opts, :bare), do: %{"bare" => true}, else: %{}
       wall_state = Keyword.get(opts, :wall_state, "succeeded")
       exit_code = Keyword.get(opts, :exit_code, 0)
+      report? = Keyword.get(opts, :report, true)
       wall_code = if wall_state == "succeeded", do: 0, else: 125
-      built = wall_state == "succeeded" and exit_code == 0
+      built = wall_state == "succeeded" and exit_code == 0 and report?
 
       start = session_started_data(Map.merge(%{"runtime" => "qory", "command" => "qory"}, bare))
 
       built_data = %{
-        "image" => @image,
+        "image" => Keyword.fetch!(opts, :image),
         "size" => 1_048_576,
         "commit" => String.duplicate("a1", 20),
         "environment_ref" => "env-1"
@@ -813,9 +818,8 @@ defmodule Apiary.Runs.PreparationTest do
           exit_code == 0 ->
             [
               {9, "session.exited",
-               %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 900}},
-              {10, "run.built", built_data}
-            ]
+               %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 900}}
+            ] ++ if(report?, do: [{10, "run.built", built_data}], else: [])
 
           true ->
             [
@@ -844,7 +848,12 @@ defmodule Apiary.Runs.PreparationTest do
           {11, "run.exited",
            %{
              "state" => if(built, do: "succeeded", else: "failed"),
-             "exit_code" => if(built, do: 0, else: 1),
+             "exit_code" =>
+               cond do
+                 built -> 0
+                 report? -> 1
+                 true -> -1
+               end,
              "duration_ms" => 1000
            }}
         ]
@@ -862,12 +871,14 @@ defmodule Apiary.Runs.PreparationTest do
     for bare <- [false, true] do
       test "with bare #{bare}: Build the image has the session, Save the outputs the image",
            ctx do
-        run = project!(ctx.run, prebuild_events(bare: unquote(bare)))
+        image = destination_image(ctx.run, @digest)
+        run = project!(ctx.run, prebuild_events(bare: unquote(bare), image: image))
         preparation = Preparation.read(ctx.scope, run)
 
         assert preparation.prebuild
         assert [%{session: 1, sequence: 4}] = preparation.sessions
-        assert %{image: @image} = preparation.built
+        assert %{image: ^image, refused: nil, fix: nil} = preparation.built
+        assert ApiaryWeb.PreparationComponents.built_line(preparation) == nil
 
         html = run_list(preparation, "completed", @gone)
 
@@ -893,7 +904,7 @@ defmodule Apiary.Runs.PreparationTest do
         assert [{"Started", _at}, {"Finished", _end}, {"Result", "exit 0"}] =
                  facts(html, "prepare-machine-build")
 
-        assert [{"Outputs saved", _at}, {"Image", @image}] =
+        assert [{"Outputs saved", _at}, {"Image", ^image}] =
                  facts(html, "prepare-machine-outputs")
 
         # One event: its time, and no duration.
@@ -912,7 +923,12 @@ defmodule Apiary.Runs.PreparationTest do
     for bare <- [false, true] do
       test "with bare #{bare}: a failed wall fails Build the image, with its cause line",
            ctx do
-        run = project!(ctx.run, prebuild_events(bare: unquote(bare), wall_state: "failed"))
+        run =
+          project!(
+            ctx.run,
+            prebuild_events(bare: unquote(bare), wall_state: "failed", image: "unused")
+          )
+
         preparation = Preparation.read(ctx.scope, run)
         html = run_list(preparation, "failed", @gone)
 
@@ -956,7 +972,7 @@ defmodule Apiary.Runs.PreparationTest do
     end
 
     test "a failed session fails Build the image, with the session's cause line", ctx do
-      run = project!(ctx.run, prebuild_events(bare: true, exit_code: 1))
+      run = project!(ctx.run, prebuild_events(bare: true, exit_code: 1, image: "unused"))
       preparation = Preparation.read(ctx.scope, run)
       assert preparation.built == nil
 
@@ -970,6 +986,227 @@ defmodule Apiary.Runs.PreparationTest do
              |> LazyHTML.text() =~ "Build the image failed with exit code 1."
 
       assert skipped(html) == ["prepare-machine-outputs"]
+    end
+
+    # The cause line of Save the outputs, as its text reads, and the values it shows in
+    # code font.
+    defp outputs_cause(html) do
+      cause = LazyHTML.query(html, "#prepare-machine-outputs #prepare-machine-outputs-cause")
+      codes = cause |> LazyHTML.query("code") |> Enum.map(&LazyHTML.text/1)
+      {cause |> LazyHTML.text() |> String.trim(), codes}
+    end
+
+    test "a report away from the run's destination fails Save the outputs, with both addresses",
+         ctx do
+      destination = sent(ctx.run, "image_destination")
+      image = destination <> "-x@sha256:" <> @digest
+      run = project!(ctx.run, prebuild_events(image: image))
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert %{image: ^image, refused: {:image_place, reported, ^destination}, fix: nil} =
+               preparation.built
+
+      assert reported == destination <> "-x"
+
+      line =
+        "The image was not saved: the run reported it at #{reported}, but this run saves " <>
+          "images only under #{destination}."
+
+      assert ApiaryWeb.PreparationComponents.built_line(preparation) == line
+
+      html = run_list(preparation, "completed", @gone)
+      assert row_state(html, "prepare-machine-build") == ["succeeded"]
+      assert row_state(html, "prepare-machine-outputs") == ["failed"]
+      assert [{"Image", ^image}] = facts(html, "prepare-machine-outputs")
+      assert outputs_cause(html) == {line, [reported, destination]}
+    end
+
+    test "a report whose environment image was not sent shows it and the run's", ctx do
+      place = sent(ctx.run, "environment_destination")
+      image = destination_image(ctx.run, @digest)
+      environment = place <> "-x@sha256:" <> @digest
+
+      events =
+        Enum.map(prebuild_events(image: image), fn
+          {10, "run.built", data} ->
+            {10, "run.built", Map.put(data, "environment_image", environment)}
+
+          event ->
+            event
+        end)
+
+      preparation = Preparation.read(ctx.scope, project!(ctx.run, events))
+
+      line =
+        "The image was not saved: the run reported its environment image at #{place}-x, " <>
+          "but this run saves environment images only under #{place}."
+
+      assert ApiaryWeb.PreparationComponents.built_line(preparation) == line
+      html = run_list(preparation, "completed", @gone)
+      assert outputs_cause(html) == {line, [place <> "-x", place]}
+    end
+
+    test "a report that breaks its form shows the member, the rule, and support", ctx do
+      events =
+        Enum.map(prebuild_events(image: destination_image(ctx.run, @digest)), fn
+          {10, "run.built", data} -> {10, "run.built", Map.put(data, "commit", "ABC")}
+          event -> event
+        end)
+
+      run = project!(ctx.run, events)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert %{refused: {:form, "commit"}, fix: {:support, public_id}} = preparation.built
+      assert public_id == run.public_id
+
+      what =
+        "The image was not saved: commit in the image report is not 40 or 64 lower-case " <>
+          "hexadecimal characters."
+
+      assert ApiaryWeb.PreparationComponents.built_line(preparation) == what
+
+      assert outputs_cause(run_list(preparation, "completed", @gone)) ==
+               {what <> " Contact support with run #{run.public_id}.", ["commit"]}
+    end
+
+    test "a run whose documents have no destination: Rebuild, or ask an admin, by reader",
+         ctx do
+      %{scope: member} = member_fixture(ctx.scope)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [run_documents: ~s({"step":"prebuild"})]
+        )
+
+      run =
+        project!(
+          Repo.get!(Run, ctx.run.id),
+          prebuild_events(image: destination_image(ctx.run, @digest))
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [target_path: "northwind/storefront"]
+        )
+
+      run = Repo.get!(Run, run.id)
+
+      what =
+        "The image was not saved: this run has no registry address to check the image against."
+
+      preparation = Preparation.read(member, run)
+
+      assert %{refused: :no_destination, fix: {:rebuild, "northwind/storefront"}} =
+               preparation.built
+
+      assert ApiaryWeb.PreparationComponents.built_line(preparation) == what
+
+      assert outputs_cause(run_list(preparation, "completed", @gone)) ==
+               {what <> " Rebuild northwind/storefront to build the image again.", []}
+
+      # A reader who may not rebuild the target's environment asks an admin of the
+      # workspace.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoEnvironmentRebuild)
+      workspace = ctx.scope.workspace.name
+      preparation = Preparation.read(member, run)
+
+      assert %{fix: {:ask_rebuild, ^workspace, "northwind/storefront"}} = preparation.built
+
+      assert outputs_cause(run_list(preparation, "completed", @gone)) ==
+               {what <> " Ask an admin of #{workspace} to rebuild northwind/storefront.", []}
+    end
+
+    test "a build whose image never arrived fails Save the outputs, with where to read why",
+         ctx do
+      run = project!(ctx.run, prebuild_events(report: false, image: "unused"))
+      assert run.state == "failed"
+      what = "The image was not saved: the build finished, but no image arrived."
+
+      cause = fn preparation ->
+        html = run_list(preparation, "failed", @gone)
+        assert row_state(html, "prepare-machine-build") == ["succeeded"]
+        assert row_state(html, "prepare-machine-outputs") == ["failed"]
+        assert ApiaryWeb.PreparationComponents.built_line(preparation) == what
+        html |> outputs_cause() |> elem(0)
+      end
+
+      # A pool of the workspace: its log on its host.
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert %{refused: :not_sent, at: at, image: nil, fix: {:pool_log, "build-pool"}} =
+               preparation.built
+
+      assert at == run.exited_at
+
+      assert cause.(preparation) ==
+               what <> " Read the cause in the log of build-pool on its host."
+
+      # A pool of another organisation, which an edition may let serve the workspace, is
+      # in `ApiaryWeb.RunListTest`: a dispatch's pool is of its workspace or the
+      # instance's here (`pool_place_matches`).
+
+      # The instance's pool: support, with the run.
+      change_dispatch!(ctx.dispatch, pool_id: instance_pool_fixture(%{name: "qory-pool"}).id)
+      preparation = Preparation.read(ctx.scope, run)
+      assert cause.(preparation) == what <> " Contact support with run #{run.public_id}."
+
+      # An instance admin: the machine log, under Start the machine.
+      Apiary.EditionKit.module().hide_instance_organisation(
+        Apiary.Edition.instance_organisation_id()
+      )
+
+      assert Apiary.Access.instance_admin?(ctx.scope)
+      preparation = Preparation.read(ctx.scope, run)
+      assert %{fix: :machine_log} = preparation.built
+
+      assert cause.(preparation) ==
+               what <> " Read the machine log under Start the machine for the cause."
+    end
+
+    test "a prebuild lost or cancelled after its build fails Save the outputs, with that line",
+         ctx do
+      events =
+        Enum.map(prebuild_events(report: false, image: "unused"), fn
+          {seq, "run.exited", data} ->
+            {seq, "run.exited", %{data | "state" => "cancelled", "exit_code" => -1}}
+
+          event ->
+            event
+        end)
+
+      run = project!(ctx.run, events)
+      assert run.state == "cancelled"
+      preparation = Preparation.read(ctx.scope, run)
+      assert %{refused: :cancelled, at: at, image: nil, fix: nil} = preparation.built
+      assert at == run.exited_at
+
+      cancelled =
+        "The image was not saved: the build finished, but the run was cancelled before " <>
+          "an image arrived."
+
+      assert ApiaryWeb.PreparationComponents.built_line(preparation) == nil
+      assert ApiaryWeb.PreparationComponents.unsaved_line(preparation) == cancelled
+
+      html = run_list(preparation, "cancelled", @gone)
+      assert row_state(html, "prepare-machine-outputs") == ["failed"]
+      assert outputs_cause(html) == {cancelled, []}
+
+      lost_at = DateTime.add(run.exited_at, 30, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [state: "lost", lost_at: lost_at]
+        )
+
+      preparation = Preparation.read(ctx.scope, Repo.get!(Run, run.id))
+      assert %{refused: :lost, at: ^lost_at, fix: nil} = preparation.built
+
+      lost =
+        "The image was not saved: the build finished, but the run was lost before an " <>
+          "image arrived."
+
+      assert ApiaryWeb.PreparationComponents.unsaved_line(preparation) == lost
+      assert outputs_cause(run_list(preparation, "lost", @gone)) == {lost, []}
     end
   end
 

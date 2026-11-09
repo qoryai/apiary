@@ -47,6 +47,15 @@ defmodule Apiary.EditionStubs do
       do: Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
   end
 
+  defmodule NoEnvironmentRebuild do
+    @moduledoc """
+    Nobody may rebuild a target's environment (`target.rebuild_environment`), as under an
+    edition with a role that reads runs and may not rebuild.
+    """
+    def check(_scope, :"target.rebuild_environment", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule OperatorChain do
     @moduledoc """
     The operator's rows are the whole chain of model choices of every organisation

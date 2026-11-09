@@ -44,7 +44,8 @@ defmodule Apiary.Dispatches.RunRefusedTest do
     assert %DispatchRun{state: :ended, end_cause: ^cause, end_detail: ^detail} =
              queue_run!(handed.queued)
 
-    assert %Dispatch{end_cause: ^cause, ended_at: %DateTime{}, slot_freed_at: %DateTime{}} =
+    # Handed over, its machine was made: the slot waits for the report that it is gone.
+    assert %Dispatch{end_cause: ^cause, ended_at: %DateTime{}, slot_freed_at: nil} =
              dispatch!(handed.dispatch)
   end
 
@@ -62,7 +63,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
                Projector.project(handed.run)
 
       assert_ended(handed, :run_refused, "model_key_missing")
-      assert Slots.held(ctx.pool.id) == 0
+      assert Slots.held(ctx.pool.id) == 1
       assert %DispatchRun{result_outcome: nil, result: nil} = queue_run!(handed.queued)
       assert_received {Dispatches, :changed}
 
@@ -83,7 +84,7 @@ defmodule Apiary.Dispatches.RunRefusedTest do
 
       assert [%DispatchRun{attempt: 1, end_cause: :run_refused}] = runs_of(handed.work_item)
       assert {:ok, :none} = Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
-      assert Slots.held(ctx.pool.id) == 0
+      assert Slots.held(ctx.pool.id) == 1
     end
 
     test "is ended by the lost-run check when the end after the projection did not run", ctx do
