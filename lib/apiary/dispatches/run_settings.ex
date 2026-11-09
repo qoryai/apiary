@@ -182,7 +182,7 @@ defmodule Apiary.Dispatches.RunSettings do
   def choice_in_effect(%DispatchRun{}), do: nil
 
   # The run's workflow: with the workflow model, the one its stage entry names
-  # (`Apiary.Stages.run_workflow/1`); else the one the Workflow page saved.
+  # (`Apiary.Stages.run_workflow/1`); else the one the Harness page saved.
   defp workflow(dispatch_run, workspace, target),
     do: Apiary.Stages.run_workflow(dispatch_run) || Stacks.workflow(workspace, target)
 

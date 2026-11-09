@@ -673,9 +673,16 @@ defmodule Apiary.Dispatches.HandoverTest do
 
   describe "the harness at the claim" do
     # A run whose harness walk resolved `git` on `ref`, its pin at the commit the walk at
-    # the queue read.
+    # the queue read. The run has no process version, as with the feature
+    # `workflow_model` off, so its harness is read as its walk has it (`on_version!/3`
+    # puts it on one).
     defp walked!(ctx, git, ref, at, changes \\ []) do
       {_work_item, queued} = queued!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [process_version_id: nil]
+        )
 
       walk_resolved!(
         queued,
@@ -1077,6 +1084,89 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == "main"
     end
 
+    # A version of the workspace of `ctx` with the harness record `template`, based on
+    # `based_on`, and a version based on it with none, written directly; `run` on the
+    # second.
+    defp on_version!(ctx, run, template) do
+      workspace = ctx.scope.workspace
+      v1 = Apiary.Processes.current(workspace)
+
+      insert = fn number, based_on, template ->
+        Repo.insert!(%Apiary.Processes.Version{
+          organisation_id: workspace.organisation_id,
+          workspace_id: workspace.id,
+          public_id: Apiary.PublicId.generate("pv"),
+          number: number,
+          status: :trial,
+          document: v1.document,
+          template: template,
+          based_on_id: based_on.id
+        })
+      end
+
+      made = insert.(2, v1, template)
+      edited = insert.(3, made, nil)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+          set: [process_version_id: edited.id]
+        )
+    end
+
+    test "a run of a process version composes the commit its version came from, with no read",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      commit = String.duplicate("ab", 20)
+      on_version!(ctx, queued, %{"source" => "qory", "git" => Qory.git(), "commit" => commit})
+      PublicGitServer.serve(%{}, answer: fn _conn -> flunk("no read at the claim") end)
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == commit
+      assert walk!(queued).pins == [%{"git" => Qory.git(), "ref" => "main", "at" => commit}]
+      assert walk!(queued).document["extends"]["ref"] == "main"
+    end
+
+    test "a run of a process version of the Qory harness at another address is read", ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+
+      on_version!(ctx, queued, %{
+        "source" => "qory",
+        "git" => "https://code.example.com/acme/old-harness",
+        "commit" => String.duplicate("ab", 20)
+      })
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] ==
+               QoryHarnessFixture.commit()
+    end
+
+    test "a run of a process version of a harness repository on a branch composes its commit",
+         ctx do
+      git = "https://code.example.com/acme/harness"
+      queued = walked!(ctx, git, "main", String.duplicate("cd", 20), ref_kind: :branch)
+      commit = String.duplicate("ef", 20)
+      on_version!(ctx, queued, %{"source" => "repository", "git" => git, "commit" => commit})
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == commit
+      assert walk!(queued).pins == [%{"git" => git, "ref" => "main", "at" => commit}]
+    end
+
+    test "a run of a process version of another harness is sent as today", ctx do
+      git = "https://code.example.com/acme/harness"
+      at = String.duplicate("cd", 20)
+      queued = walked!(ctx, git, "main", at, ref_kind: :branch)
+      on_version!(ctx, queued, %{"source" => "qory", "commit" => String.duplicate("ef", 20)})
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == at
+    end
+
+    test "a run of a process version on a tag of the Qory harness composes the tag's commit",
+         ctx do
+      tagged = QoryHarnessFixture.serve!(QoryHarnessFixture.files(), tags: ["v1.0.0"])
+      queued = walked!(ctx, Qory.git(), "v1.0.0", tagged.commit, ref_kind: :tag)
+      on_version!(ctx, queued, %{"source" => "qory", "commit" => String.duplicate("ef", 20)})
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == tagged.commit
+    end
+
     test "a run at another step with the column NULL is read and claimed at its first claim, with no files kept",
          ctx do
       queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
@@ -1102,10 +1192,17 @@ defmodule Apiary.Dispatches.HandoverTest do
       queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
       QoryHarnessFixture.serve!()
 
-      # Queued before the first read of the Qory harness: no files kept, and the column NULL.
+      # Queued before the first read of the Qory harness: no files kept, the column NULL,
+      # and a process version made from no commit of the harness.
       {1, _rows} =
         Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
           set: [explore: nil, workflow: "explore-a-ticket"]
+        )
+
+      {_count, _rows} =
+        Repo.update_all(
+          from(v in Apiary.Processes.Version, where: v.workspace_id == ^queued.workspace_id),
+          set: [template: %{"type" => "qory.software", "version" => 1}]
         )
 
       {_count, _rows} = Repo.delete_all("qory_harness_heads")

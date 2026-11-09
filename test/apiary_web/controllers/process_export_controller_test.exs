@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.ProcessExportControllerTest do
-  # `GET /:org/:workspace/settings/stages/process.yaml`: the file for an owner or an admin,
+  # `GET /:org/:workspace/settings/workflows/process.yaml`: the file for an owner or an admin,
   # with its headers, and `404` for everyone else and on an instance without the features.
   #
   # Not async: each test sets the instance's features, which are the whole node's.
@@ -14,7 +14,8 @@ defmodule ApiaryWeb.ProcessExportControllerTest do
 
   setup :register_and_log_in_user
 
-  defp path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/stages/process.yaml"
+  defp path(scope),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/workflows/process.yaml"
 
   # The status of a request, which the feature's gate sends as a response or as an error.
   defp status(conn, path) do
@@ -48,7 +49,9 @@ defmodule ApiaryWeb.ProcessExportControllerTest do
     scope: scope
   } do
     %{user: member} = member_fixture(scope)
-    missing = get(conn, ~p"/#{scope.organisation}/no-such-workspace/settings/stages/process.yaml")
+
+    missing =
+      get(conn, ~p"/#{scope.organisation}/no-such-workspace/settings/workflows/process.yaml")
 
     {status, headers, body} =
       assert_error_sent(404, fn ->

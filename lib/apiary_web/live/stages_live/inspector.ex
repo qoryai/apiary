@@ -3,7 +3,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   # then a box each for its inputs, sequence, outputs and gate, or the same read-only (`may`
   # false), with the description above the boxes. A workflow's settings fold under its row,
   # closed until a person opens them; a closed fold's fields still go with the form. The
-  # Stages page and Instance settings › Workspace types show it beside the canvas; each sends
+  # Workflows page and Instance settings › Workspace types show it beside the canvas; each sends
   # its form's events to `ApiaryWeb.StagesLive.Editor`.
   @moduledoc false
 

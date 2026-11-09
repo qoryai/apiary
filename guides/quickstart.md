@@ -366,12 +366,11 @@ later.
    **Repositories**; the harness you choose here; the harness your organisation shares;
    the **Qory harness**.
    Keep **Qory harness** and select **Continue**. The test run uses a built-in harness
-   whatever you choose. **Workspace settings › Workflow** shows the choice with its
-   branch, tag or commit, and **Change** there opens the same two choices. With the
-   `workflow_model` feature, the settings list **Stages** in place of **Workflow**: the
-   **Details** tab of **Workspace settings › Stages** shows the harness, and **Change**
-   beside the harness opens the harness's page. Only owners and admins save a harness
-   choice.
+   whatever you choose. **Workspace settings › Harness** shows the choice with its
+   source, stack and branch, tag or commit, and **Change** there opens the same two
+   choices. With the `workflow_model` feature, the settings also list **Workflows**: its
+   **Details** tab shows the harness, and **Open Harness** beside the harness opens
+   **Workspace settings › Harness**. Only owners and admins save a harness choice.
 5. **Machines.** **Which machines run the runs in Main?** shows the pools that
    serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
    shows **Ready** with its gateway, or **Not ready** with the reason. While Main has no
@@ -420,8 +419,8 @@ main-pool is running. No machine has taken the test run yet." for a pool of Main
 for the Qory Pool. After a pass, **Go to Main** opens Main's overview,
 and opening Main opens the overview from then on.
 
-The test run needs no workflow. Before later runs, open **Workspace settings › Workflow**,
-`/acme/main/settings/workflow`, which opens for owners and admins. In **Source**, choose
+The test run needs no workflow. Before later runs, open **Workspace settings › Harness**,
+`/acme/main/settings/harness`, which opens for owners and admins. In **Workflow source**, choose
 the harness repository, such as `example-org/harness`: the list has the repositories
 linked to Acme that have a `qory-stack.yaml` file, and the harness sources an instance
 admin assigned to Acme. For a public repository that is not in the list, choose **Enter an
@@ -430,12 +429,12 @@ address**, and enter its address in **Public address**, such as
 **Workflow**, choose one of the workflows that the repository's stack lists, and select
 **Save**. **Save** sets only which workflow Main's runs use, not their harness.
 
-With the `workflow_model` feature, the settings list **Stages** in place of **Workflow**,
-and each stage runs the workflows set for it. Open **Workspace settings › Stages**,
-`/acme/main/settings/stages`. On its **Details** tab, **Change** beside the harness
-opens the harness's page. There, select **Change**, choose **A harness repository** with
-its **Repository**, **Stack** and **Version**, and select **Save**. Back on the **Stages**
-tab, select a stage, choose its workflow under **Sequence**, and select **Save**.
+With the `workflow_model` feature, the Harness page has no workflow choice, and each
+stage runs the workflows set for it. On **Workspace settings › Harness**, select
+**Change**, choose **A harness repository** with its **Repository**, **Stack** and
+**Version**, and select **Save**. Then open **Workspace settings › Workflows**,
+`/acme/main/settings/workflows`. On its **Stages** tab, select a stage, choose its
+workflow under **Sequence**, and select **Save**.
 <!-- /feature -->
 
 ## Next

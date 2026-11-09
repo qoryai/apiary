@@ -12,6 +12,15 @@ defmodule Apiary.Dispatches.HarnessReads do
   # its first lock and its commit. A base at a full commit id needs no read.
   # A successful read is kept for that claim alone: the next claim reads again.
   #
+  # **A run of a process version.** A run with a process version (`process_version_id`)
+  # composes the harness commit that version was made from, or the nearest version it was
+  # based on that has one (`Apiary.Processes.harness_template/1`), with no read: a base
+  # of the Qory harness with no version or on a branch, and a base of a harness
+  # repository on a branch, where the record is of that harness (`source` `qory` and the
+  # Qory harness's address as its `git`, else `repository` with the base's `git`). A base
+  # at a tag or a commit, a record of another harness or of an address the instance set
+  # before, and a run with no such record, are read as below.
+  #
   # **A failed read.**
   #
   #   * a branch, a tag or a commit the repository does not have (`ref_missing`): the run
@@ -53,7 +62,7 @@ defmodule Apiary.Dispatches.HarnessReads do
 
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.{PublicGit, Qory, RunHarness}
-  alias Apiary.Repo
+  alias Apiary.{Processes, Repo}
 
   @read_ms 10_000
   @read_requests 32
@@ -83,13 +92,16 @@ defmodule Apiary.Dispatches.HarnessReads do
           on: h.dispatch_run_id == r.id,
           where: h.state == :resolved and h.origin in [:setting, :builtin],
           limit: ^max,
-          select: h
+          select: {h, r.process_version_id}
       )
+
+    templates =
+      for {_walk, id} <- walks, uniq: true, into: %{}, do: {id, Processes.harness_template(id)}
 
     pairs =
       walks
-      |> Enum.flat_map(fn walk ->
-        case read_of(walk) do
+      |> Enum.flat_map(fn {walk, version_id} ->
+        case read_of(walk, Map.fetch!(templates, version_id)) do
           {:read, pair} -> [{pair, walk}]
           _none -> []
         end
@@ -133,11 +145,11 @@ defmodule Apiary.Dispatches.HarnessReads do
   # that timed out, met the host's limit or a server error is recorded on the run's walk,
   # and a successful read clears it.
   @spec at_claim(DispatchRun.t(), reads, DateTime.t()) :: read
-  def at_claim(%DispatchRun{id: id}, reads, now) do
+  def at_claim(%DispatchRun{id: id, process_version_id: version_id}, reads, now) do
     walk =
       Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id and h.state == :resolved)
 
-    case walk && read_of(walk) do
+    case walk && read_of(walk, Processes.harness_template(version_id)) do
       {:read, pair} -> decided(walk, Map.fetch(reads, pair), now)
       {:commit, commit} -> {:ok, commit}
       _none -> :none
@@ -190,26 +202,60 @@ defmodule Apiary.Dispatches.HarnessReads do
   defp failed_lately?(%RunHarness{updated_at: at}, now),
     do: DateTime.diff(now, at) < @again_seconds
 
-  # What a claim reads for `walk`: `{:read, {git, ref}}` for a base of the built-in
-  # harness, or of the Qory harness at a branch or a tag; `{:commit, commit}` for one at a
-  # full commit id; `:none` for any other walk, whose base is at the commit its pin
-  # records.
+  # What a claim reads for `walk`, of a run whose process version has the harness record
+  # `template` (nil for none): `{:commit, commit}` for a base that follows a branch of the
+  # harness `template` records (the moduledoc), with that record's commit;
+  # `{:read, {git, ref}}` for a base of the built-in harness, or of the Qory harness at a
+  # branch or a tag; `{:commit, commit}` for one at a full commit id; `:none` for any
+  # other walk, whose base is at the commit its pin records.
   defp read_of(
-         %RunHarness{origin: origin, document: %{"extends" => %{"git" => git} = base}} = walk
+         %RunHarness{origin: origin, document: %{"extends" => %{"git" => git} = base}} = walk,
+         template
        )
        when origin in [:setting, :builtin] do
     ref = base["ref"] || Qory.default_branch()
 
     cond do
-      origin == :setting and git != Qory.git() -> :none
-      Qory.commit?(ref) -> {:commit, ref}
-      origin == :builtin -> {:read, {git, {:branch, ref}}}
-      walk.ref_kind in [:branch, :tag] -> {:read, {git, {walk.ref_kind, ref}}}
-      true -> {:read, {git, {:branch, ref}}}
+      commit = origin == :setting and process_commit(walk, git, ref, template) ->
+        {:commit, commit}
+
+      origin == :setting and git != Qory.git() ->
+        :none
+
+      Qory.commit?(ref) ->
+        {:commit, ref}
+
+      origin == :builtin ->
+        {:read, {git, {:branch, ref}}}
+
+      walk.ref_kind in [:branch, :tag] ->
+        {:read, {git, {walk.ref_kind, ref}}}
+
+      true ->
+        {:read, {git, {:branch, ref}}}
     end
   end
 
-  defp read_of(_walk), do: :none
+  defp read_of(_walk, _template), do: :none
+
+  # The commit of `template` where the walk's base, at `git` and `ref`, follows a branch of
+  # the harness `template` records; else nil.
+  defp process_commit(walk, git, ref, %{"commit" => commit} = template) do
+    qory? = git == Qory.git()
+
+    following? =
+      not Qory.commit?(ref) and
+        (walk.ref_kind == :branch or (qory? and is_nil(walk.ref_kind)))
+
+    same? =
+      if qory?,
+        do: template["source"] == "qory" and template["git"] == git,
+        else: template["source"] == "repository" and template["git"] == git
+
+    if following? and same? and Qory.commit?(commit), do: commit
+  end
+
+  defp process_commit(_walk, _git, _ref, _template), do: nil
 
   defp read_env(key, default) do
     :apiary

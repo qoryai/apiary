@@ -1,12 +1,12 @@
-defmodule ApiaryWeb.WorkflowLiveTest do
+defmodule ApiaryWeb.HarnessLiveTest do
   @moduledoc """
-  Workspace settings › Workflow (`ApiaryWeb.WorkflowLive`) against stub adapters
+  Workspace settings › Harness (`ApiaryWeb.HarnessLive`) against stub adapters
   (`Req.Test`): who opens it and where it is in the list; About this step, with the
   paragraphs on the harness; the harness choice and its version; the destinations' Stack
   selects under the choice, their saves and refusals; each kind of source, read when
   chosen; a refused address; the save, its document, and the setting shown again. With
   the feature `workflow_model`, the page keeps the harness choice, drops the workflow
-  choice and links to Stages.
+  choice and links to Workflows.
 
   Not async: each test sets the instance's features, which are the whole node's. The
   workflow choice is tested with `workflow_model` off, as an instance without it shows it.
@@ -62,7 +62,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       adapter: adapter,
       covered: covered,
       linked_id: "linked:" <> harness.public_id,
-      path: workspace_path(scope, "/settings/workflow")
+      path: workspace_path(scope, "/settings/harness")
     }
   end
 
@@ -81,6 +81,19 @@ defmodule ApiaryWeb.WorkflowLiveTest do
   defp end_collections! do
     Repo.update_all(Apiary.Adapters.Collection,
       set: [ended_at: DateTime.utc_now(), ended_reason: :not_listed]
+    )
+  end
+
+  # The rows Source, Stack and Version, as "title · stack · version".
+  defp line(view) do
+    stack =
+      if has_element?(view, "#harness-row-stack"),
+        do: words(view, "#harness-row-stack p:last-child"),
+        else: "no stack"
+
+    Enum.join(
+      [words(view, "#harness-row-source-title"), stack, words(view, "#harness-row-version-line")],
+      " · "
     )
   end
 
@@ -109,11 +122,12 @@ defmodule ApiaryWeb.WorkflowLiveTest do
     } do
       view = open(conn, path)
 
-      assert has_element?(view, "#settings-section-title", "Workflow")
-      assert has_element?(view, ~s(#settings-tab-workflow[href="#{path}"][aria-current="page"]))
+      assert has_element?(view, "#settings-section-title", "Harness")
+      assert has_element?(view, ~s(#settings-tab-harness[href="#{path}"][aria-current="page"]))
+      refute has_element?(view, "#settings-tab-workflows")
 
       html = render(view)
-      [before, _after] = String.split(html, ~s(id="settings-tab-workflow"), parts: 2)
+      [before, _after] = String.split(html, ~s(id="settings-tab-harness"), parts: 2)
       assert before =~ ~s(id="settings-tab-general")
       refute before =~ ~s(id="settings-tab-runs")
       assert html =~ ~s(id="settings-tab-runs")
@@ -132,7 +146,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
 
       {:ok, view, _html} = live(conn, workspace_path(scope, "/settings/runs"))
-      refute has_element?(view, "#settings-tab-workflow")
+      refute has_element?(view, "#settings-tab-harness")
     end
 
     test "another organisation's owner finds no such page", %{path: path} do
@@ -407,7 +421,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
         Sources.choose(scope, {:repository, %{git: @harness}, "triage", {:branch, "main"}})
 
       assert Processes.declared_snapshot(scope.workspace) == nil
-      open(conn, workspace_path(scope, "/settings/workflow"))
+      open(conn, workspace_path(scope, "/settings/harness"))
 
       assert %{names: ["fix", "triage"]} = Processes.declared_snapshot(scope.workspace)
     end
@@ -726,10 +740,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
          %{conn: conn, path: path} do
       view = open(conn, path)
 
-      assert has_element?(view, "#workflow-harness", "Harness")
-
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software main"
+      assert has_element?(view, "#harness-row-source", "Source")
+      assert line(view) == "Qory harness · software · Follows main"
 
       refute render(view) =~ "fe3b3ab"
       assert has_element?(view, "#workflow-harness-change", "Change")
@@ -763,7 +775,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> render_submit()
 
       render_async(view, 2_000)
-      assert words(view, "#harness-line") == "Qory harness, stack software main"
+      assert line(view) == "Qory harness · software · Follows main"
 
       refute has_element?(view, "#workflow-harness-form")
 
@@ -793,7 +805,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       |> render_submit()
 
       render_async(view, 2_000)
-      assert words(view, "#harness-line") == "Qory harness, stack software v1.0.0"
+      assert line(view) == "Qory harness · software · Tag v1.0.0"
       assert %{version_kind: :tag, version_name: "v1.0.0"} = Stacks.choice(scope.workspace)
 
       view = conn |> open(path) |> change_harness()
@@ -808,8 +820,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       render_async(view, 2_000)
 
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software #{String.slice(repository.commit, 0, 7)}"
+      assert line(view) ==
+               "Qory harness · software · Commit #{String.slice(repository.commit, 0, 7)}"
 
       assert %{version_kind: :commit, version_name: commit} = Stacks.choice(scope.workspace)
       assert commit == repository.commit
@@ -883,7 +895,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
       view = open(conn, path)
 
-      assert words(view, "#harness-line") == "Qory harness, stack core main"
+      assert line(view) == "Qory harness · core · Follows main"
     end
 
     test "without a choice of the workspace: the shared harness and its version as a line, with no version field",
@@ -892,14 +904,14 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       {:ok, _shared} = Sources.choose(scope, :qory, shared: true)
       view = open(conn, path)
 
-      assert words(view, "#harness-line") == "Qory harness, stack software main"
+      assert line(view) == "Qory harness · software · Follows main"
 
       refute has_element?(view, "#harness-qory-version")
       refute has_element?(view, "#harness-version")
 
       for {version, line} <- [
-            {{:branch, "main"}, "triage · acme/harness · main"},
-            {{:tag, "v1"}, "triage · acme/harness · v1"}
+            {{:branch, "main"}, "triage · Follows main"},
+            {{:tag, "v1"}, "triage · Tag v1"}
           ] do
         {:ok, _shared} =
           Stacks.put_stack(
@@ -912,7 +924,8 @@ defmodule ApiaryWeb.WorkflowLiveTest do
 
         view = open(conn, path)
 
-        assert words(view, "#harness-line") == "A harness repository " <> line
+        assert line(view) == "A harness repository · " <> line
+        assert has_element?(view, ~s(#harness-row-source-link[href="#{@harness}"]))
         refute has_element?(view, "#harness-qory-version")
         refute has_element?(view, "#harness-version")
       end
@@ -1029,7 +1042,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       # The choice saved, its stack is read again: it lists no workflows.
       assert %{names: []} = Processes.declared_snapshot(scope.workspace)
 
-      assert words(view, "#harness-line") == "A harness repository triage · acme/harness · v2"
+      assert line(view) == "A harness repository · triage · Tag v2"
 
       assert {"R_harness", "harness.yaml", "v2"} in for(
                {"read", call} <- calls(),
@@ -1130,8 +1143,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
                "acme/harness lists the stack triage under exports, but stacks/triage has no " <>
                  "qory-stack.yaml. Add that file."
 
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software main"
+      assert line(view) == "Qory harness · software · Follows main"
 
       assert Stacks.choice(scope.workspace) == nil
     end
@@ -1157,8 +1169,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert words(view, "#workflow-harness-refusal") ==
                "acme/harness has no branch, tag or commit named v9. Correct the version."
 
-      assert words(view, "#harness-line") ==
-               "Qory harness, stack software main"
+      assert line(view) == "Qory harness · software · Follows main"
 
       assert Stacks.choice(scope.workspace) == nil
     end
@@ -1226,7 +1237,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
                "Stack"
 
       # Under the choice's line, and under its form once Change opens it.
-      assert before?(render(view), "harness-line", "harness-targets")
+      assert before?(render(view), "harness-rows", "harness-targets")
       assert before?(render(view), "harness-targets", "workflow-form")
       change_harness(view)
       assert before?(render(view), "workflow-harness-form", "harness-targets")
@@ -1273,7 +1284,7 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       render_async(view, 2_000)
       render_async(view, 2_000)
 
-      assert words(view, "#harness-line") == "A harness repository triage · acme/harness · v2"
+      assert line(view) == "A harness repository · triage · Tag v2"
 
       assert row_options(view, destination) == [
                {"Workspace's harness", "default"},
@@ -1409,31 +1420,37 @@ defmodule ApiaryWeb.WorkflowLiveTest do
       assert has_element?(view, "#workflow-harness-form")
     end
 
-    test "the sidebar's Stages entry takes the place of Workflow", %{
+    test "the sidebar lists Workflows, then Harness, the current section", %{
       conn: conn,
       path: path,
       scope: scope
     } do
       view = open(conn, path)
 
-      stages = workspace_path(scope, "/settings/stages")
-      assert has_element?(view, ~s(#settings-tab-stages[href="#{stages}"][aria-current="page"]))
-      refute has_element?(view, "#settings-tab-workflow")
+      assert has_element?(view, "#settings-section-title", "Harness")
+      assert has_element?(view, ~s(#settings-tab-harness[href="#{path}"][aria-current="page"]))
+
+      workflows = workspace_path(scope, "/settings/workflows")
+      assert has_element?(view, ~s(#settings-tab-workflows[href="#{workflows}"]), "Workflows")
+      refute has_element?(view, ~s(#settings-tab-workflows[aria-current="page"]))
+
+      [before, _after] = String.split(render(view), ~s(id="settings-tab-harness"), parts: 2)
+      assert before =~ ~s(id="settings-tab-workflows")
     end
 
-    test "the page links to Stages", %{conn: conn, path: path, scope: scope} do
+    test "the page links to Workflows", %{conn: conn, path: path, scope: scope} do
       view = open(conn, path)
 
       assert has_element?(
                view,
                "#workflow-stages",
-               "Set the stages of #{scope.workspace.name}, and the workflows each stage runs, on the Stages page."
+               "Set the stages of #{scope.workspace.name}, and the workflows each stage runs, on the Workflows page."
              )
 
       assert has_element?(
                view,
-               ~s(#workflow-stages-link[href="#{workspace_path(scope, "/settings/stages")}"]),
-               "Open Stages"
+               ~s(#workflow-stages-link[href="#{workspace_path(scope, "/settings/workflows")}"]),
+               "Open Workflows"
              )
     end
   end

@@ -2904,7 +2904,7 @@ defmodule Apiary.Harnesses.WalkTest do
     end
   end
 
-  ## Explore with no row on the Workflow page
+  ## Explore with no row on the Harness page
 
   describe "a stage's run of explore-a-ticket" do
     @describetag needs: [:factory, :workflow_model]
@@ -3050,7 +3050,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, _row} = Sources.choose(ctx.scope, :qory)
       assert %{choice: :qory, stack: "core", saved: true} = Sources.chosen(workspace)
 
-      # What the Workflow page, the Stages page and Check again record once it moved.
+      # What the Harness page, the Workflows page and Check again record once it moved.
       assert Sources.chosen_workflows(ctx.scope, workspace) == {:ok, []}
       :ok = Apiary.Processes.record_declared(workspace, [])
       assert Apiary.Processes.declared_workflows(workspace) == []

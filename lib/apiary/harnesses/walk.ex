@@ -55,7 +55,7 @@ defmodule Apiary.Harnesses.Walk do
   # else `invalid`. A row with a version has its base's `ref` replaced by the `ref` of
   # that version (`Apiary.Stacks.version_ref/3`), which the run's document then has. The
   # `ref` is checked as any source's below. The walk reads no document of a row with a workflow: Workspace
-  # settings › Workflow sets the runs' workflow there (`Apiary.Stacks.workflow/2`) and
+  # settings › Harness sets the runs' workflow there (`Apiary.Stacks.workflow/2`) and
   # the access level it records (`Apiary.Stacks.recorded_access/3`).
   #
   # ## The sources, two levels

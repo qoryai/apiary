@@ -441,7 +441,7 @@ defmodule Apiary.Stages do
   # run_workflow/1 is the workflow a run of a stage starts, its `workflow`, with the
   # workflow model on: the name its harness walk, its documents, its time limits and its
   # model choice are read by. nil for a run the stage runner did not queue, or with the
-  # workflow model off, which keep the workflow the Workflow page saved
+  # workflow model off, which keep the workflow the Harness page saved
   # (`Apiary.Stacks.workflow/2`).
   @doc false
   @spec run_workflow(DispatchRun.t()) :: String.t() | nil
@@ -454,8 +454,9 @@ defmodule Apiary.Stages do
   # Transition (D1): explore_workflow/1 is the workflow whose runs return today's explore
   # v1 result in `workspace`, a workspace or its id: the first workflow of the process of
   # the Qory harness's template that the template's stack lists, in stage order, at the
-  # commit of the workspace's harness settings, as the stored files have it
-  # (`Apiary.Harnesses.Qory.workspace_commit/1`). It reads the database only. Nil for
+  # commit the runs of the workspace's current version compose, else at the commit of the
+  # workspace's harness settings, as the stored files have it
+  # (`Apiary.Processes.HarnessUpdate.qory_in_use/1`). It reads the database only. Nil for
   # none, and then no stage is Explore.
   # Where that commit's files are not kept, as before the first read of the harness or
   # after the instance's harness address changed, the newest commit kept stands in
@@ -463,7 +464,7 @@ defmodule Apiary.Stages do
   @doc false
   @spec explore_workflow(Workspace.t() | Ecto.UUID.t()) :: String.t() | nil
   def explore_workflow(workspace) do
-    commit = Qory.workspace_commit(workspace)
+    commit = Processes.HarnessUpdate.qory_in_use(workspace)
     commit = if Processes.template_process(commit), do: commit, else: Qory.newest()
     listed = Processes.qory_workflows(commit)
 
@@ -2430,10 +2431,10 @@ defmodule Apiary.Stages do
   @doc false
   @spec not_in_qory(String.t(), String.t()) :: String.t()
   def not_in_qory(stage, workflow) do
-    "Choose another workflow for #{stage} in Workspace settings › Stages. " <>
-      "To keep #{workflow}, change the harness on that page's Details tab to one that " <>
-      "lists it under workflows. #{stage} uses #{workflow}, which the Qory harness does " <>
-      "not list."
+    "Choose another workflow for #{stage} in Workspace settings › Workflows. " <>
+      "To keep #{workflow}, change the harness in Workspace settings › Harness to one " <>
+      "that lists it under workflows. #{stage} uses #{workflow}, which the Qory harness " <>
+      "does not list."
   end
 
   defp gaps(%Escalation{}, _work_item, _stage, _artifacts), do: nil

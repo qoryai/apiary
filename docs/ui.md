@@ -1353,13 +1353,15 @@ mark and the theme menu.
   canvas), and a 24rem side panel beside it has the template's name as the page's
   heading, its summary, "How it works" with its description, "Stages" with "The workspace
   starts with the stages shown. After you create it, owners and admins can change them in
-  Workspace settings › Stages.", the harness line "Harness: Qory harness, stack software"
+  Workspace settings › Workflows.", the harness line "Harness: Qory harness, stack software"
   (with the feature `factory`), and **Create workspace** under the text. Without
   `workflow_model` there is no canvas: "How it works" takes the main area, and the side
   panel has the name, the summary, the harness line and Create workspace. **Create workspace** creates the workspace, named after the
   template ("Software factory", then "Software factory 2"), and opens its step Name.
-  Workspace settings › Stages and Workflow then show its harness with its stack: "Harness:
-  Qory harness, stack software", or "stack core" for a workspace made with no template.
+  Workspace settings › Workflows > Details then shows its harness with its stack and the
+  commit its process came from: "Harness: Qory harness, stack software, commit 4960195",
+  or "Harness: Qory harness, stack core" for a workspace made with no template. Workspace
+  settings › Harness shows the same harness in the rows Source and Stack.
   The page shows nothing of the workspace limit; at the limit, Create workspace shows the
   edition's line as information.
   A template of a harness repository has the key `<prefix>.<module>`, split at the first
@@ -2368,7 +2370,7 @@ start when the run has both.
 
 `<Canvas.canvas>` in `ApiaryWeb.StagesLive.Canvas` draws a process's stages with React
 Flow (`assets/js/canvas.js`, a separate bundle loaded on first mount). Workspace settings ›
-Stages, Instance settings › Workspace types and a workspace type's page use it.
+Workflows, Instance settings › Workspace types and a workspace type's page use it.
 
 - **The column.** The stages lie top to bottom on a dotted ground (dots 20 px apart, the
   theme's text colour at 22 %), each a 360 px card with its name (18 px), its description
@@ -2396,7 +2398,7 @@ Stages, Instance settings › Workspace types and a workspace type's page use it
   box, the side too. Outside such a box the canvas is as tall as its column. A box that
   is the page's first element, or comes right after the shell's notices while no notice
   shows, starts at the top bar, with no page padding above it.
-- **The settings pages.** Workspace settings › Stages and Instance settings › Workspace
+- **The settings pages.** Workspace settings › Workflows and Instance settings › Workspace
   types each have two tabs under the page's title (`page_tabs/1`, `place="section"`):
   **Stages**, at the page's address, is the canvas with the inspector beside it in a
   `.q-canvas-fill` box, right under the tabs; **Details**, at `?tab=details`, starts with
@@ -2409,7 +2411,7 @@ Stages, Instance settings › Workspace types and a workspace type's page use it
   "Default (standard)", and a workflow's "Workspace default (standard)", with "Default
   (standard)" also for a workflow set to `default`. A value that no type has stays as one
   more option. A member who cannot edit reads the default's words and a type's name, such
-  as "large", in Details and in the stage's Sequence. Its hint on Stages is "Workflows that
+  as "large", in Details and in the stage's Sequence. Its hint on Workflows is "Workflows that
   pick no machine type run on this one. The people who run this Qory Apiary add machine
   types."; on Workspace types, "New workspaces of this type start with this default. Add
   machine types in Instance settings › Machine types.", with a link. The page exists

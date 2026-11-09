@@ -1,5 +1,5 @@
 // The Stages canvas (ApiaryWeb.StagesLive.Canvas), registered as the component's colocated
-// hook, on Workspace settings › Stages, Instance settings › Workspace types and a
+// hook, on Workspace settings › Workflows, Instance settings › Workspace types and a
 // workspace type's page. The page owns the process document: this hook only draws the view the page
 // sends (data-view on mount, then "stages:view" events) and sends back a selection
 // ("select"), an order of stages ("reorder"), a move by the arrow keys ("move") and a new

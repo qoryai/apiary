@@ -56,6 +56,6 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
     tabs = for [_, key] <- Regex.scan(~r/id="settings-tab-([a-z_]+)"/, html), do: key
 
     assert Enum.drop_while(tabs, &(&1 != "secrets")) ==
-             ~w(secrets model work_sources destinations workflow runs)
+             ~w(secrets model work_sources destinations harness runs)
   end
 end

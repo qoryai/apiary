@@ -9321,6 +9321,16 @@
   .q-dlines-sem .q-ctx {
     color: var(--q-muted);
   }
+  /* An entry under a change, such as a stage's added output (Update from harness). */
+  .q-dlines-sem .q-dsub {
+    padding-left: 14px;
+  }
+  /* The diff box in one column with no indent, inside a bordered section
+     (Update from harness on Workspace settings › Harness). */
+  .q-diffbox.q-diffbox-flat {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
+  }
   .q-k {
     color: var(--color-accent);
   }
@@ -10538,6 +10548,11 @@
   }
   #runs-narrowed .q-link:hover,
   #connections-target-note .q-link:hover {
+    text-decoration-color: currentColor;
+  }
+  /* The harness's address in the Source row of Workspace settings › Harness: underlined
+     at rest, as the page's other links are. */
+  #harness-row-source-link.q-link {
     text-decoration-color: currentColor;
   }
   .q-narrowed-name,
@@ -15173,7 +15188,7 @@
   }
 
   /* The filling box: one column below 1024 px (below 1328 px on Workspace settings ›
-     Stages and Instance settings › Workspace types), the canvas 70 % of the window tall
+     Workflows and Instance settings › Workspace types), the canvas 70 % of the window tall
      and the side under it; the page's edges, with no frame. */
   .q-canvas-fill {
     display: grid;
@@ -15202,7 +15217,7 @@
      box is a column whose last part stretches, and the box takes what the parts above it
      leave, never under 380 px. The side is 30rem wide (`--q-canvas-side` changes it) and
      scrolls; the canvas scrolls its column. The two blocks below set the same rules: from
-     1328 px for Workspace settings › Stages (`#stages-editor`) and Instance settings ›
+     1328 px for Workspace settings › Workflows (`#stages-editor`) and Instance settings ›
      Workspace types (`#type-editor`), and from 1024 px for every other box (a workspace
      type's page). `:where()` keeps each selector's weight as without the ids, so Focus
      and Full screen still win over these rules. */
@@ -15243,7 +15258,7 @@
       border-top: 0;
       border-left: 1px solid var(--q-border-subtle);
     }
-    /* Focus and Full screen hide the sidebar and the settings menu, so on Stages and
+    /* Focus and Full screen hide the sidebar and the settings menu, so on Workflows and
        Workspace types the side fits beside the canvas from 1024 px too. Focus sets the
        box's size, so these rules leave out `min-height`. */
     html.q-canvas-focus .q-canvas-fill:where(#stages-editor, #type-editor),
@@ -15263,7 +15278,7 @@
       border-left: 1px solid var(--q-border-subtle);
     }
   }
-  /* Workspace settings › Stages and Instance settings › Workspace types: 1328 px is the
+  /* Workspace settings › Workflows and Instance settings › Workspace types: 1328 px is the
      sidebar (240 px), the settings menu (216 px), a card of 360 px with 16 px at each side,
      and the side (480 px). */
   @media (min-width: 1328px) {

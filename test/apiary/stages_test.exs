@@ -325,10 +325,10 @@ defmodule Apiary.StagesTest do
 
       # The waiting line has no time of a read, and Check again is not its fix.
       assert Stages.status(work_item).gaps ==
-               "Choose another workflow for Explore in Workspace settings › Stages. To " <>
-                 "keep capture-demo, change the harness on that page's Details tab to one " <>
-                 "that lists it under workflows. Explore uses capture-demo, which the Qory " <>
-                 "harness does not list."
+               "Choose another workflow for Explore in Workspace settings › Workflows. To " <>
+                 "keep capture-demo, change the harness in Workspace settings › Harness to " <>
+                 "one that lists it under workflows. Explore uses capture-demo, which the " <>
+                 "Qory harness does not list."
 
       # No adapter and no public host is called: the default read takes the Qory names.
       for stub <- [Apiary.Adapters.Calls, Apiary.Harnesses.PublicGit] do
@@ -462,10 +462,12 @@ defmodule Apiary.StagesTest do
   end
 
   describe "whether a run is a run of Explore" do
-    # No commit or file of the Qory harness kept, as before its first read.
+    # No commit or file of the Qory harness kept, as before its first read, and so no
+    # process version made from a commit of it.
     defp no_harness_kept! do
       {_count, _rows} = Repo.delete_all("qory_harness_heads")
       {_count, _rows} = Repo.delete_all("qory_harness_files")
+      Repo.query!("UPDATE process_versions SET template = template - 'commit'")
       :ok
     end
 
