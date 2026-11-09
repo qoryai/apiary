@@ -1251,6 +1251,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A run's notes on missing session events sit inside or after the run's steps, never
+  above them. Each Claude Code session's **Run the agent** has the note about the wall
+  or the hooks, and each session on another runtime the note about its runtime. A run
+  whose sessions ran no agent has the runtime note after the list, above the Timeline.
+  Before, such a run showed no runtime note, and a run of Claude Code and another
+  runtime lost the note about the wall.
 - A prebuild's run page shows **Save the outputs** failed, with a cause line and the
   same line in “How it ended”, when the image was not saved: its report failed the check
   that stores it, or the run failed after the build and sent no image. The line shows the

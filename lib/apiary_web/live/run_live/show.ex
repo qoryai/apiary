@@ -628,12 +628,15 @@ defmodule ApiaryWeb.RunLive.Show do
         </.notice>
       </div>
 
+      <%!-- The notes of the run: above the Timeline, which follows the **Run** list when
+      the page has one, or in the agent session each is about (`run_notes/5`). --%>
       <.limits
-        :if={shown_limit(@limit, @preparation, @clean_up)}
-        reason={shown_limit(@limit, @preparation, @clean_up)}
-        runtime={shown_sent(@run.runtime)}
+        :for={{reason, runtime} <- run_notes(@limit, @run, @index, @preparation, @clean_up)}
+        :if={!PreparationComponents.shown?(@preparation, @clean_up)}
+        reason={reason}
+        runtime={shown_sent(runtime)}
         registered={!!@run.registered_at}
-        only_result={@limit == :vm_wall and only_result?(@index)}
+        only_result={reason == :vm_wall and only_result?(@index)}
         terminal={Access.can?(@current_scope, :"run.read_log", @run)}
       />
 
@@ -657,14 +660,25 @@ defmodule ApiaryWeb.RunLive.Show do
           :if={PreparationComponents.session_group?(@preparation, @clean_up)}
         >
           <.limits
-            :if={session_runtime(@preparation, session)}
-            reason={:other_runtime}
-            runtime={shown_sent(session_runtime(@preparation, session))}
+            :for={{reason, runtime} <- session_notes(@limit, @run, @index, @preparation, session)}
+            reason={reason}
+            runtime={shown_sent(runtime)}
+            only_result={reason == :vm_wall and only_result?(@index)}
             terminal={Access.can?(@current_scope, :"run.read_log", @run)}
           />
           <.timeline_list {assigns} session={session} />
         </:session>
       </.run_list>
+
+      <.limits
+        :for={{reason, runtime} <- run_notes(@limit, @run, @index, @preparation, @clean_up)}
+        :if={PreparationComponents.shown?(@preparation, @clean_up)}
+        reason={reason}
+        runtime={shown_sent(runtime)}
+        registered={!!@run.registered_at}
+        only_result={reason == :vm_wall and only_result?(@index)}
+        terminal={Access.can?(@current_scope, :"run.read_log", @run)}
+      />
 
       <.timeline_list
         :if={!PreparationComponents.session_group?(@preparation, @clean_up)}
@@ -2661,17 +2675,6 @@ defmodule ApiaryWeb.RunLive.Show do
   # hooks alone.
   defp other_runtime?(runtime), do: is_binary(runtime) and runtime != "claude"
 
-  # The runtime of the agent session that started at `sequence`, for the note above its
-  # Timeline, when that runtime sends no session events (`other_runtime?/1`); else nil.
-  defp session_runtime(%{sessions: sessions}, sequence) do
-    case Enum.find(sessions, &(&1.sequence == sequence)) do
-      %{runtime: runtime} -> if other_runtime?(runtime), do: runtime
-      nil -> nil
-    end
-  end
-
-  defp session_runtime(_preparation, _sequence), do: nil
-
   defp older_than?(%DateTime{} = at, seconds), do: DateTime.diff(DateTime.utc_now(), at) > seconds
   defp older_than?(_at, _seconds), do: false
 
@@ -3796,18 +3799,95 @@ defmodule ApiaryWeb.RunLive.Show do
     )
   end
 
-  # The note above the timeline. A run that stopped before an agent session ran has none,
-  # as at a wall that failed: its failed step and How it ended state what happened. A
-  # wall's note is for a run whose agent session started. The note on a runtime that sends
-  # no session events is above the timeline only on a run with no **Run** list; with one,
-  # it is in the step of each such session, above its Timeline (`session_runtime/2`).
-  defp shown_limit(_limit, %{stopped: %{}, session_started_at: nil}, _clean_up), do: nil
-  defp shown_limit(:vm_wall, %{session_started_at: nil}, _clean_up), do: nil
+  # The notes of the run outside its agent sessions, `{reason, runtime}` each, shown above
+  # the Timeline: after the **Run** list when the page has one, never above it. Where the
+  # Timeline is inside the sessions (`PreparationComponents.session_group?/2`), each note
+  # is in the session it is about (`session_notes/4`), and none is here. The run's runtime
+  # is its last session's (`Apiary.Runs.Fold`), so its note (`limit_reason/2`) is about that
+  # session; a run whose sessions ran Claude Code and another runtime has a second note,
+  # for the others (`mixed_limit/4`).
+  defp run_notes(limit, run, index, preparation, clean_up) do
+    if PreparationComponents.session_group?(preparation, clean_up) do
+      []
+    else
+      reason = shown_limit(limit, preparation)
 
-  defp shown_limit(:other_runtime, preparation, clean_up),
-    do: if(!PreparationComponents.shown?(preparation, clean_up), do: :other_runtime)
+      Enum.reject(
+        [reason && {reason, run.runtime}, mixed_limit(limit, run, index, preparation)],
+        &is_nil/1
+      )
+    end
+  end
 
-  defp shown_limit(limit, _preparation, _clean_up), do: limit
+  # A run that stopped before an agent session ran has no note, as at a wall that failed:
+  # its failed step and How it ended state what happened. A wall's note is for a run whose
+  # agent session started.
+  defp shown_limit(_limit, %{stopped: %{}, session_started_at: nil}), do: nil
+  defp shown_limit(:vm_wall, %{session_started_at: nil}), do: nil
+  defp shown_limit(limit, _preparation), do: limit
+
+  # The second note of a run whose sessions ran Claude Code and another runtime, nil for
+  # any other run: for a run whose last session ran another runtime, the note of the wall
+  # or the hooks of its Claude Code sessions; else the note of the other runtime.
+  defp mixed_limit(:other_runtime, run, index, %{sessions: sessions} = preparation) do
+    with true <- Enum.any?(sessions, &(&1.runtime == "claude")),
+         reason when reason != nil <- shown_limit(claude_limit(run, index, "claude"), preparation) do
+      {reason, nil}
+    else
+      _none -> nil
+    end
+  end
+
+  defp mixed_limit(limit, _run, _index, %{sessions: sessions} = preparation)
+       when limit != :not_started do
+    with %{runtime: runtime} <- Enum.find(sessions, &other_runtime?(&1.runtime)),
+         :other_runtime <- shown_limit(:other_runtime, preparation) do
+      {:other_runtime, runtime}
+    else
+      _none -> nil
+    end
+  end
+
+  defp mixed_limit(_limit, _run, _index, _preparation), do: nil
+
+  # The note in the agent session that started at `sequence`, above its Timeline: for a
+  # runtime that sends no session events, the note on that runtime; for Claude Code, the
+  # note of the wall or the hooks (`claude_limit/3`), which every Claude Code session of
+  # the run shows, as the wall and the hook count are the run's. A run of Claude Code alone
+  # has that note as `limit`, read again when it settles (`limit_reason/2`).
+  defp session_notes(limit, run, index, %{sessions: sessions}, sequence) do
+    case Enum.find(sessions, &(&1.sequence == sequence)) do
+      %{runtime: runtime} ->
+        cond do
+          other_runtime?(runtime) -> [{:other_runtime, runtime}]
+          limit in [:vm_wall, :no_hooks] -> [{limit, nil}]
+          reason = limit == :other_runtime && claude_limit(run, index, runtime) -> [{reason, nil}]
+          true -> []
+        end
+
+      nil ->
+        []
+    end
+  end
+
+  defp session_notes(_limit, _run, _index, _preparation, _sequence), do: []
+
+  # The note of a run's Claude Code sessions, as `session_limit/2` reads it for a run of
+  # Claude Code alone.
+  defp claude_limit(run, index, runtime) do
+    settled? = not alive?(run) or older_than?(run.inserted_at, 60)
+
+    cond do
+      is_binary(run.wall) and index.hook_events == 0 and settled? ->
+        :vm_wall
+
+      runtime == "claude" and is_nil(run.wall) and index.session_items == 0 and settled? ->
+        :no_hooks
+
+      true ->
+        nil
+    end
+  end
 
   # A `:stale` read returns no rows to look at, so the preparation is read.
   defp refresh_preparation(%{assigns: %{preparation_settled: true}} = socket, rows)

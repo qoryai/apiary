@@ -1981,10 +1981,16 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        of its `dev.qory.session.started`, is not Claude Code (`claude`) then has a note:
        "Only Claude Code sends session events. This session ran qory: its output is
        under Terminal, and its connections under Network access." For a reader without
-       the Terminal, the note ends "its connections are under Network access." In a run
-       of two sessions on different runtimes, only the session that is not on Claude
-       Code has the note, and no note about the runtime is above the Run list; a run
-       with no Run list has it above its Timeline. Then comes that session's Timeline,
+       the Terminal, the note ends "its connections are under Network access." A Claude
+       Code session whose hooks sent no event has the note about the wall instead, "This
+       run's session events could not be recorded: the wall it ran behind runs inside a
+       virtual machine.", or, on a run with no wall, "No session events arrived." Each
+       Claude Code session of the run has that note, as the wall and the hook events are
+       counted for the run. In a run of two sessions on different runtimes, each session
+       has the note about its runtime. No note is above the Run list. A run whose Timeline
+       follows the list, as one whose sessions ran no agent, has the notes after the
+       list, above the Timeline, and a run with no Run list has them above its Timeline.
+       Then comes that session's Timeline,
        with that session's Main session row: `timeline` for the first agent session,
        `timeline-2` for the second, and so on. An event whose `session` is an agent
        session's number belongs to the last session with that number that started before
@@ -2131,8 +2137,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   and its cause line state what happened. A run whose preparation stopped after a
   session's start, as at a failed wall, has no note about missing session events when no
   agent session ran its agent. When an earlier agent session ran its agent, that
-  session's notes stay: the note about a wall or missing hook events above the Timeline,
-  and the note about its runtime in its step. The meta line's reason shows a machine's
+  session's notes stay in its Run the agent: the note about a wall or missing hook
+  events, or the note about its runtime. The meta line's reason shows a machine's
   cause, and "How it ended" a step's.
 
   The heading's time counts only the rows the list shows. It runs from the first row's

@@ -1274,12 +1274,13 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
         lv |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(".q-limits") |> Enum.count()
 
     # Agent session `n`, from the sequence `seq`, on `runtime`: its join, its start, its
-    # wall, a prompt for Claude Code, whose hooks send it, and its exit. Ten sequences.
-    defp agent_session(seq, n, runtime) do
+    # wall, a prompt for Claude Code, whose hooks send it unless `hooks` is false, and its
+    # exit. Ten sequences.
+    defp agent_session(seq, n, runtime, hooks \\ true) do
       step = 2 * n - 1
 
       prompt =
-        if runtime == "claude",
+        if runtime == "claude" and hooks,
           do: [
             {seq + 5, "runtime.prompt_submitted",
              %{"session" => n, "session_id" => "s#{n}", "prompt" => "fix the build"}}
@@ -1302,11 +1303,19 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
         [{seq + 6, "session.exited", %{"session" => n, "state" => "succeeded", "exit_code" => 0}}]
     end
 
-    defp sessions_run(scope, runtimes) do
+    # A run of agent sessions on `runtimes`, in order. `opts`: `wall`, the run's wall, none
+    # by default; `hooks`, false for Claude Code sessions whose hooks sent nothing.
+    defp sessions_run(scope, runtimes, opts \\ []) do
       sessions =
         for {runtime, n} <- Enum.with_index(runtimes, 1),
-            event <- agent_session(10 * n, n, runtime),
+            event <- agent_session(10 * n, n, runtime, Keyword.get(opts, :hooks, true)),
             do: event
+
+      started =
+        case Keyword.get(opts, :wall) do
+          nil -> started_data()
+          wall -> started_data(%{"wall" => wall})
+        end
 
       exited =
         {10 * length(runtimes) + 10, "run.exited",
@@ -1314,7 +1323,123 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       scope
       |> run_fixture()
-      |> project!([{1, "run.started", started_data()}] ++ sessions ++ [exited])
+      |> project!([{1, "run.started", started}] ++ sessions ++ [exited])
+    end
+
+    @wall_note "This run's session events could not be recorded: the wall it ran behind " <>
+                 "runs inside a virtual machine. The run has a terminal and connections, and " <>
+                 "no session timeline."
+
+    # Whether the text `first` comes before the text `second` in the page's HTML.
+    defp before?(lv, first, second) do
+      html = render(lv)
+      {first_at, _} = :binary.match(html, first)
+      {second_at, _} = :binary.match(html, second)
+      first_at < second_at
+    end
+
+    test "a Claude Code session behind a wall that sent no hook events: the wall note in its Run the agent",
+         ctx do
+      lv =
+        open(
+          ctx.conn,
+          ctx.scope,
+          sessions_run(ctx.scope, ["claude"], wall: "docker", hooks: false)
+        )
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @wall_note
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 1
+
+      agent = lv |> element("#prepare-machine-session-agent") |> render()
+      {note_at, _} = :binary.match(agent, "q-limits")
+      {timeline_at, _} = :binary.match(agent, ~s(id="timeline"))
+      assert note_at < timeline_at
+    end
+
+    test "a Claude Code session with no wall whose hooks sent nothing: the hooks note in its Run the agent",
+         ctx do
+      lv = open(ctx.conn, ctx.scope, sessions_run(ctx.scope, ["claude"], hooks: false))
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") =~
+               "No session events arrived."
+
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 1
+    end
+
+    test "sessions on claude and codex behind a wall: each note in its session's Run the agent",
+         ctx do
+      run = sessions_run(ctx.scope, ["claude", "codex"], wall: "docker", hooks: false)
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @wall_note
+
+      assert note_text(lv, "#prepare-machine-session-2-agent .q-limits") ==
+               String.replace(@runtime_note, "qory", "codex")
+
+      refute has_element?(lv, "#run-timeline > .q-limits")
+      assert note_count(lv) == 2
+    end
+
+    test "two Claude Code sessions behind a wall: each has the wall note", ctx do
+      run = sessions_run(ctx.scope, ["claude", "claude"], wall: "docker", hooks: false)
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @wall_note
+      assert note_text(lv, "#prepare-machine-session-2-agent .q-limits") == @wall_note
+      assert note_count(lv) == 2
+    end
+
+    test "a run whose session ran no agent: the runtime note after the list, above the Timeline",
+         ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "run.step_started",
+           %{"step" => 1, "name" => "fetch git.example.com/acme/shop", "kind" => "fetch"}},
+          {3, "run.step_exited",
+           %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
+          {4, "session.started",
+           session_started_data(%{"runtime" => "codex", "command" => "codex", "bare" => true})},
+          {5, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {6, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#run-timeline > .q-limits") ==
+               String.replace(@runtime_note, "qory", "codex")
+
+      assert note_count(lv) == 1
+      refute has_element?(lv, "#prepare-machine .q-limits")
+      assert before?(lv, ~s(id="prepare-machine"), "q-limits")
+      assert before?(lv, "q-limits", ~s(id="timeline"))
+    end
+
+    test "with no Run list, sessions on claude and codex: both notes above the Timeline", ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {4, "session.started",
+           session_started_data(%{"session" => 2, "runtime" => "codex", "command" => "codex"})},
+          {5, "session.exited", %{"session" => 2, "state" => "succeeded", "exit_code" => 0}},
+          {6, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, run)
+
+      refute has_element?(lv, "#prepare-machine")
+      assert note_count(lv) == 2
+      assert render(lv) =~ "No session events arrived."
+      assert has_element?(lv, ".q-limits code.q-rule", "codex")
+      assert before?(lv, "q-limits", ~s(id="timeline"))
     end
 
     test "a session on another runtime: the note is in its Run the agent, above its Timeline, and none is above the steps",
