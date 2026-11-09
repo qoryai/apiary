@@ -2255,9 +2255,9 @@ defmodule Apiary.Stages do
   @spec not_in_qory(String.t(), String.t()) :: String.t()
   def not_in_qory(stage, workflow) do
     "Choose another workflow for #{stage} in Workspace settings › Workflows. " <>
-      "To keep #{workflow}, change the harness on that page's Details tab to one that " <>
-      "lists it under workflows. #{stage} uses #{workflow}, which the Qory harness does " <>
-      "not list."
+      "To keep #{workflow}, change the harness in Workspace settings › Harness to one " <>
+      "that lists it under workflows. #{stage} uses #{workflow}, which the Qory harness " <>
+      "does not list."
   end
 
   defp gaps(%Escalation{gaps: gaps}, _work_item, _stage, _artifacts), do: gaps
