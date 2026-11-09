@@ -132,14 +132,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   value, only the variables' names. Text is copied as Qory Apiary stored it, so a secret a
   run printed is in the copy. When the copy fails, the menu shows the fix first, such as
   “Sign in again, then copy again. Your session ended.”
-- Instance settings › **Diagnostics keys**, for instance admins, lists the keys with which
-  a computer reads the diagnostics of any run on the instance, and nothing else, at
-  `GET /v1/runs/<run id>/diagnostics`, in a request signed with the key. **Get the
-  command**, after a recent sign-in, shows `qory apiary enrol <address> <code>` with
-  **Copy command**: the code starts with `qecd_` and works once, within 15 minutes, and
-  the computer makes the key and sends Qory Apiary only its public half. Each key shows
-  who made it, when, when it was last used, and **Revoke…**. An instance has at most 20
-  diagnostics keys. The audit log records each code, each key added and each key revoked.
+- Instance settings › **Diagnostics keys**, for instance admins, lists the diagnostics
+  keys. With a diagnostics key, a computer lists the runs on this instance, with their
+  organisation, workspace and work item title, and reads the diagnostics of any of them,
+  and nothing else. It reads the diagnostics at `GET /v1/runs/<run id>/diagnostics`, in a
+  request signed with the key. **Get the command**, after a recent sign-in, shows
+  `qory apiary enrol <address> <code>` with **Copy command**: the code starts with
+  `qecd_` and works once, within 15 minutes, and the computer makes the key and sends
+  Qory Apiary only its public half. Each key shows who made it, when, when it was last
+  used, and **Revoke…**. An instance has at most 20 diagnostics keys. The audit log
+  records each code, each key added and each key revoked.
 - A diagnostics key also lists the runs of the instance at `GET /v1/runs`, in a request
   signed with the key, 25 runs to a page by default and 100 at most, the last created
   first. Each run shows its id, number, organisation, workspace, state and creation time,
