@@ -1222,4 +1222,85 @@ defmodule ApiaryWeb.RunListTest do
       assert LazyHTML.attribute(row, "data-clean-up") == ["stays"]
     end
   end
+
+  describe "a queued run" do
+    # A queued run's preparation (`Apiary.Runs.Preparation`): no machine and no steps,
+    # the time it was queued and why it waits.
+    defp queued(reason) do
+      %{
+        machine: nil,
+        steps: [],
+        after_session: [],
+        sessions: [],
+        log_pruned_at: nil,
+        session_started_at: nil,
+        session_end: nil,
+        outputs: [],
+        stopped: nil,
+        queued: %{queued_at: @queued, machine_type: nil, reason: reason}
+      }
+    end
+
+    defp why(reason),
+      do:
+        reason
+        |> queued()
+        |> list(alive: true, run_state: "queued")
+        |> LazyHTML.query("#prepare-machine-why")
+        |> text()
+
+    test "has Queue the run, running since it was queued, then the steps to come with no time" do
+      html = list(queued({:pool, "build-pool"}), alive: true, run_state: "queued")
+
+      assert html |> LazyHTML.query("#prepare-machine-h") |> text() == "Run · Queued"
+
+      # Under Queue the run, the line of why it waits is no row.
+      assert names(html, "#prepare-machine > ol > li > [id]:not(.q-prep-why)") == [
+               "Queue the run",
+               "Request a machine",
+               "Start the machine",
+               "Prepare the machine",
+               "Agent session 1",
+               "Remove the machine"
+             ]
+
+      assert html |> LazyHTML.query("#prepare-machine-queue[data-state=running]") |> Enum.count() ==
+               1
+
+      assert started(html, "prepare-machine-queue") == iso(0)
+
+      for key <- ~w(request start prepare session remove) do
+        row = LazyHTML.query(html, "#prepare-machine-#{key}[data-state=not_run]")
+        assert Enum.count(row) == 1
+        assert row |> LazyHTML.query("time") |> Enum.count() == 0
+        assert text(LazyHTML.query(row, ".q-tc2")) == ""
+      end
+
+      assert why({:pool, "build-pool"}) == "Waiting for build-pool to run it."
+    end
+
+    test "says why it waits, for each reason" do
+      for {reason, words} <- [
+            {:harness, "Waiting until Qory Apiary reads the harness."},
+            {:no_pool, "Waiting: no pool can take the run"},
+            {{:no_fit, "large"}, "Waiting: no pool can start machine type large"},
+            {{:image, "acme/shop", :queued},
+             "Waiting for the environment image: a build of acme/shop is queued."},
+            {{:image, "acme/shop", :running},
+             "Waiting for the environment image: a build of acme/shop is running."},
+            {{:image, "acme/shop", nil}, "Waiting for the environment image of acme/shop."},
+            {{:busy, "build-pool", 3, 3},
+             "Waiting for a machine: build-pool runs 3 of its 3 machines."},
+            {{:busy, "build-pool", 1, 1},
+             "Waiting for a machine: build-pool runs 1 of its 1 machine."},
+            {{:busy, :instance}, "Waiting for a machine: Qory Pool runs all of its machines."},
+            {{:behind, 2}, "Waiting for a machine: 2 runs were queued before this one."},
+            {{:behind, 1}, "Waiting for a machine: 1 run was queued before this one."},
+            {{:pool, "Qory Pool"}, "Waiting for Qory Pool to run it."}
+          ],
+          do: assert(why(reason) == words, inspect(reason))
+
+      assert why({:pool, nil}) == ""
+    end
+  end
 end

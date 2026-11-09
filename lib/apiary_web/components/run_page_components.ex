@@ -213,6 +213,10 @@ defmodule ApiaryWeb.RunPageComponents do
     default: false,
     doc: "for `:not_started`: whether the run registered, else it only pinged"
 
+  attr :sentence, :boolean,
+    default: true,
+    doc: "false leaves the sentence out, for a queued run, which has not pinged"
+
   attr :terminal, :boolean,
     default: true,
     doc:
@@ -244,7 +248,7 @@ defmodule ApiaryWeb.RunPageComponents do
       class="q-limits"
     >
       <.limit_sentence
-        :if={@reason != :no_log}
+        :if={@reason != :no_log and @sentence}
         reason={@reason}
         runtime={@runtime}
         at={@at}

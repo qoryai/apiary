@@ -4841,7 +4841,8 @@
   .q-st-lost > i {
     background-color: var(--color-warning);
   }
-  .q-st-pending > i {
+  .q-st-pending > i,
+  .q-st-queued > i {
     border: 1.5px solid var(--q-border-field);
     background: none;
   }
@@ -6450,7 +6451,8 @@
   }
   .q-run-meta .q-sdot-completed,
   .q-run-meta .q-sdot-cancelled,
-  .q-run-meta .q-sdot-pending {
+  .q-run-meta .q-sdot-pending,
+  .q-run-meta .q-sdot-queued {
     color: var(--color-base-content);
   }
   /* The alive line has its own dot; beside the state's it says the time only. */
@@ -7269,6 +7271,22 @@
   }
   .q-prep-skip {
     font-size: 0.71875rem;
+  }
+  /* A step of a queued run that has not run yet: an empty grey ring. */
+  .q-prep-unrun {
+    width: 13px;
+    height: 13px;
+    margin: 1.5px;
+    border-radius: 9999px;
+    box-shadow: inset 0 0 0 1.5px var(--q-border-field);
+  }
+  /* Why a queued run waits, under Queue the run, in line with the step names. */
+  .q-prep-why {
+    margin: 0 0 4px;
+    padding-left: 48px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 20px;
   }
   .q-prep-cause {
     color: var(--q-error-soft-content);
@@ -11357,7 +11375,8 @@
     border-radius: 9999px;
     animation: q-ripple 1.6s var(--q-ease-out) infinite;
   }
-  .q-sdot-pending > i {
+  .q-sdot-pending > i,
+  .q-sdot-queued > i {
     background: none;
     box-shadow: inset 0 0 0 1.5px var(--q-border-field);
   }

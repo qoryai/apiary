@@ -154,12 +154,12 @@ defmodule Apiary.Runs.ListingTest do
       assert Enum.map(Filters.families(), & &1.label) ==
                ["Alive", "Ended well", "Cancelled", "Ended badly"]
 
-      # Every state is in exactly one family.
+      # Every state the pages show is in exactly one family: the six and queued.
       states = Filters.families() |> Enum.flat_map(& &1.states)
-      assert Enum.sort(states) == Enum.sort(Apiary.Runs.Run.states())
+      assert Enum.sort(states) == Enum.sort(Apiary.Runs.Run.shown_states())
       assert length(states) == length(Enum.uniq(states))
 
-      assert Filters.family_states("alive") == ~w(pending running)
+      assert Filters.family_states("alive") == ~w(queued pending running)
       assert Filters.family_states("ended_well") == ~w(completed)
       assert Filters.family_states("cancelled") == ~w(cancelled)
       assert Filters.family_states("ended_badly") == ~w(failed lost)
@@ -427,8 +427,8 @@ defmodule Apiary.Runs.ListingTest do
       assert f.states == ~w(cancelled)
 
       {f, []} = query("STATE:Completed,alive")
-      assert f.states == ~w(pending running completed)
-      assert Filters.to_params(f) == %{"state" => "pending,running,completed"}
+      assert f.states == ~w(queued pending running completed)
+      assert Filters.to_params(f) == %{"state" => "queued,pending,running,completed"}
     end
 
     test "started: a preset, a day, from, up to, and two days" do

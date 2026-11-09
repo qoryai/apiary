@@ -80,7 +80,7 @@ defmodule ApiaryWeb.WorkItemLive.NoPoolTest do
     work_item = queued(scope)
     {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-    assert words(view, "#work-item-head-stage-status") == "Queued: no pool can take the run"
+    assert words(view, "#work-item-head-stage-status") == "Waiting: no pool can take the run"
     assert has_element?(view, "#work-item-head-stage-status .q-wi-mk-err")
 
     assert words(view, "#work-item-explore-no-pool-h") == "No pool can take attempt 1."
@@ -186,7 +186,7 @@ defmodule ApiaryWeb.WorkItemLive.NoPoolTest do
     name = scope.workspace.name
     {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-    assert words(view, "#work-item-head-stage-status") == "Queued: no pool can take the run"
+    assert words(view, "#work-item-head-stage-status") == "Waiting: no pool can take the run"
 
     assert words(view, "#work-item-explore-no-pool-reason") ==
              "No pool takes the runs of #{name}. Add a pool on the Machines page."

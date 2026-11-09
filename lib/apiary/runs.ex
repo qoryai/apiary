@@ -82,6 +82,16 @@ defmodule Apiary.Runs do
     Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id, id))
   end
 
+  @doc """
+  The queued runs of the scope's workspace (`Apiary.Runs.Run.queued?/1`), and its runs
+  with the ids `ids`, whatever their state: what the runs list reads again when the
+  workspace's queue changes. One query.
+  """
+  @spec queued_or(Scope.t(), [Ecto.UUID.t()]) :: [Run.t()]
+  def queued_or(%Scope{} = scope, ids) when is_list(ids) do
+    Repo.all(where(in_scope(scope), ^dynamic([run: r], ^Run.queued_condition() or r.id in ^ids)))
+  end
+
   @doc false
   def broadcast_changed(%Run{} = run) do
     broadcast_touched(run)
@@ -178,7 +188,9 @@ defmodule Apiary.Runs do
 
   @doc """
   A page of the workspace's runs under the filters, in their order (`sort`: newest first by
-  when they started, a run that has only registered placed by when it registered; oldest
+  when they started, a run that has only registered placed by when it registered, the
+  queued runs (`Apiary.Runs.Run.queued?/1`) before all others, the most recently queued
+  first; oldest
   first; the longest first, by the duration its exit gave or else the time it reported
   elapsed; the most denials first), `per` to a page. Returns the page's runs, the page it
   is (the last one, when the filters asked for one beyond it), the total, the pages and
@@ -190,10 +202,48 @@ defmodule Apiary.Runs do
     pages = max(ceil(total / filters.per), 1)
     page = min(filters.page, pages)
 
-    runs = Repo.all(page_query(query, filters, page))
+    runs = page_of(query, filters, page)
 
     %{runs: runs, page: page, total: total, pages: pages, per: filters.per}
   end
+
+  # Newest first, the queued runs (`Apiary.Runs.Run.queued?/1`) come first, the most
+  # recently queued first; then the other runs from the index, in its order. A page that
+  # holds the last queued runs takes the first of the others after them.
+  defp page_of(query, %Filters{sort: "newest", per: per}, page) do
+    offset = (page - 1) * per
+    queued_runs = where(query, ^Run.queued_condition())
+
+    queued =
+      Repo.all(
+        from r in queued_runs,
+          order_by: [desc: r.inserted_at, desc: r.id],
+          limit: ^per,
+          offset: ^offset
+      )
+
+    rest_offset =
+      cond do
+        length(queued) == per -> nil
+        queued != [] or offset == 0 -> 0
+        true -> max(offset - Repo.aggregate(queued_runs, :count), 0)
+      end
+
+    if rest_offset do
+      rest =
+        from r in sorted(not_queued(query), "newest"),
+          limit: ^(per - length(queued)),
+          offset: ^rest_offset
+
+      queued ++ Repo.all(rest)
+    else
+      queued
+    end
+  end
+
+  defp page_of(query, filters, page), do: Repo.all(page_query(query, filters, page))
+
+  defp not_queued(query), do: where(query, ^dynamic(not (^Run.queued_condition())))
 
   # Newest and oldest first are the order of the index
   # `runs_workspace_id_started_or_first_heard_index`, expression included, read forwards or
@@ -252,9 +302,11 @@ defmodule Apiary.Runs do
   @spec work_item(Scope.t(), Run.t()) :: map | nil
   def work_item(%Scope{} = scope, %Run{} = run), do: ListFacts.work_item(scope, run)
 
+  # The query of a page of the runs that are not queued, which newest first follow the
+  # queued ones (`page_of/3`).
   @doc false
   def page_runs_query(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()),
-    do: scope |> filtered(filters, now) |> page_query(filters, filters.page)
+    do: scope |> filtered(filters, now) |> not_queued() |> page_query(filters, filters.page)
 
   @doc """
   The page of the list, under the filters and in their order, that holds the first run
@@ -273,7 +325,13 @@ defmodule Apiary.Runs do
       case filters.sort do
         "newest" ->
           Repo.aggregate(
-            from(r in query, where: coalesce(r.started_at, r.inserted_at) >= ^next),
+            where(
+              query,
+              ^dynamic(
+                [run: r],
+                coalesce(r.started_at, r.inserted_at) >= ^next or ^Run.queued_condition()
+              )
+            ),
             :count
           )
 
@@ -591,15 +649,24 @@ defmodule Apiary.Runs do
   defp facet_limit(_n), do: @facet_size
 
   defp state_facet(scope, filters, now) do
+    # A queued run (`Apiary.Runs.Run.queued?/1`) is counted as `queued`, apart from the
+    # other pending runs.
     counts =
       Repo.all(
         from r in filtered(scope, %{filters | states: []}, now),
-          group_by: r.state,
-          select: {r.state, count(r.id)}
+          group_by: ^[dynamic([run: r], r.state), Run.queued_condition()],
+          select:
+            ^%{
+              state: dynamic([run: r], r.state),
+              queued: Run.queued_condition(),
+              n: dynamic([run: r], count(r.id))
+            }
       )
-      |> Map.new()
+      |> Enum.reduce(%{}, fn %{state: state, queued: queued, n: n}, acc ->
+        Map.update(acc, if(queued, do: "queued", else: state), n, &(&1 + n))
+      end)
 
-    options = for state <- Run.states(), count = counts[state], do: {state, state, count}
+    options = for state <- Run.shown_states(), count = counts[state], do: {state, state, count}
     %{options: options, total: length(options)}
   end
 
@@ -878,7 +945,7 @@ defmodule Apiary.Runs do
     {from, to} = Filters.bounds(f, now, Scope.time_zone(scope))
 
     in_scope(scope)
-    |> where_if(f.states != [], dynamic([r], r.state in ^f.states))
+    |> where_if(f.states != [], where_states(f.states))
     |> where_target(scope, f.target)
     |> where_text(:runtime, f.runtime)
     |> where_host(f.host)
@@ -889,6 +956,23 @@ defmodule Apiary.Runs do
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
     |> where_if(from, dynamic([r], coalesce(r.started_at, r.inserted_at) >= ^from))
     |> where_if(to, dynamic([r], coalesce(r.started_at, r.inserted_at) < ^to))
+  end
+
+  # The states the page shows (`Apiary.Runs.Run.shown_states/0`) as a condition: `queued`
+  # is a queued run (`Apiary.Runs.Run.queued?/1`), `pending` any other pending run.
+  defp where_states(states) do
+    stored = states -- ["queued", "pending"]
+    condition = dynamic([run: r], r.state in ^stored)
+
+    condition =
+      if "queued" in states,
+        do: dynamic(^condition or ^Run.queued_condition()),
+        else: condition
+
+    if "pending" in states,
+      do:
+        dynamic([run: r], ^condition or (r.state == "pending" and not (^Run.queued_condition()))),
+      else: condition
   end
 
   defp where_if(query, condition, dynamic) do

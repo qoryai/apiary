@@ -691,6 +691,9 @@ defmodule ApiaryWeb.RunLive.Index do
 
     if connected?(socket) do
       Runs.subscribe(scope)
+      # A run queued, or one that ends while it waits, changes the workspace's queue
+      # (`Apiary.Dispatches.broadcast/1`): the queued runs are read again.
+      Apiary.Dispatches.subscribe(scope.workspace.id)
       Process.send_after(self(), :quiet_tick, @quiet_tick)
     end
 
@@ -1009,18 +1012,14 @@ defmodule ApiaryWeb.RunLive.Index do
   # and at most one query a window, however many batches land; nothing is read again for a
   # row, the message carries the run.
   @impl true
-  def handle_info({:run_changed, run}, socket) do
-    changed = Map.put(socket.private[:changed] || %{}, run.id, run)
-    socket = put_private(socket, :changed, changed)
+  def handle_info({:run_changed, run}, socket), do: {:noreply, collect(socket, [run])}
 
-    case socket.private[:flush_window] do
-      :open ->
-        {:noreply, socket}
-
-      _closed ->
-        Process.send_after(self(), :flush_runs, @flush_window)
-        {:noreply, socket |> put_private(:flush_window, :open) |> flush()}
-    end
+  # The workspace's queue changed: the queued runs, and the runs of the page that were
+  # queued when it was read, are read again, in one query, and changed as any run.
+  def handle_info({Apiary.Dispatches, :changed}, socket) do
+    %{current_scope: scope, listing: listing} = socket.assigns
+    on_page = if listing, do: for(run <- listing.runs, Run.queued?(run), do: run.id), else: []
+    {:noreply, collect(socket, Runs.queued_or(scope, on_page))}
   end
 
   def handle_info(:flush_runs, socket) do
@@ -1048,6 +1047,22 @@ defmodule ApiaryWeb.RunLive.Index do
     case socket.assigns.preview_window do
       :dirty -> {:noreply, socket |> assign(:preview_window, :closed) |> reload_preview()}
       _open -> {:noreply, assign(socket, :preview_window, :closed)}
+    end
+  end
+
+  defp collect(socket, []), do: socket
+
+  defp collect(socket, runs) do
+    changed = Enum.reduce(runs, socket.private[:changed] || %{}, &Map.put(&2, &1.id, &1))
+    socket = put_private(socket, :changed, changed)
+
+    case socket.private[:flush_window] do
+      :open ->
+        socket
+
+      _closed ->
+        Process.send_after(self(), :flush_runs, @flush_window)
+        socket |> put_private(:flush_window, :open) |> flush()
     end
   end
 

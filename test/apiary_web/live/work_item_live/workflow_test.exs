@@ -4316,7 +4316,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-head-stage-status",
-               "Queued: no pool can take the run"
+               "Waiting: no pool can take the run"
              )
 
       assert has_element?(view, "#work-item-explore-no-pool-h", "No pool can take attempt")
@@ -4342,7 +4342,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-head-stage-status",
-               "Queued: no pool can take the run"
+               "Waiting: no pool can take the run"
              )
 
       refute has_element?(view, "#work-item-explore-no-pool")

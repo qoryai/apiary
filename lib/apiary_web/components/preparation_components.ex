@@ -109,7 +109,8 @@ defmodule ApiaryWeb.PreparationComponents do
 
   def shown?(preparation) do
     preparation.machine != nil or Enum.any?(preparation.steps, &(not helper?(&1))) or
-      pushes(preparation) != [] or Map.get(preparation, :outputs, []) != []
+      pushes(preparation) != [] or Map.get(preparation, :outputs, []) != [] or
+      Map.get(preparation, :queued) != nil
   end
 
   @doc """
@@ -231,11 +232,21 @@ defmodule ApiaryWeb.PreparationComponents do
       outputs: outputs_row(preparation)
     }
 
+    queued = Map.get(preparation, :queued)
+
     assigns =
       assign(assigns,
-        nodes: nodes(preparation, removed, alive, assigns.session_open, assigns.wall),
+        nodes:
+          if(queued,
+            do: queued_nodes(queued),
+            else: nodes(preparation, removed, alive, assigns.session_open, assigns.wall)
+          ),
         heading: heading(machine, assigns.run_state, alive),
-        total: run_total(shown, removed, alive),
+        total:
+          if(queued,
+            do: %{from: queued.queued_at},
+            else: run_total(shown, removed, alive)
+          ),
         machine_step: machine_step(preparation),
         start_output: start_output(preparation)
       )
@@ -315,6 +326,8 @@ defmodule ApiaryWeb.PreparationComponents do
               {if node.session, do: render_slot(@session, node.session.sequence)}
             <% end %>
           </.flow>
+          <%!-- Why a queued run waits, under Queue the run, open or closed. --%>
+          <p :if={node[:why]} id={"#{@id}-why"} class="q-prep-why">{node.why}</p>
         </li>
       </ol>
     </section>
@@ -386,6 +399,22 @@ defmodule ApiaryWeb.PreparationComponents do
       <span class="q-t">
         <span class="q-tc1 q-prep-cell"></span>
         <span class="q-tc2 q-prep-cell q-prep-skip">{gettext("Skipped")}</span>
+      </span>
+    </div>
+    """
+  end
+
+  # A step of a queued run that has not run yet: a grey row with no mark, no time
+  # and no content.
+  defp flow(%{node: %{state: "not_run"}} = assigns) do
+    ~H"""
+    <div id={@id} class="q-hd q-prep-row q-prep-skipped" data-state="not_run">
+      <span class="size-3"></span>
+      <span class="q-prep-unrun self-center" aria-hidden="true"></span>
+      <span class="q-k q-prep-name">{@node.name}</span>
+      <span class="q-t">
+        <span class="q-tc1 q-prep-cell"></span>
+        <span class="q-tc2 q-prep-cell"></span>
       </span>
     </div>
     """
@@ -928,6 +957,87 @@ defmodule ApiaryWeb.PreparationComponents do
   end
 
   defp queue_node(_machine), do: nil
+
+  # A queued run's list: Queue the run, running since the run of the queue began
+  # to wait, then each step after it, not run yet.
+  defp queued_nodes(%{queued_at: at} = queued) do
+    queue =
+      entry(
+        key: "queue",
+        kind: :queue,
+        name: gettext("Queue the run"),
+        state: "running",
+        at: at,
+        events: [{gettext("Queued"), {:at, at}}],
+        why: waiting_words(Map.get(queued, :reason))
+      )
+
+    later =
+      for {key, name} <- [
+            {"request", gettext("Request a machine")},
+            {"start", gettext("Start the machine")},
+            {"prepare", gettext("Prepare the machine")},
+            {"session", gettext("Agent session %{n}", n: 1)},
+            {"remove", gettext("Remove the machine")}
+          ],
+          do: entry(key: key, kind: :not_run, name: name, state: "not_run")
+
+    [queue | later]
+  end
+
+  # Why a queued run waits (`Apiary.Runs.Waiting`), in one sentence whose first words are
+  # the reason. A pool's name came from a person and is shown as a text an external
+  # system sent. The instance's pool has no numbers: its count covers the runs of other
+  # organisations.
+  defp waiting_words(:harness), do: gettext("Waiting until Qory Apiary reads the harness.")
+
+  defp waiting_words(:no_pool), do: gettext("Waiting: no pool can take the run")
+
+  defp waiting_words({:no_fit, name}),
+    do: gettext("Waiting: no pool can start machine type %{name}", name: name)
+
+  defp waiting_words({:image, target, :queued}),
+    do:
+      gettext("Waiting for the environment image: a build of %{target} is queued.",
+        target: target
+      )
+
+  defp waiting_words({:image, target, :running}),
+    do:
+      gettext("Waiting for the environment image: a build of %{target} is running.",
+        target: target
+      )
+
+  defp waiting_words({:image, target, nil}),
+    do: gettext("Waiting for the environment image of %{target}.", target: target)
+
+  defp waiting_words({:busy, :instance}),
+    do: gettext("Waiting for a machine: Qory Pool runs all of its machines.")
+
+  defp waiting_words({:busy, pool, in_use, limit}),
+    do:
+      ngettext(
+        "Waiting for a machine: %{pool} runs %{in_use} of its %{count} machine.",
+        "Waiting for a machine: %{pool} runs %{in_use} of its %{count} machines.",
+        limit,
+        pool: ExternalText.line(pool),
+        in_use: Format.number(in_use),
+        count: Format.number(limit)
+      )
+
+  defp waiting_words({:behind, n}),
+    do:
+      ngettext(
+        "Waiting for a machine: %{count} run was queued before this one.",
+        "Waiting for a machine: %{count} runs were queued before this one.",
+        n,
+        count: Format.number(n)
+      )
+
+  defp waiting_words({:pool, name}) when is_binary(name),
+    do: gettext("Waiting for %{node} to run it.", node: ExternalText.line(name))
+
+  defp waiting_words(_reason), do: nil
 
   defp request_node(nil), do: nil
 

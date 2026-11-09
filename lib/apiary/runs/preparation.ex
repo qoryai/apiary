@@ -73,10 +73,10 @@ defmodule Apiary.Runs.Preparation do
   alias Apiary.{Access, ExternalText, Repo, SecretLogFilter}
   alias Apiary.Accounts.Scope
   alias Apiary.Artifacts.Version
-  alias Apiary.Dispatches.Dispatch
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias Apiary.Runs.{Record, Run, Step}
+  alias Apiary.Runs.{Record, Run, Step, Waiting}
 
   # The most of a step's output that is kept, in bytes of UTF-8, and in lines: the page
   # draws about 330 bytes of markup for each line, so 2,500 lines and their 64 KiB stay
@@ -344,9 +344,30 @@ defmodule Apiary.Runs.Preparation do
           Keyword.get(opts, :release_reason, :filtered)
         ),
       prebuild: prebuild,
-      built: if(prebuild, do: built(scope, run))
+      built: if(prebuild, do: built(scope, run)),
+      queued: if(is_nil(machine), do: queued(run))
     }
   end
+
+  # A queued run (`Apiary.Runs.Run.queued?/1`): when it began to wait, its record's
+  # `inserted_at` (`Apiary.Dispatches.Queued`), the machine type it was queued on, and why
+  # it waits (`Apiary.Runs.Waiting`). Nil for any other run.
+  defp queued(%Run{dispatch_run_id: id, workspace_id: workspace_id} = run) when is_binary(id) do
+    with true <- Run.queued?(run),
+         %DispatchRun{state: :waiting} = queued <-
+           Repo.one(from d in DispatchRun, where: d.id == ^id and d.workspace_id == ^workspace_id) do
+      %{
+        queued_at: run.inserted_at,
+        machine_type:
+          if(queued.machine_type, do: %{name: queued.machine_type, spec: queued.machine_spec}),
+        reason: Waiting.reason(queued)
+      }
+    else
+      _other -> nil
+    end
+  end
+
+  defp queued(_run), do: nil
 
   @doc "The most of a step's output a preparation keeps, in bytes: #{@output_bytes}."
   def output_bytes, do: @output_bytes
