@@ -975,7 +975,9 @@ defmodule ApiaryWeb.StagesLive.Index do
       ngettext(
         "Added the artifact type %{names}.",
         "Added the artifact types %{names}.",
-        length(names), names: names_words(names))
+        length(names),
+        names: names_words(names)
+      )
     ]
 
   defp added_types_lines(_template), do: []
