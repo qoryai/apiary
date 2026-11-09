@@ -57,7 +57,7 @@ defmodule Apiary.Runs.Diagnostics do
   alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLogs}
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{Event, LeakedSecrets, LogChunk, Preparation, Run}
+  alias Apiary.Runs.{Event, LeakedSecrets, LogChunk, Preparation, Record, Run}
   alias Apiary.WorkItems.WorkItem
 
   @max_bytes 8 * 1024 * 1024
@@ -290,13 +290,15 @@ defmodule Apiary.Runs.Diagnostics do
 
   # The preparation (`Apiary.Runs.Preparation`), read under `scope` with the steps'
   # output. Its `steps` have every step of the run in number order, push steps too.
+  # `session_started_at` is the time of the run's first `dev.qory.session.started`, as
+  # the contract has it, bare or not, and also when that session's wall failed.
   defp preparation(%Scope{} = scope, %Run{} = run) do
     preparation = Preparation.read(scope, run, log: true, release_reason: :as_stored)
 
     steps = Enum.sort_by(preparation.steps ++ preparation.after_session, & &1.number)
 
     %{"steps" => Enum.map(steps, &step_member/1)}
-    |> put("session_started_at", time(preparation.session_started_at))
+    |> put("session_started_at", time(Record.session_started_at(scope, run)))
     |> put("stopped", stopped_member(preparation.stopped))
   end
 

@@ -1,14 +1,14 @@
 defmodule ApiaryWeb.PreparationCleanUpTest do
-  # The Machine removed row of the Run list (`ApiaryWeb.PreparationComponents`): what it
-  # shows for each report of the pool's starter, and with no report before and after the
-  # 15 minutes from the run's end, and when it is not shown; when it stops waiting; its
-  # start, its duration, its cause and the machine's time alive; Machine stays registered
-  # for a run on a permanent machine.
+  # The Remove the machine row of the Run list (`ApiaryWeb.PreparationComponents`): what
+  # it shows for each report of the pool's starter, and with no report before and after
+  # the 15 minutes from the run's end, and when it is not shown; when it stops waiting;
+  # its start, its duration, its cause and the machine's time alive; Machine stays
+  # registered for a run on a permanent machine.
   use ExUnit.Case, async: true
 
   import Phoenix.LiveViewTest
 
-  alias ApiaryWeb.PreparationComponents
+  alias ApiaryWeb.{Format, PreparationComponents}
 
   @ended ~U[2026-10-15 12:00:00.000000Z]
   @report_at ~U[2026-10-15 12:03:04.000000Z]
@@ -128,7 +128,7 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
     end
 
     defp row(clean_up, machine \\ machine()) do
-      row = clean_up |> list(machine) |> LazyHTML.query("#prepare-machine-removed")
+      row = clean_up |> list(machine) |> LazyHTML.query("#prepare-machine-remove")
       assert Enum.count(row) == 1
       row
     end
@@ -143,10 +143,11 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
       Enum.zip(terms, values)
     end
 
-    test "a gone report: from the run's end to the report, opening to Cause and Alive" do
+    test "a gone report: from the run's end to the report, opening to its time, Cause and Alive" do
       row = row({:report, :gone, @report_at})
 
-      assert head(row) =~ ~r/^Machine removed\b/
+      # The mark states the result to a screen reader: the machine is removed.
+      assert head(row) =~ ~r/^Succeeded Remove the machine\b/
       refute head(row) =~ "Waiting"
 
       assert row |> LazyHTML.query(".q-tc1 time") |> LazyHTML.attribute("datetime") ==
@@ -156,10 +157,15 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
       assert text(LazyHTML.query(row, ".q-tc2")) == "3 m 04 s"
 
       # The machine was started 599 s before the run's end, 783 s before the report.
-      assert facts(row) == [{"Cause", "Run ended"}, {"Alive", "13 m 03 s"}]
+      assert facts(row) == [
+               {"Machine removed", Format.time(@report_at, seconds: true)},
+               {"Cause", "Run ended"},
+               {"Alive", "13 m 03 s"}
+             ]
+
       assert row |> LazyHTML.attribute("data-clean-up") == ["gone"]
 
-      assert LazyHTML.query(list({:report, :gone, @report_at}), "details#prepare-machine-removed")
+      assert LazyHTML.query(list({:report, :gone, @report_at}), "details#prepare-machine-remove")
              |> Enum.count() == 1
     end
 
@@ -168,7 +174,11 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
       assert {"Cause", "Keep-alive lost"} in facts(row)
 
       row = row({:report, :gone, @report_at}, machine(%{removal_cause: nil}))
-      assert facts(row) == [{"Alive", "13 m 03 s"}]
+
+      assert facts(row) == [
+               {"Machine removed", Format.time(@report_at, seconds: true)},
+               {"Alive", "13 m 03 s"}
+             ]
     end
 
     test "waiting for a report, then none: the words, the run's end, and no duration" do
@@ -179,7 +189,7 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
         row = row(clean_up)
 
         assert head(row) ==
-                 "Machine removed " <> words <> " " <> text(LazyHTML.query(row, ".q-tc1"))
+                 "Remove the machine " <> words <> " " <> text(LazyHTML.query(row, ".q-tc1"))
 
         assert text(LazyHTML.query(row, ".q-tc2")) == "", words
 
@@ -193,17 +203,17 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
 
     test "with neither a cause nor a time alive, the row does not open" do
       html = list(:no_report, machine(%{removal_cause: nil}))
-      assert html |> LazyHTML.query("div#prepare-machine-removed") |> Enum.count() == 1
-      assert html |> LazyHTML.query("details#prepare-machine-removed") |> Enum.count() == 0
+      assert html |> LazyHTML.query("div#prepare-machine-remove") |> Enum.count() == 1
+      assert html |> LazyHTML.query("details#prepare-machine-remove") |> Enum.count() == 0
     end
 
     test "a report other than gone has its words beside the name, and no duration" do
-      for {state, words} <- [
-            {:deleting, "Machine removal requested"},
-            {:delete_failed, "Removal failed: the machine still exists"}
+      for {state, mark, words} <- [
+            {:deleting, "", "Machine removal requested"},
+            {:delete_failed, "Failed ", "Removal failed: the machine still exists"}
           ] do
         row = row({:report, state, @report_at})
-        assert head(row) =~ "Machine removed " <> words
+        assert head(row) =~ ~r/^#{mark}Remove the machine #{words}/
         assert text(LazyHTML.query(row, ".q-tc2")) == "", words
       end
     end
@@ -215,7 +225,7 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
         |> LazyHTML.query("#prepare-machine > .q-prep-steps > li > [id]")
         |> LazyHTML.attribute("id")
 
-      assert List.last(ids) == "prepare-machine-removed"
+      assert List.last(ids) == "prepare-machine-remove"
 
       html =
         render_component(&PreparationComponents.run_list/1,
@@ -223,7 +233,7 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
           alive: false
         )
 
-      refute html =~ "prepare-machine-removed"
+      refute html =~ "prepare-machine-remove"
     end
   end
 end
