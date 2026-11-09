@@ -137,20 +137,17 @@ defmodule Apiary.Processes.HarnessUpdate do
   pinned to a tag or a commit.
   """
   @spec following(%Workspace{}) :: {:qory | :repository, String.t()} | nil
-  def following(%Workspace{} = workspace) do
-    case version(workspace) do
-      {choice, {:branch, name}} -> {choice, name}
-      _pinned -> nil
-    end
-  end
+  def following(%Workspace{} = workspace), do: branch(version(workspace))
 
-  # The choice of the workspace's harness (Apiary.Stacks.Sources.chosen/1), with its
-  # version: for the Qory harness as its row has it (Apiary.Harnesses.Qory.row_version/1),
-  # for a harness repository the saved version, else the commit of its pin.
-  defp version(%Workspace{} = workspace) do
-    chosen = Sources.chosen(workspace)
+  defp branch({choice, {:branch, name}}), do: {choice, name}
+  defp branch(_pinned), do: nil
 
-    case chosen do
+  # The choice of the workspace's harness, `chosen` (Apiary.Stacks.Sources.chosen/1), with
+  # its version: for the Qory harness as its row has it
+  # (Apiary.Harnesses.Qory.row_version/1), for a harness repository the saved version,
+  # else the commit of its pin.
+  defp version(%Workspace{} = workspace, chosen \\ nil) do
+    case chosen || Sources.chosen(workspace) do
       %{choice: :qory} ->
         organisation = %Organisation{id: workspace.organisation_id}
         {:qory, Qory.row_version(Stacks.workspace_harness(workspace, organisation))}
@@ -446,10 +443,11 @@ defmodule Apiary.Processes.HarnessUpdate do
   moduledoc), in one transaction: the version (`Apiary.Processes.save_harness/5`), the
   artifact types the workspace does not have, each with its audit entry, and, unless
   `opts` has `trial: true`, the template's stack, under `harness.save` too, and the switch
-  Keep the process at the latest turned on. `{:ok, version}`; `{:error, :stale}` where the current version is
-  no longer the one `update` compared with; `{:error, :shared}` for a stack to copy into
-  the harness the organisation shares; `{:error, {:types, {:invalid, type, error}}}` for
-  a custom type whose insert fails; or the errors of
+  Keep the process at the latest turned on. `{:ok, version}`; `{:error, :stale}` where
+  the current version is no longer the one `update` compared with, or the workspace's
+  harness choice is no longer the one it was read from; `{:error, :shared}` for a stack
+  to copy into the harness the organisation shares; `{:error, {:types, {:invalid,
+  name}}}` for a custom type whose insert fails, with its name; or the errors of
   `Apiary.Processes.save_harness/5`.
   """
   @spec save(Scope.t(), %Workspace{}, update, keyword) ::
@@ -534,6 +532,7 @@ defmodule Apiary.Processes.HarnessUpdate do
   defp keep_on(%Workspace{id: id}) do
     {1, _rows} =
       Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [keep_process_latest: true])
+           :ok <- same_choice(held, update),
 
     :ok
   end
@@ -542,6 +541,20 @@ defmodule Apiary.Processes.HarnessUpdate do
   # turned the switch off.
   defp still_on(%Workspace{keep_process_latest: false}), do: {:error, :stopped}
   defp still_on(%Workspace{}), do: :ok
+  # The harness choice `update` was read from is still the workspace's: its choice, its
+  # address and its version, under the lock of the choice's saves
+  # (`Apiary.Stacks.Sources.hold_saves/1`), so a choice saved between the read and the
+  # save gets neither the process nor the stack of the harness read before it.
+  defp same_choice(workspace, update) do
+    :ok = Sources.hold_saves(workspace)
+    chosen = Sources.chosen(workspace)
+
+    if version(workspace, chosen) == {update.source, update.version} and
+         chosen.git == update.git,
+       do: :ok,
+       else: {:error, :stale}
+  end
+
 
   ## The switch's updates
 

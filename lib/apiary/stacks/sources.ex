@@ -2344,6 +2344,17 @@ defmodule Apiary.Stacks.Sources do
     )
   end
 
+  @doc false
+  # hold_saves/1 takes the lock of the saves of `workspace`'s harness choice inside the
+  # caller's transaction, until it ends: a choice saved after it waits for that end. An
+  # update from the harness checks under it that the choice it read is still the one
+  # saved (`Apiary.Processes.HarnessUpdate`). `:ok`.
+  @spec hold_saves(Workspace.t()) :: :ok
+  def hold_saves(%Workspace{} = workspace) do
+    lock_saves(workspace)
+    :ok
+  end
+
   # Shares of one organisation take turns: the second waits for the first's transaction,
   # then reads its row and replaces it or is refused (`share/4`), so the organisation
   # keeps one shared harness.

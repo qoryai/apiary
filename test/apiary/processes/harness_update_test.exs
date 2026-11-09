@@ -346,6 +346,58 @@ defmodule Apiary.Processes.HarnessUpdateTest do
 
       assert HarnessUpdate.set_keep_latest(ctx.scope, ctx.workspace, true) == {:error, :pinned}
     end
+    test "is stale once the harness choice changed after the read", ctx do
+      main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      row =
+        Repo.insert!(%Stack{
+          organisation_id: ctx.workspace.organisation_id,
+          workspace_id: ctx.workspace.id,
+          choice: :repository,
+          version_kind: :branch,
+          version_name: "main",
+          harness: "extends:\n  git: #{@repository}\n  stack: software\n"
+        })
+
+      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :stale}
+      assert length(versions(ctx.workspace)) == 1
+      assert Repo.reload!(row).harness == row.harness
+
+      # A pin of the same harness is another choice too.
+      Repo.delete!(row)
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      Stacks.put_stack(
+        ctx.scope,
+        {:workspace, ctx.workspace},
+        ~s(extends:\n  git: "#{Qory.git()}"\n  ref: "v2.4.0"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:tag, "v2.4.0"}
+      )
+
+      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :stale}
+      assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "two saves in a row: the second adds no artifact types", ctx do
+      main_at!(described())
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert [%{"name" => "spec"}] = update.added_types
+      {:ok, v2} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+      assert v2.template["added_types"] == ["spec"]
+
+      commit = main_at!(Map.put(described(), "README.yaml", "a: 1\n"))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert %{added_types: [], changes: [], commit: ^commit} = update
+
+      assert {:ok, %Version{number: 3} = v3} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      refute Map.has_key?(v3.template, "added_types")
+      assert v3.template["commit"] == commit
+    end
+
 
     test "a person turns it off and on, with an audit entry each", ctx do
       assert {:ok, _workspace} = HarnessUpdate.set_keep_latest(ctx.scope, ctx.workspace, false)
