@@ -1,0 +1,22 @@
+{
+  "runs": [
+    {
+      "id": "rn_0123456789abcdef",
+      "number": 40,
+      "organisation": {
+        "slug": "example-org"
+      },
+      "workspace": {
+        "id": "ws_0123456789abcdef",
+        "slug": "example"
+      },
+      "workflow": "hello",
+      "work_item_number": 6,
+      "work_item_title": "Add a search box",
+      "state": "cancelled",
+      "reason": "released",
+      "created_at": "2026-11-01T08:00:00Z"
+    }
+  ],
+  "next": null
+}

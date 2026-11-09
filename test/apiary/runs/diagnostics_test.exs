@@ -48,7 +48,14 @@ defmodule Apiary.Runs.DiagnosticsTest do
     test "each document is valid, and each invalid one refused", %{schema: schema} do
       dir = DiagnosticsSchema.fixtures_dir()
       valid = Path.wildcard(Path.join(dir, "diagnostics/*.json"))
-      invalid = Path.wildcard(Path.join(dir, "invalid/*.json"))
+      # The files of the run list, `runs-…`, are checked under its schemas
+      # (`Apiary.Runs.RunListTest`).
+      invalid =
+        dir
+        |> Path.join("invalid/*.json")
+        |> Path.wildcard()
+        |> Enum.reject(&String.starts_with?(Path.basename(&1), "runs-"))
+
       assert length(valid) == 4 and length(invalid) == 17
 
       for file <- valid do

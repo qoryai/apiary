@@ -22683,7 +22683,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #, elixir-autogen, elixir-format
-msgid "With a diagnostics key, a computer reads the diagnostics of any run on this instance, and nothing else."
+msgid "With a diagnostics key, a computer lists the runs on this instance, with their organisation, workspace and work item title, and reads the diagnostics of any of them, and nothing else."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
