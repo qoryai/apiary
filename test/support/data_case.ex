@@ -127,8 +127,7 @@ defmodule Apiary.DataCase do
 
   # The features a test or a module runs under: its `with_features:`, else the suite's.
   defp features(%{with_features: features}) when is_list(features) do
-    {:ok, features} = Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1))
-    Enum.sort(features)
+    features |> parse_with_features!() |> Enum.sort()
   end
 
   defp features(_tags), do: Enum.sort(Apiary.Features.enabled())
@@ -164,18 +163,10 @@ defmodule Apiary.DataCase do
       raise ArgumentError, "@tag with_features: [] would be every feature; list the ones meant"
     end
 
+    parsed = parse_with_features!(features)
+
     if tags[:async] do
-      listed =
-        case Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1)) do
-          {:ok, listed} ->
-            Enum.sort(listed)
-
-          {:error, reason} ->
-            raise ArgumentError,
-                  "Correct the test's with_features: list.\n" <>
-                    "#{inspect(features)} is not a valid QORY_FEATURES list: #{reason}"
-        end
-
+      listed = Enum.sort(parsed)
       suite = Enum.sort(Apiary.Features.enabled())
 
       if listed != suite do
@@ -189,13 +180,26 @@ defmodule Apiary.DataCase do
       :ok
     else
       previous = Application.get_env(:apiary, :features)
-      {:ok, features} = Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1))
-      Application.put_env(:apiary, :features, features)
+      Application.put_env(:apiary, :features, parsed)
       on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
     end
   end
 
   def setup_features(_tags), do: :ok
+
+  # The features that a `with_features:` list turns on, for a sync test, an async test
+  # and a module's setup_all alike; raises when the list is not valid.
+  defp parse_with_features!(features) do
+    case Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1)) do
+      {:ok, parsed} ->
+        parsed
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "Correct the test's with_features: list.\n" <>
+                "QORY_FEATURES list is not valid: #{reason} (#{inspect(features)})"
+    end
+  end
 
   @doc """
   Turns the `registry` feature off for one test, whatever the suite runs under, and puts
