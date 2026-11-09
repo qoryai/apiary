@@ -46,9 +46,14 @@ defmodule Apiary.RunEventsFixtures do
   Inserts the run of `changeset`, or, when its `dispatch_run_id` has a queued run record
   (`Apiary.Dispatches.Queued`), writes it onto that record, as the claim does: the record
   keeps its id, its `rn_` id, its number and its `inserted_at` unless the changeset changes
-  it.
+  it. A run of the queue gets a registration, as a claim writes one
+  (`Apiary.Runs.Run.registered?/1`), at the changeset's `registered_at`, else its
+  `inserted_at`, else now.
+  `queued: true` in `opts` leaves it out, for a record no claim registered.
   """
-  def insert_run!(%Ecto.Changeset{data: %Run{}} = changeset) do
+  def insert_run!(%Ecto.Changeset{data: %Run{}} = changeset, opts \\ []) do
+    changeset = registered(changeset, Keyword.get(opts, :queued, false))
+
     case queued_record(Ecto.Changeset.get_field(changeset, :dispatch_run_id)) do
       %Run{} = queued ->
         run = Ecto.Changeset.apply_changes(changeset)
@@ -63,6 +68,35 @@ defmodule Apiary.RunEventsFixtures do
       nil ->
         Repo.insert!(changeset)
     end
+  end
+
+  defp registered(changeset, true), do: changeset
+
+  defp registered(changeset, false) do
+    if is_nil(Ecto.Changeset.get_field(changeset, :dispatch_run_id)) or
+         Ecto.Changeset.get_field(changeset, :registered_at) do
+      changeset
+    else
+      at = Ecto.Changeset.get_change(changeset, :inserted_at) || DateTime.utc_now()
+
+      # A registration sets its columns together (`runs_registration_check`).
+      Enum.reduce(registration(at), changeset, fn {field, value}, changeset ->
+        if Ecto.Changeset.get_field(changeset, field),
+          do: changeset,
+          else: Ecto.Changeset.put_change(changeset, field, value)
+      end)
+    end
+  end
+
+  defp registration(at) do
+    [
+      registered_at: at,
+      registration_labels: %{},
+      registration_about: %{},
+      registration_digest: :crypto.hash(:sha256, "registration"),
+      registration_interval_seconds: 30,
+      registration_answer_digest: "sha256=" <> String.duplicate("0", 64)
+    ]
   end
 
   @doc """

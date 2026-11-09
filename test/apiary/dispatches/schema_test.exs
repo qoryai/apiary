@@ -904,7 +904,7 @@ defmodule Apiary.Dispatches.SchemaTest do
       assert run_id == run.id
 
       assert_raise Ecto.ConstraintError, ~r/runs_dispatch_run_id_index/, fn ->
-        insert_run!(scope, dispatch_run.id)
+        insert_record!(scope, dispatch_run.id)
       end
 
       assert %Run{dispatch_run_id: nil} = Repo.get!(Run, run_fixture(scope).id)
@@ -912,14 +912,14 @@ defmodule Apiary.Dispatches.SchemaTest do
       %{scope: elsewhere} = sign_up_fixture()
 
       assert_raise Ecto.ConstraintError, ~r/runs_dispatch_run_id_fkey/, fn ->
-        insert_run!(elsewhere, queued!(scope).id)
+        insert_record!(elsewhere, queued!(scope).id)
       end
     end
   end
 
   # A second run record for the run of the queue `dispatch_run_id`, inserted beside the
   # one written when it was queued.
-  defp insert_run!(scope, dispatch_run_id) do
+  defp insert_record!(scope, dispatch_run_id) do
     Repo.insert!(%Run{
       number: next_run_number(scope.organisation.id, scope.workspace.id),
       organisation_id: scope.organisation.id,

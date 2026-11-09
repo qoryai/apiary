@@ -1684,7 +1684,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       [run.id] |> Stages.claim_ended() |> Apiary.Dispatches.broadcast()
       assert %{cause: :run_stopped, run_id: run_id} = escalation(work_item)
       assert run_id == run.id
-      refute Repo.exists?(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run.id)
+
+      refute Repo.exists?(
+               from r in Apiary.Runs.Run.registered(), where: r.dispatch_run_id == ^run.id
+             )
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert has_element?(view, "#work-item-stage-escalation-form")
