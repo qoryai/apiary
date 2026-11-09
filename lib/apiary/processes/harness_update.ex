@@ -565,27 +565,38 @@ defmodule Apiary.Processes.HarnessUpdate do
   read; for a harness repository, as read now.
   The refresh of the Qory harness calls it after its reads
   (Apiary.Harnesses.QoryRefresh), as the instance. A workspace whose update fails its
-  checks, or fails, is one line in the log, and is tried again at the next refresh.
+  checks, fails, or raises, is one line in the log, and is tried again at the next
+  refresh; the workspaces after it are updated all the same.
   `:ok`.
   """
   @spec follow_all() :: :ok
   def follow_all do
     if Features.on?(:workflow_model) do
-      for workspace <- candidates() do
-        case follow(workspace) do
-          {:ok, _version_or_none} ->
-            :ok
-
-          {:error, reason} ->
-            Logger.warning(
-              "the process was not updated from the harness workspace=#{workspace.id} " <>
-                "reason=#{inspect(reason)}"
-            )
-        end
-      end
+      Enum.each(candidates(), &follow_one/1)
     end
 
     :ok
+  end
+
+  # One workspace's update, whose failure, or raise, is one line in the log, so the
+  # workspaces after it are updated at the same refresh.
+  defp follow_one(workspace) do
+    case follow(workspace) do
+      {:ok, _version_or_none} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "the process was not updated from the harness workspace=#{workspace.id} " <>
+            "reason=#{inspect(reason)}"
+        )
+    end
+  rescue
+    exception ->
+      Logger.error(
+        "the process was not updated from the harness workspace=#{workspace.id} " <>
+          "error=#{inspect(exception.__struct__)} message=#{inspect(Exception.message(exception))}"
+      )
   end
 
   # The workspaces in use whose switch is not turned off.

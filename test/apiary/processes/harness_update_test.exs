@@ -566,6 +566,29 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert log =~ "the process was not updated from the harness workspace=#{ctx.workspace.id}"
     end
 
+    test "a workspace whose update raises is one log line, and the next is updated", ctx do
+      # Made first, so the refresh comes to it before the setup's workspace.
+      broken = Processes.current(ctx.workspace)
+      %{workspace: next} = sign_up_fixture()
+
+      {1, _rows} =
+        Repo.update_all(from(v in Version, where: v.id == ^broken.id),
+          set: [document: %{"stages" => 1}]
+        )
+
+      main_at!(described())
+      log = ExUnit.CaptureLog.capture_log(fn -> assert :ok = HarnessUpdate.follow_all() end)
+
+      assert [_line] =
+               Regex.scan(
+                 ~r/the process was not updated from the harness workspace=#{ctx.workspace.id} error=/,
+                 log
+               )
+
+      assert length(versions(ctx.workspace)) == 1
+      assert [_v1, %Version{number: 2, author_id: nil}] = versions(next)
+    end
+
     test "a process that fails Processes.validate/1 saves nothing", ctx do
       main_at!(files(&String.replace(&1, "id: st_6ns22c4pav", "id: #{@shape}")))
 
