@@ -14268,6 +14268,27 @@
   .q-xp-body {
     padding: 4px 14px 16px;
   }
+  /* The block "What the run needs from you": a frame with the border of a stage that
+     waits for a person, its points a numbered list, the note and Run another round
+     under them. */
+  .q-xp-needs {
+    border-color: color-mix(in oklab, var(--color-warning) 55%, var(--q-border-subtle));
+  }
+  .q-xp-needs-body {
+    padding-top: 14px;
+  }
+  .q-xp-needs-points {
+    display: grid;
+    gap: 6px;
+    padding-left: 1.25rem;
+    list-style: decimal;
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+  }
+  .q-xp-needs-form {
+    margin-top: 14px;
+    font-size: 0.8125rem;
+  }
   .q-xp-sec {
     padding-top: 14px;
   }

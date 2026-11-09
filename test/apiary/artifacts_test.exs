@@ -1207,7 +1207,12 @@ defmodule Apiary.ArtifactsTest do
                  {:run, run},
                  work_item,
                  "verdict",
-                 [json("v.json", %{"verdict" => "escalate", "gaps" => "No demo."})]
+                 [
+                   json("v.json", %{
+                     "verdict" => "escalate",
+                     "points" => [%{"text" => "No demo.", "action" => "run_again"}]
+                   })
+                 ]
                )
 
       assert {:ok, _version} =
@@ -1459,14 +1464,87 @@ defmodule Apiary.ArtifactsTest do
         assert {:error, {:invalid, {:schema, 0, _error}}} = push.("questions", document)
       end
 
+      assert {:ok, _version} = push.("verdict", %{"verdict" => "changes-requested"})
+
       assert {:ok, _version} =
                push.("verdict", %{
-                 "verdict" => "changes-requested",
-                 "gaps" => "The demo has no second card."
+                 "verdict" => "escalate",
+                 "points" => [
+                   %{
+                     "text" => "Which basket gets the sale?",
+                     "action" => "answer",
+                     "question" => "q2"
+                   },
+                   %{"text" => "The demo has no second card.", "action" => "run_again"}
+                 ]
                })
 
-      assert {:error, {:invalid, {:schema, 0, %{path: "#/gaps"}}}} =
-               push.("verdict", %{"verdict" => "passed", "gaps" => ""})
+      # Points come only with escalate, escalate needs them, and each point is one line of
+      # 1 to 500 characters with its question only for answer.
+      run_again = %{"text" => "The demo has no second card.", "action" => "run_again"}
+
+      for document <- [
+            %{"verdict" => "passed", "points" => [run_again]},
+            %{"verdict" => "escalate"},
+            %{"verdict" => "escalate", "points" => []},
+            %{"verdict" => "escalate", "points" => List.duplicate(run_again, 21)},
+            %{"verdict" => "escalate", "points" => [%{run_again | "text" => ""}]},
+            %{"verdict" => "escalate", "points" => [%{run_again | "text" => "a\nb"}]},
+            %{
+              "verdict" => "escalate",
+              "points" => [%{run_again | "text" => String.duplicate("x", 501)}]
+            },
+            %{"verdict" => "escalate", "points" => [Map.put(run_again, "question", "q2")]},
+            %{"verdict" => "escalate", "points" => [%{run_again | "action" => "answer"}]},
+            %{"verdict" => "escalate", "points" => [%{run_again | "action" => "decide"}]},
+            %{"verdict" => "passed", "gaps" => "No demo."}
+          ] do
+        assert {:error, {:invalid, {:schema, 0, _error}}} = push.("verdict", document)
+      end
+    end
+
+    test "takes an answer point only about an open question of the current take in",
+         %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, &1, [json("a.json", &2)])
+      answer = &%{"text" => "Which basket gets the sale?", "action" => "answer", "question" => &1}
+      run_again = %{"text" => "The demo has no second card.", "action" => "run_again"}
+      verdict = &%{"verdict" => "escalate", "points" => &1}
+
+      # With no questions yet, no question is open.
+      assert push.("verdict", verdict.([answer.("q1")])) ==
+               {:error, {:invalid, {:kept, 0, {:not_open, 1, "q1"}}}}
+
+      options = [
+        %{"title" => "The small basket", "explanation" => "The ticket names it."},
+        %{"title" => "Both baskets", "explanation" => "The sale page shows both."}
+      ]
+
+      question = Map.put(asked(run, "q1", "Which basket gets the sale?"), "options", options)
+
+      decided =
+        Map.merge(question, %{
+          "state" => "decided",
+          "decision" => %{
+            "option" => "The small basket",
+            "reason" => "The ticket names the small basket.",
+            "run" => question["asked"]["run"],
+            "at" => "2026-11-04T10:05:00Z"
+          }
+        })
+
+      assert {:ok, _version} =
+               push.("questions", %{
+                 "questions" => [decided, asked(run, "q2", "Which sale?")]
+               })
+
+      assert {:ok, _version} = push.("verdict", verdict.([run_again, answer.("q2")]))
+
+      # A decided question and an unknown id are not open; the point counts from 1.
+      assert push.("verdict", verdict.([run_again, answer.("q1")])) ==
+               {:error, {:invalid, {:kept, 0, {:not_open, 2, "q1"}}}}
+
+      assert push.("verdict", verdict.([answer.("q7"), answer.("q2")])) ==
+               {:error, {:invalid, {:kept, 0, {:not_open, 1, "q7"}}}}
     end
 
     test "validates a custom structured type's document against its schema",

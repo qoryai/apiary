@@ -257,11 +257,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp words_of(%{status: :running}), do: gettext("Explore is running")
 
   # Where the stage lists approvers, the page passes who confirms next as `confirmers`:
-  # `:you` for a reader who may confirm, else the approvers, in the gate's order.
+  # `:you` for a reader who may confirm, else the approvers, in the gate's order, the
+  # reader among them where listed (`others/1`).
   defp words_of(%{status: :confirm, confirmers: :you}), do: gettext("You approve next")
 
   defp words_of(%{status: :confirm, confirmers: [_ | _] = confirmers}),
-    do: confirmers_words(confirmers)
+    do: confirmers_words(others(confirmers))
 
   defp words_of(%{status: :confirm, owner: owner}) do
     if you?(owner),
@@ -299,6 +300,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     if you?(by), do: gettext("Undone by you"), else: gettext("Undone by %{name}", name: by.name)
   end
 
+  defp confirmers_words([]), do: gettext("No listed approver may approve")
   defp confirmers_words([one]), do: gettext("%{name} approves next", name: one.name)
 
   defp confirmers_words([one, other]),
@@ -317,6 +319,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp mark_of(%{status: :queued}, _can_act), do: :todo
   defp mark_of(%{status: :running}, _can_act), do: :run
 
+  # A proposal can still wait after the work item left Explore (a gate `none` passes on):
+  # it waits for no one there (`at_explore` false).
+  defp mark_of(%{status: :confirm, at_explore: false}, _can_act), do: :wait_other
   defp mark_of(%{status: :confirm, confirmers: :you}, _can_act), do: :wait
   defp mark_of(%{status: :confirm, confirmers: [_ | _]}, _can_act), do: :wait_other
 
@@ -333,6 +338,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp mark_of(%{status: status}, _can_act) when status in [:closed, :undone], do: :closed
 
   @doc false
+  def hot?(%{status: :confirm, at_explore: false}), do: false
   def hot?(%{status: :confirm, confirmers: :you}), do: true
   def hot?(%{status: :confirm, confirmers: [_ | _]}), do: false
   def hot?(%{status: :confirm, owner: owner}), do: you?(owner)
@@ -341,6 +347,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc false
   def you?(%{you: true}), do: true
   def you?(_person), do: false
+
+  # The listed approvers without the reader: a listed reader here is one for whom the
+  # `work_item.confirm` check fails, as one who may confirm has `:you`.
+  defp others(confirmers), do: Enum.reject(confirmers, &you?/1)
 
   # The ticket's title as a page shows it (`Apiary.ExternalText.present/1`): nil for one
   # with nothing left to show, or only whitespace, as for none.
@@ -711,6 +721,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: false,
     doc: "whether Explore's tab has the comment field under the questions"
 
+  attr :points, :integer,
+    default: 0,
+    doc: "the points of the stage's open escalation, while the questions wait for answers"
+
+  attr :needs_path, :string,
+    default: "#work-item-needs",
+    doc: "where the block \"What the run needs from you\" is"
+
   def step_card(%{work_item: %{status: status}} = assigns) when status in @ended, do: ~H""
 
   def step_card(assigns) do
@@ -768,8 +786,31 @@ defmodule ApiaryWeb.WorkItemComponents do
         now={@now}
         no_pool={@no_pool}
         commenting={@commenting}
+        points={@points}
+        needs_path={@needs_path}
       />
     </section>
+    """
+  end
+
+  @doc """
+  The line "Waits for you: N points" of an open escalation, which links to the block
+  "What the run needs from you" at `path`: an anchor on the page, or the Explore tab's
+  path with it.
+  """
+  attr :id, :string, default: "work-item-stage-waits"
+  attr :count, :integer, required: true
+  attr :path, :string, default: "#work-item-needs"
+
+  def waits_line(assigns) do
+    ~H"""
+    <p id={@id}>
+      <.link href={@path} class="q-link">
+        {ngettext("Waits for you: %{count} point", "Waits for you: %{count} points", @count,
+          count: Format.number(@count)
+        )}
+      </.link>
+    </p>
     """
   end
 
@@ -836,6 +877,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :now, :any, required: true
   attr :no_pool, :map, default: nil
   attr :commenting, :boolean, default: false
+  attr :points, :integer, default: 0
+  attr :needs_path, :string, default: "#work-item-needs"
 
   # A later run of the take in: what it reads, with whose answers, and which run is
   # queued, or that no pool can take it. Undo is only until the first run of a take in
@@ -996,6 +1039,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <p :if={@line} id={"#{@id}-line"}>{@line}</p>
     <p :if={!@can_act} id={"#{@id}-waits"} class="q-wi-reader">{@waits}</p>
+    <.waits_line :if={@points > 0} count={@points} path={@needs_path} />
     <.go_link :if={@can_act} id={"#{@id}-explore"} path={@explore_path} words={@go} />
     """
   end
@@ -1087,16 +1131,20 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp step_body(%{status: :confirm} = assigns) do
     owner = assigns.work_item[:owner]
     confirmers = assigns.work_item[:confirmers]
+    listed = match?([_ | _], confirmers)
+    others = if listed, do: others(confirmers), else: []
 
     assigns =
       assign(assigns,
+        # A listed reader for whom the `work_item.confirm` check fails, beside others.
+        refused: not assigns.can_act and others != [] and others != confirmers,
         line:
           cond do
             assigns.can_act ->
               gettext("Approve the proposal, or add a comment and run another round.")
 
-            match?([_ | _], confirmers) ->
-              confirmers_step(confirmers)
+            listed ->
+              confirmers_step(others)
 
             you?(owner) ->
               gettext("You approve next")
@@ -1111,6 +1159,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <p :if={@line} id={"#{@id}-line"}>{@line}</p>
+    <p :if={@refused} id={"#{@id}-refused"}>
+      {gettext("You are listed as an approver, but you may not approve in this workspace.")}
+    </p>
     <.go_link
       :if={@can_act}
       id={"#{@id}-explore"}
@@ -1149,6 +1200,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     <p><.rich text={@line} /></p>
     """
   end
+
+  defp confirmers_step([]),
+    do: gettext("You are the only listed approver, but you may not approve in this workspace.")
 
   defp confirmers_step([one]),
     do: gettext("%{name} approves the proposal or runs another round.", name: one.name)
@@ -2198,6 +2252,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   slot :artifacts, doc: "the work item's artifacts, in the fold of its runs"
 
+  slot :needs,
+    doc:
+      "the block \"What the run needs from you\" of an open escalation, at the top of the tab, in place of the banner of a run with no result"
+
   def explore_tab(assigns) do
     work_item = at_limit(assigns.work_item)
     status = explore_status(work_item.status, work_item[:run])
@@ -2224,6 +2282,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         run: run,
         earlier_runs: earlier_runs,
         view: view,
+        # The proposal shown is not one that the latest run wrote.
+        earlier: not is_nil(assigns.proposal) and run[:wrote] != assigns.proposal.version,
         running: running,
         groups: Enum.filter(earlier_runs, &answered?/1),
         confirmed:
@@ -2265,7 +2325,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         item={@item}
         test={@work_item[:test] == true}
       />
-      <.no_result :if={@view == :no_result} id={"#{@id}-none"} run={@run} />
+      {render_slot(@needs)}
+      <.no_result
+        :if={@view == :no_result and @needs == []}
+        id={"#{@id}-none"}
+        run={@run}
+        earlier={@earlier}
+      />
       <.ended
         :if={@view in [:closed, :undone]}
         id={"#{@id}-#{@view}"}
@@ -2277,6 +2343,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         id={"#{@id}-proposal"}
         run={%{proposal: @proposal, version: @proposal.version, attempt: @run[:attempt]}}
         confirmed={@confirmed}
+        earlier={(@needs != [] or @view == :no_result) and @earlier}
         now={@now}
       >
         <:comments :if={@review_comments != []}>
@@ -2883,6 +2950,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :confirmed, :any, default: nil
   attr :now, :any, required: true
 
+  attr :earlier, :boolean,
+    default: false,
+    doc: "whether a run before the latest one wrote it, while that run escalated"
+
   attr :images, :any,
     default: nil,
     doc: "the proposal version's images, filename and download address; nil if not known"
@@ -2942,7 +3013,10 @@ defmodule ApiaryWeb.WorkItemComponents do
       </p>
       <p :if={!@caption && @run[:version]} class="q-xp-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-        <span>{gettext("Version %{version}", version: Format.number(@run.version))}</span>
+        <span :if={!@earlier}>{gettext("Version %{version}", version: Format.number(@run.version))}</span>
+        <span :if={@earlier}>
+          {gettext("Version %{version} · from an earlier round", version: Format.number(@run.version))}
+        </span>
       </p>
       <div :if={@comments != []} class="q-xp-body q-xp-rc-inline">{render_slot(@comments)}</div>
       <div
@@ -4564,9 +4638,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, required: true
   attr :run, :map, required: true
 
+  attr :earlier, :boolean,
+    default: false,
+    doc: "whether a proposal of an earlier round shows below"
+
   # A run that gave no result: what happened, and its page.
   defp no_result(assigns) do
-    {icon, heading, body} = no_result_words(assigns.run)
+    {icon, heading, body} = no_result_words(assigns.run, assigns.earlier)
     assigns = assign(assigns, icon: icon, heading: heading, body: body)
 
     ~H"""
@@ -4616,58 +4694,64 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   # A run that pushed a proposal before it ended shows that proposal on the tab, so the
   # page shows no line that there is nothing to show.
-  defp no_result_words(%{state: :failed, wrote: version}) when is_integer(version),
+  defp no_result_words(%{state: :failed, wrote: version}, _earlier) when is_integer(version),
     do: {"hero-exclamation-triangle-micro", failed_after(version), nil}
 
-  defp no_result_words(%{state: :lost, wrote: version}) when is_integer(version),
+  defp no_result_words(%{state: :lost, wrote: version}, _earlier) when is_integer(version),
     do: {"hero-signal-slash-micro", gettext("The run was lost."), nil}
 
-  defp no_result_words(%{state: :lost}),
+  defp no_result_words(%{state: :lost}, earlier),
     do:
       {"hero-signal-slash-micro", gettext("The run was lost."),
-       gettext("Qory Apiary has no result from the run. There is nothing to show or approve.")}
+       if(earlier,
+         do:
+           gettext(
+             "Qory Apiary has no result from the run. The proposal below is from an earlier round."
+           ),
+         else:
+           gettext("Qory Apiary has no result from the run. There is nothing to show or approve.")
+       )}
 
-  defp no_result_words(%{state: :cancelled, wrote: version}) when is_integer(version),
-    do: {"hero-stop-circle-micro", gettext("The run was cancelled."), nil}
+  defp no_result_words(%{state: :cancelled, wrote: version}, _earlier)
+       when is_integer(version),
+       do: {"hero-stop-circle-micro", gettext("The run was cancelled."), nil}
 
-  defp no_result_words(%{state: :cancelled}),
-    do:
-      {"hero-stop-circle-micro", gettext("The run was cancelled."),
-       gettext("There is nothing to show or approve.")}
+  defp no_result_words(%{state: :cancelled}, earlier),
+    do: {"hero-stop-circle-micro", gettext("The run was cancelled."), nothing_left(earlier)}
 
-  defp no_result_words(%{end_cause: :harness_unresolved} = run),
+  defp no_result_words(%{end_cause: :harness_unresolved} = run, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        harness_failure_words(run[:harness_failure])}
 
-  defp no_result_words(%{end_cause: :run_refused, end_detail: "model_key_missing"}),
+  defp no_result_words(%{end_cause: :run_refused, end_detail: "model_key_missing"}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        gettext(
          "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
        )}
 
-  defp no_result_words(%{end_cause: cause}) when cause in @unstarted,
+  defp no_result_words(%{end_cause: cause}, _earlier) when cause in @unstarted,
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        unstarted_words(cause)}
 
-  defp no_result_words(%{workflow_gap: %{} = gap}),
+  defp no_result_words(%{workflow_gap: %{} = gap}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        ApiaryWeb.HarnessComponents.workflow_gap_words(gap)}
 
-  defp no_result_words(%{read_needs: %{} = facts}),
+  defp no_result_words(%{read_needs: %{} = facts}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
        read_needs_words(facts)}
 
-  defp no_result_words(%{outcome: :none}),
+  defp no_result_words(%{outcome: :none}, earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
-       gettext("There is nothing to show or approve.")}
+       nothing_left(earlier)}
 
-  defp no_result_words(%{outcome: :refused}),
+  defp no_result_words(%{outcome: :refused}, _earlier),
     do:
       {"hero-exclamation-triangle-micro",
        gettext("The run's result did not pass Qory Apiary's check."),
@@ -4675,10 +4759,21 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Qory Apiary accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so it is not shown."
        )}
 
-  defp no_result_words(_error),
+  defp no_result_words(_error, earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended with an error."),
-       gettext("The run's last result was an error. There is nothing to show or approve.")}
+       if(earlier,
+         do:
+           gettext(
+             "The run's last result was an error. The proposal below is from an earlier round."
+           ),
+         else: gettext("The run's last result was an error. There is nothing to show or approve.")
+       )}
+
+  # What is left to read below a run with no result: a proposal of an earlier round
+  # (`earlier`), or nothing.
+  defp nothing_left(true), do: gettext("The proposal below is from an earlier round.")
+  defp nothing_left(false), do: gettext("There is nothing to show or approve.")
 
   # What a person does about a read-only run that qory closed (`Apiary.Runs.ReadNeeds`), the
   # fix first. A person in an organisation cannot edit the forager.yaml of the instance's
@@ -5706,36 +5801,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: rich_gettext("Explore wrote a proposal, after %{duration}", duration: duration)
 
   # Where the stage lists approvers, the page passes who confirms next as `confirmers`:
-  # `:you` for a reader who may confirm, else the approvers, in the gate's order.
+  # `:you` for a reader who may confirm, else the approvers, in the gate's order, the
+  # reader among them where listed (`others/1`).
   defp event_line(%{kind: :proposed, confirmers: :you, duration: duration}),
     do:
       rich_gettext("Explore wrote a proposal, after %{duration}. You approve next",
         duration: duration
       )
 
-  defp event_line(%{kind: :proposed, confirmers: [one], duration: duration}),
-    do:
-      rich_gettext("Explore wrote a proposal, after %{duration}. %{name} approves next",
-        duration: duration,
-        name: {:b, one.name}
-      )
-
-  defp event_line(%{kind: :proposed, confirmers: [one, other], duration: duration}),
-    do:
-      rich_gettext(
-        "Explore wrote a proposal, after %{duration}. %{name} or %{other} approves next",
-        duration: duration,
-        name: {:b, one.name},
-        other: {:b, other.name}
-      )
-
   defp event_line(%{kind: :proposed, confirmers: [_ | _] = confirmers, duration: duration}),
-    do:
-      rich_gettext(
-        "Explore wrote a proposal, after %{duration}. One of %{number} approvers approves next",
-        duration: duration,
-        number: Format.number(length(confirmers))
-      )
+    do: proposed_line(others(confirmers), duration)
 
   defp event_line(%{kind: :proposed, owner: owner, duration: duration}) do
     if you?(owner),
@@ -5829,6 +5904,35 @@ defmodule ApiaryWeb.WorkItemComponents do
       else:
         rich_gettext("%{name} undid the take in, before a run started", name: {:b, actor.name})
   end
+
+  # A proposal's line with the approvers who approve next. With no approver left, no one
+  # is named.
+  defp proposed_line([], duration),
+    do: rich_gettext("Explore wrote a proposal, after %{duration}", duration: duration)
+
+  defp proposed_line([one], duration),
+    do:
+      rich_gettext("Explore wrote a proposal, after %{duration}. %{name} approves next",
+        duration: duration,
+        name: {:b, one.name}
+      )
+
+  defp proposed_line([one, other], duration),
+    do:
+      rich_gettext(
+        "Explore wrote a proposal, after %{duration}. %{name} or %{other} approves next",
+        duration: duration,
+        name: {:b, one.name},
+        other: {:b, other.name}
+      )
+
+  defp proposed_line(confirmers, duration),
+    do:
+      rich_gettext(
+        "Explore wrote a proposal, after %{duration}. One of %{number} approvers approves next",
+        duration: duration,
+        number: Format.number(length(confirmers))
+      )
 
   # The same person: the reader both times, or the same id. Never by name: two people may
   # share one.

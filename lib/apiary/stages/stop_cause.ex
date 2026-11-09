@@ -1,7 +1,8 @@
 defmodule Apiary.Stages.StopCause do
-  # StopCause is why a run of a stage stopped, as an escalation's gaps show it
-  # (`Apiary.Stages`): for a run that ended before it started, two lines, the cause, then
-  # who fixes it and on which page. The text is written once, when the run ends, from what
+  # StopCause is why a run of a stage stopped, as an escalation's point shows it
+  # (`Apiary.Stages.Points.run_stopped/2`): the cause and, where one exists, its fix; for a
+  # run that ended before it started, two lines, the cause, then who fixes it and on which
+  # page (`text/3`). The text is written once, when the run ends, from what
   # the end left: the run of the queue, its work item, and, for a run a claim ended, the
   # claim's gateway and that gateway's keys (`context`).
   @moduledoc false
@@ -35,31 +36,62 @@ defmodule Apiary.Stages.StopCause do
   # before it started.
   @doc false
   @spec text(DispatchRun.t(), WorkItem.t(), context) :: String.t()
-  def text(run, work_item, context \\ %{})
+  def text(run, work_item, context \\ %{}) do
+    case split(run, work_item, context) do
+      {:one, cause} -> cause
+      {:point, cause, _point} -> cause
+      {:then, cause, fix} -> cause <> " " <> fix
+      {:lines, cause, fix} -> cause <> "\n" <> fix
+      {:fix_first, fix, cause} -> fix <> " " <> cause
+    end
+  end
 
-  def text(%DispatchRun{end_cause: :run_ended, result_outcome: :error}, _work_item, _context),
-    do: "The run ended with an error."
+  # parts/3 is why `run` stopped as an escalation's point takes it
+  # (`Apiary.Stages.Points.run_stopped/2`), after "The run stopped:": the cause, and what
+  # fixes it, nil where only another round does.
+  @doc false
+  @spec parts(DispatchRun.t(), WorkItem.t(), context) :: {String.t(), String.t() | nil}
+  def parts(run, work_item, context \\ %{}) do
+    case split(run, work_item, context) do
+      {:one, cause} -> {cause, nil}
+      {:point, _cause, point} -> {point, nil}
+      {:then, cause, fix} -> {cause, fix}
+      {:lines, cause, fix} -> {cause, fix}
+      {:fix_first, fix, cause} -> {cause, fix}
+    end
+  end
+
+  # The cause and its fix: `{:one, cause}` with no fix; `{:point, cause, point}` with no
+  # fix, where a point says the cause in other words after "The run stopped:";
+  # `{:then, cause, fix}` for a cause whose second sentence follows on the same line;
+  # `{:lines, cause, fix}` for a run that ended before it started; and
+  # `{:fix_first, fix, cause}` for a read-only run that could not go on, whose text has the
+  # fix first.
+  defp split(%DispatchRun{end_cause: :run_ended, result_outcome: :error}, _work_item, _ctx),
+    do: {:one, "The run ended with an error."}
 
   # A run that sent no result: qory closed it with `workflow_not_in_harness` when the
   # harness it composed has no skill for the run's workflow (`Apiary.Harnesses.WorkflowGap`),
   # and with a `read_needs_*` reason when a read-only run could not go on
   # (`Apiary.Runs.ReadNeeds`).
-  def text(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
+  defp split(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
     case WorkflowGap.of_dispatch_run(run, work_item) do
       %{} = facts -> workflow_gap(facts, work_item)
       nil -> no_gap(run, work_item)
     end
   end
 
-  def text(%DispatchRun{end_cause: :run_ended}, _work_item, _context),
-    do: "The run ended without a result."
+  defp split(%DispatchRun{end_cause: :run_ended}, _work_item, _context),
+    do: {:one, "The run ended without a result."}
 
-  def text(%DispatchRun{end_cause: :lost}, _work_item, _context),
-    do: "The run stopped reporting and was marked lost."
+  defp split(%DispatchRun{end_cause: :lost}, _work_item, _context),
+    do:
+      {:point, "The run stopped reporting and was marked lost.",
+       "Qory Apiary got no report from it and marked it lost."}
 
-  def text(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
+  defp split(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
     {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
-    cause <> "\n" <> fix
+    {:lines, cause, fix}
   end
 
   # failed_after_proposal/1 is why a run of Explore stopped whose registered run failed
@@ -142,38 +174,47 @@ defmodule Apiary.Stages.StopCause do
   defp no_gap(run, work_item) do
     case ReadNeeds.of_dispatch_run(run) do
       %{} = facts -> read_needs(facts, work_item)
-      nil -> "The run ended without a result."
+      nil -> {:one, "The run ended without a result."}
     end
   end
 
   # The words of `read_needs_words/1` in `ApiaryWeb.WorkItemComponents`, stored once in
-  # English: the target is a repository in a software workspace. A person in an
-  # organisation cannot edit the forager.yaml of the instance's pool, so that pool's run
-  # has "Contact support." in place of the fix.
+  # English, the fix first: the target is a repository in a software workspace. A person
+  # in an organisation cannot edit the forager.yaml of the instance's pool, so that pool's
+  # run has "Contact support." in place of the fix.
   defp read_needs(%{code: "read_needs_wall", installed: true}, _work_item),
-    do: "Contact support. A read-only run needs a wall, and this machine has none."
+    do:
+      {:fix_first, "Contact support.", "A read-only run needs a wall, and this machine has none."}
 
   defp read_needs(%{code: "read_needs_wall"}, _work_item),
     do:
-      "Set a wall in the machine's forager.yaml, then start the run again. A read-only run needs a wall, and this machine has none."
+      {:fix_first, "Set a wall in the machine's forager.yaml, then start the run again.",
+       "A read-only run needs a wall, and this machine has none."}
 
   defp read_needs(%{code: "read_needs_setup_outside", installed: true}, _work_item),
-    do: "Contact support. A read-only run cannot run its setup inside the agent's container."
+    do:
+      {:fix_first, "Contact support.",
+       "A read-only run cannot run its setup inside the agent's container."}
 
   defp read_needs(%{code: "read_needs_setup_outside"}, _work_item),
     do:
-      "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. A read-only run cannot run its setup inside the agent's container."
+      {:fix_first,
+       "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again.",
+       "A read-only run cannot run its setup inside the agent's container."}
 
   defp read_needs(%{code: "read_needs_no_nested_docker"}, work_item) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
     word = if Domain.name(workspace) == "software", do: "repository", else: "target"
 
-    "Choose an image without nested Docker in the workspace's policy or the #{word}'s environment, then start the run again. A read-only run cannot use an image with nested Docker."
+    {:fix_first,
+     "Choose an image without nested Docker in the workspace's policy or the #{word}'s environment, then start the run again.",
+     "A read-only run cannot use an image with nested Docker."}
   end
 
   defp read_needs(%{code: "read_needs_setup_removed"}, _work_item),
     do:
-      "Start the run again. The setup container was not removed, so a process in it could still write the files."
+      {:fix_first, "Start the run again.",
+       "The setup container was not removed, so a process in it could still write the files."}
 
   # The words of `ApiaryWeb.HarnessComponents.workflow_gap_words/1`, stored once in
   # English: the target is a repository in a software workspace.
@@ -184,8 +225,8 @@ defmodule Apiary.Stages.StopCause do
         else: "The run's harness has no skill for the run's workflow."
 
     case gap_source(source, work_item) do
-      nil -> missing
-      from -> missing <> " " <> from
+      nil -> {:one, missing}
+      from -> {:then, missing, from}
     end
   end
 

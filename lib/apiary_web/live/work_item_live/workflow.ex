@@ -340,24 +340,41 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     %{
       cause: cause,
-      result: result?(cause, outputs, lines(get(escalation, :gaps)), run),
-      gaps: lines(get(escalation, :gaps)),
+      result: result?(cause, outputs, get(escalation, :no_verdict) == true, run),
+      points: points(get(escalation, :points)),
       round: get(escalation, :round),
       run: run,
       harness_path: harness_path(scope, get(escalation, :set_up_step))
     }
   end
 
+  # An escalation's points as the block "What the run needs from you" shows them: each
+  # with its text, its action (`:answer` or `:run_again`) and, for `:answer`, the id of
+  # its question. A point without text is left out.
+  defp points(points) when is_list(points) do
+    for %{} = point <- points, text = get(point, :text), is_binary(text) and text != "" do
+      case get(point, :action) do
+        action when action in ["answer", :answer] ->
+          %{text: text, action: :answer, question: get(point, :question)}
+
+        _run_again ->
+          %{text: text, action: :run_again, question: nil, fix: get(point, :fix)}
+      end
+    end
+  end
+
+  defp points(_none), do: []
+
   # Whether the stage has a result to accept as it is: a version of one of its outputs; for
   # a stage with no outputs, a run that did not stop before its verdict; or a run of the
-  # stage that ended with no verdict (`run_stopped` with no cause in its gaps) where no
+  # stage that ended with no verdict (`no_verdict`, `Apiary.Stages.status/2`) where no
   # output is required. The run of an escalation the migration placed has no stage, so the
   # page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to it.
-  defp result?(:run_stopped, outputs, [], %{}),
+  defp result?(:run_stopped, outputs, true, %{}),
     do: Enum.any?(outputs, & &1.version_id) or not Enum.any?(outputs, & &1.required)
 
-  defp result?(cause, [], _gaps, _run), do: cause != :run_stopped
-  defp result?(_cause, outputs, _gaps, _run), do: Enum.any?(outputs, & &1.version_id)
+  defp result?(cause, [], _no_verdict, _run), do: cause != :run_stopped
+  defp result?(_cause, outputs, _no_verdict, _run), do: Enum.any?(outputs, & &1.version_id)
 
   # An artifact of the index with its approval marks: the number of the version a gate
   # approved, and of a newer one where there is one.
@@ -462,23 +479,47 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   @doc false
-  # row_confirmers/2 is, for the Work items list's rows (`Apiary.WorkItems.WorkList`) whose
+  # row_confirmers/3 is, for the Work items list's rows (`Apiary.WorkItems.WorkList`) whose
   # proposal waits at Explore's gate, who confirms next where the stage the work item is
   # in lists its approvers, by the row's id: `:you` where the reader may confirm
   # (`work_item.confirm`, `Apiary.Access`), else the listed account ids, in the gate's
-  # order. A row whose stage lists no one, or that the stage runner did not place, is
-  # left out, and keeps the owner rule. The same queries for any number of rows
-  # (`placed/2`).
-  @spec row_confirmers(Scope.t(), [map]) :: %{String.t() => :you | [Ecto.UUID.t()]}
-  def row_confirmers(%Scope{workspace: workspace} = scope, rows) do
+  # order. `:left_explore` for a work item at a later stage, as the work item page reads
+  # it (`Apiary.Stages.explore_stage_id/1`): no one confirms there. A row whose stage
+  # lists no one, or that the stage runner did not place, is left out, and keeps the
+  # owner rule. The same queries for any number of rows (`placed/2`). `opts` as
+  # `Apiary.WorkItems.WorkList.list/4` reads them.
+  @spec row_confirmers(Scope.t(), [map], keyword) ::
+          %{String.t() => :you | [Ecto.UUID.t()] | :left_explore}
+  def row_confirmers(%Scope{workspace: workspace} = scope, rows, opts \\ []) do
     ids = for %{id: id, state: :exploring, status: :confirm} <- rows, do: id
+    placed = placed(workspace, ids)
 
-    for {id, work_item} <- placed(workspace, ids),
-        [_ | _] = listed <- [listed(placed_stage(work_item))],
-        into: %{} do
-      if Access.can?(scope, :"work_item.confirm", work_item),
-        do: {id, :you},
-        else: {id, listed}
+    explore =
+      if placed != %{},
+        do:
+          Keyword.get_lazy(opts, :explore_workflow, fn -> Stages.explore_workflow(workspace) end)
+
+    for {id, work_item} <- placed,
+        confirmers when not is_nil(confirmers) <- [row_confirmer(scope, work_item, explore)],
+        into: %{},
+        do: {id, confirmers}
+  end
+
+  defp row_confirmer(scope, work_item, explore) do
+    listed = listed(placed_stage(work_item))
+
+    cond do
+      work_item.stage_id != Stages.explore_stage_in(work_item.process_version, explore) ->
+        :left_explore
+
+      not match?([_ | _], listed) ->
+        nil
+
+      Access.can?(scope, :"work_item.confirm", work_item) ->
+        :you
+
+      true ->
+        listed
     end
   end
 

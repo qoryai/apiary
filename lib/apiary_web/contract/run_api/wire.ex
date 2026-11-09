@@ -10,7 +10,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   comments as Explore's input has them
   #   (`Apiary.Dispatches.Inputs.explore/4`, within its 768 KiB with the oldest comments
   #   left out), then the stage, its inputs, its outputs with each check result, the
-  #   newest verdict with its gaps, the stage's gaps and the work item's notes.
+  #   newest verdict with its points, the stage's gaps (why it waits for a workflow, or
+  #   the failed checks that started its round) and the work item's notes.
   # - `index/1`: every artifact of the work item with its versions, each version's files,
   #   writer and approvals (`Apiary.Stages.artifact_index/1`).
   # - `version/3`: a version as a push returns it.
@@ -104,8 +105,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
-  # verdict/2 is the newest verdict as the work item's answer has it: its value, its gaps
-  # and its version, or nil for none.
+  # verdict/2 is the newest verdict as the work item's answer has it: its value, its
+  # points (`{text, action, question?}`, nil for none) and its version, or nil for none.
   @spec verdict(map | nil, map | nil) :: Jason.OrderedObject.t() | nil
   def verdict(nil, _content), do: nil
 
@@ -114,10 +115,21 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
 
     object([
       {"verdict", Map.get(content, "verdict")},
-      {"gaps", Map.get(content, "gaps")},
+      {"points", points(Map.get(content, "points"))},
       {"version", ref(version)}
     ])
   end
+
+  defp points(points) when is_list(points) do
+    for %{} = point <- points do
+      object(
+        [{"text", point["text"]}, {"action", point["action"]}] ++
+          if(Map.has_key?(point, "question"), do: [{"question", point["question"]}], else: [])
+      )
+    end
+  end
+
+  defp points(_none), do: nil
 
   @spec index([map]) :: Jason.OrderedObject.t()
   def index(entries) do

@@ -2609,18 +2609,19 @@ defmodule Apiary.Harnesses.WalkTest do
       assert %Apiary.WorkItems.WorkItem{stage_state: :escalated} =
                Repo.get!(Apiary.WorkItems.WorkItem, run.work_item_id)
 
-      assert %Apiary.Stages.Escalation{cause: :run_stopped, gaps: gaps} =
+      assert %Apiary.Stages.Escalation{cause: :run_stopped, points: [point]} =
                Repo.get_by!(Apiary.Stages.Escalation, work_item_id: run.work_item_id)
 
       # What could not be read and why, then who fixes it and where.
-      assert [cause, fix] = String.split(gaps, "\n")
       org = ctx.scope.organisation.name
 
-      assert cause ==
-               "#{@tools} is not public, or does not exist, and no connection of #{org} reaches it."
-
-      assert fix ==
-               "Owners and admins of #{org} connect an integration that covers #{@tools} in Organisation settings › Integrations."
+      assert point == %{
+               "text" =>
+                 "The run stopped: #{@tools} is not public, or does not exist, and no connection of #{org} reaches it.",
+               "action" => "run_again",
+               "fix" =>
+                 "Owners and admins of #{org} connect an integration that covers #{@tools} in Organisation settings › Integrations."
+             }
     end
 
     # The stage runner cannot read the work item's questions: the run still ends, and the

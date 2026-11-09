@@ -235,6 +235,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             error={@stage_error}
             check={@stage_check}
             notice={@stage_notice}
+            needs_path={needs_path(@flow, @tab, @current_scope, @number)}
           />
           <.step_card
             :if={step_card?(@flow, @item)}
@@ -252,6 +253,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
             no_pool={@no_pool}
             commenting={@can.send and @proposal != nil}
+            points={waiting_points(@flow)}
+            needs_path={needs_path(@flow, @tab, @current_scope, @number)}
           >
             <:badge :if={one_card?(@flow, @item)}>
               <StageComponents.stage_badge page={@flow} quiet={@item[:run][:liveness] == :quiet} />
@@ -287,6 +290,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             id="work-item-flow"
             class="q-wi-flow flex flex-col gap-3"
           >
+            <StageComponents.needs_block
+              :if={!@flow.explore and needs?(@flow)}
+              page={@flow}
+              questions={@questions}
+              question_path={if @tab != :explore, do: tab_path(@current_scope, @number, :explore)}
+              class="mb-3"
+            />
             <StageComponents.stage_runs :if={!@flow.explore} runs={@flow.runs} />
             <StageComponents.stage_notes notes={stage_notes(@flow)} />
             <section
@@ -351,6 +361,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             now={@now}
             no_pool={@no_pool}
           >
+            <:needs :if={@flow && @flow.explore && needs?(@flow)}>
+              <StageComponents.needs_block page={@flow} questions={@questions} />
+            </:needs>
             <:artifacts :if={@flow && @flow.explore}>
               <section
                 id="work-item-artifacts"
@@ -1862,26 +1875,26 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     }
   end
 
-  # The work item with its process version loaded, the workspace's current one for a
-  # work item with none, so that each `Apiary.Access` check of the page reads no version
-  # (`Apiary.Stages.Approvers`).
+  # With the workflow model on, loads the work item's process version, or puts the
+  # workspace's current one on a work item with none, so the `Apiary.Access` checks of the
+  # page read no version (`Apiary.Stages.Approvers`). With it off, those checks read none.
   defp with_version(row, scope) do
-    case Apiary.Repo.preload(row, :process_version) do
-      %{process_version: nil} = row ->
-        %{row | process_version: Processes.current(scope.workspace)}
+    if Apiary.Features.on?(:workflow_model) do
+      case Apiary.Repo.preload(row, :process_version) do
+        %{process_version: nil} = row ->
+          %{row | process_version: Processes.current(scope.workspace)}
 
-      row ->
-        row
+        row ->
+          row
+      end
+    else
+      row
     end
   end
 
-  # Who confirms next, where the stage the work item is in lists its approvers: `:you`
-  # for a reader who may confirm (`work_item.confirm`), else the listed approvers, in the
-  # gate's order, with the names the page shows for members. Nil where the stage lists
-  # no one, or the list is empty: there the owner rule stays. The approvers are the
-  # gate's of `Apiary.Stages.status/2`, read from the stage card where the page has one,
-  # else read for the page where the instance has the workflow model, as `Apiary.Access`
-  # applies the list there.
+  # Who confirms next where the stage lists approvers: `:you` where the reader may confirm,
+  # else the approvers by name, in the gate's order; nil keeps the owner rule. A listed
+  # reader who may not confirm stays in the list; the components leave their name out.
   defp confirmers(scope, row, flow) do
     case gate_approvers(scope, row, flow) do
       [_ | _] = ids ->
@@ -2042,15 +2055,36 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp one_card?(_flow, _item), do: false
 
-  # Today's step card, beside the stage card at Explore. At the run limit it says that the
-  # run was "the last run of this take in", which is false while the escalation card
-  # offers Run another round: there the step card is not shown. Nor is it at a proposal
-  # whose stage escalated. Confirm shows again once the stage reaches its gate.
+  # Today's step card, beside the stage card at Explore. While the stage is escalated after
+  # a run with no result, the block "What the run needs from you" says what happened and
+  # the escalation card offers Run another round: there the step card is not shown. Nor is
+  # it at a proposal whose stage escalated. Confirm shows again once the stage reaches its
+  # gate.
   defp step_card?(nil, _item), do: true
   defp step_card?(%{explore: false}, _item), do: false
+  defp step_card?(flow, item), do: not escalated?(flow, status(item))
 
-  defp step_card?(flow, item),
-    do: not (status(item) in [:used_up, :confirm] and escalated?(flow, status(item)))
+  # Whether the page shows the block "What the run needs from you": while the live work
+  # item's stage is escalated, with an escalation row or none, and while it waits for
+  # answers with an escalation that has points.
+  defp needs?(%{ended: false, state: :escalated}), do: true
+  defp needs?(%{ended: false, escalation: %{points: [_ | _]}}), do: true
+
+  defp needs?(_flow), do: false
+
+  # The points of an escalation kept while the stage waits for answers, for the line
+  # "Waits for you" on the step card; 0 otherwise.
+  defp waiting_points(%{state: :waiting_answers, escalation: %{points: points}}),
+    do: length(points)
+
+  defp waiting_points(_flow), do: 0
+
+  # Where the block "What the run needs from you" is: on this page, or, at Explore, on the
+  # Explore tab when the page shows another tab.
+  defp needs_path(%{explore: true}, tab, scope, number) when tab != :explore,
+    do: tab_path(scope, number, :explore) <> "#work-item-needs"
+
+  defp needs_path(_flow, _tab, _scope, _number), do: "#work-item-needs"
 
   defp status(%{status: status}), do: status
   defp status(_item), do: nil
@@ -2068,7 +2102,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp stage_notes(%{notes: notes}), do: notes
 
-  defp escalated?(%{escalation: %{}}, status)
+  defp escalated?(%{state: :escalated, escalation: %{}}, status)
        when status in [:no_result, :lost, :cancelled, :used_up, :confirm],
        do: true
 

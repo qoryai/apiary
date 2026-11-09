@@ -1288,6 +1288,17 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
   end
 
   describe "a run the gateway refused" do
+    # The text of the element at `selector`, with its white space made single spaces.
+    defp line(view, selector) do
+      view
+      |> element(selector)
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
     @key_fix "Add a model key in Organisation settings › Model providers."
 
     # Run `attempt` of 3 of a work item, refused by its gateway with `code` through the
@@ -1314,34 +1325,24 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       {work_item, run}
     end
 
-    test "for want of a model key: each tab puts the fix first, none says it ended with an error",
+    test "for want of a model key: the block ends with the fix, none says it ended with an error",
          %{conn: conn, scope: scope} do
-      {work_item, run} = refused(scope, "model_key_missing")
+      {work_item, _run} = refused(scope, "model_key_missing")
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(
-               view,
-               "#work-item-step-line",
-               @key_fix <> " The gateway had no model key for attempt 1 (Run #{run.number})."
-             )
-
+      # The stage escalated: the step card is hidden, and the side line leads to the block.
+      refute has_element?(view, "#work-item-step")
+      assert has_element?(view, "#work-item-stage-waits", "Waits for you: 1 point")
       refute html =~ "ended with an error"
 
       {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
 
-      assert has_element?(
-               view,
-               "#work-item-explore-none-h",
-               "The run did not start (Run #{run.number})."
-             )
+      # The fix ends the point, in place of Run another round.
+      assert line(view, "#work-item-needs-point-1") ==
+               "The run stopped: the gateway did not start the run, because it had no model key for the run. Owners and admins of #{scope.workspace.name} add a model key on the set-up step Model."
 
-      assert has_element?(
-               view,
-               "#work-item-explore-none p",
-               @key_fix <> " The gateway had no model key for the run."
-             )
-
+      refute has_element?(view, "#work-item-explore-none")
       refute html =~ "ended with an error"
 
       {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
@@ -1378,15 +1379,12 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
     test "with another code, every tab keeps the words for an error",
          %{conn: conn, scope: scope} do
-      {work_item, run} = refused(scope, "image_user_root")
+      {work_item, _run} = refused(scope, "image_user_root")
 
       {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
 
-      assert has_element?(
-               view,
-               "#work-item-explore-none-h",
-               "The run ended with an error (Run #{run.number})."
-             )
+      assert line(view, "#work-item-needs-point-1") =~
+               "The run stopped: the gateway did not start the run. Qory Apiary has no description for its refusal (image_user_root). Contact support with run rn_"
 
       refute html =~ "model key"
 

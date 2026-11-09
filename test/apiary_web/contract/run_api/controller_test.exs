@@ -396,20 +396,32 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ]
     end
 
-    test "has the newest verdict with its gaps", ctx do
-      assert write(ctx, "/verdict", %{"verdict" => "changes-requested", "gaps" => "No test."}).status ==
-               201
-
+    test "has the newest verdict with its points", ctx do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
+
+      body = json_response(read(ctx, "/work-item"), 200)
+      [passed] = RunApiStubs.pushed()
+
+      assert body["verdict"] == %{
+               "verdict" => "passed",
+               "points" => nil,
+               "version" => %{"id" => passed.public_id, "number" => 1}
+             }
+
+      points = [%{"text" => "The ticket has no test steps.", "action" => "run_again"}]
+      assert write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points}).status == 201
 
       body = json_response(read(ctx, "/work-item"), 200)
       newest = List.last(RunApiStubs.pushed())
 
       assert body["verdict"] == %{
-               "verdict" => "passed",
-               "gaps" => nil,
+               "verdict" => "escalate",
+               "points" => points,
                "version" => %{"id" => newest.public_id, "number" => 2}
              }
+
+      # The stage's gaps come from failed checks alone, not from a verdict.
+      assert body["gaps"] == nil
     end
   end
 
@@ -1363,8 +1375,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
   describe "POST verdict" do
     test "stores the verdict as a verdict artifact", ctx do
-      conn =
-        write(ctx, "/verdict", %{"verdict" => "escalate", "gaps" => "The ticket has no steps."})
+      points = [%{"text" => "The ticket has no steps.", "action" => "run_again"}]
+      conn = write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points})
 
       assert signed_answer?(conn)
       [version] = RunApiStubs.pushed()
@@ -1378,21 +1390,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [%{filename: "verdict.json", content_type: "application/json", content: content}] =
                version.files
 
-      assert Jason.decode!(content) == %{
-               "verdict" => "escalate",
-               "gaps" => "The ticket has no steps."
-             }
+      assert Jason.decode!(content) == %{"verdict" => "escalate", "points" => points}
     end
 
     test "a verdict that is not one of the three, or a member it does not define, is 400", ctx do
       for {body, member} <- [
             {%{"verdict" => "approved"}, "verdict"},
             {%{}, "verdict"},
-            {%{"verdict" => "passed", "gaps" => 3}, "gaps"},
-            {%{"verdict" => "passed", "gaps" => "a\u009Bb"}, "gaps"},
-            {%{"verdict" => "passed", "gaps" => "a\u202Eb"}, "gaps"},
-            {%{"verdict" => "passed", "gaps" => ""}, "gaps"},
-            {%{"verdict" => "passed", "gaps" => String.duplicate("x", 20_001)}, "gaps"},
+            {%{"verdict" => "passed", "gaps" => "No test."}, "gaps"},
             {%{"verdict" => "passed", "type" => "verdict"}, "type"}
           ] do
         conn = write(ctx, "/verdict", body)
@@ -1402,7 +1407,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
-    test "a verdict without gaps is stored without the member, as its schema takes it",
+    test "a verdict without points is stored without the member, as its schema takes it",
          ctx do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
       assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
@@ -1431,17 +1436,17 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       body =
         push_body("verdict", [
-          {"verdict.json", "application/json", ~s({"verdict":"changes-requested","gaps":"x"})}
+          {"verdict.json", "application/json", ~s({"verdict":"changes-requested"})}
         ])
 
       assert write(ctx, "/artifacts", body).status == 201
     end
 
-    test "a pushed verdict artifact with gaps null is 422, as Apiary.Artifacts refuses it",
+    test "a pushed verdict artifact with points null is 422, as Apiary.Artifacts refuses it",
          ctx do
       body =
         push_body("verdict", [
-          {"verdict.json", "application/json", ~s({"verdict":"passed","gaps":null})}
+          {"verdict.json", "application/json", ~s({"verdict":"passed","points":null})}
         ])
 
       conn = write(ctx, "/artifacts", body)
@@ -1450,9 +1455,89 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
 
     test "a body over 64 KiB is 413", ctx do
-      gaps = String.duplicate("x", Body.max_bytes(:verdict))
-      conn = write(ctx, "/verdict", %{"verdict" => "passed", "gaps" => gaps})
+      text = String.duplicate("x", Body.max_bytes(:verdict))
+      points = [%{"text" => text, "action" => "run_again"}]
+      conn = write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points})
       assert json_response(conn, 413) == %{"error" => "payload_too_large"}
+    end
+
+    test "points the schema refuses are 422 invalid_artifact", ctx do
+      run_again = %{"text" => "The ticket has no steps.", "action" => "run_again"}
+
+      for body <- [
+            %{"verdict" => "escalate"},
+            %{"verdict" => "passed", "points" => [run_again]},
+            %{"verdict" => "escalate", "points" => []},
+            %{"verdict" => "escalate", "points" => 3},
+            %{"verdict" => "escalate", "points" => List.duplicate(run_again, 21)},
+            %{"verdict" => "escalate", "points" => [%{run_again | "text" => ""}]},
+            %{"verdict" => "escalate", "points" => [%{run_again | "text" => "a\u202Eb"}]},
+            %{"verdict" => "escalate", "points" => [%{run_again | "text" => "a\nb"}]},
+            %{
+              "verdict" => "escalate",
+              "points" => [%{run_again | "text" => String.duplicate("x", 501)}]
+            },
+            %{"verdict" => "escalate", "points" => [%{run_again | "action" => "answer"}]},
+            %{"verdict" => "escalate", "points" => [Map.put(run_again, "question", "q1")]},
+            %{"verdict" => "escalate", "points" => [Map.put(run_again, "note", "x")]}
+          ] do
+        conn = write(ctx, "/verdict", body)
+        assert json_response(conn, 422)["error"] == "invalid_artifact", inspect(body)
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "an answer point is taken only about a question open in the current take in", ctx do
+      answer =
+        &%{"text" => "The ticket names two baskets.", "action" => "answer", "question" => &1}
+
+      run_again = %{"text" => "The ticket has no steps.", "action" => "run_again"}
+
+      not_open = fn point, question ->
+        "Push the questions first, or point at an open question in verdict.json: " <>
+          "point #{point} is about question #{question}, which is not open."
+      end
+
+      # With no questions pushed, no question is open.
+      conn = write(ctx, "/verdict", %{"verdict" => "escalate", "points" => [answer.("q1")]})
+      assert %{"error" => "invalid_artifact", "message" => message} = json_response(conn, 422)
+      assert message == not_open.(1, "q1")
+
+      questions = %{
+        "questions" => [
+          %{
+            "id" => "q1",
+            "question" => "Which basket gets the sale?",
+            "options" => [],
+            "state" => "open",
+            "asked" => %{"run" => ctx.run.number, "at" => "2026-11-08T10:00:00Z"}
+          }
+        ]
+      }
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("questions", [
+            {"questions.json", "application/json", Jason.encode!(questions)}
+          ])
+        )
+
+      assert conn.status == 201
+
+      conn =
+        write(ctx, "/verdict", %{"verdict" => "escalate", "points" => [run_again, answer.("q1")]})
+
+      assert conn.status == 201
+
+      # An id that is no question of the newest version is not open either.
+      conn =
+        write(ctx, "/verdict", %{"verdict" => "escalate", "points" => [run_again, answer.("q7")]})
+
+      assert %{"error" => "invalid_artifact", "message" => message} = json_response(conn, 422)
+      assert message == not_open.(2, "q7")
     end
   end
 

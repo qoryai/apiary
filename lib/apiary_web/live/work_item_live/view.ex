@@ -223,7 +223,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
     %{
       scope: scope,
-      explore_stage: Apiary.Stages.explore_stage_id(row),
+      explore_stage: if(Enum.any?(all_runs, &staged?/1), do: Apiary.Stages.explore_stage_id(row)),
       number: row.number,
       images?: ApiaryWeb.Features.visible?(scope, :workflow_model),
       people: people(scope, ids),
@@ -418,10 +418,15 @@ defmodule ApiaryWeb.WorkItemLive.View do
   # Whether the run ran at another stage than Explore.
   # `Apiary.WorkItems.Explore.steps/3` reads every run of the take in, and Explore's tab
   # shows only Explore's.
-  defp other_stage?(%{stage_id: stage_id}, %{explore_stage: explore_stage}),
-    do: is_binary(stage_id) and is_binary(explore_stage) and stage_id != explore_stage
+  defp other_stage?(%{stage_id: stage_id} = run, %{explore_stage: explore_stage}),
+    do: staged?(run) and is_binary(explore_stage) and stage_id != explore_stage
 
   defp other_stage?(_run, _ctx), do: false
+
+  # Whether the run has a stage id. `other_stage?/2` reads Explore's stage only for such a
+  # run, and `context/4` reads that stage from the work item's process version.
+  defp staged?(%{stage_id: stage_id}), do: is_binary(stage_id)
+  defp staged?(_run), do: false
 
   defp take_in(take_in, ctx) do
     %{

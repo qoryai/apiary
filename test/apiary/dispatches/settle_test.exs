@@ -19,8 +19,10 @@ defmodule Apiary.Dispatches.SettleTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, WorkItems}
+  alias Apiary.Artifacts.ArtifactFile
   alias Apiary.Dispatches.{DispatchRun, RunEnd, Settle}
   alias Apiary.Runs.{Event, Liveness, Projector, Run}
+  alias Apiary.Stages.Escalation
   alias Apiary.WorkItems.{Confirmation, Explore, WorkItem}
 
   @moduletag needs: :factory
@@ -51,8 +53,9 @@ defmodule Apiary.Dispatches.SettleTest do
   defp questions!(handed, texts \\ ["Which basket?", "Which sale?"]),
     do: push_result!(queue_run!(handed), run!(handed), questions_result(texts))
 
-  # The verdict `escalate` of the run, with `gaps`, as the run API stores it: the version.
-  defp escalate!(handed, gaps \\ "The ticket describes two baskets.") do
+  # The verdict `escalate` of the run, with one point of `text`, as the run API stores it:
+  # the version.
+  defp escalate!(handed, text \\ "The ticket describes two baskets.") do
     dispatch_run = queue_run!(handed)
 
     {:ok, version} =
@@ -60,7 +63,7 @@ defmodule Apiary.Dispatches.SettleTest do
         {:run, dispatch_run},
         work_item!(handed),
         "verdict",
-        %{"verdict" => "escalate", "gaps" => gaps},
+        %{"verdict" => "escalate", "points" => [%{"text" => text, "action" => "run_again"}]},
         stage_id: dispatch_run.stage_id
       )
 
@@ -345,7 +348,7 @@ defmodule Apiary.Dispatches.SettleTest do
          ctx do
       handed = handed_over!(ctx)
       proposal!(handed)
-      # Gaps no other test writes, so no other test stores the same file.
+      # A point no other test writes, so no other test stores the same file.
       escalate!(handed, "Which basket #{System.unique_integer([:positive])}?")
 
       version = Apiary.Stages.Artifacts.newest_of_run(queue_run!(handed), "verdict", "main")
@@ -506,15 +509,15 @@ defmodule Apiary.Dispatches.SettleTest do
       assert %DispatchRun{workflow: "capture-demo", explore: false} = dispatch_run
       id = dispatch_run.id
 
-      # Gaps no other test writes, so no other test stores the same file.
-      gaps = "The demo skips step #{System.unique_integer([:positive])}."
+      # A point no other test writes, so no other test stores the same file.
+      text = "The demo skips step #{System.unique_integer([:positive])}."
 
       {:ok, version} =
         Apiary.Stages.Artifacts.push_json(
           {:run, dispatch_run},
           work_item!(handed),
           "verdict",
-          %{"verdict" => "passed", "gaps" => gaps},
+          %{"verdict" => "escalate", "points" => [%{"text" => text, "action" => "run_again"}]},
           stage_id: dispatch_run.stage_id
         )
 
@@ -543,7 +546,90 @@ defmodule Apiary.Dispatches.SettleTest do
       assert %DispatchRun{state: :ended, end_cause: :run_ended, result_outcome: :none} =
                queue_run!(handed)
 
+      assert %WorkItem{stage_state: :escalated} = work_item!(handed)
+
+      assert %Escalation{cause: :escalate, points: [%{"text" => ^text}]} =
+               Repo.one(
+                 from(e in Escalation,
+                   where:
+                     e.work_item_id == ^handed.dispatch_run.work_item_id and is_nil(e.resolved_at)
+                 )
+               )
+
+      assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
+    # As the test before, with the verdict `passed`: once the file reads again, the stage
+    # reaches its gate. Every run that passes stores the same file, so the version's row
+    # points at a key the store does not have, in place of a rename of the shared file.
+    @tag needs: [:factory, :workflow_model]
+    test "with its verdict passed unreadable: the exit not stored, then at the gate after",
+         ctx do
+      {:ok, _version} =
+        Apiary.Processes.save(ctx.scope, ctx.scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => [
+            %{
+              "id" => "st_r79kph11eg",
+              "name" => "Explore",
+              "inputs" => [],
+              "sequence" => [%{"workflow" => "capture-demo"}],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            }
+          ]
+        })
+
+      handed = handed_over!(ctx)
+      dispatch_run = queue_run!(handed)
+      assert %DispatchRun{workflow: "capture-demo", explore: false} = dispatch_run
+      id = dispatch_run.id
+
+      {:ok, version} =
+        Apiary.Stages.Artifacts.push_json(
+          {:run, dispatch_run},
+          work_item!(handed),
+          "verdict",
+          %{"verdict" => "passed"},
+          stage_id: dispatch_run.stage_id
+        )
+
+      [file] = version.files
+      away = :sha256 |> :crypto.hash("away #{id}") |> Base.encode16(case: :lower)
+
+      key = fn key ->
+        Repo.update_all(from(f in ArtifactFile, where: f.id == ^file.id), set: [store_key: key])
+      end
+
+      {1, _rows} = key.(away)
+
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+      )
+
+      assert_raise Apiary.Stages.VerdictUnreadable, fn -> RunEnd.run_ended(run!(handed)) end
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      now = Dispatches.now()
+      log = ExUnit.CaptureLog.capture_log(fn -> RunEnd.lose(now) end)
+      assert log =~ "run end failed dispatch_run=#{id} error=Apiary.Stages.VerdictUnreadable"
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      {1, _rows} = key.(file.store_key)
+      RunEnd.lose(now)
+
+      assert %DispatchRun{state: :ended, end_cause: :run_ended, result_outcome: :none} =
+               queue_run!(handed)
+
       assert %WorkItem{stage_state: :at_gate} = work_item!(handed)
+
+      refute Repo.exists?(
+               from(e in Escalation, where: e.work_item_id == ^dispatch_run.work_item_id)
+             )
+
       assert Apiary.Runs.StuckLog.lines() == %{}
     end
 

@@ -8,7 +8,9 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   #   "content_base64"}]}`, at most `max_bytes(:push)` bytes. The file contents stay
   #   base64 here; `decode_files/1` decodes them once the type's limits have been checked
   #   against their decoded sizes (`decoded_size/1`).
-  # - `verdict/1`: `{"verdict", "gaps"?}`, at most `max_bytes(:verdict)` bytes.
+  # - `verdict/1`: `{"verdict", "points"?}`, at most `max_bytes(:verdict)` bytes. The
+  #   points pass as they are: the schema of the type `verdict` checks them
+  #   (`priv/schemas/artifacts/verdict.schema.json`).
   #
   # A member the body does not define, a member of the wrong form or a body that is not a
   # JSON object is `{:error, :invalid_request, member}`, where `member` is the path of the
@@ -30,11 +32,6 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   # before its check.
   @refused_in_note ~r/(?![\x{9}\x{A}\x{D}\x{200C}\x{200D}])[\p{Cc}\p{Cf}\x{2028}\x{2029}]/u
   @max_note 4000
-  # The gaps of a verdict, as the schema of the type `verdict` takes them
-  # (`priv/schemas/artifacts/verdict.schema.json`): 1 to 20000 code points, with none of
-  # the control, bidirectional, separator and format characters it refuses.
-  @max_gaps 20_000
-  @refused_in_gaps ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
   @max_files 100
 
   @verdicts ["passed", "changes-requested", "escalate"]
@@ -64,17 +61,16 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   end
 
   @spec verdict(binary) ::
-          {:ok, %{verdict: String.t(), gaps: String.t() | nil}}
+          {:ok, %{verdict: String.t(), points: term}}
           | {:error, :too_large}
           | {:error, :invalid_request, String.t()}
   def verdict(raw_body) when byte_size(raw_body) > @verdict_max_bytes, do: {:error, :too_large}
 
   def verdict(raw_body) do
     with {:ok, body} <- object(raw_body),
-         :ok <- members(body, ~w(verdict gaps)),
-         {:ok, verdict} <- required(body, "verdict", &(&1 in @verdicts)),
-         {:ok, gaps} <- optional(body, "gaps", &gaps?/1, nil) do
-      {:ok, %{verdict: verdict, gaps: gaps}}
+         :ok <- members(body, ~w(verdict points)),
+         {:ok, verdict} <- required(body, "verdict", &(&1 in @verdicts)) do
+      {:ok, %{verdict: verdict, points: Map.get(body, "points")}}
     end
   end
 
@@ -196,11 +192,6 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   defp name?(value), do: Boundary.name?(value)
 
   defp content_type?(value), do: is_binary(value) and Regex.match?(@content_type, value)
-
-  defp gaps?(value) do
-    is_binary(value) and value != "" and String.valid?(value) and
-      code_points(value) <= @max_gaps and not Regex.match?(@refused_in_gaps, value)
-  end
 
   defp note?(value) do
     is_binary(value) and String.valid?(value) and code_points(value) <= @max_note and

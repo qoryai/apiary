@@ -250,8 +250,15 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       escalation = Stages.status(missing_skill).escalation
       assert to_string(escalation.cause) == "run_stopped"
 
-      assert escalation.gaps ==
-               "The run's harness has no skill for the workflow explore-a-ticket. The harness comes from the harness file at the root of repository acme/web-shop."
+      assert escalation.points == [
+               %{
+                 "text" =>
+                   "The run stopped: the run's harness has no skill for the workflow explore-a-ticket.",
+                 "action" => "run_again",
+                 "fix" =>
+                   "The harness comes from the harness file at the root of repository acme/web-shop."
+               }
+             ]
 
       assert Repo.one!(
                from r in Apiary.Runs.Run,

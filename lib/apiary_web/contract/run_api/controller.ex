@@ -172,12 +172,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
-  # The verdict's file, as the schema of the type `verdict` takes it: `gaps` only where
-  # the body has it.
-  defp verdict_json(%{verdict: verdict, gaps: nil}), do: Jason.encode!(%{"verdict" => verdict})
+  # The verdict's file, as the schema of the type `verdict` takes it: `points` only where
+  # the body has them, which the schema then checks.
+  defp verdict_json(%{verdict: verdict, points: nil}), do: Jason.encode!(%{"verdict" => verdict})
 
-  defp verdict_json(%{verdict: verdict, gaps: gaps}),
-    do: Jason.encode!(Jason.OrderedObject.new([{"verdict", verdict}, {"gaps", gaps}]))
+  defp verdict_json(%{verdict: verdict, points: points}),
+    do: Jason.encode!(Jason.OrderedObject.new([{"verdict", verdict}, {"points", points}]))
 
   ## The feature
 
@@ -511,6 +511,13 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           "only the run that asked a question records a decision on it."
     end
   end
+
+  # A verdict whose `answer` point is about a question that is not open in the newest
+  # questions of the run's take in (`Apiary.Artifacts`): `point` counts from 1.
+  defp kept("verdict", {:not_open, point, question}, filename),
+    do:
+      "Push the questions first, or point at an open question in #{filename}: " <>
+        "point #{point} is about question #{question}, which is not open."
 
   defp kept("review-comments", reason, filename) do
     case reason do

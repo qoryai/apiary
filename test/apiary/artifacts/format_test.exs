@@ -201,9 +201,10 @@ defmodule Apiary.Artifacts.FormatTest do
 
     assert extra =~ "'x'"
 
-    # A list where the schema file allows none is past the bounds, before JSV reads it.
+    # A list longer than any list the schema file allows (20 points) is past the bounds,
+    # before JSV reads it.
     assert {:error, {:schema, %{path: "#", error: "the document has more values" <> _}}} =
-             check(context, "verdict", "a", ~s([1]))
+             check(context, "verdict", "a", Jason.encode!(Enum.to_list(1..21)))
 
     assert {:error, :format} = check(context, "verdict", "a", ~s({"verdict":"passed"} x))
     assert {:error, :format} = check(context, "verdict", "a", <<0xFF>>)

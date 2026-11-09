@@ -132,7 +132,15 @@ defmodule Apiary.WorkItems.OpenQuestionsTakeInTest do
 
       assert work_item.stage_state == :escalated
 
-      assert %Escalation{cause: :run_stopped, gaps: "The run ended without a result."} =
+      assert %Escalation{
+               cause: :run_stopped,
+               points: [
+                 %{
+                   "text" => "The run stopped: it ended without a result.",
+                   "action" => "run_again"
+                 }
+               ]
+             } =
                Repo.one!(
                  from e in Escalation,
                    where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)

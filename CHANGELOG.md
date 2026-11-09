@@ -677,16 +677,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   other member reads “Dana approves next”, “Dana or Sam approves next” or “One of 3
   approvers approves next”, and the step card “Dana approves the proposal or runs
   another round.”, “Dana or Sam approves the proposal or runs another round.” or “One of
-  the stage's 3 approvers approves the proposal or runs another round.” The Work items
-  list shows the same words on the row, and its **Waiting on you** view, its Approve
-  band's count and the sidebar's count go to the members who may approve, not to an
-  owner who is not listed. Elsewhere the header shows the owner as before, “You approve
-  next” or “Dana approves next”. A member who stopped being an approver after the page
-  showed the gate, and clicks **Run another round**, sees “Ask an approver of Explore to
-  act on it.” under the gate, and no run starts. With the workflow model, where the
-  stage lists approvers, only they approve a gate. Every member answers the questions.
-  The access action `work_item.review_comment` covers the comment on the whole proposal,
-  a reply and a send of the open comments.
+  the stage's 3 approvers approves the proposal or runs another round.” A listed member
+  who may not approve does not see their name there. Beside other approvers, the step
+  card adds “You are listed as an approver, but you may not approve in this workspace.”
+  When that member is the only listed approver, the header shows “No listed approver may
+  approve” and the step card shows “You are the only listed approver, but you may not
+  approve in this workspace.” The Work items list shows the same words on the row, and
+  its **Waiting on you** view, its Approve band's count and the sidebar's count go to
+  the members who may approve, not to an owner who is not listed. Elsewhere the header
+  shows the owner as before, “You approve next” or “Dana approves next”. A member who
+  stopped being an approver after the page showed the gate, and clicks **Run another
+  round**, sees “Ask an approver of Explore to act on it.” under the gate, and no run
+  starts. With the workflow model, where the stage lists approvers, only they approve a
+  gate. Every member answers the questions. The access action `work_item.review_comment`
+  covers the comment on the whole proposal, a reply and a send of the open comments.
 - When **Run another round** or a reply sends nothing, the answers, the comment or the
   text stay, and the form shows the fix under it: “Send it again when attempt 3 ends.
   Attempt 3 (Run 14) started first, so nothing was sent.” when another run started
@@ -927,6 +931,41 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- When a run escalates, the work item page shows the block “What the run needs from
+  you”, with one numbered item for each point: the run's sentence on what is wrong or
+  missing, then what you can do, “Answer question 4.”, with “question 4” linked to the
+  question, or “Run another round.” A stop cause that has a fix, such as “Owners and
+  admins choose a harness.”, shows that fix in place of “Run another round.” The block
+  takes the place of the red banner “The run ended without a result” at the top of the
+  Explore tab or of the stage's area, and the stage's note field and **Run another
+  round** sit in it. In the side panel, the line “Waits for you: 2 points” links to the
+  block; **Accept as it is**, **Move back** and **Close** stay there and take the note
+  too. The step card is hidden while the stage is escalated. For a cause Qory Apiary
+  sets itself, it writes one point: “3 of 3 rounds ran.”, “No spec was stored in this
+  stage.” for each failed check, both at a round limit after failed checks, “The run
+  stopped: it ended without a result.”, or “The run stopped before its verdict.” An
+  escalation that was open before this change shows the agent's text as its points, one
+  for each line. For a cause Qory Apiary sets itself, it shows the point of that cause.
+  After a failed check whose outputs were all stored since, it shows no point. An
+  `answer` point whose question the run withdrew asks for another round instead. A run
+  that leaves questions open and escalates waits for answers first: its escalation is
+  kept, the block shows its points above the questions, and the answers run the next
+  round and resolve it; **Accept as it is**, **Move back** and **Close** are refused
+  while the answers wait. “Waiting on you” counts an escalated work item for the
+  approvers its gate lists who may resolve the escalation, else for its owner. A work
+  item that left Explore while its proposal still waits, as after Explore's gate `none`,
+  is not highlighted in the Work items list and is not counted in “Waiting on you”.
+  Where a run ends without a result, with an error, lost or cancelled, and a proposal of
+  an earlier round shows below its banner, the banner says “The proposal below is from
+  an earlier round.” in place of “There is nothing to show or approve.”, and the
+  proposal shows “· from an earlier round”. A run's verdict has `points` in place of
+  `gaps`: 1 to 20 points, each `{text, action, question?}`, with `action` `answer` or
+  `run_again`, required with `escalate` and absent otherwise; the schema is a copy of
+  qory's `contracts/harness/v1/verdict.schema.json`. The run API refuses a verdict whose
+  `answer` point is about a question that is not open: “Push the questions first, or
+  point at an open question in verdict.json: point 2 is about question q7, which is not
+  open.” The work item's answer to a run has `verdict.points` in place of
+  `verdict.gaps`.
 - Making a pool needs `node.set_limit`, the action that sets a pool's machine limit,
   with a limit or without one. One who may make machines and pools but may not set the
   limit is refused the pool; before, such a pool was made with a limit of 1. That person
@@ -1436,7 +1475,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The stage's Runs list shows a run that an undo ended as undone, not as ended without a
   verdict.
 - A run of Explore that pushes the verdict `escalate` escalates its stage with the
-  verdict's gaps, as a run of any other workflow does, and the work item page shows no
+  verdict's points, as a run of any other workflow does, and the work item page shows no
   **Approve**. Before, such a run read as a run with no verdict, and the work item page
   showed **Approve** on the newest proposal, also one an earlier run wrote.
 - Make `qory run verdict passed` the last step of each workflow entry outside a loop. A run
@@ -1503,6 +1542,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `escalations` (20261109100001): the column `gaps` is dropped, and a column `points`, a
+  JSON array that is empty by default, takes its place. Each line of an `escalate`
+  escalation's gaps becomes one `run_again` point, up to 20. The gaps of other
+  escalations are dropped, and the page shows the point of their cause in their place.
 - `runs` (20261109100000): writes a run record for each run of the queue that waits, in
   the order the runs were queued, numbered after the workspace's highest number, and
   raises each workspace's count of runs to match. A run of the queue that ended or was
