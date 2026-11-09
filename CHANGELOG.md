@@ -1451,7 +1451,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
-- `escalations` (20261109100000): the column `gaps` is dropped, and a column `points`,
+- `escalations` (20261109100001): the column `gaps` is dropped, and a column `points`,
   a JSON array that is empty by default, takes its place. The gaps of earlier escalations
   are not copied.
 - `run_configurations` and `audit_entries`: each workspace with no security policy gets
