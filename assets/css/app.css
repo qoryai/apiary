@@ -10527,6 +10527,11 @@
   #connections-target-note .q-link:hover {
     text-decoration-color: currentColor;
   }
+  /* The harness's address in the Source row of Workspace settings › Harness: underlined
+     at rest, as the page's other links are. */
+  #harness-row-source-link.q-link {
+    text-decoration-color: currentColor;
+  }
   .q-narrowed-name,
   .q-narrowed-name .q-tname {
     overflow-wrap: anywhere;
