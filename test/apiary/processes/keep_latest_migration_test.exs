@@ -1,14 +1,15 @@
 defmodule Apiary.Processes.KeepLatestMigrationTest do
   # The migration that adds `workspaces.keep_process_latest`, run down and up again inside
   # the test's transaction, which rolls it all back: up turns the switch off for each
-  # workspace whose current version a person saved, and leaves every other row empty. It
+  # workspace whose current version a person saved, or whose version 1 is a version of
+  # the workspace type an instance admin saved, and leaves every other row empty. It
   # changes `workspaces` under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Processes.Version
+  alias Apiary.Processes.{TypeTemplate, TypeTemplates, Version}
 
   @migration {20_261_108_120_000,
               Apiary.Repo.Migrations.KeepWhetherAWorkspaceKeepsItsProcessAtTheLatest,
@@ -52,7 +53,7 @@ defmodule Apiary.Processes.KeepLatestMigrationTest do
       )
   end
 
-  test "turns the switch off where a person saved the current version, and only there" do
+  test "turns the switch off where a person saved the process, and only there" do
     # Version 1 copied from the template, with no author.
     %{scope: copied} = sign_up_fixture()
 
@@ -78,10 +79,25 @@ defmodule Apiary.Processes.KeepLatestMigrationTest do
         based_on_id: v1.id
     })
 
+    # Version 1 copied from a version of the workspace type an instance admin saved.
+    newest = TypeTemplates.newest("qory.software")
+
+    Repo.insert!(%TypeTemplate{
+      type: "qory.software",
+      number: newest.number + 1,
+      document: newest.document,
+      based_on: newest.number,
+      author_id: edited.user.id
+    })
+
+    %{scope: admin_saved} = sign_up_fixture()
+    assert version_one(admin_saved).author_id == nil
+
     migrate_again!()
 
     assert keep(copied) == nil
     assert keep(edited) == false
     assert keep(followed) == nil
+    assert keep(admin_saved) == false
   end
 end

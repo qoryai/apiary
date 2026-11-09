@@ -62,7 +62,7 @@ defmodule Apiary.Processes.HarnessUpdate do
   alias Apiary.Artifacts.{TemplateTypes, Type}
   alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Processes.Version
+  alias Apiary.Processes.{TypeTemplate, Version}
   alias Apiary.Stacks.Sources
 
   @typedoc """
@@ -172,7 +172,8 @@ defmodule Apiary.Processes.HarnessUpdate do
   @doc """
   keep_latest?/1 is whether the switch Keep the process at the latest is on for the
   workspace: the saved value, else on for the Qory harness and off for a harness
-  repository. Off for a harness pinned to a tag or a commit, whatever is saved.
+  repository, and off where an instance admin saved version 1 (the moduledoc). Off for a
+  harness pinned to a tag or a commit, whatever is saved.
   """
   @spec keep_latest?(%Workspace{}) :: boolean
   def keep_latest?(%Workspace{} = workspace) do
@@ -184,7 +185,7 @@ defmodule Apiary.Processes.HarnessUpdate do
 
   defp keep_value(%Workspace{id: id}, choice) do
     case Repo.one(from w in Workspace, where: w.id == ^id, select: w.keep_process_latest) do
-      nil -> choice == :qory
+      nil -> choice == :qory and not admin_type?(id)
       on? -> on?
     end
   end
@@ -192,6 +193,20 @@ defmodule Apiary.Processes.HarnessUpdate do
   @doc """
   set_keep_latest/3 turns the switch Keep the process at the latest on or off for the
   scope's workspace, under `process.edit`, with one audit entry. `{:ok, workspace}`;
+  # Whether version 1 of the workspace's process is a version of its workspace type's
+  # default process that an instance admin saved (`Apiary.Processes.TypeTemplate`, with
+  # an author): its `template` has the type's key and the version's number.
+  defp admin_type?(workspace_id) do
+    Repo.exists?(
+      from v in Version,
+        join: t in TypeTemplate,
+        on:
+          t.type == fragment("?->>'type'", v.template) and
+            fragment("?::text", t.number) == fragment("?->>'version'", v.template),
+        where: v.workspace_id == ^workspace_id and v.number == 1 and not is_nil(t.author_id)
+    )
+  end
+
   `{:error, :pinned}` for a harness pinned to a tag or a commit, where the switch does not
   apply; or a reason of `Apiary.Access`.
   """

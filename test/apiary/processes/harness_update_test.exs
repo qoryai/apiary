@@ -14,7 +14,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   alias Apiary.Audit.Entry
   alias Apiary.Harnesses.{Qory, QoryRefresh}
   alias Apiary.Organisations.Workspace
-  alias Apiary.Processes.{HarnessUpdate, Version}
+  alias Apiary.Processes.{HarnessUpdate, TypeTemplate, TypeTemplates, Version}
   alias Apiary.{PublicGitServer, QoryHarnessFixture}
   alias Apiary.Stacks.Stack
   alias Apiary.WorkItems.WorkItem
@@ -546,6 +546,32 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end
 
     test "the refresh saves the process without the stack of a harness the organisation shares",
+    test "is off where version 1 is a workspace type an instance admin saved", ctx do
+      newest = TypeTemplates.newest("qory.software")
+
+      Repo.insert!(%TypeTemplate{
+        type: "qory.software",
+        number: newest.number + 1,
+        document: newest.document,
+        based_on: newest.number,
+        author_id: ctx.scope.user.id
+      })
+
+      %{workspace: workspace} = sign_up_fixture()
+      v1 = Processes.current(workspace)
+      assert %{"source" => "qory", "version" => version} = v1.template
+      assert version == newest.number + 1
+      assert v1.author_id == nil
+      assert keep(workspace) == nil
+      refute HarnessUpdate.keep_latest?(workspace)
+      assert %{keep_latest: false} = HarnessUpdate.status(workspace)
+
+      main_at!(described())
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(workspace)) == 1
+      assert length(versions(ctx.workspace)) == 2
+    end
+
          ctx do
       Stacks.put_stack(
         ctx.scope,
