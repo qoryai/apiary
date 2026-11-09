@@ -847,9 +847,10 @@ what needs the reader, then what their agents did, and never grows with the data
   panel beside them. At step 1 an owner or admin has New machine, and New pool for one who
   may set a pool's limit too (`node.set_limit`). Step 2 is "Connect it" ("Run one command
   on the machine, or generate a key for a CI or another system."). While it is current, it
-  names the newest machine or pool with no active key, its name linking to that one's Access key tab. At step 1 the
-  panel explains "Two ways to connect a machine", Generate a key in the browser's line ending "… this
-  page shows the key's secret once, and you copy it into that system."; at step 2 it asks
+  names the newest machine or pool with no active key, its name linking to that one's
+  Access key tab. At step 1 the panel explains "Two ways to connect a machine", Generate a
+  key in the browser's line ending "… this page shows the key's secret once, and you copy
+  it into that system."; at step 2 it asks
   an owner or admin "How do you want to connect build-01?", with the two ways as rows,
   Connect with a command and Generate a key in the browser, a pool's Generate a key in
   the browser first, the buttons Get the command and Generate a key. Get the
