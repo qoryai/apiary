@@ -501,7 +501,7 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
   end
 
   describe "a code never redeemed" do
-    test "ends its run lost at the code's expiry, 15 minutes after the claim, its slot freed",
+    test "ends its run lost at the code's expiry, 15 minutes after the claim, its slot held for its machine",
          ctx do
       assert pool_post(ctx, ctx.dispatch, "dispatched", %{}).status == 204
 
@@ -521,10 +521,11 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
       assert [%Run{state: "lost"}] = Liveness.check(DateTime.add(expiry, 1, :second))
       assert %DispatchRun{state: :ended, end_cause: :lost} = Repo.get!(DispatchRun, ctx.queued.id)
 
-      assert %Dispatch{end_cause: :lost, ended_at: %DateTime{}, slot_freed_at: %DateTime{}} =
+      # Its dispatched came: the slot waits for the machine to be reported gone.
+      assert %Dispatch{end_cause: :lost, ended_at: %DateTime{}, slot_freed_at: nil} =
                Repo.get!(Dispatch, ctx.dispatch.id)
 
-      assert Slots.held(ctx.pool.id) == 0
+      assert Slots.held(ctx.pool.id) == 1
       assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
     end
   end

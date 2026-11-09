@@ -621,8 +621,16 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
         Task.async(fn ->
           Process.sleep(200)
 
+          # The dispatch ends with no machine, which frees its slot.
           {:ok, true} =
-            Repo.transact(fn -> {:ok, Slots.free_slot(held, Dispatches.now())} end)
+            Repo.transact(fn ->
+              {1, _rows} =
+                Repo.update_all(from(d in Dispatch, where: d.id == ^held.id),
+                  set: [ended_at: Dispatches.now(), end_cause: :closed]
+                )
+
+              {:ok, Slots.free_slot(held, Dispatches.now())}
+            end)
 
           Dispatches.broadcast([pool.workspace_id])
         end)

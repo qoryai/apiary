@@ -127,8 +127,7 @@ defmodule Apiary.DataCase do
 
   # The features a test or a module runs under: its `with_features:`, else the suite's.
   defp features(%{with_features: features}) when is_list(features) do
-    {:ok, features} = Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1))
-    Enum.sort(features)
+    features |> parse_with_features!() |> Enum.sort()
   end
 
   defp features(_tags), do: Enum.sort(Apiary.Features.enabled())
@@ -142,9 +141,12 @@ defmodule Apiary.DataCase do
   @doc """
   Switches the instance's features for one test: `@tag with_features: [:observability]`
   runs it as an instance launched with `QORY_FEATURES=observability`, and puts back what
-  the suite runs under afterwards. The features are the whole node's, so the test must not
-  be async. Its features being its own, `Apiary.TestSetup.start!/1` runs it only where
-  the suite has every feature.
+  the suite runs under afterwards. The features are the whole node's, so a test that
+  switches them must not be async. An async test may list the suite's features, such as
+  `with_features: Apiary.Features.all()` in the run with every feature on, and then leaves
+  the application environment as it is. An async test that lists other features raises.
+  The test runs under the features it lists whatever the suite's are, so
+  `Apiary.TestSetup.start!/1` leaves it out of each run with a feature off.
 
   The other tag, `@tag needs: :security` (or `@moduletag`), marks a test that exercises a
   feature; `Apiary.TestSetup.start!/1` leaves it out when the suite runs without that
@@ -161,18 +163,43 @@ defmodule Apiary.DataCase do
       raise ArgumentError, "@tag with_features: [] would be every feature; list the ones meant"
     end
 
-    if tags[:async] do
-      raise ArgumentError,
-            "@tag with_features: changes the whole node, so the test must not be async"
-    end
+    parsed = parse_with_features!(features)
 
-    previous = Application.get_env(:apiary, :features)
-    {:ok, features} = Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1))
-    Application.put_env(:apiary, :features, features)
-    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    if tags[:async] do
+      listed = Enum.sort(parsed)
+      suite = Enum.sort(Apiary.Features.enabled())
+
+      if listed != suite do
+        raise ArgumentError,
+              "Make the test sync, or tag it with the suite's features only.\n" <>
+                "An async test runs beside other tests, and the features are the whole " <>
+                "node's: with_features: #{inspect(listed)} differs from the suite's " <>
+                "#{inspect(suite)}"
+      end
+
+      :ok
+    else
+      previous = Application.get_env(:apiary, :features)
+      Application.put_env(:apiary, :features, parsed)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    end
   end
 
   def setup_features(_tags), do: :ok
+
+  # The features that a `with_features:` list turns on, for every caller of
+  # `setup_features/1` and `features/1`; raises when the list is not valid.
+  defp parse_with_features!(features) do
+    case Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1)) do
+      {:ok, parsed} ->
+        parsed
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "Correct the test's with_features: list.\n" <>
+                "QORY_FEATURES list is not valid: #{reason} (#{inspect(features)})"
+    end
+  end
 
   @doc """
   Turns the `registry` feature off for one test, whatever the suite runs under, and puts

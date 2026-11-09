@@ -36,7 +36,8 @@ defmodule Apiary.Dispatches.Release do
   # ## The release
   #
   # The dispatch ends, `released`, with the starter's reason as its `release_reason`, the
-  # slot it took is freed once, and the run registered at its claim ends failed,
+  # slot it took is freed once, unless the starter reported a machine for it that is not
+  # `gone` (`Apiary.Dispatches.Slots`), and the run registered at its claim ends failed,
   # `machine_not_made`, and leaves the run of the queue
   # (`Apiary.Dispatches.Handover.fail_start/3`), so the code redeems no more. Then the run
   # of the queue waits again, as when its lease lapses:
@@ -165,7 +166,8 @@ defmodule Apiary.Dispatches.Release do
     {:done, {:ok, %{run: nil, failed: failed}}, changed}
   end
 
-  # The dispatch ended, `released`, with the starter's reason, its slot freed once, and
+  # The dispatch ended, `released`, with the starter's reason, its slot freed once where
+  # due (`Apiary.Dispatches.Slots.free_slot/2`), and
   # the run registered at its claim failed, `machine_not_made`: the workspace whose slots
   # changed, and the ids of the runs that failed.
   defp end_dispatch(%{dispatch: %Dispatch{id: id} = dispatch, run: run, now: now} = locked) do

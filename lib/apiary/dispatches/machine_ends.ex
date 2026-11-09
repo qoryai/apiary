@@ -8,7 +8,11 @@ defmodule Apiary.Dispatches.MachineEnds do
   # failed and the machine still exists as far as the starter knows. The last report is
   # kept on the dispatch, `machine_end_state` and `machine_end_at`
   # (`Apiary.Dispatches.Dispatch`), and the run page shows it
-  # (`Apiary.Runs.Preparation`). `Apiary.Dispatches` delegates here.
+  # (`Apiary.Runs.Preparation`). The report also decides the dispatch's slot of its
+  # pool's instance limit (`Apiary.Dispatches.Slots`): `gone` frees it once the dispatch
+  # is ended or stale; `deleting` and `delete_failed` keep it held, and take it back
+  # where it was freed, unless the machine was reported `gone`. `Apiary.Dispatches`
+  # delegates here.
   #
   # ## The report: `report/3`
   #
@@ -24,10 +28,13 @@ defmodule Apiary.Dispatches.MachineEnds do
   #   3. the dispatch locked `FOR UPDATE`, so two reports for one dispatch take turns and
   #      are applied in the order they hold the lock;
   #   4. a dispatch whose state is `gone` keeps it: `:ok`, and nothing is written. Any
-  #      other report replaces the state and its time, the clock's.
+  #      other report replaces the state and its time, the clock's, and then frees or
+  #      takes back the slot (`Apiary.Dispatches.Slots.free_slot/2` for `gone`, else
+  #      `Apiary.Dispatches.Slots.hold_again/2`), under the same lock.
   #
   # A dispatch that ended, or whose lease lapsed, takes a report as any other: a machine
-  # usually ends after its dispatch. The times of the reports are not compared.
+  # usually ends after its dispatch. Any state may come first: a `gone` with no report
+  # before it is taken as any `gone`. The times of the reports are not compared.
   #
   # ## The audit trail
   #
@@ -41,7 +48,9 @@ defmodule Apiary.Dispatches.MachineEnds do
   #
   # `:ok` once the report is written, or kept for `gone`. Once a change commits, a message
   # goes out on the topic of the run registered at the dispatch's claim
-  # (`Apiary.Runs.broadcast_machine_end/1`); a failure of that broadcast is logged by its
+  # (`Apiary.Runs.broadcast_machine_end/1`), and, when it freed the slot, on the topic of
+  # the dispatch's workspace (`Apiary.Dispatches.broadcast/1`), so a held claim tries
+  # again; a failure of that broadcast is logged by its
   # kind alone and never changes the answer. An exception rolls the transaction back, is
   # logged by its module alone, and is `{:error, :unavailable}`.
 
@@ -54,7 +63,7 @@ defmodule Apiary.Dispatches.MachineEnds do
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches
-  alias Apiary.Dispatches.Dispatch
+  alias Apiary.Dispatches.{Dispatch, Slots}
   alias Apiary.Organisations.Organisation
   alias Apiary.Runs.Run
 
@@ -85,7 +94,7 @@ defmodule Apiary.Dispatches.MachineEnds do
         end
       end)
       |> case do
-        {:ok, {:changed, dispatch}} -> broadcast_to_runs(dispatch)
+        {:ok, {:changed, dispatch, freed?}} -> broadcast_changed(dispatch, freed?)
         {:ok, :kept} -> :ok
         {:error, _reason} = refused -> refused
       end
@@ -124,8 +133,11 @@ defmodule Apiary.Dispatches.MachineEnds do
         set: [machine_end_state: state, machine_end_at: now, updated_at: now]
       )
 
+    freed? = state == :gone and Slots.free_slot(dispatch, now)
+    _held = state != :gone and Slots.hold_again(dispatch, now)
+
     if audited?(dispatch, state), do: record(key, dispatch, state)
-    {:ok, {:changed, dispatch}}
+    {:ok, {:changed, dispatch, freed?}}
   end
 
   # The first report, the first `delete_failed` and `gone` leave an entry; nothing else.
@@ -168,8 +180,14 @@ defmodule Apiary.Dispatches.MachineEnds do
 
   # Once the report commits, a message goes out on the topic of the run registered at the
   # dispatch's claim: the run whose start failed with this dispatch, or the run of its run
-  # of the queue. A failure is logged by its kind alone and never changes the answer.
-  defp broadcast_to_runs(%Dispatch{id: id, dispatch_run_id: dispatch_run_id}) do
+  # of the queue; and on its workspace's topic when the report `freed?` the slot. A
+  # failure is logged by its kind alone and never changes the answer.
+  defp broadcast_changed(
+         %Dispatch{id: id, dispatch_run_id: dispatch_run_id, workspace_id: workspace_id},
+         freed?
+       ) do
+    if freed?, do: Dispatches.broadcast([workspace_id])
+
     from(r in Run, where: r.dispatch_id == ^id or r.dispatch_run_id == ^dispatch_run_id)
     |> Repo.all()
     |> Enum.each(&Runs.broadcast_machine_end/1)

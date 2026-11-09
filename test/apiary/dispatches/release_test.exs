@@ -282,6 +282,22 @@ defmodule Apiary.Dispatches.ReleaseTest do
   end
 
   describe "an explore run" do
+    test "whose machine was reported keeps its slot past the release, until gone", ctx do
+      {_work_item, queued} = queued!(ctx)
+      dispatch = started!(ctx)
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :deleting})
+      assert release(ctx.key, dispatch) == :ok
+
+      assert queue_run!(queued).state == :waiting
+      assert %Dispatch{end_cause: :released, slot_freed_at: nil} = dispatch!(dispatch)
+      assert Slots.held(ctx.pool.id) == 1
+
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :gone})
+      assert %Dispatch{slot_freed_at: %DateTime{}} = dispatch!(dispatch)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
     test "waits again, the same run_id and queued_at; the dispatch ends released", ctx do
       {work_item, queued} = queued!(ctx)
       %{dispatch: dispatch, run_code: code} = claimed!(ctx)

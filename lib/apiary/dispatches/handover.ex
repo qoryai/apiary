@@ -40,7 +40,12 @@ defmodule Apiary.Dispatches.Handover do
   # `dispatched_at`, the job's `external_*` and `vendor_machine_type`, and hands the
   # dispatch over: `handed_over_at` the clock, the run of the queue `handed_over`. From
   # then on the dispatch keeps no lease: it never goes stale, and its slot stays held
-  # until its run ends (`Apiary.Dispatches.RunEnd`). The run counts toward its pool's
+  # until its run ends (`Apiary.Dispatches.RunEnd`) and the starter reports its machine
+  # `gone` (`Apiary.Dispatches.Slots`). A `dispatched` refused, `gone` or
+  # `lease_expired`, shows that a machine was started all the same: its time is kept in
+  # `late_machine_at`, and the slot is taken back until that report
+  # (`Apiary.Dispatches.Slots.late_machine/2`).
+  # The run counts toward its pool's
   # limit by its dispatch, never as an instance (`Apiary.Nodes.instances_in_use/2`). Once
   # the first `dispatched` commits, the run the claim registered is broadcast as changed
   # (`Apiary.Runs.broadcast_changed/1`).
@@ -275,8 +280,15 @@ defmodule Apiary.Dispatches.Handover do
     if Dispatch.public_id?(dispatch_id) do
       key_id
       |> transact(dispatch_id, :"dispatch.dispatched", nil, fn locked ->
-        with :ok <- not_ended(locked) do
-          record_dispatched(locked, meta)
+        with :ok <- not_ended(locked),
+             {:done, _value, _changed} = done <- record_dispatched(locked, meta) do
+          done
+        else
+          {:refused, _reason} = refused ->
+            # A machine was started for a dispatch that takes none: its slot is held
+            # again until the machine is reported gone (`Slots.late_machine/2`).
+            _held = Slots.late_machine(locked.dispatch, locked.now)
+            refused
         end
       end)
       |> answered()

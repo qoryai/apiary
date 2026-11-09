@@ -7264,6 +7264,11 @@
   .q-prep-facts dt {
     color: var(--q-muted);
   }
+  /* A value with no break, such as an image reference, wraps inside its column. */
+  .q-prep-facts dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
   /* A step that did not run: its name and mark in grey, with no content. */
   .q-prep-skipped .q-prep-name,
   .q-prep-skip {

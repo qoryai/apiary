@@ -396,6 +396,81 @@ defmodule Apiary.DispatchesRacesTest do
     assert Slots.held(pool.id) == 2
   end
 
+  # A dispatch claimed by `key`, handed over at its claim and ended, its slot held for its
+  # machine.
+  defp ended_with_machine!(ctx, key) do
+    queued!(ctx, 1)
+
+    {:ok, %{dispatch: dispatch}} =
+      Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
+    {1, _rows} =
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [
+          dispatched_at: dispatch.claimed_at,
+          handed_over_at: dispatch.claimed_at,
+          ended_at: Dispatches.now(),
+          end_cause: :run_ended
+        ]
+      )
+
+    dispatch
+  end
+
+  test "a deleting that waits on the safety net's free takes the slot back once the net commits",
+       ctx do
+    pool = pool_fixture(ctx.scope, instance_limit: 1)
+    key = key!(ctx, pool)
+    dispatch = ended_with_machine!(ctx, key)
+    net = DateTime.add(dispatch.claimed_at, (1470 + 60) * 60, :second)
+
+    # The sweep at the net holds the dispatch's row it freed.
+    {sweep, sweep_pid} = hold(fn -> {:ok, Slots.free(:all, net)} end)
+    assert {:ok, workspaces} = sweep.result
+    assert ctx.scope.workspace.id in workspaces
+
+    report =
+      start(fn ->
+        Dispatches.report_machine_end(key, dispatch.public_id, %{state: :deleting})
+      end)
+
+    await_blocked(report.backend, sweep_pid)
+    commit(sweep)
+
+    assert Task.await(report.task) == :ok
+
+    assert %Dispatch{machine_end_state: :deleting, slot_freed_at: nil} =
+             Repo.get!(Dispatch, dispatch.id)
+
+    assert Slots.held(pool.id) == 1
+  end
+
+  test "a gone and a sweep at once free the slot once, and a claim then takes the run", ctx do
+    pool = pool_fixture(ctx.scope, instance_limit: 1)
+    key = key!(ctx, pool)
+    dispatch = ended_with_machine!(ctx, key)
+    [next] = queued!(ctx, 1)
+    assert Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) == {:ok, :none}
+
+    answers =
+      together([
+        fn -> Dispatches.report_machine_end(key, dispatch.public_id, %{state: :gone}) end,
+        fn -> Repo.transact(fn -> {:ok, Slots.free(:all, Dispatches.now())} end) end
+      ])
+
+    assert :ok in answers
+
+    assert %Dispatch{machine_end_state: :gone, slot_freed_at: %DateTime{}} =
+             Repo.get!(Dispatch, dispatch.id)
+
+    assert Slots.held(pool.id) == 0
+
+    assert {:ok, %{run: %{id: id}}} =
+             Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
+
+    assert id == next.id
+  end
+
   test "a move of a work item waits for its run's queueing, which writes the run where the work item was",
        ctx do
     # The queue locks the work item first, so the move waits for it, and the run is

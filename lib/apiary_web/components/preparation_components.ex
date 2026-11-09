@@ -25,7 +25,10 @@ defmodule ApiaryWeb.PreparationComponents do
       its push steps. A prebuild, a run of the queue for the step `prebuild`, has in their
       place Build the image, its session, with the session's join and wall, Started,
       Finished and the session's Timeline, and Save the outputs, its `dev.qory.run.built`
-      with the image, as steps of the run (`prebuild_nodes/3`);
+      with the image, as steps of the run (`prebuild_nodes/3`). Save the outputs is
+      failed, with its cause line (`built_cause/1`), when the image was not saved: its
+      report failed the check that stores it, or the run failed, was lost or was
+      cancelled after the build and sent none;
     * Remove the machine, last (`clean_up/3`), with Machine removed, the cause and the
       machine's time alive; for a run on a permanent machine, Machine stays registered in
       its place.
@@ -75,7 +78,7 @@ defmodule ApiaryWeb.PreparationComponents do
 
   import ApiaryWeb.CoreComponents, only: [icon: 1]
   import ApiaryWeb.ExternalText, only: [external_text: 1]
-  import ApiaryWeb.RichText, only: [rich: 1]
+  import ApiaryWeb.RichText, only: [rich: 1, rich_gettext: 2]
   import ApiaryWeb.RunComponents, only: [duration: 1, time_legend: 1]
 
   alias Apiary.ExternalText
@@ -325,6 +328,12 @@ defmodule ApiaryWeb.PreparationComponents do
               <.cause :if={node.cause} id={"#{@id}-cause"} text={node.cause} />
               {if node.session, do: render_slot(@session, node.session.sequence)}
             <% end %>
+            <%!-- A prebuild's Save the outputs whose image was not saved: its cause line. --%>
+            <.cause
+              :if={node.kind == :outputs and node.cause}
+              id={"#{@id}-outputs-cause"}
+              text={node.cause}
+            />
           </.flow>
           <%!-- Why a queued run waits, under Queue the run, open or closed. --%>
           <p :if={node[:why]} id={"#{@id}-why"} class="q-prep-why">{node.why}</p>
@@ -634,24 +643,170 @@ defmodule ApiaryWeb.PreparationComponents do
     }
   end
 
-  # Save the outputs of a prebuild: its `dev.qory.run.built`, with the image it reports.
-  # One event, so the row has its time and no duration.
+  # Save the outputs of a prebuild (`Apiary.Runs.Preparation`'s `built`): its
+  # `dev.qory.run.built`, with the image it reports. One event, so the row has its time
+  # and no duration. Failed, with its cause line, when the image was not saved: the
+  # report failed its check, or the run failed after the build and sent none.
   defp built_node(nil, alive), do: missing("outputs", gettext("Save the outputs"), alive)
 
-  defp built_node(%{at: at, image: image}, _alive) do
+  defp built_node(%{at: at, image: image, refused: refused} = built, _alive) do
+    image = if(image, do: [{gettext("Image"), {:mono, image}}], else: [])
+
     entry(
       key: "outputs",
       kind: :outputs,
       name: gettext("Save the outputs"),
-      state: "succeeded",
+      state: if(refused, do: "failed", else: "succeeded"),
       at: at,
       ended_at: at,
       duration_ms: nil,
-      events:
-        [{gettext("Outputs saved"), {:at, at}}] ++
-          if(image, do: [{gettext("Image"), {:mono, image}}], else: [])
+      events: if(refused, do: image, else: [{gettext("Outputs saved"), {:at, at}}] ++ image),
+      cause: refused && built_cause(built)
     )
   end
+
+  @doc """
+  The cause line of a prebuild's Save the outputs whose image was not saved
+  (`Apiary.Runs.Preparation`'s `built`), as rich text: what happened, with the values
+  that differ as code, then what the reader does about it, where there is a step to take
+  (`t:Apiary.Runs.Preparation.built_fix/0`). Nil for an image that was saved.
+  """
+  @spec built_cause(Preparation.built() | nil) :: term
+  def built_cause(%{refused: refused, fix: fix}) when refused != nil do
+    case built_fix(fix) do
+      nil -> built_what(refused)
+      fix -> [built_what(refused), " ", fix]
+    end
+  end
+
+  def built_cause(_built), do: nil
+
+  @doc """
+  How a prebuild whose image was not saved ended, as the run page's header shows it: what
+  happened, the first sentence of its cause line (`built_cause/1`), in plain text, with
+  no advice. Nil for any other preparation, and for a prebuild lost or cancelled before
+  its image arrived (`unsaved_line/1`).
+  """
+  @spec built_line(Preparation.t() | nil) :: String.t() | nil
+  def built_line(%{built: %{refused: refused}}) when refused not in [nil, :lost, :cancelled],
+    do: ApiaryWeb.RichText.plain_text(built_what(refused))
+
+  def built_line(_preparation), do: nil
+
+  @doc """
+  How a prebuild ended that was lost or cancelled after its build finished and before an
+  image arrived, as `built_line/1` has it; nil for any other preparation. The run page's
+  header shows it only when the header has no other line on how the run ended: a lost or
+  cancelled run often has one, the starter's outcome or the reason it was lost.
+  """
+  @spec unsaved_line(Preparation.t() | nil) :: String.t() | nil
+  def unsaved_line(%{built: %{refused: refused}}) when refused in [:lost, :cancelled],
+    do: built_what(refused)
+
+  def unsaved_line(_preparation), do: nil
+
+  defp built_what(:not_sent),
+    do: gettext("The image was not saved: the build finished, but no image arrived.")
+
+  defp built_what(:lost),
+    do:
+      gettext(
+        "The image was not saved: the build finished, but the run was lost before an image arrived."
+      )
+
+  defp built_what(:cancelled),
+    do:
+      gettext(
+        "The image was not saved: the build finished, but the run was cancelled before an image arrived."
+      )
+
+  defp built_what({:image_place, reported, expected}),
+    do:
+      rich_gettext(
+        "The image was not saved: the run reported it at %{reported}, but this run saves images only under %{expected}.",
+        reported: {:code, reported},
+        expected: {:code, expected}
+      )
+
+  defp built_what({:environment_image, reported, {:destination, expected}}),
+    do:
+      rich_gettext(
+        "The image was not saved: the run reported its environment image at %{reported}, but this run saves environment images only under %{expected}.",
+        reported: {:code, reported},
+        expected: {:code, expected}
+      )
+
+  defp built_what({:environment_image, reported, {:image, expected}}),
+    do:
+      rich_gettext(
+        "The image was not saved: the run reported that it started from %{reported}, but this run starts from %{expected}.",
+        reported: {:code, reported},
+        expected: {:code, expected}
+      )
+
+  defp built_what({:form, member}),
+    do:
+      rich_gettext("The image was not saved: %{member} in the image report %{rule}.",
+        member: {:code, member},
+        rule: form_rule(member)
+      )
+
+  defp built_what(:no_destination),
+    do:
+      gettext(
+        "The image was not saved: this run has no registry address to check the image against."
+      )
+
+  defp built_what(:not_prebuild),
+    do:
+      gettext(
+        "The image was not saved: this run is not recorded as a prebuild handed over to a machine."
+      )
+
+  # The rule of the image report's member that the report broke
+  # (`Apiary.Dispatches.Built`).
+  defp form_rule(member) when member in ["image", "environment_image"],
+    do:
+      rich_gettext(
+        "is not a registry address pinned by its digest, %{digest} and 64 lower-case hexadecimal digits, of at most 327 characters",
+        digest: {:code, "@sha256:"}
+      )
+
+  defp form_rule("size"),
+    do: gettext("is not a whole number of bytes from 1 to 9,007,199,254,740,991")
+
+  defp form_rule("commit"), do: gettext("is not 40 or 64 lower-case hexadecimal characters")
+  defp form_rule("environment_ref"), do: gettext("is not 1 to 200 characters")
+
+  defp built_fix(:machine_log),
+    do:
+      rich_gettext("Read the machine log under %{step} for the cause.",
+        step: {:b, gettext("Start the machine")}
+      )
+
+  defp built_fix({:pool_log, pool}),
+    do: rich_gettext("Read the cause in the log of %{pool} on its host.", pool: {:b, pool})
+
+  defp built_fix({:operator_log, operator, pool}),
+    do:
+      rich_gettext("Ask an admin of %{operator} for the cause in the log of %{pool}.",
+        operator: operator,
+        pool: {:b, pool}
+      )
+
+  defp built_fix({:support, run}), do: gettext("Contact support with run %{run}.", run: run)
+
+  defp built_fix({:rebuild, target}),
+    do: rich_gettext("Rebuild %{target} to build the image again.", target: {:b, target})
+
+  defp built_fix({:ask_rebuild, workspace, target}),
+    do:
+      rich_gettext("Ask an admin of %{workspace} to rebuild %{target}.",
+        workspace: workspace,
+        target: {:b, target}
+      )
+
+  defp built_fix(nil), do: nil
 
   defp unbegun?(place),
     do: is_nil(place.session) and is_nil(place.join) and is_nil(place.wall) and place.extra == []
