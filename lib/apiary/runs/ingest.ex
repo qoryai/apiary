@@ -345,7 +345,7 @@ defmodule Apiary.Runs.Ingest do
       Repo.one(
         from d in DispatchRun,
           where: d.run_id == ^run_id,
-          left_join: r in Run,
+          left_join: r in subquery(Run.registered()),
           on: r.dispatch_run_id == d.id,
           left_join: w in Workspace,
           on: w.id == r.workspace_id,

@@ -209,7 +209,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     rows =
       Repo.all(
-        from r in Run,
+        from r in Run.registered(),
           where: r.public_id in ^ids,
           select: {r.public_id, %{number: r.number, workspace_id: r.workspace_id}}
       )
@@ -252,7 +252,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       MapSet.new()
     else
       Repo.all(
-        from r in Run,
+        from r in Run.registered(),
           where: r.public_id in ^ids and r.dispatch_run_id in ^Enum.uniq(queued),
           select: r.public_id
       )
@@ -290,7 +290,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       get(escalation, :build_run) ||
         (queued &&
            Repo.one(
-             from r in Run, where: r.dispatch_run_id == ^queued, select: r.public_id, limit: 1
+             from r in Run.registered(),
+               where: r.dispatch_run_id == ^queued,
+               select: r.public_id,
+               limit: 1
            ))
 
     Enum.find(runs, &(is_binary(id) and &1.id == id))

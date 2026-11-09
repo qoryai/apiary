@@ -844,7 +844,7 @@ defmodule Apiary.WorkspaceSetup do
       from d in DispatchRun,
         join: w in WorkItem,
         on: w.id == d.work_item_id,
-        join: r in Run,
+        join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == d.id,
         where: w.organisation_id == ^organisation_id and w.workspace_id == ^workspace_id,
         where: w.test and d.state == :ended and d.end_cause == :run_ended,
@@ -875,7 +875,7 @@ defmodule Apiary.WorkspaceSetup do
             where: d.work_item_id == ^work_item.id,
             order_by: [desc: d.take_in, desc: d.attempt],
             limit: 1,
-            preload: [run: :node]
+            preload: [run: ^{Run.registered(), [:node]}]
         )
 
     if dispatch_run do

@@ -1231,7 +1231,7 @@ defmodule Apiary.Stages do
 
     Repo.all(
       from d in DispatchRun,
-        left_join: r in Run,
+        left_join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == d.id,
         where: d.work_item_id == ^id and not is_nil(d.stage_id),
         order_by: [desc: d.take_in, desc: d.attempt],
@@ -1723,7 +1723,7 @@ defmodule Apiary.Stages do
   defp stopped?(%DispatchRun{end_cause: :run_ended} = run) do
     match?(
       %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
-      Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id)
+      Repo.one(from r in Run.registered(), where: r.dispatch_run_id == ^run.id)
     )
   end
 
@@ -1736,7 +1736,7 @@ defmodule Apiary.Stages do
       from v in Apiary.Artifacts.Version,
         join: a in Apiary.Artifacts.Artifact,
         on: a.id == v.artifact_id,
-        join: r in Run,
+        join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == v.run_id,
         where: v.run_id == ^id and a.type == "proposal" and a.name == "main",
         where: r.exit_state == "failed",
@@ -1762,7 +1762,7 @@ defmodule Apiary.Stages do
 
       match?(
         %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
-        Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id)
+        Repo.one(from r in Run.registered(), where: r.dispatch_run_id == ^run.id)
       ) ->
         {:stopped, stop_cause(run, work_item)}
 

@@ -327,6 +327,26 @@ defmodule Apiary.Runs.Run do
       )
 
   @doc """
+  Whether a claim or a registration wrote the run: it has a registration time or a node.
+  The record of a run of the queue that no claim registered, waiting or ended while it
+  waited (`queued?/1`), has neither. A reader of "the run a claim registered" for a run
+  of the queue reads only such a run (`registered/0`).
+  """
+  @spec registered?(t() | map()) :: boolean()
+  def registered?(%{registered_at: %DateTime{}}), do: true
+  def registered?(%{node_id: id}) when is_binary(id), do: true
+  def registered?(_run), do: false
+
+  @doc """
+  The runs `registered?/1` is true of, as a query to read or join from.
+  """
+  @spec registered() :: Ecto.Query.t()
+  def registered do
+    import Ecto.Query, only: [from: 2]
+    from r in __MODULE__, where: not is_nil(r.registered_at) or not is_nil(r.node_id)
+  end
+
+  @doc """
   The state the pages show: `queued` for a queued run (`queued?/1`), else the run's
   `state`.
   """
