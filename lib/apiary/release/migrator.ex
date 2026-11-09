@@ -3,7 +3,8 @@ defmodule Apiary.Release.Migrator do
   Runs pending database migrations at boot, before the endpoint accepts requests: the
   core's and the edition's, then the edition's step after them
   (`Apiary.Release.migrate/1`). Version 1 of the policy of each workspace that has none is
-  written later in the boot, after the key check (`Apiary.Release.FirstVersions`).
+  written later in the boot, after the key check, and every workspace is rendered again
+  (`Apiary.Release.FirstVersions`).
 
   The application's supervisor starts this child only when `config :apiary, :migrate_on_boot`
   is true (the default for production releases; `MIGRATE_ON_BOOT=false` turns it off).

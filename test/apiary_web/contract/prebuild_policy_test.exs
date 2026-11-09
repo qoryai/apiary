@@ -122,9 +122,9 @@ defmodule ApiaryWeb.Contract.PrebuildPolicyTest do
       assert reload!(ctx, run).digest == answer.digest
     end
 
-    # 64 hosts: the default policy's allow_first takes them, and the registry's two hosts
-    # make 66, more than the contract takes.
-    @tag hosts: for(n <- 1..64, do: "h#{n}.tracker.example")
+    # 63 hosts and the runtime's: the default policy's allow_first takes the 64, and the
+    # registry's two hosts make 66, more than the contract takes.
+    @tag hosts: for(n <- 1..63, do: "h#{n}.tracker.example")
     test "whose document cannot be composed is refused its attach, never sent without a security_policy",
          ctx do
       {:ok, document} = Policy.default_document(ctx.scope.workspace.id)

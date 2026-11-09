@@ -736,8 +736,11 @@ version in force is exported; another version's path sends on to it.
   decides the row, its "Main · denied" (or allowed) links to that rule; a row a rule was
   just added for ends its after line with Show the rule. A locked rule, the wall, a host
   no rule can name, a deny of the level above, and an allow only the level above can grant
-  for a reader who may not change it there are a faint lock whose hint says why (who
-  locked it and when, where known; the wall's reason); a locked rule's lock opens its
+  for a reader who may not change it there, and on Network access and a run's Network
+  access tab a runtime's, an integration's or a model provider's host ("Allowed for every
+  run") are a faint lock
+  whose hint says why (who locked it and when, where known; the wall's reason); a locked
+  rule's lock opens its
   refusal in place, with the way to the rule. Where only the level above the workspace
   allows a host, the row's reason says so in words, and Allow opens a panel that says an
   allow here would not be in force and leads to that level's New rule page with the
@@ -825,6 +828,8 @@ what needs the reader, then what their agents did, and never grows with the data
   where the edition gives one, to one who may change it there; and a lock with the reason
   to the rest. A denial no rule can change, the wall's refusal or a host no rule can name,
   has a lock where Allow would be, its hover the hint of its row's lock on Network access.
+  A host that every run of the item's targets is allowed, such as a runtime's, has a lock
+  with the hint "Allowed for every run".
   A resolved
   item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above

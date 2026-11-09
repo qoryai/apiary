@@ -751,14 +751,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 - The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
   allows for every run of the workspace, by group, such as **Harness sources**,
-  **Integrations** and **Model providers**, each with its source, what requires it, and a
-  lock: “Host rules do not remove this host.” Anyone who reads the policy sees the list;
-  an IP address shows as “Address hidden” to anyone but an instance admin. Network access
-  lists, under the destinations, the hosts that runs reached to fetch their harness before
-  the first session started, in a table **Harness fetch**, each with its source, such as
-  “The Qory harness”, its runs, attempts and last time seen, and a lock: “Host rules do
-  not apply to a harness fetch.” That table is outside the page's counts, views and rule
-  options. Neither list changes which hosts a run may reach.
+  **Runtimes**, **Integrations** and **Model providers**, each with its source, what
+  requires it, and a lock: “Host rules do not remove this host.” Anyone who reads the
+  policy sees the list; an IP address shows as “Address hidden” to anyone but an instance
+  admin. Network access lists, under the destinations, the hosts that runs reached to
+  fetch their harness before the first session started, in a table **Harness fetch**,
+  each with its source, such as “The Qory harness”, its runs, attempts and last time
+  seen, and a lock: “Host rules do not apply to a harness fetch.” That table is outside
+  the page's counts, views and rule options. Neither list changes which hosts a run may
+  reach.
+- Every security policy document that Qory Apiary serves allows the hosts that the
+  runtimes need, such as `api.anthropic.com` for Claude Code, in `egress.allow_first`, on
+  every path, as it allows the hosts of the integrations that reach the workspace. A rule
+  saved before a host became a runtime's stays on the page: a deny of the host does not
+  stop a run from reaching it, and an allow held to paths does not limit the host.
+- A row of Network access, on the workspace page or a run's **Network access** tab, has a
+  lock with the hint “Allowed for every run” in place of **Allow** and **Deny** when every
+  run is allowed its host: a runtime's, an integration's or a model provider's host. An
+  item of the Overview's **To review** list for such a host has the lock in place of
+  **Allow here**. A path that no rule limits an integration's or provider's host to keeps
+  **Allow** and **Deny**.
 <!-- feature: secrets -->
 - Where an agent, an API or a program of **Workspace settings › Integrations** applies is
   set when it is added, and never changed after. Added from a form with no setting, it
@@ -928,6 +940,45 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   by the `egress` section of its Forager file. With version 1, a run gets no tools and no
   credentials from the Forager file, and a machine in observe no longer reaches a private
   host in `gateway.egress.allow`.
+- At start, and from `bin/migrate`, Qory Apiary writes a new policy version for each
+  workspace whose document changes, shown as “Qory Apiary changed the policy”. The same
+  render runs from `bin/apiary eval "Apiary.Release.policy_rerender()"`. If the key check
+  fails, none of the three renders a policy, and the log has the line “Set
+  APIARY_ENCRYPTION_SECRET and APIARY_SIGNING_SECRET to the instance's keys and run
+  bin/migrate again: policy version 1 is not written and no policy is rendered again,
+  because the key check failed.”
+- A deny rule of a runtime's host is refused: “Remove api.anthropic.com from the rule.
+  Claude Code needs this host, so no rule can deny it.” A rule that holds a runtime's
+  host to paths is refused too: “Remove the paths from the rule. Claude Code needs every
+  path on this host, so no rule can limit it.” A `*.` rule with paths is saved, and the
+  runtime's host stays on every path. The rule form shows each refusal under **What this
+  rule does** before **Add rule**.
+- **Export** of a policy allows each runtime's host in `allow`, in the Forager file and
+  in the policy file, once, sorted in with the other names. The export leaves out a deny
+  of a runtime's host and the paths that a rule holds a runtime's host to, and writes
+  `/*` for a runtime's host that a `*.` entry held to paths covers, as the served
+  document does. A `*.` deny written in the file still blocks the runtime's host there,
+  while a run served by Qory Apiary reaches it. The **Export** panel then shows the note
+  “A `*.` deny still blocks a runtime's host that the text lists as allowed.”, and shows
+  no note when the text has no `*.` deny that covers a runtime's host. A saved `*.` deny
+  that an allow outranks is left out of the file, as before.
+- The count of attempts with no rule on the Policy page, the list when you pick
+  **Enforce**, and **Enforce would deny N destinations** on the Overview leave out the
+  hosts of the runtimes, the integrations and the model providers, which enforce does
+  not deny. A rule's paths on an integration's or a provider's host still count, because
+  the document keeps them. Before, those three counted such a host as a destination
+  enforce would deny. The Policy page's mode card shows “No run has reached out in the
+  last 14 days.” only when no run reached out. When runs did, it shows “Every
+  destination that runs reached in the last 14 days is covered by a rule or allowed for
+  every run.” in observe where that is true, and “No destination that runs reached in
+  the last 14 days was denied.” in enforce where none was.
+<!-- feature: secrets -->
+- `mix apiary.policy.rerender` prints “Rendered N workspaces again: M new versions, R
+  refused, F failed.”, with “workspace” and “version” for a count of 1, such as
+  “Rendered 1 workspace again: 1 new version, 0 refused, 0 failed.”, and exits with
+  status 1 when a workspace's render raised or exited.
+  Before, it printed the workspaces and the new versions only, and exited with status 0.
+<!-- /feature -->
 - The run page's **Timeline** shows an overview of the run: its stages, a row for each
   agent, the agents' messages, the artifact versions the run pushed, failures, denials,
   and the tool calls that were the only call running when a network connection was made.

@@ -214,10 +214,11 @@ defmodule Apiary.Application do
     end
   end
 
-  # Version 1 of the policy of each workspace that has none, after the key check, because a
-  # version 1 has the hosts of the integrations that reach the workspace, and after the
-  # caches and the edition's processes, before the endpoint. Only where the migrator runs:
-  # with MIGRATE_ON_BOOT=false, `bin/migrate` writes them.
+  # Version 1 of the policy of each workspace that has none, then a render again of every
+  # workspace, after the key check, because a render has the hosts of the integrations
+  # that reach the workspace, and after the caches and the edition's processes, before the
+  # endpoint. Only where the migrator runs: with MIGRATE_ON_BOOT=false, `bin/migrate`
+  # writes the versions 1 and renders every workspace again.
   defp first_versions do
     if Application.get_env(:apiary, :migrate_on_boot, false) do
       [Apiary.Release.FirstVersions]

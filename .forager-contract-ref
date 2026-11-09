@@ -69,12 +69,15 @@
 # of `dev.qory.runtime.message`, with `dev.qory.runtime.tool_result` and
 # `dev.qory.runtime.tool_denied`, `line` on every runtime event read from the session's
 # standard output, `truncated` on a text or a tool result cut at 64 KiB, and `summary` on
-# the three tool events.
+# the three tool events; and a runtime's `fixed` and `egress_hosts` in runtimes.json, the
+# variables it always sets and the exact hosts it needs to reach; and the host step kind
+# `push`, the run API in `link-run-answer`, the close reasons of a read-only workspace, and
+# `bare` on `dev.qory.session.started`.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-96e4986daa634e91c8f9ede44476445fe9202f2d
+a4e7f43c9a58cc693fcd1429f2e0a7276e712389
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json

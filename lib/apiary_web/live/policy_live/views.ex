@@ -495,6 +495,17 @@ defmodule ApiaryWeb.PolicyLive.Views do
           "plain",
           "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
         )}
+        <%!-- Only where the texts deny a *. entry that covers a runtime's host. --%>
+        <.rich
+          :if={@export.runtime_blocked}
+          text={
+            rich_pgettext(
+              "plain",
+              "A %{suffix} deny still blocks a runtime's host that the text lists as allowed.",
+              suffix: {:m, "*.", "font-mono text-[12.5px]"}
+            )
+          }
+        />
       </p>
 
       <div class="q-save">

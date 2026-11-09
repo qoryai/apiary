@@ -42,6 +42,18 @@ defmodule Apiary.ConnectionsFixtures do
   def workspace!(scope, name),
     do: Apiary.OrganisationsFixtures.workspace_fixture(scope.organisation, name)
 
+  @doc """
+  no_runtime_hosts!/0 makes the catalogue, in this process and the processes it starts, the
+  same runtimes with no `egress_hosts`: for a test of what a document has from other
+  sources, compared byte for byte.
+  """
+  def no_runtime_hosts! do
+    :ok =
+      Apiary.Kinds.Runtimes.list()
+      |> Enum.map(&%{&1 | egress_hosts: []})
+      |> Apiary.Kinds.Runtimes.put_test_list()
+  end
+
   @doc "target!/2 is a repository of the scope's workspace at `path`."
   def target!(scope, path) do
     Repo.insert!(%Target{

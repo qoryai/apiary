@@ -1586,8 +1586,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
     then by `egress.allow` and the mode. Only a connection that was allowed is
     terminated and held to `egress.paths`. A host that is only in `paths` is denied under
     `enforce`. So a host held to paths is rendered in **both** `allow` and `paths`, or,
-    for an integration's host, in `allow_first` and `paths`, and a denied host is never
-    in `paths`: it is never reached.
+    for an integration's host, in `allow_first` and `paths`. A runtime's host is in
+    `allow_first`, and in `paths` only with `/*`, where a `*.` key of `paths` covers it.
+    A denied host is never in `paths`: it is never reached.
   - A host several keys of `paths` cover is held to the most specific one: its name
     itself, else the `*.` key with the longest suffix (`policy.HostPaths`). A `*.` key of
     `paths` also holds every allowed host below it that no more specific key names. Qory

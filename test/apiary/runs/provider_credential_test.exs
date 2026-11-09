@@ -7,7 +7,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
 
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog, only: [with_log: 1]
-  import Apiary.ConnectionsFixtures, only: [ready_release!: 3]
+  import Apiary.ConnectionsFixtures, only: [no_runtime_hosts!: 0, ready_release!: 3]
   import Apiary.DescriptionFixtures, only: [tracker_description: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -15,7 +15,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
 
   alias Apiary.{Connections, EditionStubs, Policy, Repo}
   alias Apiary.Connections.Connection
-  alias Apiary.Policy.{ComposedConfiguration, Render}
+  alias Apiary.Policy.{ComposedConfiguration, Render, Rule}
   alias Apiary.Runs.{ProviderCredential, Registration, Run}
 
   @moduletag needs: :factory
@@ -178,6 +178,8 @@ defmodule Apiary.Runs.ProviderCredentialTest do
 
     test "an exact deny of a provider's host stays in the deny, and allow_first lists the host",
          %{scope: scope} do
+      # A runtime's host refuses this deny: here the host is the provider's alone.
+      no_runtime_hosts!()
       {:ok, _rule} = Policy.deny(scope, nil, %{host: "api.anthropic.com"})
       {:ok, _rule} = Policy.deny(scope, nil, %{host: "tracker.example"})
       ctx = sealed_run_fixture(scope)
@@ -186,6 +188,29 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert egress["allow"] == ["git.example", "api.anthropic.com"]
       assert egress["allow_first"] == ["api.anthropic.com"]
       assert egress["deny"] == ["api.anthropic.com", "tracker.example"]
+      assert Apiary.Policy.Schema.validate(document(ctx)) == :ok
+    end
+
+    test "a saved deny of a host both a runtime and the provider need leaves the deny",
+         %{scope: scope} do
+      # Inserted past the writes, which refuse it: the rule was saved before the host
+      # became a runtime's. The vendored catalogue applies, with no stub.
+      Repo.insert!(%Rule{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        kind: "host",
+        action: "deny",
+        host: "api.anthropic.com",
+        locked: false
+      })
+
+      {:ok, _rule} = Policy.deny(scope, nil, %{host: "tracker.example"})
+      ctx = sealed_run_fixture(scope)
+
+      egress = Jason.decode!(document(ctx))["security_policy"]["egress"]
+      assert egress["allow"] == ["git.example", "api.anthropic.com"]
+      assert egress["allow_first"] == ["api.anthropic.com"]
+      assert egress["deny"] == ["tracker.example"]
       assert Apiary.Policy.Schema.validate(document(ctx)) == :ok
     end
 
@@ -217,6 +242,8 @@ defmodule Apiary.Runs.ProviderCredentialTest do
     end
 
     test "more than 64 entries leave the run without a run configuration", %{scope: scope} do
+      # The provider's host is the entry that overflows: here it is no runtime's.
+      no_runtime_hosts!()
       ctx = sealed_run_fixture(scope)
       integration!(scope, "acme-tracker", for(n <- 1..64, do: "host#{n}.example.com"))
 

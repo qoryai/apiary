@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.IntegrationHostRefusalTest do
   @moduledoc """
-  A deny of an integration's host, saved from the rule form or from a row of Network
-  access, is refused with the sentence that names the host and the integration, and
-  nothing is saved.
+  A deny of an integration's host, saved from the rule form, is refused with the sentence
+  that contains the host and the integration, and nothing is saved. Network access offers
+  no Deny on the host's row.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -65,16 +65,25 @@ defmodule ApiaryWeb.IntegrationHostRefusalTest do
     assert Policy.list_rules(scope, nil) == []
   end
 
-  test "Network access's panel shows the sentence", %{conn: conn, scope: scope} do
+  # The row of the integration's host has a lock in place of Deny
+  # (`ApiaryWeb.RequiredHostRowsTest`), so Network access opens no panel for a deny of the
+  # host, and an event that asks for one saves nothing.
+  test "Network access offers no Deny on the integration's host", %{conn: conn, scope: scope} do
     {:ok, view, _html} = live(conn, workspace_path(scope, "/network"))
     render_async(view, 2_000)
     api = RunComponents.destination_id(%{host: "api.example.com", port: 443, path: ""})
 
-    view |> element("##{api}-deny") |> render_click()
-    view |> form("#rule-panel-form", %{"for" => "workspace"}) |> render_change()
-    view |> form("#rule-panel-form") |> render_submit()
+    assert has_element?(view, ~s(##{api}-lock[data-tip="Allowed for every run"]))
+    refute has_element?(view, "##{api}-deny")
 
-    assert text(view, "#rule-panel-error") == @sentence
+    render_click(view, "rule_open", %{
+      "host" => "api.example.com",
+      "port" => "443",
+      "path" => "",
+      "action" => "deny"
+    })
+
+    refute has_element?(view, "#rule-panel")
     assert Policy.list_rules(scope, nil) == []
   end
 end

@@ -102,7 +102,11 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
              "version" => 1,
              "security_policy" => %{
                "version" => 1,
-               "egress" => %{"mode" => "observe", "allow" => []}
+               "egress" => %{
+                 "mode" => "observe",
+                 "allow" => [],
+                 "allow_first" => ["api.anthropic.com"]
+               }
              }
            }
 
@@ -124,7 +128,12 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
              "version" => 1,
              "security_policy" => %{
                "version" => 1,
-               "egress" => %{"mode" => "observe", "allow" => [], "deny" => ["ads.example"]}
+               "egress" => %{
+                 "mode" => "observe",
+                 "allow" => [],
+                 "allow_first" => ["api.anthropic.com"],
+                 "deny" => ["ads.example"]
+               }
              }
            }
 
@@ -335,7 +344,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
     # Managed is the workspace's own, too: this workspace's policy does not make the
     # other's served.
     assert Jason.decode!(register(theirs, @site).resp_body)["security_policy"]["egress"] ==
-             %{"mode" => "observe", "allow" => []}
+             %{"mode" => "observe", "allow" => [], "allow_first" => ["api.anthropic.com"]}
 
     {:ok, _} = Policy.deny(other, nil, %{host: "ads.example"})
     conn = register(theirs, @site)
@@ -692,7 +701,11 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
       assert served["security_policy"]["egress"]["mode"] == "observe"
       assert Enum.sort(served["security_policy"]["egress"]["allow"]) == Enum.sort(egress["allow"])
       assert Enum.sort(served["security_policy"]["egress"]["deny"]) == Enum.sort(egress["deny"])
-      assert Map.keys(served["security_policy"]["egress"]) |> Enum.sort() == ~w(allow deny mode)
+      # And the runtime's host, which is no rule of the fixture's.
+      assert served["security_policy"]["egress"]["allow_first"] == ["api.anthropic.com"]
+
+      assert Map.keys(served["security_policy"]["egress"]) |> Enum.sort() ==
+               ~w(allow allow_first deny mode)
     end
 
     test "the vendored schemas are the contract's" do

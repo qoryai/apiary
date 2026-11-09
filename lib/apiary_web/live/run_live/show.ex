@@ -50,6 +50,7 @@ defmodule ApiaryWeb.RunLive.Show do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
+  alias Apiary.Policy.RequiredHosts
   alias Apiary.Runs
   alias Apiary.Runs.{Preparation, Record, Run}
   alias Apiary.Targets
@@ -1638,6 +1639,7 @@ defmodule ApiaryWeb.RunLive.Show do
        in_force: nil,
        versions: %{},
        effective: nil,
+       first_hosts: nil,
        acts: nil,
        rule_panel: nil,
        policy_flush_scheduled: false,
@@ -1796,6 +1798,7 @@ defmodule ApiaryWeb.RunLive.Show do
             target: if(security, do: target_of(scope, run)),
             versions: %{},
             effective: nil,
+            first_hosts: nil,
             acts: nil,
             rule_panel: nil
           )
@@ -1992,6 +1995,12 @@ defmodule ApiaryWeb.RunLive.Show do
       effective:
         if(socket.assigns.security,
           do: socket.assigns.effective || Policy.effective(scope, socket.assigns.target)
+        ),
+      first_hosts:
+        if(socket.assigns.security,
+          do:
+            (socket.assigns.effective && socket.assigns.first_hosts) ||
+              RequiredHosts.first_hosts(scope.workspace)
         )
     )
     |> assign_acts()
@@ -3247,22 +3256,31 @@ defmodule ApiaryWeb.RunLive.Show do
     socket = assign_policy_facts(socket)
 
     if tab == :connections,
-      do: socket |> assign(effective: Policy.effective(scope, target)) |> assign_acts(),
-      else: assign(socket, effective: nil)
+      do:
+        socket
+        |> assign(
+          effective: Policy.effective(scope, target),
+          first_hosts: RequiredHosts.first_hosts(scope.workspace)
+        )
+        |> assign_acts(),
+      else: assign(socket, effective: nil, first_hosts: nil)
   end
 
   defp refresh_policy(socket), do: socket
 
   # What each row of the page may ask, and the line after the rows a rule already answers.
   # A harness fetch (channel `stack`) asks nothing: the stack proxy reads no rule of the
-  # workspace or of a target, so its row has no Allow or Deny.
+  # workspace or of a target, so its row has no Allow or Deny. A row of a host that every
+  # run is allowed has the lock in place of Allow and Deny, as on Network access.
   defp assign_acts(%{assigns: %{effective: %Policy.Effective{} = effective}} = socket) do
     %{current_scope: scope, target: target, connections: %{rows: rows}} = socket.assigns
+    first = socket.assigns.first_hosts || RequiredHosts.first_hosts(scope.workspace)
 
     rule_options =
-      for row <- rows,
-          Map.get(row, :channel) != "stack",
-          do: {row, Rules.rule_option(row, effective, :run)}
+      for row <- rows, Map.get(row, :channel) != "stack" do
+        option = Rules.rule_option(row, effective, :run)
+        {row, Rules.required_option(option, row, effective, first)}
+      end
 
     changes = Rules.changes(scope, target, Enum.map(rule_options, &elem(&1, 1)))
 

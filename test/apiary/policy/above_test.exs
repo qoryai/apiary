@@ -87,6 +87,7 @@ defmodule Apiary.Policy.AboveTest do
     assert egress!(scope, nil) == %{
              "mode" => "observe",
              "allow" => ["api.example"],
+             "allow_first" => ["api.anthropic.com"],
              "deny" => ["paste.example"],
              "paths" => %{"api.example" => ["/v1/*"]}
            }
@@ -302,6 +303,7 @@ defmodule Apiary.Policy.AboveTest do
       assert egress!(scope, nil) == %{
                "mode" => "observe",
                "allow" => [],
+               "allow_first" => ["api.anthropic.com"],
                "deny" => ["paste.example"]
              }
 

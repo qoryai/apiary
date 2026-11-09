@@ -68,6 +68,10 @@ A repository with no rules and no mode override is served the workspace baseline
 that names no repository.
 
 **Allowed for every run**, under the rules, lists the hosts Qory Apiary allows for every run, each locked; no host rule removes one.
+A machine's local policy can still block one of these hosts, including a runtime's host such
+as `api.anthropic.com`: a local deny that covers the host blocks it in either mode, and a local
+policy in enforce blocks it unless its lists allow the host. Qory Apiary cannot change this,
+because the machine's owner sets that policy.
 
 Every list of rules is read the same way, however long it grows: views **All**,
 **Allowed**, **Denied** and **Locked** with their counts; a field that finds a host and
@@ -155,6 +159,10 @@ instead. Nothing is ever rendered that allows more than the page shows.
   `*.` suffix with paths cover another allowed host. The gateway holds a host to the path
   list of its most specific entry: its name itself, else the `*.` entry with the longest
   suffix. A name held to paths under a suffix that is free of paths is fine.
+- **A rule that holds a runtime's host to paths.** A runtime needs every path on its host,
+  so a rule on `api.anthropic.com` with paths is refused: "Remove the paths from the rule.
+  Claude Code needs every path on this host, so no rule can limit it." A `*.` rule with
+  paths is saved, and the runtime's host stays on every path.
 - **A rule outside the grammar**: a URL, a port, capitals, a `*` anywhere but the lead. The
   New rule page checks a rule as it is typed and reads it back in words before it can be
   saved.
@@ -204,6 +212,8 @@ destinations that were let through in the last seven days and that today's rules
 not cover, counted from the recorded connections, each with **Allow** for the workspace
 beside it. A destination no run has reached yet is not in that list. Under observe, the
 page says the same as a fact: how many attempts to how many destinations had no rule.
+Both leave out a runtime's, an integration's and a model provider's host, which enforce
+does not deny; a rule's paths on an integration's or a provider's host still count.
 
 ## Versions
 
@@ -331,6 +341,11 @@ gateway:
 The export is a copy: it does not follow later changes. Keep a policy file outside the
 checkout. Deny rules and locks are already applied: the files list what is denied and
 what remains allowed.
+An exported file allows each runtime's host, such as `api.anthropic.com`. A `*.` deny
+written in the file still blocks that host there, while a run served by Qory Apiary reaches
+it. A saved `*.` deny that an allow outranks is left out of the file, so the file does not
+deny the other hosts it covers, such as `console.anthropic.com`, which a served run is
+denied.
 With a server configured, `qory run` refuses `--policy` unless `--local` is given too.
 
 ## Limits
@@ -347,10 +362,15 @@ A change that would pass a limit is refused, and nothing is changed.
 
 Every workspace has version 1 from its creation: observe, with no rules. A run reaches
 every host, and each connection is recorded. The document also allows the hosts of the
-integrations that reach the workspace. When Qory Apiary starts, after the migrations, it
-writes version 1 for each workspace that has none, with no step by you. With
-`MIGRATE_ON_BOOT=false`, `bin/migrate` writes it. No person made it, so its row in the
-history shows no name. The workspace's first change makes version 2.
+runtimes, such as `api.anthropic.com`, and of the integrations that reach the workspace.
+When Qory Apiary starts, after the migrations, it writes version 1 for each workspace that
+has none, with no step by you. With `MIGRATE_ON_BOOT=false`, `bin/migrate` writes it. No
+person made it, so its row in the history shows no name. The workspace's first change
+makes version 2.
+
+Each start that migrates, and `bin/migrate`, then render every workspace again, and write a
+new version only where the document changes, such as after a release that adds a
+runtime's host. History shows that version as "Qory Apiary changed the policy".
 
 The workspace's policy applies:
 

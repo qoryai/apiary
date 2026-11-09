@@ -18,6 +18,8 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   @moduletag needs: :secrets
 
   setup do
+    # The runtime's hosts are `Apiary.Policy.RuntimeHostsTest`'s.
+    no_runtime_hosts!()
     %{scope: scope, user: user} = sign_up_fixture()
     %{scope: scope, user: user}
   end
@@ -614,7 +616,9 @@ defmodule Apiary.Policy.IntegrationHostsTest do
     assert Policy.effective(scope, nil) == baseline
     assert Policy.effective(scope, target) == targeted
     assert Policy.effective(scope, nil, integrations: false) == baseline
-    assert Policy.export(scope, nil) == {:ok, Apiary.Policy.Export.text(baseline)}
+    # No `*.` deny of the texts covers a runtime's host (`runtime_blocked`).
+    assert Policy.export(scope, nil) ==
+             {:ok, Map.put(Apiary.Policy.Export.text(baseline), :runtime_blocked, false)}
 
     assert [_api, _files] = integration_entries(scope, nil)
   end

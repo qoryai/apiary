@@ -254,6 +254,7 @@ defmodule ApiaryWeb.HostComponents do
   def source_words(:failed), do: gettext("The harness could not be read")
   def source_words(:none), do: gettext("Not a harness source")
   def source_words(:unrecorded), do: gettext("Source not recorded")
+  def source_words({:runtime, title}), do: title
   def source_words({:integration, name}), do: gettext("The integration %{name}", name: name)
   def source_words({:provider, name}), do: gettext("The model provider %{name}", name: name)
   def source_words(:instance), do: gettext("This Qory Apiary")
@@ -265,6 +266,7 @@ defmodule ApiaryWeb.HostComponents do
   defp required_by_words(:organisation), do: gettext("The organisation's choice")
 
   defp group_title(:harness), do: gettext("Harness sources")
+  defp group_title(:runtimes), do: gettext("Runtimes")
   defp group_title(:integrations), do: gettext("Integrations")
   defp group_title(:providers), do: gettext("Model providers")
   defp group_title(:registry), do: gettext("Registry and Qory Apiary")
