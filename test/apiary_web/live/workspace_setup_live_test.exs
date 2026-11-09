@@ -3495,7 +3495,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
           dispatch_run_id: queued.id
         }
         |> Ecto.Changeset.change(Map.merge(%{started_at: DateTime.utc_now()}, run_attrs))
-        |> Repo.insert!()
+        |> Apiary.RunEventsFixtures.insert_run!()
       end
     end
 

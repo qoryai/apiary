@@ -36,6 +36,8 @@ defmodule Apiary.Runs.WaitingTest do
   defp queue!(scope, attrs \\ %{}) do
     work_item = work_item_fixture(scope, attrs)
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    # With the workflow model a run waits for its harness walk, which no adapter reads here.
+    :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
     run
   end
 
@@ -63,13 +65,13 @@ defmodule Apiary.Runs.WaitingTest do
     run = queue!(scope)
 
     Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^run.id),
-      set: [state: :pending]
+      set: [state: :pending, origin: nil]
     )
 
     assert reason(run) == :harness
 
     Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^run.id),
-      set: [state: :resolved]
+      set: [state: :resolved, origin: :none]
     )
 
     assert reason(run) == :no_pool

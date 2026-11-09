@@ -222,7 +222,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert signed_answer?(conn)
       assert Repo.get!(DispatchRun, run.id).state == :waiting
       assert dispatches() == 0
-      assert Repo.aggregate(Run, :count) == 0
+      assert Repo.aggregate(Apiary.RunEventsFixtures.registered_runs(), :count) == 0
     end
 
     test "without pool_id covers the key's pool; with an empty queue and no wait it is 204, signed",

@@ -196,7 +196,11 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   defp dispatch!(claimed), do: Repo.get!(Dispatch, claimed.dispatch.id)
 
   defp registered(claimed),
-    do: Repo.one(from r in Run, where: r.dispatch_run_id == ^claimed.dispatch_run.id)
+    do:
+      Repo.one(
+        from r in Apiary.RunEventsFixtures.registered_runs(),
+          where: r.dispatch_run_id == ^claimed.dispatch_run.id
+      )
 
   # The dispatch released once: ended `released`, the slot freed once, one entry, the
   # registered run deleted.

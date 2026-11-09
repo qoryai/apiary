@@ -280,7 +280,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         dispatch_run_id: dispatch_run.id
       }
       |> Ecto.Changeset.change(state: "running", started_at: DateTime.utc_now())
-      |> Repo.insert!()
+      |> Apiary.RunEventsFixtures.insert_run!()
 
     {run, dispatch_run}
   end
@@ -317,7 +317,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     dispatch_run =
       work_item |> newest_run() |> Ecto.Changeset.change(state: :handed_over) |> Repo.update!()
 
-    Repo.insert!(%Run{
+    %Run{
       number:
         Apiary.RunEventsFixtures.next_run_number(
           work_item.organisation_id,
@@ -329,7 +329,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       dispatch_run_id: dispatch_run.id,
       state: "running",
       started_at: DateTime.utc_now()
-    })
+    }
+    |> Ecto.Changeset.change()
+    |> Apiary.RunEventsFixtures.insert_run!()
 
     work_item
   end

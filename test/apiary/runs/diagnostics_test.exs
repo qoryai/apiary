@@ -703,7 +703,9 @@ defmodule Apiary.Runs.DiagnosticsTest do
       earlier = DateTime.add(dispatch.claimed_at, -60, :second)
 
       {1, _} =
-        Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [inserted_at: earlier])
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [inserted_at: earlier, registered_at: earlier]
+        )
 
       run = Repo.get!(Run, run.id)
 

@@ -188,8 +188,7 @@ defmodule Apiary.Dispatches.QueuedTest do
       queued = queued!(ctx.scope)
       {:ok, %{dispatch: dispatch, registered: first}} = walked_claim(ctx.key, Dispatches.now())
 
-      assert {:ok, _released} =
-               Dispatches.release(ctx.key, dispatch.public_id, %{reason: "No machine."})
+      assert :ok = Dispatches.release(ctx.key, dispatch.public_id, %{reason: "No machine."})
 
       assert %Run{state: "failed", reason: "machine_not_made", number: 1} =
                Repo.get!(Run, first.id)
@@ -312,11 +311,11 @@ defmodule Apiary.Dispatches.QueuedTest do
       queued = queued!(ctx.scope)
       ended = queued!(ctx.scope)
 
-      Repo.update_all(from(w in WorkItem, where: w.id == ^ended.work_item_id),
-        set: [state: :undone]
-      )
+      {:ok, :ok} =
+        Repo.transact(fn ->
+          {:ok, Dispatches.cancel_for_undo(Repo.get!(WorkItem, ended.work_item_id))}
+        end)
 
-      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now())
       assert %Run{state: "cancelled"} = record(ended)
 
       for run <- [record(queued), record(ended)], do: {:ok, _run} = Projector.rebuild(run)

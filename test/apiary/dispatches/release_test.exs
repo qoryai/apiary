@@ -91,7 +91,10 @@ defmodule Apiary.Dispatches.ReleaseTest do
   defp record!(%Record{id: id}), do: Repo.get!(Record, id)
 
   defp registered(%DispatchRun{id: id}),
-    do: Repo.one(from r in Run, where: r.dispatch_run_id == ^id)
+    do:
+      Repo.one(
+        from r in Apiary.RunEventsFixtures.registered_runs(), where: r.dispatch_run_id == ^id
+      )
 
   defp entries, do: Repo.all(from e in Entry, where: e.action == "dispatch.release")
 

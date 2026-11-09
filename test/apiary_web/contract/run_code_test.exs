@@ -297,7 +297,12 @@ defmodule ApiaryWeb.Contract.RunCodeTest do
 
       Dispatches.sweep(Dispatches.now())
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, ctx.queued.id)
-      assert Repo.one(from r in Run, where: r.dispatch_run_id == ^ctx.queued.id) == nil
+
+      assert Repo.one(
+               from r in Apiary.RunEventsFixtures.registered_runs(),
+                 where: r.dispatch_run_id == ^ctx.queued.id
+             ) == nil
+
       assert_refused(enrol(ctx, body(ctx.code, ed25519_key_pair())), 401, "unauthorized")
     end
 

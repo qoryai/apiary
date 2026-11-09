@@ -65,6 +65,35 @@ defmodule Apiary.RunEventsFixtures do
     end
   end
 
+  @doc """
+  The runs a registration or a claim wrote: every run but the record of a run of the queue
+  written when it was queued (`Apiary.Dispatches.Queued`) that no claim registered, waiting
+  or ended while it waited. What a test counted as the runs before a queued run had a
+  record.
+  """
+  def registered_runs do
+    import Ecto.Query, only: [from: 2]
+
+    from r in Run,
+      where:
+        is_nil(r.dispatch_run_id) or not is_nil(r.registered_at) or not is_nil(r.node_id) or
+          not is_nil(r.started_at) or not is_nil(r.attached_at)
+  end
+
+  @doc """
+  Deletes the record of the run of the queue `dispatch_run_id` written when it was queued,
+  while no claim registered it, for a test that links another run to that run of the
+  queue, as the queue was before it wrote records.
+  """
+  def forget_queued!(dispatch_run_id) do
+    case queued_record(dispatch_run_id) do
+      %Run{} = run -> Repo.delete!(run)
+      nil -> nil
+    end
+
+    :ok
+  end
+
   defp queued_record(nil), do: nil
 
   defp queued_record(dispatch_run_id) do

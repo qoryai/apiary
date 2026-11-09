@@ -164,7 +164,14 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
                {:error, :unavailable}
 
       assert %DispatchRun{state: :waiting, end_cause: nil} = Repo.get!(DispatchRun, queued.id)
-      assert Repo.aggregate(from(r in Run, where: r.dispatch_run_id == ^queued.id), :count) == 0
+
+      assert Repo.aggregate(
+               from(r in Apiary.RunEventsFixtures.registered_runs(),
+                 where: r.dispatch_run_id == ^queued.id
+               ),
+               :count
+             ) == 0
+
       assert Repo.aggregate(Apiary.Dispatches.Dispatch, :count) == 0
     end
   end

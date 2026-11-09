@@ -890,7 +890,7 @@ defmodule Apiary.DispatchesTest do
                {:error, :no_gateway}
 
       assert run!(run).state == :waiting
-      assert Repo.aggregate(Apiary.Runs.Run, :count) == 0
+      assert Repo.aggregate(Apiary.RunEventsFixtures.registered_runs(), :count) == 0
 
       Repo.update_all(from(n in Node, where: n.id == ^ctx.pool.id),
         set: [gateway_choice: :default]

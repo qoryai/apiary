@@ -42,6 +42,8 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
   defp queue!(scope) do
     work_item = work_item_fixture(scope, %{title: "Add currency to orders"})
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    # With the workflow model a run waits for its harness walk, which no adapter reads here.
+    :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
     {work_item, queued}
   end
 
@@ -123,15 +125,17 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
 
     test "follows a queue, a claim and an end while it waits",
          %{conn: conn, scope: scope} = ctx do
-      view = open(conn, workspace_path(scope, "/runs"))
-      assert row_ids(view) == []
-
       {_first_item, first} = queue!(scope)
       first_run = record(first)
-      assert eventually(fn -> row_ids(view) == ["run-#{first_run.public_id}"] end)
-
       {second_item, second} = queue!(scope)
       second_run = record(second)
+
+      view = open(conn, workspace_path(scope, "/runs"))
+      assert row_ids(view) == ["run-#{second_run.public_id}", "run-#{first_run.public_id}"]
+
+      # A run queued after the page was read is a new run, as any run is.
+      queue!(scope)
+      assert eventually(fn -> has_element?(view, "#runs-new", "1 new run") end)
 
       assert {:ok, %{run: %{id: id}}} = walked_claim(ctx.key, Dispatches.now())
       assert id == first.id
@@ -141,10 +145,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
                  has_element?(view, "#run-#{second_run.public_id} .q-st-queued")
              end)
 
-      {:ok, :ok} =
-        Repo.transact(fn ->
-          {:ok, Dispatches.cancel_for_undo(Repo.get!(WorkItem, second_item.id))}
-        end)
+      assert {:ok, _undone} = Apiary.WorkItems.undo(scope, Repo.get!(WorkItem, second_item.id))
 
       assert eventually(fn ->
                has_element?(view, "#run-#{second_run.public_id} .q-st-cancelled")

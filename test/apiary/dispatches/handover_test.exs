@@ -72,11 +72,19 @@ defmodule Apiary.Dispatches.HandoverTest do
   defp dispatch!(%{dispatch: dispatch}), do: dispatch!(dispatch)
   defp dispatch!(%Dispatch{id: id}), do: Repo.get!(Dispatch, id)
   defp queue_run!(%DispatchRun{id: id}), do: Repo.get!(DispatchRun, id)
-  defp runs, do: Repo.aggregate(Run, :count)
+  # The runs a claim registered: the record of a run of the queue that no claim
+  # registered left out (`Apiary.RunEventsFixtures.registered_runs/0`).
+  defp runs, do: Repo.aggregate(Apiary.RunEventsFixtures.registered_runs(), :count)
 
   # The runs registered for a run of the queue, a run whose start failed left out.
   defp queue_runs,
-    do: Repo.aggregate(from(r in Run, where: not is_nil(r.dispatch_run_id)), :count)
+    do:
+      Repo.aggregate(
+        from(r in Apiary.RunEventsFixtures.registered_runs(),
+          where: not is_nil(r.dispatch_run_id)
+        ),
+        :count
+      )
 
   # The run the claim `claimed` registered, failed with `cause` once it left its run of
   # the queue: its id and its public id kept, its node's run id another, its dispatch the
@@ -141,6 +149,20 @@ defmodule Apiary.Dispatches.HandoverTest do
 
     assert Slots.held(ctx.pool.id) == 0
     assert runs() == 0
+
+    # The run's record, written when it was queued, ended with the cause and kept its
+    # number.
+    state =
+      if Atom.to_string(cause) in Apiary.Dispatches.Queued.cancelled(),
+        do: "cancelled",
+        else: "failed"
+
+    reason = Atom.to_string(cause)
+
+    assert %Run{state: ^state, reason: ^reason, number: number} =
+             Repo.get_by!(Run, dispatch_run_id: run.id)
+
+    assert is_integer(number)
   end
 
   describe "the run a claim of an explore run registers" do
@@ -435,8 +457,11 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "a run that cannot be stored is unavailable, and nothing is written", ctx do
       {_work_item, queued} = queued!(ctx)
 
-      # A row of the run's id in the workspace already, which no product path writes: the
+      # A run of the queue with no record, as the previous release queued it, and a row of
+      # the run's id in the workspace already, which no product path writes: the
       # registered run cannot be inserted.
+      :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
+
       in_the_way =
         Repo.insert!(%Run{
           number:
@@ -508,7 +533,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert %Dispatch{handed_over_at: nil, dispatched_at: nil} = dispatch!(claimed)
     end
 
-    test "a dispatch that ended is gone, before lease_expired, its registered run deleted",
+    test "a dispatch that ended is gone, before lease_expired, its registered run cancelled",
          ctx do
       {work_item, _queued} = queued!(ctx)
       claimed = claimed!(ctx)
@@ -516,7 +541,11 @@ defmodule Apiary.Dispatches.HandoverTest do
       {:ok, _changed} =
         Repo.transact(fn -> Dispatches.cancel_for_close([work_item.id], Dispatches.now()) end)
 
-      assert runs() == 0
+      number = claimed.registered.number
+
+      assert %Run{state: "cancelled", reason: "closed", number: ^number} =
+               Repo.get!(Run, claimed.registered.id)
+
       lapse!(claimed)
       assert dispatched(ctx.key, claimed) == {:error, :gone}
     end

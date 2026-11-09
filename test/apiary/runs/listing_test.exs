@@ -170,12 +170,14 @@ defmodule Apiary.Runs.ListingTest do
         assert Filters.families_of(Enum.reverse(family.states)) == [family.key]
       end
 
-      assert Filters.families_of(~w(completed cancelled running pending)) ==
+      assert Filters.families_of(~w(completed cancelled running pending queued)) ==
                ~w(alive ended_well cancelled)
 
-      assert Filters.families_of(Apiary.Runs.Run.states()) ==
+      assert Filters.families_of(Apiary.Runs.Run.shown_states()) ==
                ~w(alive ended_well cancelled ended_badly)
 
+      # Alive without Queued is no whole family.
+      assert Filters.families_of(~w(completed cancelled running pending)) == nil
       assert Filters.families_of(~w(completed failed running pending)) == nil
       assert Filters.families_of(~w(failed)) == nil
       assert Filters.families_of(~w(running completed)) == nil
