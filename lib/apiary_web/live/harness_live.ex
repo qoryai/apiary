@@ -10,27 +10,30 @@ defmodule ApiaryWeb.HarnessLive do
   # owners and admins), and is not found for anyone else, as the section is absent from
   # their list.
   #
-  # Beside the form, About this step has what the page sets, which sources Source lists,
-  # and the paragraphs on the harness of the set-up's Harness step
+  # Beside the form, About this step has what the page sets, which sources Workflow
+  # source lists, and the paragraphs on the harness of the set-up's Harness step
   # (`ApiaryWeb.HarnessComponents.about/1`): what a harness is, the order of a run's
   # harness, a target's root harness file first, and what each version means. Under the
-  # title, Harness shows the workspace's harness choice and its version
-  # (`ApiaryWeb.HarnessComponents.line/1`), else the harness the organisation shares,
-  # else the Qory harness at its newest version, and Change, which opens the two choices
-  # of the set-up's Harness step (`ApiaryWeb.HarnessComponents.choices/1`) with Save and
-  # Cancel. Save stores the choice (`Apiary.Stacks.Sources.choose/3`); a harness
-  # repository's exports are read outside the page's process once it is chosen, and its
-  # save reads it outside the page's process too; a read that failed shows its reason.
-  # Under the choice, Targets lists the workspace's destinations, each with its Stack
-  # select, as the Harness step shows and saves them
-  # (`ApiaryWeb.HarnessComponents.targets/1`, `ApiaryWeb.HarnessTargets`). The select's
-  # options come from the saved choice; a save of the choice lists the destinations
-  # again, and reads again the stacks of a harness repository whose address or version
-  # differs from the one read last. Once a destination's save is refused because
-  # `harness.save` no longer allows the person, the selects show disabled. A line shows
-  # which workflow the runs follow, where the workspace has one.
+  # title, the rows Source, Stack and Version show the workspace's harness choice and its
+  # version (`ApiaryWeb.HarnessUpdateComponents.rows/1`), else the harness the
+  # organisation shares, else the Qory harness on main, and Change, which opens the two
+  # choices of the set-up's Harness step (`ApiaryWeb.HarnessComponents.choices/1`) with
+  # Save and Cancel. With the feature `workflow_model`, Version has the commit in use,
+  # and under the rows are the switch Keep the process at the latest and Update from
+  # harness (`ApiaryWeb.HarnessUpdateComponents`). Save stores the choice
+  # (`Apiary.Stacks.Sources.choose/3`); a harness repository's exports are read outside
+  # the page's process once it is chosen, and its save reads it outside the page's
+  # process too; a read that failed shows its reason. Under the choice, Targets lists the
+  # workspace's destinations, each with its Stack select, as the Harness step shows and
+  # saves them (`ApiaryWeb.HarnessComponents.targets/1`, `ApiaryWeb.HarnessTargets`). The
+  # select's options come from the saved choice; a save of the choice lists the
+  # destinations again, and reads again the stacks of a harness repository whose address
+  # or version differs from the one read last. Once a destination's save is refused
+  # because `harness.save` no longer allows the person, the selects show disabled. A line
+  # shows which workflow the runs follow, where the workspace has one.
   #
-  # Source is one choice in three groups (`ApiaryWeb.HarnessComponents.source_options/2`):
+  # Workflow source is one choice in three groups
+  # (`ApiaryWeb.HarnessComponents.source_options/2`):
   # the organisation's connected repositories (`Apiary.Stacks.Sources.repositories/1`),
   # listed with no call once the page connects, so the group shows Reading… until then;
   # the harness sources Qory Apiary provides to the organisation; and a public

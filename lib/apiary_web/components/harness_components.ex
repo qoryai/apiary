@@ -26,8 +26,7 @@ defmodule ApiaryWeb.HarnessComponents do
   # commit id. With `shared`, as the Harness step passes it, `choices/1` lists a harness
   # repository the organisation shares first, as the `choice` `shared`, with its version as
   # one line under its title and no field. A shared Qory harness shows as the `qory`
-  # choice, the same row as in a workspace with no shared harness. `line/1` is the choice
-  # as Workflow shows it.
+  # choice, the same row as in a workspace with no shared harness.
   # `form_params/2` is the form's values for a saved choice, `fill/3` the values sent with
   # the saved choice's where a field is absent, `choice/3` the choice the values come to,
   # and `refusal_words/4` why a save was refused.
@@ -346,23 +345,6 @@ defmodule ApiaryWeb.HarnessComponents do
     """
   end
 
-  attr :chosen, :map, required: true, doc: "the choice, `t:Apiary.Stacks.Sources.chosen/0`"
-
-  # The choice and its version: "Qory harness, stack software", then its version, such as
-  # "main"; a harness repository, then its stack, repository and version.
-  def line(assigns) do
-    ~H"""
-    <span id="harness-line" class="grid gap-0.5">
-      <span>{chosen_title(@chosen)}</span>
-      <span id="harness-line-version" class="text-muted">
-        {if @chosen.choice == :qory,
-          do: version_line(@chosen),
-          else: chosen_line(@chosen)}
-      </span>
-    </span>
-    """
-  end
-
   @doc false
   # qory_line/1 is the Qory harness of a choice with its stack, "Qory harness, stack
   # software"; with no stack, "Qory harness".
@@ -371,9 +353,6 @@ defmodule ApiaryWeb.HarnessComponents do
     do: gettext("Qory harness, stack %{stack}", stack: stack)
 
   def qory_line(_chosen), do: gettext("Qory harness")
-
-  defp chosen_title(%{choice: :qory} = chosen), do: qory_line(chosen)
-  defp chosen_title(%{choice: choice}), do: choice_title(choice)
 
   @doc false
   # chosen_line/1 is a stack as a page shows it, "%{stack} · %{harness} · %{version}":
