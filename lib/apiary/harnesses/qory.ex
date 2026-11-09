@@ -261,10 +261,9 @@ defmodule Apiary.Harnesses.Qory do
     end
   end
 
-  # A ref still at the stored commit writes nothing: a plain read takes no row lock, so a
-  # transaction that reads the harness does not hold the row until it ends. An upsert
-  # locks the row even when an `ON CONFLICT ... WHERE` leaves it unchanged. `read_at` is
-  # then the time of the last read that found a new commit.
+  # A ref still at the stored commit writes nothing and takes no row lock: an upsert locks
+  # the row even when an `ON CONFLICT ... WHERE` leaves it unchanged. `read_at` is the time
+  # of the last read that found a different commit.
   defp put_head(git, ref, commit) do
     stored =
       Repo.one(
