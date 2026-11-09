@@ -213,6 +213,20 @@ defmodule Apiary.Stages.RunnerTest do
                Runner.step(seq, pos(0, nil, 1), no_verdict, %{explore_result: false})
     end
 
+    test "a run of Explore that pushed passed or changes-requested goes on to the checks" do
+      seq = stage([wf("a")])
+      no_verdict = {:run, {:verdict, nil, nil}}
+
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(seq, pos(0, nil, 1), no_verdict, %{explore_verdict: true})
+
+      assert %{actions: [{:escalate, :check_failed, _gaps}]} =
+               Runner.step(seq, pos(0, nil, 1), no_verdict, %{
+                 explore_verdict: true,
+                 failed_checks: ["proposal"]
+               })
+    end
+
     test "a test work item's run that gave escalate or stopped still escalates" do
       facts = %{test: true}
 

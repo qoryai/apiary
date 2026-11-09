@@ -50,7 +50,8 @@ defmodule Apiary.Stages do
   # `escalate`: any other verdict counts as none. Otherwise a run of Explore that stopped
   # escalates, `run_stopped`, with the cause, and any other counts as a run with no
   # verdict, which goes on where the run's take in has a proposal or the run left open
-  # questions (`Apiary.Explore.Outcome`), and escalates, `run_stopped`, otherwise
+  # questions (`Apiary.Explore.Outcome`), or where the run pushed `passed` or
+  # `changes-requested`, to the stage's checks; it escalates, `run_stopped`, otherwise
   # (`Apiary.Stages.Runner`). Newest questions whose file cannot be read raise
   # `Apiary.Stages.QuestionsUnreadable` at those ends. At the end of a run of any
   # workflow, a verdict whose file the store cannot read raises
@@ -253,9 +254,8 @@ defmodule Apiary.Stages do
          %WorkItem{} = work_item <- lock!(work_item_id),
          true <- current_run?(work_item, run),
          {:ok, version, stage} <- placed(work_item),
-         {:ok, result} <- run_result(work_item, run, context) do
+         {:ok, result, run_facts} <- run_result(work_item, run, context) do
       event = {:run, result}
-      run_facts = %{explore_result: explore_result?(run)}
       {work_item, _run} = apply_event(work_item, version, stage, event, run.id, run_facts)
       told(work_item)
     else
@@ -1626,9 +1626,10 @@ defmodule Apiary.Stages do
       newest == run.attempt
   end
 
-  # What the run gave, as the runner reads it; `:unsettled` while a run ended by its exit
-  # has no outcome stored yet (`Apiary.Dispatches.Settle`), and while whether it is a run
-  # of Explore is not known yet (`known_explore/1`).
+  # What the run gave, as the runner reads it, with the facts of the run for the runner
+  # (`Apiary.Stages.Runner.facts/0`); `:unsettled` while a run ended by its exit has no
+  # outcome stored yet (`Apiary.Dispatches.Settle`), and while whether it is a run of
+  # Explore is not known yet (`known_explore/1`).
   defp run_result(_work_item, %DispatchRun{end_cause: :run_ended, result_outcome: nil}, _ctx),
     do: :unsettled
 
@@ -1639,9 +1640,9 @@ defmodule Apiary.Stages do
   defp run_result(work_item, %DispatchRun{} = run, context) do
     case known_explore(run) do
       nil -> :unsettled
-      %DispatchRun{explore: true} = run -> {:ok, explore_result(work_item, run, context)}
-      %DispatchRun{end_cause: :run_ended} = run -> {:ok, reported_result(work_item, run)}
-      run -> {:ok, {:stopped, stop_cause(run, work_item, context)}}
+      %DispatchRun{explore: true} = run -> explore_result(work_item, run, context)
+      %DispatchRun{end_cause: :run_ended} = run -> {:ok, reported_result(work_item, run), %{}}
+      run -> {:ok, {:stopped, stop_cause(run, work_item, context)}, %{}}
     end
   end
 
@@ -1704,30 +1705,37 @@ defmodule Apiary.Stages do
   def explore_at_queue(_step, _workflow, _workspace_id), do: false
 
   # Explore: open questions first, then the verdict `escalate` of a run that ended by its
-  # exit (`escalate_verdict/1`), then a run that stopped, else a run with no verdict. A
-  # verdict other than `escalate` counts as none. A run whose registered run failed after
-  # it pushed a proposal stopped, and its cause shows the proposal's version
+  # exit (`verdict!/1`), then a run that stopped, else a run with no verdict. A verdict
+  # other than `escalate` counts as none. A run whose registered run failed after it
+  # pushed a proposal stopped, and its cause shows the proposal's version
   # (`StopCause.failed_after_proposal/1`); where the run pushed none, it reads as any
-  # stopped run.
+  # stopped run. Beside it, the facts of the run for the runner: whether its take in has a
+  # proposal or it left open questions (`explore_result?/1`), and whether it pushed
+  # `passed` or `changes-requested`, so that a run with neither stops its stage.
   defp explore_result(work_item, run, context) do
     open = open_questions(work_item, run)
+    verdict = if open == [], do: verdict!(run)
 
-    cond do
-      open != [] ->
-        {:questions, question_texts(open)}
+    result =
+      cond do
+        open != [] ->
+          {:questions, question_texts(open)}
 
-      escalate = escalate_verdict(run) ->
-        escalate
+        match?({:verdict, :escalate, _gaps}, verdict) ->
+          verdict
 
-      stopped?(run) ->
-        case failed_proposal(run) do
-          nil -> {:stopped, stop_cause(run, work_item, context)}
-          version -> {:stopped, StopCause.failed_after_proposal(version)}
-        end
+        stopped?(run) ->
+          case failed_proposal(run) do
+            nil -> {:stopped, stop_cause(run, work_item, context)}
+            version -> {:stopped, StopCause.failed_after_proposal(version)}
+          end
 
-      true ->
-        {:verdict, nil, nil}
-    end
+        true ->
+          {:verdict, nil, nil}
+      end
+
+    pushed = match?({:verdict, value, _gaps} when value in [:passed, :changes_requested], verdict)
+    {:ok, result, %{explore_result: explore_result?(run), explore_verdict: pushed}}
   end
 
   # The open questions of the work item's newest questions that are of the run's take in
@@ -1831,14 +1839,6 @@ defmodule Apiary.Stages do
     case reported_verdict(run) do
       {:error, :store_unavailable} -> raise Apiary.Stages.VerdictUnreadable
       verdict -> verdict
-    end
-  end
-
-  # The verdict of a run of Explore (`verdict!/1`) where it is `escalate`, nil otherwise.
-  defp escalate_verdict(run) do
-    case verdict!(run) do
-      {:verdict, :escalate, _gaps} = verdict -> verdict
-      _other -> nil
     end
   end
 

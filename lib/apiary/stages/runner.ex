@@ -26,7 +26,9 @@ defmodule Apiary.Stages.Runner do
   #     on a first run and on a rerun. A test work item's run with no verdict goes on
   #     (`facts.test`): the built-in `hello` writes no verdict
   #     (`Apiary.Harnesses.Builtin`). So does a run of Explore whose take in has a
-  #     proposal, or that left open questions (`facts.explore_result`).
+  #     proposal, or that left open questions (`facts.explore_result`), and a run of
+  #     Explore that pushed `passed` or `changes-requested`, which Explore counts as no
+  #     verdict (`facts.explore_verdict`): the stage's checks then read its outputs.
   #   * `escalate` escalates, `escalate`; a run that stopped escalates, `run_stopped`, with
   #     its cause as the gaps.
   #   * Questions wait for answers (`:waiting_answers`), in any round and at any count of
@@ -104,7 +106,8 @@ defmodule Apiary.Stages.Runner do
   the document's machine type (`machine`), the harness's declarations by workflow name
   (`declarations`), whether the work item is a test work item (`test`) and, at a run's
   end, whether the run is a run of Explore whose take in has a proposal, or that left open
-  questions (`explore_result`).
+  questions (`explore_result`), and whether it is a run of Explore that pushed `passed` or
+  `changes-requested` (`explore_verdict`).
   """
   @type facts :: %{
           optional(:missing_inputs) => [String.t()],
@@ -113,7 +116,8 @@ defmodule Apiary.Stages.Runner do
           optional(:machine) => String.t() | nil,
           optional(:declarations) => %{String.t() => map | nil},
           optional(:test) => boolean,
-          optional(:explore_result) => boolean
+          optional(:explore_result) => boolean,
+          optional(:explore_verdict) => boolean
         }
 
   @typedoc "A run to queue, at the position it runs at."
@@ -315,11 +319,14 @@ defmodule Apiary.Stages.Runner do
   defp run_ended(_stage, position, {:questions, _questions}, _facts),
     do: %{state: :waiting_answers, position: position, actions: []}
 
-  # Whether a run with no verdict outside a loop goes on: a test work item's run, or a run
-  # of Explore whose take in has a proposal, or that left open questions, as Explore's
-  # result is its proposal or its questions.
-  defp no_verdict_goes_on?(facts),
-    do: Map.get(facts, :test, false) or Map.get(facts, :explore_result, false)
+  # Whether a run with no verdict outside a loop goes on: a test work item's run, a run of
+  # Explore whose take in has a proposal, or that left open questions, as Explore's result
+  # is its proposal or its questions, and a run of Explore that pushed `passed` or
+  # `changes-requested`.
+  defp no_verdict_goes_on?(facts) do
+    Map.get(facts, :test, false) or Map.get(facts, :explore_result, false) or
+      Map.get(facts, :explore_verdict, false)
+  end
 
   # The next workflow of the loop's ring, or the next round from its first, or the round
   # limit.

@@ -419,7 +419,8 @@ verdict." with **Run another round** and, where an output has a version or no ou
 required, **Accept as it is**. `changes-requested` outside a loop goes on to the next entry,
 as `passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
 work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal, or
-that left open questions: Explore's result is its proposal or its questions.
+that left open questions: Explore's result is its proposal or its questions. A run of
+Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body that is not this object
 is `400` `invalid_request`.

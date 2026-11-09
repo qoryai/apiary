@@ -674,12 +674,34 @@ defmodule Apiary.StagesTest do
       refute escalation(work_item)
     end
 
-    test "a run with no proposal and only passed escalates run_stopped", %{scope: scope} do
-      # Explore's passed counts as no verdict, and the run left no result.
+    test "a run that pushed no proposal and passed escalates check_failed", %{scope: scope} do
       work_item = take_in!(scope) |> end_run!(verdict("passed"))
 
       assert work_item.stage_state == :escalated
-      assert %Escalation{cause: :run_stopped, round: 1, gaps: nil} = escalation(work_item)
+
+      assert %Escalation{
+               cause: :check_failed,
+               round: 1,
+               gaps: "No proposal was stored in this stage."
+             } = escalation(work_item)
+
+      assert %{verdict: :passed} = hd(Stages.runs(work_item))
+    end
+
+    test "a run that pushed no proposal and changes-requested escalates check_failed", %{
+      scope: scope
+    } do
+      work_item = take_in!(scope) |> end_run!(verdict("changes-requested"))
+
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{
+               cause: :check_failed,
+               round: 1,
+               gaps: "No proposal was stored in this stage."
+             } = escalation(work_item)
+
+      assert %{verdict: :failed} = hd(Stages.runs(work_item))
     end
 
     test "a run with no proposal and no verdict escalates run_stopped", %{scope: scope} do
