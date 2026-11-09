@@ -133,6 +133,7 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       assert Repo.get!(DispatchRun, b1.id).state == :waiting
     end
 
+    @tag needs: [:factory, :registry]
     test "leaves a run held for its build waiting, and takes the next", ctx do
       held = work_item_fixture(ctx.a)
 
@@ -207,6 +208,7 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       {run, collection, %{system: work_item.target_system, path: work_item.target_path}}
     end
 
+    @tag needs: [:factory, :registry]
     test "is queued in a served workspace, and its image is the held run's", ctx do
       {held, collection, target} = held!(ctx.a)
 

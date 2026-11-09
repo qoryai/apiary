@@ -19,6 +19,8 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   # and the exit's end at once, several rounds, are in `Apiary.Dispatches.RunEndRacesTest`.
   use ExUnit.Case, async: false
 
+  @before_compile Apiary.TestSetup
+
   import Ecto.Query
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
@@ -437,6 +439,8 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   end
 
   describe "a release of a prebuild and a build queued for its ref" do
+    @describetag needs: [:factory, :registry]
+
     test "the build first: the release waits on the record, then is superseded by the run that waits",
          ctx do
       claimed = prebuild_started!(ctx)

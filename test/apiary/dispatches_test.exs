@@ -329,7 +329,7 @@ defmodule Apiary.DispatchesTest do
   end
 
   describe "claim/2 and a prebuild" do
-    @describetag needs: :factory
+    @describetag needs: [:factory, :registry]
 
     defp prebuild!(collection, pool, ref \\ "env-1") do
       {:ok, run} = Repo.transact(fn -> Dispatches.queue_prebuild(collection, pool, ref) end)
@@ -1427,6 +1427,7 @@ defmodule Apiary.DispatchesTest do
       assert run!(held).state == :waiting
     end
 
+    @tag needs: [:factory, :registry]
     test "ends a prebuild claimed before the deletion once its lease lapses, with its dispatch",
          ctx do
       %{access_key: key} = enrolled_key_fixture(ctx.scope, ctx.deleted)

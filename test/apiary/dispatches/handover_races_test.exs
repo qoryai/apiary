@@ -16,6 +16,8 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
   # handed over and freed once by any other end, and none deadlocks.
   use ExUnit.Case, async: false
 
+  @before_compile Apiary.TestSetup
+
   import Ecto.Query
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
@@ -347,6 +349,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
       handed_over!(ctx, claimed)
     end
 
+    @tag needs: [:factory, :registry]
     test "a lapsed prebuild superseded by the sweep: dispatched waits, then is gone", ctx do
       claimed = prebuild_started!(ctx)
 
@@ -369,6 +372,7 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
       ended_held!(ctx, claimed, :superseded, :run_ended)
     end
 
+    @tag needs: [:factory, :registry]
     test "a lapsed prebuild: dispatched and the sweep at once, none deadlocks", ctx do
       for _round <- 1..3 do
         claimed = prebuild_started!(ctx)

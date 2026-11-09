@@ -182,6 +182,7 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       assert %Dispatch{end_cause: :released} = Repo.get!(Dispatch, dispatch.id)
     end
 
+    @tag needs: [:factory, :registry]
     test "of a prebuild before dispatched is 204: the run waits again", ctx do
       queued = prebuild!(ctx)
       dispatch = claimed!(ctx)
@@ -203,6 +204,7 @@ defmodule ApiaryWeb.Contract.ReleaseControllerTest do
       assert %Dispatch{ended_at: nil} = Repo.get!(Dispatch, dispatch.id)
     end
 
+    @tag needs: [:factory, :registry]
     test "is refused with each status and code, signed", ctx do
       queued!(ctx)
       dispatch = claimed!(ctx)
