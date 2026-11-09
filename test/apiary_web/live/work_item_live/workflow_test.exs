@@ -3845,15 +3845,19 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
-    test "escalated with no escalation row: the block with the note and Run another round",
+    test "escalated with no escalation row: the point of no verdict, the note and Run another round",
          %{conn: conn, scope: scope} do
       work_item = at_build(scope, :escalated, round: 3)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-needs #work-item-stage-escalation-note")
       assert has_element?(view, "#work-item-needs #work-item-stage-escalation-another")
-      refute has_element?(view, "#work-item-needs-points")
-      refute has_element?(view, "#work-item-stage-waits")
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "The run stopped before its verdict. Run another round."
+             ]
+
+      assert has_element?(view, "#work-item-stage-waits", "Waits for you: 1 point")
     end
 
     test "a proposal with no verdict goes on: no stopped card, and Confirm moves it on", %{
@@ -4173,10 +4177,20 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       Repo.delete_all(from e in Escalation, where: e.work_item_id == ^work_item.id)
-      assert %{escalation: %{cause: :run_stopped, points: []}} = Stages.status(work_item)
+
+      assert %{escalation: %{cause: :run_stopped, points: [no_verdict]}} =
+               Stages.status(work_item)
+
+      assert no_verdict["text"] == "The run stopped before its verdict."
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
       assert has_element?(view, "#work-item-needs")
+
+      assert line(view, "#work-item-needs-point-1") ==
+               "The run stopped before its verdict. Run another round."
+
+      assert has_element?(view, "#work-item-stage-waits", "Waits for you: 1 point")
+      refute has_element?(view, "#work-item-explore-none")
       refute has_element?(view, "#work-item-stage-escalation-accept")
       assert has_element?(view, "#work-item-stage-escalation-another")
     end
@@ -4571,16 +4585,93 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   describe "an escalation with no points" do
-    for cause <- [:round_limit, :escalate, :check_failed, :run_stopped] do
-      test "#{cause}: the block with no list, and no side line", %{conn: conn, scope: scope} do
+    # As an escalation open when points replaced gaps reads: the points the stage runner
+    # writes for its cause, from what the stage reads now.
+    for {cause, points} <- [
+          round_limit: [
+            "3 of 3 rounds ran.",
+            "No demo-video was stored in this stage.",
+            "No explainer was stored in this stage."
+          ],
+          check_failed: [
+            "No demo-video was stored in this stage.",
+            "No explainer was stored in this stage."
+          ],
+          run_stopped: ["The run stopped before its verdict."]
+        ] do
+      test "#{cause}: the block with the runner's points, and the side line", %{
+        conn: conn,
+        scope: scope
+      } do
         work_item = at_build(scope, :escalated, round: 3)
         escalate!(work_item, unquote(cause), nil)
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
+        assert texts(view, "#work-item-needs-points li") ==
+                 Enum.map(unquote(points), &(&1 <> " Run another round."))
+
+        assert has_element?(
+                 view,
+                 ~s|#work-item-stage-waits a[href="#work-item-needs"]|,
+                 case length(unquote(points)) do
+                   1 -> "Waits for you: 1 point"
+                   n -> "Waits for you: #{n} points"
+                 end
+               )
+
         assert has_element?(view, "#work-item-needs #work-item-stage-escalation-another")
-        refute has_element?(view, "#work-item-needs-points")
-        refute has_element?(view, "#work-item-stage-waits")
       end
+    end
+
+    test "check_failed with every output stored since: the outputs the check covers", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_build(scope, :escalated, round: 3)
+
+      for type <- ["demo-video", "explainer"],
+          do: push!({:person, scope}, work_item, type, @build)
+
+      escalate!(work_item, :check_failed, nil)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "No demo-video was stored in this stage. Run another round.",
+               "No explainer was stored in this stage. Run another round."
+             ]
+    end
+
+    test "run_stopped from a run that stopped: its stop cause, in place of the banner", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
+      {1, _rows} =
+        Repo.update_all(from(e in Escalation, where: e.work_item_id == ^work_item.id),
+          set: [points: []]
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      assert line(view, "#work-item-needs-point-1") ==
+               "The run stopped: it ended without a result. Run another round."
+
+      assert has_element?(view, "#work-item-stage-waits", "Waits for you: 1 point")
+      refute has_element?(view, "#work-item-explore-none")
+    end
+
+    test "escalate: the block with no list, and no side line", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :escalated, round: 3)
+      escalate!(work_item, :escalate, nil)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-needs #work-item-stage-escalation-another")
+      refute has_element?(view, "#work-item-needs-points")
+      refute has_element?(view, "#work-item-stage-waits")
     end
   end
 
