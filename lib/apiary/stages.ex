@@ -2135,6 +2135,9 @@ defmodule Apiary.Stages do
 
   defp escalation_map(%Escalation{} = escalation, work_item, stage, outputs, artifacts) do
     run = escalation.run_id && Repo.get(DispatchRun, escalation.run_id)
+    # A run that ended before its record kept whether it is a run of Explore reads it as
+    # `explore_run?/1` does, with nothing written.
+    run = run && %{run | explore: explore_run?(run)}
     stopped = run_stopped?(run, artifacts)
 
     %{

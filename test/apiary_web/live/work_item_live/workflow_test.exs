@@ -4708,6 +4708,72 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
              ]
     end
 
+    # A run that ended before its record kept whether it is a run of Explore reads it from
+    # its step and workflow (`Stages.explore_run?/1`).
+    test "run_stopped from a run with no explore kept that pushed a verdict, then failed: no verdict",
+         %{conn: conn, scope: scope} do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> place!(save!(scope, document("members")), @build, :escalated,
+          stage_round: 1,
+          stage_entry: 0
+        )
+
+      {run, dispatch_run} =
+        registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, dispatch_run},
+          work_item,
+          "verdict",
+          %{"verdict" => "passed"},
+          stage_id: @build
+        )
+
+      run |> Ecto.Changeset.change(exit_state: "failed") |> Repo.update!()
+
+      dispatch_run =
+        dispatch_run
+        |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended, explore: nil)
+        |> Repo.update!()
+
+      escalate!(work_item, :run_stopped, nil, dispatch_run)
+
+      assert %{escalation: %{points: [@no_verdict], no_verdict: true}} =
+               Stages.status(work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "The run stopped before its verdict. Run another round."
+             ]
+    end
+
+    test "run_stopped from an Explore run with no explore kept that failed after its proposal",
+         %{conn: conn, scope: scope} do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(understood_result(), %{exit_state: "failed", outcome_state: "failed"})
+
+      {1, _rows} =
+        Repo.update_all(from(e in Escalation, where: e.work_item_id == ^work_item.id),
+          set: [points: []]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^newest_run(work_item).id),
+          set: [explore: nil]
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      assert line(view, "#work-item-needs-point-1") ==
+               "The run stopped: it failed after it wrote proposal version 1. Run another round."
+    end
+
     test "placed run_stopped whose newest run has no end: no verdict", %{
       conn: conn,
       scope: scope
