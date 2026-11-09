@@ -1882,7 +1882,12 @@ defmodule Apiary.AuditChanges do
   # The push keeps its file in a store under the system's temporary folder, set for the
   # push alone and removed after it.
   defp attempt(:"artifact.write", scope, work_item) do
-    dir = Path.join(System.tmp_dir!(), "apiary-audit-#{System.unique_integer([:positive])}")
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "apiary-audit-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
     previous = Application.get_env(:apiary, :artifacts_dir)
     Application.put_env(:apiary, :artifacts_dir, dir)
 

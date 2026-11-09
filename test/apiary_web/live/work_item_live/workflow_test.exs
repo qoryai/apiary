@@ -4711,7 +4711,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "Add version: the dialog where the version starts the stage; none where it does not",
          %{conn: conn, scope: scope} do
-      tmp = Path.join(System.tmp_dir!(), "spend-#{System.unique_integer([:positive])}")
+      tmp =
+        Path.join(
+          System.tmp_dir!(),
+          "spend-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
       previous = Application.get_env(:apiary, :artifacts_dir)
       Application.put_env(:apiary, :artifacts_dir, tmp)
 
@@ -5017,7 +5022,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       # Add version of the input that Build waits for.
-      tmp = Path.join(System.tmp_dir!(), "spend-#{System.unique_integer([:positive])}")
+      tmp =
+        Path.join(
+          System.tmp_dir!(),
+          "spend-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
       previous = Application.get_env(:apiary, :artifacts_dir)
       Application.put_env(:apiary, :artifacts_dir, tmp)
 

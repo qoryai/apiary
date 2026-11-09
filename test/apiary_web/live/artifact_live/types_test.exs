@@ -147,7 +147,10 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
 
     store =
-      Path.join(System.tmp_dir!(), "apiary-types-test-#{System.unique_integer([:positive])}")
+      Path.join(
+        System.tmp_dir!(),
+        "apiary-types-test-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
 
     previous = Application.get_env(:apiary, :artifacts_dir)
     Application.put_env(:apiary, :artifacts_dir, store)
@@ -340,7 +343,10 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
 
     store =
-      Path.join(System.tmp_dir!(), "apiary-types-test-#{System.unique_integer([:positive])}")
+      Path.join(
+        System.tmp_dir!(),
+        "apiary-types-test-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
 
     previous = Application.get_env(:apiary, :artifacts_dir)
     Application.put_env(:apiary, :artifacts_dir, store)
