@@ -534,13 +534,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   describe "without the feature" do
     @describetag with_features: Apiary.Features.all() -- [:workflow_model]
 
-    # The one read left on each load, the static one and the connected one, is the
-    # Explore tab's stage (`ApiaryWeb.WorkItemLive.View`), not the work item's version.
-    test "the page loads no process version on the work item", %{conn: conn, scope: scope} do
+    test "the page reads no process version", %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
       {reads, view} = version_reads(conn, page(scope, work_item.number))
 
-      assert reads == 2
+      assert reads == 0
       assert %Ecto.Association.NotLoaded{} = loaded_version(view)
       assert has_element?(view, "#work-item-step")
     end
@@ -945,6 +943,23 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-line a")
       assert has_element?(view, ~s(#work-item-head-stage-status a[href="#{path.(explore)}"]))
       assert has_element?(view, ~s(#work-item-explore-wait-h a[href="#{path.(explore)}"]))
+    end
+
+    test "after a move back, a later stage's run is another stage's, and Explore's runs are not",
+         %{scope: scope} do
+      work_item = moved_back!(scope)
+      {explore, _dispatch_run} = registered!(work_item, newest_run(work_item), :handed_over)
+      {build, _dispatch_run} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      row = Repo.get!(WorkItem, work_item.id)
+      read = WorkItems.explore(scope, row, DateTime.utc_now())
+      page = ApiaryWeb.WorkItemLive.View.page(scope, row, read, [], %{})
+
+      other_stage =
+        Map.new([page.work_item.run | page.earlier_runs], &{&1.number, &1.other_stage})
+
+      assert other_stage[build.number] == true
+      assert other_stage[explore.number] == false
     end
 
     test "Details: a claimed run with a pending row reads queued, its attempt linked", %{
