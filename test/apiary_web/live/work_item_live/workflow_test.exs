@@ -637,7 +637,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-step")
     end
 
-    test "after a move back, Build's run is at another stage, with one read of Explore's stage",
+    test "after a move back, Build's run is at another stage, with Explore's stage read once",
          %{scope: scope} do
       # The fixtures move the work item with the feature on, as before it was turned off.
       off = Apiary.Features.enabled()
@@ -650,14 +650,16 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       row = Repo.get!(WorkItem, work_item.id)
       read = WorkItems.explore(scope, row, DateTime.utc_now())
 
-      # The one read is Explore's stage (`Apiary.Stages.explore_stage_id/1`).
+      # Explore's stage is read once (`Apiary.Stages.explore_stage_id/1`): the work item's
+      # version, and the workspace's current version for the commit of the Qory harness
+      # in use (`Apiary.Processes.HarnessUpdate.qory_in_use/1`).
       {reads, page} =
         version_reads_in(fn -> ApiaryWeb.WorkItemLive.View.page(scope, row, read, [], %{}) end)
 
       other_stage =
         Map.new([page.work_item.run | page.earlier_runs], &{&1.number, &1.other_stage})
 
-      assert reads == 1
+      assert reads == 2
       assert other_stage[build.number] == true
       assert other_stage[explore.number] == false
     end
