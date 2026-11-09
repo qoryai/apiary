@@ -6,7 +6,8 @@ defmodule Apiary.Runs do
   watched by `Apiary.Runs.Liveness`; this module is what pages call. Every function takes
   the caller's scope first and reads only the scope's workspace. One reads more:
   `workspace_facts/3`, for the organisation's overview, which reads the workspaces of the
-  scope's organisation it is given.
+  scope's organisation it is given. One reads the whole instance and takes no scope:
+  `list_instance_runs/2`, for `GET /v1/runs` signed with a diagnostics key.
 
   Changes are announced on two topics of `Apiary.PubSub`:
 
@@ -173,6 +174,19 @@ defmodule Apiary.Runs do
       from r in in_scope(scope), order_by: [desc: r.inserted_at, desc: r.id], limit: ^limit
     )
   end
+
+  @doc """
+  A page of the runs of every workspace of the instance, for `GET /v1/runs` signed with a
+  diagnostics key (`Apiary.AccessKeys.diagnostics_scope/1`): `query` is the request's raw
+  query string. `{:ok, document}`, the contract's run list, `%{"runs" => rows, "next" =>
+  id or nil}`, or `{:error, parameter}` with the name of the parameter the request breaks
+  the rule of (`Apiary.Runs.RunList`). One query reads the page's runs, after a query for
+  the workspace and one for `before` when the request has them. `opts`: `now`, the time
+  the answer is built (the current time).
+  """
+  @spec list_instance_runs(String.t(), keyword) :: {:ok, map} | {:error, String.t()}
+  def list_instance_runs(query, opts \\ []) when is_binary(query),
+    do: Apiary.Runs.RunList.answer(query, opts)
 
   ## The runs list
 
