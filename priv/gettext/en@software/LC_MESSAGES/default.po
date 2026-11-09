@@ -6212,7 +6212,7 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
-msgstr "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
+msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
@@ -11384,7 +11384,7 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Keep one template of this workspace's type in the harness, or choose another harness. At this commit the harness has more than one."
-msgstr "Keep one template of this workspace's type in the harness, or choose another harness. At this commit the harness has more than one."
+msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -15392,7 +15392,7 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Press Update from harness again. The harness choice changed after you opened this difference."
-msgstr "Press Update from harness again. The harness choice changed after you opened this difference."
+msgstr ""
 
 #: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
