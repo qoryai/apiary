@@ -98,25 +98,26 @@ defmodule Apiary.Dispatches.Built do
 
   # record/1 stores the image the prebuild `run` reported (the moduledoc): `:recorded`
   # when the record was written, `:kept` when the record already had that build or a
-  # newer one, `:refused` for a run that is not a prebuild handed over, an event that
-  # breaks its rules or an image away from the run's destinations, and `:none` when the
-  # run has no such event.
+  # newer one, `:refused` for a report that fails its check (`check/2`), and `:none`
+  # when the run has no such event.
   @doc false
   @spec record(Run.t()) :: :recorded | :kept | :refused | :none
-  def record(%Run{id: run_id, dispatch_run_id: dispatch_run_id})
+  def record(%Run{id: run_id, public_id: public_id, dispatch_run_id: dispatch_run_id})
       when is_binary(dispatch_run_id) do
     {:ok, recorded} =
       Repo.transact(fn ->
         with {:ok, data} <- reported(run_id),
-             %DispatchRun{} = dispatch_run <- prebuild(dispatch_run_id),
-             {:ok, build} <- build(data),
              run = Repo.get!(Run, run_id),
-             :ok <- placed(run, build) do
+             {:ok, dispatch_run, build} <- checked(run, data) do
           held = Environments.lock_record(dispatch_run.pool_id, dispatch_run.source_collection_id)
           {:ok, {store(held, dispatch_run, run, build), dispatch_run}}
         else
-          :none -> {:ok, :none}
-          _refused -> {:ok, :refused}
+          :none ->
+            {:ok, :none}
+
+          {:refused, why} ->
+            warn(public_id, why)
+            {:ok, :refused}
         end
       end)
 
@@ -137,6 +138,58 @@ defmodule Apiary.Dispatches.Built do
     case reported(run_id) do
       {:ok, _data} -> :refused
       :none -> :none
+    end
+  end
+
+  @typedoc """
+  Why a report fails its check, with the values a reader needs to see why:
+
+    * `:not_prebuild`: the run is not a prebuild handed over, with a pool and a
+      collection.
+    * `{:form, member}`: the event's `member` breaks its rules, the first of `image`,
+      `size`, `commit`, `environment_ref` and `environment_image` that does.
+    * `{:image_place, reported, expected}`: the image's place, its name before
+      `@sha256:`, is `reported`, not the run's `image_destination`, `expected`.
+    * `{:environment_image, reported, {:destination, place}}`: the environment image's
+      place is `reported`, not the run's `environment_destination`, `place`.
+    * `{:environment_image, reported, {:image, image}}`: the environment image is
+      `reported`, not the run's `environment_image`, `image`, the one the build started
+      from.
+    * `:no_destination`: the run's documents have no destination.
+
+  A reported value passed the event's rules, so it is an image or a place of the form of
+  the provisioner contract's `$defs/image`.
+  """
+  @type refusal ::
+          :not_prebuild
+          | {:form, String.t()}
+          | {:image_place, String.t(), String.t()}
+          | {:environment_image, String.t(), {:destination | :image, String.t()}}
+          | :no_destination
+
+  # check/2 is the check of `data`, the data of the report of `run`, that `record/1`
+  # makes before it stores the image (the moduledoc), the one check both use: `:ok`, or
+  # `{:refused, why}`. It reads the run's run of the queue, without a lock, the data and
+  # the run's documents, and logs nothing.
+  @doc false
+  @spec check(Run.t(), map) :: :ok | {:refused, refusal}
+  def check(%Run{} = run, data) do
+    case checked(run, data) do
+      {:ok, _dispatch_run, _build} -> :ok
+      {:refused, _why} = refused -> refused
+    end
+  end
+
+  # The run's run of the queue and the build, or why the report is refused.
+  defp checked(%Run{dispatch_run_id: id} = run, data) do
+    with %DispatchRun{} = dispatch_run <- is_binary(id) && prebuild(id),
+         {:ok, build} <- build(data),
+         :ok <- placed(run, build) do
+      {:ok, dispatch_run, build}
+    else
+      falsy when falsy in [nil, false] -> {:refused, :not_prebuild}
+      {:error, member} -> {:refused, {:form, member}}
+      {:refused, _why} = refused -> refused
     end
   end
 
@@ -165,16 +218,19 @@ defmodule Apiary.Dispatches.Built do
     )
   end
 
-  # The event's data held to its rules (the moduledoc): `{:ok, build}` or :error. The
-  # build's `environment_image` is nil where the event has none.
+  # The event's data held to its rules (the moduledoc): `{:ok, build}`, or
+  # `{:error, member}` for the first member that breaks them. The build's
+  # `environment_image` is nil where the event has none.
   defp build(%{} = data) do
-    with image when is_binary(image) <- data["image"],
-         true <- image?(image),
-         size when is_integer(size) and size in 1..@max_size//1 <- data["size"],
-         commit when is_binary(commit) <- data["commit"],
-         true <- Regex.match?(@commit, commit),
-         ref when is_binary(ref) <- data["environment_ref"],
-         true <- AdapterWire.text?(ref, 1, @max_ref),
+    with {:ok, image} <- member(data, "image", &image?/1),
+         {:ok, size} <- member(data, "size", &(is_integer(&1) and &1 in 1..@max_size//1)),
+         {:ok, commit} <- member(data, "commit", &(is_binary(&1) and Regex.match?(@commit, &1))),
+         {:ok, ref} <-
+           member(
+             data,
+             "environment_ref",
+             &(is_binary(&1) and AdapterWire.text?(&1, 1, @max_ref))
+           ),
          {:ok, environment_image} <- environment_image(data) do
       {:ok,
        %{
@@ -184,39 +240,46 @@ defmodule Apiary.Dispatches.Built do
          environment_ref: ref,
          environment_image: environment_image
        }}
-    else
-      _ -> :error
     end
   end
 
-  defp build(_data), do: :error
+  # Data that is no object has none of the members, so its first, `image`, breaks them.
+  defp build(_data), do: {:error, "image"}
 
-  defp environment_image(%{"environment_image" => image}) do
-    if is_binary(image) and image?(image), do: {:ok, image}, else: :error
+  defp member(data, member, valid?) do
+    value = data[member]
+    if valid?.(value), do: {:ok, value}, else: {:error, member}
   end
+
+  defp environment_image(%{"environment_image" => _image} = data),
+    do: member(data, "environment_image", &image?/1)
 
   defp environment_image(_data), do: {:ok, nil}
 
-  defp image?(image), do: byte_size(image) <= @max_image_bytes and Regex.match?(@image, image)
+  defp image?(image),
+    do:
+      is_binary(image) and byte_size(image) <= @max_image_bytes and
+        Regex.match?(@image, image)
 
   # :ok when the build's images are where the run's documents sent them (the moduledoc),
-  # :error otherwise, with a warning.
+  # `{:refused, why}` otherwise.
   defp placed(%Run{} = run, build) do
     case destinations(run) do
       {:ok, image_destination, environment} ->
         cond do
           place(build.image) != image_destination ->
-            refused(run, "image", "is not at the run's image_destination")
+            {:refused, {:image_place, place(build.image), image_destination}}
 
           not environment_placed?(build.environment_image, environment) ->
-            refused(run, "environment_image", "is not the environment image the run was sent")
+            {:refused,
+             {:environment_image, reported(build.environment_image, environment), environment}}
 
           true ->
             :ok
         end
 
       :error ->
-        refused(run, "image", "cannot be checked: the run's documents have no image_destination")
+        {:refused, :no_destination}
     end
   end
 
@@ -244,6 +307,11 @@ defmodule Apiary.Dispatches.Built do
 
   defp destinations(%Run{}), do: :error
 
+  # What the run reported of its environment image, as the documents set it: its place
+  # for a destination, the image itself for the image the build started from.
+  defp reported(image, {:destination, _place}), do: place(image)
+  defp reported(image, {:image, _sent}), do: image
+
   defp environment_placed?(nil, _environment), do: true
   defp environment_placed?(image, {:destination, place}), do: place(image) == place
   defp environment_placed?(image, {:image, sent}), do: image == sent
@@ -252,12 +320,25 @@ defmodule Apiary.Dispatches.Built do
   # has no `@`.
   defp place(image), do: image |> String.split("@", parts: 2) |> hd()
 
-  defp refused(%Run{public_id: public_id}, member, why) do
+  # A report refused for where its images are is logged with the run's public id and the
+  # member, never the image.
+  defp warn(public_id, {:image_place, _reported, _expected}),
+    do: warn(public_id, "image", "is not at the run's image_destination")
+
+  defp warn(public_id, {:environment_image, _reported, _expected}),
+    do: warn(public_id, "environment_image", "is not the environment image the run was sent")
+
+  defp warn(public_id, :no_destination),
+    do:
+      warn(public_id, "image", "cannot be checked: the run's documents have no image_destination")
+
+  defp warn(_public_id, :not_prebuild), do: :ok
+  defp warn(_public_id, {:form, _member}), do: :ok
+
+  defp warn(public_id, member, why) do
     Logger.warning(
       "a prebuild's report was not recorded: its #{member} #{why} (run #{public_id})"
     )
-
-    :error
   end
 
   # The build recorded on `held`, the record locked first, unless the record has a newer

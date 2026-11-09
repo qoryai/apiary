@@ -1268,6 +1268,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A run's notes on missing session events sit inside or after the run's steps, never
+  above them. Each Claude Code session's **Run the agent** has the note about the wall
+  or the hooks, and each session on another runtime the note about its runtime. A run
+  whose sessions ran no agent has the runtime note after the list, above the Timeline.
+  Before, such a run showed no runtime note, and a run of Claude Code and another
+  runtime lost the note about the wall.
+- A prebuild's run page shows **Save the outputs** failed, with a cause line, when the
+  image was not saved: its report failed the check that stores it, or the run failed
+  after the build and sent no image. “How it ended” shows the first sentence of that
+  line. A prebuild lost or cancelled after its build shows **Save the outputs** failed
+  too, and “How it ended” shows that sentence only when the run has no other line on how
+  it ended. The cause line shows the addresses that differ and what to do. Before, the
+  step read “Outputs saved” for an image that was not saved, or had no row, and Build
+  the image was green. A long image reference wraps inside the step's column instead of
+  covering **Details**.
 - Where the run's Terminal is hidden from a reader, the run's Timeline, header and
   Details show no text of the session: no prompt, text, command, argument, tool input or
   output, subagent message, notification message, or error. Each row keeps its kind,

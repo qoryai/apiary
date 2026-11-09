@@ -10,7 +10,8 @@ defmodule Apiary.Repo.Migrations.KeepTheQoryHarnessFilesByCommit do
   #     the commit does not have. A commit's rows are written in one insert, and never
   #     changed after.
   #   * `qory_harness_heads`: one row per branch or tag, by the repository's address and
-  #     its name (`ref`): the commit it was at when it was last read, and when.
+  #     its name (`ref`): the commit it was at when it was last read, and when a read
+  #     first found that commit.
   #
   # Neither table has an organisation: the rows are the instance's.
   def change do
