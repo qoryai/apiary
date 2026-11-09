@@ -479,34 +479,22 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # How many reads of `process_versions` the test process and the page's LiveView ran
   # while the page at `path` loaded, with the view.
   defp version_reads(conn, path) do
-    handler = "workflow-version-reads-#{System.unique_integer([:positive])}"
-    me = self()
-
-    :ok =
-      :telemetry.attach(
-        handler,
-        [:apiary, :repo, :query],
-        fn _event, _measurements, meta, _config ->
-          if meta.source == "process_versions", do: send(me, {:version_read, self()})
-        end,
-        nil
-      )
-
-    try do
-      {:ok, view, _html} = live(conn, path)
-      _ = render(view)
-      {count_version_reads([me, view.pid], 0), view}
-    after
-      :telemetry.detach(handler)
-    end
+    version_reads_in(
+      fn ->
+        {:ok, view, _html} = live(conn, path)
+        _ = render(view)
+        view
+      end,
+      &[&1.pid]
+    )
   end
 
   # The `process_version` field of the work item in the assigns of the LiveView `view`.
   defp loaded_version(view), do: :sys.get_state(view.pid).socket.assigns.row.process_version
 
-  # How many reads of `process_versions` this process ran while `fun` ran, with the result
-  # of `fun`.
-  defp version_reads_in(fun) do
+  # How many reads of `process_versions` this process, and the processes `pids` gives for
+  # the result of `fun`, ran while `fun` ran, with that result.
+  defp version_reads_in(fun, pids \\ fn _result -> [] end) do
     handler = "workflow-version-reads-in-#{System.unique_integer([:positive])}"
     me = self()
 
@@ -522,7 +510,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     try do
       result = fun.()
-      {count_version_reads([me], 0), result}
+      {count_version_reads([me | pids.(result)], 0), result}
     after
       :telemetry.detach(handler)
     end
@@ -560,6 +548,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the page reads no process version", %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
+      # A work item placed while the model was on still reads its version up to 3 times.
       {reads, view} = version_reads(conn, page(scope, work_item.number))
 
       assert reads == 0
@@ -660,7 +649,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage")
     end
 
-    test "the page reads the workspace's current process version", %{
+    test "the page loads the workspace's current process version on the work item", %{
       conn: conn,
       scope: scope
     } do
