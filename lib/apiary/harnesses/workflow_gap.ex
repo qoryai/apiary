@@ -73,7 +73,9 @@ defmodule Apiary.Harnesses.WorkflowGap do
   # `workflow_not_in_harness`.
   @spec of_dispatch_run(DispatchRun.t(), WorkItem.t() | nil) :: facts | nil
   def of_dispatch_run(%DispatchRun{id: id} = dispatch_run, work_item) do
-    if Repo.exists?(from r in Run, where: r.dispatch_run_id == ^id and r.reason == @code) do
+    if Repo.exists?(
+         from r in Run.registered(), where: r.dispatch_run_id == ^id and r.reason == @code
+       ) do
       walk = Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id)
       facts(dispatch_run, walk, work_item)
     end

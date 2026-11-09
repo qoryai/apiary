@@ -94,7 +94,9 @@ defmodule Apiary.Dispatches.Handover do
   #      choices changed while the claim read them, or anything else fails:
   #      `{:error, :unavailable}`, and the claim's transaction rolls back.
   #
-  # Else the run is registered, as a registration through the gateway by the pool:
+  # Else the run is registered, as a registration through the gateway by the pool, on the
+  # run record written when it was queued, which keeps its id, its number and its queue
+  # time (`Apiary.Dispatches.Queued`):
   # `pending`, its `node_run_id` the run's `run_id`, on the pool, its instance the run's
   # `run_id` too, under the pool's key, its labels the target's
   # (`Apiary.Lingo.Domain.target_labels/1`) and, where the domain has one and gives the
@@ -146,10 +148,11 @@ defmodule Apiary.Dispatches.Handover do
   #     (`Apiary.Dispatches.Release`): the registered run ends failed, `lease_lapsed` or
   #     `machine_not_made`, and leaves the run of the queue (`fail_start/3`);
   #   - its work item was closed (`Apiary.Dispatches.cancel_for_close/2`): the registered
-  #     run is deleted with its run code (`drop/1`).
+  #     run ends cancelled, `closed`, and keeps its number (`Apiary.Dispatches.Queued`).
   #
-  # Either way the code redeems no more, and a run that waits again is registered anew,
-  # with a new code, by the claim that takes it next. A dispatch is handed over at its
+  # Either way the code redeems no more. A run that waits again has a new run record, with
+  # the next number (`Apiary.Dispatches.Queued.requeue!/2`), which the claim that takes it
+  # next registers, with a new code. A dispatch is handed over at its
   # first `dispatched`, or at the first redemption of its run code
   # (`Apiary.Runs.RunCode.redeem/2`), whichever comes first.
   #
@@ -163,7 +166,7 @@ defmodule Apiary.Dispatches.Handover do
   # row, the gateway's row `FOR SHARE`, the records a lapse needs, the run of the queue it
   # took, and the dispatch it wrote): the rows of the model providers an explore run's
   # choices name `FOR SHARE`, then the rows of their keys' secrets `FOR SHARE`
-  # (`Apiary.Dispatches.RunSettings`), then the registered run, inserted. A change of a
+  # (`Apiary.Dispatches.RunSettings`), then the run record `FOR UPDATE`, updated. A change of a
   # provider or of its keys locks nothing of the queue, so it and a claim take turns at
   # the provider's row alone. Nothing else is locked: not the pool's connection, its
   # collection, the work item or the workspace.
@@ -192,6 +195,7 @@ defmodule Apiary.Dispatches.Handover do
     Dispatch,
     DispatchRun,
     Inputs,
+    Queued,
     RunEnd,
     RunSettings,
     Slots
@@ -410,28 +414,6 @@ defmodule Apiary.Dispatches.Handover do
     {:error, :unavailable}
   end
 
-  # drop/1 deletes the runs registered for the runs of the queue `dispatch_run_ids` that
-  # never attached and whose run code was never redeemed, with their run codes, inside
-  # the caller's transaction, which holds those runs of the queue: what a run of the
-  # queue leaving `claimed` because its work item was closed does (the moduledoc). The
-  # ids of the runs deleted.
-  @doc false
-  @spec drop([Ecto.UUID.t()]) :: [Ecto.UUID.t()]
-  def drop([]), do: []
-
-  def drop(dispatch_run_ids) when is_list(dispatch_run_ids) do
-    {_count, ids} =
-      Repo.delete_all(
-        from(r in Run,
-          where: r.dispatch_run_id in ^dispatch_run_ids,
-          where: is_nil(r.attached_at) and is_nil(r.run_code_public_key),
-          select: r.id
-        )
-      )
-
-    ids
-  end
-
   # fail_start/3 ends failed, at `now`, the runs registered for the runs of the queue of
   # `attempts`, `{dispatch_run_id, dispatch_id}` pairs, that never attached and whose run
   # code was never redeemed, inside the caller's transaction, which holds those runs of
@@ -442,9 +424,9 @@ defmodule Apiary.Dispatches.Handover do
   #   - `start_failure` the cause and `start_failed_at` `now`, so it reads as failed with
   #     the cause as its reason (`Apiary.Runs.Fold.settle/1`), and `dispatch_id` the
   #     dispatch whose claim registered it;
-  #   - no run of the queue (`dispatch_run_id` nil), so the next claim of its run of the
-  #     queue registers a run of its own, and nothing that reads a run of the queue's
-  #     registered run reads this one;
+  #   - no run of the queue (`dispatch_run_id` nil), so the run of the queue, waiting
+  #     again, gets a new run record with the next number, which its next claim registers,
+  #     and nothing that reads a run of the queue's registered run reads this one;
   #   - a fresh `node_run_id`, its instance id the same, as the next claim registers its
   #     run under the run of the queue's `run_id`. No claim answer, starter or machine has
   #     the old one: only a redemption of the run code answers it;
@@ -1215,6 +1197,7 @@ defmodule Apiary.Dispatches.Handover do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
+    _ended = Queued.ended([id], now)
     [workspace_id | Slots.free({:runs, [id]}, now)]
   end
 
@@ -1226,17 +1209,49 @@ defmodule Apiary.Dispatches.Handover do
 
   # The registered run, pending, with its run code, and, for an explore run, the image the
   # claim read for it (`Apiary.Environments.claim_image/2`), nil for the pool's default.
-  defp insert_run(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do
-    %Run{
-      public_id: Run.new_public_id(),
-      number:
-        Number.next(
-          %Workspace{
-            id: dispatch_run.workspace_id,
-            organisation_id: dispatch_run.organisation_id
-          },
-          key.node
-        ),
+  # The run's record written when it was queued (`Apiary.Dispatches.Queued`) is updated,
+  # locked `FOR UPDATE`, and keeps its id, its number and when it was queued. A run of
+  # the queue with no record, queued by the previous release, gets one, with the next
+  # number, as before.
+  defp insert_run(%{run: dispatch_run} = locked, formed, through) do
+    queued =
+      Repo.one(
+        from r in Run,
+          where: r.dispatch_run_id == ^dispatch_run.id,
+          lock: "FOR UPDATE"
+      )
+
+    fields = registered(locked, formed, through)
+
+    case queued do
+      %Run{} = run ->
+        run
+        |> Ecto.Changeset.change(Map.drop(fields, [:inserted_at]))
+        |> Repo.update!()
+
+      # A run queued by the previous release has no record. Its counter can come after the
+      # counters `Slots.free/3` and a build's queue took in this claim, in another order;
+      # one sorted pass over a claim's counters needs a larger change.
+      nil ->
+        %Run{
+          public_id: Run.new_public_id(),
+          number:
+            Number.next(
+              %Workspace{
+                id: dispatch_run.workspace_id,
+                organisation_id: dispatch_run.organisation_id
+              },
+              locked.key.node
+            )
+        }
+        |> struct!(fields)
+        |> PublicId.Insert.insert!()
+    end
+  end
+
+  # What the claim sets on the run it registers.
+  defp registered(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do
+    %{
       organisation_id: dispatch_run.organisation_id,
       workspace_id: dispatch_run.workspace_id,
       node_run_id: dispatch_run.run_id,
@@ -1254,10 +1269,9 @@ defmodule Apiary.Dispatches.Handover do
       inserted_at: now,
       updated_at: now
     }
-    |> struct!(Nodes.placement(key.node, dispatch_run.run_id))
-    |> struct!(through)
-    |> struct!((formed.settings && formed.settings.columns) || %{})
-    |> PublicId.Insert.insert!()
+    |> Map.merge(Nodes.placement(key.node, dispatch_run.run_id))
+    |> Map.merge(through)
+    |> Map.merge((formed.settings && formed.settings.columns) || %{})
   end
 
   defp unavailable(what, exception) do

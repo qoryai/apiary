@@ -13,6 +13,11 @@ defmodule Apiary.Runs.Number do
   # locked. The trigger `runs_number_from_counter` is a second writer, which takes the
   # counter's next number under the same row lock for an insert with no number.
   #
+  # A run of a workspace's queue takes its number when it is queued, with `next/1`, as the
+  # last step of the transaction that queues it, on no node (`Apiary.Dispatches.Queued`);
+  # the claim that later puts it on a node keeps that number. Only a run of the queue
+  # queued by the previous release, which has no record, takes its number at its claim.
+  #
   # A run on a node takes its number with `next/2`, which locks the node first. Every path
   # in this release's code then takes the node's row, then the counter, so none deadlocks
   # with `Apiary.Nodes.admit/4`, which locks the node `FOR UPDATE` and then takes a number.

@@ -347,7 +347,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         dispatch_run_id: dispatch_run.id
       }
       |> Ecto.Changeset.change(state: "running", started_at: DateTime.utc_now())
-      |> Repo.insert!()
+      |> Apiary.RunEventsFixtures.insert_run!()
 
     {run, dispatch_run}
   end
@@ -384,7 +384,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     dispatch_run =
       work_item |> newest_run() |> Ecto.Changeset.change(state: :handed_over) |> Repo.update!()
 
-    Repo.insert!(%Run{
+    %Run{
       number:
         Apiary.RunEventsFixtures.next_run_number(
           work_item.organisation_id,
@@ -396,7 +396,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       dispatch_run_id: dispatch_run.id,
       state: "running",
       started_at: DateTime.utc_now()
-    })
+    }
+    |> Ecto.Changeset.change()
+    |> Apiary.RunEventsFixtures.insert_run!()
 
     work_item
   end
@@ -1749,7 +1751,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       [run.id] |> Stages.claim_ended() |> Apiary.Dispatches.broadcast()
       assert %{cause: :run_stopped, run_id: run_id} = escalation(work_item)
       assert run_id == run.id
-      refute Repo.exists?(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run.id)
+
+      refute Repo.exists?(
+               from r in Apiary.Runs.Run.registered(), where: r.dispatch_run_id == ^run.id
+             )
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert has_element?(view, "#work-item-stage-escalation-form")
@@ -4711,7 +4716,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-head-stage-status",
-               "Queued: no pool can take the run"
+               "Waiting: no pool can take the run"
              )
 
       assert has_element?(view, "#work-item-explore-no-pool-h", "No pool can take attempt")
@@ -4737,7 +4742,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-head-stage-status",
-               "Queued: no pool can take the run"
+               "Waiting: no pool can take the run"
              )
 
       refute has_element?(view, "#work-item-explore-no-pool")

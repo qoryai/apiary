@@ -65,7 +65,7 @@ defmodule Apiary.Runs.Filters do
   # go in a URL: `state=failed,lost`. The families runs are counted in (`Apiary.Runs.Run`):
   # one definition.
   @families [
-    %{key: "alive", label: gettext_noop("Alive"), states: Run.alive_states()},
+    %{key: "alive", label: gettext_noop("Alive"), states: ["queued" | Run.alive_states()]},
     %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
     %{key: "cancelled", label: gettext_noop("Cancelled"), states: Run.cancelled_states()},
     %{key: "ended_badly", label: gettext_noop("Ended badly"), states: Run.ended_badly_states()}
@@ -550,7 +550,7 @@ defmodule Apiary.Runs.Filters do
       |> Enum.map(&(&1 |> String.downcase() |> String.replace(~r/[\s-]/, "_")))
       |> Enum.map(fn word ->
         cond do
-          word in Run.states() -> [word]
+          word in Run.shown_states() -> [word]
           states = family_states(word) -> states
           true -> nil
         end
@@ -601,7 +601,7 @@ defmodule Apiary.Runs.Filters do
   end
 
   # The states in the order every page lists them.
-  defp order(states), do: Run.states() |> Enum.filter(&(&1 in states)) |> Enum.join(",")
+  defp order(states), do: Run.shown_states() |> Enum.filter(&(&1 in states)) |> Enum.join(",")
 
   defp yes_no(value) do
     case String.downcase(value) do
@@ -959,7 +959,7 @@ defmodule Apiary.Runs.Filters do
           |> String.split(",", trim: true)
           |> Enum.uniq()
 
-        known = Enum.filter(Run.states(), &(&1 in chosen))
+        known = Enum.filter(Run.shown_states(), &(&1 in chosen))
         {known, if(length(known) == length(chosen) and chosen != [], do: [], else: ["state"])}
 
       {:ok, _other} ->

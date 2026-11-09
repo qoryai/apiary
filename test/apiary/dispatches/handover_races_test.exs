@@ -201,8 +201,18 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
   defp after_lease(%{dispatch: %Dispatch{lease_until: lease_until}}),
     do: DateTime.add(lease_until, 1, :second)
 
+  defp ended_state(cause),
+    do:
+      if(Atom.to_string(cause) in Apiary.Dispatches.Queued.cancelled(),
+        do: "cancelled",
+        else: "failed"
+      )
+
   defp runs(%{dispatch_run: %DispatchRun{id: id}}),
-    do: Repo.all(from r in Run, where: r.dispatch_run_id == ^id)
+    do:
+      Repo.all(
+        from r in Apiary.RunEventsFixtures.registered_runs(), where: r.dispatch_run_id == ^id
+      )
 
   # The run handed over once: the run the claim registered kept, the slot held.
   defp handed_over!(ctx, claimed) do
@@ -217,9 +227,10 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
     assert Slots.held(ctx.pool.id) == 1
   end
 
-  # The run of the queue and its dispatch ended with `cause`, never handed over, the run
-  # the claim registered deleted, the slot freed once at the dispatch's end, or held for a
-  # late machine until it is gone.
+  # The run of the queue and its dispatch ended with `cause`, never handed over, the slot
+  # freed once at the dispatch's end, or held for a late machine until it is gone. The run
+  # the claim registered ended with the cause and its number kept; with another
+  # `dispatch_cause`, its start failed and it left the run of the queue.
   defp ended!(ctx, claimed, cause, dispatch_cause \\ nil) do
     assert %DispatchRun{state: :ended, end_cause: ^cause} =
              Repo.get!(DispatchRun, claimed.dispatch_run.id)
@@ -233,7 +244,14 @@ defmodule Apiary.Dispatches.HandoverRacesTest do
              slot_freed_at: freed_at
            } = dispatch = Repo.get!(Dispatch, claimed.dispatch.id)
 
-    assert runs(claimed) == []
+    if dispatch_cause == cause do
+      state = ended_state(cause)
+      reason = Atom.to_string(cause)
+      number = claimed.registered.number
+      assert [%Run{state: ^state, reason: ^reason, number: ^number}] = runs(claimed)
+    else
+      assert runs(claimed) == []
+    end
 
     # A dispatched refused after the end is a late machine: the slot is held until the
     # machine is reported gone, which this reports.

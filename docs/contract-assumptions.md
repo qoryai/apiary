@@ -521,9 +521,10 @@ whatever its `lease_until`, and records only the first one: its time, its `exter
 `machine_type`. When a run
 leaves the claim other than by its handover, its lease lapsing or a release ends its
 registered run `failed`, with the reason `lease_lapsed` or `machine_not_made`, and the
-close of its work item deletes it with the run code; either way the code redeems
-nothing from then on. The failed run keeps its id and its page, and leaves the run of the
-queue, so the next claim registers a new run.
+close of its work item ends it `cancelled`, with the reason `closed`; either way the code
+redeems nothing from then on, and a machine that redeems it is a late machine. The run
+keeps its id, its number and its page. A failed run leaves the run of the queue, which
+waits again as a new queued run with the next number.
 
 Once handed over, such a run ends with its registered run, in one of three ways, the first
 to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once folded,

@@ -146,7 +146,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
         set: [state: :ended, end_cause: :run_ended]
       )
 
-    Repo.insert!(%Run{
+    %Run{
       number: Apiary.RunEventsFixtures.next_run_number(scope.organisation.id, scope.workspace.id),
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
@@ -155,7 +155,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
       node_id: pool.id,
       state: "completed",
       started_at: DateTime.utc_now()
-    })
+    }
+    |> Ecto.Changeset.change()
+    |> Apiary.RunEventsFixtures.insert_run!()
   end
 
   # The organisation's model provider with a key, and the workspace's choice of it: the

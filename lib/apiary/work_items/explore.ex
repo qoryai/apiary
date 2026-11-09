@@ -233,6 +233,7 @@ defmodule Apiary.WorkItems.Explore do
             END AS place
             FROM dispatch_runs AS d
             LEFT JOIN runs AS r ON r.dispatch_run_id = d.id
+              AND (r.registered_at IS NOT NULL OR r.node_id IS NOT NULL)
             WHERE d.work_item_id = ? AND d.take_in = ?
             ORDER BY d.attempt DESC
             LIMIT 1
@@ -288,7 +289,7 @@ defmodule Apiary.WorkItems.Explore do
   def steps(work_item_id, take_ins, %DateTime{} = _now) when is_binary(work_item_id) do
     query =
       from d in DispatchRun,
-        left_join: r in Run,
+        left_join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == d.id,
         where: d.work_item_id == ^work_item_id,
         order_by: [asc: d.take_in, asc: d.attempt],

@@ -65,17 +65,19 @@ defmodule Apiary.Runs.NumberMoveTest do
   end
 
   test "the next run in a fresh target goes on from the work item's highest number", ctx do
-    assert List.last(runs!(ctx.work_item, 5)) == 5
+    # Run 1 is the run the take in queued.
+    assert List.last(runs!(ctx.work_item, 5)) == 6
     assert counter(ctx.there) == nil
 
+    # The take in of the move queues Run 7, after the work item's highest, 6.
     %{work_item: moved} = move(ctx, ctx.there)
-    assert counter(ctx.there) == 5
+    assert counter(ctx.there) == 7
 
-    assert runs!(moved, 1) == [6]
-    assert run_fixture(ctx.there).number == 7
+    assert runs!(moved, 1) == [8]
+    assert run_fixture(ctx.there).number == 9
 
     # The workspace it left goes on from its count.
-    assert run_fixture(ctx.scope).number == 6
+    assert run_fixture(ctx.scope).number == 7
   end
 
   test "a target already past the highest number does not change", ctx do
@@ -83,22 +85,28 @@ defmodule Apiary.Runs.NumberMoveTest do
     for _ <- 1..9, do: run_fixture(ctx.there)
     assert counter(ctx.there) == 9
 
+    # The take in of the move queues Run 10, the counter's next.
     %{work_item: moved} = move(ctx, ctx.there)
 
-    assert counter(ctx.there) == 9
-    assert runs!(moved, 1) == [10]
+    assert counter(ctx.there) == 10
+    assert runs!(moved, 1) == [11]
   end
 
-  test "a work item with no runs raises nothing, and makes no counter", ctx do
+  test "a work item with no runs raises nothing: the run the move queues is Run 1", ctx do
+    # The record of the run the take in queued, gone, as no run of the work item has a
+    # number.
+    [queued] = Repo.all(from d in DispatchRun, where: d.work_item_id == ^ctx.work_item.id)
+    :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
     assert numbers(ctx.work_item) == []
 
     move(ctx, ctx.there)
 
-    assert counter(ctx.there) == nil
-    assert run_fixture(ctx.there).number == 1
+    assert counter(ctx.there) == 1
+    assert run_fixture(ctx.there).number == 2
   end
 
-  test "a take in again in the same workspace changes no counter", ctx do
+  test "a take in again in the same workspace raises no counter: its run takes the next number",
+       ctx do
     runs!(ctx.work_item, 2)
     before = counter(ctx.scope)
 
@@ -109,7 +117,7 @@ defmodule Apiary.Runs.NumberMoveTest do
     {:ok, _closed} = WorkItems.close(ctx.scope, reload(ctx.work_item))
     {:ok, _again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
 
-    assert counter(ctx.scope) == before
+    assert counter(ctx.scope) == before + 1
   end
 
   test "two moves in a row keep the numbers of the work item's runs different", ctx do
@@ -118,17 +126,18 @@ defmodule Apiary.Runs.NumberMoveTest do
     %{work_item: there, ticket: record} = move(ctx, ctx.there)
     runs!(there, 2)
 
-    # The workspace it comes back to has a counter, lower than the work item's highest.
-    assert counter(ctx.scope) == 1
+    # The workspace it comes back to has a counter, lower than the work item's highest. Run
+    # 1 is the run the take in queued, Run 3 the run the move queued.
+    assert counter(ctx.scope) == 2
 
     %{work_item: back} =
       moved_work_item_fixture(ctx.there, there, record, ctx.connection, ctx.scope)
 
     assert back.workspace_id == ctx.scope.workspace.id
-    assert counter(ctx.scope) == 3
+    assert counter(ctx.scope) == 6
     runs!(back, 2)
 
-    assert Enum.sort(numbers(back)) == [1, 2, 3, 4, 5]
+    assert Enum.sort(numbers(back)) == Enum.to_list(1..8)
   end
 
   test "a workspace with no moved work item starts at Run 1", ctx do
