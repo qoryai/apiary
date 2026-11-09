@@ -2,6 +2,8 @@ defmodule Apiary.Runs.PreparationTest do
   # Not async: one test makes the instance's pool, of which the instance has one at most.
   use Apiary.DataCase, async: false
 
+  import Phoenix.Component, only: [sigil_H: 2]
+  import Phoenix.LiveViewTest, only: [rendered_to_string: 1]
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
@@ -26,6 +28,40 @@ defmodule Apiary.Runs.PreparationTest do
     {:ok, run} = Projector.project(run)
     run
   end
+
+  # The Run list of `preparation` (`ApiaryWeb.PreparationComponents.run_list/1`) on a run
+  # that ended in `state`, as a document; `clean_up` is what Remove the machine shows.
+  defp run_list(preparation, state, clean_up \\ nil) do
+    assigns = %{preparation: preparation, state: state, clean_up: clean_up}
+
+    ~H"""
+    <ApiaryWeb.PreparationComponents.run_list
+      preparation={@preparation}
+      alive={false}
+      run_state={@state}
+      clean_up={@clean_up}
+    />
+    """
+    |> rendered_to_string()
+    |> LazyHTML.from_fragment()
+  end
+
+  defp row_state(html, id),
+    do: html |> LazyHTML.query("##{id}") |> LazyHTML.attribute("data-state")
+
+  defp skipped(html),
+    do:
+      html
+      |> LazyHTML.query("div.q-prep-skipped[data-state=skipped]")
+      |> LazyHTML.attribute("id")
+
+  defp children(html, id),
+    do: html |> LazyHTML.query("##{id} > .q-xb > ol > li > [id]") |> LazyHTML.attribute("id")
+
+  # The name on the row `id`.
+  defp row_name(html, id),
+    do:
+      html |> LazyHTML.query("##{id} > summary .q-prep-name") |> LazyHTML.text() |> String.trim()
 
   defp detail(kind, sent_name),
     do: Preparation.step_detail(%{kind: kind, sent_name: sent_name, number: 1})
@@ -287,6 +323,21 @@ defmodule Apiary.Runs.PreparationTest do
       assert [%{number: 3, state: "failed"}] = preparation.after_session
       assert preparation.stopped == nil
       assert Preparation.stopped_step(preparation) == nil
+
+      assert Preparation.push_line(preparation) ==
+               "Push work to git.example.com/acme/web-shop failed with exit code 1."
+    end
+
+    test "a stop at a step has its first sentence alone for the header, on every pool" do
+      stopped = %{step: 3, what: "Start the wall failed with exit code 125.", text: "x"}
+
+      for fixer <- [:support, :operator_admin, :workspace_admin] do
+        assert Preparation.stop_line(%{stopped: Map.put(stopped, :fixer, fixer)}) ==
+                 "Start the wall failed with exit code 125."
+      end
+
+      assert Preparation.stop_line(%{stopped: %{step: nil, fixer: :support, what: "x"}}) == nil
+      assert Preparation.stop_line(%{stopped: nil}) == nil
     end
 
     test "a failed setup step still is one, in the same place of the run", ctx do
@@ -295,7 +346,7 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert preparation.after_session == []
       assert %{cause: :step_failed, step: 3} = preparation.stopped
-      assert Preparation.stopped_step(preparation) == "Set up dev container"
+      assert Preparation.stopped_step(preparation) == "Set up the dev container"
     end
 
     test "a reader who may not read the log has the step, with no output", ctx do
@@ -319,6 +370,665 @@ defmodule Apiary.Runs.PreparationTest do
                Preparation.read(ctx.scope, run)
 
       assert started.state == "succeeded"
+    end
+  end
+
+  describe "agent sessions and helper steps" do
+    defp exited(sequence, session, state \\ "succeeded"),
+      do:
+        {sequence, "session.exited", %{"session" => session, "state" => state, "exit_code" => 0}}
+
+    defp bare(session),
+      do: %{"session" => session, "runtime" => "git", "bare" => true, "command" => "git"}
+
+    # Two agent sessions, then the copy of the work around a bare session 3, then a push.
+    defp two_sessions_and_copy(copy_state \\ "succeeded") do
+      [
+        {1, "run.started", started_data()},
+        step_started(2, 1, "fetch git.example.com/acme/web-shop", "fetch"),
+        step_exited(3, 1),
+        step_started(4, 2, "join session 1", "join"),
+        step_exited(5, 2),
+        {6, "session.started", session_started_data()},
+        step_started(7, 3, "start the wall", "wall"),
+        step_exited(8, 3),
+        {9, "runtime.started", %{"session" => 1, "model" => "model-small-1"}},
+        {10, "runtime.result", %{"session" => 1, "outcome" => "success", "turns" => 3}},
+        exited(11, 1),
+        step_started(12, 4, "join session 2", "join"),
+        step_exited(13, 4),
+        {14, "session.started", session_started_data(%{"session" => 2})},
+        step_started(15, 5, "start the wall", "wall"),
+        step_exited(16, 5),
+        {17, "runtime.started", %{"session" => 2, "model" => "model-large-1"}},
+        {18, "runtime.result", %{"session" => 2, "outcome" => "success", "turns" => 9}},
+        exited(19, 2),
+        step_started(20, 6, "copy the work back", "copy"),
+        step_started(21, 7, "join session 3", "join"),
+        step_exited(22, 7),
+        {23, "session.started", bare(3)},
+        step_started(24, 8, "start the wall", "wall"),
+        step_exited(25, 8),
+        exited(26, 3, "failed"),
+        step_exited(27, 6, copy_state, if(copy_state == "failed", do: 128, else: 0)),
+        step_started(28, 9, "push work to git.example.com/acme/web-shop", "push"),
+        step_exited(29, 9)
+      ]
+    end
+
+    test "each agent session has its start and its end; a bare session is none", ctx do
+      run = ctx.scope |> run_fixture() |> project!(two_sessions_and_copy())
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [
+               %{
+                 session: 1,
+                 sequence: 6,
+                 started_at: first_at,
+                 end: %{turns: 3, model: "model-small-1", state: "succeeded"}
+               },
+               %{
+                 session: 2,
+                 sequence: 14,
+                 end: %{turns: 9, model: "model-large-1", state: "succeeded"} = second
+               }
+             ] = preparation.sessions
+
+      assert preparation.session_started_at == first_at
+      assert DateTime.compare(first_at, at(6)) == :eq
+      # The bare session's failed exit at 26 is no agent session's.
+      assert preparation.session_end == second
+    end
+
+    test "each agent session has the runtime of its start, nil when that is no text", ctx do
+      with_runtimes = fn first, second ->
+        Enum.map(two_sessions_and_copy(), fn
+          {6, "session.started", data} ->
+            {6, "session.started", Map.put(data, "runtime", first)}
+
+          {14, "session.started", data} ->
+            {14, "session.started", Map.put(data, "runtime", second)}
+
+          event ->
+            event
+        end)
+      end
+
+      run = ctx.scope |> run_fixture() |> project!(with_runtimes.("claude", "qory"))
+
+      assert [%{sequence: 6, runtime: "claude"}, %{sequence: 14, runtime: "qory"}] =
+               Preparation.read(ctx.scope, run).sessions
+
+      run = ctx.scope |> run_fixture() |> project!(with_runtimes.(%{"name" => "qory"}, 5))
+
+      assert [%{sequence: 6, runtime: nil}, %{sequence: 14, runtime: nil}] =
+               Preparation.read(ctx.scope, run).sessions
+    end
+
+    test "the copy and the bare session's join and wall are helper steps", ctx do
+      run = ctx.scope |> run_fixture() |> project!(two_sessions_and_copy())
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [
+               {1, "fetch", false},
+               {2, "join", false},
+               {3, "wall", false},
+               {4, "join", false},
+               {5, "wall", false},
+               {7, "join", true},
+               {8, "wall", true}
+             ] = for(step <- preparation.steps, do: {step.number, step.kind, step.helper})
+
+      assert [
+               %{
+                 number: 6,
+                 kind: "copy",
+                 helper: true,
+                 started_sequence: 20,
+                 exited_sequence: 27
+               },
+               %{number: 9, kind: "push", helper: false}
+             ] = preparation.after_session
+    end
+
+    test "a failed copy after the agent's success is no stop, and has the header's line", ctx do
+      run = ctx.scope |> run_fixture() |> project!(two_sessions_and_copy("failed"))
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert preparation.stopped == nil
+      assert Preparation.push_failed?(preparation)
+
+      assert Preparation.push_line(preparation) ==
+               "The run's work did not come back from the machine."
+    end
+
+    test "a failed wall of the bare session, with the copy cancelled, is no stop", ctx do
+      events =
+        two_sessions_and_copy()
+        |> Enum.take(23)
+        |> Kernel.++([
+          step_started(24, 8, "start the wall", "wall"),
+          step_exited(25, 8, "failed", 125),
+          step_exited(27, 6, "cancelled", -1)
+        ])
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+      assert %{stopped: nil} = Preparation.read(ctx.scope, run)
+    end
+
+    test "a bare session's join and wall are helper steps with no copy around them", ctx do
+      events =
+        two_sessions_and_copy()
+        |> Enum.reject(fn event -> elem(event, 0) in [20, 27] end)
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [true, true] = for(%{number: n, helper: h} <- preparation.steps, n in [7, 8], do: h)
+
+      assert for(%{number: n, helper: h} <- preparation.steps, n in 1..5, do: h) ==
+               List.duplicate(false, 5)
+    end
+
+    test "a session whose wall failed after its start never ran its agent: it is no agent session",
+         ctx do
+      events = [
+        {1, "run.started", started_data()},
+        step_started(2, 1, "join session 1", "join"),
+        step_exited(3, 1),
+        {4, "session.started", session_started_data()},
+        step_started(5, 2, "start the wall", "wall"),
+        step_exited(6, 2, "failed", 125),
+        {7, "session.exited", %{"session" => 1, "state" => "failed", "exit_code" => 1}}
+      ]
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert preparation.sessions == []
+      assert preparation.session_started_at == nil
+      assert preparation.session_end == nil
+      assert %{cause: :step_failed, step: 2} = preparation.stopped
+
+      # The Run list: the join and the failed wall in Prepare the session, then Run the
+      # agent and Save the outputs Skipped, Run the agent with no Started or Finished.
+      html = run_list(preparation, "failed")
+
+      assert children(html, "prepare-machine-session-prepare") == [
+               "prepare-machine-step-1",
+               "prepare-machine-step-2"
+             ]
+
+      assert row_state(html, "prepare-machine-session-prepare") == ["failed"]
+      assert skipped(html) == ["prepare-machine-session-agent", "prepare-machine-session-outputs"]
+
+      assert html |> LazyHTML.query("#prepare-machine-session-agent") |> LazyHTML.text() =~
+               ~r/^\s*Run the agent\s*Skipped\s*$/
+    end
+
+    test "a wall that fails before its session starts leaves the session before it an agent session",
+         ctx do
+      events = [
+        {1, "run.started", started_data()},
+        step_started(2, 1, "join session 1", "join"),
+        step_exited(3, 1),
+        {4, "session.started", session_started_data()},
+        step_started(5, 2, "start the wall", "wall"),
+        step_exited(6, 2),
+        {7, "runtime.result", %{"session" => 1, "outcome" => "success", "turns" => 3}},
+        {8, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+        step_started(9, 3, "join session 2", "join"),
+        step_exited(10, 3),
+        step_started(11, 4, "start the wall", "wall"),
+        step_exited(12, 4, "failed", 125)
+      ]
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [%{session: 1, sequence: 4, started_at: started_at, end: %{exit_code: 0}}] =
+               preparation.sessions
+
+      assert preparation.session_started_at == started_at
+      assert %{cause: :step_failed, step: 4} = preparation.stopped
+
+      # Session 1 ran its agent; the wall of session 2 failed in Agent session 2, whose Run
+      # the agent and Save the outputs are Skipped.
+      html = run_list(preparation, "failed")
+      assert row_state(html, "prepare-machine-session-agent") == ["succeeded"]
+      assert row_name(html, "prepare-machine-step-1") == "Start the agent"
+      assert row_name(html, "prepare-machine-step-3") == "Start the agent"
+
+      assert children(html, "prepare-machine-session-2-prepare") == [
+               "prepare-machine-step-3",
+               "prepare-machine-step-4"
+             ]
+
+      assert row_state(html, "prepare-machine-session-2-prepare") == ["failed"]
+
+      assert skipped(html) == [
+               "prepare-machine-session-2-agent",
+               "prepare-machine-session-2-outputs"
+             ]
+    end
+
+    test "an agent run with a build step before its first join is no prebuild", ctx do
+      events = [
+        {1, "run.started", started_data()},
+        step_started(2, 1, "fetch acme/shop", "fetch"),
+        step_exited(3, 1),
+        step_started(4, 2, "build the environment image", "build"),
+        step_exited(5, 2),
+        step_started(6, 3, "setup npm ci", "setup"),
+        step_exited(7, 3, "failed", 1)
+      ]
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+      preparation = Preparation.read(ctx.scope, run)
+      refute preparation.prebuild
+
+      # The build is a step of Prepare the machine, and Agent session 1 is Skipped.
+      html = run_list(preparation, "failed")
+
+      assert children(html, "prepare-machine-prepare") == [
+               "prepare-machine-step-1",
+               "prepare-machine-step-2",
+               "prepare-machine-step-3"
+             ]
+
+      assert "prepare-machine-session" in skipped(html)
+      assert html |> LazyHTML.query("#prepare-machine-outputs") |> Enum.empty?()
+    end
+
+    test "a failed wall of an agent session keeps its cause line", ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!(
+          Enum.take(two_sessions_and_copy(), 14) ++
+            [
+              step_started(15, 5, "start the wall", "wall"),
+              step_exited(16, 5, "failed", 125)
+            ]
+        )
+
+      assert %{stopped: %{cause: :step_failed, step: 5, what: what}} =
+               Preparation.read(ctx.scope, run)
+
+      assert what == "Start the wall failed with exit code 125."
+    end
+
+    test "a wall that fails after the next agent join, past a bare session, is no helper step",
+         ctx do
+      # Session 1, the bare session 2 with no copy around it, then join 3 and its wall,
+      # which fails before session 3 starts.
+      events =
+        Enum.take(two_sessions_and_copy(), 11) ++
+          [
+            step_started(12, 4, "join session 2", "join"),
+            step_exited(13, 4),
+            {14, "session.started", bare(2)},
+            step_started(15, 5, "start the wall", "wall"),
+            step_exited(16, 5),
+            exited(17, 2),
+            step_started(18, 6, "join session 3", "join"),
+            step_exited(19, 6),
+            step_started(20, 7, "start the wall", "wall"),
+            step_exited(21, 7, "failed", 125)
+          ]
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert for(%{number: n, helper: h} <- preparation.steps, n in 4..7, do: {n, h}) ==
+               [{4, true}, {5, true}, {6, false}, {7, false}]
+
+      assert %{cause: :step_failed, step: 7, what: "Start the wall failed with exit code 125."} =
+               preparation.stopped
+    end
+
+    test "an end event with no `session`, from an old record, ends the last agent session started before it",
+         ctx do
+      events = [
+        {1, "run.started", started_data()},
+        {2, "session.started", session_started_data()},
+        {3, "runtime.started", %{"model" => "model-small-1"}},
+        {4, "runtime.result", %{"outcome" => "error", "turns" => 2}},
+        {5, "session.exited", %{"state" => "failed", "exit_code" => 1}},
+        {6, "session.started", session_started_data(%{"session" => 2})},
+        {7, "runtime.started", %{"model" => "model-large-1"}},
+        {8, "runtime.result", %{"outcome" => "success", "turns" => 9}},
+        {9, "session.exited", %{"state" => "succeeded", "exit_code" => 0}}
+      ]
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+
+      assert [
+               %{session: 1, end: %{outcome: "error", state: "failed", model: "model-small-1"}},
+               %{
+                 session: 2,
+                 end: %{outcome: "success", state: "succeeded", model: "model-large-1"}
+               }
+             ] = Preparation.read(ctx.scope, run).sessions
+    end
+
+    test "a run with one session and no `session` on its events reads as before", ctx do
+      events = [
+        {1, "run.started", started_data()},
+        {2, "session.started", Map.delete(session_started_data(), "session")},
+        {3, "runtime.result", %{"outcome" => "success", "turns" => 4}},
+        {4, "session.exited", %{"state" => "succeeded", "exit_code" => 0}}
+      ]
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+      preparation = Preparation.read(ctx.scope, run)
+
+      assert [%{session: nil, sequence: 2, end: %{turns: 4, exit_code: 0} = finished}] =
+               preparation.sessions
+
+      assert preparation.session_end == finished
+    end
+
+    test "a run with no session's start takes its end from its last end events", ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "runtime.result", %{"outcome" => "success", "turns" => 4}},
+          exited(3, 1)
+        ])
+
+      assert %{
+               sessions: [],
+               session_started_at: nil,
+               session_end: %{turns: 4, state: "succeeded"}
+             } =
+               Preparation.read(ctx.scope, run)
+    end
+
+    test "a run whose only session is bare has no agent session", ctx do
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data()},
+          step_started(2, 1, "join session 1", "join"),
+          step_exited(3, 1),
+          {4, "session.started", bare(1)},
+          exited(5, 1)
+        ])
+
+      assert %{sessions: [], session_started_at: nil, session_end: nil, steps: [%{helper: true}]} =
+               Preparation.read(ctx.scope, run)
+
+      assert Preparation.session_of([], %{sequence: 4}) == nil
+    end
+  end
+
+  describe "a prebuild" do
+    # A prebuild as qory runs it (`internal/pool/prebuild`): no step of the kind `build`,
+    # and one session, which Forager writes as a join, the session's start, the image
+    # step, its wall and its exit, then `dev.qory.run.built` with the image. Forager
+    # marks the session's start `bare` from its commit c6c20c6b on, so each case runs
+    # with and without the mark.
+    @describetag needs: [:factory, :registry]
+
+    @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("4c1e", 16)
+
+    # Remove the machine as the pool's starter reports a machine that is gone.
+    @gone {:report, :gone, ~U[2026-11-08 06:05:00.000000Z]}
+
+    setup ctx do
+      _gateway = gateway_for!(ctx.scope, ctx.pool)
+      %{run: run} = prebuild_handed_over!(ctx.scope, ctx.key)
+      %{run: run}
+    end
+
+    # The run's events: the session's join, its start, the image step and its wall with
+    # `wall_state`;
+    # after a wall that succeeded, the session's exit with `exit_code` and, for 0,
+    # `dev.qory.run.built`; then the run's exit.
+    defp prebuild_events(opts) do
+      bare = if Keyword.get(opts, :bare), do: %{"bare" => true}, else: %{}
+      wall_state = Keyword.get(opts, :wall_state, "succeeded")
+      exit_code = Keyword.get(opts, :exit_code, 0)
+      wall_code = if wall_state == "succeeded", do: 0, else: 125
+      built = wall_state == "succeeded" and exit_code == 0
+
+      start = session_started_data(Map.merge(%{"runtime" => "qory", "command" => "qory"}, bare))
+
+      built_data = %{
+        "image" => @image,
+        "size" => 1_048_576,
+        "commit" => String.duplicate("a1", 20),
+        "environment_ref" => "env-1"
+      }
+
+      session_end =
+        cond do
+          wall_state != "succeeded" ->
+            []
+
+          exit_code == 0 ->
+            [
+              {9, "session.exited",
+               %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 900}},
+              {10, "run.built", built_data}
+            ]
+
+          true ->
+            [
+              {9, "session.exited",
+               %{
+                 "session" => 1,
+                 "state" => "failed",
+                 "exit_code" => exit_code,
+                 "duration_ms" => 900
+               }}
+            ]
+        end
+
+      [
+        {1, "run.started", started_data(%{"wall" => "docker"})},
+        step_started(2, 1, "join session 1", "join"),
+        step_exited(3, 1),
+        {4, "session.started", start},
+        step_started(5, 2, "registry.example.com/acme/agent:1.4", "image"),
+        step_exited(6, 2),
+        step_started(7, 3, "start the wall", "wall"),
+        step_exited(8, 3, wall_state, wall_code)
+      ] ++
+        session_end ++
+        [
+          {11, "run.exited",
+           %{
+             "state" => if(built, do: "succeeded", else: "failed"),
+             "exit_code" => if(built, do: 0, else: 1),
+             "duration_ms" => 1000
+           }}
+        ]
+    end
+
+    defp rows(html),
+      do: html |> LazyHTML.query("#prepare-machine > ol > li > [id]") |> LazyHTML.attribute("id")
+
+    defp facts(html, id) do
+      terms = html |> LazyHTML.query("##{id} > .q-xb > dl dt") |> Enum.map(&LazyHTML.text/1)
+      values = html |> LazyHTML.query("##{id} > .q-xb > dl dd") |> Enum.map(&LazyHTML.text/1)
+      Enum.zip(Enum.map(terms, &String.trim/1), Enum.map(values, &String.trim/1))
+    end
+
+    for bare <- [false, true] do
+      test "with bare #{bare}: Build the image has the session, Save the outputs the image",
+           ctx do
+        run = project!(ctx.run, prebuild_events(bare: unquote(bare)))
+        preparation = Preparation.read(ctx.scope, run)
+
+        assert preparation.prebuild
+        assert [%{session: 1, sequence: 4}] = preparation.sessions
+        assert %{image: @image} = preparation.built
+
+        html = run_list(preparation, "completed", @gone)
+
+        assert Enum.take(rows(html), -4) == [
+                 "prepare-machine-prepare",
+                 "prepare-machine-build",
+                 "prepare-machine-outputs",
+                 "prepare-machine-remove"
+               ]
+
+        assert row_state(html, "prepare-machine-build") == ["succeeded"]
+
+        assert children(html, "prepare-machine-prepare") == ["prepare-machine-step-2"]
+
+        assert children(html, "prepare-machine-build") == [
+                 "prepare-machine-step-1",
+                 "prepare-machine-step-3"
+               ]
+
+        assert row_name(html, "prepare-machine-step-1") == "Start the build"
+        assert row_name(html, "prepare-machine-step-3") == "Start the wall"
+
+        assert [{"Started", _at}, {"Finished", _end}, {"Result", "exit 0"}] =
+                 facts(html, "prepare-machine-build")
+
+        assert [{"Outputs saved", _at}, {"Image", @image}] =
+                 facts(html, "prepare-machine-outputs")
+
+        # One event: its time, and no duration.
+        assert html
+               |> LazyHTML.query("#prepare-machine-outputs > summary .q-tc2")
+               |> LazyHTML.text()
+               |> String.trim() == ""
+
+        text = LazyHTML.text(html)
+        refute text =~ "Agent session"
+        refute text =~ "Prepare the session"
+        refute text =~ "Run the agent"
+      end
+    end
+
+    for bare <- [false, true] do
+      test "with bare #{bare}: a failed wall fails Build the image, with its cause line",
+           ctx do
+        run = project!(ctx.run, prebuild_events(bare: unquote(bare), wall_state: "failed"))
+        preparation = Preparation.read(ctx.scope, run)
+        html = run_list(preparation, "failed", @gone)
+
+        assert row_state(html, "prepare-machine-build") == ["failed"]
+        assert row_state(html, "prepare-machine-step-3") == ["failed"]
+
+        assert html
+               |> LazyHTML.query("#prepare-machine-step-3 #prepare-machine-cause")
+               |> LazyHTML.text() =~ "Start the wall failed with exit code 125."
+
+        assert skipped(html) == ["prepare-machine-outputs"]
+      end
+    end
+
+    test "a failed join is Start the build, with its cause line", ctx do
+      events = [
+        {1, "run.started", started_data(%{"wall" => "docker"})},
+        step_started(2, 1, "join session 1", "join"),
+        step_exited(3, 1, "failed", 1),
+        {4, "session.exited",
+         %{"session" => 1, "state" => "failed", "exit_code" => -1, "duration_ms" => 0}},
+        {5, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+      ]
+
+      run = project!(ctx.run, events)
+      preparation = Preparation.read(ctx.scope, run)
+      what = "Start the build failed with exit code 1."
+
+      assert %{cause: :step_failed, step: 1} = preparation.stopped
+      assert preparation.stopped.what =~ what
+
+      html = run_list(preparation, "failed", @gone)
+      assert row_state(html, "prepare-machine-build") == ["failed"]
+      assert row_name(html, "prepare-machine-step-1") == "Start the build"
+
+      assert html
+             |> LazyHTML.query("#prepare-machine-step-1 #prepare-machine-cause")
+             |> LazyHTML.text() =~ what
+
+      assert skipped(html) == ["prepare-machine-outputs"]
+    end
+
+    test "a failed session fails Build the image, with the session's cause line", ctx do
+      run = project!(ctx.run, prebuild_events(bare: true, exit_code: 1))
+      preparation = Preparation.read(ctx.scope, run)
+      assert preparation.built == nil
+
+      html = run_list(preparation, "failed", @gone)
+
+      assert row_state(html, "prepare-machine-build") == ["failed"]
+      assert row_state(html, "prepare-machine-step-3") == ["succeeded"]
+
+      assert html
+             |> LazyHTML.query("#prepare-machine-build > .q-xb > #prepare-machine-cause")
+             |> LazyHTML.text() =~ "Build the image failed with exit code 1."
+
+      assert skipped(html) == ["prepare-machine-outputs"]
+    end
+  end
+
+  describe "the session of an item of the Timeline" do
+    @sessions [
+      %{session: 1, sequence: 6, started_at: ~U[2026-11-08 10:00:00Z], end: nil},
+      %{session: 2, sequence: 14, started_at: ~U[2026-11-08 10:05:00Z], end: nil}
+    ]
+
+    test "is the agent session of the item's `session`" do
+      assert Preparation.session_of(@sessions, %{session: 1, sequence: 30}) == 6
+      assert Preparation.session_of(@sessions, %{session: 2, sequence: 7}) == 14
+    end
+
+    test "with no `session`, or a bare session's, is the last that started before it" do
+      assert Preparation.session_of(@sessions, %{session: nil, sequence: 10}) == 6
+      assert Preparation.session_of(@sessions, %{session: 3, sequence: 30}) == 14
+      assert Preparation.session_of(@sessions, %{sequence: 15}) == 14
+    end
+
+    test "before every session is the first" do
+      assert Preparation.session_of(@sessions, %{session: nil, sequence: 1}) == 6
+      assert Preparation.session_of(@sessions, %{sequence: nil, time: nil}) == 6
+    end
+
+    test "with a reused number, is the last session of that number before it, as for an end event",
+         ctx do
+      events = [
+        {1, "run.started", started_data()},
+        {2, "session.started", session_started_data()},
+        {3, "runtime.result", %{"session" => 1, "outcome" => "error", "turns" => 2}},
+        exited(4, 1),
+        {5, "session.started", session_started_data()},
+        {6, "runtime.result", %{"session" => 1, "outcome" => "success", "turns" => 9}},
+        exited(7, 1)
+      ]
+
+      run = ctx.scope |> run_fixture() |> project!(events)
+      %{sessions: sessions} = Preparation.read(ctx.scope, run)
+
+      assert [
+               %{session: 1, sequence: 2, end: %{outcome: "error"}},
+               %{session: 1, sequence: 5, end: %{outcome: "success"}}
+             ] = sessions
+
+      # The result at 6 ends the session started at 5, and an item at 6 belongs to it too.
+      assert Preparation.session_of(sessions, %{session: 1, sequence: 6}) == 5
+      assert Preparation.session_of(sessions, %{session: 1, sequence: 3}) == 2
+    end
+
+    test "with no sequence, as a Pushed row, goes by its time" do
+      assert Preparation.session_of(@sessions, %{sequence: nil, time: ~U[2026-11-08 10:06:00Z]}) ==
+               14
+
+      assert Preparation.session_of(@sessions, %{sequence: nil, time: ~U[2026-11-08 10:05:00Z]}) ==
+               14
+
+      assert Preparation.session_of(@sessions, %{sequence: nil, time: ~U[2026-11-08 10:04:59Z]}) ==
+               6
     end
   end
 
@@ -480,10 +1190,11 @@ defmodule Apiary.Runs.PreparationTest do
                step: 1,
                fixer: :workspace_admin,
                text:
-                 "Clone repository failed with exit code 128 (git.example.com/acme/shop). " <>
+                 "Clone the repository failed with exit code 128 (git.example.com/acme/shop). " <>
                    "An admin of " <>
                    "#{ctx.scope.workspace.name} reads the cause in the step's output.",
-               what: "Clone repository failed with exit code 128 (git.example.com/acme/shop).",
+               what:
+                 "Clone the repository failed with exit code 128 (git.example.com/acme/shop).",
                fix:
                  "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output.",
                detail: "git.example.com/acme/shop"
@@ -508,7 +1219,7 @@ defmodule Apiary.Runs.PreparationTest do
       assert %{cause: :step_failed, step: 1, fixer: :support} = stopped
 
       assert stopped.text ==
-               "Pull images failed with exit code 0 (fetch image registry.example/agent). " <>
+               "Pull the images failed with exit code 0 (fetch image registry.example/agent). " <>
                  "Contact support with run #{run.public_id}."
     end
 
@@ -523,11 +1234,13 @@ defmodule Apiary.Runs.PreparationTest do
           step_exited(2, 1, "failed", 1)
         ])
 
-      assert %{stopped: stopped} = Preparation.read(ctx.scope, run)
+      assert %{stopped: stopped} = preparation = Preparation.read(ctx.scope, run)
       assert %{cause: :step_failed, step: 1, fixer: :support} = stopped
+      # The Test run and the run page show the step as its row: Start the machine.
+      assert Preparation.stopped_step(preparation) == "Start the machine"
 
       assert stopped.text ==
-               "Start machine failed with exit code 1. " <>
+               "Start the machine failed with exit code 1. " <>
                  "Contact support with run #{run.public_id}."
     end
 
@@ -543,7 +1256,7 @@ defmodule Apiary.Runs.PreparationTest do
       assert %{steps: [%{exit_code: -1}], stopped: stopped} = Preparation.read(ctx.scope, run)
 
       assert stopped.text ==
-               "Start agent failed. An admin of #{ctx.scope.workspace.name} reads the " <>
+               "Start the agent failed. An admin of #{ctx.scope.workspace.name} reads the " <>
                  "cause in the step's output."
     end
 
@@ -574,16 +1287,17 @@ defmodule Apiary.Runs.PreparationTest do
       assert %{stopped: stopped} = preparation = Preparation.read(ctx.scope, run)
 
       assert %{
-               what: "Set up dev container failed with exit code 1 (postCreateCommand: npm ci).",
+               what:
+                 "Set up the dev container failed with exit code 1 (postCreateCommand: npm ci).",
                detail: "postCreateCommand: npm ci"
              } = stopped
 
       # The text is plain: diagnostics and the page header show it without code font.
       assert stopped.text ==
-               "Set up dev container failed with exit code 1 (postCreateCommand: npm ci). " <>
+               "Set up the dev container failed with exit code 1 (postCreateCommand: npm ci). " <>
                  "An admin of #{ctx.scope.workspace.name} reads the cause in the step's output."
 
-      assert Preparation.stopped_step(preparation) == "Set up dev container"
+      assert Preparation.stopped_step(preparation) == "Set up the dev container"
     end
 
     test "a set-up step named by one word, as qory's prepare: no parentheses", ctx do
@@ -596,7 +1310,7 @@ defmodule Apiary.Runs.PreparationTest do
         ])
 
       assert %{stopped: %{what: what, detail: nil}} = Preparation.read(ctx.scope, run)
-      assert what == "Set up dev container failed with exit code 1."
+      assert what == "Set up the dev container failed with exit code 1."
     end
 
     test "an image step named by its reference alone: the reference as sent", ctx do
@@ -613,7 +1327,7 @@ defmodule Apiary.Runs.PreparationTest do
       assert %{steps: [image, pull], stopped: %{what: what}} = Preparation.read(ctx.scope, run)
 
       # The reference alone, one word, is in parentheses as sent: no upper-case first letter.
-      assert what == "Pull images failed (registry.example.com/acme/storefront-dev:1)."
+      assert what == "Pull the images failed (registry.example.com/acme/storefront-dev:1)."
 
       assert Preparation.step_detail(image) == "registry.example.com/acme/storefront-dev:1"
       assert Preparation.step_detail(pull) == "pull registry.example.com/acme/storefront-dev:1"
@@ -640,7 +1354,7 @@ defmodule Apiary.Runs.PreparationTest do
                "registry.example.com/acme/storefront-dev:1"
     end
 
-    test "is nil for one word, the label itself, a join, a kind with no label, no name" do
+    test "is nil for one word, words of the label alone, a join, a kind with no label, no name" do
       assert detail("setup", "setup") == nil
       assert detail("setup", "prepare") == nil
       assert detail("image", "image") == nil
@@ -648,12 +1362,24 @@ defmodule Apiary.Runs.PreparationTest do
       assert detail("join", "join session 1") == nil
       assert detail("machine", "start machine") == nil
       assert detail("compose", "compose the harness") == nil
+      assert detail("compose", "compose harness") == nil
+      assert detail("setup", "set up the dev container") == nil
+      assert detail("wall", "start the wall") == nil
       assert detail(nil, nil) == nil
     end
 
     test "names the row by its label, or the step's name for a kind with no label" do
-      assert Preparation.row_name(%{kind: "join", name: "Join session 1"}) == "Start agent"
-      assert Preparation.row_name(%{kind: "machine", name: "Start machine"}) == "Start machine"
+      assert Preparation.row_name(%{kind: "join", name: "Join session 1"}) == "Start the agent"
+      assert Preparation.row_name(%{kind: "wall", name: "Start wall"}) == "Start the wall"
+
+      assert Preparation.row_name(%{kind: "compose", name: "Compose harness"}) ==
+               "Compose the harness"
+
+      assert Preparation.row_name(%{kind: "build", name: "Build image"}) == "Build the image"
+
+      assert Preparation.row_name(%{kind: "machine", name: "start machine"}) ==
+               "Start the machine"
+
       assert Preparation.row_name(%{kind: nil, name: nil, number: 3}) == "Step 3"
     end
   end
@@ -832,7 +1558,7 @@ defmodule Apiary.Runs.PreparationTest do
       assert pruned_at == run.log_pruned_at
 
       assert stopped.text ==
-               "Set up dev container failed with exit code 2. The step's output was deleted " <>
+               "Set up the dev container failed with exit code 2. The step's output was deleted " <>
                  "under the " <>
                  "workspace's log retention, so the cause is no longer shown."
     end

@@ -222,10 +222,11 @@ defmodule Apiary.Runs.Fold do
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
-  # The states a step's exit can have, and the kinds of step: the contract's eight and
-  # `machine`, which `qory run` sends from its machine record.
+  # The states a step's exit can have, and the kinds of step: the contract's eight,
+  # `machine`, which `qory run` sends from its machine record, and `copy`, which it sends
+  # around the copy of the run's work back from the wall.
   @step_states ~w(succeeded failed cancelled)
-  @step_kinds ~w(fetch compose image build setup join wall push machine)
+  @step_kinds ~w(fetch compose image build setup join wall push machine copy)
 
   defstruct run: %{},
             latest: %{},
