@@ -32,9 +32,12 @@ defmodule Apiary.Processes.HarnessUpdate do
   (`Apiary.Processes.make_current/2`): a trial of edits turns it off, and a trial saved
   from the harness turns it on.
 
-  While it is on, for the Qory harness, each later commit of the followed branch that the
-  refresh of the Qory harness reads is saved as a version, with no author, even when the
-  process is unchanged (`follow_all/0`). No version is saved where the template fails a
+  While it is on, each later commit of the followed branch is saved as a version, with no
+  author, even when the process is unchanged (`follow_all/0`), every five minutes, after
+  the refresh of the Qory harness (Apiary.Harnesses.QoryRefresh). For the Qory harness,
+  that is the commit the refresh read; a harness repository is read then, through the
+  adapters that link it to the organisation, or as public, as a person's read is
+  (`read/2`). No version is saved where the template fails a
   check: no template of the workspace's type, a process that fails
   `Apiary.Processes.validate/1` or has a machine type the instance does not have, artifact
   types that fail the template check, or a stack that cannot be copied. Where the
@@ -42,10 +45,6 @@ defmodule Apiary.Processes.HarnessUpdate do
   version is saved with the stack kept, and the log has one line for the workspace. A
   workspace whose current version has no harness commit, as one made with no template, is
   not updated. The feature `workflow_model` must be on.
-
-  Following a harness repository's branch needs a read of the repository at each later
-  commit, which Qory Apiary makes only when a person reads the repository or a run is
-  queued: the switch has no effect there yet.
 
   ## Who
 
@@ -533,8 +532,9 @@ defmodule Apiary.Processes.HarnessUpdate do
 
   @doc """
   follow_all/0 saves a version of each workspace whose switch Keep the process at the
-  latest is on and whose harness is the Qory harness on a branch, where the branch was at
-  another commit when last read than the commit of its current version (the moduledoc).
+  latest is on and whose harness follows a branch, where the branch is at another commit
+  than the commit of its current version (the moduledoc): for the Qory harness, as last
+  read; for a harness repository, as read now.
   The refresh of the Qory harness calls it after its reads
   (Apiary.Harnesses.QoryRefresh), as the instance. A workspace whose update fails its
   checks, or fails, is one line in the log, and is tried again at the next refresh.
@@ -550,7 +550,7 @@ defmodule Apiary.Processes.HarnessUpdate do
 
           {:error, reason} ->
             Logger.warning(
-              "the process was not updated from the Qory harness workspace=#{workspace.id} " <>
+              "the process was not updated from the harness workspace=#{workspace.id} " <>
                 "reason=#{inspect(reason)}"
             )
         end
@@ -573,41 +573,80 @@ defmodule Apiary.Processes.HarnessUpdate do
   end
 
   @doc false
-  # follow/1 updates `workspace` from the Qory harness where its switch is on and the
-  # branch moved (`follow_all/0`): `{:ok, version}`, `{:ok, nil}` where nothing is due,
-  # or `{:error, reason}`.
+  # follow/1 updates `workspace` from its harness where its switch is on and the branch
+  # moved (`follow_all/0`): `{:ok, version}`, `{:ok, nil}` where nothing is due, or
+  # `{:error, reason}`.
   @spec follow(%Workspace{}) :: {:ok, Version.t() | nil} | {:error, term}
   def follow(%Workspace{} = workspace) do
-    with {:qory, branch} <- following(workspace),
-         true <- keep_latest?(workspace),
-         head when is_binary(head) <- Qory.head({:branch, branch}),
-         base = Processes.current(workspace),
-         %{"source" => "qory", "commit" => in_use} when in_use != head <-
-           Processes.harness_template(base) do
-      update_to(workspace, base, branch, head)
+    with {source, branch} <- following(workspace),
+         true <- keep_latest?(workspace) do
+      follow(source, workspace, branch)
     else
       _nothing_due -> {:ok, nil}
     end
   end
 
-  defp update_to(workspace, base, branch, head) do
+  # The Qory harness: the commit the refresh read the branch at, from its stored files.
+  defp follow(:qory, workspace, branch) do
+    with head when is_binary(head) <- Qory.head({:branch, branch}),
+         base = Processes.current(workspace),
+         %{"source" => "qory", "commit" => in_use} when in_use != head <-
+           Processes.harness_template(base),
+         {:ok, template} <- qory_template(workspace, head) do
+      update_to(workspace, base, {branch, head}, template, :qory)
+    else
+      {:error, reason} -> {:error, reason}
+      _nothing_due -> {:ok, nil}
+    end
+  end
+
+  # A harness repository: read through the adapters that link it to the organisation, or
+  # as public, as a person's read on the Harness page reads it (`read/2`), with the
+  # instance's scope. The read gives the branch's newest commit; a version is saved where
+  # it differs from the commit of the current version, from the module the process came
+  # from.
+  defp follow(:repository, workspace, branch) do
+    base = Processes.current(workspace)
+    in_use = Processes.harness_template(base)
+
+    if same_harness?(in_use, Sources.chosen(workspace)) do
+      with {:ok, source, _stack} <- chosen_source(workspace),
+           {:ok, %{commit: head} = read} <- templates(instance_scope(workspace), source) do
+        if head == in_use["commit"] do
+          {:ok, nil}
+        else
+          with {:ok, template} <- module_template(read, in_use["module"], workspace.type),
+               do: update_to(workspace, base, {branch, head}, template, :repository)
+        end
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
+  defp update_to(workspace, base, {branch, head}, template, source) do
     chosen = Sources.chosen(workspace)
 
-    with {:ok, template} <- qory_template(workspace, head),
-         :ok <- types_check(template),
+    with :ok <- types_check(template),
          :ok <- Processes.validate(template.process),
          :ok <- Processes.known_machine_types(template.process) do
       update =
         workspace
-        |> update(chosen, base, {:branch, branch}, head, template, :qory)
+        |> update(chosen, base, {:branch, branch}, head, template, source)
         |> shared_stack(workspace, chosen)
 
-      organisation = Repo.get!(Organisation, workspace.organisation_id)
-      scope = Scope.for_instance(organisation, workspace)
-      scope = Scope.put_origin(scope, %{worker: "Apiary.Harnesses.QoryRefresh"})
-
-      save_update(scope, workspace, update, false, &still_on/1)
+      save_update(instance_scope(workspace), workspace, update, false, &still_on/1)
     end
+  end
+
+  # The instance's scope in the workspace, with the refresh as its origin: the switch's
+  # update, which no person starts.
+  defp instance_scope(workspace) do
+    organisation = Repo.get!(Organisation, workspace.organisation_id)
+
+    organisation
+    |> Scope.for_instance(workspace)
+    |> Scope.put_origin(%{worker: "Apiary.Harnesses.QoryRefresh"})
   end
 
   # The switch's update copies no stack into the harness the organisation shares, which

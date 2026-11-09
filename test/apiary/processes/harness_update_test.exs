@@ -14,7 +14,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   alias Apiary.Harnesses.{Qory, QoryRefresh}
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.{HarnessUpdate, Version}
-  alias Apiary.QoryHarnessFixture
+  alias Apiary.{PublicGitServer, QoryHarnessFixture}
   alias Apiary.Stacks.Stack
 
   @moduletag needs: :workflow_model
@@ -57,6 +57,50 @@ defmodule Apiary.Processes.HarnessUpdateTest do
 
   defp keep(workspace),
     do: Repo.one(from w in Workspace, where: w.id == ^workspace.id, select: w.keep_process_latest)
+
+  defp workspace_row(workspace), do: from(w in Workspace, where: w.id == ^workspace.id)
+
+  defp git!(dir, args) do
+    {_out, 0} = System.cmd("git", ["-C", dir | args], stderr_to_stdout: true)
+    :ok
+  end
+
+  # The workspace on a harness repository at `branch`, served as public with the Qory
+  # fixture's files, its version 1 made from the repository's first commit, and its switch
+  # turned on: the repository, `%{dir, commit}`.
+  defp repository_harness!(workspace, branch, opts \\ []) do
+    unique = %{".test-#{System.unique_integer([:positive])}" => ""}
+    repository = PublicGitServer.repository!(Map.merge(QoryHarnessFixture.files(), unique), opts)
+    PublicGitServer.serve(%{@repository => repository.dir})
+
+    Repo.insert!(%Stack{
+      organisation_id: workspace.organisation_id,
+      workspace_id: workspace.id,
+      choice: :repository,
+      version_kind: :branch,
+      version_name: branch,
+      harness: "extends:\n  git: #{@repository}\n  ref: #{branch}\n  stack: software\n"
+    })
+
+    v1 = Processes.current(workspace)
+
+    Repo.update!(
+      Ecto.Changeset.change(v1,
+        template: %{
+          "source" => "repository",
+          "git" => @repository,
+          "commit" => repository.commit,
+          "module" => "software-factory",
+          "stack" => "software",
+          "type" => v1.template["type"],
+          "version" => nil
+        }
+      )
+    )
+
+    {1, _rows} = Repo.update_all(workspace_row(workspace), set: [keep_process_latest: true])
+    repository
+  end
 
   # A person's save of edits: Shape renamed Plan.
   defp edit!(scope, workspace) do
@@ -362,6 +406,64 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       {:ok, current} = Processes.make_current(ctx.scope, trial)
       assert current.number == 3
       assert keep(ctx.workspace) == true
+    end
+
+    test "follows a harness repository's branch, read as public at each refresh", ctx do
+      repository = repository_harness!(ctx.workspace, "main")
+
+      assert :ok = QoryRefresh.perform(nil, %Oban.Job{args: %{}})
+      assert length(versions(ctx.workspace)) == 1
+
+      commit = PublicGitServer.commit!(repository.dir, described())
+      assert :ok = QoryRefresh.perform(nil, %Oban.Job{args: %{}})
+
+      assert [_v1, %Version{number: 2, status: :current, author_id: nil} = v2] =
+               versions(ctx.workspace)
+
+      assert %{
+               "source" => "repository",
+               "git" => @repository,
+               "commit" => ^commit,
+               "ref_kind" => "branch",
+               "ref" => "main"
+             } = v2.template
+
+      assert Processes.stage(v2, @shape)["description"] == "Plan it."
+      assert Artifacts.type(ctx.workspace, "spec")
+    end
+
+    test "follows a branch other than main", ctx do
+      repository = repository_harness!(ctx.workspace, "next", branches: ["next"])
+
+      # A commit on main is not the followed branch's.
+      PublicGitServer.commit!(repository.dir, described())
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 1
+
+      git!(repository.dir, ["checkout", "-q", "next"])
+      commit = PublicGitServer.commit!(repository.dir, described())
+      assert :ok = HarnessUpdate.follow_all()
+
+      assert [_v1, v2] = versions(ctx.workspace)
+      assert %{"commit" => ^commit, "ref" => "next"} = v2.template
+    end
+
+    test "is off for a harness repository until a person turns it on", ctx do
+      repository = repository_harness!(ctx.workspace, "main")
+      {1, _rows} = Repo.update_all(workspace_row(ctx.workspace), set: [keep_process_latest: nil])
+
+      PublicGitServer.commit!(repository.dir, described())
+      assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "a harness repository that cannot be read saves nothing, and logs why", ctx do
+      repository_harness!(ctx.workspace, "main")
+      PublicGitServer.serve(%{}, answer: fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
+
+      log = ExUnit.CaptureLog.capture_log(fn -> assert :ok = HarnessUpdate.follow_all() end)
+      assert length(versions(ctx.workspace)) == 1
+      assert log =~ "the process was not updated from the harness workspace=#{ctx.workspace.id}"
     end
 
     test "a template that fails a check saves nothing", ctx do

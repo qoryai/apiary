@@ -389,6 +389,10 @@ defmodule Apiary.Stacks.Sources do
   end
 
   # One of the person's reads of `kind` in the window of a minute, `limit` at most.
+  # The instance's scope reads as the switch's update (Apiary.Processes.HarnessUpdate),
+  # at most once a refresh for each workspace, so no person's limit applies.
+  defp spend(%Scope{instance: true, user: nil}, _kind, _limit), do: :ok
+
   defp spend(%Scope{user: %{id: user_id}}, kind, limit) do
     case RateLimit.reserve({__MODULE__, kind, user_id}, limit, @minute) do
       {:ok, _started_at} -> :ok

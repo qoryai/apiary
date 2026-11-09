@@ -11,7 +11,8 @@ defmodule Apiary.Harnesses.QoryRefresh do
   # instance's work and names no organisation. A read that fails is one line in the log,
   # and the next run tries again: the pages keep the files of the last commit read.
   # After the reads, each workspace whose process is kept at the latest is updated to the
-  # commit its branch was read at (`Apiary.Processes.HarnessUpdate.follow_all/0`).
+  # newest commit of the branch it follows: of the Qory harness, as read here; of a
+  # harness repository, read then (`Apiary.Processes.HarnessUpdate.follow_all/0`).
   use Apiary.Job,
     scope: :instance,
     queue: :default,
