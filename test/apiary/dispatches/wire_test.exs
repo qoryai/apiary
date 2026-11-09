@@ -109,7 +109,7 @@ defmodule Apiary.Dispatches.WireTest do
   # but the diagnostics contract, at the later commit that adds the run list.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
+          {"provisioner/v1", "2fbb74357cec7806d17f77c7b82d7f4ac760b3f9"},
           {"run/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"integration/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},

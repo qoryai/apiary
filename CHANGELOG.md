@@ -1225,6 +1225,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and every run of Explore ends with no result.
 - The access action `work_item.decline` is removed. **Close work item…** on the run-limit
   card needs `work_item.close`.
+- After a run ends, a node pool with a machine limit waits until its starter reports the
+  run's machine `gone`, or up to 1,530 minutes after `dispatched` (150 minutes for a
+  prebuild). A starter that never reports `gone` keeps each slot that long. The limit
+  counts the machines that may still exist. A claim whose machine was made, by
+  `dispatched`, by the redemption of its run code, or by a report to
+  `POST /v1/dispatches/<dispatch_id>/machine-end`, keeps its slot after its run ends,
+  after a release or a close, until the starter reports the machine `gone`. `deleting`
+  and `delete_failed` keep the slot. A claim with no machine frees its slot when it
+  ends, as before. A lapsed lease still frees the slot and puts the run back in the
+  queue. A machine that shows up after the slot was freed takes the slot back, even past
+  the limit, so the pool's next claims wait: after a lapse, a release, a close or an
+  undo, a `dispatched` refused with `409` or `410`, or a report other than `gone`; after
+  a lapse or a release, a run code redemption refused because the claim is stale or
+  ended. A close or an undo deletes the run code, so a redemption after one is not
+  counted. The 1,530 or 150 minutes are the machine's lifetime (1,470 or 90) plus 60,
+  counted from the last `dispatched`, handover, report or late machine, or from the
+  claim when there is none. The endpoints' responses do not change.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - On **Work items**, every tab shows a box for each stage of the workspace's process,
@@ -1355,6 +1372,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `dispatches` (20261108130000): a nullable column `late_machine_at`, the last time a
+  machine showed up for a claim that takes none. It changes no row.
 - `runs` (20261108120100): an index in the order of the run list, `GET /v1/runs`, built
   concurrently, so it does not block writes. It changes no row.
 - `machine_types` (20261107110000): a new table of the instance's machine types, with
