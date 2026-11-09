@@ -396,6 +396,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
     test "of an unmanaged workspace is given the image alone, on its attach and its reloads",
          ctx do
+      no_policy_version!(ctx.scope.workspace)
       recorded!(ctx, @shop)
       {run_id, run_key} = explore!(ctx)
 
@@ -484,6 +485,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
     end
 
     test "gives a run that was given no policy at its attach its image alone again", ctx do
+      no_policy_version!(ctx.scope.workspace)
       recorded!(ctx, @shop)
       {run_id, run_key} = explore!(ctx)
       attached = attach(ctx, run_id, run_key)
@@ -499,6 +501,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
     test "never loosens a run given no policy at its attach that took one on a reload",
          ctx do
+      no_policy_version!(ctx.scope.workspace)
       recorded!(ctx, @shop)
       {run_id, run_key} = explore!(ctx)
       attached = attach(ctx, run_id, run_key)
@@ -528,6 +531,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
     end
 
     test "a run a node registered itself, of an unmanaged workspace", ctx do
+      no_policy_version!(ctx.scope.workspace)
       recorded!(ctx, @shop)
       assert_as_before(ctx, session!(ctx), nil)
     end
@@ -538,6 +542,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
     end
 
     test "a run of the queue with no recorded image, of an unmanaged workspace", ctx do
+      no_policy_version!(ctx.scope.workspace)
       assert_as_before(ctx, explore!(ctx), nil)
     end
 
@@ -897,6 +902,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
     test "a run that started under no policy and no image is given a policy made mid-run without its image",
          ctx do
+      no_policy_version!(ctx.scope.workspace)
       {run_id, run_key} = explore!(ctx)
       attached = attach(ctx, run_id, run_key)
       assert attached.status == 200

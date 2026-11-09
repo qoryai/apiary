@@ -1648,7 +1648,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
       page = View.page(scope, row, explore, thread, names)
       confirmers = confirmers(scope, row, flow)
-      waits_at_confirm = explore.status == :confirm and at_explore?(row, flow)
+
+      waits_at_confirm =
+        explore.status == :confirm and at_explore?(row, flow) and
+          not escalated?(flow, :confirm)
 
       # A form opened in another stage, and its check, close when the stage changes.
       socket =
@@ -2054,7 +2057,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # Today's step card, beside the stage card at Explore. While the stage is escalated after
   # a run with no result, the block "What the run needs from you" says what happened and
-  # the escalation card offers Run another round: there the step card is not shown.
+  # the escalation card offers Run another round: there the step card is not shown. Nor is
+  # it at a proposal whose stage escalated. Confirm shows again once the stage reaches its
+  # gate.
   defp step_card?(nil, _item), do: true
   defp step_card?(%{explore: false}, _item), do: false
   defp step_card?(flow, item), do: not escalated?(flow, status(item))
@@ -2098,7 +2103,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp stage_notes(%{notes: notes}), do: notes
 
   defp escalated?(%{state: :escalated, escalation: %{}}, status)
-       when status in [:no_result, :lost, :cancelled, :used_up],
+       when status in [:no_result, :lost, :cancelled, :used_up, :confirm],
        do: true
 
   defp escalated?(_flow, _status), do: false

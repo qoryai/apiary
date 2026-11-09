@@ -333,12 +333,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
     cause = Map.get(@causes, cause, :escalate)
 
+    run = escalated_run(escalation, runs)
+
     %{
       cause: cause,
-      result: result?(cause, outputs),
+      result: result?(cause, outputs, get(escalation, :no_verdict) == true, run),
       points: points(get(escalation, :points)),
       round: get(escalation, :round),
-      run: escalated_run(escalation, runs),
+      run: run,
       harness_path: harness_path(scope, get(escalation, :set_up_step))
     }
   end
@@ -360,10 +362,16 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp points(_none), do: []
 
-  # Whether the stage has a result to accept as it is: a version of one of its outputs, or,
-  # for a stage with no outputs, a run that did not stop before its verdict.
-  defp result?(cause, []), do: cause != :run_stopped
-  defp result?(_cause, outputs), do: Enum.any?(outputs, & &1.version_id)
+  # Whether the stage has a result to accept as it is: a version of one of its outputs; for
+  # a stage with no outputs, a run that did not stop before its verdict; or a run of the
+  # stage that ended with no verdict (`no_verdict`, `Apiary.Stages.status/2`) where no
+  # output is required. The run of an escalation the migration placed has no stage, so the
+  # page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to it.
+  defp result?(:run_stopped, outputs, true, %{}),
+    do: Enum.any?(outputs, & &1.version_id) or not Enum.any?(outputs, & &1.required)
+
+  defp result?(cause, [], _no_verdict, _run), do: cause != :run_stopped
+  defp result?(_cause, outputs, _no_verdict, _run), do: Enum.any?(outputs, & &1.version_id)
 
   # An artifact of the index with its approval marks: the number of the version a gate
   # approved, and of a newer one where there is one.

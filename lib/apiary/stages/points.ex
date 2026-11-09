@@ -47,6 +47,13 @@ defmodule Apiary.Stages.Points do
     end
   end
 
+  # no_verdict/0 is the point of a run outside a loop that ended with no verdict
+  # (`Apiary.Stages.Runner`).
+  @doc false
+  @spec no_verdict() :: [t]
+  def no_verdict,
+    do: [run_again(default(fn -> gettext("The run stopped before its verdict.") end))]
+
   # run_stopped/2 is the point of a run that stopped, from its stop cause
   # (`Apiary.Stages.StopCause.parts/3`): "The run stopped:" and the cause, with its
   # leading "The run" written as "it", and the cause's fix in `fix` where it has one.

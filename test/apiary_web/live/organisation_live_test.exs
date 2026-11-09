@@ -146,6 +146,32 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       refute has_element?(view, "#workspace-#{scope.workspace.id} .q-spark")
     end
 
+    @tag needs: :security
+    test "a workspace's line shows its repositories and its policy's mode", %{conn: conn} do
+      %{user: user, scope: scope, organisation: organisation} = sign_up_fixture()
+
+      {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}")
+      render_async(view)
+
+      line = view |> element("#workspace-#{scope.workspace.id} .q-wr-nm") |> render()
+      assert line =~ "0 repositories · observe"
+    end
+
+    @tag needs: :security
+    test "a workspace with no policy version shows its repositories and no mode",
+         %{conn: conn} do
+      %{user: user, scope: scope, organisation: organisation} = sign_up_fixture()
+      no_policy_version!(scope.workspace)
+
+      {:ok, view, _html} = conn |> log_in_user(user) |> live(~p"/#{organisation}")
+      render_async(view)
+
+      line = view |> element("#workspace-#{scope.workspace.id} .q-wr-nm") |> render()
+      assert line =~ "0 repositories"
+      refute line =~ "observe"
+      refute line =~ "·"
+    end
+
     test "the root sends on to the workspace opened last while it is reached, else the first",
          %{conn: conn} do
       %{user: user, scope: scope, organisation: organisation} = sign_up_fixture()

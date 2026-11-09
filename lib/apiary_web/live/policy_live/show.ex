@@ -18,9 +18,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
   contract's grammar for the reading line. It follows `policy:<workspace>` and reads
   again at most once per 250 ms.
 
-  A workspace nobody has changed yet is not served a policy by Qory: its machines use
-  their local policy until the first change here, and the page says so.
-
   Where the edition keeps a level above the workspace's policy (`Apiary.Policy.Above`,
   the `above` of the effective policy), the page says so under its title, lists the
   level's rules first with their source and a lock glyph, read here and changed where
@@ -68,14 +65,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
   # change from elsewhere.
   defp load(socket) do
     scope = socket.assigns.current_scope
-    managed? = Policy.managed?(scope)
     own = Policy.list_rules(scope, nil)
     changes = Policy.list_changes(scope, nil, 1)
     locks = Common.locks(changes)
     targets = Policy.list_targets(scope)
 
     version =
-      case Common.served_version(scope, nil, managed?) do
+      case Common.served_version(scope, nil) do
         {configuration, _own?} -> configuration
         nil -> nil
       end
@@ -84,7 +80,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
     socket
     |> assign(
-      managed?: managed?,
       mode: Policy.get_mode(scope),
       own: own,
       effective: effective,
@@ -373,12 +368,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
   @detailed 50
   defp load_targets(socket, :all) do
     scope = socket.assigns.current_scope
-    managed? = socket.assigns.managed?
     detailed = detailed(socket.assigns.target_list)
 
     socket
     |> assign_async(:target_details, fn ->
-      {:ok, %{target_details: details(scope, detailed, managed?)}}
+      {:ok, %{target_details: details(scope, detailed)}}
     end)
     |> assign_async(:target_suggestions, fn ->
       {:ok,
@@ -404,7 +398,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         :target_details,
         Phoenix.LiveView.AsyncResult.ok(
           details,
-          Map.merge(details.result, details(scope, rows, socket.assigns.managed?))
+          Map.merge(details.result, details(scope, rows))
         )
       )
       |> assign(
@@ -427,9 +421,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   # Two reads for all of them, the versions and the last changes, and the effective
   # policy of each target that has rules, for its overrides.
-  defp details(scope, rows, managed?) do
+  defp details(scope, rows) do
     targets = Enum.map(rows, & &1.target)
-    versions = if managed?, do: Policy.newest_versions(scope, [nil | targets]), else: %{}
+    versions = Policy.newest_versions(scope, [nil | targets])
     changes = Policy.last_changes(scope, targets)
 
     Map.new(rows, fn %{target: target, rule_count: count} ->
@@ -1067,7 +1061,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             {gettext("What the runs of this workspace may reach through the gateway.")}
           </:description>
           <:actions>
-            <div :if={@managed? && @version} class="q-head-side">
+            <div :if={@version} class="q-head-side">
               <.version_pill
                 id="policy-version-pill"
                 version={@version.version}
@@ -1088,27 +1082,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 <.icon name="hero-arrow-up-tray" class="size-4" />{gettext("Export")}
               </.button>
             </div>
-            <div :if={!(@managed? && @version)} class="q-head-side">
+            <div :if={!@version} class="q-head-side">
               <.version_pill id="policy-version-pill" />
-              <%!-- Off but focusable, so its reason is met by keyboard too: it does nothing. --%>
-              <.tooltip
-                tip={gettext("Nothing to export yet: the first change here renders version 1.")}
-                placement="left"
-                class="q-tip-wide"
-              >
-                <.button
-                  id="policy-export-button"
-                  type="button"
-                  class="btn-disabled"
-                  aria-disabled="true"
-                  aria-describedby="policy-export-why"
-                >
-                  <.icon name="hero-arrow-up-tray" class="size-4" />{gettext("Export")}
-                </.button>
-              </.tooltip>
-              <span id="policy-export-why" class="sr-only">
-                {gettext("Nothing to export yet: the first change here renders version 1.")}
-              </span>
             </div>
           </:actions>
           <.above_line :if={@loaded} above={@effective.above} link={@above_link} />
@@ -1120,7 +1095,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           scope={@current_scope}
           mode={@mode}
           can_edit={Common.may?(@current_scope, :"security_policy.set_mode")}
-          served={@managed?}
+          versioned={@version != nil}
           following={@following}
           own={@own_modes}
           fact={with :unavailable <- async_value(@fact, :loading), do: nil}
@@ -1132,7 +1107,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
               :if={@mode_pick}
               mode={@mode_pick}
               alive={if @own_modes == [], do: (@nav_counts && @nav_counts[:alive]) || 0, else: 0}
-              started={@managed?}
               following={@following}
               own={length(@own_modes)}
             />
@@ -1147,7 +1121,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           rules={length(@rows)}
           targets={@target_total}
           changes={@change_total}
-          document={@managed? && @version != nil}
+          document={@version != nil}
         />
 
         <div id="policy-announce" class="sr-only" role="status" aria-live="polite">{@announce}</div>
@@ -1372,24 +1346,23 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <div :if={@empty?} id="policy-empty" class="grid gap-4">
       <.empty_state
         icon="hero-shield-check"
-        title={
-          if @managed?, do: gettext("No rules yet"), else: gettext("Qory Apiary serves no policy yet")
-        }
+        title={gettext("No rules yet")}
       >
-        <span :if={!@managed?} id="policy-unmanaged">
-          {pgettext(
-            "plain",
-            "Until the first change here, every machine of this workspace runs under its local policy, the policy set on the machine itself. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its local policy. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
-          )}
-        </span>
-        <span :if={@managed?}>
-          {if @mode == "observe",
-            do: gettext("With no rules, runs reach everything and every connection is recorded."),
-            else: gettext("With no rules, a run under enforce reaches nothing.")}
-          {gettext(
-            "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Network access page, one row at a time."
-          )}
-        </span>
+        <%!-- With no policy version yet, the line shows no mode. --%>
+        {cond do
+          is_nil(@version) ->
+            gettext("This workspace has no policy version yet.")
+
+          @mode == "observe" ->
+            gettext("With no rules, runs reach everything and every connection is recorded.")
+
+          true ->
+            gettext("With no rules, a run under enforce reaches nothing.")
+        end}
+        {gettext(
+          "Add the hosts your runs need here, or let a run reach out first and allow its " <>
+            "hosts from the Network access page, one row at a time."
+        )}
         <:actions>
           <.button
             :if={@edit?}
@@ -1405,22 +1378,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </:actions>
       </.empty_state>
       <p
-        :if={!@managed?}
+        :if={@version}
         id="policy-first-version"
         class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
       >
-        {gettext(
-          "Qory Apiary makes version 1 at the first change on this page. Until then, a machine that requests this workspace's policy gets none and keeps the policy file on the machine. A prebuild instead runs under Qory Apiary's default policy."
-        )}
-      </p>
-      <p
-        :if={@managed? && @version}
-        id="policy-first-version"
-        class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
-      >
-        {gettext(
-          "Version %{version} is what machines are served now: the mode, with nothing allowed. A rule added here renders the next one.",
-          version: @version.version
+        {gettext("Version %{version} is what machines are served now: %{mode}, with no rules.",
+          version: @version.version,
+          mode: mode_word(@mode)
         )}
       </p>
     </div>
@@ -1502,6 +1466,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
     />
     """
   end
+
+  # The mode as a word of the sentence, translated as the Overview shows it.
+  defp mode_word("enforce"), do: gettext("enforce")
+  defp mode_word(_observe), do: gettext("observe")
 
   defp async_value(%Phoenix.LiveView.AsyncResult{ok?: true, result: result}, _loading), do: result
   defp async_value(%Phoenix.LiveView.AsyncResult{loading: nil}, _loading), do: :unavailable
@@ -1720,7 +1688,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   attr :mode, :string, required: true, doc: "the mode picked"
   attr :alive, :integer, required: true
-  attr :started, :boolean, required: true
   attr :following, :integer, required: true
   attr :own, :integer, required: true
 
@@ -1735,12 +1702,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <% end %>
     {own_words(@own)}
     {gettext("You can switch back at any time.")}
-    <span :if={!@started}>
-      {pgettext(
-        "plain",
-        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
-      )}
-    </span>
     """
   end
 

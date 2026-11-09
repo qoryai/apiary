@@ -309,6 +309,8 @@ defmodule ApiaryWeb.ActivityLiveTest do
     end
 
     test "pages fifty at a time", %{conn: conn, scope: scope} do
+      no_policy_version!(scope.workspace)
+
       for n <- 1..55 do
         {:ok, _entry} =
           Audit.record(Repo, scope, :"workspace.rename", scope.workspace, %{
@@ -335,6 +337,8 @@ defmodule ApiaryWeb.ActivityLiveTest do
       conn: conn,
       scope: scope
     } do
+      no_policy_version!(scope.workspace)
+
       for page <- ["7", "99999999999999999999"] do
         view = open(conn, scope, "?page=#{page}")
         assert text(view, "#activity-past-end") =~ "The audit log has fewer pages than that."
@@ -475,14 +479,29 @@ defmodule ApiaryWeb.ActivityLiveTest do
     end
 
     @tag needs: :security
+    test "shows a workspace's policy version 1", %{conn: conn, scope: scope} do
+      assert conn |> open(scope) |> render() =~ "Version 1: observe, with no rules"
+    end
+
+    test "leaves out a workspace's policy version 1 where the policy is hidden", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:security])
+
+      refute conn |> open(scope) |> render() =~ "Version 1: observe, with no rules"
+    end
+
+    @tag needs: :security
     test "a policy change says the rule and the version", %{conn: conn, scope: scope} do
       {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
-      [added] = entries(scope, %{action: "security_policy.edit"})
+      [added, _first_version] = entries(scope, %{action: "security_policy.edit"})
 
       view = open(conn, scope)
       assert text(view, "#entry-#{added.id}-action") =~ "Added a policy rule"
       assert text(view, "#entry-#{added.id}-change") =~ "api.example"
-      assert text(view, "#entry-#{added.id}-change") =~ "Now v1"
+      assert text(view, "#entry-#{added.id}-change") =~ "Now v2"
     end
 
     @tag needs: :security
@@ -491,7 +510,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       scope: scope
     } do
       {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
-      [added] = entries(scope, %{action: "security_policy.edit"})
+      [added, _first_version] = entries(scope, %{action: "security_policy.edit"})
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
       :ok = Apiary.EditionStubs.HidesNamed.put([:security, :secrets])

@@ -191,11 +191,6 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
                "#overview-policy-open[href='#{workspace_path(scope, "/policy")}']"
              )
 
-      assert has_element?(
-               view,
-               "#att-policy-unmanaged-act[href='#{workspace_path(scope, "/policy")}']"
-             )
-
       assert has_element?(view, "#attention li[data-kind=denied] [phx-click*=rule_open]")
       assert subscribed_to_policy?(view, scope)
       assert Map.has_key?(UserAuth.nav_counts(scope), :mode)

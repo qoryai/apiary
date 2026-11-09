@@ -506,13 +506,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
         "Runs, their terminal log and timeline, the connections they made, and how long they are kept."
       )
 
-  # As `Apiary.Policy.managed?/1` has it: no policy is served until the first rule or the
-  # first mode set in the workspace, a target's included.
   defp description(:security),
-    do:
-      gettext(
-        "The security policy, which Qory Apiary serves to a workspace's runs once it has a rule or a mode set."
-      )
+    do: gettext("The security policy, which Qory Apiary serves to a workspace's runs.")
 
   defp description(:secrets),
     do: gettext("Stored secrets, variables and integrations, in each workspace's settings.")

@@ -103,8 +103,10 @@ Returns `200` with the work item snapshot:
   there is none.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
-- `verdict` is the work item's newest verdict, or null for none. `points` is its list of
-  points, as the verdict's file has them, or null for a verdict with none.
+- `verdict` is the work item's newest verdict, or null for none. It can be from an earlier
+  stage or an earlier run. At a run's end, the stage reads only a verdict that run pushed.
+  `points` is its list of points, as the verdict's file has them, or null for a verdict
+  with none.
 - `gaps` is why the stage waits for a workflow, or the failed checks that started its
   round; null otherwise.
 - `ticket`, `instruction`, `comments` and `comments_omitted` are the same as in
@@ -420,11 +422,21 @@ The body, at most 64 KiB:
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
 file, `verdict.json`, `{"verdict": ..., "points": ...}`, without `points` when the body
-has none. A run of any workflow may give a verdict. For a run of Explore, only
+has none. A run of any workflow may push a verdict. For a run of Explore, only
 `escalate` changes what happens: the stage escalates with the points. Explore treats
 `passed` and `changes-requested` as no verdict. A run that leaves questions open and
 gives `escalate` waits for answers first: its escalation is kept, and the answers run the
 next round. Returns `201` with the version, as `POST artifacts` does.
+
+A run of a workflow entry outside a loop must push a verdict. Make `qory run verdict
+passed` the last step of the workflow, on a first run and on a rerun. A run that ends with
+no verdict and no open question stops the stage: a member sees "The run stopped before its
+verdict." with **Run another round** and, where an output has a version or no output is
+required, **Accept as it is**. `changes-requested` outside a loop goes on to the next entry,
+as `passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
+work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal, or
+that left open questions: Explore's result is its proposal or its questions. A run of
+Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
 `verdict` and `points`, or a `verdict` that is not one of the three, is `400`

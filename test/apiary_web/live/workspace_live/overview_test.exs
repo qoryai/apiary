@@ -139,6 +139,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     @two_ways "Two ways to connect a machine Connect with a command. For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine. Generate a key in the browser. For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system. You choose one for each machine or pool, once you have added it."
 
+    # Nobody sets a pool's instance limit, as `Apiary.EditionStubs.NoLimit` has it, and the
+    # features the test names are hidden, as `Apiary.EditionStubs.HidesNamed` has them.
+    defmodule NoLimitHidesNamed do
+      @moduledoc false
+      defdelegate check(scope, action, subject), to: Apiary.EditionStubs.NoLimit
+      defdelegate hidden(scope), to: Apiary.EditionStubs.HidesNamed
+    end
+
     # The ids of step 2's buttons, in their order, and those shown as primary.
     defp ways(view) do
       doc = view |> element("#onboarding-ways") |> render() |> LazyHTML.from_fragment()
@@ -162,6 +170,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")
       assert has_element?(view, "#onboarding .q-step-current", "Add a machine")
+
+      assert has_element?(
+               view,
+               "#onboarding .q-steps li:nth-child(1)",
+               "One per machine, or a pool of machines that share one key."
+             )
 
       assert text(view, "#onboarding") =~
                "Nothing has posted to this workspace yet. A machine posts once it is connected."
@@ -217,6 +231,20 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert html =~ "New machine"
     end
 
+    test "no node, one an edition keeps a pool's limit from: New machine, no New pool",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(NoLimitHidesNamed)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='1']")
+      assert has_element?(view, "#onboarding-new-node", "New machine")
+      refute has_element?(view, "#onboarding-new-pool")
+      refute has_element?(view, "#onboarding-members")
+
+      assert has_element?(view, "#onboarding .q-steps li:nth-child(1)", "One per machine.")
+      refute text(view, "#onboarding") =~ "a pool of machines that share one key"
+    end
+
     test "no node, a member: no buttons, who adds one instead", %{scope: scope} = ctx do
       view = open(as_member(ctx), scope)
 
@@ -229,6 +257,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
              )
 
       assert text(view, "#onboarding") =~ @step_2_text
+      # A member, who may not set a pool's limit, sees no New pool and reads the step so.
+      assert has_element?(view, "#onboarding .q-steps li:nth-child(1)", "One per machine.")
       refute has_element?(view, "#onboarding-new-node")
       refute has_element?(view, "#onboarding-new-pool")
       refute has_element?(view, "#onboarding-members-key")
@@ -1176,15 +1206,37 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
   describe "guard" do
     @tag needs: :security
-    test "policy: a new workspace, then a managed one with a version, own rules and hosts to review",
+    test "policy: two repositories follow it", %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, scope)
+
+      assert text(view, "#overview-policy-mode") =~ "2 of 2 repositories follow it."
+    end
+
+    @tag needs: :security
+    test "policy: a workspace with no version yet shows no mode, here and in the sidebar",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      no_policy_version!(scope.workspace)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#overview-policy-open")
+      assert text(view, "#overview-policy-version") == ""
+      refute has_element?(view, "#overview-policy-mode")
+      refute has_element?(view, "#nav-policy-mode")
+    end
+
+    @tag needs: :security
+    test "policy: a new workspace at version 1, then one with own rules and hosts to review",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
       view = open(conn, scope)
 
-      assert text(view, "#overview-policy-version") == "observe"
-
-      assert text(view, "#overview-policy-mode") ==
-               "Machines use their local policy until the first change here."
+      assert text(view, "#overview-policy-version") == "observe · v1"
+      assert text(view, "#overview-policy-mode") =~ "In force since"
+      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follows it."
+      refute has_element?(view, "#att-policy-unmanaged")
 
       assert has_element?(
                view,
@@ -1199,9 +1251,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       render_async(view, 5_000)
 
-      assert text(view, "#overview-policy-version") == "enforce · v2"
+      assert text(view, "#overview-policy-version") == "enforce · v3"
       assert text(view, "#overview-policy-mode") =~ "In force since"
-      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follow it."
+      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follows it."
       assert text(view, "#overview-policy-mode") =~ "2 declared hosts to review in 1 repository."
       assert text(view, "#overview-own") =~ "Every repository follows the workspace's mode."
 
@@ -1466,7 +1518,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         ]
       )
 
-      # No rule yet, with runs: the policy is unmanaged, the sixth item.
+      # A rule in observe: the enforce item, the sixth.
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
       lost_run(scope)
       started_run(scope, shop(), heartbeat: {45, 100, 30})
       started_run(scope, shop(), heartbeat: {45, 100, 30})
@@ -1659,25 +1712,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
+    test "the policy items: none at version 1, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())
       view = open(conn, scope)
 
-      assert text(view, "#att-policy-unmanaged") =~ "Qory Apiary serves no policy yet"
-
-      assert text(view, "#att-policy-unmanaged") =~ "1 run under the machines' policies"
-
-      assert has_element?(
-               view,
-               "#att-policy-unmanaged-act[href='#{workspace_path(scope, "/policy")}']",
-               "Open policy"
-             )
+      refute has_element?(view, "#att-policy-unmanaged")
+      refute has_element?(view, "#att-policy-enforce")
+      refute render(view) =~ "serves no policy"
 
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
       render_async(view, 5_000)
-      assert text(view, "#att-policy-unmanaged") =~ "Qory Apiary serves the policy now."
-      assert has_element?(view, "#att-policy-unmanaged.q-resolved")
 
       assert text(view, "#att-policy-enforce") =~ "Observe is the workspace's default"
 
@@ -2088,12 +2133,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert text(view, "#overview-announcer") =~ "files.cdn.example is allowed for acme/shop."
 
-      # The policy topic re-reads the list: the struck row stays where it is, and the
-      # workspace is managed now, so the unmanaged item resolves in words too. A target's
+      # The policy topic re-reads the list: the struck row stays where it is. A target's
       # rule is no allow rule of the workspace: no enforce nudge.
       render_async(view, 5_000)
       assert has_element?(view, "##{item}.q-resolved")
-      assert has_element?(view, "#att-policy-unmanaged.q-resolved")
       refute has_element?(view, "#att-policy-enforce")
       assert text(view, "#attention-n") == "0"
     end

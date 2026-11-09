@@ -4856,6 +4856,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     def machines_who_may(_scope, _workspace), do: "Harbour Ops enrols the pool."
   end
 
+  defmodule NoLimitWorded do
+    # An edition that keeps a pool's limit from everyone (`Apiary.EditionStubs.NoLimit`),
+    # owners included, and so says who adds a pool in its words, as `Worded` has them.
+    defdelegate check(scope, action, subject), to: Apiary.EditionStubs.NoLimit
+    defdelegate machines_who_may(scope, workspace), to: Worded
+  end
+
   setup %{conn: conn} do
     admin = instance_admin_scope()
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -5082,6 +5089,28 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     render_click(lv, "add_pool", %{})
     assert [%{name: name}] = workspace_pools(ctx.scope.workspace)
     assert name == WorkspaceSetup.pool_name(ctx.scope.workspace)
+  end
+
+  test "an owner an edition keeps a pool's limit from has no Add pool, and may skip", ctx do
+    # An owner who may add a pool reads no line on who adds one.
+    lv = open(ctx)
+    assert has_element?(lv, "#set-up-pool-add-button")
+    refute has_element?(lv, "#set-up-pool-who-may")
+
+    # `node.set_limit` refused whoever asks, and who adds a pool in the edition's words
+    # (`NoLimitWorded`): the core's line names owners, who hold `node.set_limit` there.
+    :ok = Apiary.Edition.put_test_stub(NoLimitWorded)
+    lv = open(ctx)
+
+    refute has_element?(lv, "#set-up-pool-workspace-radio")
+    refute has_element?(lv, "#set-up-pool-add-button")
+    assert words(lv, "#set-up-pool-who-may") == "Harbour Ops enrols the pool."
+
+    assert has_element?(lv, "#set-up-skip")
+
+    # Sent all the same, as the page never sends it.
+    render_click(lv, "add_pool", %{})
+    assert workspace_pools(ctx.scope.workspace) == []
   end
 
   test "a member sees no Qory Pool until it is ready, and reads who adds a pool", ctx do
