@@ -187,8 +187,8 @@ defmodule Apiary.DataCase do
 
   def setup_features(_tags), do: :ok
 
-  # The features that a `with_features:` list turns on, for a sync test, an async test
-  # and a module's setup_all alike; raises when the list is not valid.
+  # The features that a `with_features:` list turns on, for every caller of
+  # `setup_features/1` and `features/1`; raises when the list is not valid.
   defp parse_with_features!(features) do
     case Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1)) do
       {:ok, parsed} ->
