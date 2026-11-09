@@ -37,9 +37,11 @@ defmodule Apiary.Processes.HarnessUpdate do
   process is unchanged (`follow_all/0`). No version is saved where the template fails a
   check: no template of the workspace's type, a process that fails
   `Apiary.Processes.validate/1` or has a machine type the instance does not have, artifact
-  types that fail the template check, or a stack that cannot be copied. A workspace whose current
-  version has no harness commit, as one made with no template, is not updated. The
-  feature `workflow_model` must be on.
+  types that fail the template check, or a stack that cannot be copied. Where the
+  workspace takes the harness its organisation shares, a changed stack is not copied: the
+  version is saved with the stack kept, and the log has one line for the workspace. A
+  workspace whose current version has no harness commit, as one made with no template, is
+  not updated. The feature `workflow_model` must be on.
 
   Following a harness repository's branch needs a read of the repository at each later
   commit, which Qory Apiary makes only when a person reads the repository or a run is
@@ -595,7 +597,11 @@ defmodule Apiary.Processes.HarnessUpdate do
          :ok <- types_check(template),
          :ok <- Processes.validate(template.process),
          :ok <- Processes.known_machine_types(template.process) do
-      update = update(workspace, chosen, base, {:branch, branch}, head, template, :qory)
+      update =
+        workspace
+        |> update(chosen, base, {:branch, branch}, head, template, :qory)
+        |> shared_stack(workspace, chosen)
+
       organisation = Repo.get!(Organisation, workspace.organisation_id)
       scope = Scope.for_instance(organisation, workspace)
       scope = Scope.put_origin(scope, %{worker: "Apiary.Harnesses.QoryRefresh"})
@@ -603,4 +609,19 @@ defmodule Apiary.Processes.HarnessUpdate do
       save_update(scope, workspace, update, false, &still_on/1)
     end
   end
+
+  # The switch's update copies no stack into the harness the organisation shares, which
+  # every workspace that takes it uses: it saves the process, keeps the stack, and logs
+  # one line for the workspace.
+  defp shared_stack(%{stack: %{from: from, to: to}} = update, workspace, %{shared: true}) do
+    Logger.warning(
+      "the process was updated from the harness without its stack, because the " <>
+        "organisation shares the harness workspace=#{workspace.id} stack=#{from} " <>
+        "harness_stack=#{to}"
+    )
+
+    %{update | stack: nil}
+  end
+
+  defp shared_stack(update, _workspace, _chosen), do: update
 end

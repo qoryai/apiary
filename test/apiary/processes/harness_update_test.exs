@@ -392,6 +392,34 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert length(Repo.all(from v in Version, where: v.workspace_id == ^ctx.workspace.id)) == 1
     end
 
+    test "the refresh saves the process without the stack of a harness the organisation shares",
+         ctx do
+      Stacks.put_stack(
+        ctx.scope,
+        {:organisation, %Apiary.Organisations.Organisation{id: ctx.workspace.organisation_id}},
+        ~s(extends:\n  git: "#{Qory.git()}"\n  ref: "main"\n  stack: "software"\n),
+        choice: :qory,
+        version: {:branch, "main"}
+      )
+
+      commit =
+        main_at!(files(&String.replace(&1, "stack: software\n", "stack: core\n", global: false)))
+
+      log = ExUnit.CaptureLog.capture_log(fn -> assert :ok = HarnessUpdate.follow_all() end)
+
+      assert [_v1, %Version{number: 2, author_id: nil} = v2] = versions(ctx.workspace)
+      assert v2.template["commit"] == commit
+      assert Stacks.shared(%Apiary.Organisations.Organisation{id: ctx.workspace.organisation_id})
+      assert Workspace.qory_stack(Repo.reload!(ctx.workspace)) == "software"
+
+      assert [_line] =
+               Regex.scan(~r/without its stack.*workspace=#{ctx.workspace.id}/, log)
+
+      # Nothing is due at the same commit: no second line.
+      log = ExUnit.CaptureLog.capture_log(fn -> assert :ok = HarnessUpdate.follow_all() end)
+      refute log =~ "without its stack"
+    end
+
     test "a stack to copy into the harness the organisation shares fails the save", ctx do
       Stacks.put_stack(
         ctx.scope,
