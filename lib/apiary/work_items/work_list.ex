@@ -142,12 +142,17 @@ defmodule Apiary.WorkItems.WorkList do
 
   # Whether the live work item `w`, with its Explore status `s`, waits for the reader of
   # `gates` (`gates/2`): at Confirm (`waits_for_reader/2`), or escalated
-  # (`resolves_for_reader/2`).
+  # (`resolves_for_reader/2`). FALSE, never NULL, where `stage_state` is NULL: a sort with
+  # `desc:` puts NULL first.
   defmacrop for_reader(w, s, gates) do
     quote do
-      (unquote(s).status == ^Explore.status_name(:confirm) and
-         waits_for_reader(unquote(w), unquote(gates))) or
-        (unquote(w).stage_state == :escalated and resolves_for_reader(unquote(w), unquote(gates)))
+      coalesce(
+        (unquote(s).status == ^Explore.status_name(:confirm) and
+           waits_for_reader(unquote(w), unquote(gates))) or
+          (unquote(w).stage_state == :escalated and
+             resolves_for_reader(unquote(w), unquote(gates))),
+        false
+      )
     end
   end
 
