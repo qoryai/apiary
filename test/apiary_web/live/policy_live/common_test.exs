@@ -49,6 +49,13 @@ defmodule ApiaryWeb.PolicyLive.CommonTest do
     assert Common.pretty("not json") == "not json"
   end
 
+  test "line_diff/2 of a first version against nothing has only added lines" do
+    lines = Common.line_diff("", "{\n  \"version\": 1\n}")
+
+    assert lines == [{:add, "{"}, {:add, ~s(  "version": 1)}, {:add, "}"}]
+    assert Common.diff_summary(lines) == "3 lines added"
+  end
+
   test "parameters: a page is a small positive integer, a rule a host in the grammar" do
     assert Common.page_param("3") == 3
 

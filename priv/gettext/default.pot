@@ -650,8 +650,10 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{following} of %{targets} follow it."
-msgstr ""
+msgid "%{following} of %{targets} follows it."
+msgid_plural "%{following} of %{targets} follow it."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary/runs/filters.ex
 #: lib/apiary_web/components/run_page_components.ex
@@ -2511,13 +2513,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} run since %{date}"
 msgid_plural "%{number} runs since %{date}"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} run under the machines' policies"
-msgid_plural "%{number} runs under the machines' policies"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -10639,8 +10634,10 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "In force since %{date}; %{following} of %{targets} follow it."
-msgstr ""
+msgid "In force since %{date}; %{following} of %{targets} follows it."
+msgid_plural "In force since %{date}; %{following} of %{targets} follow it."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -12186,11 +12183,6 @@ msgstr ""
 msgid "Machines can't reach this address."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Machines use their local policy until the first change here."
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -13651,11 +13643,6 @@ msgstr ""
 msgid "Nobody can open these organisations and their access keys do not work. Until the day each is purged, you can cancel its deletion, which brings everything back."
 msgstr ""
 
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "Nobody has made this workspace's policy yet: its machines use their local policy, and there is no version until the first change here."
-msgstr ""
-
 #: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Nobody reaches this workspace yet."
@@ -13936,12 +13923,6 @@ msgstr ""
 msgid "Not seen for %{days}"
 msgstr ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Not served yet: it applies from the first change here."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
@@ -14081,11 +14062,6 @@ msgstr ""
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing to enforce yet."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Nothing to export yet: the first change here renders version 1."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -15699,11 +15675,6 @@ msgstr ""
 msgid "Qory Apiary links no stored secret to it."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary makes version 1 at the first change on this page. Until then, a machine that requests this workspace's policy gets none and keeps the policy file on the machine. A prebuild instead runs under Qory Apiary's default policy."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary no longer adds integrations from this source, so its version can't be changed."
@@ -15747,22 +15718,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/set_up.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary sends invitations, log-in links and password links by mail; without mail, an admin copies each link by hand. Get the SMTP server's host name, port, username and password from your mail provider. Mail turns on when you follow the test link that Qory Apiary emails you, while you are signed in."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/views.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary serves no policy for this workspace until the first one."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary serves no policy yet"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary serves the policy now."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -17313,11 +17268,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs that reached %{destination}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Runs use each machine's local policy until the first change in this workspace."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -19756,11 +19706,6 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "The first rule you add, or a mode you set, puts the runs under the workspace's policy."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
 msgid "The first run has landed."
 msgstr ""
 
@@ -20644,7 +20589,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "The security policy, which Qory Apiary serves to a workspace's runs once it has a rule or a mode set."
+msgid "The security policy, which Qory Apiary serves to a workspace's runs."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -21206,13 +21151,6 @@ msgstr ""
 msgid "This invitation is no longer valid"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be used."
@@ -21430,6 +21368,12 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace"
+msgstr ""
+
+#: lib/apiary/policy.ex
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "This workspace has no policy version yet."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -21947,12 +21891,6 @@ msgstr ""
 msgid "Until it is set up, organisations can't install it."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "Until the first change here, every machine of this workspace runs under its local policy, the policy set on the machine itself. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its local policy. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
-msgstr ""
-
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
 msgid "Update from %{branch} at %{commit}"
@@ -22206,7 +22144,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Version %{version} is what machines are served now: the mode, with nothing allowed. A rule added here renders the next one."
+msgid "Version %{version} is what machines are served now: %{mode}, with no rules."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -22237,6 +22175,12 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version}. You approved it %{when}."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Version 1: observe, with no rules"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -24165,6 +24109,7 @@ msgid "ended without a verdict"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "enforce"
 msgstr ""
@@ -24750,6 +24695,7 @@ msgid "now"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "observe"
 msgstr ""

@@ -46,7 +46,10 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     assert Repo.aggregate(Policy.Rule, :count) == 0
     # The policy's history is the audit trail's entries of its actions.
     assert Repo.aggregate(
-             from(e in Apiary.Audit.Entry, where: like(e.action, "security_policy.%")),
+             from(e in Apiary.Audit.Entry,
+               where: like(e.action, "security_policy.%"),
+               where: fragment("?->>'change' != 'first_version'", e.details)
+             ),
              :count
            ) == 0
   end

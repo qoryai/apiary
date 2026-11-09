@@ -232,6 +232,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   describe "a run of a workspace that serves no policy" do
     test "is given the credential and its variables in the document of no policy, with no hosts" do
       %{scope: scope} = sign_up_fixture()
+      no_policy_version!(scope.workspace)
       ctx = sealed_run_fixture(scope)
       document = document(ctx)
 

@@ -42,7 +42,7 @@ defmodule ApiaryWeb.Contract.EventsController do
   `reason` left out when the outcome gave none, and the answer's signature covers it as it
   covers any body. The answer to the batch that carries the exit has none.
 
-  A workspace nobody has given a policy is served no policy: its runs' registrations are
+  A workspace with no run configuration yet is served no policy: its runs' registrations are
   answered `{"version":1}`, the answers to their batches carry no
   `X-Qory-Run-Configuration`, and its machines keep their local policy. The digest the request
   reported is stored on the delivery and on the run. Errors are short JSON and never

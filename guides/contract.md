@@ -320,7 +320,7 @@ workspace's baseline. The labels are compared to the stored ones byte for byte. 
 is the bytes that were stored when the policy was last changed. Nothing is rendered for a
 request, so the digest is of exactly what is sent.
 
-A workspace nobody has given a policy, or any workspace on an instance without the
+A workspace with no version yet, or any workspace on an instance without the
 `security` feature, is answered `{"version":1}`, and its machines run under their local
 policy, from their Forager file ([The security policy](security-policy.md)).
 

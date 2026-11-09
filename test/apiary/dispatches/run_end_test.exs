@@ -784,7 +784,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       Repo.insert!(%Apiary.Policy.RunConfiguration{
         organisation_id: ctx.scope.organisation.id,
         workspace_id: ctx.scope.workspace.id,
-        version: 1,
+        version: 2,
         document: document,
         digest: Apiary.Policy.Render.digest(document),
         rendered_at: DateTime.utc_now()

@@ -466,7 +466,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(tr##{cdn}[data-decision=allowed]))
 
       assert text(view, "##{cdn}-after") =~
-               "Allowed for the workspace in v2 · of the workspace's policy"
+               "Allowed for the workspace in v3 · of the workspace's policy"
 
       assert text(view, "##{cdn}-after a##{cdn}-after-rule") == "Show the rule"
     end
@@ -511,7 +511,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert text(view, "##{cdn}-after .badge") == "Rule changed"
 
       assert text(view, "##{cdn}-after") =~
-               "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
+               "Rule changed Allowed for the workspace in v4 · of the workspace's policy by you"
 
       refute text(view, "##{cdn}-after") =~ "Rule added"
     end
@@ -526,7 +526,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       letter = String.upcase(String.first(admin.user.email))
 
       assert text(view, "##{registry}-after") =~
-               "Denied for the workspace in v2 · of the workspace's policy by #{letter} #{admin.user.email} "
+               "Denied for the workspace in v3 · of the workspace's policy by " <>
+                 "#{letter} #{admin.user.email} "
 
       assert has_element?(view, ~s{##{registry}-after abbr[data-tip="#{admin.user.email}"]})
     end
@@ -540,10 +541,10 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert text(view, "##{registry}-after .badge") == "Rule changed"
 
       assert text(view, "##{registry}-after") =~
-               "Rule changed Denied for the workspace in v2 · of the workspace's policy by you"
+               "Rule changed Denied for the workspace in v3 · of the workspace's policy by you"
     end
 
-    test "the newest change decides: a rule added in v2 whose paths changed in v3", %{
+    test "the newest change decides: a rule added in v3 whose paths changed in v4", %{
       conn: conn,
       scope: scope
     } do
@@ -552,7 +553,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example", paths: ["/v1/*"]})
 
       # the history's newest page, newest first
-      assert [{"rule_changed", 3}, {"rule_added", 2}] =
+      assert [{"rule_changed", 4}, {"rule_added", 3}] =
                for(
                  change <- Policy.list_changes(scope, nil, 1).items,
                  change.subject == "files.cdn.example",
@@ -564,7 +565,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert text(view, "##{cdn}-after .badge") == "Rule changed"
 
       assert text(view, "##{cdn}-after") =~
-               "Rule changed Allowed for the workspace in v3 · of the workspace's policy by you"
+               "Rule changed Allowed for the workspace in v4 · of the workspace's policy by you"
     end
 
     test "a denied row with no rule, which a changed rule now allows, gives its reason in the past tense",
