@@ -15,9 +15,10 @@ defmodule Apiary.Processes.HarnessUpdate do
   repository, it is read as the scope's person reads a source's templates, from the
   module the process came from. `save/4` saves it as the current version, with the record
   of the commit as its `template` (`Apiary.Processes.save_harness/5`), adds the artifact
-  types the workspace does not have, and copies the template's stack. The version replaces every edit saved since:
-  nothing is merged. A save turns the switch below on; a save with `trial: true` saves a
-  trial, as the Workflows page saves one, and leaves the switch as it is. Work items in
+  types the workspace does not have, and copies the template's stack. The version
+  replaces every edit saved since: nothing is merged. A save turns the switch below on; a
+  save with `trial: true` saves a trial, as the Workflows page saves one, adds the
+  artifact types too, and copies no stack and leaves the switch as it is. Work items in
   progress stay on their version, and work items taken in after a save follow the version
   it saved.
 
@@ -425,9 +426,9 @@ defmodule Apiary.Processes.HarnessUpdate do
   @doc """
   save/4 saves `update`, from `read/2`, as a version of the scope's workspace (the
   moduledoc), in one transaction: the version (`Apiary.Processes.save_harness/5`), the
-  artifact types the workspace does not have, each with its audit entry, the template's stack, under
-  `harness.save` too, and, unless `opts` has `trial: true`, the switch Keep the process at
-  the latest turned on. `{:ok, version}`; `{:error, :stale}` where the current version is
+  artifact types the workspace does not have, each with its audit entry, and, unless
+  `opts` has `trial: true`, the template's stack, under `harness.save` too, and the switch
+  Keep the process at the latest turned on. `{:ok, version}`; `{:error, :stale}` where the current version is
   no longer the one `update` compared with; `{:error, :shared}` for a stack to copy into
   the harness the organisation shares; `{:error, {:types, {:invalid, type, error}}}` for
   a custom type whose insert fails; or the errors of
@@ -454,7 +455,7 @@ defmodule Apiary.Processes.HarnessUpdate do
            held = Repo.get!(Workspace, workspace.id),
            :ok <- if(trial?, do: :ok, else: after_save.(held)),
            :ok <- add_types(scope, held, update.artifact_types),
-           :ok <- copy_stack(scope, held, update.stack) do
+           :ok <- if(trial?, do: :ok, else: copy_stack(scope, held, update.stack)) do
         {:ok, version}
       end
     end)

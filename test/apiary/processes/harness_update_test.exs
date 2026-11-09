@@ -201,6 +201,25 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert keep(ctx.workspace) == false
     end
 
+    test "Try first adds the artifact types and copies no stack", ctx do
+      main_at!(
+        described()
+        |> Map.update!(
+          @process,
+          &String.replace(&1, "stack: software\n", "stack: core\n", global: false)
+        )
+      )
+
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert update.stack == %{from: "software", to: "core"}
+
+      assert {:ok, %Version{status: :trial}} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+
+      assert %{name: "spec"} = Artifacts.type(ctx.workspace, "spec")
+      assert Workspace.qory_stack(Repo.reload!(ctx.workspace)) == "software"
+    end
+
     test "is stale once another version is current", ctx do
       {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
       main_at!(described())
