@@ -825,6 +825,41 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule RefusesConfirm do
+    @moduledoc """
+    The account the test puts (`put/1`, read as `HidesNamed` reads its list) may not
+    approve a proposal (`work_item.confirm`), as an edition refuses every change to a
+    member of a suspended organisation. Every other check is the edition's.
+    """
+
+    @doc "put/1 sets the account id that may not approve a proposal."
+    def put(account_id) do
+      Process.put(:refuses_confirm, account_id)
+      :ok
+    end
+
+    def check(%{user: %{id: id}} = scope, :"work_item.confirm", subject) do
+      if id == refused(),
+        do: {:error, :forbidden},
+        else: Apiary.Edition.module().check(scope, :"work_item.confirm", subject)
+    end
+
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+
+    defp refused do
+      Enum.find_value([self() | Process.get(:"$callers", [])], fn
+        pid when pid == self() ->
+          Process.get(:refuses_confirm)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :refuses_confirm}) do
+            {{:dictionary, :refuses_confirm}, id} -> id
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
   defmodule NoProviderWrite do
     @moduledoc "Nobody changes model providers (`provider.write`), whoever asks."
     def check(_scope, :"provider.write", _subject), do: {:error, :forbidden}

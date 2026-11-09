@@ -1891,11 +1891,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # Who confirms next, where the stage the work item is in lists its approvers: `:you`
   # for a reader who may confirm (`work_item.confirm`), else the listed approvers, in the
-  # gate's order, with the names the page shows for members. Nil where the stage lists
-  # no one, or the list is empty: there the owner rule stays. The approvers are the
-  # gate's of `Apiary.Stages.status/2`, read from the stage card where the page has one,
-  # else read for the page where the instance has the workflow model, as `Apiary.Access`
-  # applies the list there.
+  # gate's order, with the names the page shows for members. A listed reader stays in the
+  # list, so that the page can say they may not approve; the page shows no name for them.
+  # Nil where the stage lists no one, or the list is empty: there the owner rule stays.
+  # The approvers are the gate's of `Apiary.Stages.status/2`, read from the stage card
+  # where the page has one, else read for the page where the instance has the workflow
+  # model, as `Apiary.Access` applies the list there.
   defp confirmers(scope, row, flow) do
     case gate_approvers(scope, row, flow) do
       [_ | _] = ids ->

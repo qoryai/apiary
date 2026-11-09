@@ -13002,6 +13002,11 @@ msgstr ""
 msgid "No limit"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No listed approver may approve"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "No log recorded."
@@ -22934,6 +22939,11 @@ msgstr ""
 msgid "You are invited to the %{workspace} workspace of the %{organisation} organisation, as a member."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You are listed as an approver, but you may not approve in this workspace."
+msgstr ""
+
 #: lib/apiary_web/controllers/user_session_controller.ex
 #, elixir-autogen, elixir-format
 msgid "You are logged in."
@@ -22959,6 +22969,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "You are not part of an organisation yet"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You are the only listed approver, but you may not approve in this workspace."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex

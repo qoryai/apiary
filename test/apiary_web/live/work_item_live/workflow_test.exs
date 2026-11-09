@@ -2578,6 +2578,56 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
+    test "a listed approver who may not approve: their name is left out, the page says why",
+         %{conn: conn, scope: scope} do
+      robin = member_fixture(scope, :member).user
+      kim = member_fixture(scope, :member).user
+      kim_name = shown_name(scope, kim.id)
+      robin_name = shown_name(scope, robin.id)
+      owner_name = shown_name(scope, scope.user.id)
+      robin_conn = log_in_user(build_conn(), robin)
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.RefusesConfirm)
+      :ok = Apiary.EditionStubs.RefusesConfirm.put(robin.id)
+
+      for {ids, head, lines, thread} <- [
+            {[robin.id, kim.id], "#{kim_name} approves next",
+             [
+               "#{kim_name} approves the proposal or runs another round.",
+               "You are listed as an approver, but you may not approve in this workspace."
+             ], "Explore wrote a proposal, after 30 s. #{kim_name} approves next"},
+            {[robin.id], "No listed approver may approve",
+             ["You are the only listed approver, but you may not approve in this workspace."],
+             "Explore wrote a proposal, after 30 s"}
+          ] do
+        list_explore_approvers!(scope, ids)
+        work_item = explore_gate_fixture(scope)
+        explore = page(scope, work_item.number) <> "/explore"
+
+        {:ok, view, _html} = live(robin_conn, explore)
+        assert has_element?(view, "#work-item-head-meta", head)
+        assert has_element?(view, "#work-item-head-meta .q-wi-mk-wait_other")
+        assert texts(view, "#work-item-step p") == lines
+        refute has_element?(view, "#work-item-explore-gate-go")
+
+        for words <- ["#{robin_name} approves", "#{robin_name} or", "#{owner_name} approves"],
+            do: refute(render(view) =~ words)
+
+        refute render(view) =~ "You approve next"
+
+        {:ok, view, _html} = live(robin_conn, page(scope, work_item.number) <> "/thread")
+        assert has_element?(view, "#work-item-thread", thread)
+        refute has_element?(view, "#work-item-thread", "#{robin_name} approves next")
+        refute has_element?(view, "#work-item-thread", "#{robin_name} or")
+        refute has_element?(view, "#work-item-thread", "You approve next")
+
+        {:ok, view, _html} = live(robin_conn, list(scope))
+        row = "#work-item-#{work_item.public_id}"
+        assert has_element?(view, "#{row} .q-wl-nx", head)
+        refute has_element?(view, "#{row} .q-wl-row-hot")
+      end
+    end
+
     test "after an approver sends review comments, the Thread's proposal of run 1 has no one who approves next",
          %{conn: conn, scope: scope} do
       listed = explore_gate_listing(scope)

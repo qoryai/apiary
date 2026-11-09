@@ -257,11 +257,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp words_of(%{status: :running}), do: gettext("Explore is running")
 
   # Where the stage lists approvers, the page passes who confirms next as `confirmers`:
-  # `:you` for a reader who may confirm, else the approvers, in the gate's order.
+  # `:you` for a reader who may confirm, else the approvers, in the gate's order, the
+  # reader among them where listed (`others/1`).
   defp words_of(%{status: :confirm, confirmers: :you}), do: gettext("You approve next")
 
   defp words_of(%{status: :confirm, confirmers: [_ | _] = confirmers}),
-    do: confirmers_words(confirmers)
+    do: confirmers_words(others(confirmers))
 
   defp words_of(%{status: :confirm, owner: owner}) do
     if you?(owner),
@@ -299,6 +300,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     if you?(by), do: gettext("Undone by you"), else: gettext("Undone by %{name}", name: by.name)
   end
 
+  defp confirmers_words([]), do: gettext("No listed approver may approve")
   defp confirmers_words([one]), do: gettext("%{name} approves next", name: one.name)
 
   defp confirmers_words([one, other]),
@@ -345,6 +347,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc false
   def you?(%{you: true}), do: true
   def you?(_person), do: false
+
+  # The listed approvers without the reader: a listed reader here is one whom
+  # `Apiary.Access` refuses `work_item.confirm`, as one who may confirm has `:you`.
+  defp others(confirmers), do: Enum.reject(confirmers, &you?/1)
 
   # The ticket's title as a page shows it (`Apiary.ExternalText.present/1`): nil for one
   # with nothing left to show, or only whitespace, as for none.
@@ -1125,16 +1131,20 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp step_body(%{status: :confirm} = assigns) do
     owner = assigns.work_item[:owner]
     confirmers = assigns.work_item[:confirmers]
+    listed = match?([_ | _], confirmers)
+    others = if listed, do: others(confirmers), else: []
 
     assigns =
       assign(assigns,
+        # A listed reader whom `Apiary.Access` refuses, beside other approvers.
+        refused: not assigns.can_act and others != [] and others != confirmers,
         line:
           cond do
             assigns.can_act ->
               gettext("Approve the proposal, or add a comment and run another round.")
 
-            match?([_ | _], confirmers) ->
-              confirmers_step(confirmers)
+            listed ->
+              confirmers_step(others)
 
             you?(owner) ->
               gettext("You approve next")
@@ -1149,6 +1159,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <p :if={@line} id={"#{@id}-line"}>{@line}</p>
+    <p :if={@refused} id={"#{@id}-refused"}>
+      {gettext("You are listed as an approver, but you may not approve in this workspace.")}
+    </p>
     <.go_link
       :if={@can_act}
       id={"#{@id}-explore"}
@@ -1187,6 +1200,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     <p><.rich text={@line} /></p>
     """
   end
+
+  defp confirmers_step([]),
+    do: gettext("You are the only listed approver, but you may not approve in this workspace.")
 
   defp confirmers_step([one]),
     do: gettext("%{name} approves the proposal or runs another round.", name: one.name)
@@ -5757,36 +5773,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: rich_gettext("Explore wrote a proposal, after %{duration}", duration: duration)
 
   # Where the stage lists approvers, the page passes who confirms next as `confirmers`:
-  # `:you` for a reader who may confirm, else the approvers, in the gate's order.
+  # `:you` for a reader who may confirm, else the approvers, in the gate's order, the
+  # reader among them where listed (`others/1`).
   defp event_line(%{kind: :proposed, confirmers: :you, duration: duration}),
     do:
       rich_gettext("Explore wrote a proposal, after %{duration}. You approve next",
         duration: duration
       )
 
-  defp event_line(%{kind: :proposed, confirmers: [one], duration: duration}),
-    do:
-      rich_gettext("Explore wrote a proposal, after %{duration}. %{name} approves next",
-        duration: duration,
-        name: {:b, one.name}
-      )
-
-  defp event_line(%{kind: :proposed, confirmers: [one, other], duration: duration}),
-    do:
-      rich_gettext(
-        "Explore wrote a proposal, after %{duration}. %{name} or %{other} approves next",
-        duration: duration,
-        name: {:b, one.name},
-        other: {:b, other.name}
-      )
-
   defp event_line(%{kind: :proposed, confirmers: [_ | _] = confirmers, duration: duration}),
-    do:
-      rich_gettext(
-        "Explore wrote a proposal, after %{duration}. One of %{number} approvers approves next",
-        duration: duration,
-        number: Format.number(length(confirmers))
-      )
+    do: proposed_line(others(confirmers), duration)
 
   defp event_line(%{kind: :proposed, owner: owner, duration: duration}) do
     if you?(owner),
@@ -5880,6 +5876,35 @@ defmodule ApiaryWeb.WorkItemComponents do
       else:
         rich_gettext("%{name} undid the take in, before a run started", name: {:b, actor.name})
   end
+
+  # A proposal's line with the approvers who approve next. With no approver left, no one
+  # is named.
+  defp proposed_line([], duration),
+    do: rich_gettext("Explore wrote a proposal, after %{duration}", duration: duration)
+
+  defp proposed_line([one], duration),
+    do:
+      rich_gettext("Explore wrote a proposal, after %{duration}. %{name} approves next",
+        duration: duration,
+        name: {:b, one.name}
+      )
+
+  defp proposed_line([one, other], duration),
+    do:
+      rich_gettext(
+        "Explore wrote a proposal, after %{duration}. %{name} or %{other} approves next",
+        duration: duration,
+        name: {:b, one.name},
+        other: {:b, other.name}
+      )
+
+  defp proposed_line(confirmers, duration),
+    do:
+      rich_gettext(
+        "Explore wrote a proposal, after %{duration}. One of %{number} approvers approves next",
+        duration: duration,
+        number: Format.number(length(confirmers))
+      )
 
   # The same person: the reader both times, or the same id. Never by name: two people may
   # share one.
