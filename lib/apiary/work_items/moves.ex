@@ -752,7 +752,12 @@ defmodule Apiary.WorkItems.Moves do
         end
       end)
 
-    finish(result)
+    # The runs the undo ended while they waited have run records (`Apiary.Dispatches.Queued`):
+    # the workspace's queue is told once the undo commits, so the Runs list reads them again.
+    with {:ok, work_item} <- finish(result) do
+      Dispatches.broadcast([work_item.workspace_id])
+      {:ok, work_item}
+    end
   end
 
   defp undone(scope, held) do

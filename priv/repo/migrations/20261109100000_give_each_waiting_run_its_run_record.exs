@@ -11,7 +11,8 @@ defmodule Apiary.Repo.Migrations.GiveEachWaitingRunItsRunRecord do
   # counter (`run_counters`) and its highest number, whichever is higher; `inserted_at`
   # when it was queued; `node_run_id` the run of the queue's `run_id`. The counters then
   # go on from the last number given. A run of the queue that ended, or that a claim took,
-  # gets nothing. `public_id` comes from the column's default, `run_public_id()`.
+  # gets nothing. `id` is a random UUID, and `public_id` comes from the column's default,
+  # `run_public_id()`.
   #
   # Locks, held until the migration's transaction ends:
   #
@@ -56,10 +57,10 @@ defmodule Apiary.Repo.Migrations.GiveEachWaitingRunItsRunRecord do
       FROM waiting w
     )
     INSERT INTO runs (
-      organisation_id, workspace_id, number, node_run_id, state, dispatch_run_id,
+      id, organisation_id, workspace_id, number, node_run_id, state, dispatch_run_id,
       inserted_at, updated_at
     )
-    SELECT organisation_id, workspace_id, number, run_id, 'pending', id,
+    SELECT gen_random_uuid(), organisation_id, workspace_id, number, run_id, 'pending', id,
       queued_at, now()
     FROM numbered
     """

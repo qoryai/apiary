@@ -259,7 +259,9 @@ defmodule Apiary.Runs.Diagnostics do
   defp dispatch(%Run{dispatch_run_id: nil}), do: nil
 
   defp dispatch(%Run{dispatch_run_id: id} = run) do
-    registered = run.inserted_at
+    # A claim registers a run on the record written when it was queued: the registration
+    # is when the claim wrote it, not the record's `inserted_at`.
+    registered = run.registered_at || run.inserted_at
 
     Repo.one(
       from d in Dispatch,

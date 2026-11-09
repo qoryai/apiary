@@ -269,10 +269,11 @@ defmodule Apiary.Runs.Liveness do
     dynamic(
       [run: r],
       fragment(
-        "COALESCE(?, ?, ?, ?) + ? < ?",
+        "COALESCE(?, ?, ?, ?, ?) + ? < ?",
         r.last_heartbeat_at,
         subquery(started),
         r.attached_at,
+        r.registered_at,
         r.inserted_at,
         silence(
           r.registration_interval_seconds,
@@ -290,12 +291,13 @@ defmodule Apiary.Runs.Liveness do
     dynamic(
       [run: r],
       fragment(
-        "CASE WHEN ? IS NOT NULL AND ? IS NULL THEN ? < ? ELSE COALESCE(?, ?) + ? < ? END",
+        "CASE WHEN ? IS NOT NULL AND ? IS NULL THEN ? < ? ELSE COALESCE(?, ?, ?) + ? < ? END",
         r.run_key_issued_at,
         r.attached_at,
         r.attach_by,
         ^now,
         r.attached_at,
+        r.registered_at,
         r.inserted_at,
         silence(
           r.registration_interval_seconds,

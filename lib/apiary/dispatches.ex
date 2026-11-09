@@ -932,7 +932,14 @@ defmodule Apiary.Dispatches do
         # text of why a run stopped reads (`Apiary.Stages.claim_ended/2`).
         {staged, freed} = Enum.split_with(freed, &match?({:stage_run, _id}, &1))
         ids = Enum.map(staged, &elem(&1, 1))
-        broadcast(freed ++ Apiary.Stages.claim_ended(ids, Map.take(through, [:gateway, :keys])))
+        # A run taken leaves the workspace's queue: why its other queued runs wait may change
+        # (`Apiary.Runs.Waiting`).
+        broadcast(
+          freed ++
+            taken_in(taken) ++
+            Apiary.Stages.claim_ended(ids, Map.take(through, [:gateway, :keys]))
+        )
+
         Handover.broadcast_run({:ok, %{run: registered(taken)}})
         {:ok, taken}
 
@@ -947,6 +954,9 @@ defmodule Apiary.Dispatches do
 
   defp registered(%{registered: run}), do: run
   defp registered(:none), do: nil
+
+  defp taken_in(%{run: %DispatchRun{workspace_id: workspace_id}}), do: [workspace_id]
+  defp taken_in(:none), do: []
 
   defp queued_in([]), do: []
   defp queued_in([%DispatchRun{workspace_id: workspace_id} | _rest]), do: [workspace_id]

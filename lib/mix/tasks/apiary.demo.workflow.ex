@@ -1029,36 +1029,52 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
             set: [state: :handed_over]
           )
 
+        registered = %{
+          organisation_id: dispatch_run.organisation_id,
+          workspace_id: dispatch_run.workspace_id,
+          node_run_id: dispatch_run.run_id,
+          node_id: key.node_id,
+          access_key_id: key.id,
+          state: "pending",
+          registered_at: now,
+          # A direct registration has every registration column set.
+          registration_labels: %{},
+          registration_about: %{"kind" => "Explore", "title" => work_item.title},
+          registration_digest: :crypto.hash(:sha256, dispatch_run.run_id),
+          registration_interval_seconds: 60,
+          registration_answer_digest:
+            "sha256=" <> Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower),
+          projected_sequence: Run.projected_from(%{registered_at: now}),
+          dispatch_run_id: dispatch_run.id,
+          updated_at: now
+        }
+
+        # The run's record written when it was queued (`Apiary.Dispatches.Queued`), as a
+        # claim registers it: it keeps its id, its number and when it was queued.
         run =
-          Repo.insert!(%Run{
-            public_id: Run.new_public_id(),
-            number:
-              Apiary.Runs.Number.next(
-                %Workspace{
-                  id: dispatch_run.workspace_id,
-                  organisation_id: dispatch_run.organisation_id
-                },
-                %Nodes.Node{id: key.node_id}
-              ),
-            organisation_id: dispatch_run.organisation_id,
-            workspace_id: dispatch_run.workspace_id,
-            node_run_id: dispatch_run.run_id,
-            node_id: key.node_id,
-            access_key_id: key.id,
-            state: "pending",
-            registered_at: now,
-            # A direct registration has every registration column set.
-            registration_labels: %{},
-            registration_about: %{"kind" => "Explore", "title" => work_item.title},
-            registration_digest: :crypto.hash(:sha256, dispatch_run.run_id),
-            registration_interval_seconds: 60,
-            registration_answer_digest:
-              "sha256=" <> Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower),
-            projected_sequence: Run.projected_from(%{registered_at: now}),
-            dispatch_run_id: dispatch_run.id,
-            inserted_at: now,
-            updated_at: now
-          })
+          case Repo.one(from r in Run, where: r.dispatch_run_id == ^dispatch_run.id) do
+            %Run{} = queued ->
+              queued |> Ecto.Changeset.change(registered) |> Repo.update!()
+
+            nil ->
+              Repo.insert!(
+                struct!(
+                  %Run{
+                    public_id: Run.new_public_id(),
+                    number:
+                      Apiary.Runs.Number.next(
+                        %Workspace{
+                          id: dispatch_run.workspace_id,
+                          organisation_id: dispatch_run.organisation_id
+                        },
+                        %Nodes.Node{id: key.node_id}
+                      ),
+                    inserted_at: now
+                  },
+                  registered
+                )
+              )
+          end
 
         {:ok, run}
       end)
