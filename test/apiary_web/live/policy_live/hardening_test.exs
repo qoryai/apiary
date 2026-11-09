@@ -169,7 +169,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       refute render(target) =~ "inner.example"
 
       assert [%{host: "secret.example", locked: false}] = Policy.list_rules(other, nil)
-      assert length(Policy.list_changes(other, :all, 1).items) == 2
+      assert length(Policy.list_changes(other, :all, 1).items) == 3
       assert Process.alive?(workspace.pid) and Process.alive?(target.pid)
     end
   end

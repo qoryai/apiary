@@ -286,9 +286,9 @@ defmodule ApiaryWeb.PolicyComponents do
     default: nil,
     doc: "the option picked while the choices are open; nil while they are shut"
 
-  attr :served, :boolean,
+  attr :versioned, :boolean,
     default: true,
-    doc: "the workspace's: false on a new workspace, nothing is served yet"
+    doc: "the workspace's: false while it has no policy version; the card then shows no mode"
 
   attr :following, :integer, default: 0, doc: "the workspace's: targets that follow the default"
 
@@ -346,13 +346,25 @@ defmodule ApiaryWeb.PolicyComponents do
     >
       <div class="q-modecard-main">
         <span class="q-modecard-tile" aria-hidden="true">
-          <.icon name={if @floor, do: "hero-lock-closed", else: mode_icon(@shown)} class="size-5" />
+          <%!-- With no policy version yet, the tile shows no mode's icon. --%>
+          <.icon
+            :if={@floor || @versioned}
+            name={if @floor, do: "hero-lock-closed", else: mode_icon(@shown)}
+            class="size-5"
+          />
         </span>
         <div class="q-modecard-text">
           <div class="q-modecard-title">
             <h2 id={"#{@id}-h"} class="q-modecard-h">
-              <span class="q-modecard-label">{gettext("Mode")}<span class="sr-only">: </span></span>
-              <span id={"#{@id}-value"} class="q-modecard-value">{mode_name(@shown)}</span>
+              <span class="q-modecard-label">{gettext("Mode")}<span
+                :if={@versioned}
+                class="sr-only"
+              >: </span></span>
+              <span
+                :if={@versioned}
+                id={"#{@id}-value"}
+                class="q-modecard-value"
+              >{mode_name(@shown)}</span>
             </h2>
             <span :if={@floor} id={"#{@id}-required"} class="badge badge-sm">
               <.icon name="hero-lock-closed-micro" class="size-3" />{gettext("Required by %{name}",
@@ -360,7 +372,7 @@ defmodule ApiaryWeb.PolicyComponents do
               )}
             </span>
             <span
-              :if={!@floor && @level == :workspace}
+              :if={!@floor && @level == :workspace && @versioned}
               id={"#{@id}-source"}
               class="badge badge-sm"
             >
@@ -393,7 +405,8 @@ defmodule ApiaryWeb.PolicyComponents do
               <% @floor -> %>
                 <.rich text={floor_sentence(@setting, @set, @floor.name, reader(@scope))} />
               <% @level == :workspace -> %>
-                {workspace_effect(@mode)}
+                <%!-- With no policy version yet, the card shows no mode. --%>
+                {if @versioned, do: workspace_effect(@mode)}
                 <.rich text={own_sentence(@scope, @own, @following)} />
               <% true -> %>
                 <.rich text={
@@ -406,13 +419,13 @@ defmodule ApiaryWeb.PolicyComponents do
             </span>
           </p>
           <p
-            :if={@level == :workspace && !@floor && (@fact || !@served)}
+            :if={@level == :workspace && !@floor && @fact}
             id={"#{@id}-fact"}
             class="q-modecard-p"
           >
             <.mode_fact
               scope={@scope}
-              fact={if @served, do: @fact, else: :unserved}
+              fact={@fact}
               following={if @own != [], do: @following}
             />
           </p>
@@ -458,7 +471,11 @@ defmodule ApiaryWeb.PolicyComponents do
               />
               <span id={"#{@id}-opt-#{option.value}-h"} class="q-modeopt-h">
                 <.icon name={option.icon} class="size-5" />{option.label}
-                <span :if={option.value == @current} id={"#{@id}-current"} class="badge badge-sm">
+                <span
+                  :if={option.value == @current && @versioned}
+                  id={"#{@id}-current"}
+                  class="badge badge-sm"
+                >
                   {gettext("Current")}
                 </span>
               </span>
@@ -467,7 +484,7 @@ defmodule ApiaryWeb.PolicyComponents do
           </div>
         </fieldset>
 
-        <p :if={@pick == @current} id={"#{@id}-now"} class="q-modecard-p">
+        <p :if={@pick == @current && @versioned} id={"#{@id}-now"} class="q-modecard-p">
           {gettext("%{mode} is the mode now.", mode: @picked.label)}
         </p>
         <div
@@ -705,12 +722,6 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp mode_fact(%{fact: :loading} = assigns) do
     ~H|<span class="skeleton q-skel inline-block w-64 align-middle"></span>|
-  end
-
-  defp mode_fact(%{fact: :unserved} = assigns) do
-    ~H"""
-    {pgettext("plain", "Not served yet: it applies from the first change here.")}
-    """
   end
 
   defp mode_fact(%{fact: :none} = assigns) do

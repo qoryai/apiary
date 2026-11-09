@@ -37,7 +37,7 @@ defmodule ApiaryWeb.Contract.RegistrationController do
 
   The answer is `200`, `application/json`, the run configuration's bytes, with
   `X-Qory-Run-Configuration: sha256=<hex>`, the same string quoted as the `ETag`, and
-  `X-Qory-Configuration`. For a workspace nobody has given a policy, a registration is
+  `X-Qory-Configuration`. For a workspace with no run configuration yet, a registration is
   answered the document of no policy, `{"version":1}`, under its digest. Never a `304`:
   `If-None-Match` is not read. When the run cannot be stored or its configuration cannot
   be read, the answer is `503`, which the gateway asks again within the tries it makes as

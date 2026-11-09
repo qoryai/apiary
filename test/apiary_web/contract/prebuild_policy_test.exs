@@ -26,13 +26,13 @@ defmodule ApiaryWeb.Contract.PrebuildPolicyTest do
   setup ctx do
     %{scope: scope} = sign_up_fixture()
     connection!(scope, "acme-tracker", ctx[:hosts] || ["api.tracker.example"])
+    no_policy_version!(scope.workspace)
     refute Policy.managed?(scope)
     Map.put(handover_place_fixture(scope), :scope, scope)
   end
 
   # An integration connection of the organisation, reaching every workspace, whose
-  # release requires `hosts`. A write to it renders no document for a workspace that
-  # serves none (`Apiary.Policy.rerender_in/3`).
+  # release requires `hosts`.
   defp connection!(scope, name, hosts) do
     description =
       tracker_description(%{

@@ -19,15 +19,25 @@ defmodule Apiary.Release do
   """
   @app :apiary
 
+  require Logger
+
   @doc """
-  Runs every pending migration, `bin/migrate`'s and `Apiary.Release.Migrator`'s at boot:
-  the core's and the edition's folders (`c:Apiary.Edition.migrations_paths/0`), which
-  Ecto merges by version into one sequence, and then the edition's step after them
-  (`c:Apiary.Edition.after_migrate/0`), on the same repository. Raises on a migration that
-  fails, so the step after them never runs on a schema half migrated.
+  Runs every pending migration, for `bin/migrate`: the core's and the edition's folders
+  (`c:Apiary.Edition.migrations_paths/0`), which Ecto merges by version into one sequence,
+  then the edition's step after them (`c:Apiary.Edition.after_migrate/0`), and then
+  version 1 of the policy of each workspace that has none (`Apiary.Policy.first_versions/0`),
+  on the same repository. Raises on a migration that fails, so the steps after them never
+  run on a schema half migrated. A workspace whose version 1 fails is logged and left for
+  the next run. Version 1 is written only once the key check passes
+  (`Apiary.KeyCheck.check/0`, where it is on), as at boot: with another
+  `APIARY_ENCRYPTION_SECRET` the hosts of the integrations cannot be read, so the
+  failure is logged and every version 1 left for the next run.
+
+  At boot, `Apiary.Release.Migrator` runs the same steps with `first_versions: false`, and
+  `Apiary.Release.FirstVersions` writes the versions once the key check has passed.
   """
-  @spec migrate() :: :ok
-  def migrate do
+  @spec migrate(keyword) :: :ok
+  def migrate(opts \\ []) do
     load_app()
 
     for repo <- repos() do
@@ -35,6 +45,12 @@ defmodule Apiary.Release do
         Ecto.Migrator.with_repo(repo, fn repo ->
           Ecto.Migrator.run(repo, Apiary.Edition.migrations_paths(), :up, all: true)
           :ok = Apiary.Edition.after_migrate()
+
+          if Keyword.get(opts, :first_versions, true) and keys_checked?() do
+            _totals = Apiary.Policy.first_versions()
+          end
+
+          :ok
         end)
     end
 
@@ -629,6 +645,30 @@ defmodule Apiary.Release do
 
   defp repos do
     Application.fetch_env!(@app, :ecto_repos)
+  end
+
+  # The boot's key check, run as `Apiary.KeyCheck.start_link/0` runs it, but logged
+  # without an exit: a version 1 rendered under another encryption secret would be
+  # written without the hosts of the integrations, and never written again.
+  defp keys_checked? do
+    if Apiary.KeyCheck.enabled?() do
+      case Apiary.KeyCheck.check() do
+        :ok ->
+          true
+
+        {:error, messages} ->
+          Logger.error(
+            "Set APIARY_ENCRYPTION_SECRET and APIARY_SIGNING_SECRET to the instance's keys " <>
+              "and run bin/migrate again: policy version 1 is not written, because the " <>
+              "key check failed."
+          )
+
+          Enum.each(messages, &Logger.error/1)
+          false
+      end
+    else
+      true
+    end
   end
 
   defp load_app do

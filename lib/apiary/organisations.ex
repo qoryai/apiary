@@ -39,7 +39,7 @@ defmodule Apiary.Organisations do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, PublicId, Repo}
+  alias Apiary.{Access, Audit, Edition, Features, Instance, Mail, Policy, PublicId, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier}
   alias Apiary.Artifacts.TemplateTypes
   alias Apiary.Harnesses.Qory
@@ -969,6 +969,7 @@ defmodule Apiary.Organisations do
              | :instance_claimed
              | :not_set_up
              | :invalid_code
+             | Policy.Error.t()
              | {:qory, tuple}}
   def sign_up_user(attrs, invitation_or_token \\ nil, opts \\ []) do
     invitation = pending_invitation(invitation_or_token)
@@ -1063,6 +1064,10 @@ defmodule Apiary.Organisations do
         # The read of the Qory harness for the first workspace failed.
         {:error, :workspace, {:qory, _failure} = failed, _changes} ->
           {:error, failed}
+
+        # The render of the first workspace's policy version 1 was refused.
+        {:error, :first_policy_version, %Policy.Error{} = refused, _changes} ->
+          {:error, refused}
 
         # A refusal of the sign-up's, or of the edition's steps, on a field of the form.
         {:error, _step, {field, message}, _changes} when is_atom(field) and is_binary(message) ->
@@ -1375,6 +1380,9 @@ defmodule Apiary.Organisations do
           _none ->
             {:ok, nil}
         end
+      end)
+      |> Ecto.Multi.run(:first_policy_version, fn _repo, %{workspace: workspace} ->
+        if workspace, do: Policy.first_version(workspace), else: {:ok, []}
       end)
       |> Ecto.Multi.run(:created, fn repo, changes ->
         {:ok,
@@ -1713,7 +1721,8 @@ defmodule Apiary.Organisations do
   workspaces as the edition allows; `Apiary.Access`'s answer.
   """
   @spec create_workspace(Scope.t(), map) ::
-          {:ok, %Workspace{}} | {:error, Ecto.Changeset.t() | :limit | Access.reason()}
+          {:ok, %Workspace{}}
+          | {:error, Ecto.Changeset.t() | :limit | Access.reason() | Apiary.Policy.Error.t()}
   def create_workspace(%Scope{organisation: %Organisation{}} = scope, attrs),
     do: insert_workspace(scope, attrs, :any)
 
@@ -1748,6 +1757,7 @@ defmodule Apiary.Organisations do
              | :exists
              | :limit
              | Access.reason()
+             | Apiary.Policy.Error.t()
              | {:qory, tuple}
              | {:invalid, String.t(), term}}
   def create_workspace_of_kind(%Scope{organisation: %Organisation{}} = scope, domain, which)
@@ -1800,6 +1810,7 @@ defmodule Apiary.Organisations do
              | :invalid
              | Access.reason()
              | [map]
+             | Apiary.Policy.Error.t()
              | {:invalid, String.t(), term}}
   def create_workspace_from_template(
         %Scope{organisation: %Organisation{} = organisation} = scope,
@@ -1940,6 +1951,7 @@ defmodule Apiary.Organisations do
              | :exists
              | :limit
              | Access.reason()
+             | Apiary.Policy.Error.t()
              | {:qory, tuple}
              | {:invalid, String.t(), term}}
   def create_first_workspace(%Scope{organisation: %Organisation{}} = scope, attrs) do
@@ -2036,7 +2048,8 @@ defmodule Apiary.Organisations do
                place: :organisation
              ),
            {:ok, workspace} <- start_workspace(scope, workspace, start),
-           :ok <- Edition.workspace_created(Repo, workspace, scope) do
+           :ok <- Edition.workspace_created(Repo, workspace, scope),
+           {:ok, _changes} <- Policy.first_version(workspace) do
         {:ok, workspace}
       end
     end)

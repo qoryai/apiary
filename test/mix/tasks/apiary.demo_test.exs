@@ -253,9 +253,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
     test "gives a workspace without rules a policy with overrides, a lock, versions and a history",
          %{scope: scope, access_key: access_key} do
       assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))
-      refute Apiary.Policy.managed?(scope)
+      assert %{items: [%{action: "first_version"}]} = Apiary.Policy.list_changes(scope, nil, 1)
       assert {:ok, 13} = Demo.policy(access_key)
-      assert Apiary.Policy.managed?(scope)
 
       assert Apiary.Policy.get_mode(scope) == "enforce"
 
@@ -280,7 +279,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
                  &(&1.host == "telemetry.llm.example" and &1.source == :target)
                )
 
-      assert %{total: 9} = Apiary.Policy.list_changes(scope, nil)
+      assert %{total: 10} = Apiary.Policy.list_changes(scope, nil)
       assert %{total: 4} = Apiary.Policy.list_changes(scope, shop)
 
       assert %{mode: "observe", own: "observe", workspace: "enforce"} =
@@ -291,7 +290,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
       # A second invocation leaves the policy as it is.
       assert :kept = Demo.policy(access_key)
-      assert %{total: 13} = Apiary.Policy.list_changes(scope, :all)
+      assert %{total: 14} = Apiary.Policy.list_changes(scope, :all)
     end
 
     test "without the demo's target the baseline alone is written", %{

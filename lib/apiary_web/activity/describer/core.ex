@@ -761,6 +761,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(_policy, %{"change" => "mode_changed"}, _actor),
     do: gettext("Changed the policy's mode")
 
+  defp said(_policy, %{"change" => "first_version"}, _actor),
+    do: gettext("Version 1: observe, with no rules")
+
   defp said(_policy, %{"change" => "rerendered"}, _actor),
     do: gettext("Rendered the run configurations again")
 

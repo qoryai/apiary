@@ -611,8 +611,7 @@ The policy pages confirm in place, never over the page:
   option card per mode (Follow the workspace first on a target), each a native radio with
   what it does, the mode now marked Current. A pick only selects. A pick that is not the
   mode now asks under the options: the question, what it does and in whose runs (or that
-  nothing changes today, and what changes from now on; on a workspace nobody has changed
-  yet, that it is the workspace's first change), for enforce what the last 14 days let
+  nothing changes today, and what changes from now on), for enforce what the last 14 days let
   through with no rule, each with its Allow; then one primary button that names the pick
   and Cancel. Escape, with the focus in the choices, cancels (the `PolicyPage` hook);
   saving or cancelling gives the focus back to Change mode, and the save is said in the

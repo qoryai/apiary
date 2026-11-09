@@ -43,6 +43,12 @@ defmodule Apiary.Policy do
   (`policy: false`) is none here: everything this module reads, renders and records is
   what it is with no level above.
 
+  ## Version 1
+
+  Every workspace has a policy from its creation: version 1, in `observe` with no rules,
+  which allows everything implicitly. `first_version/1` writes it inside the creation's
+  transaction. A workspace's first change makes version 2.
+
   ## Writes
 
   Every write is one transaction: the rule, its entry in the audit trail (`Apiary.Audit`),
@@ -138,23 +144,20 @@ defmodule Apiary.Policy do
   ## Managed
 
   @doc """
-  Whether somebody has made the workspace's policy: there is a change in its history, the
-  first rule or the first change of mode. Until then the workspace serves no run
-  configuration (a run's registration is answered `{"version":1}`, the document
-  of no policy; a reload answers `404`; and the answers to batches name no digest of one),
-  so its machines use their local policy, from
-  `forager.yaml`: an upgrade, or a workspace nobody has looked at, takes no machine's
-  enforcement away. From the first change on, every run of the workspace takes the
-  workspace's policy. The first change anywhere counts, a target's rule or a target's mode
-  included: it starts serving every target of the workspace, the others the baseline. For
-  the pages: "Machines use their local policy until the first change here."
+  Whether the workspace has a run configuration. Every workspace has version 1 from its
+  creation (`first_version/1`), so this is false only for a workspace with no row yet: one
+  that existed before workspaces got version 1 at creation, until `first_versions/0` runs
+  at boot or from `bin/migrate`; one the previous release created during an upgrade, after
+  that run; or one whose version 1 `first_versions/0` could not render. Such a workspace
+  serves no run configuration (a run's registration is answered `{"version":1}`,
+  the document of no policy; a reload answers `404`; and the answers to batches name no
+  digest of one), and its machines use their local policy, from `forager.yaml`.
   """
   @spec managed?(Scope.t()) :: boolean
   def managed?(%Scope{workspace: %Workspace{id: workspace_id}}),
     do: managed_workspace?(workspace_id)
 
-  # The first change is what writes the first version, and nothing else writes one, so a
-  # workspace is managed once it has a run configuration: a fact the audit trail's
+  # A workspace is managed once it has a run configuration: a fact the audit trail's
   # retention cannot take away.
   @doc false
   def managed_workspace?(workspace_id) do
@@ -165,9 +168,9 @@ defmodule Apiary.Policy do
   The run configuration rendered for the workspace `workspace_id` with no change made:
   the mode `observe`, no rule of the workspace or of a target, and the hosts the
   integrations reaching the workspace and the level above require, as every holder's
-  document is rendered. Stored nowhere: a prebuild of a workspace that serves no run
-  configuration is given it (`Apiary.Runs.Registration`). `{:ok, bytes}`, or
-  `{:error, error}` where the render refuses, as the first change would.
+  document is rendered. Stored nowhere: a prebuild of a workspace with no row yet
+  (`managed?/1`) is given it (`Apiary.Runs.Registration`). `{:ok, bytes}`, or
+  `{:error, error}` where the render refuses.
   """
   @spec default_document(Ecto.UUID.t()) :: {:ok, binary} | {:error, Error.t()}
   def default_document(workspace_id) when is_binary(workspace_id) do
@@ -185,11 +188,12 @@ defmodule Apiary.Policy do
   end
 
   @doc """
-  What the sidebar shows of the policy, in one query: whether the workspace's policy is
-  managed (`managed?/1`), the workspace's mode, the modes the workspace's targets set
-  for themselves, one per target that has one, in no particular order, and `floor`,
-  whether the level above requires `enforce` (then the mode in force is `enforce`,
-  whatever the workspace and its targets set): `%{managed?:, mode:, own_modes:, floor:}`.
+  What the sidebar shows of the policy, in one query: whether the workspace has a row
+  (`managed?/1`; the pages show no mode without one), the workspace's mode, the modes the
+  workspace's targets set for themselves, one per target that has one, in no particular
+  order, and `floor`, whether the level above requires `enforce` (then the mode in force is
+  `enforce`, whatever the workspace and its targets set):
+  `%{managed?:, mode:, own_modes:, floor:}`.
   """
   @spec mode_summary(Scope.t()) :: %{
           managed?: boolean,
@@ -839,9 +843,9 @@ defmodule Apiary.Policy do
   @doc """
   The run configuration in force for the baseline (`nil`) or for a target: the highest
   version. A target that never had rules is served the baseline's, and the
-  row says so by its `target_id`. A workspace nobody has changed yet (`managed?/1` is
-  false) has none: `{:error, %Error{reason: :unmanaged}}`, and nothing is rendered or
-  stored by asking. The first version is written by the first change alone.
+  row shows that in its `target_id`. A workspace with no row yet (`managed?/1` is false) has
+  none: `{:error, %Error{reason: :unmanaged}}`, and nothing is rendered or stored by
+  asking.
   """
   @spec current_configuration(Scope.t(), holder) :: {:ok, RunConfiguration.t()} | refusal
   def current_configuration(%Scope{workspace: %Workspace{} = workspace} = scope, holder) do
@@ -910,7 +914,7 @@ defmodule Apiary.Policy do
   `%{in_force:, reported:, applied:, drift:}`. `in_force` is read now, never stored;
   `reported` is the `X-Qory-Run-Configuration` of the run's last batch that carried one;
   `applied` is what its last policy applied event named; `in_force` is nil for a workspace
-  nobody has changed, which serves no configuration. `drift` is true when the run
+  with no row yet, which serves no configuration. `drift` is true when the run
   reported a digest other than the one in force, which is a run that has not reloaded
   yet, and false when it reported none: such a run holds no fetched configuration. A run
   of another workspace is a refusal, `{:error, %Apiary.Policy.Error{reason: :not_found}}`,
@@ -2069,6 +2073,102 @@ defmodule Apiary.Policy do
   end
 
   @doc """
+  first_version/1 writes version 1 of `workspace`'s policy inside the caller's transaction,
+  on a workspace nobody else can write: the row just inserted, or one the caller has locked
+  `FOR NO KEY UPDATE`. The document is today's render of the workspace, with a
+  `first_version` change that no person made. History and Activity show that change as
+  "Version 1: observe, with no rules": a workspace has no rule and no mode before its
+  version 1, because a rule or a mode is a change, which writes a version in the same
+  transaction. A workspace that has a version is left alone,
+  such as one an edition rendered as it was created. `{:ok, changes}`, for `announce/1` once
+  the caller has committed, or the render's refusal, which the caller rolls back.
+  """
+  @spec first_version(%Workspace{}) :: {:ok, [Change.t()]} | refusal
+  def first_version(%Workspace{id: workspace_id, organisation_id: organisation_id} = workspace) do
+    if managed_workspace?(workspace_id) do
+      {:ok, []}
+    else
+      scope = Scope.for_instance(%Organisation{id: organisation_id}, workspace)
+      rerender_in(workspace, scope, action: "first_version", all: true)
+    end
+  end
+
+  @doc """
+  first_versions/0 writes version 1 of every workspace with no run configuration, each in
+  its lock and its transaction, once the migrations have run: at boot after the key check
+  (`Apiary.Release.FirstVersions`) and from `bin/migrate` (`Apiary.Release.migrate/1`). It
+  leaves a workspace alone that its purge, or its organisation's, has claimed, and one
+  that has a version by the time its lock is taken, so a second run writes nothing. A
+  refused render, or one that raises, is logged, and that workspace stays with no row
+  until its first change or the next run. `%{written: n, refused: m, failed: f}`, the
+  workspaces written, refused, and failed with an error.
+  """
+  @spec first_versions() :: %{
+          written: non_neg_integer,
+          refused: non_neg_integer,
+          failed: non_neg_integer
+        }
+  def first_versions do
+    Repo.all(
+      from w in Workspace,
+        as: :workspace,
+        where: is_nil(w.purge_started_at),
+        where:
+          not exists(
+            from c in RunConfiguration, where: c.workspace_id == parent_as(:workspace).id
+          ),
+        order_by: w.id,
+        select: w.id
+    )
+    |> Enum.reduce(%{written: 0, refused: 0, failed: 0}, fn workspace_id, totals ->
+      case first_version_of(workspace_id) do
+        {:ok, []} ->
+          totals
+
+        {:ok, _changes} ->
+          %{totals | written: totals.written + 1}
+
+        {:error, %Error{} = error} ->
+          Logger.warning("policy version 1 refused workspace=#{workspace_id}: #{error.message}")
+          %{totals | refused: totals.refused + 1}
+
+        {:failed, message} ->
+          Logger.error("policy version 1 failed workspace=#{workspace_id}: #{message}")
+          %{totals | failed: totals.failed + 1}
+      end
+    end)
+  end
+
+  # One workspace's version 1, in its transaction. A raise or an exit rolls that
+  # transaction back and is returned, so the next workspace is still written.
+  defp first_version_of(workspace_id) do
+    Repo.transact(fn -> first_version_in_lock(workspace_id) end)
+  rescue
+    error -> {:failed, Exception.message(error)}
+  catch
+    kind, reason -> {:failed, Exception.format_banner(kind, reason, __STACKTRACE__)}
+  end
+
+  defp first_version_in_lock(workspace_id) do
+    case locked_unclaimed(workspace_id) do
+      nil -> {:ok, []}
+      workspace -> first_version(workspace)
+    end
+  end
+
+  # The workspace `workspace_id` in its lock, or nil when it is gone or when its purge, or
+  # its organisation's, has claimed it (`Apiary.Deletion`).
+  defp locked_unclaimed(workspace_id) do
+    Repo.one(
+      from h in Workspace,
+        join: o in assoc(h, :organisation),
+        where: h.id == ^workspace_id,
+        where: is_nil(h.purge_started_at) and is_nil(o.purge_started_at),
+        lock: fragment("FOR NO KEY UPDATE OF ?", h)
+    )
+  end
+
+  @doc """
   Renders the documents of every managed workspace again through today's resolution, in
   the workspace's lock, for `mix apiary.policy.rerender`: a holder whose bytes change gets
   a new version and a `rerendered` change (no change of the rules: `before` equals
@@ -2099,14 +2199,7 @@ defmodule Apiary.Policy do
   def rerender(workspace_id) do
     result =
       Repo.transact(fn ->
-        workspace =
-          Repo.one(
-            from h in Workspace,
-              join: o in assoc(h, :organisation),
-              where: h.id == ^workspace_id,
-              where: is_nil(h.purge_started_at) and is_nil(o.purge_started_at),
-              lock: fragment("FOR NO KEY UPDATE OF ?", h)
-          )
+        workspace = locked_unclaimed(workspace_id)
 
         if workspace do
           with {:ok, changes} <- rerender_in(workspace, rerender_scope(workspace)),
@@ -2148,12 +2241,12 @@ defmodule Apiary.Policy do
 
   `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`, and a
   change of an integration that reaches the workspace, `Apiary.Connections`) or
-  `"above_changed"` (the level above the workspace changed, `Apiary.Policy.Above`);
+  `"above_changed"` (the level above the workspace changed, `Apiary.Policy.Above`) or
+  `"first_version"` (`first_version/1`);
   `cause`, the id of the entry that caused it, kept in the change's `details.cause` and
-  `Apiary.Policy.Change`'s `cause`; `all`, whether to render an unmanaged workspace too
-  (false by default: `rerender/1` leaves it alone). With `all: true` an unmanaged
-  workspace gets its version 1, and is managed from then on: what a deny of the level
-  above holding everywhere means.
+  `Apiary.Policy.Change`'s `cause`; `all`, whether to render a workspace with no row too
+  (false by default: `rerender/1` leaves it alone). With `all: true` such a workspace gets
+  its version 1: what a deny of the level above holding everywhere means.
   """
   @spec rerender_in(%Workspace{}, Scope.t(), keyword) :: {:ok, [Change.t()]} | refusal
   def rerender_in(%Workspace{} = workspace, %Scope{user: user}, opts \\ []) do
@@ -2427,9 +2520,8 @@ defmodule Apiary.Policy do
 
   @doc false
   # The configuration in force for a target of the workspace, or the baseline's: a read,
-  # and nothing but a read. A workspace nobody has changed has no baseline row, and none
-  # is made here: the first version is written by the first change and by nothing else
-  # (`render_all/3`), so what a page shows as version 1 is what the first change made.
+  # and nothing but a read. A workspace with no row yet has no baseline row, and none is
+  # made here.
   def in_force(_organisation_id, workspace_id, target_id) do
     own = target_id && Repo.one(newest(workspace_id, target_id))
 
@@ -2442,9 +2534,7 @@ defmodule Apiary.Policy do
   defp unmanaged do
     Error.new(
       :unmanaged,
-      gettext(
-        "Nobody has made this workspace's policy yet: its machines use their local policy, and there is no version until the first change here."
-      )
+      gettext("This workspace has no policy version yet.")
     )
   end
 

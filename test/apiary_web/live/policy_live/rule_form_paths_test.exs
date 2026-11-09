@@ -141,7 +141,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormPathsTest do
 
       add(view)
       assert %{action: "allow", paths: ["/v1/*", "/health"]} = rule(scope, "api.example")
-      assert Policy.list_changes(scope, nil, 1).total == 1
+      assert Policy.list_changes(scope, nil, 1).total == 2
     end
 
     test "Edit of an allow with paths, switched to Deny and back to Allow and saved, keeps its paths",
