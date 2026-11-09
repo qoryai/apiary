@@ -59,6 +59,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # The point of a run outside a loop that ended with no verdict (`Apiary.Stages.Points`).
   @no_verdict %{"text" => "The run stopped before its verdict.", "action" => "run_again"}
 
+  # The points of Build's failed Exists checks (`Apiary.Stages.Points.check_failed/1`).
+  @no_demo "No demo-video was stored in this stage."
+  @no_explainer "No explainer was stored in this stage."
+
   # The default process, with Build's inputs, sequence and outputs of § 4, and its gate's
   # approvers.
   defp document(approvers) do
@@ -276,13 +280,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   # A work item at Build in `state`, on a version with Build's inputs, sequence and
-  # outputs.
+  # outputs, at the entry `entry` of its sequence (1, the loop, by default; 2 is past its
+  # end) and the loop's entry `loop_entry`.
   defp at_build(scope, state, opts \\ []) do
     version = save!(scope, document(Keyword.get(opts, :approvers, "members")))
 
     scope
     |> work_item_fixture()
-    |> place!(version, @build, state, stage_round: Keyword.get(opts, :round, 1), stage_entry: 1)
+    |> place!(version, @build, state,
+      stage_round: Keyword.get(opts, :round, 1),
+      stage_entry: Keyword.get(opts, :entry, 1),
+      loop_entry: Keyword.get(opts, :loop_entry)
+    )
   end
 
   # A work item where the migration of piece F puts an open one: on the workspace's
@@ -4587,23 +4596,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   describe "an escalation with no points" do
     # As an escalation open when points replaced gaps reads: the points the stage runner
     # writes for its cause, from what the stage reads now.
-    for {cause, points} <- [
-          round_limit: [
-            "3 of 3 rounds ran.",
-            "No demo-video was stored in this stage.",
-            "No explainer was stored in this stage."
-          ],
-          check_failed: [
-            "No demo-video was stored in this stage.",
-            "No explainer was stored in this stage."
-          ],
-          run_stopped: ["The run stopped before its verdict."]
+    # A round limit past the sequence's end is at round 2 of the loop's 3, so the shown
+    # limit is the loop's, not the round.
+    for {cause, at, points} <- [
+          round_limit: {[round: 2, entry: 2], ["2 of 3 rounds ran.", @no_demo, @no_explainer]},
+          check_failed: {[round: 3], [@no_demo, @no_explainer]},
+          run_stopped: {[round: 3], ["The run stopped before its verdict."]}
         ] do
       test "#{cause}: the block with the runner's points, and the side line", %{
         conn: conn,
         scope: scope
       } do
-        work_item = at_build(scope, :escalated, round: 3)
+        work_item = at_build(scope, :escalated, unquote(at))
         escalate!(work_item, unquote(cause), nil)
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -4623,7 +4627,24 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
-    test "check_failed with every output stored since: the outputs the check covers", %{
+    test "round_limit in the loop: the round point alone, with an output missing", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_build(scope, :escalated, round: 3, entry: 1, loop_entry: 1)
+      escalate!(work_item, :round_limit, nil)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert %{missing_outputs: [_ | _]} = Stages.status(work_item)
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "3 of 3 rounds ran. Run another round."
+             ]
+
+      assert has_element?(view, "#work-item-stage-waits", "Waits for you: 1 point")
+    end
+
+    test "check_failed with every output stored since: the block with no list", %{
       conn: conn,
       scope: scope
     } do
@@ -4635,9 +4656,72 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       escalate!(work_item, :check_failed, nil)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
+      assert has_element?(view, "#work-item-needs #work-item-stage-escalation-another")
+      refute has_element?(view, "#work-item-needs-points")
+      refute has_element?(view, "#work-item-stage-waits")
+    end
+
+    # The stage runner reads a verdict that a run outside Explore pushed before it reads
+    # whether its registered run failed (`Apiary.Stages.reported_result/2`), so a
+    # `run_stopped` of such a run is one of no verdict (a value the runner does not know).
+    test "run_stopped from a run outside Explore that pushed a verdict, then failed: no verdict",
+         %{conn: conn, scope: scope} do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> place!(save!(scope, document("members")), @build, :escalated,
+          stage_round: 1,
+          stage_entry: 0
+        )
+
+      {run, dispatch_run} =
+        registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      verdict = %{"verdict" => "passed"}
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json({:run, dispatch_run}, work_item, "verdict", verdict,
+          stage_id: @build
+        )
+
+      run |> Ecto.Changeset.change(exit_state: "failed") |> Repo.update!()
+
+      dispatch_run =
+        dispatch_run
+        |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended, explore: false)
+        |> Repo.update!()
+
+      escalate!(work_item, :run_stopped, nil, dispatch_run)
+
+      assert %{escalation: %{points: [@no_verdict], no_verdict: true}} =
+               Stages.status(work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
       assert texts(view, "#work-item-needs-points li") == [
-               "No demo-video was stored in this stage. Run another round.",
-               "No explainer was stored in this stage. Run another round."
+               "The run stopped before its verdict. Run another round."
+             ]
+    end
+
+    test "placed run_stopped whose newest run has no end: no verdict", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> place!(save!(scope, document("members")), @build, :escalated,
+          stage_round: 1,
+          stage_entry: 0
+        )
+
+      assert %DispatchRun{end_cause: nil} = newest_run(work_item)
+      assert Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id) == []
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "The run stopped before its verdict. Run another round."
              ]
     end
 

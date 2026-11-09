@@ -1169,7 +1169,7 @@ defmodule Apiary.Stages do
         outputs: outputs,
         missing_outputs: missing,
         inputs: inputs(work_item, version, stage, artifacts),
-        escalation: escalation_map(escalation, work_item, stage, outputs),
+        escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
         waiting_workflow: waiting_workflow(work_item, stage),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
@@ -2131,15 +2131,16 @@ defmodule Apiary.Stages do
     :ok
   end
 
-  defp escalation_map(nil, _work_item, _stage, _outputs), do: nil
+  defp escalation_map(nil, _work_item, _stage, _outputs, _artifacts), do: nil
 
-  defp escalation_map(%Escalation{} = escalation, work_item, stage, outputs) do
+  defp escalation_map(%Escalation{} = escalation, work_item, stage, outputs, artifacts) do
     run = escalation.run_id && Repo.get(DispatchRun, escalation.run_id)
+    stopped = run_stopped?(run, artifacts)
 
     %{
       cause: escalation.cause,
-      points: shown_points(escalation, run, work_item, stage, outputs),
-      no_verdict: no_verdict?(escalation, run),
+      points: shown_points(escalation, run, stopped, work_item, stage, outputs),
+      no_verdict: escalation.cause == :run_stopped and is_struct(run) and not stopped,
       round: escalation.round,
       run: run && %{id: run.id, attempt: run.attempt, workflow: run.workflow},
       build_run: build_run(run, escalation),
@@ -2150,40 +2151,80 @@ defmodule Apiary.Stages do
 
   # The escalation's points. An escalation with none (one open when points replaced its
   # gaps, or `placed_escalation/3`) shows the points the stage runner writes for its cause
-  # (`Apiary.Stages.Runner`), from what the stage reads now: the round limit with the
-  # failed checks; the failed checks, else every required output the Exists check covers
-  # (the check passes now, and the failed types are not kept); why the run stopped, with
-  # no claim context (`stopped_run_points/2`); else no verdict, also with no run. A run's
-  # `escalate` with no points shows none.
-  defp shown_points(%Escalation{points: [_ | _] = points}, _run, _work_item, _stage, _outputs),
-    do: points
+  # (`Apiary.Stages.Runner`), from what the stage reads now: the round limit, with the
+  # failed checks where the work item is past the sequence's end; the failed checks (none
+  # where every output exists now, as the failed types are not kept); why the run stopped
+  # (`run_stopped?/2`), with no claim context (`stopped_run_points/2`); else no verdict,
+  # also with no run. A run's `escalate` with no points shows none.
+  defp shown_points(
+         %Escalation{points: [_ | _] = points},
+         _run,
+         _stopped,
+         _work_item,
+         _stage,
+         _outputs
+       ),
+       do: points
 
   defp shown_points(
          %Escalation{cause: :round_limit, round: round},
          _run,
+         _stopped,
          work_item,
          stage,
          outputs
        )
        when is_integer(round) and round > 0 do
     rounds = shown_rounds(stage, work_item.stage_entry) || round
-    Points.round_limit(round, rounds) ++ Points.check_failed(missing(outputs))
+    checks = if past_end?(stage, work_item), do: missing(outputs), else: []
+    Points.round_limit(round, rounds) ++ Points.check_failed(checks)
   end
 
-  defp shown_points(%Escalation{cause: :check_failed}, _run, _work_item, _stage, outputs) do
-    case missing(outputs) do
-      [] -> Points.check_failed(for %{required: true, check: :passed, type: t} <- outputs, do: t)
-      types -> Points.check_failed(types)
-    end
-  end
+  defp shown_points(
+         %Escalation{cause: :check_failed},
+         _run,
+         _stopped,
+         _work_item,
+         _stage,
+         outputs
+       ),
+       do: Points.check_failed(missing(outputs))
 
-  defp shown_points(%Escalation{cause: :run_stopped}, run, work_item, _stage, _outputs) do
-    if run && stopped?(run),
+  defp shown_points(%Escalation{cause: :run_stopped}, run, stopped, work_item, _stage, _outputs) do
+    if stopped,
       do: stopped_run_points(run, work_item),
       else: Points.no_verdict()
   end
 
-  defp shown_points(_escalation, _run, _work_item, _stage, _outputs), do: []
+  defp shown_points(_escalation, _run, _stopped, _work_item, _stage, _outputs), do: []
+
+  # Whether the work item is past its sequence's last entry, where the stage runner runs
+  # the checks (`Runner.at_end?/2`): a loop that reaches its round limit there writes the
+  # failed checks with it, one that reaches it in its body does not.
+  defp past_end?(stage, %WorkItem{stage_entry: entry}) when is_integer(entry),
+    do: Runner.at_end?(stage, %{entry: entry})
+
+  defp past_end?(_stage, _work_item), do: false
+
+  # Whether the escalation's run stopped as the stage runner read its end: a run with no
+  # end did not; a run of a workflow other than Explore that ended by its exit and pushed
+  # a verdict named `main` ended with that verdict (`reported_result/2`), so its
+  # `run_stopped` is one of no verdict; else `stopped?/1`. `artifacts` is the work item's
+  # artifacts with their versions (`Artifacts.list/1`).
+  defp run_stopped?(%DispatchRun{end_cause: nil}, _artifacts), do: false
+
+  defp run_stopped?(%DispatchRun{explore: false, end_cause: :run_ended} = run, artifacts),
+    do: not pushed_verdict?(run, artifacts) and stopped?(run)
+
+  defp run_stopped?(%DispatchRun{} = run, _artifacts), do: stopped?(run)
+  defp run_stopped?(nil, _artifacts), do: false
+
+  defp pushed_verdict?(%DispatchRun{id: id}, artifacts) do
+    Enum.any?(artifacts, fn artifact ->
+      artifact.type == "verdict" and artifact.name == "main" and
+        Enum.any?(artifact.versions, &(&1.run_id == id))
+    end)
+  end
 
   # The point of why `run` stopped, as its end wrote it: for a run of Explore that pushed a
   # proposal before its registered run failed, the proposal's version
@@ -2197,11 +2238,6 @@ defmodule Apiary.Stages do
   end
 
   defp stopped_run_points(run, work_item), do: stopped_points(run, work_item, %{})
-
-  # Whether the escalation `run_stopped` came from a run that ended with no verdict
-  # (`Apiary.Stages.Runner`), not from a run that stopped (`stopped?/1`).
-  defp no_verdict?(%Escalation{cause: :run_stopped}, %DispatchRun{} = run), do: not stopped?(run)
-  defp no_verdict?(_escalation, _run), do: false
 
   # For a run that stopped because its environment's build failed, the public id of the
   # run whose page has the build's log (`StopCause.build_run/1`); nil otherwise.
