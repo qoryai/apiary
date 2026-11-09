@@ -77,12 +77,17 @@ defmodule Apiary.Dispatches.RunEndTest do
   end
 
   # The run of the queue and its dispatch as an end leaves them.
+  # A dispatch handed over had a machine: its slot stays held after its end, until the
+  # starter reports the machine gone (`Apiary.Dispatches.Slots`).
   defp assert_ended(%{dispatch_run: dispatch_run, dispatch: dispatch}, cause) do
     assert %DispatchRun{state: :ended, end_cause: ^cause} = queue_run!(dispatch_run)
 
-    assert %Dispatch{end_cause: ^cause, ended_at: %DateTime{}, slot_freed_at: %DateTime{}} =
+    assert %Dispatch{end_cause: ^cause, ended_at: %DateTime{}, slot_freed_at: nil} =
              dispatch!(dispatch)
   end
+
+  defp gone!(key, %{dispatch: dispatch}),
+    do: :ok = Dispatches.report_machine_end(key, dispatch.public_id, %{state: :gone})
 
   defp assert_live(%{dispatch_run: dispatch_run, dispatch: dispatch}) do
     assert %DispatchRun{state: :handed_over, end_cause: nil} = queue_run!(dispatch_run)
@@ -133,9 +138,13 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert [%Run{state: "lost", lost_at: ^after_it}] = Liveness.check(after_it)
       assert_ended(handed, :lost)
       assert dispatch!(handed.dispatch).ended_at == after_it
-      assert dispatch!(handed.dispatch).slot_freed_at == after_it
-      assert Slots.held(ctx.pool.id) == 0
+      assert Slots.held(ctx.pool.id) == 1
       assert_received {Dispatches, :changed}
+
+      # Its machine gone, the slot is freed.
+      gone!(ctx.key, handed)
+      assert %Dispatch{slot_freed_at: %DateTime{}} = dispatch!(handed.dispatch)
+      assert Slots.held(ctx.pool.id) == 0
     end
 
     test "a second check changes nothing, and frees nothing again", ctx do
@@ -232,10 +241,9 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
       assert_ended(handed, :run_ended)
-      freed = dispatch!(handed.dispatch).slot_freed_at
 
       Liveness.check(DateTime.add(handed.run.backstop_at, 2, :second))
-      assert dispatch!(handed.dispatch).slot_freed_at == freed
+      assert_ended(handed, :run_ended)
     end
 
     test "a run its gateway never attached is lost at its attach_by, and its dispatch with it",
@@ -305,8 +313,7 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       assert Liveness.check(after_it) == []
       assert_ended(handed, :lost)
-      assert dispatch!(handed.dispatch).slot_freed_at == after_it
-      assert Slots.held(ctx.pool.id) == 0
+      assert Slots.held(ctx.pool.id) == 1
       assert_received {Dispatches, :changed}
       assert_received {:run_changed, %Run{state: "lost"}}
 
@@ -709,7 +716,7 @@ defmodule Apiary.Dispatches.RunEndTest do
 
         # A lost build is queued once more; a failed one is not.
         if cause == :lost, do: assert_queued_again(ctx), else: assert_nothing_queued(ctx)
-        assert Slots.held(ctx.place.pool.id) == 0
+        assert Slots.held(ctx.place.pool.id) == 1
 
         # The lost-run check changes nothing of the queue or the record, and the pool's
         # outcome is refused.
@@ -918,7 +925,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert %Run{exit_state: "cancelled"} = exited!(ctx, %{"state" => "cancelled"})
       assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
-      assert Slots.held(ctx.place.pool.id) == 0
+      assert Slots.held(ctx.place.pool.id) == 1
     end
 
     test "its failed exit whose end was not written: the lost-run check ends it run_ended, failed",
@@ -964,12 +971,56 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == ctx.record
     end
 
-    test "its succeeded exit, once folded, ends it run_ended, frees its slot and records no failure",
+    test "its slot, its machine never reported gone, is freed 90 and 60 minutes after its last sign of a machine",
+         ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+      exited!(ctx)
+      assert_ended(ctx.handed, :run_ended)
+
+      %Dispatch{dispatched_at: dispatched_at, handed_over_at: handed_over_at} =
+        dispatch!(ctx.handed.dispatch)
+
+      last = Enum.max([dispatched_at, handed_over_at], DateTime)
+      net = DateTime.add(last, (90 + 60) * 60, :second)
+
+      Dispatches.sweep(DateTime.add(net, -1, :microsecond))
+      assert Slots.held(ctx.place.pool.id) == 1
+
+      Dispatches.sweep(net)
+      assert dispatch!(ctx.handed.dispatch).slot_freed_at == net
+      assert Slots.held(ctx.place.pool.id) == 0
+    end
+
+    test "its slot, its run not ended and its machine never reported gone, is freed 90 and 60 minutes after its last sign of a machine",
+         ctx do
+      assert {:ok, %{run: _run}} = ctx.attach.()
+
+      %Dispatch{dispatched_at: dispatched_at, handed_over_at: handed_over_at} =
+        dispatch!(ctx.handed.dispatch)
+
+      last = Enum.max([dispatched_at, handed_over_at], DateTime)
+      net = DateTime.add(last, (90 + 60) * 60, :second)
+
+      # The run still beats at the net, so the lost-run check leaves it live.
+      beat!(ctx.handed.run, net)
+      Dispatches.sweep(DateTime.add(net, -1, :microsecond))
+      assert Slots.held(ctx.place.pool.id) == 1
+
+      Dispatches.sweep(net)
+      assert %DispatchRun{state: :handed_over} = queue_run!(ctx.handed.dispatch_run)
+
+      assert %Dispatch{ended_at: nil, slot_freed_at: ^net} = dispatch!(ctx.handed.dispatch)
+      assert Slots.held(ctx.place.pool.id) == 0
+    end
+
+    test "its succeeded exit, once folded, ends it run_ended, frees its slot once its machine is gone, and records no failure",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx)
       assert_ended(ctx.handed, :run_ended)
       assert record!(ctx.record) == ctx.record
+      assert Slots.held(ctx.place.pool.id) == 1
+      gone!(ctx.place.key, ctx.handed)
       assert Slots.held(ctx.place.pool.id) == 0
       assert_nothing_queued(ctx)
     end
@@ -1076,7 +1127,6 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert {:ok, %Run{state: "completed"}} = Projector.project(handed.run)
       assert_ended(handed, :run_ended)
       assert_received {Dispatches, :changed}
-      freed = dispatch!(handed.dispatch).slot_freed_at
 
       # The backstop and a release: nothing moves.
       assert Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second)) == []
@@ -1085,7 +1135,6 @@ defmodule Apiary.Dispatches.RunEndTest do
                {:error, :gone}
 
       assert_ended(handed, :run_ended)
-      assert dispatch!(handed.dispatch).slot_freed_at == freed
     end
 
     test "the exit, once folded, ends it run_ended", ctx do

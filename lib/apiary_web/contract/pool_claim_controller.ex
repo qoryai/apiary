@@ -68,10 +68,6 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   alias Apiary.Dispatches.{DispatchRun, Wire}
   alias ApiaryWeb.Contract.{AdapterRequest, DispatchAnswer}
 
-  # The minutes the machine of a claim may live: 90 for a prebuild, else the contract's
-  # most.
-  @max_lifetime_minutes 1470
-  @prebuild_lifetime_minutes 90
   @hold 25_000
   @poll 1_000
   @holds_per_key 2
@@ -248,9 +244,9 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
 
   defp machine(_dispatch), do: []
 
-  defp lifetime_minutes(%{step: step}) do
-    if step == DispatchRun.prebuild(), do: @prebuild_lifetime_minutes, else: @max_lifetime_minutes
-  end
+  # The minutes the machine of a claim may live: 90 for a prebuild, else the contract's
+  # most (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`).
+  defp lifetime_minutes(%{step: step}), do: DispatchRun.machine_lifetime_minutes(step)
 
   defp refuse(conn, status, code), do: conn |> put_status(status) |> json(%{error: code})
 end

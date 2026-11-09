@@ -5639,6 +5639,16 @@ msgstr ""
 msgid "Ask %{names} to install one."
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an admin of %{operator} for the cause in the log of %{pool}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an admin of %{workspace} to rebuild %{target}."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an approver of %{stage} to act on it."
@@ -7378,6 +7388,7 @@ msgid "Contact support at %{address}."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
+#: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support with run %{run}."
 msgstr ""
@@ -15905,9 +15916,19 @@ msgstr ""
 msgid "Read more"
 msgstr ""
 
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Read the cause in the log of %{pool} on its host."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the log as text"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Read the machine log under %{step} for the cause."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -15976,6 +15997,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Rebuild"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Rebuild %{target} to build the image again."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -19862,6 +19888,51 @@ msgstr ""
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The image registry"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: %{member} in the image report %{rule}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: the build finished, but no image arrived."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: the build finished, but the run was cancelled before an image arrived."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: the build finished, but the run was lost before an image arrived."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: the run reported it at %{reported}, but this run saves images only under %{expected}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: the run reported its environment image at %{reported}, but this run saves environment images only under %{expected}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: the run reported that it started from %{reported}, but this run starts from %{expected}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: this run has no registry address to check the image against."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "The image was not saved: this run is not recorded as a prebuild handed over to a machine."
 msgstr ""
 
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
@@ -24292,6 +24363,26 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "is added to the paths in force for the host."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "is not 1 to 200 characters"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "is not 40 or 64 lower-case hexadecimal characters"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "is not a registry address pinned by its digest, %{digest} and 64 lower-case hexadecimal digits, of at most 327 characters"
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "is not a whole number of bytes from 1 to 9,007,199,254,740,991"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
