@@ -247,8 +247,8 @@ defmodule Apiary.Runs.Diagnostics do
   defp queue(nil), do: nil
 
   # The dispatch whose claim registered the run. A run whose start failed keeps it in
-  # `dispatch_id`. Any other run: of the run's row in the queue, the one claimed last at
-  # or before the run's row was written. A claim writes its run in the transaction that
+  # `dispatch_id`. Any other run a claim registered: of the run's row in the queue, the
+  # one claimed last at or before the claim registered the run. A claim writes its run in the transaction that
   # writes the dispatch, at the claim's time, and a dispatch released or lapsed before
   # its handover takes its run with it, so no later dispatch of the row is the run's. Nil
   # for a run registered without a claim.
@@ -262,9 +262,14 @@ defmodule Apiary.Runs.Diagnostics do
 
   defp dispatch(%Run{dispatch_run_id: id} = run) do
     # A claim registers a run on the record written when it was queued: the registration
-    # is when the claim wrote it, not the record's `inserted_at`.
+    # is when the claim wrote it, not the record's `inserted_at`. A queued run's record,
+    # which no claim registered, has no dispatch.
     registered = run.registered_at || run.inserted_at
 
+    if Run.registered?(run), do: claimed_by(id, registered)
+  end
+
+  defp claimed_by(id, registered) do
     Repo.one(
       from d in Dispatch,
         join: p in assoc(d, :pool),

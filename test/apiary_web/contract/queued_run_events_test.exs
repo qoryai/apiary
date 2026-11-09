@@ -103,6 +103,30 @@ defmodule ApiaryWeb.Contract.QueuedRunEventsTest do
       assert stored(ctx.queued.run_id) == %{runs: 0, deliveries: 0}
     end
 
+    test "with the record written when it was queued, every key's batch is 409 run_id_used",
+         ctx do
+      {:ok, record} = Repo.transact(fn -> {:ok, Apiary.Dispatches.Queued.insert!(ctx.queued)} end)
+      gateway = gateway_fixture(ctx.scope)
+
+      keys = [
+        node: key(ctx.scope, node_fixture(ctx.scope)),
+        pool: key(ctx.scope, pool_fixture(ctx.scope)),
+        gateway: key(ctx.scope, gateway),
+        organisation_gateway: key(ctx.scope, organisation_gateway_fixture(ctx.scope))
+      ]
+
+      for changes <- [[state: :waiting], [state: :ended, end_cause: :closed]],
+          {kind, key} <- keys do
+        set(ctx.queued, changes)
+        conn = deliver(key, ctx.queued.run_id)
+        assert refused?(conn), "#{kind} #{inspect(changes)}: #{conn.status} #{conn.resp_body}"
+      end
+
+      # The record alone, unchanged; no delivery.
+      assert stored(ctx.queued.run_id) == %{runs: 1, deliveries: 0}
+      assert Repo.reload!(record).updated_at == record.updated_at
+    end
+
     test "on the whole instance: a run of another organisation's queue", ctx do
       %{scope: other} = sign_up_fixture()
       theirs = queued!(other)
