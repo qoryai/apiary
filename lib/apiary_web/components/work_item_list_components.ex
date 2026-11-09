@@ -528,7 +528,7 @@ defmodule ApiaryWeb.WorkItemListComponents do
   attr :work_item, :map,
     required: true,
     doc:
-      "the work item; at Explore's gate of a stage that lists its approvers, with `:confirmers`, as the work item's page has it (`ApiaryWeb.WorkItemComponents.status_words/1`)"
+      "the work item; at Explore's gate of a stage that lists its approvers, with `:confirmers`, as the work item's page has it (`ApiaryWeb.WorkItemComponents.status_words/1`); `:at_explore`, false for a work item that left Explore"
 
   attr :integration, :string,
     required: true,

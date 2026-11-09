@@ -2885,53 +2885,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-items-stages-confirm .q-wl-attn", "1 waits for a member")
     end
 
-    test "the Work items list: a proposal that waits after its work item left Explore waits for no one",
-         %{conn: conn, scope: scope} do
-      # Explore's gate none passes the proposal on to Shape's gate, so Explore's status
-      # stays at Confirm. Shape lists no one (the owner rule), or lists the owner.
-      for shape_gate <- [nil, listing([scope.user.id])] do
-        default = Processes.default_document("software")
-
-        stages =
-          for stage <- default["stages"] do
-            case stage["id"] do
-              @explore ->
-                %{stage | "gate" => %{"kind" => "none"}}
-
-              @shape ->
-                %{
-                  stage
-                  | "outputs" => [%{"type" => "acceptance-criteria", "required" => true}],
-                    "gate" => shape_gate || stage["gate"]
-                }
-
-              _other ->
-                stage
-            end
-          end
-
-        save!(scope, %{default | "stages" => stages})
-        work_item = explore_gate_fixture(scope)
-        row = "#work-item-#{work_item.public_id}"
-
-        assert %WorkItem{stage_id: @shape, stage_state: :at_gate} =
-                 Repo.get!(WorkItem, work_item.id)
-
-        assert %{status: :confirm} = WorkItems.explore(scope, work_item, DateTime.utc_now())
-
-        {:ok, view, _html} = live(conn, list(scope))
-        assert has_element?(view, row)
-        refute has_element?(view, "#{row} .q-wl-row-hot")
-        refute has_element?(view, row, "approves next")
-        refute has_element?(view, "#nav-work_items .q-nav-count")
-        assert has_element?(view, "#work-items-views", "Waiting on you 0")
-
-        {:ok, view, _html} = live(conn, list(scope) <> "?view=you")
-        refute has_element?(view, row)
-        assert WorkList.waiting_on(scope) == 0
-      end
-    end
-
     test "an escalated work item still at Confirm waits only for whoever may resolve it",
          %{scope: scope} do
       listed = explore_gate_listing(scope)
@@ -3346,6 +3299,101 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       view |> form("#work-item-stage-gate-approve") |> render_submit()
       assert [%GateDecision{stage_id: @build}] = decisions(work_item, :approve)
+    end
+
+    # Explore's gate `none` passes the proposal on to Shape's gate, which needs an output,
+    # so Explore's status stays at Confirm. Shape's gate is `shape_gate`, or the default's.
+    defp left_explore!(scope, shape_gate \\ nil) do
+      default = Processes.default_document("software")
+
+      stages =
+        for stage <- default["stages"] do
+          case stage["id"] do
+            @explore ->
+              %{stage | "gate" => %{"kind" => "none"}}
+
+            @shape ->
+              %{
+                stage
+                | "outputs" => [%{"type" => "acceptance-criteria", "required" => true}],
+                  "gate" => shape_gate || stage["gate"]
+              }
+
+            _other ->
+              stage
+          end
+        end
+
+      save!(scope, %{default | "stages" => stages})
+      work_item = explore_gate_fixture(scope)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} =
+               Repo.get!(WorkItem, work_item.id)
+
+      assert %{status: :confirm} = WorkItems.explore(scope, work_item, DateTime.utc_now())
+      work_item
+    end
+
+    test "the Work items list: a proposal that waits after its work item left Explore waits for no one",
+         %{conn: conn, scope: scope} do
+      # Shape lists no one (the owner rule), or lists the owner.
+      for shape_gate <- [nil, listing([scope.user.id])] do
+        work_item = left_explore!(scope, shape_gate)
+        row = "#work-item-#{work_item.public_id}"
+
+        # The row looks like any row at Shape's gate.
+        {:ok, view, _html} = live(conn, list(scope))
+        assert texts(view, "#{row} .q-wl-nx") == ["At the gate"]
+        assert has_element?(view, "#{row} .q-wi-mk-wait")
+        refute has_element?(view, "#{row} .q-wl-row-hot")
+        refute has_element?(view, "#nav-work_items .q-nav-count")
+        assert has_element?(view, "#work-items-views", "Waiting on you 0")
+
+        {:ok, view, _html} = live(conn, list(scope) <> "?view=you")
+        refute has_element?(view, row)
+        assert WorkList.waiting_on(scope) == 0
+      end
+    end
+
+    test "a reader not shown the workflow model: the Approve strip and band count no work item that left Explore",
+         %{conn: conn, scope: scope} do
+      member = as(conn, scope, :member)
+      owner = shown_name(scope, scope.user.id)
+      left = left_explore!(scope, listing([scope.user.id]))
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:workflow_model])
+
+      {:ok, view, _html} = live(member, list(scope) <> "?owner=#{scope.user.id}")
+
+      assert texts(view, "#work-items-stages-confirm") == [
+               "Approve1A member approves the proposalNothing waits"
+             ]
+
+      assert has_element?(view, "#work-items-confirm #work-item-#{left.public_id}")
+      refute has_element?(view, "#work-items-stages-confirm .q-wl-attn")
+      refute has_element?(view, "#work-items-confirm .q-wl-attn")
+
+      # A work item at Explore's gate, which lists no one, waits for its owner; the gate
+      # that the other work item is at lists approvers, but it is not Explore's.
+      :ok = Apiary.EditionStubs.HidesNamed.put([])
+      save!(scope, Processes.default_document("software"))
+      _waiting = explore_gate_fixture(scope)
+      :ok = Apiary.EditionStubs.HidesNamed.put([:workflow_model])
+
+      {:ok, view, _html} = live(member, list(scope) <> "?owner=#{scope.user.id}")
+      assert has_element?(view, "#work-items-stages-confirm .q-wl-attn", "1 waits for #{owner}")
+      assert has_element?(view, "#work-items-confirm .q-wl-attn", "1 waits for #{owner}")
+    end
+
+    test "the sidebar's count reads Explore's workflow unless the list read it already",
+         %{scope: scope} do
+      left_explore!(scope)
+      explore = Stages.explore_workflow(scope.workspace)
+      read = queries(fn -> Stages.explore_workflow(scope.workspace) end)
+      given = queries(fn -> WorkList.waiting_on(scope, explore_workflow: explore) end)
+
+      assert read > 0
+      assert queries(fn -> WorkList.waiting_on(scope) end) == given + read
     end
   end
 

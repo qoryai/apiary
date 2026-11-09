@@ -16,14 +16,14 @@ defmodule ApiaryWeb.WorkItemLive.Index do
   # Everything the list shows is in the address, so a narrowed list can be linked and
   # Back works: `view`, `stage`, `q`, `owner`, `collection`, `updated`, `sort`, and a
   # page's cursor, `after` or `before`. The page hands each to `Apiary.WorkItems`
-  # (`list_work_items/3`, `list_bands/3`), which checks it: a value it does not know
+  # (`list_work_items/4`, `list_bands/4`), which checks it: a value it does not know
   # matches nothing, or is its default, and breaks nothing. An owner is named by Qory
   # Apiary's id for the account, a work item's page by its number in the workspace, and a
   # row by Qory Apiary's id for the work item (`wi_…`).
   #
   # **Waiting on you** holds the live work items the reader owns whose proposal waits at
   # Confirm, oldest first whatever the sort, with no Sort; the sidebar counts the same
-  # (`Apiary.WorkItems.count_waiting_on/1`).
+  # (`Apiary.WorkItems.count_waiting_on/2`).
   #
   # **Texts from an external system** (a ticket's title and key, a collection's title) are
   # shown as `ApiaryWeb.ExternalText` shows them.
@@ -310,7 +310,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   attr :confirmers, :map,
     default: %{},
-    doc: "`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`"
+    doc: "`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/3`"
 
   defp rows(assigns) do
     ~H"""
@@ -441,23 +441,29 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     flow = Workflow.on?(scope)
     board = if flow, do: Workflow.board(scope, query(params), now)
 
+    # Explore's workflow, read once for the list, its rows and the sidebar's count.
+    opts =
+      if Apiary.Features.on?(:workflow_model),
+        do: [explore_workflow: Apiary.Stages.explore_workflow(scope.workspace)],
+        else: []
+
     # Under the board, the Open view is a page of rows, as every other view is.
     {list, bands} =
       if params.view == :open and is_nil(params.stage) and is_nil(board) do
-        bands = WorkItems.list_bands(scope, query(params), now)
+        bands = WorkItems.list_bands(scope, query(params), now, opts)
         {Map.merge(bands, %{rows: [], first: 1, next: nil, prev: nil}), bands.bands}
       else
-        {WorkItems.list_work_items(scope, query(params), now), nil}
+        {WorkItems.list_work_items(scope, query(params), now, opts), nil}
       end
 
     rows = list.rows ++ Enum.concat(Map.values(bands || %{}))
 
     # Where the stage of a row's work item lists its approvers, who confirms next at
     # Explore's gate, as the work item's page shows it, wherever `Apiary.Access` applies
-    # the list (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`).
+    # the list (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/3`).
     confirmers =
       if Apiary.Features.on?(:workflow_model),
-        do: Workflow.row_confirmers(scope, rows),
+        do: Workflow.row_confirmers(scope, rows, opts),
         else: %{}
 
     approvers = for {_id, [_ | _] = ids} <- confirmers, id <- ids, do: id
@@ -472,6 +478,7 @@ defmodule ApiaryWeb.WorkItemLive.Index do
     stage_statuses = if flow, do: Workflow.row_statuses(scope, rows, !!groups), else: %{}
 
     assign(socket,
+      list_opts: opts,
       board: board,
       groups: groups,
       stage_statuses: stage_statuses,
@@ -520,7 +527,9 @@ defmodule ApiaryWeb.WorkItemLive.Index do
 
   # The sidebar's count beside Work items, read again: none at nought.
   defp count_waiting_on(socket) do
-    count = WorkItems.count_waiting_on(socket.assigns.current_scope)
+    count =
+      WorkItems.count_waiting_on(socket.assigns.current_scope, socket.assigns[:list_opts] || [])
+
     counts = socket.assigns.nav_counts || %{}
 
     counts =
