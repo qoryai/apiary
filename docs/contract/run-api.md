@@ -101,8 +101,9 @@ Returns `200` with the work item snapshot:
   there is none.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
-- `verdict` is the work item's newest verdict, or null for none. `gaps` is the stage's
-  gaps.
+- `verdict` is the work item's newest verdict, or null for none. It can be from an earlier
+  stage or an earlier run. At a run's end, the stage reads only a verdict that run pushed.
+  `gaps` is the stage's gaps.
 - `ticket`, `instruction`, `comments` and `comments_omitted` are the same as in
   Explore's input, within the same bound: at most 768 KiB encoded, with the oldest
   comments left out first and counted in `comments_omitted`. A test work item has no
@@ -406,10 +407,20 @@ The body, at most 64 KiB:
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
 file, `verdict.json`, `{"verdict": ..., "gaps": ...}`, without `gaps` when the body
-has none. A run of any workflow may give a verdict. For a run of Explore, only
+has none. A run of any workflow may push a verdict. For a run of Explore, only
 `escalate` changes what happens: the stage escalates with the gaps. Explore treats
 `passed` and `changes-requested` as no verdict. Returns `201` with the version, as
 `POST artifacts` does.
+
+A run of a workflow entry outside a loop must push a verdict. Make `qory run verdict
+passed` the last step of the workflow, on a first run and on a rerun. A run that ends with
+no verdict and no open question stops the stage: a member sees "The run stopped before its
+verdict." with **Run another round** and, where an output has a version or no output is
+required, **Accept as it is**. `changes-requested` outside a loop goes on to the next entry,
+as `passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
+work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal, or
+that left open questions: Explore's result is its proposal or its questions. A run of
+Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body that is not this object
 is `400` `invalid_request`.
