@@ -221,7 +221,12 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       scope: scope,
       access_key: access_key
     } do
-      dir = Path.join(System.tmp_dir!(), "apiary-demo-#{System.unique_integer([:positive])}")
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "apiary-demo-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
       File.mkdir_p!(dir)
       on_exit(fn -> File.rm_rf(dir) end)
       path = Path.join(dir, "events.jsonl")
