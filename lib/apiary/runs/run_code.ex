@@ -18,8 +18,8 @@ defmodule Apiary.Runs.RunCode do
   # lost-run check and liveness read `attach_by` as for any run through a gateway not yet
   # attached, so a run whose code is never redeemed is lost at the code's expiry. While
   # the claim holds, its registered run lives with it: a lease that lapses or a release
-  # ends it failed (`Apiary.Dispatches.Handover.fail_start/3`), and a close deletes it,
-  # with its code (`Apiary.Dispatches.Handover.drop/1`).
+  # ends it failed (`Apiary.Dispatches.Handover.fail_start/3`), and a close ends it
+  # cancelled, as a failed start leaves it (`Apiary.Dispatches.Queued`).
   #
   # **At the redemption** (`redeem/2`), in the order of every enrolment code:
   #
@@ -66,8 +66,8 @@ defmodule Apiary.Runs.RunCode do
   # the run, keeps the time
   # (`Apiary.Dispatches.Slots.late_machine/2`) and holds its slot of its pool's limit
   # until the machine is reported `gone`. That write commits, and the answer is still
-  # `{:error, :unauthorized}`. A close deletes the run with its code
-  # (`Apiary.Dispatches.Handover.drop/1`), so a code redeemed after a close finds no run.
+  # `{:error, :unauthorized}`. A code redeemed after a close finds the run ended, and is
+  # such a late machine, as after a release.
   #
   # The answer is `{:ok, %{run_id: run_id, run_key: run_key, documents: documents}}`, the
   # documents as the claim encoded them (`runs.run_documents`), the same bytes to every

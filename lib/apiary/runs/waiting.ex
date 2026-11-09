@@ -2,7 +2,7 @@ defmodule Apiary.Runs.Waiting do
   @moduledoc false
 
   # Why a queued run (`Apiary.Runs.Run.queued?/1`) waits, read for its run page from what a
-  # claim checks (`Apiary.Dispatches.claim/4`), read without a lock. The first that holds:
+  # claim checks (`Apiary.Dispatches.claim/4`), read without a lock. The first reason that applies:
   #
   #   * `:harness`, its harness walk is not resolved yet (`Apiary.Harnesses.WalkJob`);
   #   * `:no_pool`, no pool that serves the workspace's runs is ready

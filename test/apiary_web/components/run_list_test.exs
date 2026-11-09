@@ -1279,7 +1279,7 @@ defmodule ApiaryWeb.RunListTest do
       assert why({:pool, "build-pool"}) == "Waiting for build-pool to run it."
     end
 
-    test "says why it waits, for each reason" do
+    test "shows why it waits, for each reason" do
       for {reason, words} <- [
             {:harness, "Waiting until Qory Apiary reads the harness."},
             {:no_pool, "Waiting: no pool can take the run"},

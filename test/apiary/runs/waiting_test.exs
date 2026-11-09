@@ -1,5 +1,5 @@
 defmodule Apiary.Runs.WaitingTest do
-  # Why a queued run waits (`Apiary.Runs.Waiting.reason/2`), the first that holds: its
+  # Why a queued run waits (`Apiary.Runs.Waiting.reason/2`), the first reason that applies: its
   # harness walk, no pool ready, no pool for its machine type, its target's environment
   # image, every pool at its limit, runs queued before it, else the pool that has not
   # taken it yet. Not async: a machine type and the instance's pool are the instance's.

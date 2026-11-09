@@ -12,8 +12,10 @@ defmodule Apiary.Runs.Run do
   `node_run_id` is the node's run id, an external id: the run's id as its node gave it,
   `run_id` and the subject of the run's events in the server contract, unique within the
   workspace. The row is
-  created in state `pending` when the run registers (`Apiary.Runs.Registration`), or by
-  the receiver on the first event of an unknown subject. The folded fields are folded
+  created in state `pending` when a run of a workspace's queue is queued, with its number
+  and no registration (`queued?/1`), and a claim registers it; when the run registers
+  (`Apiary.Runs.Registration`); or by the receiver on the first event of an unknown
+  subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
   registration fields (`registered_at`, `registration_labels`, `registration_about`,
   `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`,

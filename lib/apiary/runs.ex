@@ -202,10 +202,10 @@ defmodule Apiary.Runs do
 
   @doc """
   A page of the workspace's runs under the filters, in their order (`sort`: newest first by
-  when they started, a run that has only registered placed by when it registered, the
+  when they started, a run that has not started placed by when its record was written
+  (when it was queued, for a run of a workspace's queue; else when it registered), the
   queued runs (`Apiary.Runs.Run.queued?/1`) before all others, the most recently queued
-  first; oldest
-  first; the longest first, by the duration its exit gave or else the time it reported
+  first; oldest first; the longest first, by the duration its exit gave or else the time it reported
   elapsed; the most denials first), `per` to a page. Returns the page's runs, the page it
   is (the last one, when the filters asked for one beyond it), the total, the pages and
   the page size.
@@ -222,8 +222,8 @@ defmodule Apiary.Runs do
   end
 
   # Newest first, the queued runs (`Apiary.Runs.Run.queued?/1`) come first, the most
-  # recently queued first; then the other runs from the index, in its order. A page that
-  # holds the last queued runs takes the first of the others after them.
+  # recently queued first; then the other runs from the index, in its order. A page with
+  # the last queued runs is filled up with the first of the others after them.
   defp page_of(query, %Filters{sort: "newest", per: per}, page) do
     offset = (page - 1) * per
     queued_runs = where(query, ^Run.queued_condition())
@@ -1837,7 +1837,8 @@ defmodule Apiary.Runs do
 
   @doc """
   The workspace's runs from `from` on, one row per day they started in the scope's time
-  zone (`Apiary.Accounts.Scope.time_zone/1`; a pending run by when it registered), oldest
+  zone (`Apiary.Accounts.Scope.time_zone/1`; a run that has not started by when its
+  record was written), oldest
   first; a day with no run has no row. `from` and `to` are moments: the start of a day in
   that zone (`Apiary.Days.start_of/2`) counts whole days. One grouped query
   over the index the runs list reads by; the caller fills the days in. `to`, when given,
