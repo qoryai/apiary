@@ -5619,9 +5619,29 @@ msgstr ""
 msgid "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added."
 msgstr ""
 
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "An instance admin checks that the registry's host name resolves, that the registry is running and that its certificate is valid, then runs the work item again. The connection to the registry for %{image} failed or took longer than 30 seconds."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "An instance admin gives the run's registry credential read access to the image, or sets another image in Instance settings › Machine types. If the workspace's policy blocks the registry, a workspace admin allows it on the workspace's Policy page. The registry returned 401 or 403 for %{image}, or the run's proxy returned 403 because of the policy. On Docker Hub, 401 also means that the repository does not exist."
+msgstr ""
+
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "An instance admin makes the type fit an offer in Instance settings › Machine types, or the admin of %{pool} adds an offer that fits."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "An instance admin runs the work item again once the registry's rate limit resets, or raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for %{image}."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "An instance admin runs the work item again once the registry's rate limit resets, or the admin of %{pool} raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for %{image}."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
@@ -15901,6 +15921,21 @@ msgstr ""
 
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
+msgid "Pull the images failed: a rate limit stopped the requests for the image of the machine type %{name} (%{key})."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "Pull the images failed: access to the image of the machine type %{name} (%{key}) was denied."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "Pull the images failed: no connection to the image's registry, for the machine type %{name} (%{key})."
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
 msgid "Pull the images failed: the image of the machine type %{name} (%{key}) is not in its registry: %{image}."
 msgstr ""
 
@@ -17543,6 +17578,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Run the test?"
+msgstr ""
+
+#: lib/apiary/runs/preparation.ex
+#, elixir-autogen, elixir-format
+msgid "Run the work item again later. If it fails again, contact support with run %{run}."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

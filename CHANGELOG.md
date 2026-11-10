@@ -1006,6 +1006,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   runs the work item again.”, and anyone else “Contact support with run rn_….” in plain
   text. **Details** show such an image with its digest cut to 12 digits, whole on hover,
   and without “Prebuilt for this target”.
+- When the registry or the run's proxy returns 401 or 403, or 429, for the image of the
+  run's machine type, or the connection to the registry fails or takes longer than 30
+  seconds, the run's page shows the cause under **Pull the images** and in “How it
+  ended”, such as “Pull the images failed: a rate limit stopped the requests for the
+  image of the machine type Browser tests (`browser`).” An instance admin reads who
+  fixes it, the cause and the image. Anyone else reads, in plain text, “Contact support
+  with run rn_….”, or after a rate limit “Run the work item again later. If it fails
+  again, contact support with run rn_….” Such a run ends as any failed run does: it
+  queues no build and no run again.
 - A queued run on a type that no pool offer fits shows **Why it waits** in its header,
   and under **Queue the run**, as “Waiting for a machine: no pool offers a machine that
   fits UI tests, large (`ui-tests-large`: 8 vCPUs, 32 GiB, 100 GiB disk).”, then, for an

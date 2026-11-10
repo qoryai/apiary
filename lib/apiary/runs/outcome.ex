@@ -68,7 +68,8 @@ defmodule Apiary.Runs.Outcome do
   @reserved ~w(
     timeout interrupted no_session quiet credential_expired stopped session_lost gateway_lost
     batch_refused credential_check_unreachable credential_check_invalid run_closed
-    run_ended_at_issuer issuer_unreachable issuer_answer_invalid image_missing released
+    run_ended_at_issuer issuer_unreachable issuer_answer_invalid image_missing
+    image_access_denied image_rate_limited image_registry_unreachable released
   )
   @max_skew_seconds 300
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/

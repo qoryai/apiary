@@ -72,12 +72,14 @@
 # the three tool events; and a runtime's `fixed` and `egress_hosts` in runtimes.json, the
 # variables it always sets and the exact hosts it needs to reach; and the host step kind
 # `push`, the run API in `link-run-answer`, the close reasons of a read-only workspace, and
-# `bare` on `dev.qory.session.started`.
+# `bare` on `dev.qory.session.started`; and the refusal codes `image_access_denied`,
+# `image_rate_limited` and `image_registry_unreachable`, after the check of an image whose
+# registry returned 401, 403 or 429, or could not be reached.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-a4e7f43c9a58cc693fcd1429f2e0a7276e712389
+5d87f8eb857b381e54a0bd8b4badc36de621ad5f
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json

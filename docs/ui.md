@@ -2231,7 +2231,13 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   not in its registry: `ghcr.io/acme/agent@sha256:0123456789ab…`.", with "An instance
   admin sets an image that exists in Instance settings › Machine types, then runs the
   work item again." under it for an instance admin, and "Contact support with run rn_…."
-  in plain text for anyone else, and "How it ended" has the same first line. While Pull
+  in plain text for anyone else, and "How it ended" has the same first line. A run on
+  the image of its machine type that ended `image_access_denied`, `image_rate_limited` or
+  `image_registry_unreachable` has the same shape: a first line such as "Pull the images
+  failed: a rate limit stopped the requests for the image of the machine type Browser
+  tests (`browser`).", then, for an instance admin, the fix, the cause and the image,
+  and for anyone else "Contact support with run rn_….", or after a rate limit "Run the
+  work item again later. If it fails again, contact support with run rn_…." While Pull
   the images pulls the image of the run's machine type, the step shows "The machine
   pulls the image of the machine type Browser tests (`browser`). Each run pulls its
   image before the agent starts." and "No action needed." above its output. Under Start

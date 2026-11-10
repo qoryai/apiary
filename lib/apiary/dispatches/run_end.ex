@@ -75,7 +75,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # or the next check ends it with the image held. A run given the image of a machine
   # type (`runs.configured_image_from_type`) ends as any exit ends it: no build is cleared
   # or queued, and nothing is queued again, whatever the type's image is now, and also
-  # once the type is deleted.
+  # once the type is deleted. An exit with one of Forager's other image codes,
+  # `image_access_denied`, `image_rate_limited` or `image_registry_unreachable`, ends as
+  # any exit ends it: a build or a new run pulls from the same registry, so nothing is
+  # cleared or queued again.
   #
   # The run of the queue ends once: `ended`, with its end cause. Its live dispatch, the one
   # handed over, ends with it with the same cause; a stale dispatch of it not yet ended ends
