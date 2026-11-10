@@ -2,8 +2,9 @@ defmodule Apiary.GatewayServingTest do
   # Whom a gateway may serve, as the callers ask it: a claim (`Apiary.Dispatches.Handover`),
   # a run's batch, attach and reload (`Apiary.Runs.Sender`) and a node's choice
   # (`Apiary.Gateways`). The answer reads the gateway's row and the workspace's place: a
-  # workspace marked for deletion is refused elsewhere, with a refusal of its own
-  # (`Apiary.AccessKeys.place_in_use?/2`). Not async: the instance has one gateway in use.
+  # workspace marked for deletion is refused by `Apiary.AccessKeys.place_in_use?/2`, which
+  # a run's attach, batches and reload ask of the run's place. Not async: the instance has
+  # one gateway in use.
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]

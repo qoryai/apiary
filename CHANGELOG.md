@@ -1594,7 +1594,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `/<organisation>/settings/integrations/<adapter>/install`. Before, they got 403.
 - On a target's page with no registry, an instance admin reads “Set `QORY_REGISTRY` on the
   server to build this target's environment image. Until then, runs start in the pool's
-  default image.” Before, the line told them to ask an instance admin.
+  default image.” Before, the line read “Ask an instance admin to set up a registry to
+  build this target's environment image. Until then, runs start in the pool's default
+  image.”
 <!-- /feature -->
 <!-- feature: factory -->
 - A read-only run that qory closes shows a line on its run page, such as “read-only run
