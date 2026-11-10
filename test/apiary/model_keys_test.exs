@@ -371,9 +371,10 @@ defmodule Apiary.ModelKeysTest do
                ~U[2026-11-14 09:00:00.000000Z]
     end
 
-    test "say whether a key is in cooldown at a time", ctx do
+    test "say whether a key is in cooldown at a time, until its latest cooldown", ctx do
       value = ctx.values["main"]
       refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 13:00:00Z])
+      assert ModelKeys.cooldown_until(value.id) == nil
 
       :ok =
         ModelKeys.record(
@@ -389,9 +390,30 @@ defmodule Apiary.ModelKeysTest do
           DateTime.utc_now()
         )
 
+      assert ModelKeys.cooldown_until(value.id) == ~U[2026-11-10 14:00:00.000000Z]
       assert ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 13:59:59Z])
       refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 14:00:00Z])
       refute ModelKeys.in_cooldown?(ctx.values["spare"].id, ~U[2026-11-10 13:00:00Z])
+
+      # The 7-day window rejected too, until a later reset: the key stays in cooldown
+      # until then, past the 5-hour window's end.
+      :ok =
+        ModelKeys.record(
+          [key(value)],
+          [
+            item(
+              window: "seven_day",
+              status: "rejected",
+              cooldown_until: ~U[2026-11-14 09:00:00Z],
+              observed_at: ~U[2026-11-10 12:00:10Z]
+            )
+          ],
+          DateTime.utc_now()
+        )
+
+      assert ModelKeys.cooldown_until(value.id) == ~U[2026-11-14 09:00:00.000000Z]
+      assert ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 14:00:00Z])
+      refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-14 09:00:00Z])
     end
 
     test "and the settings go with their key", ctx do

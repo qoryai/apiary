@@ -5,10 +5,12 @@ defmodule Apiary.ModelKeys.Report do
   every gateway (`ApiaryWeb.Contract.ModelKeysController`).
 
   `parse/3` reads the body, as the contract's `model-keys-report.schema.json` has it:
-  `version`, 1; `run_id`, the run id of the path; `time`, an RFC 3339 time; and `keys`,
-  each item a key's state in one window (`credential`, `window`, `status`, `resets_at`,
-  `utilization`, `cooldown_until`, `source` and `observed_at`). A member the schema does
-  not define, a member twice, and a value of the wrong form are
+  `version`, 1; `run_id`, the run id of the path; `time`, an RFC 3339 time in UTC to the
+  whole second, `2026-11-10T12:00:05Z`; and `keys`, at most 64, each item a key's state in
+  one window (`credential`, `window`, `status`, `resets_at`, `utilization`,
+  `cooldown_until`, `source` and `observed_at`), with `cooldown_until` when the status is
+  `rejected` and without it otherwise. A member the schema does not define, a member
+  twice, and a value of the wrong form are
   `{:error, :invalid_request, name}`, where `name` is the member and never a value. An
   `observed_at` more than `max_skew_seconds/0` after the server's clock is refused as
   `keys.observed_at`: such a row would stay newer than every later report. Whether `time`
@@ -48,6 +50,8 @@ defmodule Apiary.ModelKeys.Report do
   @item_members @required_item ++ ~w(resets_at utilization cooldown_until)
   @credential ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
   @max_skew_seconds 300
+  @max_keys 64
+  @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
 
   @typedoc "A report as `parse/3` read it."
   @type t :: %{time: DateTime.t(), keys: [map]}
@@ -67,6 +71,7 @@ defmodule Apiary.ModelKeys.Report do
          {:ok, fields} <- object(body, @members, @members, "body"),
          :ok <- check(fields["version"] === 1, "version"),
          :ok <- check(fields["run_id"] === run_id and Batch.uuid?(run_id), "run_id"),
+         :ok <- check(whole_seconds?(fields["time"]), "time"),
          {:ok, time} <- time(fields["time"], "time"),
          {:ok, keys} <- keys(fields["keys"], now) do
       {:ok, %{time: time, keys: keys}}
@@ -98,7 +103,7 @@ defmodule Apiary.ModelKeys.Report do
 
   defp object(_value, _required, _allowed, name), do: invalid(name)
 
-  defp keys(items, now) when is_list(items) do
+  defp keys(items, now) when is_list(items) and length(items) <= @max_keys do
     Enum.reduce_while(items, {:ok, []}, fn item, {:ok, acc} ->
       case item(item, now) do
         {:ok, item} -> {:cont, {:ok, [item | acc]}}
@@ -122,6 +127,8 @@ defmodule Apiary.ModelKeys.Report do
          :ok <- check(utilization?(fields["utilization"]), "keys.utilization"),
          {:ok, resets_at} <- optional_time(fields["resets_at"], "keys.resets_at"),
          {:ok, cooldown_until} <- optional_time(fields["cooldown_until"], "keys.cooldown_until"),
+         :ok <-
+           check(cooldown_fits?(fields["status"], cooldown_until), "keys.cooldown_until"),
          {:ok, observed_at} <- time(fields["observed_at"], "keys.observed_at"),
          :ok <- check(not later?(observed_at, now), "keys.observed_at") do
       {:ok,
@@ -137,6 +144,12 @@ defmodule Apiary.ModelKeys.Report do
        }}
     end
   end
+
+  # A cooldown with a rejected window, and with no other.
+  defp cooldown_fits?("rejected", cooldown_until), do: not is_nil(cooldown_until)
+  defp cooldown_fits?(_status, cooldown_until), do: is_nil(cooldown_until)
+
+  defp whole_seconds?(time), do: is_binary(time) and Regex.match?(@whole_seconds, time)
 
   defp credential?(name), do: is_binary(name) and Regex.match?(@credential, name)
 

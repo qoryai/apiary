@@ -15,7 +15,8 @@ defmodule Apiary.ModelKeys do
   row by `observed_at`: an older report never overwrites a newer row, whichever gateway
   sent it. A read leaves out the utilization of a window whose `resets_at` has passed
   (`current/2`). `provider_states/2` is the states of a provider's keys, `known_reset/2`
-  a key's known reset, and `in_cooldown?/2` whether a key is in cooldown.
+  a key's known reset, `cooldown_until/1` the end of a key's cooldown, the latest
+  `cooldown_until` across its windows, and `in_cooldown?/2` whether a key is in cooldown.
 
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
   credential in the run's run configuration. A report and its answer reach a key only
@@ -305,15 +306,30 @@ defmodule Apiary.ModelKeys do
   end
 
   @doc """
-  Whether the key `secret_value_id` is in cooldown at `time`: a window of it has a
-  `cooldown_until` after `time`.
+  The end of the cooldown of the key `secret_value_id`: the latest `cooldown_until`
+  across its windows, which only a rejected window has; nil when none has one. A key
+  whose 5-hour and 7-day windows are both rejected stays in cooldown until the later of
+  the two resets.
+  """
+  @spec cooldown_until(Ecto.UUID.t()) :: DateTime.t() | nil
+  def cooldown_until(secret_value_id) do
+    Repo.one(
+      from s in State,
+        where: s.secret_value_id == ^secret_value_id,
+        select: max(s.cooldown_until)
+    )
+  end
+
+  @doc """
+  Whether the key `secret_value_id` is in cooldown at `time`: the end of its cooldown
+  (`cooldown_until/1`) is after `time`.
   """
   @spec in_cooldown?(Ecto.UUID.t(), DateTime.t()) :: boolean
   def in_cooldown?(secret_value_id, %DateTime{} = time) do
-    Repo.exists?(
-      from s in State,
-        where: s.secret_value_id == ^secret_value_id and s.cooldown_until > ^time
-    )
+    case cooldown_until(secret_value_id) do
+      %DateTime{} = until -> DateTime.compare(until, time) == :gt
+      nil -> false
+    end
   end
 
   defp usec(nil), do: nil

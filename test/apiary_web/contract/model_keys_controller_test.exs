@@ -13,7 +13,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
 
-  alias Apiary.{ModelKeys, ModelKeysSchemas, Policy, Repo}
+  alias Apiary.{ForagerSchemas, ModelKeys, Policy, Repo}
   alias Apiary.ModelKeys.State
   alias Apiary.Runs.Run
   alias Apiary.Secrets.Value
@@ -77,14 +77,14 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
   describe "a report for a live run" do
     test "is stored by the key's row id and answered the run's keys' states", ctx do
       body = report(ctx, [state(ctx)])
-      assert ModelKeysSchemas.validate("model-keys-report.schema.json", body) == :ok
+      assert ForagerSchemas.validate("model-keys-report.schema.json", body) == :ok
 
       {conn, log} = with_log(fn -> post_report(ctx, body) end)
 
       assert conn.status == 200
       assert signed_answer?(conn)
       assert get_resp_header(conn, "content-type") == ["application/json; charset=utf-8"]
-      assert ModelKeysSchemas.validate("model-keys-answer.schema.json", conn.resp_body) == :ok
+      assert ForagerSchemas.validate("model-keys-answer.schema.json", conn.resp_body) == :ok
 
       assert [%State{} = row] = rows()
       assert row.secret_value_id == ctx.value.id
@@ -210,6 +210,22 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
             {report(ctx, [Map.put(item, "utilization", 101)]), "keys.utilization"},
             {report(ctx, [Map.put(item, "utilization", 0.5)]), "keys.utilization"},
             {report(ctx, [Map.put(item, "resets_at", "soon")]), "keys.resets_at"},
+            {report(ctx, [Map.delete(item, "cooldown_until")]), "keys.cooldown_until"},
+            {report(ctx, [Map.put(item, "status", "allowed")]), "keys.cooldown_until"},
+            {report(ctx, [state(ctx, status: "allowed_warning")]), "keys.cooldown_until"},
+            {report(ctx, [], time: String.replace(now_z(), "Z", ".500Z")), "time"},
+            {report(
+               ctx,
+               List.duplicate(
+                 state(ctx,
+                   status: "allowed",
+                   cooldown_until: nil,
+                   resets_at: nil,
+                   utilization: nil
+                 ),
+                 65
+               )
+             ), "keys"},
             {report(ctx, [Map.put(item, "observed_at", now_z(600))]), "keys.observed_at"},
             {String.replace(report(ctx, []), ~s("version":1), ~s("version":1,"version":1)),
              "body"}
@@ -222,7 +238,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
         # The schema refuses each of these too; a run id other than the path's and an
         # observed_at ahead of the server's clock are the server's rules.
         if name not in ["body", "run_id", "keys.observed_at"] do
-          assert {:error, _} = ModelKeysSchemas.validate("model-keys-report.schema.json", body),
+          assert {:error, _} = ForagerSchemas.validate("model-keys-report.schema.json", body),
                  body
         end
       end
