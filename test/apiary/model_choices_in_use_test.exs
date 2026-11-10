@@ -130,7 +130,9 @@ defmodule Apiary.ModelChoicesInUseTest do
 
       assert Repo.get(Connection, fallback.id)
 
-      {:ok, _} = ModelChoices.put_choice(scope, :workspace, %{provider: main.public_id})
+      {:ok, _} =
+        ModelChoices.put_choice(scope, :workspace, %{provider: main.public_id, fallbacks: []})
+
       assert ModelChoices.places_using(fallback) == []
       assert {:ok, _} = Connections.delete_provider(scope, fallback)
     end

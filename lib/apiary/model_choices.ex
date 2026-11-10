@@ -54,8 +54,9 @@ defmodule Apiary.ModelChoices do
   #     its model and effort as `model` and `effort` are, against that provider; the
   #     choice's provider and a provider of an earlier fallback are refused. Each refusal
   #     is on `fallbacks`, with the fallback's index from 0 (`fallback`) and its field
-  #     (`field`). A save without `fallbacks` leaves the choice none. No number bounds
-  #     them: each is another provider of the organisation.
+  #     (`field`). A save without `fallbacks` keeps the place's fallbacks, checked again
+  #     as sent ones are; an empty list leaves none. No number bounds them: each is
+  #     another provider of the organisation.
   #
   # A model's **offered effort values** are the values that both the model's list in the
   # description and the runtime's (`Apiary.Kinds.Runtime`, `effort_values`) contain, in the
@@ -406,7 +407,7 @@ defmodule Apiary.ModelChoices do
   # keys, `model`, a model id, `effort`, one of that model's offered effort values,
   # `tiers`, a map of tiers, `fallbacks`, a list in order of maps of `provider`, `model`
   # and `effort`, and, at the workspace, `locked`. Each but `provider` and `tiers` may be
-  # left out; one of those two is needed. `{:ok, choice}`, or
+  # left out; one of those two is needed. Left out, `fallbacks` keeps the place's. `{:ok, choice}`, or
   # `{:error, refusal}`: a changeset with the reason on its field (the moduledoc). `chain`
   # is "organisation" by default; "operator" sets the operator's choice at `:organisation`
   # alone, for a scope that writes that chain, with a provider of that chain; any other
@@ -415,7 +416,7 @@ defmodule Apiary.ModelChoices do
           {:ok, ModelChoice.t()} | {:error, Access.reason() | Ecto.Changeset.t()}
   def put_choice(%Scope{} = scope, place, attrs, chain \\ "organisation") when is_map(attrs) do
     write(scope, place, chain, fn scope, at ->
-      changeset = input(attrs, at)
+      changeset = attrs |> with_kept_fallbacks(at) |> input(at)
 
       with {:ok, provider} <- hold_provider(changeset, at.organisation, at.chain),
            {:ok, values} <- checked(changeset, provider, Map.put(at, :scope, scope)) do
@@ -423,6 +424,31 @@ defmodule Apiary.ModelChoices do
         save(scope, at, current, provider, values)
       end
     end)
+  end
+
+  # `attrs` with the place's fallbacks where they send none, as a save sends them. Read
+  # under the place's lock (`hold_place/4`): the workspace's row, or the organisation's
+  # integrations lock for its default, so no other save of the place runs meanwhile.
+  defp with_kept_fallbacks(attrs, at) do
+    if Map.has_key?(attrs, :fallbacks) or Map.has_key?(attrs, "fallbacks") do
+      attrs
+    else
+      case Repo.one(from c in at_place(at), preload: [fallbacks: :connection]) do
+        %ModelChoice{fallbacks: [_ | _] = fallbacks} ->
+          kept =
+            for fallback <- fallbacks,
+                do: %{
+                  "provider" => fallback.connection.public_id,
+                  "model" => fallback.model_id,
+                  "effort" => fallback.effort
+                }
+
+          attrs |> stringify() |> Map.put("fallbacks", kept)
+
+        _none ->
+          attrs
+      end
+    end
   end
 
   @doc false

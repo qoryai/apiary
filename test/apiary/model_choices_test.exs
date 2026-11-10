@@ -893,10 +893,57 @@ defmodule Apiary.ModelChoicesTest do
 
       assert stored(one) == [{0, subscription.public_id, @model, nil}]
 
-      # A save that sends no fallbacks leaves the choice none, as it replaces every field.
-      assert {:ok, none} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      # A save that sends no fallbacks keeps them; an empty list leaves none.
+      assert {:ok, kept} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      assert stored(kept) == [{0, subscription.public_id, @model, nil}]
+
+      assert {:ok, none} =
+               ModelChoices.put_choice(scope, :workspace, attrs(provider, %{fallbacks: []}))
+
       assert stored(none) == []
       assert List.last(trail(choice.id)).after["fallbacks"] == []
+    end
+
+    test "the set-up's Model step keeps the fallbacks, and a tier map is still replaced", ctx do
+      %{scope: scope, provider: provider, subscription: subscription, deepseek: deepseek} = ctx
+
+      {:ok, _} =
+        ModelChoices.put_choice(
+          scope,
+          :workspace,
+          attrs(provider, %{
+            tiers: %{"fast" => @model},
+            fallbacks: [fallback(subscription), fallback(deepseek, nil, nil)]
+          })
+        )
+
+      # What the set-up's Model step sends (`ApiaryWeb.WorkspaceSetupLive`).
+      assert {:ok, choice} =
+               ModelChoices.put_choice(scope, :workspace, %{
+                 "provider" => provider.public_id,
+                 "key" => provider.default_value_id,
+                 "runtime" => nil,
+                 "model" => "claude-haiku-5-5"
+               })
+
+      assert choice.model_id == "claude-haiku-5-5"
+      assert choice.tiers == nil
+
+      assert stored(choice) == [
+               {0, subscription.public_id, nil, nil},
+               {1, deepseek.public_id, nil, nil}
+             ]
+
+      # The fallbacks kept are checked again: the chosen provider is refused among them.
+      assert [
+               {0, :provider,
+                "Choose another provider: Claude subscription token is chosen already."}
+             ] =
+               fallback_errors(
+                 ModelChoices.put_choice(scope, :workspace, %{
+                   "provider" => subscription.public_id
+                 })
+               )
     end
 
     test "the organisation's default has fallbacks by the same rules", ctx do
