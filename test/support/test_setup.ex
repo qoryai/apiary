@@ -9,7 +9,7 @@ defmodule Apiary.TestSetup do
 
   - **The features.** The suite with QORY_FEATURES unset or blank, CI's "every feature",
     runs with every feature (`Apiary.Features.all/0`): the opt-in ones too
-    (`Apiary.Features.opt_in/0`), which an instance launched so leaves off.
+    (`Apiary.Features.opt_in/0`), which an instance launched so may leave off.
   - **The tags it leaves out.**
     - A test tagged `needs: feature` exercises that feature; the suite runs in CI under
       more than one QORY_FEATURES, and a run without the feature leaves such tests out

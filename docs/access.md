@@ -303,10 +303,10 @@ a gateway's in `access_key`, a node pool's in `pool_key`, an adapter's in `adapt
 `pool_key` holds `run.post_events` and `run_configuration.fetch`, as `access_key` does,
 so a pool registers its runs, posts their events and their outcome and is served the run
 configuration as a node is; `access_key` alone holds `secret.seal`, a gateway's secrets
-request for a run's model key, of an opt-in feature the module's tables leave out; reading the configuration document asks no role, only the
+request for a run's model key, of the feature `factory`; reading the configuration document asks no role, only the
 signed request (`ApiaryWeb.Contract.SignedRequest`). Beside them it holds the dispatch
 actions, `dispatch.claim`, `dispatch.dispatched`
-and `dispatch.release`, of an opt-in feature the module's tables leave out (`docs: false`). A
+and `dispatch.release`, of the feature `factory`. A
 pool's key acts on its workspace and, there, on its pool: another node and the
 organisation are not found to it. A dispatch action is asked of the workspace, the one
 queue every pool of it claims a waiting run from, or of a dispatch of that workspace its

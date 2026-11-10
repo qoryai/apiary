@@ -481,17 +481,29 @@ environment variable SMTP_TLS must be always, if_available or never
 - `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.
 <!-- /feature -->
+<!-- feature: secrets -->
+- `secrets`: stored secrets and variables, and the organisation's integrations. Needs
+  `security`.
+<!-- /feature -->
+<!-- feature: security -->
+- `path_rules`: the Paths field of a policy rule's form. Needs `security`.
+<!-- /feature -->
 <!-- feature: factory -->
 - `factory`: the work items of a workspace and what they are taken in from: the adapters'
   steps of the instance's set-up, every step of the workspace set-up but **Name**, the
-  test run among them, model providers and model, and workflow. Opt-in. Needs
+  test run among them, model providers and model, and workflow. Needs
   `observability`, `security` and `secrets`.
+<!-- /feature -->
+<!-- feature: security -->
+- `registry`: the private image registry's tokens and each run's registry credential. On
+  where `QORY_REGISTRY` is set, unless `all-…` or a list leaves it out. If it is on and
+  `QORY_REGISTRY` is not set, the boot stops. Needs `security`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `workflow_model`: changes to the process of each workspace, its stages in order, each
   with its workflows and its gate. Owners and admins save numbered versions, and trial
   versions that chosen work items are assigned to. With the switch off, each workspace
-  keeps version 1 of its process, a copy of its type's default. Opt-in. Needs
+  keeps version 1 of its process, a copy of its type's default. Needs
   `observability`, `security`, `secrets` and `factory`.
 <!-- /feature -->
 
@@ -512,12 +524,6 @@ The record and the security policy, and nothing else:
 ```sh
 QORY_FEATURES=observability,security
 ```
-
-Every feature but the security policy:
-
-```sh
-QORY_FEATURES=all-security
-```
 <!-- /feature -->
 <!-- feature: factory -->
 
@@ -527,12 +533,21 @@ The work items and their set-up, with the features they need:
 QORY_FEATURES=observability,security,secrets,factory
 ```
 <!-- /feature -->
+<!-- feature: workflow_model -->
+
+Every feature but changes to the process:
+
+```sh
+QORY_FEATURES=all-workflow_model
+```
+<!-- /feature -->
 
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
 
-An opt-in feature is on only when a list names it: `all`, `all-…`, and a value that is not
-set or empty leave it off, with or without an upgrade.
+Every feature in this list is on by default, unless its entry has a condition. An edition
+may add an opt-in feature, which is on only when a list contains it: `all`, `all-…`, and a
+value that is not set or empty leave it off, with or without an upgrade.
 
 The value is read once, at boot. A name that is not a feature, or a feature without one it
 needs, stops the boot:

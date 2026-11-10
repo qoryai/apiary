@@ -68,9 +68,9 @@ defmodule Apiary.FeatureSetsScan do
 
   - `reads:`, more patterns of a read, for an edition's modules;
   - `helpers:`, the paths under `support/` of the helpers known to read the features;
-  - `once:`, the features whose `needs:` runs a test under one feature set alone,
-    by default the opt-in features (`Apiary.Features.opt_in/0`), which CI's other sets
-    leave off.
+  - `once:`, the features whose `needs:` runs a test under one feature set alone, by
+    default the opt-in features (`Apiary.Features.opt_in/0`). A suite gives the features
+    that its CI's other sets leave off.
   """
   @spec violations([Path.t()], keyword) :: [violation]
   def violations(dirs, opts \\ []) do

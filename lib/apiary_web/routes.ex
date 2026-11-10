@@ -213,7 +213,7 @@ defmodule ApiaryWeb.Routes do
         get "/health", HealthController, :show
       end
 
-      # The private image registry's token route, with the opt-in feature `registry`: a
+      # The private image registry's token route, with the feature `registry`: a
       # run's gateway sets the run's credential on the request, and no pipeline reads more
       # than the controller does (`ApiaryWeb.RegistryTokenController`). Every method but
       # GET is told 405.

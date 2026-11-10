@@ -6,9 +6,9 @@ defmodule Apiary.Features do
   |---|---|---|
   | `observability` | runs, the terminal log, the session timeline, the connections, retention | nothing |
   | `security` | the security policy and the run configuration served to the gateway | `observability` |
-  | `secrets` | stored secrets and variables, and the organisation's integrations; opt-in | `security` |
-  | `factory` | the work items of a workspace and what they are taken in from; opt-in | `observability`, `security` and `secrets` |
-  | `workflow_model` | changes to the process of each workspace, its stages in order: new versions, and trial versions that chosen work items are assigned to; opt-in | `observability`, `security`, `secrets` and `factory` |
+  | `secrets` | stored secrets and variables, and the organisation's integrations | `security` |
+  | `factory` | the work items of a workspace and what they are taken in from | `observability`, `security` and `secrets` |
+  | `workflow_model` | changes to the process of each workspace, its stages in order: new versions, and trial versions that chosen work items are assigned to | `observability`, `security`, `secrets` and `factory` |
 
   An edition adds more features after the core's (`c:Apiary.Edition.features/0`), each
   with the features it needs, whether it is built, whether it is opt-in, and its parts.
@@ -24,8 +24,8 @@ defmodule Apiary.Features do
   feature is on with its feature (`feature_of/1`), and a part of none on every instance.
 
   `QORY_FEATURES` names the features the instance has, of the whole list: `all`; `all-`
-  and the features left out, separated by commas (`all-security`); or the features on,
-  separated by commas (`observability,security`). Unset or blank is `all`. A list keeps
+  and the features left out, separated by commas (`all-workflow_model`); or the features
+  on, separated by commas (`observability,security`). Unset or blank is `all`. A list keeps
   off every feature it does not name, one an upgrade adds included; `all` and `all-…`
   take that one on with the upgrade. A feature of another edition is unknown here.
   `instance_mail`, a name the list once took, is accepted and ignored: Instance settings ›
@@ -35,10 +35,11 @@ defmodule Apiary.Features do
   the application starts: an unknown name or a feature without the features it needs
   stops the boot. The list is fixed while the instance runs.
 
-  An **opt-in** feature, marked `default: false` (`opt_in/0`), is on only where a list
-  names it: `all`, `all-…`, unset and blank leave it off, as an upgrade that adds one
-  does. Only an opt-in feature may need one, and it is never one a page shows or hides for
-  an organisation (`built/0`).
+  An **opt-in** feature, marked `default: false` (`opt_in/0`), is on where a list contains
+  it: `all`, `all-…`, unset and blank leave it off, as an upgrade that adds one does. The
+  core's `registry` is the one exception: those turn it on where `QORY_REGISTRY`, the
+  registry's address, is set. Only an opt-in feature may need one, and it is never one a
+  page shows or hides for an organisation (`built/0`).
 
   A feature that is off is absent, not disabled: its pages answer not found, the navigation
   leaves it out, its processes are not started. Every surface asks `on?/1`, or
@@ -73,41 +74,37 @@ defmodule Apiary.Features do
   # needs, whether it is built, `default: false` for one that is opt-in, and `docs: false`
   # for one the documentation does not differ by.
   #
-  # `path_rules` is the Paths field of a policy rule's form, opt-in: an instance without it
-  # draws the form without its Paths row (`ApiaryWeb.PolicyComponents.rule_form/1`,
-  # `paths`), and the rules, their paths and everything else about paths stay as they are.
-  # The served documentation is the same with it on or off (`docs: false`): the guides
+  # `path_rules` is the Paths field of a policy rule's form: an instance without it draws
+  # the form without its Paths row (`ApiaryWeb.PolicyComponents.rule_form/1`, `paths`),
+  # and the rules, their paths and everything else about paths stay as they are. The
+  # served documentation is the same with it on or off (`docs: false`): the guides
   # describe a rule's paths, which every instance keeps.
   #
-  # `factory` is the work items of a workspace and what they are taken in from, opt-in,
-  # and the documentation differs by it: an instance without it is served none of the
-  # text marked for it. It needs `secrets`: the model providers' pages, where the model
-  # key its runs need is set, are of `secrets` (`ApiaryWeb.ProviderLive.Index`).
+  # `factory` is the work items of a workspace and what they are taken in from, and the
+  # documentation differs by it: an instance without it is served none of the text marked
+  # for it. It needs `secrets`: the model providers' pages, where the model key its runs
+  # need is set, are of `secrets` (`ApiaryWeb.ProviderLive.Index`).
   #
-  # `workflow_model` is the process of each workspace (`Apiary.Processes`), opt-in, and the
+  # `workflow_model` is the process of each workspace (`Apiary.Processes`), and the
   # documentation differs by it. The versions of a workspace's process are kept whether it
   # is on or off: a workspace is made with its first version, and the actions on the
   # process are of this feature.
   #
   # `registry` is the private image registry's tokens and each run's registry credential
-  # (`Apiary.Registry`), opt-in. The served documentation is the same with it on or off
-  # (`docs: false`): no guide describes it, and the docs of its modules are hidden.
+  # (`Apiary.Registry`), opt-in: `all` turns it on only where `QORY_REGISTRY` is set
+  # (`defaults/1`), as an instance without the registry's address does not boot with it.
+  # No feature needs it. The served documentation is the same with it on or off
+  # (`docs: false`): the Install guide lists it, and the docs of its modules are hidden.
   @core [
     observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
-    secrets: [needs: [:security], built: true, default: false],
-    path_rules: [needs: [:security], built: true, default: false, docs: false],
-    factory: [
-      needs: [:observability, :security, :secrets],
-      built: true,
-      default: false,
-      docs: true
-    ],
+    secrets: [needs: [:security], built: true],
+    path_rules: [needs: [:security], built: true, docs: false],
+    factory: [needs: [:observability, :security, :secrets], built: true, docs: true],
     registry: [needs: [:security], built: true, default: false, docs: false],
     workflow_model: [
       needs: [:observability, :security, :secrets, :factory],
       built: true,
-      default: false,
       docs: true
     ]
   ]
@@ -158,8 +155,9 @@ defmodule Apiary.Features do
 
   @doc """
   opt_in/0 is the features listed with `default: false`, in the order of `all/0`: on only
-  where the value of `QORY_FEATURES` lists them by name (`parse/1`), and never offered to
-  show or hide for an organisation (`built/0`).
+  where the value of `QORY_FEATURES` lists them by name, but `registry`, which `all` also
+  turns on where `QORY_REGISTRY` is set (`parse/2`), and never offered to show or hide for
+  an organisation (`built/0`).
   """
   @spec opt_in() :: [feature]
   def opt_in, do: registry().opt_in
@@ -263,7 +261,7 @@ defmodule Apiary.Features do
       twice -> raise ArgumentError, "a part is listed once, got twice: #{names(Enum.uniq(twice))}"
     end
 
-    # `all` leaves the opt-in features off, so only another opt-in feature may need one.
+    # `all` may leave the opt-in features off, so only another opt-in feature may need one.
     for {name, opts} <- features, name not in opt_in, need <- opts[:needs], need in opt_in do
       raise ArgumentError,
             "the feature #{name} needs #{need}, which is opt-in: so is a feature that needs one"
@@ -326,21 +324,26 @@ defmodule Apiary.Features do
   or `{:error, reason}`.
 
     * `nil`, an empty or a blank value, and `all`: every feature but the opt-in ones
-      (`opt_in/0`).
-    * `all-security`: those of `all` but the ones after `all-`, separated by commas.
+      (`opt_in/0`), and `registry` too where `QORY_REGISTRY` is set and not blank.
+    * `all-workflow_model`: those of `all` but the ones after `all-`, separated by commas.
     * `observability,security`: those features and no other; an opt-in feature is on only
       where a list names it.
 
   `all` may not be one of the features of a list. Every feature but `observability` needs
   `observability`, whichever form names them. `instance_mail`, a name the list once took,
   is accepted in either list and ignored.
-  """
-  @spec parse(String.t() | nil) :: {:ok, [feature]} | {:error, String.t()}
-  def parse(nil), do: {:ok, all() -- opt_in()}
 
-  def parse(value) when is_binary(value) do
-    # What `all` names: every feature but the opt-in ones.
-    all = all() -- opt_in()
+  Options: `registry:`, a value of `QORY_REGISTRY` to read in place of the instance's, for
+  a test.
+  """
+  @spec parse(String.t() | nil, keyword) :: {:ok, [feature]} | {:error, String.t()}
+  def parse(value, opts \\ [])
+
+  def parse(nil, opts), do: {:ok, defaults(opts)}
+
+  def parse(value, opts) when is_binary(value) do
+    # What `all` names.
+    all = defaults(opts)
 
     case String.trim(value) do
       "" ->
@@ -371,6 +374,20 @@ defmodule Apiary.Features do
     end
   end
 
+  # What `all` names: every feature but the opt-in ones, and `registry` where the
+  # registry's address, `QORY_REGISTRY`, is set and not blank, as `config/runtime.exs`
+  # keeps it (`:registry_setting`). A malformed address turns the feature on too, so
+  # `Apiary.Registry.boot!/0` stops the boot with its fix. `registry:` is a value to read
+  # in place of the instance's, for a test.
+  defp defaults(opts) do
+    setting =
+      Keyword.get_lazy(opts, :registry, fn -> Application.get_env(:apiary, :registry_setting) end)
+
+    registry? = String.trim(setting || "") != ""
+    opt_in = opt_in()
+    Enum.filter(all(), &(&1 not in opt_in or (&1 == :registry and registry?)))
+  end
+
   # The names of a list separated by commas. A list with none names the empty name, so that
   # `all-` alone is refused as naming nothing.
   defp terms(list) do
@@ -390,8 +407,7 @@ defmodule Apiary.Features do
 
       unknown ->
         # The message does not list the features: an instance shows nothing of a feature
-        # it does not have, its boot errors included. The Install guide lists them, but for
-        # one the documentation does not differ by (`docs: false`), which no guide names.
+        # it does not have, its boot errors included. The Install guide lists them.
         {:error,
          "unknown #{plural(unknown, "feature", "features")} #{names(unknown)}; " <>
            "the Install guide at /docs lists the features"}
