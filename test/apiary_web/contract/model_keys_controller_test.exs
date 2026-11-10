@@ -166,6 +166,13 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert [%State{status: "rejected", utilization: 100}] = rows()
     end
 
+    test "takes 66 entries, 6 keys of 11 windows", ctx do
+      entry = state(ctx, status: "allowed", cooldown_until: nil, resets_at: nil, utilization: nil)
+      conn = post_report(ctx, report(ctx, List.duplicate(entry, 66)))
+      assert conn.status == 200
+      assert [%State{window: "five_hour"}] = rows()
+    end
+
     test "leaves out a window outside the contract's list, and takes the rest", ctx do
       body =
         report(ctx, [
@@ -238,7 +245,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
                    resets_at: nil,
                    utilization: nil
                  ),
-                 65
+                 67
                )
              ), "keys"},
             {report(ctx, [Map.put(item, "observed_at", now_z(600))]), "keys.observed_at"},

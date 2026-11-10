@@ -6,7 +6,7 @@ defmodule Apiary.ModelKeys.Report do
 
   `parse/3` reads the body, as the contract's `model-keys-report.schema.json` has it:
   `version`, 1; `run_id`, the run id of the path; `time`, an RFC 3339 time in UTC to the
-  whole second, `2026-11-10T12:00:05Z`; and `keys`, at most 64, each item a key's state in
+  whole second, `2026-11-10T12:00:05Z`; and `keys`, at most 66, each item a key's state in
   one window (`credential`, `window`, `status`, `resets_at`, `utilization`,
   `cooldown_until`, `source` and `observed_at`), with `cooldown_until` when the status is
   `rejected` and without it otherwise. A member the schema does not define, a member
@@ -51,7 +51,8 @@ defmodule Apiary.ModelKeys.Report do
   @item_members @required_item ++ ~w(resets_at utilization cooldown_until)
   @credential ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
   @max_skew_seconds 300
-  @max_keys 64
+  # 6 keys of a run, 11 windows each (`Apiary.ModelKeys.State.windows/0`).
+  @max_keys 66
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
 
   @typedoc "A report as `parse/3` read it."
