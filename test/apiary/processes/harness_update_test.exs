@@ -982,7 +982,8 @@ defmodule Apiary.Processes.HarnessUpdateTest do
           set: [document: Map.put(trial.document, "machine", "browser")]
         )
 
-      assert %{files: [file]} = MachineTypes.key_change(MachineTypes.get("browser"))
+      assert %{files: [file], organisations: []} =
+               MachineTypes.key_change(MachineTypes.get("browser"))
 
       assert file == %{
                repository:
@@ -991,8 +992,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                  |> String.replace_suffix(".git", ""),
                module: "software-factory",
                path: @process,
-               commit: commit,
-               workspaces: [ctx.workspace.name]
+               commit: commit
              }
 
       assert :ok = Processes.rekey_machine(ctx.scope, "browser", "x")

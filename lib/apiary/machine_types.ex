@@ -34,8 +34,10 @@ defmodule Apiary.MachineTypes do
   in the queue on the key gets the key of after, and the new version where its version
   got one, so a pool claims it as before. Past versions, the runs that started or ended,
   and their dispatches keep the key of before. `key_change/1` counts what the change
-  updates, the runs that wait on the key among them, and lists the `process.yaml` files
-  that a person fixes.
+  updates, the runs that wait on the key among them, lists the Qory harness's
+  `process.yaml` files that the instance admin fixes, and counts the files that each
+  organisation fixes in its harness repositories, with no workspace, workflow or
+  repository of an organisation.
   """
   import Ecto.Query
 
@@ -61,9 +63,14 @@ defmodule Apiary.MachineTypes do
 
   @typedoc """
   A place that uses a type: a workspace's or a workspace type's process (`place`, its
-  name), and the workflow of the entry that runs on it, nil for the document's default.
+  name), the organisation of the workspace (`organisation_id`), nil for a workspace type,
+  and the workflow of the entry that runs on it, nil for the document's default.
   """
-  @type use :: %{place: String.t(), workflow: String.t() | nil}
+  @type use :: %{
+          place: String.t(),
+          organisation_id: Ecto.UUID.t() | nil,
+          workflow: String.t() | nil
+        }
 
   @doc "The key that means the instance's default type."
   @spec reserved() :: String.t()
@@ -379,8 +386,9 @@ defmodule Apiary.MachineTypes do
   defp picked(name) when is_binary(name) and name != @reserved, do: name
   defp picked(_name), do: nil
 
-  # Each process document that can start a run, with the name of its place: the
-  # workspaces' current and trial versions, and each workspace type's newest version.
+  # Each process document that can start a run, with its place: the workspaces' current
+  # and trial versions, by the workspace's name and organisation, and each workspace
+  # type's newest version, by the type's name and no organisation.
   defp documents do
     workspaces =
       Repo.all(
@@ -389,7 +397,7 @@ defmodule Apiary.MachineTypes do
           on: w.id == v.workspace_id,
           where: v.status in [:current, :trial] and is_nil(w.deletion_marked_at),
           order_by: [asc: w.name, asc: v.number],
-          select: {w.name, v.document}
+          select: {%{place: w.name, organisation_id: w.organisation_id}, v.document}
       )
 
     types =
@@ -402,7 +410,9 @@ defmodule Apiary.MachineTypes do
 
     workspaces ++
       for {type, name, document} <- types,
-          do: {name || Processes.type_text_defaults(type).name, document}
+          do:
+            {%{place: name || Processes.type_text_defaults(type).name, organisation_id: nil},
+             document}
   end
 
   # The uses of one document, `default` the key of the instance's default type, nil for
@@ -421,11 +431,11 @@ defmodule Apiary.MachineTypes do
             picked -> picked
           end
 
-        {name, %{place: place, workflow: entry["workflow"]}}
+        {name, Map.put(place, :workflow, entry["workflow"])}
       end
 
     if is_binary(document_type) and not Enum.any?(entries, &(elem(&1, 0) == document_type)),
-      do: [{document_type, %{place: place, workflow: nil}} | entries],
+      do: [{document_type, Map.put(place, :workflow, nil)} | entries],
       else: entries
   end
 
@@ -470,78 +480,107 @@ defmodule Apiary.MachineTypes do
   defp key_replaced(map, _from, _to), do: map
 
   @typedoc """
-  A `process.yaml` that uses a key: the repository's address without its scheme
-  (`repository`), the module the file is in (`module`), the file's path in the
-  repository (`path`), nil for a harness repository's file, the commit it was read at,
-  and the names of the workspaces whose process comes from it, none for the Qory
-  harness's file that only a workspace type's copy comes from.
+  A `process.yaml` of the Qory harness that uses a key: the repository's address
+  without its scheme (`repository`), the module the file is in (`module`), the file's
+  path in the repository (`path`), nil for a commit whose files are not kept, and the
+  commit it was read at.
   """
   @type file :: %{
           repository: String.t(),
           module: String.t(),
           path: String.t() | nil,
-          commit: String.t() | nil,
-          workspaces: [String.t()]
+          commit: String.t() | nil
         }
+
+  @typedoc """
+  The files of an organisation's harness repositories that use a key: the
+  organisation's name (`name`) and the number of files (`files`).
+  """
+  @type organisation_files :: %{name: String.t(), files: pos_integer}
 
   @doc """
   key_change/1 is what a change of the key of `type` updates and breaks: `workspaces`,
   the number of workspaces with a current or trial process that uses the key;
   `templates`, the number of workspace types whose newest process, an instance admin's
   save, uses it and is rewritten; `waiting`, the number of runs that wait in the queue
-  on it; and `files`, each `process.yaml` that a current or trial process that uses the
-  key was read from (`Apiary.Processes.harness_origin/1`: `git`, `module` and `commit`),
+  on it; `files`, the Qory harness's files that the instance admin fixes; and
+  `organisations`, by organisation name, the number of files in the organisation's
+  harness repositories that the organisation fixes.
+
+  The files are each `process.yaml` that a current or trial process that uses the key
+  was read from (`Apiary.Processes.harness_origin/1`: `git`, `module` and `commit`),
   where the version read from the file uses the key too, and the Qory harness's file at
-  the commit `main` was at when it was last read where a workspace type's copy of it uses
-  the key, by repository, module and commit.
+  the commit `main` was at when it was last read where a workspace type's copy of it
+  uses the key, one per repository, module and commit. A file of the Qory harness, read
+  from its address or with the `source` `qory`, is in `files`; any other file counts for
+  the organisation of each workspace whose process comes from it. Neither has a workspace's name, a workflow or the address of an
+  organisation's repository, which an instance admin does not see across organisations.
   """
   @spec key_change(MachineType.t()) :: %{
           workspaces: non_neg_integer,
           templates: non_neg_integer,
           waiting: non_neg_integer,
-          files: [file]
+          files: [file],
+          organisations: [organisation_files]
         }
   def key_change(%MachineType{key: key}) do
+    {qory, others} = key |> sources() |> Enum.split_with(&qory_source?/1)
+
     %{
       workspaces:
         key |> Processes.machine_key_versions() |> Enum.uniq_by(& &1.workspace_id) |> length(),
       templates: key |> TypeTemplates.machine_key_types() |> Enum.count(&is_nil(&1.release)),
       waiting: Repo.aggregate(waiting(key), :count),
-      files: files(key)
+      files: qory_files(qory),
+      organisations: organisation_files(others)
     }
   end
 
-  defp files(key) do
-    # A version's harness file is in the list only where the version with that file's
-    # `template` uses the key too: a key that a person's edit added later is in no harness
-    # file.
+  # Each harness file that a process using `key` was read from, with the template's
+  # `source` and the organisation of the workspace, nil for a workspace type's copy of the
+  # Qory harness. A version's harness file is in the list only where the version with that
+  # file's `template` uses the key too: a key that a person's edit added later is in no
+  # harness file.
+  defp sources(key) do
     versions =
       for %Version{} = version <- Processes.machine_key_versions(key),
           %{template: %{"git" => git, "module" => module} = template, document: document} <-
             [Processes.harness_origin(version)],
           is_binary(git) and is_binary(module),
           uses_key?(document, key),
-          do: {template, version.workspace}
+          do: {file_key(template), template["source"], version.workspace.organisation_id}
 
-    (versions ++ harness_copy(key))
-    |> Enum.group_by(fn {template, _name} ->
-      {template["git"], template["module"], template["commit"]}
-    end)
-    |> Enum.map(fn {{git, module, commit}, sources} ->
-      %{
-        repository: repository(git),
-        module: module,
-        path: file_path(git, commit),
-        commit: commit,
-        workspaces:
-          sources
-          |> Enum.map(&elem(&1, 1))
-          |> Enum.reject(&is_nil/1)
-          |> Enum.uniq_by(& &1.id)
-          |> Enum.map(& &1.name)
-      }
+    versions ++ harness_copy(key)
+  end
+
+  defp file_key(template), do: {template["git"], template["module"], template["commit"]}
+
+  # A file of the Qory harness: read from its address, or saved as the Qory harness's
+  # (`source` "qory") at an address the instance had before.
+  defp qory_source?({{git, _module, _commit}, source, _organisation_id}),
+    do: source == "qory" or git == Apiary.Harnesses.Qory.git()
+
+  defp qory_files(sources) do
+    sources
+    |> Enum.map(&elem(&1, 0))
+    |> Enum.uniq()
+    |> Enum.map(fn {git, module, commit} ->
+      %{repository: repository(git), module: module, path: file_path(commit), commit: commit}
     end)
     |> Enum.sort_by(&{&1.repository, &1.module, &1.commit})
+  end
+
+  defp organisation_files(sources) do
+    counts =
+      sources
+      |> Enum.map(fn {file, _source, organisation_id} -> {file, organisation_id} end)
+      |> Enum.uniq()
+      |> Enum.frequencies_by(&elem(&1, 1))
+      |> Map.delete(nil)
+
+    Repo.all(from o in Organisation, where: o.id in ^Map.keys(counts), select: {o.id, o.name})
+    |> Enum.map(fn {id, name} -> %{name: name, files: counts[id]} end)
+    |> Enum.sort_by(&{&1.name, &1.files})
   end
 
   # The Qory harness's file at the commit `main` was at when it was last read, where the
@@ -551,19 +590,15 @@ defmodule Apiary.MachineTypes do
     if Enum.any?(TypeTemplates.machine_key_types(key), &(&1.release != nil)) do
       git = Apiary.Harnesses.Qory.git()
       module = Apiary.Harnesses.Qory.template_module()
-      [{%{"git" => git, "module" => module, "commit" => Apiary.Harnesses.Qory.current()}, nil}]
+      [{{git, module, Apiary.Harnesses.Qory.current()}, "qory", nil}]
     else
       []
     end
   end
 
-  # The file's path in its repository, for the Qory harness as its files kept at `commit`
-  # resolve it (`Apiary.Harnesses.Qory.template_file/1`); nil for a harness repository,
-  # whose `qory.yaml` may place its modules in a folder that only a read of the
-  # repository shows (`Apiary.Harnesses.Reader.module_file/3`).
-  defp file_path(git, commit) do
-    if git == Apiary.Harnesses.Qory.git(), do: Apiary.Harnesses.Qory.template_file(commit)
-  end
+  # The path of the Qory harness's file in its repository, as its files kept at `commit`
+  # resolve it (`Apiary.Harnesses.Qory.template_file/1`), nil for a commit with none kept.
+  defp file_path(commit), do: Apiary.Harnesses.Qory.template_file(commit)
 
   # A git address as people write it: no scheme, no trailing slash, no `.git`.
   defp repository(git) do

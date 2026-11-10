@@ -273,8 +273,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       # The Qory harness's file, by the path its kept files resolve.
       file =
         "#{repository(Apiary.Harnesses.Qory.git())} modules/software-factory/process.yaml " <>
-          "at #{String.slice(Apiary.QoryHarnessFixture.commit(), 0, 7)} · " <>
-          "workspace #{scope.workspace.name}"
+          "at #{String.slice(Apiary.QoryHarnessFixture.commit(), 0, 7)}"
 
       {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
 
@@ -284,7 +283,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
 
       assert spaced(view, "#machine-type-key-warning") ==
-               "Changing the key breaks every file that uses browser. Qory Apiary updates 1 workspace, 0 templates and 0 waiting runs. Fix these files yourself: " <>
+               "Changing the key breaks every file that uses browser. Qory Apiary updates 1 workspace, 0 workspace types, 0 waiting runs. Fix these files yourself: " <>
                  file <> " Change key Saving Cancel"
 
       refute has_element?(view, "#machine-type-form button[type=submit]")
@@ -330,7 +329,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
 
       assert text(view, "#machine-type-key-warning") ==
-               "Changing the key breaks every file that uses browser. Qory Apiary updates 0 workspaces, 0 templates and 0 waiting runs. Change key Saving Cancel"
+               "Changing the key breaks every file that uses browser. Qory Apiary updates 0 workspaces, 0 workspace types, 0 waiting runs. Change key Saving Cancel"
 
       # A change of the key in the form takes the warning away.
       view |> form("#machine-type-form", type: %{key: "ui-test"}) |> render_change()
@@ -417,10 +416,197 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
         view |> element("#machine-type-delete") |> render_click()
 
         assert text(view, "#machine-type-refused") ==
-                 "Large cannot be deleted: these workflows use it: #{scope.workspace.name}: explore-a-ticket."
+                 "Large cannot be deleted: 1 workflow in 1 organisation uses it."
 
         assert MachineTypes.get("large")
       end
+    end
+
+    @tag needs: :workflow_model
+    test "a key change across two organisations shows counts and files, no names or addresses",
+         %{conn: conn, scope: scope} do
+      # The type Browser tests (`browser`) is seeded. Acme's workspace runs a copy of the
+      # Qory harness's file, and a trial from Acme's harness; Northwind's workspace runs
+      # two files of Northwind's harness, and a run waits on the key.
+      %{scope: other} = Apiary.OrganisationsFixtures.sign_up_fixture()
+      named!(scope, "Acme", "Checkout")
+      named!(other, "Northwind", "Storefront")
+
+      qory = %{
+        "source" => "qory",
+        "git" => Apiary.Harnesses.Qory.git(),
+        "commit" => Apiary.QoryHarnessFixture.commit(),
+        "module" => "software-factory"
+      }
+
+      document = harness_version!(scope, :current, qory)
+      harness_version!(scope, :trial, harness("acme", "web"))
+      harness_version!(other, :current, harness("northwind", "web"))
+      harness_version!(other, :trial, harness("northwind", "api"))
+
+      newest = Apiary.Processes.TypeTemplates.newest("qory.software")
+      typed = with_machine(newest.document, "browser")
+      {:ok, _typed} = Apiary.Processes.TypeTemplates.save(scope, "qory.software", typed)
+
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, run} = Apiary.Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
+
+      Apiary.Repo.update_all(from(r in Apiary.Dispatches.DispatchRun, where: r.id == ^run.id),
+        set: [machine_type: "browser", machine_spec: spec(), machine_type_was_default: false]
+      )
+
+      file =
+        "#{repository(Apiary.Harnesses.Qory.git())} modules/software-factory/process.yaml " <>
+          "at #{String.slice(Apiary.QoryHarnessFixture.commit(), 0, 7)}"
+
+      organisations =
+        "Organisations fix the files in their harnesses: " <>
+          "1 file in Acme's harness 2 files in Northwind's harness"
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+
+      warning = spaced(view, "#machine-type-key-warning")
+
+      assert warning ==
+               "Changing the key breaks every file that uses browser. Qory Apiary updates 2 workspaces, 1 workspace type, 1 waiting run. Fix these files yourself: " <>
+                 file <> " " <> organisations <> " Change key Saving Cancel"
+
+      workflow = get_in(document, ["stages", Access.at(0), "sequence", Access.at(0), "workflow"])
+
+      for hidden <- ["Checkout", "Storefront", workflow, "git.example.com", "acme/", "northwind/"],
+          do: refute(warning =~ hidden, hidden)
+
+      view |> element("#machine-type-change-key") |> render_click()
+      assert_patch(view, ~p"/instance/machine-types")
+
+      saved = spaced(view, "#machine-type-key-saved")
+
+      assert saved ==
+               "Browser tests saved. Its key is now ui-tests. Fix the file that still uses browser. " <>
+                 file <> " " <> organisations
+
+      for hidden <- ["Checkout", "Storefront", workflow, "git.example.com", "acme/", "northwind/"],
+          do: refute(saved =~ hidden, hidden)
+    end
+
+    test "a key change that only organisations' files use, and the message after it", %{
+      conn: conn,
+      scope: scope
+    } do
+      # The type Browser tests (`browser`) is seeded.
+      named!(scope, "Acme", "Checkout")
+      harness_version!(scope, :current, harness("acme", "web"))
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+
+      assert spaced(view, "#machine-type-key-warning") ==
+               "Changing the key breaks every file that uses browser. Qory Apiary updates 1 workspace, 0 workspace types, 0 waiting runs. " <>
+                 "Organisations fix the files in their harnesses: 1 file in Acme's harness Change key Saving Cancel"
+
+      view |> element("#machine-type-change-key") |> render_click()
+      assert_patch(view, ~p"/instance/machine-types")
+
+      assert spaced(view, "#machine-type-key-saved") ==
+               "Browser tests saved. Its key is now ui-tests. " <>
+                 "Organisations fix the files in their harnesses: 1 file in Acme's harness"
+    end
+
+    test "keeps a type that a workspace has as its default machine type", %{
+      conn: conn,
+      scope: scope
+    } do
+      machine_type_fixture(key: "large")
+      default_machine!(scope, "large")
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/large/delete")
+      view |> element("#machine-type-delete") |> render_click()
+
+      assert text(view, "#machine-type-refused") ==
+               "Large cannot be deleted: 1 workspace in 1 organisation has it as its default machine type."
+    end
+
+    @tag needs: :workflow_model
+    test "keeps a type that workflows, a workspace's default and a workspace type use", %{
+      conn: conn,
+      scope: scope
+    } do
+      machine_type_fixture(key: "large")
+      %{scope: other} = Apiary.OrganisationsFixtures.sign_up_fixture()
+      version = Processes.current(scope.workspace)
+
+      {1, _rows} =
+        Apiary.Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [document: with_machine(version.document, "large")]
+        )
+
+      default_machine!(other, "large")
+      newest = Apiary.Processes.TypeTemplates.newest("qory.software")
+      typed = with_machine(newest.document, "large")
+      {:ok, _typed} = Apiary.Processes.TypeTemplates.save(scope, "qory.software", typed)
+      type = Apiary.Processes.type_text_defaults("qory.software").name
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/large/delete")
+      view |> element("#machine-type-delete") |> render_click()
+
+      assert text(view, "#machine-type-refused") ==
+               "Large cannot be deleted: 1 workflow in 1 organisation uses it, " <>
+                 "1 workspace in 1 organisation has it as its default machine type, " <>
+                 "and the workspace type #{type} uses it."
+    end
+
+    @tag needs: :workflow_model
+    test "keeps a type that only a workspace type uses", %{conn: conn, scope: scope} do
+      machine_type_fixture(key: "large")
+      newest = Apiary.Processes.TypeTemplates.newest("qory.software")
+      typed = with_machine(newest.document, "large")
+      {:ok, _typed} = Apiary.Processes.TypeTemplates.save(scope, "qory.software", typed)
+      type = Apiary.Processes.type_text_defaults("qory.software").name
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/large/delete")
+      view |> element("#machine-type-delete") |> render_click()
+
+      assert text(view, "#machine-type-refused") ==
+               "Large cannot be deleted: the workspace type #{type} uses it."
+    end
+
+    @tag needs: :workflow_model
+    test "keeps a type that workflows in two organisations and a workspace type use", %{
+      conn: conn,
+      scope: scope
+    } do
+      machine_type_fixture(key: "large")
+      %{scope: other} = Apiary.OrganisationsFixtures.sign_up_fixture()
+      named!(scope, "Acme", "Checkout")
+      named!(other, "Northwind", "Storefront")
+
+      for workspace_scope <- [scope, other] do
+        version = Processes.current(workspace_scope.workspace)
+
+        {1, _rows} =
+          Apiary.Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+            set: [document: with_machine(version.document, "large")]
+          )
+      end
+
+      newest = Apiary.Processes.TypeTemplates.newest("qory.software")
+      typed = with_machine(newest.document, "large")
+      {:ok, _typed} = Apiary.Processes.TypeTemplates.save(scope, "qory.software", typed)
+      type = Apiary.Processes.type_text_defaults("qory.software").name
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/large/delete")
+      view |> element("#machine-type-delete") |> render_click()
+
+      refused = text(view, "#machine-type-refused")
+
+      assert refused ==
+               "Large cannot be deleted: 2 workflows in 2 organisations use it, and the workspace type #{type} uses it."
+
+      for hidden <- ["Checkout", "Storefront", "Acme", "Northwind"],
+          do: refute(refused =~ hidden, hidden)
+
+      assert MachineTypes.get("large")
     end
 
     test "asks for a recent sign-in before a change", %{conn: conn} do
@@ -438,6 +624,90 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
   end
 
   defp signed(scope), do: put_in(scope.user.authenticated_at, DateTime.utc_now())
+
+  # The organisation and the workspace of `scope` renamed, so that a test can look for the
+  # names in a page.
+  defp named!(scope, organisation, workspace) do
+    {1, _rows} =
+      Apiary.Repo.update_all(
+        from(o in Apiary.Organisations.Organisation, where: o.id == ^scope.organisation.id),
+        set: [name: organisation]
+      )
+
+    {1, _rows} =
+      Apiary.Repo.update_all(
+        from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+        set: [name: workspace]
+      )
+
+    :ok
+  end
+
+  # The template of a version read from the harness repository of `owner` at `module`.
+  defp harness(owner, module),
+    do: %{
+      "source" => "repository",
+      "git" => "https://git.example.com/#{owner}/factory-harness.git",
+      "commit" => "3c9e1a7" <> String.duplicate("0", 33),
+      "module" => module
+    }
+
+  # The workspace's current version with `key` as its default and every workflow on the
+  # type `standard`: the document alone uses `key`.
+  defp default_machine!(scope, key) do
+    version = Processes.current(scope.workspace)
+
+    stages =
+      Enum.map(version.document["stages"], fn stage ->
+        Map.update(stage, "sequence", [], fn sequence ->
+          Enum.map(sequence, &Map.put(&1, "machine", "standard"))
+        end)
+      end)
+
+    document = %{version.document | "stages" => stages} |> Map.put("machine", key)
+
+    {1, _rows} =
+      Apiary.Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+        set: [document: document]
+      )
+
+    :ok
+  end
+
+  defp with_machine(document, key),
+    do: put_in(document, ["stages", Access.at(0), "sequence", Access.at(0), "machine"], key)
+
+  # The workspace's current version as read from `template`, with the first workflow on
+  # the type `browser`, or a new trial as read from `template`, with `browser` as its
+  # default; its document.
+  defp harness_version!(scope, :current, template) do
+    version = Processes.current(scope.workspace)
+    document = with_machine(version.document, "browser")
+
+    {1, _rows} =
+      Apiary.Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+        set: [document: document, template: template]
+      )
+
+    document
+  end
+
+  defp harness_version!(scope, :trial, template) do
+    document =
+      scope.workspace
+      |> Processes.current()
+      |> Map.fetch!(:document)
+      |> Map.put("machine", "browser")
+
+    {:ok, trial} = Processes.save(signed(scope), scope.workspace, document, trial: true)
+
+    {1, _rows} =
+      Apiary.Repo.update_all(from(v in Processes.Version, where: v.id == ^trial.id),
+        set: [template: template]
+      )
+
+    document
+  end
 
   describe "for anyone else" do
     setup :register_and_log_in_user

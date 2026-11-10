@@ -14,12 +14,17 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
   and whether it is the default; Edit opens `…/:key/edit`, the same form. A save that
   changes the key shows a warning first, under the form: the key change breaks every file
   that uses the key, with the counts of the workspaces, workspace types and waiting runs
-  that use it, and the `process.yaml` files a person fixes
+  that use it, the Qory harness's `process.yaml` files that the instance admin fixes, and
+  the number of files each organisation fixes in its harness
   (`Apiary.MachineTypes.key_change/1`), and Change key, which saves, and Cancel. After
   Change key, the list shows a message with the key it saved and those files, which stays
-  until it is dismissed. A save that no pool fits is refused under vCPUs; a type that a
-  workflow uses, or the default, is kept, with a line under the table with the workflows
-  or the reason. A save needs a recent sign-in, as Instance settings › Configuration does.
+  until it is dismissed. The warning and the message show no workspace name, workflow or
+  repository of an organisation. A save that no pool fits is refused under vCPUs; a type
+  that a workflow uses, or the default, is kept, with a line under the table with the
+  reason: the number of workflows and organisations that use the type, the number of
+  workspaces and organisations whose process has it as its default, and the names of the
+  workspace types that use it. A save needs a recent sign-in, as Instance settings ›
+  Configuration does.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :factory
@@ -262,10 +267,12 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
   # dismissed, in place of the toast, which goes after a few seconds.
   defp saved(socket, _params, {:ok, type}, %{from: from, to: to}) do
     case socket.assigns.key_warning do
-      %{files: [_file | _rest] = files} ->
+      %{files: files, organisations: organisations} when files != [] or organisations != [] ->
+        saved = %{name: type.name, from: from, to: to, files: files, organisations: organisations}
+
         {:noreply,
          socket
-         |> assign(key_saved: %{name: type.name, from: from, to: to, files: files})
+         |> assign(key_saved: saved)
          |> load()
          |> push_patch(to: @index)}
 
@@ -685,8 +692,9 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
 
   attr :warning, :map, required: true
 
-  # The warning before a key change: what Qory Apiary updates, and the files a person
-  # fixes, with Change key and Cancel.
+  # The warning before a key change: what Qory Apiary updates, the files the instance
+  # admin fixes, and the number of files each organisation fixes, with Change key and
+  # Cancel.
   defp key_warning(assigns) do
     ~H"""
     <div
@@ -707,6 +715,11 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
           {updates_line(@warning)}
         </p>
         <.files :if={@warning.files != []} files={@warning.files} id="machine-type-key-files" />
+        <.organisations
+          :if={@warning.organisations != []}
+          organisations={@warning.organisations}
+          id="machine-type-key-organisations"
+        />
         <div class="mt-3 flex gap-2">
           <.button
             id="machine-type-change-key"
@@ -741,15 +754,24 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
         <div class="min-w-0 break-words">
           <p class="font-medium">{gettext("%{name} saved.", name: @saved.name)}</p>
           <p class="text-muted">
-            {ngettext(
-              "Its key is now %{key}. Fix the file that still uses %{old}.",
-              "Its key is now %{key}. Fix the %{count} files that still use %{old}.",
-              length(@saved.files),
-              key: @saved.to,
-              old: @saved.from
-            )}
+            <%= if @saved.files != [] do %>
+              {ngettext(
+                "Its key is now %{key}. Fix the file that still uses %{old}.",
+                "Its key is now %{key}. Fix the %{count} files that still use %{old}.",
+                length(@saved.files),
+                key: @saved.to,
+                old: @saved.from
+              )}
+            <% else %>
+              {gettext("Its key is now %{key}.", key: @saved.to)}
+            <% end %>
           </p>
-          <.files files={@saved.files} id="machine-type-key-saved-files" />
+          <.files :if={@saved.files != []} files={@saved.files} id="machine-type-key-saved-files" />
+          <.organisations
+            :if={@saved.organisations != []}
+            organisations={@saved.organisations}
+            id="machine-type-key-saved-organisations"
+          />
         </div>
         <button
           type="button"
@@ -767,9 +789,8 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
   attr :files, :list, required: true
   attr :id, :string, required: true
 
-  # One line per file: the repository, then its path, else its module for a harness
-  # repository's file, the commit it was read at and the workspaces whose process comes
-  # from it, where there are any.
+  # One line per file of the Qory harness: the repository, then its path, else its module
+  # for a commit whose files are not kept, and the commit it was read at.
   defp files(assigns) do
     ~H"""
     <ul id={@id} class="mt-2 grid gap-1 text-[12.5px]/[18px]">
@@ -780,14 +801,33 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
           <%= if file.commit do %>
             {gettext("at")} <code>{String.slice(file.commit, 0, 7)}</code>
           <% end %>
-          <%= if file.workspaces != [] do %>
-            · {ngettext("workspace %{names}", "workspaces %{names}", length(file.workspaces),
-              names: Enum.join(file.workspaces, ", ")
-            )}
-          <% end %>
         </span>
       </li>
     </ul>
+    """
+  end
+
+  attr :organisations, :list, required: true
+  attr :id, :string, required: true
+
+  # The files each organisation fixes, one line per organisation with the number of files
+  # in its harness: no repository, workspace or workflow of an organisation.
+  defp organisations(assigns) do
+    ~H"""
+    <div id={@id} class="mt-2 text-[12.5px]/[18px]">
+      <p>{gettext("Organisations fix the files in their harnesses:")}</p>
+      <ul class="mt-1 grid gap-1">
+        <li :for={organisation <- @organisations} class="[overflow-wrap:anywhere]">
+          {ngettext(
+            "%{count} file in %{organisation}'s harness",
+            "%{count} files in %{organisation}'s harness",
+            organisation.files,
+            count: Format.number(organisation.files),
+            organisation: organisation.name
+          )}
+        </li>
+      </ul>
+    </div>
     """
   end
 
@@ -801,8 +841,8 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
         ngettext("%{count} workspace", "%{count} workspaces", workspaces,
           count: Format.number(workspaces)
         ),
-      templates:
-        ngettext("%{count} template", "%{count} templates", templates,
+      types:
+        ngettext("%{count} workspace type", "%{count} workspace types", templates,
           count: Format.number(templates)
         ),
       waiting:
@@ -812,10 +852,10 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
     ]
 
     if warning.files == [],
-      do: gettext("Qory Apiary updates %{workspaces}, %{templates} and %{waiting}.", counts),
+      do: gettext("Qory Apiary updates %{workspaces}, %{types}, %{waiting}.", counts),
       else:
         gettext(
-          "Qory Apiary updates %{workspaces}, %{templates} and %{waiting}. Fix these files yourself:",
+          "Qory Apiary updates %{workspaces}, %{types}, %{waiting}. Fix these files yourself:",
           counts
         )
   end
@@ -868,16 +908,87 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
         name: name
       )
 
-  defp refused_line({{:in_use, uses}, name}),
-    do:
-      gettext("%{name} cannot be deleted: these workflows use it: %{workflows}.",
-        name: name,
-        workflows: Enum.map_join(uses, ", ", &use_line/1)
+  # The uses of a type kept for them: the number of workflows in organisations'
+  # workspaces, the number of those workspaces whose process has the type as its default,
+  # each with the number of their organisations, and the names of the instance's
+  # workspace types, with no workspace name or workflow of an organisation.
+  defp refused_line({{:in_use, uses}, name}) do
+    {workspaces, types} = Enum.split_with(uses, &is_binary(&1.organisation_id))
+    {defaults, workflows} = Enum.split_with(workspaces, &is_nil(&1.workflow))
+
+    clauses =
+      Enum.reject(
+        [workflows_clause(workflows), defaults_clause(defaults), types_clause(types)],
+        &is_nil/1
       )
 
-  defp use_line(%{place: place, workflow: nil}),
-    do: gettext("%{place}: %{workflow}", place: place, workflow: gettext("Default machine type"))
+    case clauses do
+      [uses] ->
+        gettext("%{name} cannot be deleted: %{uses}.", name: name, uses: uses)
 
-  defp use_line(%{place: place, workflow: workflow}),
-    do: gettext("%{place}: %{workflow}", place: place, workflow: workflow)
+      [first, second] ->
+        gettext("%{name} cannot be deleted: %{first}, and %{second}.",
+          name: name,
+          first: first,
+          second: second
+        )
+
+      [first, second, third] ->
+        gettext("%{name} cannot be deleted: %{first}, %{second}, and %{third}.",
+          name: name,
+          first: first,
+          second: second,
+          third: third
+        )
+    end
+  end
+
+  defp workflows_clause([]), do: nil
+
+  defp workflows_clause(uses) do
+    ngettext(
+      "%{count} workflow in %{organisations} uses it",
+      "%{count} workflows in %{organisations} use it",
+      length(uses),
+      count: Format.number(length(uses)),
+      organisations: organisations_words(uses)
+    )
+  end
+
+  # The workspaces whose process has the type as its default while every workflow picks
+  # another type: a use with no workflow.
+  defp defaults_clause([]), do: nil
+
+  defp defaults_clause(uses) do
+    workspaces = uses |> Enum.uniq_by(&{&1.organisation_id, &1.place}) |> length()
+
+    ngettext(
+      "%{count} workspace in %{organisations} has it as its default machine type",
+      "%{count} workspaces in %{organisations} have it as their default machine type",
+      workspaces,
+      count: Format.number(workspaces),
+      organisations: organisations_words(uses)
+    )
+  end
+
+  defp organisations_words(uses) do
+    count = uses |> Enum.uniq_by(& &1.organisation_id) |> length()
+
+    ngettext("%{count} organisation", "%{count} organisations", count,
+      count: Format.number(count)
+    )
+  end
+
+  defp types_clause([]), do: nil
+
+  defp types_clause(uses) do
+    names = uses |> Enum.map(& &1.place) |> Enum.uniq() |> Enum.sort()
+
+    ngettext(
+      "the workspace type %{names} uses it",
+      "the workspace types %{names} use it",
+      length(names),
+      names: Enum.join(names, ", ")
+    )
+  end
 end
