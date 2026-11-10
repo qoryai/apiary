@@ -1021,6 +1021,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: workflow_model -->
+- `QORY_FEATURES` unset, empty, `all` or `all-…` takes on every feature: `secrets`,
+  `factory`, `workflow_model` and the Paths field of a policy rule's form are on by
+  default, and the private image registry's feature, `registry`, is on where
+  `QORY_REGISTRY` is set. Before, those values took on `observability` and `security`
+  alone. An instance whose `QORY_FEATURES` is a list keeps the features the list names.
+  To keep an instance with an unset, empty or `all` value as it was, set
+  `QORY_FEATURES=observability,security` before you upgrade. A value that leaves out
+  `security`, such as `all-security`, stops the boot, because the features on by default
+  need it: name the features you want in a list instead.
+<!-- /feature -->
 - When a run escalates, the work item page shows the block “What the run needs from
   you”, with one numbered item for each point: the run's sentence on what is wrong or
   missing, then what you can do, “Answer question 4.”, with “question 4” linked to the
