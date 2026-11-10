@@ -1355,6 +1355,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert count(html, "#{t} details.q-xp-more") == 1
       assert attr(html, "#{t} details.q-xp-more", "open") == []
+      # A server update leaves the fold open or closed as the reader left it.
+      assert [mounted] = attr(html, "#{t} details.q-xp-more", "phx-mounted")
+      assert [["ignore_attrs", %{"attrs" => ["open"]}]] = Jason.decode!(mounted)
       # The fold's summary toggles it: Read more opens it, Read less closes it again.
       assert text(html, "#{t} details.q-xp-more > summary > .q-xp-read-more") == "Read more"
       assert text(html, "#{t} details.q-xp-more > summary > .q-xp-read-less") == "Read less"
