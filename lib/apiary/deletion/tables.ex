@@ -62,7 +62,9 @@ defmodule Apiary.Deletion.Tables do
   # under, and a work item or a run of another workspace that still links to one has that
   # link set to null (`ON DELETE SET NULL`); a connection's workspaces before the
   # connection, and the connections before the releases, the service definitions and the
-  # secrets they name; everything of a workspace before the workspace.
+  # secrets they name; a model key's states and settings before the secret's value they
+  # name, which a workspace's purge deletes with them (`ON DELETE CASCADE`); everything
+  # of a workspace before the workspace.
   #
   # A run of the queue names its work item by the organisation, not the workspace: it
   # stays in the workspace it was queued in when its work item moves to another. So a
@@ -109,6 +111,8 @@ defmodule Apiary.Deletion.Tables do
     {"service_definitions", :organisation},
     {"integration_releases", :organisation},
     {"variables", :workspace},
+    {"model_key_states", :organisation},
+    {"model_key_settings", :organisation},
     {"secret_values", :workspace},
     {"secrets", :workspace},
     {"workspace_data_keys", :workspace},
