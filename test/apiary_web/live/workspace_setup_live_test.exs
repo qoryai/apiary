@@ -808,6 +808,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Work sources."
 
+      assert words(lv, "#set-up-context-h") == "About work sources"
+
       assert words(lv, "#set-up-context #set-up-what") ==
                "Bring tickets in from a system such as an issue tracker. Owners and admins " <>
                  "of #{organisation.name} connect it once for the organisation."
@@ -835,6 +837,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert href(lv, "#set-up-back") == step_path
       refute has_element?(lv, "#set-up-skip")
       refute has_element?(lv, "#set-up-continue")
+
+      assert words(lv, "#set-up-context-h") == "About work sources"
 
       assert words(lv, "#set-up-context #set-up-connect-help") ==
                "Connect opens the system in this tab. After its steps, it sends you back here."
@@ -1148,6 +1152,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-adapters #set-up-adapter-#{forge.public_id}", forge.name)
       refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
 
+      assert words(lv, "#set-up-context-h") == "About destinations"
+
       assert words(lv, "#set-up-context #set-up-what") ==
                "Runs change repositories in a system such as a forge. Owners and admins " <>
                  "of #{organisation.name} connect it once for the organisation."
@@ -1168,6 +1174,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, ~s{#breadcrumb a[href="#{step_path}"]}, "Destinations")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Connect a destination")
       assert href(lv, "#set-up-back") == step_path
+      assert words(lv, "#set-up-context-h") == "About destinations"
     end
   end
 
@@ -1464,19 +1471,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         "modules:\n  - name: core\n    source: {path: modules/core}\n"
     }
 
-    # The paragraphs of About this step, and the texts the step no longer shows.
+    # The paragraphs of About harnesses, with the workflow model on, as in every run of
+    # these tests (`needs: :factory`), and the texts the step no longer shows.
     @about [
       "A harness is the skills and workflows the agent runs with.",
       "A repository whose harness.yaml or qory.yaml at its root sets a harness runs with " <>
         "that file. Every other repository runs with the stack set for it under " <>
         "Repositories, else with the harness you choose here, else with the Qory harness.",
-      "The Qory harness is the harness Qory publishes. Always the latest version uses the " <>
-        "newest version this Qory Apiary ships, and moves on when Qory Apiary is upgraded.",
+      "The Qory harness is the harness in the repository at https://github.com/qoryai/harness.",
       "A harness repository exports stacks in the qory.yaml or harness.yaml at its root. " <>
         "Qory Apiary reads that file in the repository you pick, and offers only the stacks " <>
         "it exports.",
-      "Always the latest on a branch: each run uses the branch's newest commit when it " <>
-        "starts. A fixed version uses that tag or commit."
+      "A run uses the commit its process version came from. Keep the process at the " <>
+        "latest moves that commit at each new commit on the branch. A fixed version uses " <>
+        "that tag or commit."
     ]
     @removed [
       "fe3b3ab",
@@ -1571,7 +1579,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       |> LazyHTML.attribute("id")
     end
 
-    test "after Model: the two choices, the Qory harness at Always the latest version; Continue saves it",
+    test "after Model: the two choices, the Qory harness at Always the latest on main; Continue saves it",
          ctx do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       workspace = ctx.scope.workspace
@@ -1594,29 +1602,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert words(lv, "#harness-choice-repository") == "A harness repository"
 
-      # Version: the newest, chosen; a fixed version waits for the first release.
+      # Version: Always the latest on main, chosen, or A fixed version, as a harness
+      # repository has them.
       assert words(lv, "#harness-qory-version legend") == "Version"
-      assert has_element?(lv, "#harness-qory-version-latest[checked]")
+      assert has_element?(lv, "#harness-qory-version-branch[checked]")
+      assert has_element?(lv, ~s(#harness-qory-branch[value="main"]))
 
-      assert words(lv, ~s(label[for="harness-qory-version-latest"])) ==
-               "Always the latest version"
+      assert words(lv, ~s(label[for="harness-qory-version-branch"])) ==
+               "Always the latest on"
 
-      assert has_element?(lv, "#harness-qory-version-named[disabled]")
-      refute has_element?(lv, "#harness-qory-version-named[checked]")
-      assert words(lv, ~s(label[for="harness-qory-version-named"])) == "A fixed version"
-
-      assert words(lv, "#harness-qory-version-none") ==
-               "Named versions come with the first release of the Qory harness."
+      refute has_element?(lv, "#harness-qory-version-fixed[disabled]")
+      refute has_element?(lv, "#harness-qory-version-fixed[checked]")
+      assert words(lv, ~s(label[for="harness-qory-version-fixed"])) == "A fixed version"
+      assert has_element?(lv, ~s(#harness-qory-fixed[placeholder="tag or commit"]))
+      refute has_element?(lv, "#harness-qory-version-none")
 
       # A workspace with no destination lists none.
       refute has_element?(lv, "#harness-targets")
       refute has_element?(lv, "#harness-repository")
 
       assert words(lv, "#set-up-later") ==
-               "You can change this later in Workspace settings › Workflow."
+               "You can change this later in Workspace settings › Harness."
 
-      # About this step has the five paragraphs, and no text the step dropped shows.
-      assert words(lv, "#set-up-context-h") == "About this step"
+      # About harnesses has the five paragraphs, and no text the step dropped shows.
+      assert words(lv, "#set-up-context-h") == "About harnesses"
 
       assert for(id <- ids(lv, "#set-up-context p"), do: words(lv, "##{id}")) == @about
 
@@ -1624,15 +1633,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       for text <- @removed, do: refute(html =~ text, text)
 
       lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
       assert_patch(lv, ~p"/#{ctx.organisation}/#{workspace}/set-up/machines")
 
-      assert %Apiary.Stacks.Stack{choice: :qory, version_kind: :latest} =
+      assert %Apiary.Stacks.Stack{choice: :qory, version_kind: :branch, version_name: "main"} =
                Apiary.Stacks.choice(workspace)
 
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
       assert {"Harness", :current} in set_up_group(lv)
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
-      assert has_element?(lv, "#harness-qory-version-latest[checked]")
+      assert has_element?(lv, "#harness-qory-version-branch[checked]")
       row = Apiary.Stacks.choice(workspace)
 
       # The saved choice, sent again, goes on with no save.
@@ -1647,13 +1657,32 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
-    test "a fixed version of the Qory harness the release does not ship saves nothing", ctx do
+    test "a fixed version of the Qory harness its repository does not have saves nothing, with the words of the missing ref",
+         ctx do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
 
       render_click(lv, "save_harness", %{
-        "harness" => %{"choice" => "qory", "qory_version" => "named", "qory_name" => "v1"}
+        "harness" => %{"choice" => "qory", "qory_version" => "fixed", "qory_fixed" => "v1"}
       })
 
+      render_async(lv, 2_000)
+
+      assert words(lv, "#set-up-harness-refusal") ==
+               "Set a branch, tag or commit that exists. " <>
+                 "https://github.com/qoryai/harness has no tag or commit v1."
+
+      assert has_element?(lv, ~s(#set-up-harness-refusal[data-reason="qory_ref_missing"]))
+      assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
+    end
+
+    test "a fixed version of the Qory harness with no name saves nothing", ctx do
+      {:ok, lv, _html} = live(ctx.conn, ctx.path)
+
+      render_click(lv, "save_harness", %{
+        "harness" => %{"choice" => "qory", "qory_version" => "fixed", "qory_fixed" => " "}
+      })
+
+      render_async(lv, 2_000)
       assert Apiary.Stacks.choice(ctx.scope.workspace) == nil
     end
 
@@ -1739,8 +1768,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#harness-choice-qory") == "Qory harness"
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
       refute has_element?(lv, "#harness-choice-repository-radio[checked]")
-      assert has_element?(lv, "#harness-qory-version-latest[checked]")
-      assert has_element?(lv, "#harness-qory-version-named[disabled]")
+      assert has_element?(lv, "#harness-qory-version-branch[checked]")
 
       assert ["harness-choice-qory", "harness-choice-repository"] ==
                ids(lv, "#harness-choice label")
@@ -1749,12 +1777,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-harness-everywhere")
 
       lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
       assert_patch(lv, ~p"/#{ctx.organisation}/#{second}/set-up/machines")
       assert Apiary.Stacks.choice(second) == nil
       assert %{choice: :qory} = Apiary.Stacks.shared(ctx.organisation)
     end
 
-    test "with the setting shown, a shared Qory harness at a named version is the Qory harness row, with no mark and no line",
+    test "with the setting shown, a shared Qory harness at a tag is the Qory harness row, with no mark and no line",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
 
@@ -1762,9 +1791,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         Apiary.Stacks.put_stack(
           ctx.scope,
           {:organisation, ctx.organisation},
-          "extends:\n  git: \"https://github.com/qoryai/harness\"\n  ref: \"#{@pin}\"\n  stack: \"core\"\n",
+          "extends:\n  git: \"https://github.com/qoryai/harness\"\n  ref: \"v1\"\n  stack: \"core\"\n",
           choice: :qory,
-          version: {:named, "v1"}
+          version: {:tag, "v1"}
         )
 
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
@@ -1881,65 +1910,63 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(ctx.conn, path)
 
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
-      assert has_element?(lv, "#harness-qory-version-latest[checked]")
+      assert has_element?(lv, "#harness-qory-version-branch[checked]")
       refute has_element?(lv, "#harness-choice-shared")
 
       lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
       assert_patch(lv, ~p"/#{ctx.organisation}/#{second}/set-up/machines")
 
       assert Apiary.Stacks.choice(second) == nil
       assert %{choice: :qory, shared: true} = Apiary.Stacks.Sources.chosen(second)
     end
 
-    # A second workspace with the Qory harness saved at `pin` with no version, as a save
-    # before versions wrote it, and its set-up path.
-    defp qory_at!(ctx, pin) do
+    # A second workspace with the Qory harness saved at `version`, and its set-up path.
+    defp qory_at!(ctx, {_kind, name} = version) do
       second = workspace_fixture(ctx.organisation, "Second")
-      {:ok, row} = Apiary.Stacks.Sources.choose(%{ctx.scope | workspace: second}, :qory)
-      harness = String.replace(row.harness, ~r/ref: "[^"]+"/, ~s(ref: "#{pin}"))
 
-      {1, _} =
-        Repo.update_all(from(s in Apiary.Stacks.Stack, where: s.id == ^row.id),
-          set: [harness: harness, version_kind: nil]
-        )
+      {:ok, _row} =
+        Apiary.Stacks.Sources.choose(%{ctx.scope | workspace: second}, {:qory, version})
 
+      assert %{version: ^version, pin: ^name} = Apiary.Stacks.Sources.chosen(second)
       {second, ~p"/#{ctx.organisation}/#{second}/set-up/harness"}
     end
 
-    test "with the setting shown, a workspace's Qory harness at a pin other than the shared Qory harness's is the Qory harness row, chosen; Continue saves it at the newest version",
+    test "with the setting shown, a workspace's Qory harness at another version than the shared Qory harness's is the Qory harness row, chosen at it; Continue keeps it",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
-      other = "0123456789abcdef0123456789abcdef01234567"
-      {second, path} = qory_at!(ctx, other)
+      commit = Apiary.QoryHarnessFixture.commit()
+      {second, path} = qory_at!(ctx, {:commit, commit})
       row = Apiary.Stacks.choice(second)
       {:ok, lv, _html} = live(ctx.conn, path)
 
       refute has_element?(lv, "#harness-choice-shared-group")
       refute has_element?(lv, "#harness-choice-shared")
       assert words(lv, "#harness-choice-qory") == "Qory harness"
-      refute render(lv) =~ "0123456"
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
+      assert has_element?(lv, "#harness-qory-version-fixed[checked]")
+      assert has_element?(lv, ~s(#harness-qory-fixed[value="#{commit}"]))
 
       assert ["harness-choice-qory", "harness-choice-repository"] ==
                ids(lv, "#harness-choice label")
 
       lv |> form("#set-up-harness-form") |> render_submit()
+      render_async(lv, 2_000)
       assert_patch(lv, ~p"/#{ctx.organisation}/#{second}/set-up/machines")
 
-      assert %{id: id, version_kind: :latest} = Apiary.Stacks.choice(second)
-      assert id == row.id
+      assert Apiary.Stacks.choice(second).updated_at == row.updated_at
 
-      assert %{choice: :qory, version: :latest, shared: false} =
+      assert %{choice: :qory, version: {:commit, ^commit}, shared: false} =
                Apiary.Stacks.Sources.chosen(second)
     end
 
-    test "with the setting sent, a workspace's Qory harness at the shared Qory harness's pin is one row; Continue removes the choice with no refusal",
+    test "with the setting sent, a workspace's Qory harness at the shared Qory harness's version is one row; Continue removes the choice with no refusal",
          ctx do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
       {:ok, _shared} = Apiary.Stacks.Sources.choose(ctx.scope, :qory, shared: true)
-      %{pin: pin} = Apiary.Stacks.Sources.shared(ctx.organisation)
-      {second, path} = qory_at!(ctx, pin)
+      %{version: version} = Apiary.Stacks.Sources.shared(ctx.organisation)
+      {second, path} = qory_at!(ctx, version)
       {:ok, lv, _html} = live(ctx.conn, path)
 
       assert has_element?(lv, "#harness-choice-qory-radio[checked]")
@@ -1948,9 +1975,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       # A tick sent anyway changes nothing.
       render_click(lv, "save_harness", %{
-        "harness" => %{"choice" => "qory", "qory_version" => "latest", "everywhere" => "true"}
+        "harness" => %{
+          "choice" => "qory",
+          "version" => "branch",
+          "branch" => "main",
+          "everywhere" => "true"
+        }
       })
 
+      render_async(lv, 2_000)
       assert_patch(lv, ~p"/#{ctx.organisation}/#{second}/set-up/machines")
       refute has_element?(lv, "#set-up-harness-refusal")
       assert Apiary.Stacks.choice(second) == nil
@@ -2010,6 +2043,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         "harness" => %{"choice" => "qory", "everywhere" => "true"}
       })
 
+      render_async(lv, 2_000)
       assert %{choice: :qory} = Apiary.Stacks.choice(ctx.scope.workspace)
       assert Apiary.Stacks.shared(ctx.organisation) == nil
     end
@@ -2059,10 +2093,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
 
       render_click(lv, "save_harness", %{
-        "harness" => %{"choice" => "qory", "qory_version" => "latest", "everywhere" => "true"}
+        "harness" => %{
+          "choice" => "qory",
+          "version" => "branch",
+          "branch" => "main",
+          "everywhere" => "true"
+        }
       })
 
-      assert %{choice: :qory, version_kind: :latest} = Apiary.Stacks.choice(ctx.scope.workspace)
+      render_async(lv, 2_000)
+
+      assert %{choice: :qory, version_kind: :branch, version_name: "main"} =
+               Apiary.Stacks.choice(ctx.scope.workspace)
+
       assert Apiary.Stacks.shared(ctx.organisation) == nil
     end
 
@@ -2926,6 +2969,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       # The Qory harness stays a choice, and Continue saves it.
       lv |> form("#set-up-harness-form", harness: %{choice: "qory"}) |> render_submit()
+      render_async(lv, 2_000)
       assert %{choice: :qory} = Apiary.Stacks.choice(ctx.scope.workspace)
     end
 
@@ -3069,8 +3113,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       assert row_options(lv, destination) == [
                {"Workspace's harness", "default"},
-               {"core · Qory harness · latest", "workspace:core"},
-               {"software · Qory harness · latest", "workspace:software"},
+               {"core · Qory harness · main", "workspace:core"},
+               {"software · Qory harness · main", "workspace:software"},
+               {"authoring · Qory harness · main", "workspace:authoring"},
                {"A stack of another repository…", "other"}
              ]
 
@@ -3078,13 +3123,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       pick_row(lv, destination, "workspace:core")
 
-      assert row_chosen(lv, destination) == "core · Qory harness · latest"
+      assert row_chosen(lv, destination) == "core · Qory harness · main"
 
       assert %{choice: :qory, version_kind: :workspace} =
                Apiary.Stacks.target_choice(ctx.scope.workspace, target_of(destination))
 
       {:ok, lv, _html} = live(ctx.conn, ctx.path)
-      assert row_chosen(lv, destination) == "core · Qory harness · latest"
+      assert row_chosen(lv, destination) == "core · Qory harness · main"
 
       pick_row(lv, destination, "default")
       assert row_chosen(lv, destination) == "Workspace's harness"
@@ -3417,7 +3462,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = build_conn() |> log_in_user(member) |> live(ctx.path)
 
       assert has_element?(lv, "#harness-choice-qory-radio[disabled]")
-      assert has_element?(lv, "#harness-qory-version-latest[disabled]")
+      assert has_element?(lv, "#harness-qory-version-branch[disabled]")
       assert words(lv, "#set-up-who-may") == "Only owners and admins change this."
       refute has_element?(lv, "#set-up-continue")
       assert has_element?(lv, "#set-up-skip")
@@ -3449,13 +3494,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       if run_attrs do
         %Run{
+          number:
+            Apiary.RunEventsFixtures.next_run_number(item.organisation_id, item.workspace_id),
           organisation_id: item.organisation_id,
           workspace_id: item.workspace_id,
           node_run_id: queued.run_id,
           dispatch_run_id: queued.id
         }
         |> Ecto.Changeset.change(Map.merge(%{started_at: DateTime.utc_now()}, run_attrs))
-        |> Repo.insert!()
+        |> Apiary.RunEventsFixtures.insert_run!()
       end
     end
 
@@ -3499,12 +3546,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-test-run")
     end
 
-    test "About this step shows what the test run adds, its harness, and what a pass finishes",
+    test "About test runs shows what the test run adds, its harness, and what a pass finishes",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, test_path(scope))
       workspace = scope.workspace.name
 
-      assert words(lv, "#set-up-context-h") == "About this step"
+      assert words(lv, "#set-up-context-h") == "About test runs"
 
       assert ids(lv, "#set-up-context p") ==
                ["set-up-what", "set-up-test-harness", "set-up-test-after"]
@@ -3525,6 +3572,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "#{workspace} opens the workspace in place of the set-up."
     end
 
+    test "a URL change closes Run the test's dialog and takes nothing in", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      lv |> form("#set-up-test-form") |> render_submit()
+      assert has_element?(lv, "#spend-dialog")
+
+      render_patch(lv, test_path(scope) <> "?from=search")
+      refute has_element?(lv, "#spend-dialog")
+      refute Repo.exists?(WorkItem)
+    end
+
     test "Run the test takes a test work item in; it passes live", %{conn: conn, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
       {:ok, lv, _html} = live(conn, test_path(scope))
@@ -3533,9 +3595,28 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-test-form input[name='test[line]'][value='#{@line}']")
       assert has_element?(lv, "#set-up-test-run", "Run the test")
 
-      lv |> form("#set-up-test-form") |> render_submit()
+      # A click on Run the test opens the dialog and starts nothing; Cancel keeps the line.
+      lv |> form("#set-up-test-form", test: %{line: "Hi from the test."}) |> render_submit()
+      assert has_element?(lv, "#spend-dialog-title", "Run the test?")
+      assert has_element?(lv, "#spend-dialog-go", "Run the test")
+      assert has_element?(lv, ~s|#spend-dialog[data-return="set-up-test-run"]|)
 
-      assert [%WorkItem{test: true, title: @line} = item] = Repo.all(WorkItem)
+      # No pool serves the workspace: the line has no pool.
+      assert words(lv, "#spend-dialog-line") ==
+               "Starts a run of qory's hello example on a machine. The run uses model tokens."
+
+      refute Repo.exists?(WorkItem)
+      lv |> element("#spend-dialog-cancel") |> render_click()
+      refute has_element?(lv, "#spend-dialog")
+      assert has_element?(lv, "#set-up-test-form input[value='Hi from the test.']")
+      refute Repo.exists?(WorkItem)
+
+      lv |> form("#set-up-test-form") |> render_submit()
+      lv |> form("#spend-dialog-form") |> render_submit()
+
+      assert [%WorkItem{test: true, title: "Hi from the test."} = item] = Repo.all(WorkItem)
+      render_hook(lv, "spend_confirm", %{})
+      assert Repo.aggregate(WorkItem, :count) == 1
       assert words(lv, "#set-up-test-state") == "The test run is queued for a machine."
       refute has_element?(lv, "#set-up-test-form")
 
@@ -3677,7 +3758,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         assert has_element?(lv, "#set-up-test-failed[data-cause=silent]")
 
         assert words(lv, "#set-up-test-failed") ==
-                 String.replace(line, "RUN_ID", Integer.to_string(run.number)),
+                 String.replace(line, "RUN_ID", run.public_id),
                node.name
       end
     end
@@ -3814,7 +3895,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         assert has_element?(lv, "#set-up-test-failed[data-cause=#{cause}]")
 
         assert words(lv, "#set-up-test-failed") ==
-                 String.replace(line, "RUN_ID", Integer.to_string(run.number))
+                 String.replace(line, "RUN_ID", run.public_id)
 
         refute has_element?(lv, "#set-up-test-preparation")
         assert has_element?(lv, "#set-up-test-run", "Run the test")
@@ -3966,7 +4047,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       end
     end
 
-    test "a run that stopped at a step of its preparation: the step, its cause line, and the link to Prepare machine",
+    test "a run that stopped at a step of its preparation: the step, its cause line, and the link to the run's Timeline",
          %{conn: conn, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
       {:ok, item} = WorkItems.take_in_test(scope, @line)
@@ -3993,12 +4074,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-test-failed[data-cause=ended]")
 
       assert words(lv, "#set-up-test-failed") ==
-               "The test run stopped at Fetch git.example.com/acme/shop. Fetch " <>
-                 "git.example.com/acme/shop failed with exit code 128. An admin of " <>
+               "The test run stopped at Clone the repository. Clone the repository failed with " <>
+                 "exit code 128 (git.example.com/acme/shop). An admin of " <>
                  "#{scope.workspace.name} reads the cause in the step's output. Open the " <>
-                 "run's Prepare machine section"
+                 "run's Timeline"
 
-      assert words(lv, "#set-up-test-preparation") == "Open the run's Prepare machine section"
+      assert words(lv, "#set-up-test-preparation") == "Open the run's Timeline"
 
       assert href(lv, "#set-up-test-preparation") ==
                ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}" <>
@@ -4007,7 +4088,37 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-test-run", "Run the test")
     end
 
-    test "a run whose machine stopped before it started the run: Machine started, and its cause line",
+    test "a set-up command that failed: the row's name, the command in code font",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+      {:ok, item} = WorkItems.take_in_test(scope, @line)
+
+      run =
+        test_run!(item, [state: :ended, end_cause: :run_ended], %{state: "failed", exit_code: 1})
+
+      Repo.insert!(%Step{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: run.id,
+        step: 1,
+        name: "Setup postCreateCommand: npm ci",
+        kind: "setup",
+        state: "failed",
+        exit_code: 1
+      })
+
+      {:ok, lv, _html} = live(conn, test_path(scope))
+
+      assert words(lv, "#set-up-test-failed") ==
+               "The test run stopped at Set up the dev container. Set up the dev container failed " <>
+                 "with exit code 1 (postCreateCommand: npm ci). An admin of " <>
+                 "#{scope.workspace.name} reads the cause in the step's output. Open the " <>
+                 "run's Timeline"
+
+      assert lv |> element("#set-up-test-failed code") |> render() =~ ">npm ci</code>"
+    end
+
+    test "a run whose machine stopped before it started the run: Start the machine, and its cause line",
          %{conn: conn, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
       {:ok, item} = WorkItems.take_in_test(scope, @line)
@@ -4041,9 +4152,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(conn, test_path(scope))
 
       assert words(lv, "#set-up-test-failed") ==
-               "The test run stopped at Machine started. The machine stopped before it " <>
+               "The test run stopped at Start the machine. The machine stopped before it " <>
                  "started the run. An admin of #{scope.workspace.name} reads why in the log " <>
-                 "of build-pool on its host. Open the run's Prepare machine section"
+                 "of build-pool on its host. Open the run's Timeline"
 
       assert href(lv, "#set-up-test-preparation") ==
                ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}" <>
@@ -4060,6 +4171,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       {:ok, lv, _html} = live(conn, test_path(scope))
 
       lv |> form("#set-up-test-form") |> render_submit()
+      confirm_spend(lv)
 
       assert [%WorkItem{state: :closed}, %WorkItem{state: :exploring, title: @line}] =
                Repo.all(from w in WorkItem, order_by: w.number)
@@ -4083,6 +4195,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       # Run the test while no machine has taken the run: the run ends, the test work item
       # closes, and a new test run is queued.
       lv |> form("#set-up-test-form") |> render_submit()
+      confirm_spend(lv)
       refute has_element?(lv, "#set-up-test-running")
 
       assert [%WorkItem{state: :closed}, %WorkItem{state: :exploring, title: @line}] =
@@ -4400,6 +4513,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert {"Add a key", true} in key_options(lv)
     assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert has_element?(lv, "#set-up-context #set-up-get-key")
+    assert words(lv, "#set-up-context-h") == "About models"
     assert words(lv, "#set-up-model-later") == @workspace_later
 
     lv |> form("#set-up-model-form", model: %{source: provider.public_id}) |> render_change()
@@ -4750,6 +4864,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     def machines_who_may(_scope, _workspace), do: "Harbour Ops enrols the pool."
   end
 
+  defmodule NoLimitWorded do
+    # An edition that keeps a pool's limit from everyone (`Apiary.EditionStubs.NoLimit`),
+    # owners included, and so says who adds a pool in its words, as `Worded` has them.
+    defdelegate check(scope, action, subject), to: Apiary.EditionStubs.NoLimit
+    defdelegate machines_who_may(scope, workspace), to: Worded
+  end
+
   setup %{conn: conn} do
     admin = instance_admin_scope()
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4855,13 +4976,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#set-up-continue") == "Continue"
   end
 
-  test "About this step shows what a pool does, which pool takes which runs, and when it is ready",
+  test "About machines shows what a pool does, which pool takes which runs, and when it is ready",
        ctx do
     _instance_pool = ready_instance!()
     lv = open(ctx)
     workspace = ctx.scope.workspace.name
 
-    assert words(lv, "#set-up-context-h") == "About this step"
+    assert words(lv, "#set-up-context-h") == "About machines"
 
     assert lv
            |> render()
@@ -4978,6 +5099,28 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert name == WorkspaceSetup.pool_name(ctx.scope.workspace)
   end
 
+  test "an owner an edition keeps a pool's limit from has no Add pool, and may skip", ctx do
+    # An owner who may add a pool reads no line on who adds one.
+    lv = open(ctx)
+    assert has_element?(lv, "#set-up-pool-add-button")
+    refute has_element?(lv, "#set-up-pool-who-may")
+
+    # `node.set_limit` refused whoever asks, and who adds a pool in the edition's words
+    # (`NoLimitWorded`): the core's line names owners, who hold `node.set_limit` there.
+    :ok = Apiary.Edition.put_test_stub(NoLimitWorded)
+    lv = open(ctx)
+
+    refute has_element?(lv, "#set-up-pool-workspace-radio")
+    refute has_element?(lv, "#set-up-pool-add-button")
+    assert words(lv, "#set-up-pool-who-may") == "Harbour Ops enrols the pool."
+
+    assert has_element?(lv, "#set-up-skip")
+
+    # Sent all the same, as the page never sends it.
+    render_click(lv, "add_pool", %{})
+    assert workspace_pools(ctx.scope.workspace) == []
+  end
+
   test "a member sees no Qory Pool until it is ready, and reads who adds a pool", ctx do
     member = member(ctx.organisation)
     lv = open(ctx, member)
@@ -4999,7 +5142,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert read_only?(lv)
   end
 
-  test "About this step explains the Qory Pool only while it is ready, for an instance admin too",
+  test "About machines explains the Qory Pool only while it is ready, for an instance admin too",
        ctx do
     lv = open_admin(ctx)
     refute has_element?(lv, "#set-up-machines-pools")
@@ -5719,5 +5862,70 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     refute has_element?(lv, "#set-up-pool-remove")
     refute deleted?(pool)
     assert read_only?(lv)
+  end
+end
+
+defmodule ApiaryWeb.WorkspaceSetupLive.HarnessLaterTest do
+  # The Harness step's last line shows where the harness changes later: the settings'
+  # Harness, with the `workflow_model` feature or without it, and the settings list that
+  # page; and About harnesses' paragraph on versions, as the settings' Harness has it.
+  # Not async: the features are the whole node's.
+  use ApiaryWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures
+
+  setup %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    %{conn: log_in_user(conn, user), organisation: organisation, scope: scope}
+  end
+
+  defp later(ctx) do
+    {:ok, lv, _html} =
+      live(ctx.conn, ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/set-up/harness")
+
+    lv
+    |> element("#set-up-later")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.trim()
+  end
+
+  defp tabs(ctx) do
+    {:ok, _lv, html} = live(ctx.conn, ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/settings")
+    for [_, key] <- Regex.scan(~r/id="settings-tab-([a-z_]+)"/, html), do: key
+  end
+
+  defp versions(ctx) do
+    {:ok, lv, _html} =
+      live(ctx.conn, ~p"/#{ctx.organisation}/#{ctx.scope.workspace}/set-up/harness")
+
+    lv
+    |> element("#harness-about-versions")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.trim()
+  end
+
+  @tag with_features: [:observability, :security, :secrets, :factory, :workflow_model]
+  test "with the workflow model: Harness, which the settings list beside Workflows", ctx do
+    assert later(ctx) == "You can change this later in Workspace settings › Harness."
+    assert "harness" in tabs(ctx)
+    assert "workflows" in tabs(ctx)
+
+    assert versions(ctx) ==
+             "A run uses the commit its process version came from. Keep the process at the latest moves that commit at each new commit on the branch. A fixed version uses that tag or commit."
+  end
+
+  @tag with_features: [:observability, :security, :secrets, :factory]
+  test "without it: Harness, which the settings list", ctx do
+    assert later(ctx) == "You can change this later in Workspace settings › Harness."
+    assert "harness" in tabs(ctx)
+    refute "workflows" in tabs(ctx)
+
+    assert versions(ctx) =~
+             "Always the latest on a branch: a run uses the branch's newest commit."
   end
 end

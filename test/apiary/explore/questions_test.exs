@@ -37,6 +37,24 @@ defmodule Apiary.Explore.QuestionsTest do
     |> Map.put("history", [Map.put(answer, "reopened", %{"run" => run, "at" => @at})])
   end
 
+  defp option(title), do: %{"title" => title, "explanation" => "The #{title} store."}
+
+  # Question `id`, asked by run `run`, decided for the option `chosen` by run `by`.
+  defp decided(id, run, chosen, by),
+    do:
+      id
+      |> open(run)
+      |> Map.merge(%{
+        "options" => [option("Redis"), option("Postgres")],
+        "state" => "decided",
+        "decision" => %{
+          "option" => chosen,
+          "reason" => "The other services use Redis.",
+          "run" => by,
+          "at" => @at
+        }
+      })
+
   describe "check_run/3" do
     test "takes a first version whose questions are open and asked by the run" do
       assert Questions.check_run(nil, doc([open("q1", 12), open("q2", 12)]), 12) == :ok
@@ -105,12 +123,22 @@ defmodule Apiary.Explore.QuestionsTest do
       assert Questions.check_run(newest, doc([altered]), 13) == {:error, :reopen_not_kept}
     end
 
-    test "refuses a new question that is not open, or asked by another run" do
+    test "refuses a new question that is not open or decided, or asked by another run" do
       newest = doc([open("q1", 12)])
 
-      added = open("q2", 13) |> Map.put("state", "withdrawn")
+      for state <- ["withdrawn", "answered", "closed"] do
+        added = open("q2", 13) |> Map.put("state", state)
 
-      assert Questions.check_run(newest, doc([open("q1", 12), added]), 13) ==
+        assert Questions.check_run(newest, doc([open("q1", 12), added]), 13) ==
+                 {:error, :new_not_open},
+               state
+      end
+
+      # Open, with a decision.
+      with_decision =
+        Map.put(open("q2", 13), "decision", decided("q2", 13, "Redis", 13)["decision"])
+
+      assert Questions.check_run(newest, doc([open("q1", 12), with_decision]), 13) ==
                {:error, :new_not_open}
 
       assert Questions.check_run(newest, doc([open("q1", 12), open("q2", 12)]), 13) ==
@@ -174,6 +202,41 @@ defmodule Apiary.Explore.QuestionsTest do
 
       assert Questions.check_run(newest, doc([Map.delete(question, "context")]), 13) ==
                {:error, :answered_changed}
+
+      # An option's recommended is part of the options: a run adds it, removes it or moves
+      # it on no answered question.
+      plain = [
+        %{"title" => "Yes", "explanation" => "Delete them."},
+        %{"title" => "No", "explanation" => "Keep them."}
+      ]
+
+      recommended = fn [first, second] -> [Map.put(first, "recommended", true), second] end
+      moved = fn [first, second] -> [first, Map.put(second, "recommended", true)] end
+
+      for {from, to} <- [
+            {plain, recommended.(plain)},
+            {recommended.(plain), plain},
+            {recommended.(plain), moved.(plain)}
+          ] do
+        kept = Map.put(question, "options", from)
+
+        assert Questions.check_run(
+                 doc([kept]),
+                 doc([Map.put(kept, "options", to)]),
+                 13
+               ) == {:error, :answered_changed}
+
+        assert Questions.check_run(doc([kept]), doc([kept]), 13) == :ok
+      end
+
+      # On an open question the options are the run's to change, recommended among them.
+      open_one = Map.put(open("q3", 12), "options", plain)
+
+      assert Questions.check_run(
+               doc([open_one]),
+               doc([Map.put(open_one, "options", recommended.(plain))]),
+               13
+             ) == :ok
 
       # An open question's text is the run's to change, and so is a reopened one's.
       open = Map.merge(open("q2", 12), %{"question" => "Which month?"})
@@ -310,6 +373,232 @@ defmodule Apiary.Explore.QuestionsTest do
       assert Questions.check_run(newest, doc([reopened(answered("q1", 12), 13.0)]), 13) == :ok
     end
 
+    test "takes a decision by the run that asked the question, kept in every state" do
+      decided = decided("q1", 13, "Redis", 13)
+
+      assert Questions.check_run(nil, doc([decided]), 13) == :ok
+      assert Questions.check_run(doc([decided]), doc([decided]), 14) == :ok
+
+      # A later run withdraws the decided question, and the decision stays.
+      withdrawn = Map.put(decided, "state", "withdrawn")
+      assert Questions.check_run(doc([decided]), doc([withdrawn]), 14) == :ok
+
+      # A member answered it, and a later run reopens the answer.
+      answered =
+        Map.merge(decided, %{
+          "state" => "answered",
+          "answer" => %{"option" => "Postgres", "by" => @by, "at" => @at}
+        })
+
+      assert Questions.check_run(doc([answered]), doc([answered]), 14) == :ok
+      assert Questions.check_run(doc([answered]), doc([reopened(answered, 14)]), 14) == :ok
+
+      # Numbers compare by value: 13.0 is run 13.
+      assert Questions.check_run(nil, doc([decided("q1", 13, "Redis", 13.0)]), 13) == :ok
+    end
+
+    test "refuses a question of the newest version set to decided" do
+      options = [option("Redis"), option("Postgres")]
+      asked = Map.put(open("q1", 13), "options", options)
+      decided = decided("q1", 13, "Redis", 13)
+
+      # Open, withdrawn or answered in the newest version, by this run or an earlier one.
+      for earlier <- [
+            asked,
+            Map.put(asked, "state", "withdrawn"),
+            Map.merge(asked, %{
+              "state" => "answered",
+              "answer" => %{"option" => "Postgres", "by" => @by, "at" => @at}
+            })
+          ],
+          run <- [13, 14] do
+        assert Questions.check_run(doc([earlier]), doc([decided]), run) ==
+                 {:error, :decided_not_new},
+               inspect({earlier["state"], run})
+      end
+
+      # A decided question that a later run withdrew stays withdrawn.
+      withdrawn = Map.put(decided, "state", "withdrawn")
+
+      assert Questions.check_run(doc([withdrawn]), doc([decided]), 14) ==
+               {:error, :decided_not_new}
+    end
+
+    test "takes a new question decided by the run that asks it" do
+      newest = doc([open("q1", 12)])
+
+      assert Questions.check_run(
+               newest,
+               doc([open("q1", 12), decided("q2", 13, "Redis", 13)]),
+               13
+             ) ==
+               :ok
+
+      assert Questions.check_run(nil, doc([decided("q1", 13, "Postgres", 13)]), 13) == :ok
+    end
+
+    test "refuses a new decided question whose decision is by another run, or on no option" do
+      newest = doc([open("q1", 12)])
+
+      # asked.run is the run's number, decision.run another run's.
+      assert Questions.check_run(
+               newest,
+               doc([open("q1", 12), decided("q2", 13, "Redis", 12)]),
+               13
+             ) ==
+               {:error, :decision_run}
+
+      assert Questions.check_run(nil, doc([decided("q1", 13, "Memcached", 13)]), 13) ==
+               {:error, :decision_option}
+
+      # Asked by another run, the question is refused first for its asked.run.
+      assert Questions.check_run(nil, doc([decided("q1", 12, "Redis", 12)]), 13) ==
+               {:error, :asked_run}
+    end
+
+    test "refuses a decision on no option of its question" do
+      for chosen <- ["Memcached", "redis", "Redis "] do
+        assert Questions.check_run(nil, doc([decided("q1", 13, chosen, 13)]), 13) ==
+                 {:error, :decision_option},
+               chosen
+      end
+
+      # The option is checked before the run.
+      assert Questions.check_run(nil, doc([decided("q1", 13, "Memcached", 12)]), 13) ==
+               {:error, :decision_option}
+    end
+
+    test "keeps the question and options of a question with a decision in every state" do
+      decided = decided("q1", 13, "Redis", 13)
+      other = [option("Postgres"), option("Valkey")]
+
+      # A later run sets the decided question back to open, the decision kept.
+      open = Map.put(decided, "state", "open")
+      assert Questions.check_run(doc([decided]), doc([open]), 14) == :ok
+
+      assert Questions.check_run(doc([decided]), doc([Map.put(open, "options", other)]), 14) ==
+               {:error, :decided_changed}
+
+      # A member answered it, and a later run reopens the answer.
+      answered =
+        Map.merge(decided, %{
+          "state" => "answered",
+          "answer" => %{"option" => "Postgres", "by" => @by, "at" => @at}
+        })
+
+      reopened = reopened(answered, 14)
+      assert Questions.check_run(doc([answered]), doc([reopened]), 14) == :ok
+
+      # The reopen adds to the context what contradicts the answer, as for any answered
+      # question; the question and options stay.
+      added = Map.put(reopened, "context", "The baskets move to the storefront.")
+      assert Questions.check_run(doc([answered]), doc([added]), 14) == :ok
+
+      assert Questions.check_run(
+               doc([answered]),
+               doc([Map.put(added, "options", other)]),
+               14
+             ) == {:error, :decided_changed}
+
+      # While it stays decided or answered, the context stays too.
+      for earlier <- [decided, answered] do
+        assert Questions.check_run(
+                 doc([earlier]),
+                 doc([Map.put(earlier, "context", "The baskets move.")]),
+                 14
+               ) ==
+                 {:error, if(earlier == answered, do: :answered_changed, else: :decided_changed)}
+      end
+
+      # A later run withdraws it.
+      withdrawn = Map.put(decided, "state", "withdrawn")
+      assert Questions.check_run(doc([decided]), doc([withdrawn]), 14) == :ok
+
+      assert Questions.check_run(doc([decided]), doc([Map.put(withdrawn, "options", [])]), 14) ==
+               {:error, :decided_changed}
+
+      # Dropped, the decision is refused.
+      assert Questions.check_run(doc([answered]), doc([Map.delete(reopened, "decision")]), 14) ==
+               {:error, :decision_changed}
+    end
+
+    test "refuses a decision changed, dropped or added on a question the newest version has" do
+      decided = decided("q1", 13, "Redis", 13)
+      newest = doc([decided])
+
+      # A later run changes the option or the run of the decision.
+      assert Questions.check_run(
+               newest,
+               doc([put_in(decided, ["decision", "option"], "Postgres")]),
+               14
+             ) ==
+               {:error, :decision_changed}
+
+      assert Questions.check_run(newest, doc([put_in(decided, ["decision", "run"], 14)]), 14) ==
+               {:error, :decision_changed}
+
+      # A withdraw drops the decision.
+      withdrawn = decided |> Map.put("state", "withdrawn") |> Map.delete("decision")
+      assert Questions.check_run(newest, doc([withdrawn]), 14) == {:error, :decision_changed}
+
+      # A reopen of an answer drops the decision.
+      answered =
+        Map.merge(decided, %{
+          "state" => "answered",
+          "answer" => %{"option" => "Postgres", "by" => @by, "at" => @at}
+        })
+
+      assert Questions.check_run(
+               doc([answered]),
+               doc([answered |> reopened(14) |> Map.delete("decision")]),
+               14
+             ) == {:error, :decision_changed}
+
+      # A decision added to an open question, which stays open.
+      asked = Map.put(open("q1", 13), "options", [option("Redis"), option("Postgres")])
+
+      assert Questions.check_run(
+               doc([asked]),
+               doc([Map.put(asked, "decision", decided["decision"])]),
+               13
+             ) ==
+               {:error, :decision_changed}
+
+      # Run 14 decides a question run 13 asked, with decision.run 13: the question is not
+      # new.
+      assert Questions.check_run(doc([asked]), doc([decided]), 14) == {:error, :decided_not_new}
+    end
+
+    test "refuses question, context or options changed on a decided question" do
+      decided = decided("q1", 13, "Redis", 13)
+      newest = doc([decided])
+
+      for {key, value} <- [
+            {"question", "Which store keeps the carts?"},
+            {"context", "The baskets move to the storefront."},
+            {"options", [option("Postgres"), option("Valkey")]},
+            {"options", [option("Redis")]}
+          ] do
+        assert Questions.check_run(newest, doc([Map.put(decided, key, value)]), 14) ==
+                 {:error, :decided_changed},
+               key
+      end
+
+      # A run that learns more withdraws it and adds a new one, with other options.
+      withdrawn = Map.put(decided, "state", "withdrawn")
+      added = decided("q2", 14, "Valkey", 14) |> Map.put("options", [option("Valkey")])
+      assert Questions.check_run(newest, doc([withdrawn, added]), 14) == :ok
+    end
+
+    test "refuses a decision by another run than the one that asked the question" do
+      # Run 13 asks the question, and the decision is run 12's.
+      assert Questions.check_run(nil, doc([decided("q1", 13, "Redis", 12)]), 13) ==
+               {:error, :decision_run}
+
+      assert Questions.check_run(nil, doc([decided("q1", 13, "Redis", 13.5)]), 13) ==
+               {:error, :decision_run}
+    end
+
     test "reasons/0 is each reason the check refuses for" do
       assert Questions.reasons() ==
                [
@@ -324,7 +613,12 @@ defmodule Apiary.Explore.QuestionsTest do
                  :answered_changed,
                  :new_not_open,
                  :asked_run,
-                 :follows_unknown
+                 :follows_unknown,
+                 :decision_option,
+                 :decision_run,
+                 :decided_not_new,
+                 :decision_changed,
+                 :decided_changed
                ]
     end
   end
@@ -362,6 +656,20 @@ defmodule Apiary.Explore.QuestionsTest do
   end
 
   describe "answer/4" do
+    test "keeps an option's recommended on the question it answers" do
+      options = [
+        %{"title" => "Yes", "explanation" => "Why.", "recommended" => true},
+        %{"title" => "No", "explanation" => "Why not."}
+      ]
+
+      document = doc([Map.put(open("q1", 12), "options", options)])
+
+      for given <- [{"q1", "No", nil}, {"q1", nil, "Neither."}] do
+        assert {:ok, %{"questions" => [%{"state" => "answered", "options" => ^options}]}} =
+                 Questions.answer(document, [given], "Ann Example", ~U[2026-11-04 12:00:00Z])
+      end
+    end
+
     test "answers the open questions given, an option or a note, and leaves the rest" do
       document =
         doc([

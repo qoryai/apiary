@@ -1157,9 +1157,9 @@ defmodule ApiaryWeb.NodeLive.Show do
   end
 
   # A running instance's row's DOM id: by the id of its row in `node_instances`, or, with
-  # no row, by its newest open run's number. Never by the node's instance id.
+  # no row, by its newest open run's id. Never by the node's instance id.
   defp instance_dom_id(%{row_id: row_id}) when is_binary(row_id), do: "node-instance-" <> row_id
-  defp instance_dom_id(%{run_number: number}), do: "node-instance-run-#{number}"
+  defp instance_dom_id(%{run_public_id: run_id}), do: "node-instance-" <> run_id
 
   # The DOM id of the row the confirmation takes the place of: the row of the running
   # instance the clearing names.

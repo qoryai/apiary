@@ -15,9 +15,9 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Artifacts.Type
   alias Apiary.Audit.Entry
-  alias Apiary.Harnesses.{Assignment, QoryCopy, Reader}
+  alias Apiary.Harnesses.{Assignment, Qory, Reader}
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.QoryHarnessFixture
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.{TypeTemplates, Version}
   alias Apiary.Stacks.{Sources, Stack}
@@ -100,15 +100,14 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     row
   end
 
-  # The organisation shares the Qory harness at the newest version, at `stack`.
+  # The organisation shares the Qory harness on the branch `main`, at `stack`.
   defp share_qory!(%Scope{organisation: organisation} = scope, stack) do
-    %{git: git, latest: ref} = Definition.qory_harness()
-    document = ~s(extends:\n  git: "#{git}"\n  ref: "#{ref}"\n  stack: "#{stack}"\n)
+    document = ~s(extends:\n  git: "#{Qory.git()}"\n  ref: "main"\n  stack: "#{stack}"\n)
 
     {:ok, _row} =
       Stacks.put_stack(scope, {:organisation, organisation}, document,
         choice: :qory,
-        version: {:latest, nil}
+        version: {:branch, "main"}
       )
   end
 
@@ -160,18 +159,42 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       assert version.template == %{
                "source" => "qory",
-               "git" => Definition.qory_harness().git,
-               "commit" => Definition.qory_harness().latest,
+               "git" => Qory.git(),
+               "commit" => QoryHarnessFixture.commit(),
                "module" => "software-factory",
                "stack" => "software",
                "type" => "qory.software",
                "version" => newest.number
              }
 
-      assert version.template["type"] == QoryCopy.template().type
+      assert version.template["type"] == Qory.template(Qory.current()).type
       assert version.template["type"] == workspace.type
 
       assert Stacks.choice(workspace) == nil
+    end
+
+    test "create_workspace_of_kind/3 reads main's commit then, and copies its template" do
+      scope = scope_fixture()
+      repository = QoryHarnessFixture.serve!(QoryHarnessFixture.explore_named("Discover"))
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
+
+      version = first_version(workspace)
+      assert version.template["commit"] == repository.commit
+      assert Processes.stage(version, "st_r79kph11eg")["name"] == "Discover"
+      assert Qory.current() == repository.commit
+    end
+
+    test "a failed read of the Qory harness makes nothing" do
+      scope = scope_fixture()
+      before = held(scope)
+      Apiary.PublicGitServer.serve(%{}, answer: &Plug.Conn.send_resp(&1, 503, ""))
+
+      assert {:error, {:qory, {:unreadable, {:unreachable, _seconds}, {"github.com", 443}}}} =
+               Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
+
+      assert held(scope) == before
     end
 
     test "the first workspace of a sign-up takes the Qory template" do
@@ -207,11 +230,11 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
 
       row = Stacks.choice(workspace)
-      assert %Stack{choice: :qory, version_kind: :latest} = row
+      assert %Stack{choice: :qory, version_kind: :branch, version_name: "main"} = row
       assert row.owner_organisation_id == scope.organisation.id
       assert base(row)["stack"] == "software"
 
-      assert %{choice: :qory, stack: "software", version: :latest, shared: false} =
+      assert %{choice: :qory, stack: "software", version: {:branch, "main"}, shared: false} =
                Sources.chosen(workspace)
     end
 
@@ -482,6 +505,75 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert held(scope) == before
     end
 
+    test "a stage's description in the template reaches version 1; one over 500 characters is refused" do
+      scope = scope_fixture()
+      source = linked!(scope)
+
+      file =
+        @file_path
+        |> File.read!()
+        |> String.replace(
+          "      name: Answer\n",
+          "      name: Answer\n      description: \"Draft an answer.\\nCheck its tone.\"\n"
+        )
+
+      {:ok, %{process: process}} = Reader.template(file)
+      assert [%{"description" => "Draft an answer.\nCheck its tone."}, check] = process["stages"]
+      refute Map.has_key?(check, "description")
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace_from_template(
+                 scope,
+                 start(source, %{process: process})
+               )
+
+      assert first_version(workspace).document == process
+
+      before = held(scope)
+
+      long =
+        Map.update!(process, "stages", fn [answer, check] ->
+          [Map.put(answer, "description", String.duplicate("a", 501)), check]
+        end)
+
+      assert {:error, errors} =
+               Organisations.create_workspace_from_template(
+                 scope,
+                 start(source, %{process: long})
+               )
+
+      assert %{path: "#/stages/0/description", error: :schema, detail: :maxLength} in errors
+
+      assert held(scope) == before
+    end
+
+    test "a template's stage description keeps its line breaks as LF, from CRLF and a lone CR" do
+      scope = scope_fixture()
+      source = linked!(scope)
+
+      file =
+        @file_path
+        |> File.read!()
+        |> String.replace(
+          "      name: Answer\n",
+          "      name: Answer\n      description: \"Draft an answer.\\r\\nCheck its tone.\\rSend it.\"\n"
+        )
+
+      {:ok, %{process: process}} = Reader.template(file)
+
+      assert [%{"description" => "Draft an answer.\nCheck its tone.\nSend it."}, _check] =
+               process["stages"]
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace_from_template(
+                 scope,
+                 start(source, %{process: process})
+               )
+
+      assert [%{"description" => "Draft an answer.\nCheck its tone.\nSend it."}, _check] =
+               first_version(workspace).document["stages"]
+    end
+
     test "a process that does not pass the check is refused before the transaction" do
       scope = scope_fixture()
       before = held(scope)
@@ -575,7 +667,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                  start(source, %{artifact_types: [type]})
                )
 
-      assert ["workspace.create", "artifact_type.edit"] =
+      assert ["workspace.create", "artifact_type.edit", "security_policy.edit"] =
                Enum.drop(Repo.all(trail(scope)), length(before))
     end
 
@@ -721,10 +813,10 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
     end
   end
 
-  test "the Qory copy's template is what the first workspace records" do
-    assert %{stack: "software", type: "qory.software"} = QoryCopy.template()
-    assert QoryCopy.template_module() == "software-factory"
-    assert Definition.qory_harness().stack == "core"
+  test "the Qory harness's template is what the first workspace records" do
+    assert %{stack: "software", type: "qory.software"} = Qory.template(Qory.current())
+    assert Qory.template_module() == "software-factory"
+    assert Qory.default_stack() == "core"
   end
 end
 
@@ -741,7 +833,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Artifacts.Type
   alias Apiary.Audit.Entry
-  alias Apiary.Harnesses.{QoryCopy, Reader}
+  alias Apiary.Harnesses.{Qory, Reader}
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes
@@ -783,7 +875,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
 
     test "the copy lists types, and create_workspace_of_kind/3 gives the workspace them" do
       scope = scope_fixture()
-      assert [_type | _more] = QoryCopy.template().artifact_types
+      assert [_type | _more] = Qory.template(Qory.current()).artifact_types
       before = actions(scope)
 
       assert {:ok, %Workspace{shown_standard_types: @standard} = workspace} =
@@ -792,7 +884,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
       assert [%Type{name: "branch", standard: false, base_view: :structured}] =
                Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
 
-      assert ["workspace.create", "artifact_type.edit"] = actions_since(scope, before)
+      assert ["workspace.create", "artifact_type.edit", "security_policy.edit"] =
+               actions_since(scope, before)
     end
 
     test "a sign-up's first workspace gets them, after the entry that begins the trail" do
@@ -822,7 +915,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
                  where: e.organisation_id == ^workspace.organisation_id,
                  order_by: [asc: e.inserted_at, asc: e.id],
                  select: e.action
-             ) == ["organisation.create", "artifact_type.edit"]
+             ) == ["organisation.create", "artifact_type.edit", "security_policy.edit"]
     end
   end
 

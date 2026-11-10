@@ -116,18 +116,18 @@ node pool, by workspace, never by the workspace's policy, and so does its digest
 in every answer to a batch. A gateway's digest changes only when the members it has
 change.
 Whether a workspace has a policy shows in the answer to a run's registration instead (The
-run endpoint, below). A
-workspace nobody has given a policy answers every registration `{"version":1}`, no policy,
-and its machines run under the policy of their `forager.yaml`, as the contract has it
-for a server with no policy. So an upgrade, or a workspace nobody has looked at, never
-replaces a machine's local enforcement with an empty policy. A workspace has a policy once
-somebody makes it, by the first rule or the first change of mode, in the workspace or in
-any one target: the first change anywhere starts serving every target of the
-workspace, the others the workspace's baseline. From that change the answers to a run's
-batches carry `X-Qory-Run-Configuration`: a run in flight that was registered with no
-policy holds another digest, reloads its run configuration and applies it, narrowed by the
-machine's local policy. It does not go back: a workspace whose rules were all removed again
-still serves its (empty) policy. Sections the gateway does not know are to be ignored.
+run endpoint, below). Every workspace has version 1 from its creation
+(`Apiary.Policy.first_version/1`), and each start that migrates, after the migrations, and
+`bin/migrate` write it for each workspace with none (`Apiary.Policy.first_versions/0`), so
+every target of a workspace is served: the target's version, or the workspace's baseline.
+A workspace has no row only until that write, when the previous release created it during
+an upgrade, or when its render fails. Such a workspace answers every registration
+`{"version":1}`, no policy, and its machines run under the policy of their `forager.yaml`,
+as the contract has it for a server with no policy. From its first version the answers to
+a run's batches carry `X-Qory-Run-Configuration`: a run in flight that was registered with
+no policy holds another digest, reloads its run configuration and applies it, narrowed by
+the machine's local policy. A workspace whose rules were all removed again still serves
+its (empty) policy. Sections the gateway does not know are to be ignored.
 
 ## Signed POST: the events endpoint
 
@@ -350,16 +350,24 @@ has `revision` 1. A claim answer is a request for a machine: `version`, `revisio
 `dispatch_id`, `pool_id` (the claiming key's node pool), `lease_until`, `run_code`,
 `gateway_url` and `max_lifetime_minutes`, 90 for a prebuild and 1470 for any other claim,
 sent with `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its
-`step`, its `access`, its `target` nor its `work_item`. The answer has no `machine`, so
-the starter uses its default machine type. An explore run's `run_settings` has
-`time_limit_minutes`, an integer from 15 to 1440, after its other members, when a time
-limit resolves for the run's workflow (`Apiary.Stacks.workflow/2`): the limit set for
-that workflow at the run's target, else the one set at its workspace
-(`Apiary.TimeLimits`). With no limit at either place, or no workflow for the run, the
-member is absent, and the run takes the default of the workflow's stack, which the
-machine applies. The claim registers the run, and the run endpoint refuses,
-under any key, a registration whose `run_id` is that of such a run, waiting, claimed,
-handed over or ended, with the signed `409` `run_id_used`, decided
+`step`, its `access`, its `target` nor its `work_item`. A claim may have `offers`, 1 to
+64 `machine_spec`s: the machines the pool can start. Qory Apiary keeps the offers of the
+pool's latest claim (`nodes.offers`, null for a claim without them). A pool that sends
+offers takes only a run whose machine type one of them fits (each number at least the
+type's, the same `arch`, and `virtualization` for a type that needs it), and the answer
+adds `machine` and `machine_spec`, the run's type and its spec, after `lease_until`. A
+pool that sends no offers takes only a run of the instance's default type, a run queued on
+the type that was the default then (`dispatch_runs.machine_type_was_default`), or a run
+queued before machine types, and the answer has neither, so the starter uses its default
+machine type. A run queued before machine types has no spec and is of the default type. An
+explore run's `run_settings` has `time_limit_minutes`, an integer from 15 to 1440, after
+its other members, when a time limit resolves for the run's workflow
+(`Apiary.Stacks.workflow/2`): the limit set for that workflow at the run's target, else
+the one set at its workspace (`Apiary.TimeLimits`). With no limit at either place, or no
+workflow for the run, the member is absent, and the run takes the default of the
+workflow's stack, which the machine applies. The claim registers the run, and the run
+endpoint refuses, under any key, a registration whose `run_id` is that of such a run,
+waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager
 contract giving the other causes and their order. Qory Apiary reads "first" as the first of
 the run endpoint's checks, so the lookup (`dispatch_runs.run_id`, unique on the instance,
@@ -453,20 +461,30 @@ First, the target's harness file, under every harness choice. Second, a stack ch
 the run's target (`Apiary.Stacks.chosen_for/4`): its stored document applies and is the
 documents' `harness`. Third, the workspace's harness choice, else the harness its
 organisation shares with every workspace: its document applies the same way. Last, the
-Qory harness: the harness of the workspace type's definition
-(`Apiary.Lingo.Domain.Definition`) at the newest version the release ships, at the stack
-the workspace recorded when it was made from the Qory template, else `core`
-(`Apiary.Organisations.Workspace.qory_stack/1`). A stored
+Qory harness: the repository the instance sets (`QORY_HARNESS_URL`) on the branch
+`main` (`Apiary.Lingo.Domain.Definition`), at the stack
+the workspace recorded, else `core` (`Apiary.Organisations.Workspace.qory_stack/1`). A
+workspace records its stack when it is made from the Qory template. A workspace of the
+software domain made before the stack was recorded gets `software` on the upgrade,
+unless it was made from a template of a harness repository. A stored
 document's base is read at the `ref` of its row's version (`Apiary.Stacks.version_ref/3`):
-the Qory harness at "latest" at the commit of the newest version the release ships, a
-harness repository at the branch, tag or commit saved; the documents' `harness` has that
-`ref`. The walk reads the target's harness file at the target's head, in a workspace
-whose domain has harness files and for a target that a live collection of the workspace
-has; the version that read returned is the run's `target_version`, whichever harness
-then applies. A file whose harness section has `extends`, or lists modules without it,
-applies, and the documents have no `harness`: the machine composes the file at
-`target_version`. A file with neither is passed over. A stored document or the Qory
-harness is the documents' `harness`, as `{"harness": <section>}`. The owner of a stored
+the Qory harness and a harness repository at the branch, tag or commit saved. The
+documents' `harness` has the commit of that `ref`, never a branch or a tag: for the Qory
+harness and the built-in harness of a test work item, the commit the claim reads (a ref
+at a full commit id needs no read); for a harness repository, the commit the walk read
+when the run was queued, which the run's pin records. A claim's read that times out,
+finds no address or connection, or gets `429`, `500`, `502`, `503` or `504` leaves the
+run queued, and the run ends if the reads still fail 10 minutes after the first failure.
+If the claim has no time or requests left for the read (`late`, `no_calls`), the run
+stays queued with no failure recorded. Any other failed read ends the run before it
+starts, `harness_unresolved`, with the code `ref_missing` for a ref the repository does
+not have, else `harness_unreadable`. The walk reads the target's harness file at the
+target's head, in a workspace whose domain has harness files and for a target that a live
+collection of the workspace has; the version that read returned is the run's
+`target_version`, whichever harness then applies. A file whose harness section has
+`extends`, or lists modules without it, applies, and the documents have no `harness`: the
+machine composes the file at `target_version`. A file with neither is passed over. A
+stored document or the Qory harness is the documents' `harness`, as `{"harness": <section>}`. The owner of a stored
 document is the organisation of the person who saved it, when that person saved it as a
 member acting in that organisation; for an instance admin who saved it with no such
 membership, it is the instance's organisation; it is unknown once the owner organisation
@@ -475,7 +493,7 @@ operator (`Apiary.Edition.operated?/1`, which the core edition, `Apiary.Edition.
 answers `false`), or when a stored document applies and its owner is not the run's
 organisation. A document the instance's organisation owns is hidden from the runs of
 every other organisation, whether the instance has one organisation or several, and an
-unknown owner is never the run's organisation. Workspace settings › Workflow and the
+unknown owner is never the run's organisation. Workspace settings › Harness and the
 set-up's Harness step write a stored stack at the workspace's level, and so do tests and
 the demo (`mix apiary.demo.console`, which stores one for the workspace Main); no
 endpoint sets one. A stored document's `bind` is set by kind, then by role, as the run
@@ -486,8 +504,12 @@ set to the name of one entry of that kind, such as
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first
-redemption of the run code before `lease_until`. A dispatch handed over keeps no lease:
-it never goes stale, and its slot stays held until its run ends. The refusals of
+redemption of the run code before `lease_until`. The optional `machine_type` of
+`dispatched` is the vendor's type of the machine the starter started, 1 to 64 printable
+ASCII characters without a space. The first `dispatched` stores it on the dispatch
+(`dispatches.vendor_machine_type`), and the run's page shows it to instance admins only.
+A body with any other value gets `400` `invalid_request`. A dispatch handed over keeps no
+lease: it never goes stale, and its slot stays held until its run ends. The refusals of
 `dispatched` come in the contract's order: `403` `forbidden` for an unknown dispatch,
 another pool's, or a key the action is refused to, one answer; `410` `gone` for a
 dispatch that ended; `409` `lease_expired` for a dispatch not handed over that is stale
@@ -495,12 +517,14 @@ or past its `lease_until`; and `503` `unavailable` last, after which nothing was
 A lease that lapsed unswept is freed first, and that is committed: the run waits in its
 queue again, or a prebuild ends `superseded` while another prebuild of its collection,
 pool and `environment_ref` waits, and is answered `410` `gone`. A dispatch handed over accepts `dispatched`
-whatever its `lease_until`, and records the time of the first one alone. When a run
+whatever its `lease_until`, and records only the first one: its time, its `external_*` and its
+`machine_type`. When a run
 leaves the claim other than by its handover, its lease lapsing or a release ends its
 registered run `failed`, with the reason `lease_lapsed` or `machine_not_made`, and the
-close of its work item deletes it with the run code; either way the code redeems
-nothing from then on. The failed run keeps its id and its page, and leaves the run of the
-queue, so the next claim registers a new run.
+close of its work item ends it `cancelled`, with the reason `closed`; either way the code
+redeems nothing from then on, and a machine that redeems it is a late machine. The run
+keeps its id, its number and its page. A failed run leaves the run of the queue, which
+waits again as a new queued run with the next number.
 
 Once handed over, such a run ends with its registered run, in one of three ways, the first
 to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once folded,
@@ -673,7 +697,7 @@ and a later report changes nothing and is still `204`. The trail keeps three ent
 `dispatch.machine_end` for a dispatch at most, about the pool: its first report, its first
 `delete_failed` and its `gone`. After each accepted report that the dispatch does not keep
 as `gone`, Qory Apiary broadcasts a message on the topic of the run registered at the claim,
-and the run's page shows the state in the Clean up row
+and the run's page shows the state in the Remove the machine row
 ([ui.md](ui.md), The run page). The access action reaches every node pool's key, enrolled
 before or after, through the role `pool_key`.
 
@@ -739,33 +763,53 @@ holds in a target's document whatever its mode, and a deny holds in either mode,
 nothing else, and `allow` says what `enforce` would reach. `about` never selects a policy:
 the policy is chosen by the registration's labels alone.
 
-A workspace whose policy nobody has made, or any workspace on an instance without the
+A workspace with no version yet, or any workspace on an instance without the
 `security` feature, and a key `Apiary.Access` refuses `run_configuration.fetch` serve no
 run configuration: a registration is answered `{"version":1}`, the document of no policy
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.
 
 **The image.** A run of a workspace's queue that is not a prebuild (A run of the queue,
-above) is given the image the node pool that claimed it recorded for the run's target
-(`Apiary.Environments.image_for/2`): of the pool's builds for that target, the newest
-whose `environment_ref` (`built_ref`) is its collection's `environment_ref`; with none,
-no image, and the run starts in the pool's default. The claim chooses it and keeps it on
-the registered run (`runs.configured_image`), and the attach gives the run that image; a
-run claimed before that rule has it chosen at the attach.
+above) is given the first of: the image of its machine type, where that type is not the
+default and has the run's key (`Apiary.MachineTypes.image/1`); the image the node pool
+that claimed it recorded for the run's target (`Apiary.Environments.image_for/2`): of
+the pool's builds for that target, the newest whose `environment_ref` (`built_ref`) is
+its collection's `environment_ref`, an image built on the default type's image; the
+default type's image; else no image, and the run starts in the pool's default. The claim
+chooses the type's image, else the target's, and keeps it on the registered run
+(`runs.configured_image`), marked as a type's image with the type's id
+(`runs.configured_image_from_type`, `runs.configured_image_machine_type_id`), so a key
+or image changed before the attach changes nothing; the attach gives the run that image,
+else the default type's, which it marks the same way; a run claimed before that rule has
+it chosen at the attach. A prebuild is given the default type's image, else none, and
+starts in the pool's default. The claim reads a type that is not the default `FOR KEY
+SHARE SKIP LOCKED`: while a change or a delete of that type holds its row, the claim
+passes the run, which waits for the next claim. The attach reads the default type's row
+again by id `FOR KEY SHARE`: while a change holds the row, the attach waits for it, then
+gives the type's image as the change left it. The run configuration schema's top-level
+`image` has the type's image, as it has a target's: a digest reference that the
+machine's `images.allow` must allow. A pull of a type's image that ends `run.exited`
+with reason `image_missing` ends the run as any exit does: no build is cleared or
+queued, and nothing is queued again (`Apiary.Dispatches.RunEnd`), read by the mark the
+run kept, whatever the type's image is by then and also once the type is deleted, which
+sets the id to null.
 
-**A run held for its build.** In a workspace whose domain has prebuilds, a waiting run of
-a work item whose target a live collection names with an `environment_ref` waits for
+**A run held for its build.** In a workspace whose domain has prebuilds, a waiting run
+of a work item whose target a live collection names with an `environment_ref` waits for
 the pool's build of that `environment_ref`: a pool's claim does not take it while the
 pool has no such image (`Apiary.Environments.held/1`), and gives it that image once the
 build is recorded. A pool's claim queues a prebuild of the collection's
 `environment_ref` whenever it holds such a run and no prebuild of that ref for the pool
 waits, is claimed or is handed over, so a key change while runs wait is built by the
-next claim; nothing else queues a build ahead of a run, apart from a member's Rebuild and
-an image found missing. The claim holds the collections it queues a build of
-`FOR SHARE`, by id, before the pool's row. A run whose target no collection names, or of
-a workspace whose domain has no prebuilds, waits for nothing and starts in the pool's
-default. With the feature `security`, a run whose target's run configuration in force
-names an image in its `security_policy` waits for nothing, queues no build and is not
-ended by a build's failure: it starts in the policy's image.
+next claim; nothing else queues a build ahead of a run, apart from a member's Rebuild
+and an image found missing. The claim holds the collections it queues a build of `FOR
+SHARE`, by id, before the pool's row. A run whose target no collection names, or of a
+workspace whose domain has no prebuilds, waits for nothing and starts in the pool's
+default. A run whose machine type is not the default and has an image
+(`Apiary.MachineTypes.no_image/1`) waits for nothing, queues no build and starts in that
+image; a run on the default type waits as before, whatever the default type's image.
+With the feature `security`, a run whose target's run configuration in force names an
+image in its `security_policy` waits for nothing, queues no build and is not ended by a
+build's failure: it starts in the policy's image.
 
 A run given an image has its configuration composed for it
 (`Apiary.Policy.ComposedConfiguration`), `image` beside `security_policy` and never
@@ -797,7 +841,8 @@ and the two still never both name one. A policy that selects what the run starte
 reloaded byte for byte as stored. A run that attached before the start was kept is reloaded
 as it was. A
 prebuild whose workspace's policy names an image is given that policy without its `image`,
-the rest as stored, so a prebuild always builds on the pool's default. Every other run, a
+the rest as stored, beside the default type's image at the top level where that type has
+one, else nothing, and builds on the pool's default. Every other run, a
 run a node registered itself, a run with no recorded image and a prebuild under a policy
 that names none among them, is given the stored bytes, under their digest, as above, until
 its policy comes to select another image than it started in. A
@@ -1043,10 +1088,14 @@ The size of the pseudo-terminal is in the record: `terminal` of each
 one `dev.qory.run.resized` per change, at the sequence where the new size took effect, so
 the chunks before it were written to the old size and the chunks after it to the new. A
 session's start sets the size the same way for the chunks after it. The projection keeps
-the size the record last said, `runs.terminal_cols` and `runs.terminal_rows`, the later
-of the last session's start and the last resize by sequence; a resize whose data is not a
-size (an integer in 1 to 65535 each) changes nothing. The run page's Details shows it. A
-resize is not an item of the timeline: the terminal is where it matters.
+one size, `runs.terminal_cols` and `runs.terminal_rows`: the later by sequence of the
+session's start that the projection takes the run's runtime from (see What opened a run)
+and the last resize that counts. A resize counts unless its `session` is a bare session
+other than that one, so a helper session's resize leaves the agent's size; a resize with
+no `session` counts. A resize whose data is not a size (an integer in 1 to 65535 each)
+changes nothing. The run page's Details shows the size. A resize is not an item of the
+timeline: the terminal is where it matters. The replay below reads every session's start
+and resize, a helper's included, for the size of its chunks.
 
 The terminal tab replays at the recorded size. The bytes never cross the LiveView socket,
 so the sequence of the sizes has to reach the reader beside the bytes: the log endpoint
@@ -1060,9 +1109,12 @@ its bytes, and xterm.js reflows as a terminal does. A resize that arrives after 
 past it (delivery is in any order) is applied on the next load, not to what is already on
 the screen.
 
-A run without a size is a run on pipes: the endpoint sends no size header and the page fits
-the screen to the box, with the wrap toggle. On pipes `stream` is `stdout` or `stderr`, never
-`terminal`, and a single stream of a pipes run, or a download, is never sized.
+A run without a size is a run where the session the projection takes the runtime from is on
+pipes: the endpoint sends no size header and the page fits the screen to the box, with the
+wrap toggle. On pipes `stream` is `stdout` or `stderr`, never `terminal`, and a single stream
+of such a run, or a download, is never sized. An agent on pipes followed by a helper session
+on a pseudo-terminal is such a run: the helper's chunks have `stream` `terminal`, and they
+too are fitted to the box, not replayed at the helper's size.
 
 ## What opened a run
 
@@ -1077,13 +1129,21 @@ Each session that joins the run has a `dev.qory.session.started`, numbered from 
 `session`, with the runtime, the command, its arguments, the directory and whether it is
 interactive, with the terminal's size and the image where they apply, and a
 `dev.qory.session.exited`, how the session ended. A join that was refused has a
-`dev.qory.session.exited` alone. Both types are stored like every other. The projection
-reads the runtime, its version, the command, its arguments, the directory, whether it is
-interactive and the image from the `dev.qory.session.started` with the highest sequence,
-and folds nothing from `dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's
-`dev.qory.run.exited`, one per run, carries `state` and `exit_code`. A session's
+`dev.qory.session.exited` alone. Both types are stored like every other. A session's
+start with `bare` set to `true`, Forager's mark of a session started with
+`SessionSpec.Runtime` nil, whose event still has a `runtime` name, is bare; any other value
+of `bare` is no mark. The projection reads the runtime, its version, the
+command, its arguments, the directory, whether it is interactive and the image from one
+`dev.qory.session.started`: the one with the highest sequence of those that are not bare,
+else, in a run whose sessions are all bare, the one with the lowest sequence. So a helper
+session such as a git step leaves the agent's values on the run, in any order of arrival.
+Its log chunks are projected as any session's, and its number is stored with the event. The
+projection reads the optional `peak_memory_bytes` and `cpu_time_ms` from each
+`dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's `dev.qory.run.exited`, one per
+run, has `state` and `exit_code`. A session's
 `dev.qory.run.log`, `dev.qory.run.resized` and runtime events carry its number as
-`session`, which is stored with the event; the projection reads nothing from it.
+`session`, which is stored with the event; the projection reads it on a resize alone, to
+tell whether the resize counts.
 
 ## The steps of a run
 
@@ -1103,7 +1163,11 @@ What the projection reads:
 - `step` is an integer from 1 to 2147483647; a step event whose `step` is anything else
   is stored and folded into nothing, and a log chunk with such a `step` has none.
 - `name` is cut to 1024 bytes on a character boundary. `kind` is `fetch`, `compose`,
-  `image`, `build`, `setup`, `join`, `wall` or `push`, and any other value is absent.
+  `image`, `build`, `setup`, `join`, `wall`, `push` or `machine`, and any other value is
+  absent. `machine` is outside the contract's list: it is the start of the run's machine,
+  which `qory run` sends after it redeems the run's code, one log line per part of the
+  start. Its test fixture (`Apiary.RunEventsFixtures.machine_step_events/4`) is local until
+  Forager's contract has one.
 - The exit's `state` is `succeeded`, `failed` or `cancelled`; any other value, or none, is
   `failed`, as for a run's exit. `exit_code` outside -2147483647 to 2147483647 and a
   negative `duration_ms` are absent.
@@ -1141,7 +1205,7 @@ records written before may hold: `quiet`, `credential_expired`, `credential_chec
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's
 starter gave, carried as given. qory gives `workflow_not_in_harness` when the harness it
-composed for a run has no skill or command with the name of the run's workflow: it closes
+composed for a run has no skill or command for the run's workflow: it closes
 the run failed before the runtime starts. Qory Apiary reads the code and shows the
 workflow and where the run's harness came from (`ApiaryWeb.RunComponents.reason_words/1`,
 `Apiary.Harnesses.WorkflowGap`). Events are read as untrusted, so a `state` other than the
@@ -1491,6 +1555,20 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   a run whose results carried none has no cost (null), which the console reads as
   unrecorded, not as free. A value that is not a JSON number, negative or absurd (a billion
   dollars or more) is read as absent.
+- The optional `peak_memory_bytes` and `cpu_time_ms` of `dev.qory.session.exited` are
+  the enclosure's peak memory, in bytes, and its CPU time, in milliseconds, measured
+  inside the enclosure, and Forager's contract marks them as not for limits or billing.
+  The enclosure is everything behind the session's wall: the agent, a nested Docker
+  daemon, the containers the agent starts, and the setup commands that run inside it.
+  Forager sends them only when the runtime exited behind a wall. Qory Apiary assumes one
+  `dev.qory.session.exited` per session. The run keeps the highest peak of its sessions
+  (`runs.peak_memory_bytes`) and the sum of their CPU time (`runs.cpu_time_ms`), each
+  event once by its id; the sum stops at the bigint maximum. A second
+  `dev.qory.session.exited` for the same session, with a new event id, is counted twice:
+  its CPU time is added again. A value that is not an integer from 0 to the bigint
+  maximum is read as absent, so a value above Forager's maximum of 2^53-1 is still read.
+  A run whose sessions reported neither value has null in both, which the run's page
+  leaves out.
 - Tool invocations are read by the same pipeline as any egress: a `dev.qory.run.egress`
   with `tool` is a connection keyed like any request, by host, port and path, and the
   tool is not part of the key, since the contract refuses a host two tools serve. The
@@ -1529,8 +1607,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
     then by `egress.allow` and the mode. Only a connection that was allowed is
     terminated and held to `egress.paths`. A host that is only in `paths` is denied under
     `enforce`. So a host held to paths is rendered in **both** `allow` and `paths`, or,
-    for an integration's host, in `allow_first` and `paths`, and a denied host is never
-    in `paths`: it is never reached.
+    for an integration's host, in `allow_first` and `paths`. A runtime's host is in
+    `allow_first`, and in `paths` only with `/*`, where a `*.` key of `paths` covers it.
+    A denied host is never in `paths`: it is never reached.
   - A host several keys of `paths` cover is held to the most specific one: its name
     itself, else the `*.` key with the longest suffix (`policy.HostPaths`). A `*.` key of
     `paths` also holds every allowed host below it that no more specific key names. Qory

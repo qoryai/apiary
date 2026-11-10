@@ -9,7 +9,7 @@ defmodule Apiary.TestSetup do
 
   - **The features.** The suite with QORY_FEATURES unset or blank, CI's "every feature",
     runs with every feature (`Apiary.Features.all/0`): the opt-in ones too
-    (`Apiary.Features.opt_in/0`), which an instance launched so leaves off.
+    (`Apiary.Features.opt_in/0`), which an instance launched so may leave off.
   - **The tags it leaves out.**
     - A test tagged `needs: feature` exercises that feature; the suite runs in CI under
       more than one QORY_FEATURES, and a run without the feature leaves such tests out
@@ -52,6 +52,9 @@ defmodule Apiary.TestSetup do
   - **The artifact store.** A folder of this test run under the system's temporary
     folder, so runs on other partitions share nothing with it, removed when the suite
     ends. A test that lists the store's files sets a folder of the test instead.
+  - **The Qory harness.** A git repository of the Qory harness's files, served at its
+    address with no network, and its `main` read and stored, committed before the sandbox
+    takes over (`Apiary.QoryHarnessFixture`). The instance's first workspace reads it.
   - **The instance.** It is set up, committed before the sandbox takes over: a sign-up in
     a test is a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`,
     which asks the configured edition whether it is set up, and sets it up through it).
@@ -95,6 +98,7 @@ defmodule Apiary.TestSetup do
     |> ExUnit.start()
 
     artifact_store!()
+    :ok = Apiary.QoryHarnessFixture.start!()
     Apiary.OrganisationsFixtures.ensure_instance_organisation!()
     _types = Apiary.Processes.TypeTemplates.list()
 

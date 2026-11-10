@@ -197,6 +197,29 @@ defmodule Apiary.Stages.StopCauseTest do
       assert StopCause.set_up_step(%DispatchRun{end_cause: :provider_gone}) == nil
     end
 
+    test "a built-in harness at a branch its repository does not have: contact support, and no set-up step" do
+      %{scope: scope} = sign_up_fixture()
+      url = Apiary.Harnesses.Builtin.git()
+      {run, work_item} = walk_failed(scope, "ref_missing", url)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+          set: [
+            failure_rule: %{
+              "rule" => "claim",
+              "values" => %{"url" => url, "ref" => "gone", "builtin" => true}
+            }
+          ]
+        )
+
+      assert StopCause.text(run, work_item) ==
+               "Reading the harness from #{url} failed: the repository has no branch gone.\n" <>
+                 "Contact support."
+
+      assert StopCause.set_up_step(run) == nil
+    end
+
     test "with no source shown, the line starts with a capital and the fix does not" do
       %{scope: scope} = sign_up_fixture()
       org = scope.organisation.name
@@ -231,7 +254,8 @@ defmodule Apiary.Stages.StopCauseTest do
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
       {:ok, run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
 
-      Repo.insert!(%Apiary.Runs.Run{
+      %Apiary.Runs.Run{
+        number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
         node_run_id: run.run_id,
@@ -240,7 +264,9 @@ defmodule Apiary.Stages.StopCauseTest do
         state: "failed",
         exit_state: "failed",
         reason: reason
-      })
+      }
+      |> Ecto.Changeset.change()
+      |> Apiary.RunEventsFixtures.insert_run!()
 
       {%{run | state: :ended, end_cause: :run_ended, result_outcome: :none}, work_item}
     end
@@ -300,7 +326,8 @@ defmodule Apiary.Stages.StopCauseTest do
           set: Keyword.merge([state: :resolved, workflow: "explore-a-ticket"], walk)
         )
 
-      Repo.insert!(%Apiary.Runs.Run{
+      %Apiary.Runs.Run{
+        number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
         node_run_id: run.run_id,
@@ -308,7 +335,9 @@ defmodule Apiary.Stages.StopCauseTest do
         state: "failed",
         exit_state: "failed",
         reason: reason
-      })
+      }
+      |> Ecto.Changeset.change()
+      |> Apiary.RunEventsFixtures.insert_run!()
 
       run = %{run | state: :ended, end_cause: :run_ended, result_outcome: :none}
       {run, %{work_item | target_path: "acme/web-shop"}}
@@ -317,7 +346,7 @@ defmodule Apiary.Stages.StopCauseTest do
     test "names the workflow and where the harness comes from, by the walk's origin" do
       %{scope: scope} = sign_up_fixture()
       {:ok, choice} = Apiary.Stacks.Sources.choose(scope, :qory)
-      missing = "The run's harness has no skill named explore-a-ticket."
+      missing = "The run's harness has no skill for the workflow explore-a-ticket."
 
       {run, work_item} = gap(scope, origin: :file)
 
@@ -375,7 +404,7 @@ defmodule Apiary.Stages.StopCauseTest do
       {run, work_item} = gap(scope, origin: :file)
 
       assert StopCause.text(run, work_item) ==
-               "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of target acme/web-shop."
+               "The run's harness has no skill for the workflow explore-a-ticket. The harness comes from the harness file at the root of target acme/web-shop."
     end
 
     test "any other reason is a run that ended without a result" do

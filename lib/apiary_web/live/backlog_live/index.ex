@@ -53,13 +53,18 @@ defmodule ApiaryWeb.BacklogLive.Index do
   # `:list`), read with the page's scope (`Apiary.Sources.Backlog.get_ticket/2`): an id of
   # no ticket of this Backlog opens nothing. Its Close, and the scrim, take the id away;
   # the list keeps its page. An open ticket with no work item has Take in
-  # (`ApiaryWeb.BacklogComponents.take_in_block/1`).
+  # (`ApiaryWeb.BacklogComponents.take_in_block/1`); one whose work item ended has which
+  # work item it is and how it ended, and Take in again, or Take in here for a work item
+  # of another workspace.
   #
-  # **Take in.** The ticket's Take in, and a row's, take the ticket in
-  # (`Apiary.WorkItems.take_in/3`) and lead to the new work item's page. A refusal is a
-  # flash in the page's words (`ApiaryWeb.BacklogComponents.take_in_refused/3`), and the
-  # page reads what it shows again. A row's Take in again brings its ended work item back
-  # (`Apiary.WorkItems.take_in_again/3`) and leads to its page, with a refusal the same way.
+  # **Take in.** The ticket's Take in, and a row's, open the take in's dialog
+  # (`ApiaryWeb.BacklogLive.TakeIn`), and its Take in takes the ticket in, with the
+  # comment, (`Apiary.WorkItems.take_in/3`) and leads to the new work item's page. A
+  # refusal is a flash in the page's words
+  # (`ApiaryWeb.BacklogComponents.take_in_refused/3`), and the page reads what it shows
+  # again. Take in again and Take in here, a row's and the ticket's, open the same dialog,
+  # whose confirm brings the ended work item back (`Apiary.WorkItems.take_in_again/3`) and
+  # leads to its page, with a refusal the same way.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -68,10 +73,11 @@ defmodule ApiaryWeb.BacklogLive.Index do
   use ApiaryWeb.Features, :factory
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
-  alias Apiary.{Access, Adapters, WorkItems}
+  alias Apiary.{Access, Adapters}
   alias Apiary.Runs.Filters
   alias Apiary.Sources.Backlog
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
+  alias ApiaryWeb.BacklogLive.TakeIn
 
   @views [:open, :taken]
   @most_values 100
@@ -241,6 +247,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
                 now={@now}
                 take_in="take_in"
                 take_in_again="take_in_again"
+                workspace={@current_scope.workspace.name}
               />
             </ul>
           </section>
@@ -273,11 +280,18 @@ defmodule ApiaryWeb.BacklogLive.Index do
           item_noun={@item_noun}
           collection_noun={collection_noun(@facts.collection_nouns)}
         >
-          <:take_in :if={take_in?(@ticket)}>
+          <:take_in :if={panel_kind(@ticket)}>
             <BacklogComponents.take_in_block
               id="backlog-ticket-take-in"
               ticket_id={@ticket.id}
+              kind={panel_kind(@ticket)}
+              take_in={if panel_kind(@ticket) == :take_in, do: "take_in", else: "take_in_again"}
               refused={@refused}
+              work_item={@ticket.work_item}
+              workspace={@current_scope.workspace.name}
+              you={@current_scope.user.id}
+              now={@now}
+              item_noun={@item_noun}
             />
           </:take_in>
           <:rendered_body>
@@ -298,6 +312,31 @@ defmodule ApiaryWeb.BacklogLive.Index do
           </:rendered_comment>
         </BacklogComponents.ticket>
       </div>
+
+      <BacklogComponents.take_in_dialog
+        :if={@take_in}
+        ask={@take_in}
+        now={@now}
+        item_noun={@item_noun}
+        collection_noun={collection_noun(@facts.collection_nouns)}
+      >
+        <:rendered_body>
+          <SourceComponents.body
+            id="take-in-dialog-body"
+            body={@take_in.ticket.body}
+            format={@take_in.ticket.body_format}
+            item_noun={@item_noun}
+          />
+        </:rendered_body>
+        <:rendered_comment :let={comment}>
+          <SourceComponents.body
+            id={"take-in-dialog-comment-#{comment.id}-body"}
+            body={comment.body}
+            format={comment.body_format}
+            item_noun={@item_noun}
+          />
+        </:rendered_comment>
+      </BacklogComponents.take_in_dialog>
     </Layouts.app>
     """
   end
@@ -327,6 +366,7 @@ defmodule ApiaryWeb.BacklogLive.Index do
            do: BacklogComponents.take_in_who_may(scope)
          )
      )
+     |> TakeIn.mount()
      |> load_options()
      |> load_facts()
      |> stream_configure(:tickets, dom_id: &"ticket-#{&1.id}")
@@ -379,53 +419,52 @@ defmodule ApiaryWeb.BacklogLive.Index do
 
   def handle_event("narrow", _params, socket), do: {:noreply, socket}
 
-  # Take in, the open ticket's or a row's: the new work item's page, or why not.
-  def handle_event("take_in", %{"id" => id}, socket) when is_binary(id) do
-    scope = socket.assigns.current_scope
-
-    case WorkItems.take_in(scope, id) do
-      {:ok, work_item} ->
-        {:noreply,
-         push_navigate(socket,
-           to: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}"
-         )}
-
-      {:error, refusal} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, refused_words(socket, refusal, id))
-         |> load_options()
-         |> load_facts()
-         |> load()
-         |> load_ticket()}
+  # Take in, Take in again and Take in here, the open ticket's or a row's: the take in's
+  # dialog, or why not.
+  def handle_event(event, %{"id" => id} = params, socket)
+      when event in ["take_in", "take_in_again"] and is_binary(id) do
+    case TakeIn.open(socket, event, id, params["return"]) do
+      {:ok, socket} -> {:noreply, socket}
+      {:refused, refusal} -> {:noreply, refused(socket, refusal, id)}
     end
   end
 
-  def handle_event("take_in", _params, socket), do: {:noreply, socket}
+  def handle_event(event, _params, socket) when event in ["take_in", "take_in_again"],
+    do: {:noreply, socket}
 
-  # A row's Take in again: the work item's page, or why not.
-  def handle_event("take_in_again", %{"id" => id}, socket) when is_binary(id) do
-    scope = socket.assigns.current_scope
+  def handle_event("take_in_change", params, socket),
+    do: {:noreply, TakeIn.change(socket, params)}
 
-    case WorkItems.take_in_again(scope, id) do
-      {:ok, work_item} ->
+  def handle_event("take_in_cancel", _params, socket), do: {:noreply, TakeIn.cancel(socket)}
+
+  # The dialog's Take in: the work item's page, the dialog again with the comment's
+  # error, or why not.
+  def handle_event("take_in_confirm", params, socket) do
+    case TakeIn.confirm(socket, params) do
+      {:ok, socket, work_item} ->
         {:noreply,
-         push_navigate(socket,
-           to: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}"
-         )}
+         push_navigate(socket, to: TakeIn.path(socket.assigns.current_scope, work_item))}
 
-      {:error, refusal} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, refused_words(socket, refusal, id))
-         |> load_options()
-         |> load_facts()
-         |> load()
-         |> load_ticket()}
+      {:open, socket} ->
+        {:noreply, socket}
+
+      {:refused, socket, refusal, id} ->
+        {:noreply, refused(socket, refusal, id)}
+
+      :none ->
+        {:noreply, socket}
     end
   end
 
-  def handle_event("take_in_again", _params, socket), do: {:noreply, socket}
+  # A refused take in: why, in a flash, and what the page shows read again.
+  defp refused(socket, refusal, id) do
+    socket
+    |> put_flash(:error, refused_words(socket, refusal, id))
+    |> load_options()
+    |> load_facts()
+    |> load()
+    |> load_ticket()
+  end
 
   # A ticket of the workspace's Backlog was written, ended, closed or taken in: the page
   # reads what it shows again, with its scope, whatever the message names.
@@ -812,8 +851,18 @@ defmodule ApiaryWeb.BacklogLive.Index do
     end
   end
 
-  # An open ticket with no work item has Take in.
-  defp take_in?(ticket), do: ticket.state == :open and is_nil(ticket.work_item)
+  # The open ticket's take in: Take in for an open ticket with no work item; Take in again
+  # for one whose work item of the workspace ended, closed or undone, and is not finished;
+  # Take in here for such a work item of another workspace, which has no number here
+  # (`Apiary.Sources.Backlog`), whether or not the person may read the work items there;
+  # none otherwise.
+  defp panel_kind(%{state: :open, work_item: nil}), do: :take_in
+
+  defp panel_kind(%{state: :open, work_item: %{state: state, finished: false} = work_item})
+       when state in [:undone, :closed],
+       do: if(work_item.number, do: :again, else: :here)
+
+  defp panel_kind(_ticket), do: nil
 
   # The collections' word the ticket's facts take: the sources' one word, else none.
   defp collection_noun([{noun, _count}]), do: noun

@@ -21,6 +21,10 @@ defmodule Apiary.WorkflowEndToEndTest do
   #   6. That run gives `changes-requested`. Dana saves version 3 as a trial and assigns
   #      the work item to it; the run queued for round 3 moves to version 3.
   #
+  # Test 7 drives steps 1 and 2, then step 7: Dana saves version 2, in which Build runs
+  # capture-demo once, outside a loop. Build's run pushes an explainer and ends with no
+  # verdict; Build escalates (`run_stopped`), and Dana accepts the explainer as it is.
+  #
   # Not async: the store's folder and the modules the stage runner and the run API call
   # are the application's settings.
   use ApiaryWeb.ConnCase, async: false
@@ -101,6 +105,10 @@ defmodule Apiary.WorkflowEndToEndTest do
 
   test "6. a trial version assigned to the work item moves its queued run", ctx do
     ctx |> step_1() |> step_2() |> step_3() |> step_4() |> step_5() |> step_6()
+  end
+
+  test "7. a run outside a loop that ends with no verdict escalates run_stopped", ctx do
+    ctx |> step_1() |> step_2() |> step_7()
   end
 
   ## The steps
@@ -185,16 +193,17 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert %{"type" => "proposal", "name" => "main", "version" => %{"number" => 1}} =
              pushed["artifact"]
 
+    verdict!(ctx, run, %{"verdict" => "passed"})
     end_run!(ctx, run)
 
     work_item = reload(ctx.work_item)
     assert_place(work_item, @explore, :at_gate, 1)
 
-    # A run reads its work item's artifacts after it ends: the proposal it pushed, and no
-    # verdict, which Explore does not give.
+    # A run reads its work item's artifacts after it ends: the proposal it pushed, and its
+    # verdict.
     index = json_response(read!(ctx, run, "/artifacts"), 200)
     assert %{"newest_version" => 1} = artifact(index, "proposal")
-    refute Enum.any?(index["artifacts"], &(&1["type"] == "verdict"))
+    assert %{"newest_version" => 1} = artifact(index, "verdict")
 
     for version <- artifact(index, "proposal")["versions"] do
       assert version["writer"] == %{"kind" => "run", "run_id" => run.run_id}
@@ -332,8 +341,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     pushed = push_explainer!(ctx, run, "# Gift cards\n\nThe payment step has a field.\n")
     assert pushed["version"]["number"] == 1
 
-    gaps = "The explainer does not show a payment with two gift cards."
-    verdict!(ctx, run, %{"verdict" => "changes-requested", "gaps" => gaps})
+    verdict!(ctx, run, %{"verdict" => "changes-requested"})
     end_run!(ctx, run)
 
     work_item = reload(ctx.work_item)
@@ -350,8 +358,8 @@ defmodule Apiary.WorkflowEndToEndTest do
            }
 
     assert %{"round" => 2, "rounds" => 3, "state" => "running"} = snapshot["stage"]
-    assert %{"verdict" => "changes-requested", "gaps" => ^gaps} = snapshot["verdict"]
-    assert snapshot["gaps"] == gaps
+    assert %{"verdict" => "changes-requested", "points" => nil} = snapshot["verdict"]
+    assert snapshot["gaps"] == nil
 
     assert [%{"type" => "explainer", "check" => "passed", "version" => %{"number" => 1}}] =
              snapshot["outputs"]
@@ -439,14 +447,21 @@ defmodule Apiary.WorkflowEndToEndTest do
     work_item = reload(work_item)
     assert_place(work_item, @build, :escalated, 1)
 
-    assert %Escalation{cause: :run_stopped, round: 1, gaps: stop_cause} =
+    assert %Escalation{cause: :run_stopped, round: 1, points: points} =
              Repo.one!(
                from e in Escalation,
                  where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)
              )
 
-    assert is_binary(stop_cause) and stop_cause != ""
-    assert %{escalation: %{cause: :run_stopped}} = Stages.status(work_item, scope)
+    assert points == [
+             %{
+               "text" => "The run stopped: it ended without a result.",
+               "action" => "run_again"
+             }
+           ]
+
+    assert %{escalation: %{cause: :run_stopped, points: ^points}, gaps: nil} =
+             Stages.status(work_item, scope)
 
     # A run that has ended writes nothing.
     assert json_response(write!(ctx, stopped, "/verdict", %{"verdict" => "passed"}), 409) == %{
@@ -492,7 +507,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   defp step_6(ctx) do
     %{scope: scope, run: run} = ctx
 
-    verdict!(ctx, run, %{"verdict" => "changes-requested", "gaps" => "The note is not done."})
+    verdict!(ctx, run, %{"verdict" => "changes-requested"})
     end_run!(ctx, run)
 
     work_item = reload(ctx.work_item)
@@ -525,6 +540,62 @@ defmodule Apiary.WorkflowEndToEndTest do
              snapshot["stage"]
 
     ctx
+  end
+
+  # 7. Dana saves version 2, whose Build runs capture-demo once, outside a loop, and must
+  # output an explainer, and assigns the work item to it. Dana confirms Explore and
+  # approves Shape, which has no workflow and no output: Build is entered. Build's run
+  # pushes an explainer and ends by its exit with no verdict: Build escalates with the
+  # cause `run_stopped` and its point, and the stage's run list shows no verdict for the run.
+  # The explainer has a version, so Dana accepts it as it is, and Build waits at its gate.
+  defp step_7(ctx) do
+    %{scope: scope} = ctx
+
+    {:ok, v2} = Processes.save(scope, scope.workspace, single_build_document(ctx.v1.document))
+    {:ok, assigned} = Processes.assign(scope, ctx.work_item, v2)
+
+    {:ok, _work_item} = Stages.approve(scope, assigned, nil, expect_stage: @explore)
+    work_item = reload(assigned)
+    assert_place(work_item, @shape, :at_gate, 1)
+
+    {:ok, _work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+    work_item = reload(work_item)
+    assert_place(work_item, @build, :running, 1)
+
+    assert %DispatchRun{
+             state: :waiting,
+             workflow: "capture-demo",
+             stage_id: @build,
+             loop_entry: nil,
+             round: 1
+           } = newest_run(work_item)
+
+    run = claim!(ctx)
+    push_explainer!(ctx, run, "# Gift cards\n\nThe payment step has a field.\n")
+    end_run!(ctx, run)
+
+    work_item = reload(work_item)
+    assert_place(work_item, @build, :escalated, 1)
+
+    no_verdict = [%{"text" => "The run stopped before its verdict.", "action" => "run_again"}]
+
+    assert %Escalation{cause: :run_stopped, round: 1, points: ^no_verdict} =
+             Repo.one!(
+               from e in Escalation,
+                 where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)
+             )
+
+    assert %{escalation: %{cause: :run_stopped}} = Stages.status(work_item, scope)
+    assert [%{verdict: nil, round: 1, stage_id: @build} | _explore] = Stages.runs(work_item)
+
+    {:ok, _work_item} =
+      Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @build)
+
+    work_item = reload(work_item)
+    assert_place(work_item, @build, :at_gate, 1)
+    assert [%{type: "explainer", check: :passed}] = Stages.status(work_item, scope).outputs
+
+    Map.put(ctx, :work_item, work_item)
   end
 
   ## The gateway
@@ -680,6 +751,21 @@ defmodule Apiary.WorkflowEndToEndTest do
           "sequence" => [
             %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}
           ],
+          "outputs" => [%{"type" => "explainer", "required" => true}]
+        })
+
+      stage ->
+        stage
+    end)
+  end
+
+  # Version 2 for test 7: Build runs capture-demo once, outside a loop, and must output an
+  # explainer.
+  defp single_build_document(document) do
+    update_stage(document, fn
+      %{"id" => @build} = stage ->
+        Map.merge(stage, %{
+          "sequence" => [%{"workflow" => "capture-demo"}],
           "outputs" => [%{"type" => "explainer", "required" => true}]
         })
 

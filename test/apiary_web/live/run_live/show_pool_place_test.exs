@@ -260,13 +260,13 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
     lv = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
     refute has_element?(lv, "#runs th", "Host")
-    refute has_element?(lv, "#run-#{pool_run.number} .q-rl-host")
+    refute has_element?(lv, "#run-#{pool_run.public_id} .q-rl-host")
 
-    pool_row = lv |> element("#run-#{pool_run.number}") |> render()
+    pool_row = lv |> element("#run-#{pool_run.public_id}") |> render()
     refute pool_row =~ @machine
-    assert lv |> element("#run-#{pool_run.number} .q-rl-c5") |> render() =~ "mac-pool"
+    assert lv |> element("#run-#{pool_run.public_id} .q-rl-c5") |> render() =~ "mac-pool"
 
-    refute lv |> element("#run-#{local_run.number}") |> render() =~ "mac-pool"
+    refute lv |> element("#run-#{local_run.public_id}") |> render() =~ "mac-pool"
   end
 
   test "the target page's runs: a pool's run shows the pool's name, any other run its host",
@@ -335,8 +335,8 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
     assert Runs.matching_ids(scope, %Filters{host: "pool"}, ids) == []
 
     lv = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?host=Qory+Pool")
-    assert has_element?(lv, "#run-#{pool_run.number}")
-    refute has_element?(lv, "#run-#{local_run.number}")
+    assert has_element?(lv, "#run-#{pool_run.public_id}")
+    refute has_element?(lv, "#run-#{local_run.public_id}")
 
     target = Apiary.Repo.get!(Apiary.Runs.Target, pool_run.target_id)
 

@@ -38,6 +38,13 @@ defmodule Apiary.WorkItems.Explore do
   # `stage/1` is the stage a status is at, as a close records it: `:shape`
   # once confirmed, `:confirm` while the proposal waits, `:explore` otherwise.
   #
+  # `status/3` is `status/2` with where the work item stands in its stage: a stage that
+  # waits for answers is `:questions`, also after a confirmation, once the latest run has
+  # ended. `with_status/1` and a close keep `status/2`. `member_view/2` is what a member's
+  # answer, reply, send or Run another round reads (`Apiary.WorkItems.Moves`): that
+  # status, a latest run that has not ended as itself, and `:gate` at the gate of any
+  # stage but Explore's.
+  #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
@@ -84,6 +91,9 @@ defmodule Apiary.WorkItems.Explore do
           | :cancelled
           | :used_up
           | :shape
+
+  @typedoc "Where a live work item stands for a member's answer, reply, send or round."
+  @type member_status :: status | :gate
 
   @typedoc "What a run gave, or why it gave nothing."
   @type outcome :: :proposal | :questions | :error | :none | :refused | nil
@@ -172,6 +182,43 @@ defmodule Apiary.WorkItems.Explore do
     end
   end
 
+  # status/3 is `status/2` for `work_item`, whose current take in has `steps`: `:questions`
+  # where its stage waits for answers and the latest run has ended, at any stage, confirmed
+  # or not.
+  @doc false
+  @spec status([step], boolean, WorkItem.t()) :: status
+  def status([_ | _] = steps, confirmed?, %WorkItem{stage_state: :waiting_answers}) do
+    case List.last(steps).place do
+      place when place in [:queued, :running] -> status(steps, confirmed?)
+      _ended -> :questions
+    end
+  end
+
+  def status(steps, confirmed?, %WorkItem{}), do: status(steps, confirmed?)
+
+  # member_view/2 is `current` (`current/2`) with the status a member's move on `work_item`
+  # reads (the moduledoc). A proposal that waits at Confirm keeps `:confirm`, wherever the
+  # work item went after a gate `none`.
+  @doc false
+  @spec member_view(map, WorkItem.t()) :: map
+  def member_view(%{status: :confirm} = current, %WorkItem{}), do: current
+  def member_view(%{step: nil} = current, %WorkItem{}), do: current
+
+  def member_view(%{step: %{place: place}} = current, %WorkItem{})
+      when place in [:queued, :running],
+      do: %{current | status: place}
+
+  def member_view(current, %WorkItem{stage_state: :waiting_answers}),
+    do: %{current | status: :questions}
+
+  def member_view(current, %WorkItem{stage_state: :at_gate, stage_id: stage_id} = work_item) do
+    if stage_id == Apiary.Stages.explore_stage_id(work_item),
+      do: current,
+      else: %{current | status: :gate}
+  end
+
+  def member_view(current, %WorkItem{}), do: current
+
   # stage/1 is the stage `status` is at.
   @doc false
   @spec stage(status) :: :explore | :confirm | :shape
@@ -233,6 +280,7 @@ defmodule Apiary.WorkItems.Explore do
             END AS place
             FROM dispatch_runs AS d
             LEFT JOIN runs AS r ON r.dispatch_run_id = d.id
+              AND (r.registered_at IS NOT NULL OR r.node_id IS NOT NULL)
             WHERE d.work_item_id = ? AND d.take_in = ?
             ORDER BY d.attempt DESC
             LIMIT 1
@@ -288,7 +336,7 @@ defmodule Apiary.WorkItems.Explore do
   def steps(work_item_id, take_ins, %DateTime{} = _now) when is_binary(work_item_id) do
     query =
       from d in DispatchRun,
-        left_join: r in Run,
+        left_join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == d.id,
         where: d.work_item_id == ^work_item_id,
         order_by: [asc: d.take_in, asc: d.attempt],
@@ -370,14 +418,23 @@ defmodule Apiary.WorkItems.Explore do
   # `proposal` named `main` a run of the take in up to it pushed; nil for none.
   @doc false
   @spec proposal_version(Ecto.UUID.t(), pos_integer, pos_integer) :: pos_integer | nil
-  def proposal_version(id, take_in, attempt) do
+  def proposal_version(id, take_in, attempt), do: version(id, take_in, attempt, "proposal")
+
+  # version/4 is the version of the type `type` the run `attempt` of take in `take_in` of
+  # the work item `id` stands at, the version a review comment on that type is on: the
+  # number of the newest version of its artifact named `main` a run of the take in up to
+  # it pushed; nil for none. A review comment's `on` has a type and a number and no
+  # artifact name, so `main` is the only artifact of a type it can be on.
+  @doc false
+  @spec version(Ecto.UUID.t(), pos_integer, pos_integer, String.t()) :: pos_integer | nil
+  def version(id, take_in, attempt, type) do
     Repo.one(
       from v in Version,
         join: a in Artifact,
         on: a.id == v.artifact_id,
         join: d in DispatchRun,
         on: d.id == v.run_id,
-        where: a.work_item_id == ^id and a.type == "proposal" and a.name == "main",
+        where: a.work_item_id == ^id and a.type == ^type and a.name == "main",
         where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt <= ^attempt,
         order_by: [desc: v.number],
         limit: 1,
@@ -385,42 +442,75 @@ defmodule Apiary.WorkItems.Explore do
     )
   end
 
-  # proposal_versions/2 is the numbers of the versions of the proposal named `main` that
-  # the runs of take in `take_in` of the work item `id` pushed, the versions a review
-  # comment of that take in is on.
+  # versions/2 is the type and number of each version of an artifact named `main` that the
+  # runs of take in `take_in` of the work item `id` pushed, the versions a review comment
+  # of that take in is on. Versions restart per artifact, so a number alone is not enough.
   @doc false
-  @spec proposal_versions(Ecto.UUID.t(), pos_integer) :: [pos_integer]
-  def proposal_versions(id, take_in) do
-    Repo.all(
-      from v in Version,
-        join: a in Artifact,
-        on: a.id == v.artifact_id,
-        join: d in DispatchRun,
-        on: d.id == v.run_id,
-        where: a.work_item_id == ^id and a.type == "proposal" and a.name == "main",
-        where: d.work_item_id == ^id and d.take_in == ^take_in,
-        select: v.number
-    )
+  @spec versions(Ecto.UUID.t(), pos_integer) :: MapSet.t({String.t(), pos_integer})
+  def versions(id, take_in), do: id |> versions_query(take_in) |> Repo.all() |> MapSet.new()
+
+  # versions/3 is `versions/2` limited to the versions that runs at the stage
+  # `{stage_id, explore?}` pushed (`at_stage/2`).
+  @doc false
+  @spec versions(Ecto.UUID.t(), pos_integer, {String.t() | nil, boolean}) ::
+          MapSet.t({String.t(), pos_integer})
+  def versions(id, take_in, {stage_id, explore?}) do
+    id
+    |> versions_query(take_in)
+    |> where(^at_stage(stage_id, explore?))
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  # at_stage/2 is the condition on a run of the queue, bound as `:dispatch`, that it ran at
+  # the stage `stage_id`, or with no stage where `explore?`, as a run with no stage is
+  # Explore's. Every run counts for a nil `stage_id`.
+  @doc false
+  @spec at_stage(String.t() | nil, boolean) :: Ecto.Query.dynamic_expr()
+  def at_stage(nil, _explore?), do: dynamic(true)
+
+  def at_stage(stage_id, true),
+    do: dynamic([dispatch: d], d.stage_id == ^stage_id or is_nil(d.stage_id))
+
+  def at_stage(stage_id, false), do: dynamic([dispatch: d], d.stage_id == ^stage_id)
+
+  defp versions_query(id, take_in) do
+    from v in Version,
+      join: a in Artifact,
+      on: a.id == v.artifact_id,
+      join: d in DispatchRun,
+      as: :dispatch,
+      on: d.id == v.run_id,
+      where: a.work_item_id == ^id and a.name == "main",
+      where: d.work_item_id == ^id and d.take_in == ^take_in,
+      select: {a.type, v.number}
   end
 
   # proposal/2 is version `number` of the work item `id`'s proposal named `main`, as a page
-  # shows it: `text`, the Markdown of its `text/markdown` file; `version_id`, the
+  # shows it (`document/3`).
+  @doc false
+  @spec proposal(Ecto.UUID.t(), pos_integer | nil) ::
+          %{text: String.t(), version_id: String.t(), images: [String.t()]} | nil
+  def proposal(id, number), do: document(id, "proposal", number)
+
+  # document/3 is version `number` of the work item `id`'s artifact of `type` named `main`,
+  # as a page shows it: `text`, the Markdown of its `text/markdown` file; `version_id`, the
   # version's public id (`av_…`); and `images`, the filenames of its image files, in
   # filename order. The version's `sources.json` is in none of them. Nil for no such
   # version, a version with no Markdown file, or one that cannot be read as UTF-8 text.
   @doc false
-  @spec proposal(Ecto.UUID.t(), pos_integer | nil) ::
+  @spec document(Ecto.UUID.t(), String.t(), pos_integer | nil) ::
           %{text: String.t(), version_id: String.t(), images: [String.t()]} | nil
-  def proposal(_id, nil), do: nil
+  def document(_id, _type, nil), do: nil
 
-  def proposal(id, number) when is_integer(number) do
+  def document(id, type, number) when is_binary(type) and is_integer(number) do
     version =
       Repo.one(
         from v in Version,
           join: a in Artifact,
           on: a.id == v.artifact_id,
           where:
-            a.work_item_id == ^id and a.type == "proposal" and a.name == "main" and
+            a.work_item_id == ^id and a.type == ^type and a.name == "main" and
               v.number == ^number,
           preload: [files: ^from(f in ArtifactFile, order_by: f.filename)]
       )

@@ -99,8 +99,7 @@ defmodule Apiary.Runs.Registration do
   (`Apiary.Policy.ComposedConfiguration`), and its digest is the SHA-256 of the bytes
   sent. A run whose attach composed its
   configuration (`Apiary.Policy.ComposedConfiguration`: a run given an image, kept in
-  `configured_image`, or one that must build on its pool's default image, of a workspace
-  whose policy names an image) is given
+  `configured_image`, or a prebuild of a workspace whose policy names an image) is given
   the configuration in force now composed the same way, under the composed document's
   digest, so every reload names the image the run started in; a workspace that serves no
   configuration gives `{"version":1,"image":…}` to such a run that was given no policy at
@@ -125,7 +124,8 @@ defmodule Apiary.Runs.Registration do
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Policy.{ComposedConfiguration, Render, RunConfiguration, Serving}
-  alias Apiary.Runs.{About, Batch, Run, RunKey, Sender}
+  alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.{About, Batch, Number, Run, RunKey, Sender}
 
   # The body's members, by the names the contract gives them.
   @version "version"
@@ -522,7 +522,7 @@ defmodule Apiary.Runs.Registration do
   The run configuration an attach gives a run of the key's workspace whose registration's
   labels are `labels`, composed for it (`Apiary.Policy.ComposedConfiguration.shape/5`):
   `opts` say the `image` the run is given (a string, nil, or a function that reads it,
-  asked only when the image is used), whether it must build on its pool's default image
+  asked only when the image is used), whether it is a prebuild
   (`prebuild`, a boolean, or a function that reads it), and whether the image is `fixed` for the run, as after its
   attach (false unless given). `{:ok, settings, image}`, with the image the document names at
   its top level, nil for none, which the run keeps; a run given no image, of a workspace
@@ -918,13 +918,24 @@ defmodule Apiary.Runs.Registration do
   # then finds no row and the public id taken by another run: that try is a collision, and
   # the insert runs again with a new id (`Apiary.PublicId.Insert`). When every try finds
   # the id taken, the registration is unavailable, as one the database fails.
+  #
+  # The run's number comes first, which locks the workspace's counter until the transaction
+  # ends. An insert that does nothing returns its number to the counter, so a repeat leaves no gap.
   defp insert(access_key, registration, meta, digest, answer, now) do
+    workspace = %Workspace{
+      id: access_key.workspace_id,
+      organisation_id: access_key.organisation_id
+    }
+
     result =
       PublicId.Insert.run(Run, fn _try ->
         public_id = Run.new_public_id()
+        number = Number.next(workspace, access_key.node)
 
         {inserted, _rows} =
-          insert_row(public_id, access_key, registration, meta, digest, answer, now)
+          insert_row(public_id, number, access_key, registration, meta, digest, answer, now)
+
+        if inserted == 0, do: Number.give_back(workspace)
 
         run =
           Repo.one(
@@ -953,13 +964,14 @@ defmodule Apiary.Runs.Registration do
     end
   end
 
-  defp insert_row(public_id, access_key, registration, meta, digest, answer, now) do
+  defp insert_row(public_id, number, access_key, registration, meta, digest, answer, now) do
     Repo.insert_all(
       Run,
       [
         %{
           id: Ecto.UUID.generate(),
           public_id: public_id,
+          number: number,
           organisation_id: access_key.organisation_id,
           workspace_id: access_key.workspace_id,
           node_run_id: registration.run_id,
@@ -1039,7 +1051,7 @@ defmodule Apiary.Runs.Registration do
   `{:error, :not_found}` for a run id the key's workspace does not hold, a run another
   node registered, a run through a gateway that another instance of the gateway attached
   (`Apiary.Runs.Sender`), a run that never registered (its batches created it), and a
-  workspace that serves no run configuration: nobody has made its policy, the instance
+  workspace that serves no run configuration: it has no row yet, the instance
   does not have the `security` feature, or `Apiary.Access` refuses
   `run_configuration.fetch`. That last is never the document of no policy, which would
   take the policy in force off a run that started under it: a policy removed mid-run
@@ -1126,7 +1138,7 @@ defmodule Apiary.Runs.Registration do
       not Run.through_gateway?(run) or
         AccessKeys.place_in_use?(run.organisation_id, run.workspace_id)
 
-  # A reload where the workspace serves no run configuration (nobody has made its policy,
+  # A reload where the workspace serves no run configuration (it has no row yet,
   # the instance does not have the `security` feature, or `Apiary.Access` refuses
   # `run_configuration.fetch`) is not found, never the document of no policy: that answer
   # would take the policy in force off a run that started under it. A policy removed

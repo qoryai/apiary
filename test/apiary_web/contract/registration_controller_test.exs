@@ -47,7 +47,12 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
 
   @site %{"forge" => "github.example", "repository" => "acme/site"}
 
-  describe "a workspace nobody has given a policy" do
+  describe "a workspace with no row" do
+    setup ctx do
+      no_policy_version!(ctx.scope.workspace)
+      :ok
+    end
+
     test "registers a run with the document of no policy, under its digest, and renders nothing",
          ctx do
       refute Policy.managed?(ctx.scope)
@@ -68,7 +73,10 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
                ]
       end
 
-      assert Repo.aggregate(RunConfiguration, :count) == 0
+      assert Repo.aggregate(
+               from(c in RunConfiguration, where: c.workspace_id == ^ctx.scope.workspace.id),
+               :count
+             ) == 0
     end
 
     test "answers a reload 404, signed: a policy removed never loosens a run", ctx do
@@ -82,6 +90,27 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
       assert get_resp_header(conn, "x-qory-run-configuration") == []
       assert get_resp_header(conn, "etag") == []
     end
+  end
+
+  @tag needs: :security
+  test "a new workspace is served version 1, under its digest", ctx do
+    conn = register(ctx, @site)
+
+    assert conn.status == 200
+
+    assert Jason.decode!(conn.resp_body) == %{
+             "version" => 1,
+             "security_policy" => %{
+               "version" => 1,
+               "egress" => %{
+                 "mode" => "observe",
+                 "allow" => [],
+                 "allow_first" => ["api.anthropic.com"]
+               }
+             }
+           }
+
+    assert get_resp_header(conn, "x-qory-run-configuration") == [Render.digest(conn.resp_body)]
   end
 
   @tag needs: :security
@@ -99,7 +128,12 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
              "version" => 1,
              "security_policy" => %{
                "version" => 1,
-               "egress" => %{"mode" => "observe", "allow" => [], "deny" => ["ads.example"]}
+               "egress" => %{
+                 "mode" => "observe",
+                 "allow" => [],
+                 "allow_first" => ["api.anthropic.com"],
+                 "deny" => ["ads.example"]
+               }
              }
            }
 
@@ -110,7 +144,14 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
     assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key)]
     assert signed_answer?(conn)
     assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
-    assert [%RunConfiguration{version: 1, target_id: nil}] = Repo.all(RunConfiguration)
+
+    assert [{1, nil}, {2, nil}] =
+             Repo.all(
+               from c in RunConfiguration,
+                 where: c.workspace_id == ^ctx.scope.workspace.id,
+                 order_by: c.version,
+                 select: {c.version, c.target_id}
+             )
   end
 
   @tag needs: :security
@@ -302,7 +343,8 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
 
     # Managed is the workspace's own, too: this workspace's policy does not make the
     # other's served.
-    assert register(theirs, @site).resp_body == @no_policy
+    assert Jason.decode!(register(theirs, @site).resp_body)["security_policy"]["egress"] ==
+             %{"mode" => "observe", "allow" => [], "allow_first" => ["api.anthropic.com"]}
 
     {:ok, _} = Policy.deny(other, nil, %{host: "ads.example"})
     conn = register(theirs, @site)
@@ -659,7 +701,11 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
       assert served["security_policy"]["egress"]["mode"] == "observe"
       assert Enum.sort(served["security_policy"]["egress"]["allow"]) == Enum.sort(egress["allow"])
       assert Enum.sort(served["security_policy"]["egress"]["deny"]) == Enum.sort(egress["deny"])
-      assert Map.keys(served["security_policy"]["egress"]) |> Enum.sort() == ~w(allow deny mode)
+      # And the runtime's host, which is no rule of the fixture's.
+      assert served["security_policy"]["egress"]["allow_first"] == ["api.anthropic.com"]
+
+      assert Map.keys(served["security_policy"]["egress"]) |> Enum.sort() ==
+               ~w(allow allow_first deny mode)
     end
 
     test "the vendored schemas are the contract's" do

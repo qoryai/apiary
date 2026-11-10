@@ -11,8 +11,8 @@ defmodule Apiary.EditionKit do
   """
 
   @doc """
-  The edition's modules of rows of the access test (`Apiary.AccessCase`), whose rows of
-  the core's actions for the core's actors the core's access test asks too.
+  The edition's modules of rows of the access test (`Apiary.AccessCase`), which the
+  core's access test reads beside the core's (`Apiary.AccessCase.answering/1`).
   """
   @callback access_rows() :: [module]
 

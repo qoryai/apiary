@@ -219,6 +219,28 @@ defmodule Apiary.WorkItemsFixtures do
   end
 
   @doc """
+  Moves `work_item`, taken in through `ticket` and `connection` in `scope`'s workspace, to
+  the workspace of `there`, as a person does: its runs end, it is closed, the ticket's
+  record ends and a new one comes in a collection of `there`'s workspace, and a Take in
+  again there (`Apiary.WorkItems.take_in_again/3`) moves it. `%{work_item:, ticket:}`: the
+  work item moved, and the ticket's record there.
+  """
+  def moved_work_item_fixture(%Scope{} = scope, work_item, ticket, connection, %Scope{} = there) do
+    Repo.update_all(from(d in DispatchRun, where: d.work_item_id == ^work_item.id),
+      set: [state: :ended, end_cause: :run_ended]
+    )
+
+    {:ok, _closed} = Apiary.WorkItems.close(scope, Repo.get!(WorkItem, work_item.id))
+    ticket |> Ecto.Changeset.change(disconnected_at: DateTime.utc_now()) |> Repo.update!()
+
+    record =
+      backlog_ticket_fixture(there, connection: connection, external_ref: ticket.external_ref)
+
+    {:ok, moved} = Apiary.WorkItems.take_in_again(there, record.public_id)
+    %{work_item: moved, ticket: record}
+  end
+
+  @doc """
   A connected connection of the scope's organisation to a new adapter of the instance,
   the kind of row a work item's ticket comes through, written straight to the database
   so that it needs no feature on (`Apiary.NodesFixtures.connection_fixture/3` goes
@@ -257,15 +279,16 @@ defmodule Apiary.WorkItemsFixtures do
   the database, with the run registered for it where it has one. `state:` is `:ended`
   unless given (`:waiting`, `:claimed`, `:handed_over`); an ended run has `end_cause:`,
   `:run_ended` unless given. A run handed over, and one ended `run_ended`, `lost` or
-  `released`, has a registered run (`registered: false` leaves it out): completed, its exit
-  folded and its outcome a minute old unless `run:` changes it. `result:` is what the run
-  pushed during the run (`push_result!/3`): `understood_result/1` a proposal,
-  `questions_result/1` questions; nil, the default, is nothing. A run ended `run_ended` or
-  `lost` is then settled as its end settles it (`Apiary.Dispatches.Settle.settle_locked/1`,
-  unless `settle: false`). A run ended for a cause its handover gives
-  (`variables_invalid`, `ticket_gone`, `inputs_invalid`, `target_access_gone`) has the
-  outcome `:error`, as the handover writes it. Returns
-  `%{dispatch_run: dispatch_run, run: run_or_nil}`.
+  `released`, has a registered run (`registered: false` leaves it out): completed, its
+  exit folded and its outcome a minute old unless `run:` changes it. `result:` is what the
+  run pushed during the run (`push_result!/3`): `understood_result/1` a proposal,
+  `questions_result/1` questions; nil, the default, is nothing. With a `result:`,
+  `decisions:` are the questions whose option the run chose, pushed after it
+  (`push_decided!/3`). A run ended `run_ended` or `lost` is then settled as its end
+  settles it (`Apiary.Dispatches.Settle.settle_locked/1`, unless `settle: false`). A run
+  ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
+  `inputs_invalid`, `target_access_gone`) has the outcome `:error`, as the handover writes
+  it. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
   """
   def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
     take_in = Keyword.get(opts, :take_in, work_item.take_in)
@@ -338,18 +361,31 @@ defmodule Apiary.WorkItemsFixtures do
             else: %{state: "running", started_at: DateTime.add(now, -30, :second)}
 
         %Run{
+          number:
+            Apiary.RunEventsFixtures.next_run_number(
+              work_item.organisation_id,
+              work_item.workspace_id
+            ),
           organisation_id: work_item.organisation_id,
           workspace_id: work_item.workspace_id,
           node_run_id: dispatch_run.run_id,
           dispatch_run_id: dispatch_run.id
         }
         |> Ecto.Changeset.change(Map.merge(defaults, Map.new(Keyword.get(opts, :run, %{}))))
-        |> Repo.insert!()
+        |> Apiary.RunEventsFixtures.insert_run!()
       end
 
     case {run, Keyword.get(opts, :result)} do
       {%Run{} = run, %{} = result} -> push_result!(dispatch_run, run, result)
       _none -> nil
+    end
+
+    case {run, Keyword.get(opts, :decisions, [])} do
+      {%Run{} = run, [_ | _] = decisions} ->
+        push_decided!(dispatch_run, run, decisions)
+
+      _none ->
+        nil
     end
 
     dispatch_run =
@@ -377,12 +413,27 @@ defmodule Apiary.WorkItemsFixtures do
 
   @doc """
   Pushes what the run `run` of the run of the queue `dispatch_run` gave, as the run
-  pushes it through the run API: for `understood_result/1`, its `message` as a version of
-  the work item's proposal; for `questions_result/1`, its questions added, open, to the
-  newest questions, each with the id `q<n>` and asked by the run. A question of more than
-  one line keeps its first line as the question and the whole as its context.
+  pushes it through the run API: `push_output!/3`, then the verdict `passed`, which a
+  normal end writes, questions open or not.
   """
-  def push_result!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => verdict} = result) do
+  def push_result!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => _} = result) do
+    push_output!(dispatch_run, run, result)
+
+    push_as_run!(dispatch_run, Repo.get!(WorkItem, dispatch_run.work_item_id), "verdict", %{
+      filename: "verdict.json",
+      content_type: "application/json",
+      binary: Jason.encode!(%{"verdict" => "passed"})
+    })
+  end
+
+  @doc """
+  Pushes what the run gave and no verdict, as a run that stopped before its verdict does:
+  for `understood_result/1`, its `message` as a version of the work item's proposal; for
+  `questions_result/1`, its questions added, open, to the newest questions, each with the
+  id `q<n>` and asked by the run. A question of more than one line keeps its first line
+  as the question and the whole as its context.
+  """
+  def push_output!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => verdict} = result) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
 
     case verdict do
@@ -416,6 +467,51 @@ defmodule Apiary.WorkItemsFixtures do
           Apiary.Explore.Questions.file(%{"questions" => earlier ++ added})
         )
     end
+  end
+
+  @doc """
+  Pushes, as the run `run` of the run of the queue `dispatch_run`, the newest questions of
+  its work item with `decisions` added after them, each with the option the run chose: a
+  map with the `"question"`, its `"options"` (titles and explanations, none recommended),
+  the `"option"` the run chose and its `"reason"`. Each has the id `q<n>`, by its place.
+  """
+  def push_decided!(%DispatchRun{} = dispatch_run, %Run{} = run, decisions)
+      when is_list(decisions) do
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+
+    earlier =
+      case Apiary.Explore.Questions.newest(work_item) do
+        {_version, document} -> document["questions"]
+        nil -> []
+      end
+
+    at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+    added =
+      decisions
+      |> Enum.with_index(length(earlier) + 1)
+      |> Enum.map(fn {decision, n} ->
+        %{
+          "id" => "q#{n}",
+          "question" => decision["question"],
+          "options" => decision["options"],
+          "state" => "decided",
+          "asked" => %{"run" => run.number, "at" => at},
+          "decision" => %{
+            "option" => decision["option"],
+            "reason" => decision["reason"],
+            "run" => run.number,
+            "at" => at
+          }
+        }
+      end)
+
+    push_as_run!(
+      dispatch_run,
+      work_item,
+      "questions",
+      Apiary.Explore.Questions.file(%{"questions" => earlier ++ added})
+    )
   end
 
   defp question_entry(%{"question" => text} = question, id, asked) do

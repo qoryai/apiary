@@ -7,20 +7,40 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   """
   # The sentences a software workspace says in its words, with no engine word in them: the
   # policy file's place, outside the checkout, and the harness choice's repository and its
-  # branch, tag or commit, the version's name among them.
+  # branch, tag or commit, the version's name among them, and why a read of the Qory
+  # harness failed.
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+    "%{contact_support}. Reading the harness from %{url} failed: the source has no version %{ref}.",
+    "%{person}, updated from harness version %{commit}, %{date}",
     "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source.",
     "%{source} has no version named %{ref}. Correct the version.",
     "%{source} has no version yet. Add a version with a qory.yaml or harness.yaml at its root that lists the stack under exports.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
-    "Always the latest: each run uses the newest version when it starts. A fixed version uses that version.",
+    "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new harness version. A fixed version uses that version.",
+    "Always the latest: a run uses the newest version. On the Qory harness, that is the version when a machine claims the run. On a harness source, it is the version when the run is queued. A fixed version uses that version.",
+    "At each new harness version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it.",
+    "Choose a harness with a process for this type of workspace. The harness has no template of this workspace's type at this version.",
+    "Compare version %{number} of the stages with the process at harness version %{commit}, then save it as a new version.",
     "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",
+    "Harness version in use: %{commit}, process version %{number}",
+    "Harness: %{harness}, version %{commit}",
     "Keep a policy file outside the folder the runs work in.",
-    "tag or version"
+    "Set a version that exists in the workspace's harness settings. %{url} has no %{ref}.",
+    "Set a version that exists. %{url} has no tag or version %{ref}.",
+    "Set a version that exists. %{url} has no version %{ref}.",
+    "The Qory harness is the harness at %{url}.",
+    "Update from harness version %{commit}",
+    "Updated from harness version %{commit}, %{date}",
+    "Version %{commit}",
+    "tag or version",
+    "the host does not have the version",
+    "the host returned something other than a git source over HTTPS",
+    "the host serves nothing public at that address",
+    "the source is larger than 16 MiB, or a harness file is larger than 0.25 MiB"
   ]
 
   use ApiaryWeb.LingoCatalogueCase,

@@ -18,6 +18,8 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   @moduletag needs: :secrets
 
   setup do
+    # The runtime's hosts are `Apiary.Policy.RuntimeHostsTest`'s.
+    no_runtime_hosts!()
     %{scope: scope, user: user} = sign_up_fixture()
     %{scope: scope, user: user}
   end
@@ -78,12 +80,12 @@ defmodule Apiary.Policy.IntegrationHostsTest do
   end
 
   describe "a connection that applies to every workspace" do
-    test "adds its hosts to the baseline's egress.allow_first, once the workspace is managed",
-         %{scope: scope} do
+    test "adds its hosts to the baseline's egress.allow_first", %{scope: scope} do
       connection = integration!(scope, "acme-tracker", ["api.example.com"])
 
-      # A workspace nobody has changed is not served a policy: its machines use theirs.
-      refute Policy.managed?(scope)
+      assert document(scope, nil) ==
+               ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe",) <>
+                 ~s("allow":[],"allow_first":["api.example.com"]}}})
 
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "docs.example.com"})
 
@@ -614,7 +616,9 @@ defmodule Apiary.Policy.IntegrationHostsTest do
     assert Policy.effective(scope, nil) == baseline
     assert Policy.effective(scope, target) == targeted
     assert Policy.effective(scope, nil, integrations: false) == baseline
-    assert Policy.export(scope, nil) == {:ok, Apiary.Policy.Export.text(baseline)}
+    # No `*.` deny of the texts covers a runtime's host (`runtime_blocked`).
+    assert Policy.export(scope, nil) ==
+             {:ok, Map.put(Apiary.Policy.Export.text(baseline), :runtime_blocked, false)}
 
     assert [_api, _files] = integration_entries(scope, nil)
   end

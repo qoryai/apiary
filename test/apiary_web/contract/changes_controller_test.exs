@@ -28,6 +28,15 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
+  # The fixtures that match `pattern`, each by its path under the fixtures, in order.
+  defp fixtures(pattern) do
+    @fixtures
+    |> Path.join(pattern)
+    |> Path.wildcard()
+    |> Enum.map(&Path.relative_to(&1, @fixtures))
+    |> Enum.sort()
+  end
+
   defp entry(change), do: Map.new(change, fn {k, v} -> {String.to_existing_atom(k), v} end)
 
   defp append!(adapter, entries) do
@@ -67,6 +76,7 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
             {"changes/feed.json", ctx},
             {"changes/feed-loopback.json", fresh()},
             {"changes/grants.json", fresh()},
+            {"changes/comment.json", fresh()},
             {"changes/empty.json", fresh()}
           ] do
         %{"changes" => written} = fixture(path)
@@ -84,12 +94,19 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       # `Apiary.Adapters.Feed.append/2` takes (its test refuses each entry).
       refute Map.has_key?(fixture("invalid/changes-without-revision.json"), "revision")
 
-      for path <- ~w(invalid/changes-sync-interval-30.json invalid/changes-unknown-kind.json
-                     invalid/changes-work-item-status-linked.json
-                     invalid/changes-work-item-url-http.json
-                     invalid/changes-grant-status-taken-in.json
-                     invalid/changes-grant-without-connection-id.json),
-          change <- fixture(path)["changes"] do
+      # Every refused answer but that one, and but the failure reports, which are no
+      # answer.
+      paths =
+        Enum.reject(
+          fixtures("invalid/changes-*.json"),
+          &(String.starts_with?(&1, "invalid/changes-failed-") or
+              &1 == "invalid/changes-without-revision.json")
+        )
+
+      assert length(paths) == 15
+      assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
+
+      for path <- paths, change <- fixture(path)["changes"] do
         assert_raise ArgumentError, fn ->
           Repo.transaction(fn ->
             Feed.append(fresh().adapter, Map.new(change, fn {k, v} -> {String.to_atom(k), v} end))
@@ -120,6 +137,30 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       empty = ctx |> changes("?after=c_00000205") |> page!()
       assert empty["changes"] == []
       assert empty["cursor"] == "c_00000205"
+    end
+
+    test "a page ends before its body passes 4 MiB, and the cursor reads on", ctx do
+      # 65,000 characters of four bytes each: 16 entries fit in 4 MiB, the 17th does not.
+      comment = %{
+        kind: "comment",
+        comment_id: "sc_0123456789abcdef",
+        ref: "TRK-1",
+        author_name: "Dana Example",
+        body: String.duplicate("\u{1D11E}", 65_000)
+      }
+
+      append!(ctx.adapter, List.duplicate(comment, 17))
+
+      conn = changes(ctx)
+      assert byte_size(conn.resp_body) <= 4_194_304
+      first = page!(conn)
+      assert length(first["changes"]) == 16
+      assert first["cursor"] == "c_00000016"
+      assert hd(first["changes"])["body"] == comment.body
+
+      second = ctx |> changes("?after=c_00000016") |> page!()
+      assert length(second["changes"]) == 1
+      assert second["cursor"] == "c_00000017"
     end
 
     test "an empty feed answers no changes and the start's cursor", ctx do

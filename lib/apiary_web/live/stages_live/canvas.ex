@@ -90,9 +90,9 @@ defmodule ApiaryWeb.StagesLive.Canvas do
     do: gettext("The canvas did not load. Reload the page to see the stages.")
 
   @doc false
-  # view/3 is what the canvas draws for `document` in `mode`: each stage's name and lines,
-  # as text. `opts`: `selected`, `people`, `alerts`, `marks` and `selectable`, as the
-  # component's attributes.
+  # view/3 is what the canvas draws for `document` in `mode`: each stage's name, its
+  # description (nil for none) and lines, as text. `opts`: `selected`, `people`, `alerts`,
+  # `marks` and `selectable`, as the component's attributes.
   def view(document, mode, opts \\ []) when mode in [:edit, :view] do
     people = Keyword.get(opts, :people, %{})
     alerts = Keyword.get(opts, :alerts, %{})
@@ -113,6 +113,7 @@ defmodule ApiaryWeb.StagesLive.Canvas do
           %{
             id: stage["id"],
             name: stage["name"],
+            description: Words.description(stage),
             label: Words.card_label(stage, people),
             sequence: Words.card_sequence(stage),
             gate: Words.gate_line(stage, people),

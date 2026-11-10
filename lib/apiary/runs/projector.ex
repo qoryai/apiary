@@ -62,7 +62,7 @@ defmodule Apiary.Runs.Projector do
     target_system target_path started_at exited_at exit_code exit_state exit_reason refused_at
     signal reason duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
     clock_offset_ms
-    policy_digest run_configuration_digest lost_at cost_usd
+    policy_digest run_configuration_digest lost_at cost_usd peak_memory_bytes cpu_time_ms
   )a
 
   # What `rebuild/1` puts back before projecting again: everything the fold writes,
@@ -71,6 +71,10 @@ defmodule Apiary.Runs.Projector do
 
   @pass_size 1000
   @heartbeat "dev.qory.run.heartbeat"
+  # The types whose fold needs the run's projected session starts and resizes
+  # (`Apiary.Runs.Fold`, Sessions).
+  @session_started "dev.qory.session.started"
+  @resized "dev.qory.run.resized"
   # The events whose pass ends the open steps of a run that exited (`end_open_steps/1`).
   @ending ["dev.qory.run.exited", "dev.qory.run.step_started", "dev.qory.run.step_exited"]
   # The event whose fold decides what a run of a workspace's queue gave: its exit, after
@@ -143,7 +147,8 @@ defmodule Apiary.Runs.Projector do
 
   A run whose events retention has deleted, or is due to delete (`Apiary.Retention.due_or_pruned?/1`),
   is returned as it is: its projection is all that is left of it, and nothing here deletes
-  it. A run that lost only its log events is rebuilt from the rest; its log chunks were
+  it. So is a run of a workspace's queue that has no events, queued or ended before it
+  started: its state is the one recorded for it. A run that lost only its log events is rebuilt from the rest; its log chunks were
   deleted with them, and `projected_sequence` does not fall back to the first of the gaps
   they left. A rebuild stores no image a prebuild reported (`dev.qory.run.built`): only
   the projection that first folded the report stores it.
@@ -158,7 +163,7 @@ defmodule Apiary.Runs.Projector do
           {:error, :not_found}
 
         %Run{} = current ->
-          if Apiary.Retention.due_or_pruned?(current),
+          if Apiary.Retention.due_or_pruned?(current) or recorded_only?(current),
             do: {:ok, {:kept, current}},
             else: reset(current)
       end
@@ -176,6 +181,14 @@ defmodule Apiary.Runs.Projector do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # A run of a workspace's queue with no events: its state is what Qory Apiary recorded
+  # while it waited or at its claim (`Apiary.Dispatches.Queued`), queued or ended before
+  # it started, and nothing is folded from events it does not have.
+  defp recorded_only?(%Run{id: id} = run) do
+    (is_binary(run.dispatch_run_id) or is_binary(run.dispatch_id)) and
+      not Repo.exists?(from e in Event, where: e.run_id == ^id)
   end
 
   # The run as it was before the reset, so the caller knows where it stood.
@@ -325,13 +338,14 @@ defmodule Apiary.Runs.Projector do
       # The fold reads no database: the workspace it names the target by comes with the
       # run, carrying the domain whose labelling rule names it.
       workspace = %Workspace{id: run.workspace_id, domain: domain}
+      projected = projected(run, events)
 
       fold =
         fold_module().fold(
           %{run | workspace: workspace},
           events,
           latest(run, events),
-          projected(run, events)
+          projected
         )
 
       run =
@@ -419,12 +433,47 @@ defmodule Apiary.Runs.Projector do
     end
   end
 
-  # What the fold needs of the run's events already projected (`Apiary.Runs.Fold`), read
-  # only for a pass that holds a heartbeat, which can lower the run's clock offset: the
-  # time and arrival of its heartbeat with the highest sequence, which a lower offset
-  # counts again.
+  # What the fold needs of the run's events already projected (`Apiary.Runs.Fold`). With a
+  # heartbeat in the pass, which can lower the run's clock offset: the time and arrival of
+  # its heartbeat with the highest sequence, which a lower offset counts again. With a
+  # session's start or a resize in the pass: the run's session starts, one row per session,
+  # and its last resize that counts, given the starts of the pass too.
   defp projected(run, events) do
-    %{beat: if(Enum.any?(events, &(&1.type == @heartbeat)), do: last_beat(run))}
+    beat = if Enum.any?(events, &(&1.type == @heartbeat)), do: last_beat(run)
+
+    if Enum.any?(events, &(&1.type in [@session_started, @resized])) do
+      starts = projected_starts(run)
+      in_pass = Enum.filter(events, &(&1.type == @session_started))
+      uncounted = Fold.uncounted_sessions(starts ++ in_pass)
+      %{beat: beat, starts: starts, resize: last_resize(run, uncounted)}
+    else
+      %{beat: beat}
+    end
+  end
+
+  defp projected_starts(%Run{id: id}) do
+    Repo.all(
+      from e in Event,
+        where: e.run_id == ^id and e.type == @session_started and not is_nil(e.projected_at),
+        select: %{sequence: e.sequence, data: e.data}
+    )
+  end
+
+  # Walks back past a resize that is not a size or does not count. Runs inside the pass's
+  # transaction.
+  defp last_resize(%Run{id: id}, uncounted) do
+    from(e in Event,
+      where: e.run_id == ^id and e.type == @resized and not is_nil(e.projected_at),
+      order_by: [desc: e.sequence],
+      select: {e.sequence, e.data}
+    )
+    |> Repo.stream(max_rows: 16)
+    |> Enum.find_value(fn {sequence, data} ->
+      case Fold.resize_size(data, uncounted) do
+        nil -> nil
+        size -> %{sequence: sequence, size: size}
+      end
+    end)
   end
 
   defp last_beat(%Run{id: id} = run) do

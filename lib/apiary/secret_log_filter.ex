@@ -289,7 +289,7 @@ defmodule Apiary.SecretLogFilter do
   the characters after them, by `[FILTERED]`, and a link's token in a path or a query by
   its name. Any other text is returned as it is. For text Qory Apiary shows that is not a
   log line: the pool's release reason on the run page, in its header
-  (`ApiaryWeb.RunComponents`) and in its Prepare machine section
+  (`ApiaryWeb.RunComponents`) and in the **Run** list in its Timeline
   (`Apiary.Runs.Preparation`). A run's diagnostics keep every text as stored.
   """
   @spec filter_text(String.t()) :: String.t()

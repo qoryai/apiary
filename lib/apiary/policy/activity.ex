@@ -14,7 +14,13 @@ defmodule Apiary.Policy.Activity do
   `uncovered` for the workspace counts only the runs of targets that follow the
   workspace's mode, and the runs that name no target: a target that overrides the mode is
   not changed by the workspace's. For a target it counts that target's runs, whatever its
-  mode is now: what enforcing it would start denying.
+  mode is now: what enforcing it would start denying. A request to the run API, which has
+  the wall rule `wall:run-api` (`Apiary.Runs.RunApi`), counts in neither: the mode does
+  not change what the gateway does with it, so enforce adds no block to it. `uncovered`
+  also leaves out what enforce lets through with no rule: a runtime's, an integration's or
+  a model provider's host (`Apiary.Policy.RequiredHosts.covers?`). A denied destination
+  still counts on such a host: the attempt was denied, by an earlier document or by the
+  machine's local policy.
 
   A connection is held to the effective policy of its run's target, its mode
   included (the baseline
@@ -46,9 +52,9 @@ defmodule Apiary.Policy.Activity do
   alias Apiary.Accounts.Scope
   alias Apiary.Edition
   alias Apiary.Organisations.Workspace
-  alias Apiary.Policy.{Above, Effective, Grammar, Resolution, Rule}
+  alias Apiary.Policy.{Above, Effective, Grammar, RequiredHosts, Resolution, Rule}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Target, Run}
+  alias Apiary.Runs.{Connection, RunApi, Target, Run}
 
   @default_cap 20_000
   @top 50
@@ -68,11 +74,16 @@ defmodule Apiary.Policy.Activity do
     end
   end
 
-  defp uncovered_from(%Workspace{id: workspace_id}, rows, policies, target_id) do
+  defp uncovered_from(%Workspace{id: workspace_id} = workspace, rows, policies, target_id) do
+    first = RequiredHosts.first_hosts(workspace)
+
     rows
     |> Enum.filter(&(&1.allowed > 0))
+    # The mode does not change what the gateway does with a request to the run API.
+    |> Enum.reject(&RunApi.run_api?(&1.rule))
     # Enforcing the workspace changes nothing for a target with a mode of its own.
     |> Enum.filter(&(target_id != nil or policies[&1.target_id].follows_workspace))
+    |> Enum.reject(&RequiredHosts.covers?(first, policies[&1.target_id].paths, &1.host, &1.path))
     |> Enum.flat_map(fn row ->
       case cover(policies[row.target_id], row) do
         {:uncovered, path} -> [{{row.host, path}, row}]
@@ -97,6 +108,53 @@ defmodule Apiary.Policy.Activity do
     |> Enum.sort_by(&{-&1.attempts, &1.host, &1.path})
     |> Enum.take(@top)
     |> then(&with_targets(workspace_id, &1))
+  end
+
+  @doc false
+  def reached?(%Scope{workspace: %Workspace{id: workspace_id}} = scope, since) do
+    connections =
+      Edition.client_reads(
+        scope,
+        :workspace_connections,
+        nil,
+        from(c in Connection, join: r in Run, on: r.id == c.run_id)
+      )
+
+    Repo.exists?(
+      from [c, _r] in connections,
+        where: c.workspace_id == ^workspace_id and c.last_seen_at >= ^since,
+        where: c.channel == "session"
+    )
+  end
+
+  @doc false
+  # What the observe card may say when nothing is uncovered: `:none` when no run reached
+  # out; `:covered` when every connection is of a run whose target follows the workspace's
+  # mode and none was denied with no rule (`cover/2`) to a host that not every run is
+  # allowed; `:partly` otherwise.
+  def covered(%Scope{workspace: %Workspace{} = workspace} = scope, since, opts \\ []) do
+    with {:ok, rows} <- rows(scope, workspace.id, nil, since, opts) do
+      {:ok, covered_from(workspace, rows)}
+    end
+  end
+
+  defp covered_from(_workspace, []), do: :none
+
+  defp covered_from(%Workspace{} = workspace, rows) do
+    policies = policies(workspace, rows)
+    first = RequiredHosts.first_hosts(workspace)
+
+    denied_with_no_rule? = fn row ->
+      policy = policies[row.target_id]
+
+      row.denied > 0 and match?({:uncovered, _path}, cover(policy, row)) and
+        not RequiredHosts.covers?(first, policy.paths, row.host, row.path)
+    end
+
+    if Enum.all?(rows, &policies[&1.target_id].follows_workspace) and
+         not Enum.any?(rows, denied_with_no_rule?),
+       do: :covered,
+       else: :partly
   end
 
   @doc false
@@ -130,7 +188,9 @@ defmodule Apiary.Policy.Activity do
     end
   end
 
-  defp denied_from(%Workspace{id: workspace_id}, rows, policies) do
+  defp denied_from(%Workspace{id: workspace_id} = workspace, rows, policies) do
+    first = RequiredHosts.first_hosts(workspace)
+
     rows
     |> Enum.filter(&(&1.denied > 0))
     |> Enum.flat_map(fn row ->
@@ -168,11 +228,18 @@ defmodule Apiary.Policy.Activity do
               first_match(policy.above_denies, row.host)
             end)
 
+      # Every run is allowed the host only when each target whose runs were denied it is.
+      required =
+        Enum.all?(hits, fn {row, _path, policy} ->
+          RequiredHosts.covers?(first, policy.paths, row.host, row.path)
+        end)
+
       %{
         host: host,
         port: port,
         path: path,
         held: held?,
+        required: required,
         locked: locked,
         above: above,
         unchangeable: unchangeable,
@@ -407,7 +474,7 @@ defmodule Apiary.Policy.Activity do
         {:uncovered, nil}
 
       true ->
-        case held(policy.paths, row.host) do
+        case RequiredHosts.held(policy.paths, row.host) do
           nil ->
             :covered
 
@@ -419,16 +486,6 @@ defmodule Apiary.Policy.Activity do
               do: :covered,
               else: {:uncovered, row.path}
         end
-    end
-  end
-
-  defp held(paths, host) do
-    case paths do
-      %{^host => list} ->
-        list
-
-      _ ->
-        Enum.find_value(paths, fn {key, list} -> if Grammar.matches?([key], host), do: list end)
     end
   end
 

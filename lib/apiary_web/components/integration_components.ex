@@ -11,7 +11,8 @@ defmodule ApiaryWeb.IntegrationComponents do
   # The collections an installed integration reaches are a table
   # (`collections_table/1`): each one's name, its workspace or Unassigned, for an adapter
   # with items its Backlog switch and its open items, and the day it was added; where they
-  # may be assigned, a checkbox on each row and one over them all. The selection's menu
+  # may be assigned, a checkbox on each row and one over them all, and Unassign on each
+  # assigned row, confirmed in the row's place. The selection's menu
   # (`assign_menu/1`) lists the workspaces to assign it to, and a list menu
   # (`workspace_filter/1`) keeps the table to one workspace. A collection's name is the
   # title its adapter sent, shown as an external system's text is
@@ -241,6 +242,12 @@ defmodule ApiaryWeb.IntegrationComponents do
     default: nil,
     doc: "the workspace the rows are chosen for, as in the chooser; nil on the integration page"
 
+  attr :unassign, :boolean, default: false, doc: "whether each assigned row has Unassign"
+
+  attr :confirming, :string,
+    default: nil,
+    doc: "the public id of the row whose Unassign is confirmed in its place"
+
   @doc false
   # The collections of a page, a row each: the name, the workspace it is assigned to or
   # Unassigned behind a warning mark, with `backlog` its Backlog switch, how many of its
@@ -256,10 +263,32 @@ defmodule ApiaryWeb.IntegrationComponents do
   # (`"select_all"`), checked while all of them are. With no rows, `none` in their place.
   # With `chooser`, a workspace, the Workspace column goes, and a row of another workspace
   # has no checkbox and shows that workspace's name beside its own; the checkbox over the
-  # rows selects the others.
+  # rows selects the others. A row on a workspace marked for deletion shows, under the
+  # workspace's name, that it is deleted and the day it is purged. With `unassign`, a
+  # last column, named Actions for screen readers, has Unassign on each assigned row
+  # (`"ask_unassign"`, the row's public id as `collection`); the row whose public id is
+  # `confirming` is a confirmation in its place, whose Yes, unassign sends `"unassign"`,
+  # with the id of the workspace it shows as `workspace`, and whose Cancel and Escape
+  # `"cancel_unassign"`. A row's Unassign and its name take the focus the page sends them
+  # (the `FocusOn` hook, `"run:focus"`); the name has `tabindex="-1"`, so Tab skips it.
   def collections_table(assigns) do
     assigns =
-      assign(assigns, :pickable, Enum.filter(assigns.rows, &pickable?(&1, assigns.chooser)))
+      assign(assigns,
+        pickable: Enum.filter(assigns.rows, &pickable?(&1, assigns.chooser)),
+        columns:
+          Enum.count(
+            [
+              assigns.picks,
+              true,
+              !assigns.chooser,
+              assigns.backlog,
+              assigns.open,
+              true,
+              assigns.unassign
+            ],
+            & &1
+          )
+      )
 
     ~H"""
     <div
@@ -288,88 +317,186 @@ defmodule ApiaryWeb.IntegrationComponents do
             <th :if={@backlog} scope="col" class="q-from-sm">{gettext("Backlog")}</th>
             <th :if={@open} scope="col" class="q-num q-from-sm">{@open}</th>
             <th scope="col" class="q-from-sm">{gettext("Added")}</th>
+            <th :if={@unassign} scope="col" class="q-int-act">
+              <span class="sr-only">{gettext("Actions")}</span>
+            </th>
           </tr>
         </thead>
         <tbody id={"#{@id}-rows"}>
-          <tr
-            :for={row <- @rows}
-            id={"collection-#{row.public_id}"}
-            aria-selected={@picks && to_string(Map.has_key?(@selected, row.id))}
-          >
-            <td :if={@picks} class="q-int-cb">
-              <input
-                :if={pickable?(row, @chooser)}
-                id={"collection-#{row.public_id}-pick"}
-                type="checkbox"
-                class="checkbox checkbox-xs"
-                checked={Map.has_key?(@selected, row.id)}
-                aria-label={gettext("Select %{name}", name: Apiary.ExternalText.line(row.name))}
-                phx-click="select"
-                phx-value-collection={row.public_id}
-              />
-            </td>
-            <td class="q-td-title">
-              <span
-                class="q-title-mono block truncate"
-                title={Apiary.ExternalText.line(row.name)}
-              ><.external_text text={row.name} /></span>
-              <span
-                :if={!pickable?(row, @chooser)}
-                id={"collection-#{row.public_id}-elsewhere"}
-                class="text-[12.5px]/4 text-muted"
-              >
-                {gettext("In %{workspace} (cannot be ticked)", workspace: row.workspace.name)}
-              </span>
-              <span :if={@backlog && row.backlog} class="q-to-sm mt-1 flex items-center gap-2">
+          <%= for row <- @rows do %>
+            <tr
+              :if={confirming?(row, @confirming)}
+              id={"collection-#{row.public_id}"}
+              class="q-confirming"
+            >
+              <td colspan={@columns} class="q-confirm-cell">
+                <div class="q-confirm-view">
+                  <.unassign_confirm
+                    id={"collection-#{row.public_id}-confirm"}
+                    row={row}
+                    items={@backlog}
+                  />
+                </div>
+              </td>
+            </tr>
+            <tr
+              :if={!confirming?(row, @confirming)}
+              id={"collection-#{row.public_id}"}
+              aria-selected={@picks && to_string(Map.has_key?(@selected, row.id))}
+            >
+              <td :if={@picks} class="q-int-cb">
+                <input
+                  :if={pickable?(row, @chooser)}
+                  id={"collection-#{row.public_id}-pick"}
+                  type="checkbox"
+                  class="checkbox checkbox-xs"
+                  checked={Map.has_key?(@selected, row.id)}
+                  aria-label={gettext("Select %{name}", name: Apiary.ExternalText.line(row.name))}
+                  phx-click="select"
+                  phx-value-collection={row.public_id}
+                />
+              </td>
+              <td class="q-td-title">
+                <span
+                  id={"collection-#{row.public_id}-name"}
+                  class="q-title-mono block truncate"
+                  title={Apiary.ExternalText.line(row.name)}
+                  tabindex={@unassign && "-1"}
+                  phx-hook={@unassign && "FocusOn"}
+                ><.external_text text={row.name} /></span>
+                <span
+                  :if={!pickable?(row, @chooser)}
+                  id={"collection-#{row.public_id}-elsewhere"}
+                  class="text-[12.5px]/4 text-muted"
+                >
+                  {gettext("In %{workspace} (cannot be ticked)", workspace: row.workspace.name)}
+                </span>
+                <span :if={@backlog && row.backlog} class="q-to-sm mt-1 flex items-center gap-2">
+                  <.backlog_switch
+                    id={"collection-#{row.public_id}-backlog-line"}
+                    row={row}
+                    items={@backlog}
+                    may={@may_set_backlog}
+                  />
+                  <span aria-hidden="true" class="text-xs text-muted">{gettext("Backlog")}</span>
+                </span>
+              </td>
+              <td :if={!@chooser}>
+                <span :if={row.workspace} class="grid">
+                  <span>{row.workspace.name}</span>
+                  <span
+                    :if={marked?(row.workspace)}
+                    id={"collection-#{row.public_id}-deleted"}
+                    class="text-[12.5px]/4 text-muted"
+                  >
+                    {gettext("Deleted, purged on %{date}",
+                      date: Format.date(row.workspace.purge_after)
+                    )}
+                  </span>
+                </span>
+                <span :if={!row.workspace} class="q-int-un">
+                  <.icon name="hero-exclamation-triangle-micro" class="size-3.5" /><span>{gettext(
+                    "Unassigned"
+                  )}</span>
+                </span>
+              </td>
+              <td :if={@backlog} class="q-from-sm">
                 <.backlog_switch
-                  id={"collection-#{row.public_id}-backlog-line"}
+                  :if={row.backlog}
+                  id={"collection-#{row.public_id}-backlog"}
                   row={row}
                   items={@backlog}
                   may={@may_set_backlog}
                 />
-                <span aria-hidden="true" class="text-xs text-muted">{gettext("Backlog")}</span>
-              </span>
-            </td>
-            <td :if={!@chooser}>
-              <span :if={row.workspace}>{row.workspace.name}</span>
-              <span :if={!row.workspace} class="q-int-un">
-                <.icon name="hero-exclamation-triangle-micro" class="size-3.5" /><span>{gettext(
-                  "Unassigned"
-                )}</span>
-              </span>
-            </td>
-            <td :if={@backlog} class="q-from-sm">
-              <.backlog_switch
-                :if={row.backlog}
-                id={"collection-#{row.public_id}-backlog"}
-                row={row}
-                items={@backlog}
-                may={@may_set_backlog}
-              />
-              <span
-                :if={!row.backlog && row.workspace}
-                id={"collection-#{row.public_id}-backlog-none"}
-                class="q-faint"
-                title={gettext("No %{items} to take in", items: @backlog)}
-              >
-                <span aria-hidden="true">—</span><span class="sr-only">{gettext(
-                  "No %{items} to take in",
-                  items: @backlog
-                )}</span>
-              </span>
-            </td>
-            <td :if={@open} class="q-num q-from-sm">
-              <span :if={row.open_tickets == 0} class="q-faint">—</span>
-              <span :if={row.open_tickets > 0}>{Format.number(row.open_tickets)}</span>
-            </td>
-            <td class="q-faint q-from-sm whitespace-nowrap">{added(row.added_at)}</td>
-          </tr>
+                <span
+                  :if={!row.backlog && row.workspace}
+                  id={"collection-#{row.public_id}-backlog-none"}
+                  class="q-faint"
+                  title={gettext("No %{items} to take in", items: @backlog)}
+                >
+                  <span aria-hidden="true">—</span><span class="sr-only">{gettext(
+                    "No %{items} to take in",
+                    items: @backlog
+                  )}</span>
+                </span>
+              </td>
+              <td :if={@open} class="q-num q-from-sm">
+                <span :if={row.open_tickets == 0} class="q-faint">—</span>
+                <span :if={row.open_tickets > 0}>{Format.number(row.open_tickets)}</span>
+              </td>
+              <td class="q-faint q-from-sm whitespace-nowrap">{added(row.added_at)}</td>
+              <td :if={@unassign} class="q-int-act">
+                <button
+                  :if={row.workspace}
+                  id={"collection-#{row.public_id}-unassign"}
+                  type="button"
+                  class="btn btn-ghost btn-xs"
+                  aria-label={gettext("Unassign %{name}", name: Apiary.ExternalText.line(row.name))}
+                  phx-click="ask_unassign"
+                  phx-value-collection={row.public_id}
+                  phx-hook="FocusOn"
+                >
+                  {gettext("Unassign")}
+                </button>
+              </td>
+            </tr>
+          <% end %>
           <tr :if={@rows == [] && @none} id={"#{@id}-none"}>
-            <td colspan="6" class="text-muted">{@none}</td>
+            <td colspan={@columns} class="text-muted">{@none}</td>
           </tr>
         </tbody>
       </table>
     </div>
+    """
+  end
+
+  # Whether the row is the assigned one whose Unassign is confirmed.
+  defp confirming?(%{public_id: id, workspace: %{}}, id), do: true
+  defp confirming?(_row, _confirming), do: false
+
+  # Whether a workspace is marked for deletion, with the day it is purged.
+  defp marked?(%{deletion_marked_at: %DateTime{}, purge_after: %DateTime{}}), do: true
+  defp marked?(_workspace), do: false
+
+  attr :id, :string, required: true
+  attr :row, :map, required: true, doc: "a row of the table, assigned to a workspace"
+  attr :items, :any, required: true, doc: "the word for the source's items; false for none"
+
+  # Unassign of a row, confirmed in its place: what leaves the workspace's Backlog, for an
+  # adapter with items, and that the collection may be assigned again.
+  defp unassign_confirm(assigns) do
+    ~H"""
+    <.inline_confirm
+      id={@id}
+      question={
+        gettext("Unassign %{name} from %{workspace}?",
+          name: Apiary.ExternalText.line(@row.name),
+          workspace: @row.workspace.name
+        )
+      }
+      cancel={JS.push("cancel_unassign")}
+    >
+      <%= if @items do %>
+        {gettext(
+          "Its %{items} leave the Backlog of %{workspace}. Work items taken in from it stay where they are. You can assign it to a workspace later.",
+          items: @items,
+          workspace: @row.workspace.name
+        )}
+      <% else %>
+        {gettext("You can assign it to a workspace later.")}
+      <% end %>
+      <:action>
+        <.button
+          id={"#{@id}-button"}
+          variant="primary"
+          size="xs"
+          phx-click="unassign"
+          phx-value-workspace={@row.workspace.id}
+        >
+          {gettext("Yes, unassign")}
+        </.button>
+      </:action>
+    </.inline_confirm>
     """
   end
 

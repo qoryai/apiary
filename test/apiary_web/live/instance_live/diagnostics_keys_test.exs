@@ -83,6 +83,16 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeysTest do
       view |> element("#code-new-button") |> render_click()
       assert_patch(view, ~p"/instance/diagnostics-keys/new-code")
 
+      # Instance settings / Diagnostics keys / Command, the section once.
+      assert view
+             |> element("#breadcrumb")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text()
+             |> String.split()
+             |> Enum.join(" ") ==
+               "Instance settings/Diagnostics keys/Command"
+
       command = view |> element("#code-issued-command") |> render()
 
       [_, code] =

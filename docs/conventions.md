@@ -77,28 +77,29 @@ result, and `mix test` exits 0. A row of `ApiaryWeb.RefusalsCase` takes
 `needs:` in the same way. The core's suite checks `Apiary.TestSetup.unhooked/0` for such modules.
 
 CI runs every test once, with every feature on, and runs only the tests tagged
-`@tag :feature_sets` again, under `QORY_FEATURES=all` and `QORY_FEATURES=observability`
-(`mix test --only feature_sets`). Tag a test `:feature_sets` (or `@describetag`,
-`@moduletag`) when it reads the instance's features, in its body, a `setup` or a helper:
-`Apiary.Features.on?/1`, `enabled/0`, `visible?/2` or `hidden_of/1`,
+`@tag :feature_sets` again, under `QORY_FEATURES=observability,security` and
+`QORY_FEATURES=observability` (`mix test --only feature_sets`). Tag a test `:feature_sets`
+(or `@describetag`, `@moduletag`) when it reads the instance's features, in its body, a
+`setup` or a helper: `Apiary.Features.on?/1`, `enabled/0`, `visible?/2` or `hidden_of/1`,
 `ApiaryWeb.Features.on?/1`, `Apiary.TestSetup.off/0`, or `Application.get_env/2`,
 `fetch_env/2` or `fetch_env!/2` of `:features`. A test tagged `with_features:` runs once,
 in the run with every feature on, under the features it lists, and takes no tag. So does a
-test whose `needs:` lists an opt-in feature (`Apiary.Features.opt_in/0`): only the run
-with every feature on turns that feature on. The guard does not count a `put_env` of the
+test whose `needs:` lists a feature of the guard's `@once`, which both other runs leave
+off. No CI run uses `all`: the suite's registry address (`config/test.exs`) makes `all`
+every feature, the set of the first run. The guard does not count a `put_env` of the
 features or `without_registry` as setting them, because `without_registry` keeps the set's
 other features: a test that reads them after either takes the tag. The guard
 `test/apiary/feature_sets_tag_test.exs` fails for a test that reads the features with
-neither the tag, `with_features:` nor an opt-in feature in its `needs:`; for a
-tagged file that reads nothing; for a test with both `with_features:` and the tag; and for
-a helper of `test/support` that reads the features and is not on its list
+neither the tag, `with_features:` nor a feature of `@once` in its `needs:`; for a tagged
+file that reads nothing; for a test with both `with_features:` and the tag; and for a
+helper of `test/support` that reads the features and is not on its list
 (`Apiary.FeatureSetsScan`). The guard follows calls within a file only: a reviewer checks a
 test that reaches a listed helper or a module of `lib/`. Before you report a chunk done,
-run the full suite locally under all 3 sets: `QORY_FEATURES` blank, `all` and
-`observability`.
+run the full suite locally under all 3 sets: `QORY_FEATURES` blank,
+`observability,security` and `observability`.
 
 A template that makes many people and places for each of many tests may make them once
-for its module (`cast: :module` of `Apiary.AccessCase` and `ApiaryWeb.RefusalsCase`, on
+for its module (`cast: :module` of `ApiaryWeb.RefusalsCase`, on
 `Apiary.DataCase.setup_module_sandbox/2`): one sandbox for the module, and each test
 inside a savepoint of it, rolled back as it ends. What lives in a process, an edition's
 stub among it, is set in each test's `setup`; a test under other features than the

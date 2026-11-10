@@ -12,8 +12,8 @@ defmodule Apiary.WorkItems do
   # `take_in_test(scope, line)` makes a test work item from a line the person typed, with
   # no ticket, and queues its first run; `undo(scope, work_item)` undoes the latest take
   # in while no claim holds its run; `close(scope, work_item)` closes a live one. `attrs`
-  # holds the owner (`owner_id`) and the first
-  # instruction (`first_instruction`) the page gives. Each runs in one transaction with
+  # has the owner (`owner_id`), the first instruction (`first_instruction`) and a comment
+  # on the ticket (`comment`) the page sends. Each runs in one transaction with
   # its event, its run, its feed entry and its entry in the trail, asks its action of
   # `Apiary.Access`, and tells the pages once it commits. `Apiary.WorkItems.Moves` says
   # how, what each refuses, and the order of its locks.
@@ -24,10 +24,14 @@ defmodule Apiary.WorkItems do
   # of the work item, by their position (`"1"` to `"20"`), or, given a text, writes a
   # review comment on the proposal and sends it, and queues the take in's next run, which
   # reads the questions and the review comments as artifacts (`Apiary.Explore.Questions`,
-  # `Apiary.Explore.ReviewComments`); `review_comment/4` and `reply/5` write a review
-  # comment or a reply while no run is running, and queue no run;
+  # `Apiary.Explore.ReviewComments`); `reply/5` writes a reply while no run is running,
+  # and queues no run; `review_comment/4` writes a review comment the same way, and
   # `send_review_comments(scope, work_item, attempt)` queues the next run where the
-  # questions or the proposal wait and a review comment is open;
+  # questions or the proposal wait and a review comment is open: no page calls these
+  # two, and tests call them to set up a work item;
+  # `another_round(scope, work_item, attempt, round)` does what Run another round on
+  # Explore's tab sends, in one move: the answers, a comment on the whole proposal and
+  # the open review comments go to one next run;
   # `confirm(scope, work_item, attempt)` confirms the latest run's proposal, which makes
   # the work item ready for Shape;
   # `explore_again(scope, work_item, attempt)` queues the take in's next run after a run
@@ -58,7 +62,7 @@ defmodule Apiary.WorkItems do
   #
   # ## Reading: the list and the lookups
   #
-  # `list_work_items(scope, params)` is a page of the Work items list, `list_bands/3` its
+  # `list_work_items(scope, params)` is a page of the Work items list, `list_bands/4` its
   # Open view by stage, `list_stage_counts/3` how many live work items are at each stage
   # of the workflow model and `list_filter_values/3` what its Filter menu offers
   # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
@@ -101,9 +105,10 @@ defmodule Apiary.WorkItems do
   # `FOR UPDATE`, by id when there are several, then a workspace's counter of numbers
   # (`Apiary.WorkItems.Number`), taken only right after its work item, then the
   # environment records, the runs of the queue and their dispatches
-  # (`Apiary.Dispatches.Slots`), and the adapter's feed counter, last. A comment of a work
-  # item (`Apiary.WorkItems.Comment`) is held `FOR UPDATE` only right after its work item,
-  # as a comment's deletion holds it. No collection or
+  # (`Apiary.Dispatches.Slots`), the adapter's feed counter, and, last, for a work item that
+  # moves, the target's counter of run numbers (`Apiary.Runs.Number.raise_past/2`). A
+  # comment of a work item (`Apiary.WorkItems.Comment`) is locked `FOR UPDATE` only right
+  # after its work item, as a comment's deletion locks it. No collection or
   # target is locked after a work item. A close takes the connections first (the removal
   # ends them before it closes), then the work items `FOR UPDATE` in the order of their
   # ids, then their runs of the queue `FOR UPDATE` in the order of their ids, then the
@@ -146,9 +151,10 @@ defmodule Apiary.WorkItems do
   # How many of the scope's workspace's work items wait on the scope's person: the count
   # beside the sidebar's Work items, and the Work items list's Waiting on you. They are the
   # live work items the person owns whose proposal waits at Confirm
-  # (`Apiary.WorkItems.WorkList.waiting_on/1`); 0 to a person who may not read them.
-  @spec count_waiting_on(Scope.t()) :: non_neg_integer
-  def count_waiting_on(%Scope{} = scope), do: WorkList.waiting_on(scope)
+  # (`Apiary.WorkItems.WorkList.waiting_on/2`, with its `opts`); 0 to a person who may not
+  # read them.
+  @spec count_waiting_on(Scope.t(), keyword) :: non_neg_integer
+  def count_waiting_on(%Scope{} = scope, opts \\ []), do: WorkList.waiting_on(scope, opts)
 
   ## What a person does
 
@@ -221,6 +227,14 @@ defmodule Apiary.WorkItems do
   @spec send_review_comments(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
   defdelegate send_review_comments(scope, work_item, attempt), to: Moves
+
+  @doc false
+  # another_round/4 queues the next run of `work_item`'s take in with the answers and the
+  # comment of `round`, and the open review comments, where the questions or the proposal
+  # of its latest run, `attempt`, wait (`Apiary.WorkItems.Moves`).
+  @spec another_round(Scope.t(), WorkItem.t(), pos_integer, Moves.round()) ::
+          {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
+  defdelegate another_round(scope, work_item, attempt, round), to: Moves
 
   @doc false
   # confirm/3 confirms the proposal of the latest run, `attempt`, of `work_item`'s take
@@ -411,18 +425,18 @@ defmodule Apiary.WorkItems do
   ## Reading
 
   @doc false
-  # list_work_items/3 is a page of the Work items list of the scope's workspace
-  # (`Apiary.WorkItems.WorkList`).
-  @spec list_work_items(Scope.t(), map | keyword, DateTime.t()) :: WorkList.page()
-  def list_work_items(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now()),
-    do: WorkList.list(scope, params, now)
+  # list_work_items/4 is a page of the Work items list of the scope's workspace
+  # (`Apiary.WorkItems.WorkList.list/4`, with its `opts`).
+  @spec list_work_items(Scope.t(), map | keyword, DateTime.t(), keyword) :: WorkList.page()
+  def list_work_items(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now(), opts \\ []),
+    do: WorkList.list(scope, params, now, opts)
 
   @doc false
-  # list_bands/3 is the Work items list's Open view of the scope's workspace by stage
-  # (`Apiary.WorkItems.WorkList.bands/3`).
-  @spec list_bands(Scope.t(), map | keyword, DateTime.t()) :: WorkList.bands()
-  def list_bands(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now()),
-    do: WorkList.bands(scope, params, now)
+  # list_bands/4 is the Work items list's Open view of the scope's workspace by stage
+  # (`Apiary.WorkItems.WorkList.bands/4`, with its `opts`).
+  @spec list_bands(Scope.t(), map | keyword, DateTime.t(), keyword) :: WorkList.bands()
+  def list_bands(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now(), opts \\ []),
+    do: WorkList.bands(scope, params, now, opts)
 
   @doc false
   # list_stage_counts/3 is how many live work items of the scope's workspace are at each
@@ -474,8 +488,7 @@ defmodule Apiary.WorkItems do
   @doc false
   # get_by_public_id/2 is the work item of the scope's organisation whose public id is
   # `public_id` (`wi_…`), in whichever of its workspaces it is now, with that workspace,
-  # to a person who may read the work items there: the address the work item's stable url
-  # (`stable_url/1`) leads to. nil otherwise.
+  # to a person who may read the work items there. nil otherwise.
   @spec get_by_public_id(Scope.t(), term) :: WorkItem.t() | nil
   def get_by_public_id(%Scope{organisation: %Organisation{id: organisation_id}} = scope, id) do
     with true <- Apiary.PublicId.valid?(WorkItem.prefix(), id),
@@ -494,6 +507,50 @@ defmodule Apiary.WorkItems do
   end
 
   def get_by_public_id(%Scope{}, _id), do: nil
+
+  @doc false
+  # locate/2 is what the address `stable_url/1` returns leads to: the work item whose
+  # public id is `public_id` (`wi_…`), in whichever organisation and workspace it is now,
+  # and the person's scope in that workspace, for a person who reaches that workspace and
+  # may read its work items there, as the work item's page checks: `{:ok, work_item,
+  # scope}`, the work item with that workspace. `:error` for anything else, one result
+  # for all, so the caller's response does not show whether the id exists.
+  #
+  # The reads are the same for every id, in the same order, so their time does not show
+  # it either: the person's scope in each workspace of each organisation they reach
+  # (`Apiary.Organisations.list_places/1`, `Apiary.Organisations.workspace_scopes/1`, as
+  # `Apiary.Organisations.resolve_scope/4` puts it when the person opens one), then one
+  # read of the work item among those workspaces, with an empty id, which no work item
+  # has, in place of a malformed one. `Apiary.Access.can?/3` then checks in that scope
+  # whether the person may read it, with no read.
+  @spec locate(Scope.t(), term) :: {:ok, WorkItem.t(), Scope.t()} | :error
+  def locate(%Scope{user: %Apiary.Accounts.User{} = user} = scope, public_id) do
+    scopes =
+      for %{organisation: %Organisation{} = organisation} <-
+            Apiary.Organisations.list_places(user),
+          {:ok, reached} <- [Apiary.Organisations.put_reach(scope, organisation)],
+          {workspace_id, there} <- Apiary.Organisations.workspace_scopes(reached),
+          into: %{},
+          do: {workspace_id, there}
+
+    id = if Apiary.PublicId.valid?(WorkItem.prefix(), public_id), do: public_id, else: ""
+    workspace_ids = Map.keys(scopes)
+
+    with %WorkItem{} = work_item <-
+           Repo.one(
+             from w in WorkItem,
+               where: w.public_id == ^id and w.workspace_id in ^workspace_ids
+           ),
+         %Scope{workspace: %Workspace{} = workspace} = there <- scopes[work_item.workspace_id],
+         work_item = %{work_item | workspace: workspace},
+         true <- Access.can?(there, :"work_item.read", work_item) do
+      {:ok, work_item, there}
+    else
+      _none -> :error
+    end
+  end
+
+  def locate(_scope, _public_id), do: :error
 
   @doc false
   # get_for_ticket/2 is the work item of the ticket `item_id` (`tk_…`) of a collection
@@ -701,8 +758,11 @@ defmodule Apiary.WorkItems do
   #     source, and `received_at`, when an adapter last changed it; nil for a work item
   #     with no record;
   #   * `comments` - its comments, oldest first, by their time at the source, each with
-  #     `public_id` (the comment's id in Qory Apiary), `author` (a name), `at`, `body` and
-  #     `format`: the latest 3 for `:latest`, every one for `:all`.
+  #     `public_id` (the comment's id in Qory Apiary), `author` (a name), `at`, `body`,
+  #     `format` and `url` (nil for a member's comment not posted at its source); for a
+  #     member's comment (`Apiary.Sources.Comment`), `comment_id`, `post_state`,
+  #     `post_failure` and `author_id`, each nil for a source's comment: the latest 3 for
+  #     `:latest`, every one for `:all`.
   @spec ticket(Scope.t(), WorkItem.t(), :latest | :all) :: map | nil
   def ticket(%Scope{} = scope, %WorkItem{} = work_item, comments \\ :latest)
       when comments in [:latest, :all] do
@@ -788,7 +848,12 @@ defmodule Apiary.WorkItems do
         author: c.author_name,
         at: c.source_created_at,
         body: c.body,
-        format: c.body_format
+        format: c.body_format,
+        comment_id: c.comment_id,
+        post_state: c.post_state,
+        post_failure: c.post_failure,
+        author_id: c.author_id,
+        url: c.url
       }
     )
     |> then(fn query ->
@@ -796,6 +861,37 @@ defmodule Apiary.WorkItems do
     end)
     |> Repo.all()
     |> Enum.reverse()
+  end
+
+  @doc false
+  # taken_in_comment?/2 is whether the person who took `work_item` in wrote a comment
+  # with this take in, for Undo's hint, to a person who may read the work items of the
+  # scope's workspace; false otherwise, and for a work item of another workspace. The
+  # comment is a member's comment of theirs on its ticket (`Apiary.Sources.Comment`),
+  # not deleted, written in the take in's transaction (`take_in/3`, `take_in_again/3`).
+  # That transaction gives the comment the take in's time, to the second, and saves it
+  # after the take in's time, so the comment of an earlier take in in the same second
+  # is not this one.
+  @spec taken_in_comment?(Scope.t(), WorkItem.t()) :: boolean
+  def taken_in_comment?(%Scope{} = scope, %WorkItem{id: id}) do
+    with {:ok, id} <- Ecto.UUID.cast(id),
+         {:ok, organisation_id, workspace_id} <- workspace(scope) do
+      Repo.exists?(
+        from w in WorkItem,
+          join: c in SourceComment,
+          on:
+            c.organisation_id == w.organisation_id and c.item_id == w.item_id and
+              c.author_id == w.taken_in_by_id and
+              c.source_created_at == fragment("date_trunc('second', ?)", w.taken_in_at) and
+              c.inserted_at >= w.taken_in_at and not is_nil(c.post_state) and
+              is_nil(c.deleted_at),
+          where:
+            w.id == ^id and w.organisation_id == ^organisation_id and
+              w.workspace_id == ^workspace_id
+      )
+    else
+      _none -> false
+    end
   end
 
   @doc false
@@ -863,7 +959,8 @@ defmodule Apiary.WorkItems do
   # instance's public URL (`Apiary.Setup.public_url/0`, the configured one where no
   # endpoint runs, as under `bin/apiary eval`), then `/work-items/` and the work item's
   # public id. It names no organisation and no workspace, so it stays the same when the
-  # work item moves to another workspace. No route of the instance serves it yet.
+  # work item moves to another workspace. `ApiaryWeb.WorkItemRedirectController` serves
+  # it, by `locate/2`.
   @spec stable_url(WorkItem.t()) :: String.t()
   def stable_url(%WorkItem{public_id: public_id}) when is_binary(public_id),
     do: Apiary.Setup.public_url() <> "/work-items/" <> public_id

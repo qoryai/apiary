@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/diagnostics/v1/diagnostics.schema.json",
   "title": "Run diagnostics",
-  "description": "The document Qory Apiary returns about one run. It is the body of the 200 response to GET /v1/runs/<run id>/diagnostics, application/json, a request signed with a diagnostics key, and it is the text that Copy diagnostics on the run page copies. Qory Apiary builds both for the rights of the reader: machine_logs is present only for an instance admin and for a request signed with a diagnostics key. The document is at most 8 MiB as UTF-8, 8388608 bytes. The fields of the run that Qory Apiary redacts never appear as fields: the run key, the run code hash, the registry credential hash and the provider fields. variables contains the names of the run's variables and no values. Every text member contains the text as Qory Apiary stored it, unfiltered, so a secret that the run printed appears in it as printed. The document can contain any secret that the run printed. Whoever holds it holds the value of each entry in leaked_secrets that has one. Every text member contains no U+0000. Version 1 changes only by adding members, so a reader ignores a member this schema does not define. This schema accepts such a member at every level, and no object in it sets additionalProperties to false. That differs from the other contracts, whose schemas refuse a member they do not define, because a reader of this document shows it or passes it on: a reader built before a member was added reads a document that has the member. The run diagnostics are a document, not a request, and nothing in them is signed.",
+  "description": "The document Qory Apiary returns about one run. It is the body of the 200 answer to GET /v1/runs/<run id>/diagnostics, application/json, a request signed with a diagnostics key, and it is the text that Copy diagnostics on the run page copies. Qory Apiary builds both for the rights of the reader: machine_logs is present only for an instance admin and for a request signed with a diagnostics key. The document is at most 8 MiB as UTF-8, 8388608 bytes. The fields of the run that Qory Apiary redacts never appear as fields: the run key, the run code hash, the registry credential hash and the provider fields. variables contains the names of the run's variables and no values. Every text member contains the text as Qory Apiary stored it, unfiltered, so a secret that the run printed appears in it as printed. The document can contain any secret that the run printed. Whoever holds it holds the value of each entry in leaked_secrets that has one. Every text member contains no U+0000. Version 1 changes only by adding members, so a reader ignores a member this schema does not define. This schema accepts such a member at every level, and no object in it sets additionalProperties to false. That differs from the other contracts, whose schemas refuse a member they do not define, because a reader of this document shows it or passes it on: a reader built before a member was added reads a document that has the member. The run diagnostics are a document, not a request, and nothing in them is signed.",
   "type": "object",
   "required": [
     "version",
@@ -132,9 +132,9 @@
           "pattern": "^[a-z][a-z_]{0,39}$"
         },
         "workflow": {
-          "description": "The workflow of the harness that the run starts, such as hello: a lower-case letter, then lower-case letters, digits and hyphens, 1 to 64 characters in all; absent when the run starts no workflow.",
+          "description": "The workflow of the harness that the run starts, such as hello: a lower-case letter, then lower-case letters, digits and hyphens, 1 to 55 characters in all; absent when the run starts no workflow.",
           "type": "string",
-          "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          "pattern": "^[a-z][a-z0-9-]{0,54}$"
         },
         "work_item": {
           "description": "The public id of the work item the run is for; absent when the run is for no work item.",
@@ -165,6 +165,23 @@
           "description": "The gateway the run went through, ng_ and 16 lower-case Crockford base32 characters; absent when the run went through no gateway.",
           "type": "string",
           "pattern": "^ng_[0-9a-hjkmnp-tv-z]{16}$"
+        },
+        "machine": {
+          "description": "The machine type that the run used, one of the machine types of the instance: its key and its display name, with at least one member; absent when Qory Apiary has no record of the machine type.",
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "key": {
+              "description": "The key of the machine type that the run used, such as standard: a lower-case letter, then lower-case letters, digits and hyphens, 1 to 64 characters in all; absent when Qory Apiary has no key for the machine type. When the run has a dispatch and its claim answer, https://qory.dev/contracts/provisioner/v1/claim-answer.schema.json, has machine, key is the same value.",
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,63}$"
+            },
+            "name": {
+              "description": "The display name of the machine type, such as Standard, 1 to 100 characters on one line, with no control character, U+0000 to U+001F or U+007F; absent when Qory Apiary has no name for the machine type.",
+              "type": "string",
+              "pattern": "^[^\\x00-\\x1f\\x7f]{1,100}$"
+            }
+          }
         },
         "variables": {
           "description": "The names of the run's variables, each at most once, with no values. A name is a letter or an underscore, then letters, digits and underscores, 1 to 128 characters in all.",
@@ -645,7 +662,7 @@
           "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
         },
         "message": {
-          "description": "A plain statement for the reader that Qory Apiary writes, such as \"This key is compromised: it was printed into the run's log. Replace it.\" It is display text on one line, with no line feed or carriage return, whose wording this contract does not fix, like stopped.text.",
+          "description": "A plain statement for the reader that Qory Apiary writes, such as \"This secret is compromised: it was printed into the run's log. Replace it.\" It is display text on one line, with no line feed or carriage return, whose wording this contract does not fix, like stopped.text.",
           "type": "string",
           "minLength": 1,
           "pattern": "^[^\\x00\\n\\r]*$"

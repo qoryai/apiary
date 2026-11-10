@@ -5,10 +5,11 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
   #
   # The ticket is read with the page's scope (`Apiary.Sources.Backlog.get_ticket/2`): an
   # id of no ticket of this Backlog is a path that does not exist. An open ticket with no
-  # work item has Take in (`ApiaryWeb.BacklogComponents.take_in_block/1`), as
-  # over the list: Take in leads to the new work item's page, and a refusal is a flash in
-  # the page's words (`ApiaryWeb.BacklogComponents.take_in_refused/3`), after which the
-  # page reads the ticket again. The page listens on the topic of its workspace's Backlog
+  # work item has Take in (`ApiaryWeb.BacklogComponents.take_in_block/1`), as over the
+  # list: Take in opens the take in's dialog (`ApiaryWeb.BacklogLive.TakeIn`), whose Take
+  # in leads to the new work item's page, and a refusal is a flash in the page's words
+  # (`ApiaryWeb.BacklogComponents.take_in_refused/3`), after which the page reads the
+  # ticket again. The page listens on the topic of its workspace's Backlog
   # (`Apiary.Sources.Backlog.subscribe/1`) and reads the ticket again on each message; a
   # ticket that leaves the Backlog meanwhile stays as it was last read.
   #
@@ -19,9 +20,10 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
   use ApiaryWeb.Features, :factory
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
-  alias Apiary.{Access, Adapters, WorkItems}
+  alias Apiary.{Access, Adapters}
   alias Apiary.Sources.Backlog
   alias ApiaryWeb.{BacklogComponents, SourceComponents}
+  alias ApiaryWeb.BacklogLive.TakeIn
 
   @impl true
   def render(assigns) do
@@ -72,6 +74,30 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
           />
         </:rendered_comment>
       </BacklogComponents.ticket>
+
+      <BacklogComponents.take_in_dialog
+        :if={@take_in}
+        ask={@take_in}
+        item_noun={@item_noun}
+        collection_noun={@collection_noun}
+      >
+        <:rendered_body>
+          <SourceComponents.body
+            id="take-in-dialog-body"
+            body={@take_in.ticket.body}
+            format={@take_in.ticket.body_format}
+            item_noun={@item_noun}
+          />
+        </:rendered_body>
+        <:rendered_comment :let={comment}>
+          <SourceComponents.body
+            id={"take-in-dialog-comment-#{comment.id}-body"}
+            body={comment.body}
+            format={comment.body_format}
+            item_noun={@item_noun}
+          />
+        </:rendered_comment>
+      </BacklogComponents.take_in_dialog>
     </Layouts.app>
     """
   end
@@ -98,30 +124,51 @@ defmodule ApiaryWeb.BacklogLive.Ticket do
            do: BacklogComponents.take_in_who_may(scope)
          )
      )
+     |> TakeIn.mount()
      |> put_ticket(ticket)}
   end
 
   @impl true
-  # Take in takes the page's ticket in, whatever id the press sends.
-  def handle_event("take_in", _params, socket) do
-    scope = socket.assigns.current_scope
-
-    case WorkItems.take_in(scope, socket.assigns.ticket.id) do
-      {:ok, work_item} ->
-        {:noreply,
-         push_navigate(socket,
-           to: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}"
-         )}
-
-      {:error, refusal} ->
-        words =
-          BacklogComponents.take_in_refused(refusal, scope, %{
-            integration: socket.assigns.ticket.integration.name,
-            item_noun: socket.assigns.item_noun
-          })
-
-        {:noreply, socket |> put_flash(:error, words) |> reload()}
+  # Take in opens the take in's dialog for the page's ticket, whatever id the press sends.
+  def handle_event("take_in", params, socket) do
+    case TakeIn.open(socket, "take_in", socket.assigns.ticket.id, params["return"]) do
+      {:ok, socket} -> {:noreply, socket}
+      {:refused, refusal} -> {:noreply, refused(socket, refusal)}
     end
+  end
+
+  def handle_event("take_in_change", params, socket),
+    do: {:noreply, TakeIn.change(socket, params)}
+
+  def handle_event("take_in_cancel", _params, socket), do: {:noreply, TakeIn.cancel(socket)}
+
+  # The dialog's Take in: the new work item's page, the dialog again with the comment's
+  # error, or why not.
+  def handle_event("take_in_confirm", params, socket) do
+    case TakeIn.confirm(socket, params) do
+      {:ok, socket, work_item} ->
+        {:noreply,
+         push_navigate(socket, to: TakeIn.path(socket.assigns.current_scope, work_item))}
+
+      {:open, socket} ->
+        {:noreply, socket}
+
+      {:refused, socket, refusal, _id} ->
+        {:noreply, refused(socket, refusal)}
+
+      :none ->
+        {:noreply, socket}
+    end
+  end
+
+  defp refused(socket, refusal) do
+    words =
+      BacklogComponents.take_in_refused(refusal, socket.assigns.current_scope, %{
+        integration: socket.assigns.ticket.integration.name,
+        item_noun: socket.assigns.item_noun
+      })
+
+    socket |> put_flash(:error, words) |> reload()
   end
 
   # A ticket of the workspace's Backlog was written, ended, closed or taken in: the page

@@ -162,6 +162,35 @@ defmodule Apiary.Dispatches.ImageMissingTest do
     assert Dispatches.requeued_for_image?(Repo.get!(Run, run.id))
   end
 
+  test "the next attempt keeps the machine type, its spec, and whether it was the default",
+       ctx do
+    %{dispatch_run: dispatch_run, run: run} =
+      handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+    # Queued on large while large was the default; standard is the default again since.
+    spec = %{
+      "vcpus" => 4,
+      "memory_mib" => 16_384,
+      "disk_gib" => 60,
+      "arch" => "amd64",
+      "virtualization" => false
+    }
+
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+        set: [machine_type: "large", machine_spec: spec, machine_type_was_default: true]
+      )
+
+    exit!(run, @missing)
+
+    assert %DispatchRun{
+             image_requeue: true,
+             machine_type: "large",
+             machine_spec: ^spec,
+             machine_type_was_default: true
+           } = run_of(dispatch_run.work_item_id, 2)
+  end
+
   test "an image_missing of the run that requeue queued ends it without a requeue", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, @missing)

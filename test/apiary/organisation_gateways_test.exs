@@ -460,14 +460,21 @@ defmodule Apiary.OrganisationGatewaysTest do
 
       # The run's reload is answered to it, as for any gateway. With the `registry`
       # feature, its run configuration has the run's registry credential and no other.
-      # Without the feature, not found: the workspace serves no run configuration here.
+      # Without it, the workspace's policy version 1 and no credential, or not found where
+      # the security policy is off.
       reload = Apiary.Runs.Registration.fetch(verified, run.node_run_id, instance_id())
 
-      if Apiary.Features.on?(:registry) do
-        assert {:ok, %{settings: settings}} = reload
-        assert %{"credentials" => [%{"name" => "registry"}]} = Jason.decode!(settings)
-      else
-        assert reload == {:error, :not_found}
+      cond do
+        Apiary.Features.on?(:registry) ->
+          assert {:ok, %{settings: settings}} = reload
+          assert %{"credentials" => [%{"name" => "registry"}]} = Jason.decode!(settings)
+
+        Apiary.Features.on?(:security) ->
+          assert {:ok, %{settings: settings}} = reload
+          refute Map.has_key?(Jason.decode!(settings), "credentials")
+
+        true ->
+          assert reload == {:error, :not_found}
       end
     end
 

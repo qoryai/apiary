@@ -1,5 +1,5 @@
 defmodule Apiary.Stacks.SourcesTest do
-  # The harness sources Workspace settings › Workflow offers (`Apiary.Stacks.Sources`),
+  # The harness sources Workspace settings › Harness offers (`Apiary.Stacks.Sources`),
   # read through stub adapters (`Req.Test`): the linked repositories that have a stack,
   # the instance's assignments, a typed address and its refusals, the stacks and
   # workflows each has, the templates each offers, the save of the runs' workflow, the
@@ -13,13 +13,14 @@ defmodule Apiary.Stacks.SourcesTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Artifacts.TemplateTypes
-  alias Apiary.Harnesses.{Assignment, PublicGit, Walk}
+  alias Apiary.Harnesses.{Assignment, PublicGit, Qory, Reader, Walk}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Target
   alias Apiary.Stacks
   alias Apiary.Stacks.{Sources, Stack}
   alias Apiary.PublicGitServer
+  alias Apiary.QoryHarnessFixture
 
   @moduletag needs: :factory
   @moduletag :capture_log
@@ -804,6 +805,18 @@ defmodule Apiary.Stacks.SourcesTest do
                {:invalid, [%{path: "#/stages/1/name", error: :duplicate_stage_name, detail: nil}]}
     end
 
+    test "a workflow name of 55 characters is read, and one of 56 is not readable", ctx do
+      longest = "draft-" <> String.duplicate("a", 49)
+      read = String.replace(template_file(), "workflow: draft-an-answer", "workflow: #{longest}")
+      refused = String.replace(read, longest, longest <> "a")
+      source = template_source(ctx, root("[a, b]"), %{"a" => read, "b" => refused})
+
+      assert {:ok, %{templates: [%{module: "a"}], not_readable: not_readable}} =
+               Sources.templates(ctx.scope, source)
+
+      assert [%{module: "b", reason: {:invalid, [%{error: :schema} | _]}}] = not_readable
+    end
+
     test "artifact_types that do not pass the check are not readable, with the refusals", ctx do
       file = template_file() <> "artifact_types:\n  - name: reply-draft\n"
       source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
@@ -1517,7 +1530,13 @@ defmodule Apiary.Stacks.SourcesTest do
       git = qory.harness["git"]
       pin = qory.harness["ref"]
 
-      qory_chosen = %{choice: :qory, git: git, stack: "software", version: :latest, pin: pin}
+      qory_chosen = %{
+        choice: :qory,
+        git: git,
+        stack: "software",
+        version: {:branch, "main"},
+        pin: pin
+      }
 
       assert Sources.chosen(ctx.scope.workspace) ==
                Map.merge(qory_chosen, %{saved: false, shared: false})
@@ -1702,7 +1721,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert walked.stack_id == row.id
     end
 
-    test "the Qory harness is saved with no read, at latest, and the walk reads the target's file first",
+    test "the Qory harness is saved on main with no call to an adapter, and the walk reads the target's file first",
          ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
       qory = ctx.scope.workspace |> Domain.for_workspace() |> Domain.definition()
@@ -1712,7 +1731,7 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert calls() == []
 
-      assert %{choice: :qory, git: git, stack: "software", version: :latest, pin: pin} =
+      assert %{choice: :qory, git: git, stack: "software", version: {:branch, "main"}, pin: pin} =
                Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
 
       assert {git, pin} == {qory.harness["git"], qory.harness["ref"]}
@@ -1796,14 +1815,13 @@ defmodule Apiary.Stacks.SourcesTest do
         versions: %{"R_harness" => @pin}
       )
 
-      qory = Apiary.Lingo.Domain.Definition.qory_harness()
       [_app, harness] = Sources.repositories(ctx.scope)
 
       chosen = fn ->
         Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
       end
 
-      # Under the Qory harness: a stack the release lists, with no read.
+      # Under the Qory harness: a stack it exports, with no read.
       calls()
       assert Sources.choose_target(ctx.scope, @target, {:workspace, "nope"}) == {:error, :invalid}
 
@@ -1812,13 +1830,13 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert calls() == []
       assert %{stack: "core", version: :workspace, pin: pin} = chosen.()
-      assert pin == qory.latest
+      assert pin == "main"
 
-      # The workspace takes a harness repository: the row keeps the Qory harness at latest.
+      # The workspace takes a harness repository: the row keeps the Qory harness on main.
       {:ok, _choice} =
         Sources.choose(ctx.scope, {:repository, harness, "triage", {:branch, "main"}})
 
-      assert %{choice: :qory, stack: "core", version: :latest, pin: ^pin} = chosen.()
+      assert %{choice: :qory, stack: "core", version: {:branch, "main"}, pin: ^pin} = chosen.()
 
       # A stack of the harness repository follows its branch, then its tag.
       assert {:ok, %Stack{choice: :repository, version_kind: :workspace}} =
@@ -1864,11 +1882,11 @@ defmodule Apiary.Stacks.SourcesTest do
       {:ok, _row} = Sources.choose_target(ctx.scope, @target, {:workspace, "core"})
 
       # Another workspace shares a harness repository; this workspace has no choice, so
-      # it takes the shared one, and the row keeps the Qory harness at latest.
+      # it takes the shared one, and the row keeps the Qory harness on main.
       {:ok, _shared} =
         Sources.choose(other, {:repository, harness, "triage", {:branch, "main"}}, shared: true)
 
-      assert %{choice: :qory, version: :latest} = chosen.()
+      assert %{choice: :qory, version: {:branch, "main"}} = chosen.()
 
       # Following the shared harness repository, then the workspace's Qory harness, then
       # the shared one again.
@@ -1879,7 +1897,7 @@ defmodule Apiary.Stacks.SourcesTest do
 
       {:ok, _row} = Sources.choose_target(ctx.scope, @target, {:workspace, "core"})
       {:ok, _shared} = Sources.reuse_shared(ctx.scope)
-      assert %{choice: :qory, version: :latest} = chosen.()
+      assert %{choice: :qory, version: {:branch, "main"}} = chosen.()
     end
 
     test "a reuse of the shared harness while the workspace has no choice keeps a row following it",
@@ -1981,7 +1999,7 @@ defmodule Apiary.Stacks.SourcesTest do
       # The stack of the Qory harness keeps the version it followed; the stack of
       # acme/harness follows the shared branch; the stack of acme/other keeps its
       # document, with no version.
-      assert %{choice: :qory, stack: "core", version: :latest} =
+      assert %{choice: :qory, stack: "core", version: {:branch, "main"}} =
                chosen[{@target.system, @target.path}]
 
       assert %{git: @harness, stack: "triage", version: :workspace, pin: "main"} =
@@ -2199,38 +2217,68 @@ defmodule Apiary.Stacks.SourcesTest do
       assert Stacks.choice(ctx.scope.workspace) == nil
     end
 
-    test "the Qory harness: latest with no version stored, and only a name the release ships",
+    test "the Qory harness: main with no version given, and a branch, a tag or a commit read first",
          ctx do
-      qory = Apiary.Lingo.Domain.Definition.qory_harness()
-      assert qory.named == []
+      repository = QoryHarnessFixture.serve!(QoryHarnessFixture.files(), tags: ["v1.0.0"])
 
-      assert {:ok, %Stack{version_kind: :latest, version_name: nil}} =
-               Sources.choose(ctx.scope, {:qory, :latest})
+      assert {:ok, %Stack{version_kind: :branch, version_name: "main"} = row} =
+               Sources.choose(ctx.scope, :qory)
 
-      assert %{version: :latest, pin: pin, stack: "software"} =
+      assert {:ok, %{"extends" => %{"ref" => "main", "stack" => "software"}}} =
+               Reader.document(row.harness)
+
+      assert %{version: {:branch, "main"}, pin: "main", stack: "software"} =
                Sources.chosen(ctx.scope.workspace)
 
-      assert pin == qory.latest
-      assert Sources.choose(ctx.scope, {:qory, "v1"}) == {:error, :invalid}
+      assert {:ok, %Stack{version_kind: :tag, version_name: "v1.0.0"}} =
+               Sources.choose(ctx.scope, {:qory, {:tag, "v1.0.0"}})
+
+      assert %{version: {:tag, "v1.0.0"}, pin: "v1.0.0"} = Sources.chosen(ctx.scope.workspace)
+      assert Qory.head({:tag, "v1.0.0"}) == repository.commit
+
+      assert {:ok, %Stack{version_kind: :commit, version_name: commit}} =
+               Sources.choose(ctx.scope, {:qory, {:commit, " #{repository.commit} "}})
+
+      assert commit == repository.commit
+      assert %{version: {:commit, ^commit}, pin: ^commit} = Sources.chosen(ctx.scope.workspace)
     end
 
-    test "a run at a named version the release no longer ships fails invalid", ctx do
-      serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
-      qory = ctx.scope.workspace |> Domain.for_workspace() |> Domain.definition()
-      {:ok, _row} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, "triage"}, nil)
+    test "a run's resolution of the Qory harness has the kind of its version", ctx do
+      QoryHarnessFixture.serve!(QoryHarnessFixture.files(), tags: ["v1.0.0"])
+      %{organisation: organisation, workspace: workspace} = ctx.scope
 
-      document =
-        "extends:\n  git: \"#{qory.harness["git"]}\"\n  ref: \"#{qory.harness["ref"]}\"\n" <>
-          "  stack: \"core\"\n"
+      for {version, kind, ref} <- [
+            {{:tag, "v1.0.0"}, :tag, "v1.0.0"},
+            {{:branch, "main"}, :branch, "main"},
+            {{:commit, QoryHarnessFixture.commit()}, :commit, QoryHarnessFixture.commit()}
+          ] do
+        {:ok, _row} = Sources.choose(ctx.scope, {:qory, version})
 
-      {:ok, _row} =
-        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document,
-          choice: :qory,
-          version: {:named, "v0.1"}
-        )
+        assert {:chosen, %{qory: true, ref: ^ref, ref_kind: ^kind}} =
+                 Stacks.chosen_for(organisation, workspace, nil, "explore-a-ticket")
+      end
+    end
 
-      assert {:failed, %{failure: :invalid, rule: rule}} = Walk.run(no_target(ctx))
-      assert rule == %{"rule" => "version", "values" => %{"ref" => "v0.1"}}
+    test "the Qory harness at a ref it does not have, or with no name, is not saved", ctx do
+      {:ok, before} = Sources.choose(ctx.scope, :qory)
+
+      assert Sources.choose(ctx.scope, {:qory, {:branch, "no-such-branch"}}) ==
+               {:error, {:qory, {:ref_missing, "no-such-branch"}}}
+
+      assert Sources.choose(ctx.scope, {:qory, {:tag, "  "}}) == {:error, :invalid}
+      assert Sources.choose(ctx.scope, {:qory, {:commit, "abc123"}}) == {:error, :invalid}
+      assert Sources.choose(ctx.scope, {:qory, {:latest, nil}}) == {:error, :invalid}
+      assert Stacks.choice(ctx.scope.workspace).id == before.id
+      assert Stacks.choice(ctx.scope.workspace).version_kind == :branch
+    end
+
+    test "the Qory harness whose host fails is not saved", ctx do
+      PublicGitServer.serve(%{}, answer: fn conn -> Plug.Conn.send_resp(conn, 429, "") end)
+
+      assert {:error, {:qory, {:unreadable, :rate_limited, {"github.com", 443}}}} =
+               Sources.choose(ctx.scope, {:qory, {:branch, "main"}})
+
+      assert Stacks.choice(ctx.scope.workspace) == nil
     end
 
     test "the row's check: each version under its choice, with its name", ctx do
@@ -2238,9 +2286,9 @@ defmodule Apiary.Stacks.SourcesTest do
 
       for {choice, version} <- [
             {:repository, {:latest, nil}},
-            {:qory, {:branch, "main"}},
+            {:qory, {:branch, nil}},
             {:repository, {:branch, nil}},
-            {:qory, {:latest, "main"}},
+            {:qory, {:tag, nil}},
             {:repository, {:workspace, nil}},
             {nil, {:branch, "main"}}
           ] do

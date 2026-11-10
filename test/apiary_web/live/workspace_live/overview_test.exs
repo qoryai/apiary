@@ -15,7 +15,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   alias Apiary.Repo
   alias Apiary.Policy
   alias Apiary.Retention
-  alias Apiary.Runs.{Liveness, Projector, Run}
+  alias Apiary.Runs.{Liveness, Projector, Run, RunApi}
   alias ApiaryWeb.Format
 
   # The hints of a lock where no rule can change what became of a request.
@@ -139,6 +139,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     @two_ways "Two ways to connect a machine Connect with a command. For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine. Generate a key in the browser. For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system. You choose one for each machine or pool, once you have added it."
 
+    # Nobody sets a pool's instance limit, as `Apiary.EditionStubs.NoLimit` has it, and the
+    # features the test names are hidden, as `Apiary.EditionStubs.HidesNamed` has them.
+    defmodule NoLimitHidesNamed do
+      @moduledoc false
+      defdelegate check(scope, action, subject), to: Apiary.EditionStubs.NoLimit
+      defdelegate hidden(scope), to: Apiary.EditionStubs.HidesNamed
+    end
+
     # The ids of step 2's buttons, in their order, and those shown as primary.
     defp ways(view) do
       doc = view |> element("#onboarding-ways") |> render() |> LazyHTML.from_fragment()
@@ -162,6 +170,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")
       assert has_element?(view, "#onboarding .q-step-current", "Add a machine")
+
+      assert has_element?(
+               view,
+               "#onboarding .q-steps li:nth-child(1)",
+               "One per machine, or a pool of machines that share one key."
+             )
 
       assert text(view, "#onboarding") =~
                "Nothing has posted to this workspace yet. A machine posts once it is connected."
@@ -217,6 +231,20 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert html =~ "New machine"
     end
 
+    test "no node, one an edition keeps a pool's limit from: New machine, no New pool",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(NoLimitHidesNamed)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='1']")
+      assert has_element?(view, "#onboarding-new-node", "New machine")
+      refute has_element?(view, "#onboarding-new-pool")
+      refute has_element?(view, "#onboarding-members")
+
+      assert has_element?(view, "#onboarding .q-steps li:nth-child(1)", "One per machine.")
+      refute text(view, "#onboarding") =~ "a pool of machines that share one key"
+    end
+
     test "no node, a member: no buttons, who adds one instead", %{scope: scope} = ctx do
       view = open(as_member(ctx), scope)
 
@@ -229,6 +257,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
              )
 
       assert text(view, "#onboarding") =~ @step_2_text
+      # A member, who may not set a pool's limit, sees no New pool and reads the step so.
+      assert has_element?(view, "#onboarding .q-steps li:nth-child(1)", "One per machine.")
       refute has_element?(view, "#onboarding-new-node")
       refute has_element?(view, "#onboarding-new-pool")
       refute has_element?(view, "#onboarding-members-key")
@@ -1176,15 +1206,37 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
   describe "guard" do
     @tag needs: :security
-    test "policy: a new workspace, then a managed one with a version, own rules and hosts to review",
+    test "policy: two repositories follow it", %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, scope)
+
+      assert text(view, "#overview-policy-mode") =~ "2 of 2 repositories follow it."
+    end
+
+    @tag needs: :security
+    test "policy: a workspace with no version yet shows no mode, here and in the sidebar",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      no_policy_version!(scope.workspace)
+      view = open(conn, scope)
+
+      assert has_element?(view, "#overview-policy-open")
+      assert text(view, "#overview-policy-version") == ""
+      refute has_element?(view, "#overview-policy-mode")
+      refute has_element?(view, "#nav-policy-mode")
+    end
+
+    @tag needs: :security
+    test "policy: a new workspace at version 1, then one with own rules and hosts to review",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
       view = open(conn, scope)
 
-      assert text(view, "#overview-policy-version") == "observe"
-
-      assert text(view, "#overview-policy-mode") ==
-               "Machines use their local policy until the first change here."
+      assert text(view, "#overview-policy-version") == "observe · v1"
+      assert text(view, "#overview-policy-mode") =~ "In force since"
+      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follows it."
+      refute has_element?(view, "#att-policy-unmanaged")
 
       assert has_element?(
                view,
@@ -1199,9 +1251,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       render_async(view, 5_000)
 
-      assert text(view, "#overview-policy-version") == "enforce · v2"
+      assert text(view, "#overview-policy-version") == "enforce · v3"
       assert text(view, "#overview-policy-mode") =~ "In force since"
-      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follow it."
+      assert text(view, "#overview-policy-mode") =~ "1 of 1 repository follows it."
       assert text(view, "#overview-policy-mode") =~ "2 declared hosts to review in 1 repository."
       assert text(view, "#overview-own") =~ "Every repository follows the workspace's mode."
 
@@ -1423,30 +1475,30 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "Open the rule"
              )
 
-      assert text(view, "#att-run-#{lost.number}") =~ "Lost, never posted its exit"
+      assert text(view, "#att-run-#{lost.public_id}") =~ "Lost, never posted its exit"
 
       assert has_element?(
                view,
-               "#att-run-#{lost.number}-act[aria-label='Open nightly-mirror']",
+               "#att-run-#{lost.public_id}-act[aria-label='Open nightly-mirror']",
                "Open"
              )
 
       assert has_element?(
                view,
-               "#att-run-#{lost.number} a[href='#{workspace_path(scope, "/runs/#{lost.number}")}']",
+               "#att-run-#{lost.public_id} a[href='#{workspace_path(scope, "/runs/#{lost.number}")}']",
                "nightly-mirror"
              )
 
-      assert text(view, "#att-run-#{quiet.number}") =~ "No heartbeat for"
+      assert text(view, "#att-run-#{quiet.public_id}") =~ "No heartbeat for"
 
       assert has_element?(
                view,
-               "#att-run-#{quiet.number} .q-ar-why[title='Heartbeats are due every 30 s; after 1 m 30 s of silence it is marked lost.']"
+               "#att-run-#{quiet.public_id} .q-ar-why[title='Heartbeats are due every 30 s; after 1 m 30 s of silence it is marked lost.']"
              )
 
       assert has_element?(
                view,
-               "#att-run-#{quiet.number}-act[href='#{workspace_path(scope, "/runs/#{quiet.number}")}']",
+               "#att-run-#{quiet.public_id}-act[href='#{workspace_path(scope, "/runs/#{quiet.number}")}']",
                "Open"
              )
 
@@ -1466,7 +1518,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         ]
       )
 
-      # No rule yet, with runs: the policy is unmanaged, the sixth item.
+      # A rule in observe: the enforce item, the sixth.
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
       lost_run(scope)
       started_run(scope, shop(), heartbeat: {45, 100, 30})
       started_run(scope, shop(), heartbeat: {45, 100, 30})
@@ -1518,7 +1571,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               ~s(#att-run-#{run.number}-act[href="#{compare}"]),
+               ~s(#att-run-#{run.public_id}-act[href="#{compare}"]),
                "What changed"
              )
     end
@@ -1567,7 +1620,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
 
       # The run on the policy in force, with its image, is behind nothing.
-      refute has_element?(view, "#att-run-#{current.number}-act")
+      refute has_element?(view, "#att-run-#{current.public_id}-act")
 
       compare =
         target_page_path(
@@ -1579,7 +1632,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               ~s(#att-run-#{behind.number}-act[href="#{compare}"]),
+               ~s(#att-run-#{behind.public_id}-act[href="#{compare}"]),
                "What changed"
              )
     end
@@ -1632,29 +1685,44 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       )
 
       view = open(conn, scope)
-      refute has_element?(view, "#att-run-#{run.number}-act")
+      refute has_element?(view, "#att-run-#{run.public_id}-act")
     end
 
     @tag needs: :security
-    test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
+    test "what enforce would deny leaves out the run API", %{conn: conn, scope: scope} do
+      run_api = %{
+        "host" => RunApi.placeholder(),
+        "port" => 80,
+        "decision" => "allowed",
+        "rule" => RunApi.rule()
+      }
+
+      started_run(scope, shop(),
+        egress: [
+          run_api,
+          run_api,
+          %{"host" => "new.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
+      view = open(conn, scope)
+
+      assert text(view, "#att-policy-enforce") =~ "Enforce would deny 1 destination"
+    end
+
+    @tag needs: :security
+    test "the policy items: none at version 1, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())
       view = open(conn, scope)
 
-      assert text(view, "#att-policy-unmanaged") =~ "Qory Apiary serves no policy yet"
-
-      assert text(view, "#att-policy-unmanaged") =~ "1 run under the machines' policies"
-
-      assert has_element?(
-               view,
-               "#att-policy-unmanaged-act[href='#{workspace_path(scope, "/policy")}']",
-               "Open policy"
-             )
+      refute has_element?(view, "#att-policy-unmanaged")
+      refute has_element?(view, "#att-policy-enforce")
+      refute render(view) =~ "serves no policy"
 
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
       render_async(view, 5_000)
-      assert text(view, "#att-policy-unmanaged") =~ "Qory Apiary serves the policy now."
-      assert has_element?(view, "#att-policy-unmanaged.q-resolved")
 
       assert text(view, "#att-policy-enforce") =~ "Observe is the workspace's default"
 
@@ -1745,16 +1813,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
 
       for run <- runs do
-        assert text(view, "#att-run-#{run.number}") =~ "Lost, never posted its exit"
+        assert text(view, "#att-run-#{run.public_id}") =~ "Lost, never posted its exit"
 
         assert has_element?(
                  view,
-                 "a#att-run-#{run.number}-act[aria-label='Open #{run.about_title}']" <>
+                 "a#att-run-#{run.public_id}-act[aria-label='Open #{run.about_title}']" <>
                    "[href='#{workspace_path(scope, "/runs/#{run.number}")}']",
                  "Open"
                )
 
-        refute has_element?(view, "button#att-run-#{run.number}-act")
+        refute has_element?(view, "button#att-run-#{run.public_id}-act")
       end
 
       refute render(view) =~ ~r/>\s*Close\s*</
@@ -1849,12 +1917,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         view = open(conn, scope)
         case_ = inspect(Map.take(attrs, [:attached_at, :backstop_at, :lost_at, :silenced_at]))
 
-        assert text(view, "#att-run-#{run.number}") =~ "Lost, never posted its exit", case_
+        assert text(view, "#att-run-#{run.public_id}") =~ "Lost, never posted its exit", case_
 
         assert view
                |> render()
                |> LazyHTML.from_fragment()
-               |> LazyHTML.query("#att-run-#{run.number} .q-ar-why")
+               |> LazyHTML.query("#att-run-#{run.public_id} .q-ar-why")
                |> LazyHTML.attribute("title") == [tip],
                case_
 
@@ -1881,24 +1949,24 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert %Run{state: "lost", lost_at: %DateTime{}} = Repo.reload!(silent)
       view = open(conn, scope)
 
-      assert text(view, "#att-run-#{own.number}") =~ "Lost, never posted its exit"
+      assert text(view, "#att-run-#{own.public_id}") =~ "Lost, never posted its exit"
 
       assert has_element?(
                view,
-               "#att-run-#{own.number} .q-ar-why[title='Nothing was heard for three heartbeat intervals. The run may still be going; the record is not.']"
+               "#att-run-#{own.public_id} .q-ar-why[title='Nothing was heard for three heartbeat intervals. The run may still be going; the record is not.']"
              )
 
       for {run, words} <- [
             {silent, "Lost, stopped responding"},
             {unrecorded, "Lost, end not recorded"}
           ] do
-        assert has_element?(view, "#att-run-#{run.number}[data-kind=lost]", "Lost")
-        assert text(view, "#att-run-#{run.number}") =~ words
-        refute text(view, "#att-run-#{run.number}") =~ "never posted its exit"
+        assert has_element?(view, "#att-run-#{run.public_id}[data-kind=lost]", "Lost")
+        assert text(view, "#att-run-#{run.public_id}") =~ words
+        refute text(view, "#att-run-#{run.public_id}") =~ "never posted its exit"
 
         assert has_element?(
                  view,
-                 ~s(#att-run-#{run.number} .q-ar-why[title="The run's end was not recorded; how it went is not known."])
+                 ~s(#att-run-#{run.public_id} .q-ar-why[title="The run's end was not recorded; how it went is not known."])
                )
       end
     end
@@ -1909,9 +1977,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       shown = ApiaryWeb.OverviewComponents.row_title(%{lost | about_title: nil})
       view = open(conn, scope)
 
-      refute has_element?(view, "#att-run-#{lost.number} .q-ar-t > bdi")
-      assert has_element?(view, "#att-run-#{lost.number} .q-ar-t", shown)
-      assert has_element?(view, ~s(#att-run-#{lost.number}-act[aria-label="Open #{shown}"]))
+      refute has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi")
+      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t", shown)
+      assert has_element?(view, ~s(#att-run-#{lost.public_id}-act[aria-label="Open #{shown}"]))
     end
 
     test "a lost run's title is isolated, its bidi override dropped",
@@ -1919,11 +1987,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       lost = lost_run(scope, %{about_title: "nightly\u202Erorrim"})
       view = open(conn, scope)
 
-      assert has_element?(view, "#att-run-#{lost.number} .q-ar-t > bdi", "nightlyrorrim")
+      assert has_element?(view, "#att-run-#{lost.public_id} .q-ar-t > bdi", "nightlyrorrim")
       # The label for a screen reader stays plain text.
       assert has_element?(
                view,
-               ~s(#att-run-#{lost.number}-act[aria-label="Open nightlyrorrim"])
+               ~s(#att-run-#{lost.public_id}-act[aria-label="Open nightlyrorrim"])
              )
     end
 
@@ -1933,7 +2001,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       # Its heartbeats had set its clock offset, a second behind, before it was lost.
       lost = lost_run(scope, %{clock_offset_ms: 1000})
       view = open(conn, scope)
-      assert has_element?(view, "#att-run-#{lost.number}[data-kind=lost]", "Lost")
+      assert has_element?(view, "#att-run-#{lost.public_id}[data-kind=lost]", "Lost")
 
       # The heartbeats of the hour it was lost for, sent now.
       for k <- 1..20 do
@@ -1949,8 +2017,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert {:ok, %Run{state: "lost"}} = Projector.project(lost)
       render_async(view, 5_000)
-      assert has_element?(view, "#att-run-#{lost.number}[data-kind=lost]", "Lost")
-      refute has_element?(view, "#att-run-#{lost.number}.q-resolved")
+      assert has_element?(view, "#att-run-#{lost.public_id}[data-kind=lost]", "Lost")
+      refute has_element?(view, "#att-run-#{lost.public_id}.q-resolved")
 
       event_fixture(
         lost,
@@ -1962,7 +2030,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       )
 
       assert {:ok, %Run{state: "failed"}} = Projector.project(lost)
-      refute has_element?(open(conn, scope), "#att-run-#{lost.number}")
+      refute has_element?(open(conn, scope), "#att-run-#{lost.public_id}")
     end
 
     @tag needs: :security
@@ -2065,12 +2133,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert text(view, "#overview-announcer") =~ "files.cdn.example is allowed for acme/shop."
 
-      # The policy topic re-reads the list: the struck row stays where it is, and the
-      # workspace is managed now, so the unmanaged item resolves in words too. A target's
+      # The policy topic re-reads the list: the struck row stays where it is. A target's
       # rule is no allow rule of the workspace: no enforce nudge.
       render_async(view, 5_000)
       assert has_element?(view, "##{item}.q-resolved")
-      assert has_element?(view, "#att-policy-unmanaged.q-resolved")
       refute has_element?(view, "#att-policy-enforce")
       assert text(view, "#attention-n") == "0"
     end
@@ -2230,6 +2296,41 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "a denied runtime's host has the lock of a host allowed for every run, and no Allow",
+         %{conn: conn, scope: scope} do
+      run =
+        started_run(scope, shop(),
+          egress: [%{"host" => "api.anthropic.com", "decision" => "denied", "rule" => ""}]
+        )
+
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
+      view = open(conn, scope)
+
+      [item] =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#attention-list li[data-kind=denied]")
+        |> LazyHTML.attribute("id")
+
+      # The lock of Network access: its styled hint, and the same name for a screen reader.
+      # The hint opens above the lock, flush with its right edge, inside the card.
+      assert has_element?(view, "span##{item}-act.tooltip-top.q-tip-end")
+
+      assert has_element?(
+               view,
+               ~s(span##{item}-act.q-act-lock[data-tip="Allowed for every run"][aria-label="Allowed for every run"])
+             )
+
+      refute has_element?(view, "##{item}-act[title]")
+      refute has_element?(view, "##{item} .q-ar-act a, ##{item} .q-ar-act button")
+
+      # Asked anyway, the panel does not open, and no rule is written.
+      render_hook(view, "rule_open", %{"id" => item, "level" => "target"})
+      refute has_element?(view, "#rule-panel")
+      assert Policy.list_rules(scope, target) == []
+    end
+
+    @tag needs: :security
     test "a denied host longer than 255 bytes is listed with the host cut and marked, and offers no act",
          %{conn: conn, scope: scope} do
       long = String.duplicate("a", 292) <> ".example"
@@ -2309,7 +2410,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     } do
       quiet = started_run(scope, shop(), heartbeat: {45, 100, 30})
       view = open(conn, scope)
-      assert has_element?(view, "#att-run-#{quiet.number}[data-kind=quiet]")
+      assert has_element?(view, "#att-run-#{quiet.public_id}[data-kind=quiet]")
 
       event_fixture(
         quiet,
@@ -2322,8 +2423,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       {:ok, _} = Projector.project(quiet)
       render_async(view, 5_000)
-      assert text(view, "#att-run-#{quiet.number}") =~ "Heartbeats resumed."
-      assert has_element?(view, "#att-run-#{quiet.number}.q-resolved")
+      assert text(view, "#att-run-#{quiet.public_id}") =~ "Heartbeats resumed."
+      assert has_element?(view, "#att-run-#{quiet.public_id}.q-resolved")
       assert text(view, "#attention-n") =~ ~r/^\d$/
 
       other = started_run(scope, shop())
@@ -2338,7 +2439,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert [_] = Liveness.check(DateTime.utc_now())
       render_async(view, 5_000)
-      assert has_element?(view, "#att-run-#{other.number}[data-kind=lost].q-arrived", "Lost")
+      assert has_element?(view, "#att-run-#{other.public_id}[data-kind=lost].q-arrived", "Lost")
       assert text(view, "#overview-announcer") == "1 more item to review."
     end
 
@@ -2356,7 +2457,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       view = open(conn, scope)
 
       for {run, _exit} <- runs,
-          do: assert(has_element?(view, "#att-run-#{run.number}[data-kind=quiet]"))
+          do: assert(has_element?(view, "#att-run-#{run.public_id}[data-kind=quiet]"))
 
       for {run, exit} <- runs do
         event_fixture(run, 41, "run.exited", Map.put(exit, "duration_ms", 1000),
@@ -2370,8 +2471,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_async(view, 5_000)
 
       for {{run, _exit}, words} <- Enum.zip(runs, ["Completed.", "Failed.", "Cancelled."]) do
-        assert has_element?(view, "#att-run-#{run.number}.q-resolved")
-        assert text(view, "#att-run-#{run.number}") =~ words
+        assert has_element?(view, "#att-run-#{run.public_id}.q-resolved")
+        assert text(view, "#att-run-#{run.public_id}") =~ words
       end
 
       # Nothing arrived, so the announcer says nothing.
@@ -2385,15 +2486,15 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       # Silent for four intervals: quiet on the page, and lost at the check's three.
       quiet = started_run(scope, shop(), heartbeat: {120, 100, 30})
       view = open(conn, scope)
-      assert has_element?(view, "#att-run-#{quiet.number}[data-kind=quiet]")
+      assert has_element?(view, "#att-run-#{quiet.public_id}[data-kind=quiet]")
 
       assert [_] = Liveness.check(DateTime.utc_now())
       render_async(view, 5_000)
-      assert has_element?(view, "#att-run-#{quiet.number}[data-kind=lost]", "Lost")
-      refute has_element?(view, "#att-run-#{quiet.number}.q-resolved")
-      refute text(view, "#att-run-#{quiet.number}") =~ "Heartbeats resumed."
+      assert has_element?(view, "#att-run-#{quiet.public_id}[data-kind=lost]", "Lost")
+      refute has_element?(view, "#att-run-#{quiet.public_id}.q-resolved")
+      refute text(view, "#att-run-#{quiet.public_id}") =~ "Heartbeats resumed."
       # The same row, patched: nothing arrived.
-      refute has_element?(view, "#att-run-#{quiet.number}.q-arrived")
+      refute has_element?(view, "#att-run-#{quiet.public_id}.q-arrived")
       assert text(view, "#overview-announcer") == ""
     end
 
@@ -2427,13 +2528,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     blank = lost_run(scope, at.("\u202E\u200B"))
     view = open(conn, scope)
 
-    assert text(view, "#att-run-#{named.number} .q-ar-where") == "acme/shop\uFFFD"
-    assert text(view, "#att-run-#{blank.number} .q-ar-where") == "\uFFFD\uFFFD"
+    assert text(view, "#att-run-#{named.public_id} .q-ar-where") == "acme/shop\uFFFD"
+    assert text(view, "#att-run-#{blank.public_id} .q-ar-where") == "\uFFFD\uFFFD"
 
     # A run that sent no path keeps no repository.
     none = lost_run(scope, at.(nil))
     view = open(conn, scope)
-    assert text(view, "#att-run-#{none.number} .q-ar-where") == "no repository"
+    assert text(view, "#att-run-#{none.public_id} .q-ar-where") == "no repository"
   end
 
   test "a lost run's target is named with its system where the path as sent is shared", %{
@@ -2448,7 +2549,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     run = lost_run(scope, %{target_system: "github.example", target_path: path})
     view = open(conn, scope)
 
-    assert text(view, "#att-run-#{run.number} .q-ar-where") == "github.example / acme/shop"
+    assert text(view, "#att-run-#{run.public_id} .q-ar-where") == "github.example / acme/shop"
   end
 
   # The page's markup with what `<bdi>` isolates taken out, as text: what of a host is
@@ -2488,6 +2589,36 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     assert has_element?(view, ~s(#{selector} .q-host[title="#{title}"]))
     assert has_element?(view, "#{selector} .q-host .q-port > bdi", "files.tools.internal")
     refute render(element(view, "#{selector} .q-ar-subj")) =~ "\u202E"
+  end
+
+  @tag needs: :security
+  test "a denied request to the run API shows the instance's host, with no port", %{
+    conn: conn,
+    scope: scope
+  } do
+    started_run(scope, shop(),
+      egress: [
+        %{
+          "host" => "run-api.qory.invalid",
+          "port" => 80,
+          "method" => "HTTP",
+          "request_method" => "POST",
+          "path" => "outside",
+          "decision" => "denied",
+          "outcome" => "refused",
+          "rule" => "wall:run-api"
+        }
+      ]
+    )
+
+    view = open(conn, scope)
+    subject = "#attention-list li[data-kind=denied] .q-ar-subj"
+    instance = Apiary.Instance.host()
+
+    assert has_element?(view, "#{subject} .q-host > bdi", instance)
+    refute has_element?(view, "#{subject} .q-port")
+    assert has_element?(view, ~s(#{subject} .q-host[title="#{instance} outside"]))
+    refute render(view) =~ "run-api.qory.invalid"
   end
 
   @tag needs: :security

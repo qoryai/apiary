@@ -96,6 +96,16 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
   defp again_button(ticket), do: row(ticket) <> ~s( button[phx-click="take_in_again"])
   defp work_link(ticket), do: row(ticket) <> " a.q-bl-wi"
 
+  defp again_title(view, ticket) do
+    view
+    |> element(again_button(ticket))
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("button")
+    |> LazyHTML.attribute("title")
+    |> List.first()
+  end
+
   describe "the table" do
     test "open, with no work item: Open, with Take in", ctx do
       assert {:open, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
@@ -129,9 +139,47 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
 
       assert {:open, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
       assert has_element?(view, again_button(ctx.ticket))
+      assert again_title(view, ctx.ticket) == "Brings back work item ##{work_item.number}"
 
       {:ok, list, _html} = live(ctx.conn, work_list(ctx.scope, "closed"))
       assert words(list, work_row(work_item) <> " .q-wl-nx") == "Closed by you"
+    end
+
+    test "open, closed in another workspace the reader may read: Open, and where it is",
+         ctx do
+      {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
+      {:ok, _closed} = WorkItems.close(ctx.scope, work_item)
+      other = Apiary.OrganisationsFixtures.workspace_fixture(ctx.scope.organisation, "Second")
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [workspace_id: other.id]
+        )
+
+      assert {:open, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
+      refute has_element?(view, again_button(ctx.ticket))
+      assert words(view, "#ticket-#{ctx.ticket.public_id}-elsewhere") == "In Second"
+    end
+
+    test "open, at a stage in another workspace: Taken in, with no number and no link", ctx do
+      {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
+      other = Apiary.OrganisationsFixtures.workspace_fixture(ctx.scope.organisation, "Second")
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [workspace_id: other.id]
+        )
+
+      assert {:taken, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
+      refute has_element?(view, work_link(ctx.ticket))
+      assert words(view, row(ctx.ticket) <> " span.q-bl-wi") == "Taken in"
+
+      assert view
+             |> element(row(ctx.ticket) <> " span.q-bl-wi")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("span.q-bl-wi")
+             |> LazyHTML.attribute("title") == ["Taken in as a work item of another workspace"]
     end
 
     test "open, a person undid its take in: Open, with Take in again", ctx do
@@ -189,6 +237,7 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
       assert words(list, work_row(work_item) <> " .q-wl-nx") == "Every stage done"
 
       view |> element(again_button(ctx.ticket)) |> render_click()
+      confirm_take_in(view)
       assert_redirect(view, work_path(ctx.scope, work_item.number))
 
       assert %WorkItem{state: :exploring, take_in: 2, stage_state: :running} =
@@ -267,10 +316,11 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
       {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
       {:ok, _closed} = WorkItems.close(ctx.scope, work_item)
       {:ok, view, _html} = live(ctx.conn, backlog(ctx.scope, "open"))
+      view |> element(again_button(ctx.ticket)) |> render_click()
 
+      # The ticket was taken in again while the dialog was open.
       {:ok, _again} = WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id)
-      # The row changed under the press: the page is sent what it drew.
-      render_click(view, "take_in_again", %{"id" => ctx.ticket.public_id})
+      confirm_take_in(view)
 
       assert render(view) =~
                "Someone took this ticket in already, as work item ##{work_item.number}."

@@ -29,7 +29,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
 
   alias Apiary.{Access, Processes}
   alias Apiary.Processes.{TypeTemplate, TypeTemplates}
-  alias ApiaryWeb.{People, SettingsComponents}
+  alias ApiaryWeb.{MachineTypeWords, People, SettingsComponents}
   alias ApiaryWeb.StagesLive.{Canvas, Editor, Inspector, Words}
 
   @edits Editor.events()
@@ -74,6 +74,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
           save_errors: [],
           save_note: nil,
           stage_errors: %{},
+          refused_machines: [],
           rounds_errors: %{},
           workflow_errors: %{},
           text_error: nil
@@ -109,7 +110,11 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
       draft: version.document,
       selected: Editor.first_id(version.document),
       versions: TypeTemplates.versions(socket.assigns.type),
+      machine_types: Apiary.MachineTypes.list(),
       stage_errors: %{},
+      refused_machines: [],
+      rounds_errors: %{},
+      workflow_errors: %{},
       save_note: nil
     )
     |> refresh()
@@ -310,19 +315,20 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
             </div>
           </div>
           <div
-            :if={@notice != nil or @save_errors != []}
+            :if={@notice != nil or Editor.banner(assigns) != []}
             class={["grid gap-3", @tab == :stages && "py-4"]}
           >
             <.notice :if={@notice} kind={:success}>
               <span id="type-notice">{@notice}</span>
             </.notice>
-            <.notice :if={@save_errors != []} kind={:error}>
-              <span :for={error <- @save_errors} class="block" data-save-error>{error}</span>
+            <.notice :if={Editor.banner(assigns) != []} kind={:error}>
+              <span :for={error <- Editor.banner(assigns)} class="block" data-save-error>{error}</span>
             </.notice>
           </div>
 
-          <%!-- The box takes the rest of the window (`.q-canvas-fill`), with the inspector
-          beside the canvas and no gap under the tabs. --%>
+          <%!-- The box takes the rest of the window (`.q-canvas-fill`), with no gap under the
+          tabs. The inspector sits beside the canvas from 1328 px (from 1024 px in Focus and
+          Full screen) and under it below that. --%>
           <div :if={@tab == :stages} id="type-editor" class="q-canvas-fill">
             <Canvas.canvas
               id="type-canvas"
@@ -346,8 +352,10 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
                 stage_errors={@stage_errors}
                 rounds_errors={@rounds_errors}
                 workflow_errors={@workflow_errors}
+                refused_machines={@refused_machines}
                 problems={@problems}
                 machine={@draft["machine"]}
+                machine_types={@machine_types}
                 marks={@declared}
                 harness={:qory}
               />
@@ -420,12 +428,23 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
               <.input
                 id="type-machine"
                 name="process[machine]"
-                value={@draft["machine"]}
+                type="select"
+                value={@draft["machine"] || "default"}
                 label={gettext("Default machine type")}
-                hint={Inspector.machine_hint()}
-                autocomplete="off"
-                spellcheck="false"
+                options={MachineTypeWords.default_options(@machine_types, @draft["machine"])}
+                aria-describedby="type-machine-hint"
               />
+              <%!-- The hint has a link, which an input's hint cannot have. --%>
+              <p id="type-machine-hint" class="mt-1.5 text-[12.5px]/[18px] text-muted">
+                <.rich text={
+                  rich_gettext(
+                    "New workspaces of this type start with this default. Add machine types in %{place}.",
+                    place:
+                      {:link, ~p"/instance/machine-types",
+                       gettext("Instance settings › Machine types")}
+                  )
+                } />
+              </p>
             </.form>
 
             <section id="type-history" aria-labelledby="type-history-title" class="grid gap-2">

@@ -308,9 +308,10 @@ later.
 
 1. **Work sources.** **Where does work for Main come from?** shows a card for each
    account that Acme's connections reach. With nothing connected, the step lists the
-   adapters that the instance has set up. Select **Connect** beside one, and follow the steps that **About this step** lists under its
-   name: the adapter sends you back to this step, which shows a card such as “GitHub ·
-   acme” with **Choose**. Select **Choose**. On “Choose repositories · GitHub · acme”,
+   adapters that the instance has set up. Select **Connect** beside one, and follow the
+   steps that **About work sources** lists under its name: the adapter sends you back
+   to this step, which shows a card such as “GitHub · acme” with **Choose**. Select
+   **Choose**. On “Choose repositories · GitHub · acme”,
    choose **All repositories, including new ones**, in the adapter's word for its
    collections, or **Only selected** and tick the collections whose tickets Main takes
    in. **Only selected** shows 50 to a page, with **Find a repository** and a count such
@@ -345,23 +346,32 @@ later.
    variables** lists it, masked, and you replace it there. Only owners and admins add a
    model key.
 4. **Harness.** **Which harness do runs in Main use?** has two choices:
-   - **Qory harness**, `github.com/qoryai/harness` at the commit it is pinned to, the
-     choice when you have made none. A run reads its repository's `harness.yaml` or
-     `qory.yaml` first, where the repository has one.
-   - **A harness repository**: choose a repository linked to Acme and, in **Branch or
-     tag**, a branch or tag. **Continue** reads the repository and pins the commit that
-     the branch or tag points to; the step shows why the read failed. A run then reads
-     no harness file of its repository.
+   - **Qory harness**, `github.com/qoryai/harness`, the choice when you have made none.
+     Under **Version**, keep **Always the latest on** with a branch, `main` unless you
+     change it. Each run uses the commit the branch is at when a machine claims the run.
+     To fix the version, choose **A fixed version** with a tag or commit.
+   - **A harness repository**: in **Repository**, choose a repository linked to Acme, and
+     in **Stack**, one of the stacks it exports. Under **Version**, keep **Always the
+     latest on** with a branch, where each run uses the branch's newest commit when the
+     run is queued, or choose **A fixed version** with a tag or commit. **Continue** saves
+     the choice; the step shows why a read or a save failed.
 
-   Under **Repositories**, each of Main's repositories from **Destinations** shows
-   **Workspace default**, or the stack chosen for it. **Change** beside a repository chooses a
-   harness for that repository alone: the **Qory harness**, or **A harness repository**
-   with a **Source**, a **Stack** of it and a **Branch or tag**, then **Save**. A run in
-   that repository then uses that stack, and reads no harness file of the repository.
+   Under **Repositories**, each of Main's repositories from **Destinations** has a
+   **Stack** choice. In **Stack**, choose **Workspace's harness** or one of its stacks;
+   the choice saves at once. To set a harness for that repository alone, choose
+   **A stack of another repository…**, then a **Repository**, a **Stack** of it and a
+   **Branch or tag**, and select **Save**.
+
+   A run in a repository uses the first of these: the repository's `harness.yaml` or
+   `qory.yaml`, where the file sets a harness; the stack set for the repository under
+   **Repositories**; the harness you choose here; the harness your organisation shares;
+   the **Qory harness**.
    Keep **Qory harness** and select **Continue**. The test run uses a built-in harness
-   whatever you choose. **Workspace settings › Workflow** shows the choice with its pin,
-   and **Change** there opens the same two choices. Only owners and admins save a
-   harness choice.
+   whatever you choose. **Workspace settings › Harness** shows the choice with its
+   source, stack and branch, tag or commit, and **Change** there opens the same two
+   choices. With the `workflow_model` feature, the settings also list **Workflows**: its
+   **Details** tab shows the harness, and **Open Harness** beside the harness opens
+   **Workspace settings › Harness**. Only owners and admins save a harness choice.
 5. **Machines.** **Which machines run the runs in Main?** shows the pools that
    serve Main's runs: Main's pools, or the instance's pool while Main has none. Each
    shows **Ready** with its gateway, or **Not ready** with the reason. While Main has no
@@ -410,8 +420,8 @@ main-pool is running. No machine has taken the test run yet." for a pool of Main
 for the Qory Pool. After a pass, **Go to Main** opens Main's overview,
 and opening Main opens the overview from then on.
 
-The test run needs no workflow. Before later runs, open **Workspace settings › Workflow**,
-`/acme/main/settings/workflow`, which opens for owners and admins. In **Source**, choose
+The test run needs no workflow. Before later runs, open **Workspace settings › Harness**,
+`/acme/main/settings/harness`, which opens for owners and admins. In **Workflow source**, choose
 the harness repository, such as `example-org/harness`: the list has the repositories
 linked to Acme that have a `qory-stack.yaml` file, and the harness sources an instance
 admin assigned to Acme. For a public repository that is not in the list, choose **Enter an
@@ -419,15 +429,21 @@ address**, and enter its address in **Public address**, such as
 `https://github.com/example-org/harness`, without a password or token in it. In
 **Workflow**, choose one of the workflows that the repository's stack lists, and select
 **Save**. **Save** sets only which workflow Main's runs use, not their harness.
+
+With the `workflow_model` feature, the Harness page has no workflow choice, and each
+stage runs the workflows set for it. On **Workspace settings › Harness**, select
+**Change**, choose **A harness repository** with its **Repository**, **Stack** and
+**Version**, and select **Save**. Then open **Workspace settings › Workflows**,
+`/acme/main/settings/workflows`. On its **Stages** tab, select a stage, choose its
+workflow under **Sequence**, and select **Save**.
 <!-- /feature -->
 
 ## Next
 
 <!-- feature: security -->
-- Until somebody changes the workspace's policy, runs use each machine's local policy. Read
-  [The security policy](security-policy.md) before the first rule: from the first change,
-  each machine's runs take the workspace's policy, narrowed by the `egress` section of
-  the machine's Forager file.
+- A workspace starts with policy version 1: observe, with no rules. Each machine's runs take
+  the workspace's policy, narrowed by the `egress` section of the machine's Forager file.
+  Read [The security policy](security-policy.md) before the first rule.
 <!-- /feature -->
 - `qory run --local` records to files only and does not contact Qory Apiary.
 - To stop the trial: `docker compose down`. The database stays in the volume

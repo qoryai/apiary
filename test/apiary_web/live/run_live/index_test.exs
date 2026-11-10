@@ -24,7 +24,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
   defp runs(scope, query \\ ""), do: workspace_path(scope, "/runs") <> query
 
-  defp row(run), do: "#run-#{run.number}"
+  defp row(run), do: "#run-#{run.public_id}"
 
   # The id of a target, acme/shop on github.example unless given, as the address writes it.
   defp tg(scope, system \\ "github.example", path \\ "acme/shop"),
@@ -999,6 +999,26 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert to == runs(scope)
     end
 
+    test "machine-type: narrows the list to the runs queued on a machine type", %{
+      conn: conn,
+      scope: scope
+    } do
+      large = started_run(scope, %{}, ago: 30)
+      queue_run!(scope, large, queued: [machine_type: "large"])
+      standard = started_run(scope, %{}, ago: 20)
+      queue_run!(scope, standard, queued: [machine_type: "standard"])
+      direct = started_run(scope, %{}, ago: 10)
+      view = open(conn, scope)
+
+      view |> form("#runs-query", %{"q" => "machine-type:large"}) |> render_submit()
+      assert_patch(view, runs(scope, "?machine_type=large"))
+      render_async(view)
+      assert has_element?(view, row(large))
+      refute has_element?(view, row(standard))
+      refute has_element?(view, row(direct))
+      assert token(view, "machine_type") == "machine-type:large"
+    end
+
     test "the header says what the list shows; a card on a phone is the row's cells", %{
       conn: conn,
       scope: scope
@@ -1048,7 +1068,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
 
       view |> element("#runs-view-alive") |> render_click()
-      assert_patch(view, runs(scope, "?host=build-02&state=pending%2Crunning"))
+      assert_patch(view, runs(scope, "?host=build-02&state=queued%2Cpending%2Crunning"))
       render_async(view)
       assert has_element?(view, "#runs-view-alive[aria-current=page]")
       refute has_element?(view, "#runs-view-all[aria-current]")
@@ -1238,7 +1258,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # Every state shows under its family, counted when a run has it.
       assert text(view, form) =~
-               "Alive Pending Running 1 Ended well Completed Cancelled Cancelled Ended badly Failed 1 Lost"
+               "Alive Queued Pending Running 1 Ended well Completed Cancelled Cancelled Ended badly Failed 1 Lost"
 
       refute has_element?(view, "#{form} input[name='state[]'][value=closed]")
 
@@ -1266,7 +1286,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert headings == ["Alive", "Ended well", "Cancelled", "Ended badly"]
 
       assert text(view, form) =~
-               "Alive Pending 1 Running 2 Ended well Completed 1 Cancelled Cancelled 1 Ended badly Failed 2 Lost 1"
+               "Alive Queued Pending 1 Running 2 Ended well Completed 1 Cancelled Cancelled 1 Ended badly Failed 2 Lost 1"
 
       for state <- ~w(pending running completed failed cancelled lost),
           do: assert(has_element?(view, "#{form} input[name='state[]'][value=#{state}]"))
@@ -1302,11 +1322,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       |> render_change(%{
         "_target" => ["family_alive"],
         "family_alive" => "1",
-        "state" => ~w(pending running failed lost)
+        "state" => ~w(queued pending running failed lost)
       })
 
       assert URI.decode(assert_patch(view)) ==
-               "#{workspace_path(scope)}/runs?state=pending,running,failed,lost"
+               "#{workspace_path(scope)}/runs?state=queued,pending,running,failed,lost"
 
       render_async(view)
       assert text(view, "#runs-filter-value-state") == "alive, ended badly"
@@ -1318,11 +1338,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_change(view, "filter", %{
         "_filter" => "state",
         "_target" => ["family_ended_badly"],
-        "state" => ~w(pending running failed lost)
+        "state" => ~w(queued pending running failed lost)
       })
 
       assert URI.decode(assert_patch(view)) ==
-               "#{workspace_path(scope)}/runs?state=pending,running"
+               "#{workspace_path(scope)}/runs?state=queued,pending,running"
     end
 
     test "a family with some of its states chosen is mixed, and the token reads the states",
@@ -2439,6 +2459,34 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute outside =~ "\u202E"
     end
 
+    test "a denied request to the run API: in the preview the instance's host, no port", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        started_run(scope, shop(),
+          about: %{"title" => "refused"},
+          egress: [
+            %{
+              "decision" => "denied",
+              "rule" => "wall:run-api",
+              "host" => "run-api.qory.invalid",
+              "port" => 80,
+              "method" => "HTTP",
+              "request_method" => "POST",
+              "path" => "outside"
+            }
+          ]
+        )
+
+      view = open(conn, runs(scope, "?run=#{run.number}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      dest = view |> element("#runs-preview-denials .q-pv-dest") |> render()
+      assert dest |> LazyHTML.from_fragment() |> LazyHTML.text() == Apiary.Instance.host()
+    end
+
     test "a denied host is isolated in the preview, so a bidi override reorders nothing", %{
       conn: conn,
       scope: scope
@@ -2690,7 +2738,18 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
       assert has_element?(view, "#runs-preview h2", "Run #{older.number}")
 
-      theirs = started_run(scope_fixture(), shop())
+      # A number this workspace has not got: the highest here, and one more over there.
+      other = scope_fixture()
+
+      %{rows: [[highest]]} =
+        Repo.query!("SELECT max(number) FROM runs WHERE workspace_id = $1", [
+          Ecto.UUID.dump!(scope.workspace.id)
+        ])
+
+      theirs =
+        Enum.map(0..highest, fn _ -> started_run(other, shop()) end) |> List.last()
+
+      assert theirs.number == highest + 1
       view = open(conn, runs(scope, "?run=#{theirs.number}"))
       render_hook(view, "viewport", %{"wide" => true})
       render_async(view)

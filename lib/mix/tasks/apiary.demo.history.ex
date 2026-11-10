@@ -45,8 +45,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   last ran on. A dozen people who joined by invitation,
   owners, admins and members, one suspended, and two invitations pending
   (`--skip-members` leaves the people alone). Last, when the instance serves the security
-  feature, the workspace is given `mix apiary.demo`'s policy if nobody has made one, the
-  hosts its history reaches, and rules and mode overrides for a few repositories.
+  feature, the workspace is given `mix apiary.demo`'s policy if nobody has changed its
+  version 1, the hosts its history reaches, and rules and mode overrides for a few repositories.
 
   Running it again adds another history beside the first.
   """
@@ -840,6 +840,12 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp write(plan, ctx, concurrency) do
     total = length(plan)
 
+    # The numbers of all the runs at once, in the plan's order, as the chunks finish in any.
+    {:ok, numbers} =
+      Repo.transact(fn -> {:ok, Apiary.Runs.Number.block(ctx.scope.workspace, max(total, 1))} end)
+
+    ctx = Map.put(ctx, :first_number, numbers.first)
+
     plan
     |> Enum.chunk_every(@chunk)
     |> Task.async_stream(&write_chunk(&1, ctx),
@@ -911,6 +917,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     run = %{
       id: id,
       public_id: Run.new_public_id(),
+      number: ctx.first_number + spec.index - 1,
       organisation_id: organisation.id,
       workspace_id: workspace.id,
       node_run_id: run_id,

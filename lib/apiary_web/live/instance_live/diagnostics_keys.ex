@@ -200,7 +200,6 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
       place={:instance}
       section={:diagnostics_keys}
     >
-      <:crumb patch={~p"/instance/diagnostics-keys"}>{gettext("Diagnostics keys")}</:crumb>
       <:crumb>{gettext("Command")}</:crumb>
 
       <.settings_page section={:diagnostics_keys} title={gettext("Make a diagnostics key")}>
@@ -272,7 +271,7 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
       <.settings_page section={:diagnostics_keys} title={gettext("Diagnostics keys")}>
         <:subtitle>
           {gettext(
-            "With a diagnostics key, a computer reads the diagnostics of any run on this instance, and nothing else."
+            "With a diagnostics key, a computer lists the runs on this instance, with their organisation, workspace and work item title, and reads the diagnostics of any of them, and nothing else."
           )}
         </:subtitle>
 

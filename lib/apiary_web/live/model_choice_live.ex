@@ -464,7 +464,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
             </:note>
           </SettingsComponents.save>
         </.form>
-        <:context>
+        <:context about={gettext("About models")}>
           <p id="model-line">
             {gettext(
               "The default model for runs in %{workspace}. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use the model of %{organisation}.",

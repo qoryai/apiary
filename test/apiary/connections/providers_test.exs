@@ -10,8 +10,8 @@ defmodule Apiary.Connections.ProvidersTest do
   alias Apiary.Kinds.Providers
   alias Apiary.Secrets.{Secret, Value}
 
-  # A model provider needs `factory` and `secrets`; `factory` is the one opt-in of the two
-  # that the suite's legs leave off, and a leg with `factory` has `secrets` too.
+  # A model provider needs `factory` and `secrets`; a leg with `factory` has `secrets`
+  # too, which `factory` needs.
   @moduletag needs: :factory
 
   @key "sk-provider-test-0123456789"

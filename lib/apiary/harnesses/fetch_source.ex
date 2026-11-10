@@ -17,7 +17,7 @@ defmodule Apiary.Harnesses.FetchSource do
   #
   # A host that two sources share has both.
 
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
   alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Stacks.Document
 
@@ -52,7 +52,7 @@ defmodule Apiary.Harnesses.FetchSource do
   defp at?(git, host), do: ComposedConfiguration.source_host(git) == String.downcase(host)
 
   defp label(git) do
-    if git == Definition.qory_harness().git,
+    if git == Qory.git(),
       do: :qory,
       else: {:repository, Document.repository(git)}
   end

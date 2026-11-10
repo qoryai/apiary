@@ -86,15 +86,15 @@ defmodule ApiaryWeb.WorkspaceComponents do
   defp preview_line(name) when is_binary(name) and name != "",
     do:
       gettext(
-        "%{workspace} starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{stages}.",
+        "%{workspace} starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{workflows}.",
         workspace: name,
-        stages: SettingsComponents.stages_label()
+        workflows: SettingsComponents.workflows_label()
       )
 
   defp preview_line(_none),
     do:
       gettext(
-        "The workspace starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{stages}.",
-        stages: SettingsComponents.stages_label()
+        "The workspace starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{workflows}.",
+        workflows: SettingsComponents.workflows_label()
       )
 end

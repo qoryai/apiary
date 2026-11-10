@@ -19,8 +19,10 @@ defmodule Apiary.Dispatches.SettleTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, WorkItems}
+  alias Apiary.Artifacts.ArtifactFile
   alias Apiary.Dispatches.{DispatchRun, RunEnd, Settle}
   alias Apiary.Runs.{Event, Liveness, Projector, Run}
+  alias Apiary.Stages.Escalation
   alias Apiary.WorkItems.{Confirmation, Explore, WorkItem}
 
   @moduletag needs: :factory
@@ -50,6 +52,23 @@ defmodule Apiary.Dispatches.SettleTest do
 
   defp questions!(handed, texts \\ ["Which basket?", "Which sale?"]),
     do: push_result!(queue_run!(handed), run!(handed), questions_result(texts))
+
+  # The verdict `escalate` of the run, with one point of `text`, as the run API stores it:
+  # the version.
+  defp escalate!(handed, text \\ "The ticket describes two baskets.") do
+    dispatch_run = queue_run!(handed)
+
+    {:ok, version} =
+      Apiary.Stages.Artifacts.push_json(
+        {:run, dispatch_run},
+        work_item!(handed),
+        "verdict",
+        %{"verdict" => "escalate", "points" => [%{"text" => text, "action" => "run_again"}]},
+        stage_id: dispatch_run.stage_id
+      )
+
+    version
+  end
 
   defp exited!(handed, sequence, state \\ "succeeded"),
     do:
@@ -210,13 +229,29 @@ defmodule Apiary.Dispatches.SettleTest do
       project!(second)
       assert stored(second) == {:proposal, nil}
 
-      # A run of another workflow reads its artifacts itself: none.
+      # A run of another workflow, queued as such, reads its artifacts itself: none.
       Repo.update_all(from(d in DispatchRun, where: d.id == ^second.dispatch_run.id),
-        set: [result_outcome: nil, workflow: "review"]
+        set: [result_outcome: nil, workflow: "review", explore: false]
       )
 
       assert [_] = Settle.sweep(Dispatches.now())
       assert stored(second) == {:none, nil}
+    end
+
+    test "the verdict escalate: none, after open questions", ctx do
+      escalated = handed_over!(ctx)
+      proposal!(escalated)
+      escalate!(escalated)
+      exited!(escalated, 9)
+      project!(escalated)
+      assert stored(escalated) == {:none, nil}
+
+      asked = handed_over!(ctx)
+      questions!(asked)
+      escalate!(asked)
+      exited!(asked, 9)
+      project!(asked)
+      assert stored(asked) == {:questions, nil}
     end
 
     test "the exit folded, its end not yet written: the outcome's end stores it", ctx do
@@ -307,6 +342,37 @@ defmodule Apiary.Dispatches.SettleTest do
       assert [_] = Settle.sweep(Dispatches.now())
       assert stored(handed) == {:questions, nil}
       assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
+    test "a run whose verdict the store cannot read is left unset, and settled once it can",
+         ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      # A point no other test writes, so no other test stores the same file.
+      escalate!(handed, "Which basket #{System.unique_integer([:positive])}?")
+
+      version = Apiary.Stages.Artifacts.newest_of_run(queue_run!(handed), "verdict", "main")
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The end cannot read the verdict: no proposal is kept for good.
+      exited!(handed, 9)
+      log = ExUnit.CaptureLog.capture_log(fn -> project!(handed) end)
+      assert %DispatchRun{state: :ended, end_cause: :run_ended} = queue_run!(handed)
+      assert stored(handed) == {nil, nil}
+
+      assert log =~
+               "run outcome not stored, newest verdict unreadable " <>
+                 "dispatch_run=#{handed.dispatch_run.id} " <>
+                 "work_item=#{work_item!(handed).public_id} verdict_version=#{version.public_id}"
+
+      refute log =~ "newest questions unreadable"
+
+      File.rename!(path <> ".away", path)
+      assert [_] = Settle.sweep(Dispatches.now())
+      assert stored(handed) == {:none, nil}
     end
 
     test "reads after where the sweep before stopped, so runs left unset fill no batch",
@@ -416,6 +482,157 @@ defmodule Apiary.Dispatches.SettleTest do
       assert Apiary.Runs.StuckLog.lines() == %{}
     end
 
+    # The stage runner reads the verdict of a run of a workflow other than Explore at its
+    # exit (`Apiary.Stages`), in the transaction that ends and settles the run: it raises,
+    # the exit's transaction rolls back, and the lost-run check ends the run again at each
+    # tick.
+    @tag needs: [:factory, :workflow_model]
+    test "with its verdict unreadable: the exit not stored, then ended at a check after", ctx do
+      {:ok, _version} =
+        Apiary.Processes.save(ctx.scope, ctx.scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => [
+            %{
+              "id" => "st_r79kph11eg",
+              "name" => "Explore",
+              "inputs" => [],
+              "sequence" => [%{"workflow" => "capture-demo"}],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            }
+          ]
+        })
+
+      handed = handed_over!(ctx)
+      dispatch_run = queue_run!(handed)
+      assert %DispatchRun{workflow: "capture-demo", explore: false} = dispatch_run
+      id = dispatch_run.id
+
+      # A point no other test writes, so no other test stores the same file.
+      text = "The demo skips step #{System.unique_integer([:positive])}."
+
+      {:ok, version} =
+        Apiary.Stages.Artifacts.push_json(
+          {:run, dispatch_run},
+          work_item!(handed),
+          "verdict",
+          %{"verdict" => "escalate", "points" => [%{"text" => text, "action" => "run_again"}]},
+          stage_id: dispatch_run.stage_id
+        )
+
+      [file] = version.files
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+      )
+
+      assert_raise Apiary.Stages.VerdictUnreadable, fn -> RunEnd.run_ended(run!(handed)) end
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      now = Dispatches.now()
+      log = ExUnit.CaptureLog.capture_log(fn -> RunEnd.lose(now) end)
+      assert log =~ "run end failed dispatch_run=#{id} error=Apiary.Stages.VerdictUnreadable"
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      File.rename!(path <> ".away", path)
+      RunEnd.lose(now)
+
+      assert %DispatchRun{state: :ended, end_cause: :run_ended, result_outcome: :none} =
+               queue_run!(handed)
+
+      assert %WorkItem{stage_state: :escalated} = work_item!(handed)
+
+      assert %Escalation{cause: :escalate, points: [%{"text" => ^text}]} =
+               Repo.one(
+                 from(e in Escalation,
+                   where:
+                     e.work_item_id == ^handed.dispatch_run.work_item_id and is_nil(e.resolved_at)
+                 )
+               )
+
+      assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
+    # As the test before, with the verdict `passed`: once the file reads again, the stage
+    # reaches its gate. Every run that passes stores the same file, so the version's row
+    # points at a key the store does not have, in place of a rename of the shared file.
+    @tag needs: [:factory, :workflow_model]
+    test "with its verdict passed unreadable: the exit not stored, then at the gate after",
+         ctx do
+      {:ok, _version} =
+        Apiary.Processes.save(ctx.scope, ctx.scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => [
+            %{
+              "id" => "st_r79kph11eg",
+              "name" => "Explore",
+              "inputs" => [],
+              "sequence" => [%{"workflow" => "capture-demo"}],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            }
+          ]
+        })
+
+      handed = handed_over!(ctx)
+      dispatch_run = queue_run!(handed)
+      assert %DispatchRun{workflow: "capture-demo", explore: false} = dispatch_run
+      id = dispatch_run.id
+
+      {:ok, version} =
+        Apiary.Stages.Artifacts.push_json(
+          {:run, dispatch_run},
+          work_item!(handed),
+          "verdict",
+          %{"verdict" => "passed"},
+          stage_id: dispatch_run.stage_id
+        )
+
+      [file] = version.files
+      away = :sha256 |> :crypto.hash("away #{id}") |> Base.encode16(case: :lower)
+
+      key = fn key ->
+        Repo.update_all(from(f in ArtifactFile, where: f.id == ^file.id), set: [store_key: key])
+      end
+
+      {1, _rows} = key.(away)
+
+      Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+        set: [state: "completed", exit_state: "completed", exited_at: DateTime.utc_now()]
+      )
+
+      assert_raise Apiary.Stages.VerdictUnreadable, fn -> RunEnd.run_ended(run!(handed)) end
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      now = Dispatches.now()
+      log = ExUnit.CaptureLog.capture_log(fn -> RunEnd.lose(now) end)
+      assert log =~ "run end failed dispatch_run=#{id} error=Apiary.Stages.VerdictUnreadable"
+      assert %DispatchRun{state: :handed_over, result_outcome: nil} = queue_run!(handed)
+      assert %WorkItem{stage_state: :running} = work_item!(handed)
+
+      {1, _rows} = key.(file.store_key)
+      RunEnd.lose(now)
+
+      assert %DispatchRun{state: :ended, end_cause: :run_ended, result_outcome: :none} =
+               queue_run!(handed)
+
+      assert %WorkItem{stage_state: :at_gate} = work_item!(handed)
+
+      refute Repo.exists?(
+               from(e in Escalation, where: e.work_item_id == ^dispatch_run.work_item_id)
+             )
+
+      assert Apiary.Runs.StuckLog.lines() == %{}
+    end
+
     # A lost run the stage runner does not read, as its stage is not running: Settle's
     # read alone logs, and the run ends with no outcome.
     @tag needs: [:factory, :workflow_model]
@@ -505,9 +722,21 @@ defmodule Apiary.Dispatches.SettleTest do
       assert %DispatchRun{end_cause: :lost, result_outcome: nil} = queue_run!(handed)
       assert Settle.settle(handed.dispatch_run.id) == []
     end
+
+    test "with the verdict escalate and no open question: nothing stored", ctx do
+      handed = handed_over!(ctx)
+      proposal!(handed)
+      escalate!(handed)
+      Liveness.check(DateTime.add(handed.run.backstop_at, 1, :second))
+
+      assert %DispatchRun{end_cause: :lost, result_outcome: nil} = queue_run!(handed)
+      assert Settle.settle(handed.dispatch_run.id) == []
+      assert stored(handed) == {nil, nil}
+    end
   end
 
   describe "what is never settled" do
+    @tag needs: [:factory, :registry]
     test "a prebuild, whatever ends it", ctx do
       place = handover_place_fixture(ctx.scope)
       handed = prebuild_handed_over!(ctx.scope, place.key)
@@ -642,6 +871,35 @@ defmodule Apiary.Dispatches.SettleTest do
                  "1" => "The small one.",
                  "2" => "The spring sale."
                })
+    end
+
+    test "the verdict escalate after a proposal of an earlier run: no result, no confirm",
+         ctx do
+      first = handed_over!(ctx)
+      proposal!(first)
+      questions!(first, ["Which basket?"])
+      exited!(first, 9)
+      project!(first)
+      work_item = work_item!(first)
+
+      assert {:ok, _answered} =
+               WorkItems.answer(ctx.scope, work_item, 1, %{"1" => "The small one."})
+
+      %DispatchRun{} = queued = Repo.get_by!(DispatchRun, work_item_id: work_item.id, attempt: 2)
+      second = handed_over(ctx.scope, ctx.key, queued, %{})
+      escalate!(second)
+      exited!(second, 9)
+      project!(second)
+      assert stored(second) == {:none, nil}
+
+      assert reads(ctx, second, Dispatches.now()) == %{
+               status: :no_result,
+               page: {:no_result, :no_result, :none},
+               sql: :no_result
+             }
+
+      assert WorkItems.confirm(ctx.scope, work_item!(second), 2) == {:error, :not_waiting}
+      refute Repo.get_by(Confirmation, work_item_id: work_item.id)
     end
 
     test "a proposal, then the run lost: lost", ctx do

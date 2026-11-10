@@ -43,6 +43,15 @@ defmodule Apiary.Runs.IngestTest do
     end)
   end
 
+  test "the run its first batch opens takes the workspace's next number", %{key: key} do
+    {subject, _started} = first_events()
+    {other, _started} = first_events()
+
+    assert {:ok, %{run: %{number: 1}}} = Ingest.ingest(key, batch!([beat(subject)]), @meta)
+    assert {:ok, %{run: %{number: 1}}} = Ingest.ingest(key, batch!([beat(subject)]), @meta)
+    assert {:ok, %{run: %{number: 2}}} = Ingest.ingest(key, batch!([beat(other)]), @meta)
+  end
+
   test "an event twice in one batch is stored once", %{key: key} do
     {_subject, [started]} = first_events()
 

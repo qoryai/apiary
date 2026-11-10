@@ -149,7 +149,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       refute html =~ ~r/Workspace default|Not served/
 
       # What the record says stays: the lost run is still an act, the denials are counted.
-      assert has_element?(view, "#att-run-#{lost.number}")
+      assert has_element?(view, "#att-run-#{lost.public_id}")
       assert has_element?(view, "#overview-strip-denied", "1")
       assert has_element?(view, "#overview-strip", "to 1 destination")
       assert has_element?(view, "#overview-retention")
@@ -189,11 +189,6 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       assert has_element?(
                view,
                "#overview-policy-open[href='#{workspace_path(scope, "/policy")}']"
-             )
-
-      assert has_element?(
-               view,
-               "#att-policy-unmanaged-act[href='#{workspace_path(scope, "/policy")}']"
              )
 
       assert has_element?(view, "#attention li[data-kind=denied] [phx-click*=rule_open]")

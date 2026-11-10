@@ -57,8 +57,9 @@ parse_public_url = fn value ->
 end
 
 # QORY_FEATURES names the features this instance has: all (the default when unset or
-# blank), all- and the features left out (all-security), or the features on
-# (observability,security). An opt-in feature is on only when a list names it.
+# blank), all- and the features left out (all-workflow_model), or the features on
+# (observability,security). all turns on every feature but registry, and registry too
+# where QORY_REGISTRY is set. A list turns on only the features in it.
 # Read in every environment, so the test suite runs under the value CI gives it.
 # `Apiary.Features` checks it at boot and says what each feature covers and needs.
 config :apiary, :features_setting, System.get_env("QORY_FEATURES")
@@ -207,6 +208,30 @@ if config_env() != :test do
   config :apiary, :machine_logs_dir, System.get_env("APIARY_MACHINE_LOGS_DIR")
 end
 
+# QORY_HARNESS_URL is the address of the Qory harness's git repository, which a workspace
+# of a Qory type starts with and reads at the branch, tag or commit its harness settings
+# choose (`Apiary.Harnesses.Qory`): an https address of a repository its host serves to
+# anyone. Unset or blank, it is https://github.com/qoryai/harness. Read in every
+# environment.
+config :apiary, Apiary.Harnesses.Qory,
+  url:
+    (case String.trim(System.get_env("QORY_HARNESS_URL") || "") do
+       "" -> "https://github.com/qoryai/harness"
+       url -> url
+     end)
+
+# QORY_BUILTIN_HARNESS_URL is the address of the git repository of the built-in harness,
+# whose hello example on `main` the run of a test work item composes
+# (`Apiary.Harnesses.Builtin`): an https address of a repository its host serves to
+# anyone. Unset or blank, it is https://github.com/qoryai/qory. Read in every
+# environment.
+config :apiary, Apiary.Harnesses.Builtin,
+  url:
+    (case String.trim(System.get_env("QORY_BUILTIN_HARNESS_URL") || "") do
+       "" -> "https://github.com/qoryai/qory"
+       url -> url
+     end)
+
 # QORY_ARTIFACTS_DIR is the folder where the content of artifacts is kept, one file per
 # content, named by its SHA-256 digest (`Apiary.Artifacts.Store.Volume`). Unset or blank,
 # it is /var/lib/apiary/artifacts in a release, beside the keys in /var/lib/apiary/keys,
@@ -226,10 +251,11 @@ if config_env() != :test do
           end)
 end
 
-# QORY_REGISTRY is the private image registry's address, with the opt-in feature
-# registry: a host and an optional port, with no scheme or path, for example
-# registry.qory.example. Its signing key is registry-token.key in APIARY_KEYS_DIR
-# (/var/lib/apiary/keys unset), which bin/keys writes when QORY_REGISTRY is set.
+# QORY_REGISTRY is the private image registry's address, with the feature registry,
+# which all turns on where QORY_REGISTRY is set: a host and an optional port, with no
+# scheme or path, for example registry.qory.example. Its signing key is
+# registry-token.key in APIARY_KEYS_DIR (/var/lib/apiary/keys unset), which bin/keys
+# writes when QORY_REGISTRY is set.
 # `Apiary.Registry.boot!/0` checks both at boot where the feature is on, and stops a boot
 # without them. Not read under test: config/test.exs sets them.
 if config_env() != :test do

@@ -12,6 +12,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   import Apiary.Midnight
 
   alias Apiary.Policy
+  alias Apiary.Runs.RunApi
   alias ApiaryWeb.PolicyComponents
 
   setup :register_and_log_in_user
@@ -291,6 +292,15 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert redirected_to(get(conn, old <> rest)) == path, rest
       assert redirected_to(get(conn, old <> rest <> "?view=denied")) == path <> "?view=denied"
     end
+  end
+
+  test "a target of a workspace with no version yet names no version it is served",
+       %{conn: conn, path: path, scope: scope} do
+    no_policy_version!(scope.workspace)
+    view = open(conn, path)
+
+    assert text(view, "#policy-no-own") =~ "This repository has no rules."
+    refute text(view, "#policy-no-own") =~ "It is served"
   end
 
   test "a target without rules of its own is the workspace's list, and says so",
@@ -722,6 +732,31 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
     end
 
+    test "what enforce would deny here leaves out the run API",
+         %{conn: conn, path: path, scope: scope} do
+      run_api = %{
+        "host" => RunApi.placeholder(),
+        "port" => 80,
+        "decision" => "allowed",
+        "rule" => RunApi.rule()
+      }
+
+      started_run(scope, shop(),
+        egress: [
+          run_api,
+          run_api,
+          %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, path)
+      pick_mode(view, "enforce")
+
+      assert text(view, "#mode-would-n") == "1 destination"
+      assert text(view, "#mode-would") =~ "files.cdn.example"
+      refute text(view, "#mode-would") =~ RunApi.placeholder()
+    end
+
     test "what enforce would deny here cleans and isolates each host, so nothing is reordered",
          %{conn: conn, path: path, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"
@@ -817,7 +852,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       {views, _} = :binary.match(html, ~s(id="policy-tabs"))
       {version, _} = :binary.match(html, ~s(id="policy-version-h"))
       assert card < views and views < version
-      assert has_element?(view, "h2#policy-version-h", "Version 4")
+      assert has_element?(view, "h2#policy-version-h", "Version 5")
       assert text(view, "#version-strip") =~ "Mode observe"
 
       # Enforce, its own: its first version of its own, in place, with its mode.
@@ -958,12 +993,12 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert Policy.get_mode(scope, target).own == "enforce"
     end
 
-    test "on a workspace nobody has changed, a mode of its own is its first change, and says so",
+    test "on a workspace nobody has changed, a mode for the target changes nothing today",
          %{conn: _conn} do
       other = scope_fixture()
       started_run(other, shop())
       [%{target: target}] = Policy.list_targets(other)
-      refute Policy.managed?(other)
+      assert Policy.managed?(other)
 
       view =
         open(
@@ -971,23 +1006,17 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
           target_path(other, target, ["policy"])
         )
 
-      # It follows the workspace, which observes: picking observe changes the mode of
-      # none of its runs, but it starts serving every machine of the workspace a policy.
+      # It follows the workspace, which observes: picking observe changes the mode of none
+      # of its runs.
       pick_mode(view, "observe")
       effect = text(view, "#policy-mode-q-effect")
-      refute effect =~ "Nothing changes today"
-      assert effect =~ "only what a deny rule names is denied in this repository's runs"
-
-      assert effect =~
-               "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
-
-      refute effect =~ "other repositories do not change"
+      assert effect =~ "Nothing changes today"
+      refute effect =~ "first change"
 
       pick_mode(view, "enforce")
       effect = text(view, "#policy-mode-q-effect")
-      assert effect =~ "This is the workspace's first change"
-      refute effect =~ "Other repositories do not change."
-      refute Policy.managed?(other)
+      assert effect =~ "Other repositories do not change."
+      refute effect =~ "first change"
     end
 
     test "picks never save, and only the last pick's question shows; Cancel keeps the mode",
@@ -1220,9 +1249,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "#policy-mode")
     assert text(view, "#policy-mode-source") == "Follows #{scope.workspace.name}"
     assert has_element?(view, "#policy-tabs a[href='#{path}/document'][aria-current=page]")
-    assert has_element?(view, "h2#policy-version-h", "Version 4")
-    assert has_element?(view, "#ver-4[href='#{path}/document'][aria-current=page]")
-    assert has_element?(view, "#ver-3[href='#{workspace_path(scope, "/policy/versions/3")}']")
+    assert has_element?(view, "h2#policy-version-h", "Version 5")
+    assert has_element?(view, "#ver-5[href='#{path}/document'][aria-current=page]")
+    assert has_element?(view, "#ver-4[href='#{workspace_path(scope, "/policy/versions/4")}']")
 
     # The workspace's version, Copy in its bar; the tab no Export.
     assert has_element?(view, "#version-doc .q-docwell-bar #version-copy[aria-label=Copy]")
@@ -1240,7 +1269,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
        %{conn: conn, path: path, scope: scope} do
     # Hosts alone, then a rule with paths: the document shown, each time.
     view = open(conn, path <> "/document")
-    {:ok, workspace} = Policy.get_configuration(scope, nil, 4)
+    {:ok, workspace} = Policy.get_configuration(scope, nil, 5)
 
     assert has_element?(
              view,
@@ -1251,8 +1280,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/*"]})
     _ = render(view)
-    assert has_element?(view, "h2#policy-version-h", "Version 5")
-    {:ok, workspace} = Policy.get_configuration(scope, nil, 5)
+    assert has_element?(view, "h2#policy-version-h", "Version 6")
+    {:ok, workspace} = Policy.get_configuration(scope, nil, 6)
     assert downloaded(view) == workspace.document
     assert downloaded(view) =~ "/acme/*"
   end

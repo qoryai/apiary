@@ -39,13 +39,14 @@ defmodule Apiary.WorkspaceSetupTest do
 
     if run_attrs do
       %Run{
+        number: Apiary.RunEventsFixtures.next_run_number(item.organisation_id, item.workspace_id),
         organisation_id: item.organisation_id,
         workspace_id: item.workspace_id,
         node_run_id: queued.run_id,
         dispatch_run_id: queued.id
       }
       |> Ecto.Changeset.change(Map.merge(%{started_at: DateTime.utc_now()}, run_attrs))
-      |> Repo.insert!()
+      |> Apiary.RunEventsFixtures.insert_run!()
     end
 
     queued

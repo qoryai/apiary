@@ -171,7 +171,7 @@ defmodule ApiaryWeb.ConnectionLive.HarnessFetchTest do
         pins: [
           %{"git" => "https://git.example/acme/tools.git", "ref" => "main", "at" => "x"},
           %{
-            "git" => Apiary.Lingo.Domain.Definition.qory_harness().git,
+            "git" => Apiary.Harnesses.Qory.git(),
             "ref" => "main",
             "at" => "y"
           }

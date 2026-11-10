@@ -13,7 +13,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Explore.Questions
   alias Apiary.Harnesses.RunHarness
-  alias Apiary.WorkItems.{Explore, WorkItemEvent}
+  alias Apiary.WorkItems.{Explore, ExploreView, WorkItemEvent}
 
   @moduletag needs: :factory
 
@@ -42,7 +42,35 @@ defmodule Apiary.WorkItems.ExploreViewTest do
   end
 
   describe "explore/3" do
-    test "a run that asked: its questions by position, then answered, its answers and who gave them",
+    test "a run's recommended option has recommended true, the others false", ctx do
+      asked =
+        questions_result([
+          %{
+            "question" => "Which basket?",
+            "options" => [
+              %{"title" => "At checkout", "explanation" => "The page reads it."},
+              %{"title" => "On the shop", "explanation" => "Why.", "recommended" => true},
+              %{"title" => "In the mail", "explanation" => "Why not.", "recommended" => false}
+            ]
+          }
+        ])
+
+      explore_run_fixture(ctx.work_item, result: asked)
+      explore = WorkItems.explore(ctx.scope, ctx.work_item)
+
+      marks = fn question -> Enum.map(question.options, &{&1.title, &1.recommended}) end
+
+      expected = [{"At checkout", false}, {"On the shop", true}, {"In the mail", false}]
+
+      # The questions the page draws (`questions_frame`), and the run's questions.
+      assert [question] = explore.questions
+      assert marks.(question) == expected
+
+      assert [question] = explore.run.questions
+      assert marks.(question) == expected
+    end
+
+    test "a run with questions: its questions by position, then answered, its answers and who gave them",
          ctx do
       asked =
         questions_result([
@@ -72,7 +100,13 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                    %{
                      public_id: "1",
                      text: "Which basket?",
-                     options: [%{title: "At checkout", explanation: "The page reads it."}],
+                     options: [
+                       %{
+                         title: "At checkout",
+                         explanation: "The page reads it.",
+                         recommended: false
+                       }
+                     ],
                      answer: nil,
                      custom: nil
                    },
@@ -391,6 +425,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         id: first.public_id,
         number: first.number,
         workspace_id: here,
+        stage_id: nil,
         attempt: 1,
         of: 3
       }
@@ -399,6 +434,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         id: second.public_id,
         number: second.number,
         workspace_id: here,
+        stage_id: nil,
         attempt: 2,
         of: 3
       }
@@ -564,6 +600,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         id: first.public_id,
         number: first.number,
         workspace_id: ctx.scope.workspace.id,
+        stage_id: nil,
         attempt: 1,
         of: 3
       }
@@ -619,6 +656,242 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
       assert Explore.proposal(ctx.work_item.id, 3) == nil
       assert Explore.proposal(ctx.work_item.id, nil) == nil
+    end
+  end
+
+  describe "the store reads of the Explore tab" do
+    # What `fun` returned, and the files `Apiary.Artifacts.open_file/1` opened in this
+    # process while it ran, oldest first, each an `Apiary.Artifacts.ArtifactFile`. The
+    # trace pattern stays set after the call: only a traced process sends trace
+    # messages, and another test may trace the same function at the same time.
+    defp opened(fun) do
+      me = self()
+      mfa = {Apiary.Artifacts, :open_file, 1}
+      collector = spawn_link(fn -> collect(me, []) end)
+      Code.ensure_loaded!(Apiary.Artifacts)
+      assert :erlang.trace_pattern(mfa, true, [:local]) > 0
+      :erlang.trace(me, true, [:call, {:tracer, collector}])
+
+      try do
+        result = fun.()
+        {result, collected(me, collector)}
+      after
+        :erlang.trace(me, false, [:call])
+      end
+    end
+
+    defp collected(me, collector) do
+      ref = :erlang.trace_delivered(me)
+      receive do: ({:trace_delivered, ^me, ^ref} -> :ok)
+      send(collector, {:done, me})
+      receive do: ({:opened, files} -> files)
+    end
+
+    defp collect(me, files) do
+      receive do
+        {:trace, ^me, :call, {Apiary.Artifacts, :open_file, [file]}} ->
+          collect(me, [file | files])
+
+        {:done, ^me} ->
+          send(me, {:opened, Enum.reverse(files)})
+      end
+    end
+
+    defp markdown(files),
+      do: Enum.filter(files, &String.starts_with?(&1.content_type, "text/markdown"))
+
+    test "three runs that each wrote a proposal: the newest one's text is read once; opening an earlier run's fold reads its text once",
+         ctx do
+      for n <- 1..3 do
+        message = "Version #{n} of #{System.unique_integer([:positive])}."
+        explore_run_fixture(ctx.work_item, result: understood_result(%{"message" => message}))
+      end
+
+      {explore, files} = opened(fn -> ExploreView.explore(ctx.work_item, DateTime.utc_now()) end)
+
+      assert [_newest] = markdown(files)
+      assert %{version: 3, message: "Version 3 of " <> _} = explore.proposal
+
+      assert [
+               %{wrote: 1, wrote_proposal: %{unread: 1}},
+               %{wrote: 2, wrote_proposal: %{unread: 2}}
+             ] =
+               explore.earlier_runs
+
+      {texts, files} = opened(fn -> ExploreView.proposals(ctx.work_item, [1]) end)
+      assert [_run_1] = markdown(files)
+      assert %{1 => %{message: "Version 1 of " <> _}} = texts
+
+      {shown, files} = opened(fn -> ExploreView.with_proposals(explore, texts) end)
+      assert files == []
+
+      assert [
+               %{wrote_proposal: %{message: "Version 1 of " <> _}},
+               %{wrote_proposal: %{unread: 2}}
+             ] =
+               shown.earlier_runs
+    end
+  end
+
+  describe "the queries of the Explore tab" do
+    # What `fun` returned, and how many queries this process ran on the table `source`
+    # while it ran.
+    defp queries_on(source, fun) do
+      handler = "explore-view-versions-#{System.unique_integer([:positive])}"
+      me = self()
+
+      :ok =
+        :telemetry.attach(
+          handler,
+          [:apiary, :repo, :query],
+          fn _event, _measurements, meta, _config ->
+            if self() == me and meta[:source] == source, do: send(me, :query)
+          end,
+          nil
+        )
+
+      try do
+        result = fun.()
+        {result, count_queries(0)}
+      after
+        :telemetry.detach(handler)
+      end
+    end
+
+    defp count_queries(n) do
+      receive do
+        :query -> count_queries(n + 1)
+      after
+        0 -> n
+      end
+    end
+
+    test "the versions of the runs' proposals are read in one query, for one run as for three",
+         ctx do
+      one = work_item_fixture(ctx.scope)
+      explore_run_fixture(one, result: understood_result())
+
+      for _n <- 1..3, do: explore_run_fixture(ctx.work_item, result: understood_result())
+
+      {_explore, for_one} =
+        queries_on("artifact_versions", fn -> ExploreView.explore(one, DateTime.utc_now()) end)
+
+      {explore, for_three} =
+        queries_on("artifact_versions", fn ->
+          ExploreView.explore(ctx.work_item, DateTime.utc_now())
+        end)
+
+      assert length(explore.earlier_runs) == 2
+      assert for_three == for_one
+    end
+  end
+
+  describe "the confirmations of the earlier take ins" do
+    test "are read in one query, for three earlier take ins", %{scope: scope} do
+      ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      work_item =
+        Enum.reduce(1..3, work_item, fn _n, work_item ->
+          Repo.update_all(from(r in DispatchRun, where: r.work_item_id == ^work_item.id),
+            set: [state: :ended, end_cause: :run_ended]
+          )
+
+          {:ok, _closed} = WorkItems.close(scope, work_item)
+
+          {:ok, again} =
+            WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+          again
+        end)
+
+      {explore, confirmations} =
+        queries_on("work_item_confirmations", fn ->
+          ExploreView.explore(work_item, DateTime.utc_now())
+        end)
+
+      assert length(explore.earlier_take_ins) == 3
+      assert confirmations == 1
+    end
+  end
+
+  describe "a version of the proposal with no Markdown file" do
+    test "is no proposal of its run, and is not left for a fold to read", ctx do
+      for n <- 1..2 do
+        explore_run_fixture(ctx.work_item,
+          result: understood_result(%{"message" => "Version #{n}."})
+        )
+      end
+
+      Repo.delete_all(
+        from f in Apiary.Artifacts.ArtifactFile,
+          join: v in Apiary.Artifacts.Version,
+          on: v.id == f.version_id,
+          join: a in Apiary.Artifacts.Artifact,
+          on: a.id == v.artifact_id,
+          where: a.work_item_id == ^ctx.work_item.id and a.type == "proposal" and v.number == 1
+      )
+
+      explore = ExploreView.explore(ctx.work_item, DateTime.utc_now())
+      assert [%{wrote: 1, wrote_proposal: nil}] = explore.earlier_runs
+
+      shown = ExploreView.with_proposals(explore, ExploreView.proposals(ctx.work_item, [1]))
+      assert [%{wrote: 1, wrote_proposal: nil}] = shown.earlier_runs
+    end
+  end
+
+  describe "the store reads of the Explore tab, after a send of review comments" do
+    test "the newest questions and review comments are each read once", ctx do
+      explore_run_fixture(ctx.work_item, result: understood_result())
+      {:ok, _} = WorkItems.review_comment(ctx.scope, ctx.work_item, 1, "Name the field.")
+      {:ok, _} = WorkItems.send_review_comments(ctx.scope, ctx.work_item, 1)
+      explore_run_fixture(ctx.work_item, result: questions_result([%{"question" => "Which?"}]))
+
+      {_explore, files} =
+        opened(fn -> ExploreView.explore(ctx.work_item, DateTime.utc_now()) end)
+
+      assert Enum.frequencies_by(files, & &1.filename)
+             |> Map.take(["questions.json", "review-comments.json"]) == %{
+               "questions.json" => 1,
+               "review-comments.json" => 1
+             }
+    end
+  end
+
+  describe "two answers to one question in the same second" do
+    test "each shows with the member who gave it", ctx do
+      %{user: member} = member_fixture(ctx.scope)
+      member_scope = workspace_scope(member, ctx.scope.workspace)
+
+      # The owner answers q1 at attempt 1; run 2 reopens q1, and the member answers it.
+      explore_run_fixture(ctx.work_item, result: questions_result(["Which basket?"]))
+      {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, %{"1" => "The main one"})
+      item = Apiary.StagesFixtures.end_run!(reload(ctx.work_item), &reopen!(&1, &2, "q1"))
+      {:ok, _} = WorkItems.answer(member_scope, item, 2, %{"1" => "The other one"})
+
+      # Both answers' events in one second, in their order.
+      second = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      answered =
+        Repo.all(
+          from e in WorkItemEvent,
+            where: e.work_item_id == ^item.id and e.kind == :answered,
+            order_by: [asc: e.at, asc: e.id]
+        )
+
+      for {event, n} <- Enum.with_index(answered, 1) do
+        at = second |> DateTime.add(n * 100, :microsecond) |> DateTime.to_unix(:microsecond)
+
+        Repo.update_all(from(e in WorkItemEvent, where: e.id == ^event.id),
+          set: [at: DateTime.from_unix!(at, :microsecond)]
+        )
+      end
+
+      owner_id = ctx.scope.user.id
+      member_id = member.id
+
+      assert [%{history: [%{by_id: ^owner_id}], answer: %{by_id: ^member_id}}] =
+               WorkItems.explore(ctx.scope, reload(item)).questions
     end
   end
 
@@ -746,7 +1019,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert %{
                status: :questions,
                questions: [
-                 %{id: "q2", number: 2, text: "Which sale?", state: :open, asked_run: ^asked_2}
+                 %{id: "q2", number: 1, text: "Which sale?", state: :open, asked_run: ^asked_2}
                ],
                run: %{questions: [%{public_id: "1", text: "Which sale?"}]},
                earlier_take_ins: [
@@ -795,8 +1068,6 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       item = Apiary.StagesFixtures.end_run!(reload(item), &reopen!(&1, &2, "q1", ["Which sale?"]))
       {:ok, _} = WorkItems.answer(scope, item, 1, %{"2" => "The spring sale"})
       item = Apiary.StagesFixtures.end_run!(reload(item), nil)
-      # An answer's time is recorded to the second (`Apiary.Explore.Given`).
-      Process.sleep(1_000)
       {:ok, _} = WorkItems.answer(scope, item, 2, %{"1" => "The other one"})
       {:ok, _closed} = WorkItems.close(scope, reload(item))
 
@@ -872,9 +1143,6 @@ defmodule Apiary.WorkItems.ExploreViewTest do
     explore_run_fixture(work_item, result: questions_result(["Which basket?"]))
     {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The main one"})
     work_item = Apiary.StagesFixtures.end_run!(reload(work_item), &reopen!(&1, &2, "q1"))
-    # An answer's time is recorded to the second, and the Thread finds an answer by its
-    # time (`Apiary.Explore.Given`): the second answer comes a second later.
-    Process.sleep(1_000)
     {:ok, _} = WorkItems.answer(scope, work_item, 2, %{"1" => "The other one"})
     Apiary.StagesFixtures.end_run!(reload(work_item), &reopen!(&1, &2, "q1"))
   end
@@ -937,5 +1205,144 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       end)
 
     Repo.get!(Apiary.WorkItems.WorkItem, work_item.id)
+  end
+
+  describe "a run's decisions in the Thread" do
+    @decision %{
+      "question" => "Which currency does the invoice show?",
+      "options" => [
+        %{"title" => "The order's currency", "explanation" => "What the customer paid."},
+        %{"title" => "The shop's currency", "explanation" => "What the books keep."}
+      ],
+      "option" => "The order's currency",
+      "reason" => "The customer pays in the order's currency."
+    }
+
+    test "a run with one open question and two decided questions wrote one question", ctx do
+      now = DateTime.utc_now()
+
+      %{run: run} =
+        explore_run_fixture(ctx.work_item,
+          result: questions_result(["Which basket?"]),
+          decisions: [@decision, %{@decision | "question" => "Which date does it show?"}],
+          run: timed(now, 9, 8)
+        )
+
+      assert %{run: %{asked: 1}} = WorkItems.explore(ctx.scope, ctx.work_item)
+
+      asked =
+        for %{kind: :asked, run: %{id: id}} = entry <-
+              WorkItems.explore_thread(ctx.scope, ctx.work_item, now),
+            id == run.public_id,
+            do: Enum.map(entry.questions, & &1.text)
+
+      assert asked == [["Which basket?"]]
+    end
+
+    test "a run with a proposal and a decided question wrote no question", ctx do
+      now = DateTime.utc_now()
+
+      %{run: run} =
+        explore_run_fixture(ctx.work_item,
+          result: understood_result(),
+          decisions: [@decision],
+          run: timed(now, 9, 8)
+        )
+
+      assert %{run: %{asked: 0}} = WorkItems.explore(ctx.scope, ctx.work_item)
+
+      kinds =
+        for %{run: %{id: id}, kind: kind} <-
+              WorkItems.explore_thread(ctx.scope, ctx.work_item, now),
+            id == run.public_id,
+            do: kind
+
+      assert :asked not in kinds
+      assert :proposed in kinds
+    end
+
+    test "a run that reopens a changed decision wrote one question", ctx do
+      now = DateTime.utc_now()
+
+      explore_run_fixture(ctx.work_item,
+        result: understood_result(),
+        decisions: [@decision],
+        run: timed(now, 9, 8)
+      )
+
+      {:ok, _work_item} =
+        WorkItems.another_round(ctx.scope, ctx.work_item, 1, %{
+          answers: [%{"id" => "q1", "option" => "The shop's currency", "note" => nil}],
+          comment: nil
+        })
+
+      item = Apiary.StagesFixtures.end_run!(reload(ctx.work_item), &reopen!(&1, &2, "q1"))
+
+      assert %{status: :questions, run: %{asked: 1}} = WorkItems.explore(ctx.scope, item)
+
+      asked =
+        for %{kind: :asked} = entry <- WorkItems.explore_thread(ctx.scope, item, now),
+            do: Enum.map(entry.questions, & &1.text)
+
+      assert asked == [[@decision["question"]]]
+    end
+
+    defp numbers(scope, work_item) do
+      for question <- WorkItems.explore(scope, work_item).questions,
+          into: %{},
+          do: {question.id, question.number}
+    end
+
+    defp send_note(scope, work_item, id) do
+      {:ok, _work_item} =
+        WorkItems.another_round(scope, work_item, 1, %{
+          answers: [%{"id" => id, "option" => nil, "note" => "The main one"}],
+          comment: nil
+        })
+    end
+
+    test "with an open question: the numbers read closed, decisions, then open", ctx do
+      explore_run_fixture(ctx.work_item,
+        result: questions_result(["Which basket?", "Which shelf?"]),
+        decisions: [@decision]
+      )
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q3" => 1, "q1" => 2, "q2" => 3}
+
+      send_note(ctx.scope, ctx.work_item, "q1")
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q1" => 1, "q3" => 2, "q2" => 3}
+    end
+
+    test "a changed decision stays among the decisions, above a closed question", ctx do
+      explore_run_fixture(ctx.work_item,
+        result: questions_result(["Which basket?"]),
+        decisions: [@decision]
+      )
+
+      {:ok, _work_item} =
+        WorkItems.another_round(ctx.scope, ctx.work_item, 1, %{
+          answers: [
+            %{"id" => "q1", "option" => nil, "note" => "The main one"},
+            %{"id" => "q2", "option" => "The shop's currency", "note" => nil}
+          ],
+          comment: nil
+        })
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
+    end
+
+    test "with no open question: the numbers read decisions, then closed", ctx do
+      explore_run_fixture(ctx.work_item,
+        result: questions_result(["Which basket?"]),
+        decisions: [@decision]
+      )
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
+
+      send_note(ctx.scope, ctx.work_item, "q1")
+
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
+    end
   end
 end

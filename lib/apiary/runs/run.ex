@@ -2,17 +2,20 @@ defmodule Apiary.Runs.Run do
   @moduledoc """
   A run as the workspace knows it: the projection of the run's events.
 
-  `number` is the run's number, unique on the server and set by the database when the row
-  is created: the console names and addresses a run by it, "Run 18342" at
-  `/:org/:workspace/runs/18342`. `public_id` is the run's id in the API, `rn_` and sixteen
-  characters (`Apiary.PublicId`). The application sets it when it creates the row; the
-  column's default, `run_public_id()`, is the same shape.
+  `number` is the run's number, unique in its workspace, from a counter of the workspace's
+  runs: the console shows a run by it and uses it in the run's address, "Run 3" at
+  `/:org/:workspace/runs/3`. `public_id` is the run's id on the whole server and in the
+  API, `rn_` and sixteen characters (`Apiary.PublicId`), by which support and diagnostics
+  find a run. The application sets it when it creates the row; the column's default,
+  `run_public_id()`, is the same shape.
 
   `node_run_id` is the node's run id, an external id: the run's id as its node gave it,
   `run_id` and the subject of the run's events in the server contract, unique within the
   workspace. The row is
-  created in state `pending` when the run registers (`Apiary.Runs.Registration`), or by
-  the receiver on the first event of an unknown subject. The folded fields are folded
+  created in state `pending` when a run of a workspace's queue is queued, with its number
+  and no registration (`queued?/1`), and a claim registers it; when the run registers
+  (`Apiary.Runs.Registration`); or by the receiver on the first event of an unknown
+  subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
   registration fields (`registered_at`, `registration_labels`, `registration_about`,
   `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`,
@@ -23,6 +26,7 @@ defmodule Apiary.Runs.Run do
   as well.
   """
   use Ecto.Schema
+  require Ecto.Query
 
   @typedoc "A run of a workspace."
   @type t :: run()
@@ -42,9 +46,10 @@ defmodule Apiary.Runs.Run do
   @derive {Phoenix.Param, key: :number}
   schema "runs" do
     field :public_id, :string, read_after_writes: true
-    # The run's number on the server, from 1, never twice: the column's default takes the
-    # next of the sequence `runs_number_seq` when the run is inserted. The console
-    # addresses and names a run by it ("Run 18342", `/:org/:workspace/runs/18342`).
+    # The run's number in its workspace, from 1, never twice. This release's code takes it
+    # from `Apiary.Runs.Number` in the insert's transaction. An insert with no number gets
+    # one from the trigger `runs_number_from_counter`, and Ecto reads it back. The console
+    # shows a run by it and uses it in the run's address ("Run 3", `/:org/:workspace/runs/3`).
     field :number, :integer, read_after_writes: true
     field :node_run_id, Ecto.UUID
 
@@ -60,8 +65,9 @@ defmodule Apiary.Runs.Run do
     field :about_title, :string
     field :about_subjects, {:array, :map}, default: []
     field :about_details, :map
-    # What the run runs, from its last `session.started` (`Apiary.Runs.Fold`): `runtime`,
-    # `runtime_version`, `command`, `args`, `dir`, `interactive` and `image`.
+    # What the run runs, from one `session.started`: its last one that is not bare, else,
+    # with only bare sessions, its first (`Apiary.Runs.Fold`): `runtime`, `runtime_version`,
+    # `command`, `args`, `dir`, `interactive` and `image`.
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string
@@ -70,9 +76,9 @@ defmodule Apiary.Runs.Run do
     field :args, {:array, :string}, default: []
     field :dir, :string
     field :interactive, :boolean
-    # The pseudo-terminal's size as the record last said it: the later by sequence of the
-    # last `session.started`'s `terminal` and the last `run.resized`. Null on pipes, and
-    # when Forager reported no size.
+    # The pseudo-terminal's size: the later by sequence of the `terminal` of that same
+    # `session.started` and the last `run.resized` that counts (`Apiary.Runs.Fold`). Null on
+    # pipes, and when Forager reported no size.
     field :terminal_cols, :integer
     field :terminal_rows, :integer
     field :host, :string
@@ -117,6 +123,13 @@ defmodule Apiary.Runs.Run do
     # The cost the run reported: the sum of `cost_usd` over its session result events
     # (`Apiary.Runs.Fold`). Null until a result carried one; never zero for "unknown".
     field :cost_usd, :decimal
+
+    # What the run's sessions used, from their `dev.qory.session.exited`
+    # (`Apiary.Runs.Fold`), measured over everything behind each session's wall: the
+    # highest peak memory, in bytes, and the sum of the CPU time, in milliseconds. Null
+    # until a session reported one.
+    field :peak_memory_bytes, :integer
+    field :cpu_time_ms, :integer
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -265,6 +278,12 @@ defmodule Apiary.Runs.Run do
     # (`Apiary.Policy.ComposedConfiguration`). Nil for a run given none, and for every
     # other run. Not folded: a rebuild keeps it.
     field :configured_image, :string
+    # Whether `configured_image` is the image of a machine type, and that type, by id: set
+    # at the claim for a run whose type has an image, at the attach for a run given the
+    # default type's image (`Apiary.Runs.Attach`). False and nil for a target's image and
+    # for no image; the id is nil too once the type is deleted. Not folded.
+    field :configured_image_from_type, :boolean, default: false
+    belongs_to :configured_image_machine_type, Apiary.MachineTypes.MachineType
     # Set at its attach, for every run that attaches: what the run started in, which its
     # reloads carry as the gateway checks it (`Apiary.Policy.ComposedConfiguration`).
     # `started_image_from` is `top_level`, the image beside the `security_policy`, the one
@@ -289,6 +308,61 @@ defmodule Apiary.Runs.Run do
 
   @doc "The states of a run that has not ended: the workspace counts these as alive."
   def alive_states, do: ~w(pending running)
+
+  @doc """
+  Whether the run waits in its workspace's queue for a machine: pending, a run of the
+  queue (`dispatch_run_id`) with no node and no registration, as it was written when it
+  was queued. The pages show it as queued, which is no stored state: the claim that
+  takes it registers it, and it stays pending until it starts.
+  """
+  @spec queued?(t() | map()) :: boolean()
+  def queued?(%{state: "pending", dispatch_run_id: id, node_id: nil, registered_at: nil})
+      when is_binary(id),
+      do: true
+
+  def queued?(_run), do: false
+
+  @doc """
+  `queued?/1` as a query's condition on the run, the binding named `:run`.
+  """
+  @spec queued_condition() :: Ecto.Query.dynamic_expr()
+  def queued_condition,
+    do:
+      Ecto.Query.dynamic(
+        [run: r],
+        r.state == "pending" and not is_nil(r.dispatch_run_id) and is_nil(r.node_id) and
+          is_nil(r.registered_at)
+      )
+
+  @doc """
+  Whether a claim or a registration wrote the run: it has a registration time or a node.
+  The record of a run of the queue that no claim registered, waiting or ended while it
+  waited (`queued?/1`), has neither. A reader of "the run a claim registered" for a run
+  of the queue reads only such a run (`registered/0`).
+  """
+  @spec registered?(t() | map()) :: boolean()
+  def registered?(%{registered_at: %DateTime{}}), do: true
+  def registered?(%{node_id: id}) when is_binary(id), do: true
+  def registered?(_run), do: false
+
+  @doc """
+  The runs `registered?/1` is true of, as a query to read or join from.
+  """
+  @spec registered() :: Ecto.Query.t()
+  def registered do
+    import Ecto.Query, only: [from: 2]
+    from r in __MODULE__, where: not is_nil(r.registered_at) or not is_nil(r.node_id)
+  end
+
+  @doc """
+  The state the pages show: `queued` for a queued run (`queued?/1`), else the run's
+  `state`.
+  """
+  @spec shown_state(t() | map()) :: String.t()
+  def shown_state(run), do: if(queued?(run), do: "queued", else: run.state)
+
+  @doc "Every state the pages show: `queued`, then the six stored states (`states/0`)."
+  def shown_states, do: ["queued" | @states]
 
   @doc "The states of a run that ended well: completed, its outcome a success."
   def ended_well_states, do: ~w(completed)

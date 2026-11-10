@@ -10,7 +10,8 @@ defmodule Apiary.Kinds.Runtimes do
   `paths`, which may be absent), its `one_of` groups (each with `id`, `required` and
   `of`), and its `model`, when it has one: the model API formats it sends, where a run's
   model id, effort and endpoint go, the effort values it accepts, and the variables it
-  reads a model key from (`keys`). The loader keeps `model` as it is and reads its
+  reads a model key from (`keys`), and its `egress_hosts`, the exact hosts it needs to
+  reach, `[]` for none. The loader keeps `model` as it is and reads its
   `keys`, its run's effort values and its endpoint's variable into the fields of
   `Apiary.Kinds.Runtime`; a `model` without a list of `formats`, or with a key that has
   no `format`, `auth` and `variable`, fails the compile. A test compares the file with
@@ -30,6 +31,7 @@ defmodule Apiary.Kinds.Runtimes do
   @external_resource @path
 
   alias Apiary.Kinds.Runtime
+  alias Apiary.Policy.Grammar
 
   @runtimes (fn ->
                %{"version" => 1, "runtimes" => runtimes} =
@@ -63,7 +65,8 @@ defmodule Apiary.Kinds.Runtimes do
                    model: model,
                    model_keys: Enum.map(get_in(model || %{}, ["keys"]) || [], key),
                    effort_values: get_in(model || %{}, ["effort", "run", "values"]) || [],
-                   endpoint_variable: get_in(model || %{}, ["endpoint", "variable"])
+                   endpoint_variable: get_in(model || %{}, ["endpoint", "variable"]),
+                   egress_hosts: Map.fetch!(runtime, "egress_hosts")
                  }
                end
              end).()
@@ -101,6 +104,34 @@ defmodule Apiary.Kinds.Runtimes do
   @spec hosts(Runtime.t()) :: [String.t()]
   def hosts(%Runtime{declares: declares}),
     do: declares |> Enum.flat_map(&Map.get(&1, "hosts", [])) |> Enum.uniq()
+
+  @doc """
+  dispatched/0 is the runtimes a run of a workspace's queue can use: the catalogue's first,
+  which a run takes when no model choice selects a runtime, and each other runtime with a
+  model key. A model choice may select any of them. A run of a runtime with no model key ends
+  `runtime_unserved`, since no API of a model provider serves it
+  (`Apiary.Kinds.Providers.api/2`).
+  """
+  @spec dispatched() :: [Runtime.t()]
+  def dispatched do
+    [default | others] = list()
+    [default | Enum.filter(others, &(&1.model_keys != []))]
+  end
+
+  @doc """
+  egress_hosts/0 is the hosts that the runtimes of `dispatched/0` need to reach, each with
+  its runtime, as `Apiary.Connections.egress_hosts/1` has an integration's hosts with
+  their connection. A workspace's document has no member per run or per workflow, and a
+  model choice can change between two runs, so these hosts apply to every workspace. An
+  entry that is not an exact host is left out.
+  """
+  @spec egress_hosts() :: [%{host: String.t(), runtime: %{name: String.t(), title: String.t()}}]
+  def egress_hosts do
+    for %Runtime{} = runtime <- dispatched(),
+        host <- runtime.egress_hosts,
+        Grammar.exact_host?(host),
+        do: %{host: host, runtime: %{name: runtime.name, title: runtime.title}}
+  end
 
   if @test_seam do
     # The key of the list a test puts in its process (`put_test_list/1`), and the flag

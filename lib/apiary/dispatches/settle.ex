@@ -33,13 +33,13 @@ defmodule Apiary.Dispatches.Settle do
   #   unsettled at every tick do not keep the runs after them from the sweep.
   #
   # A projection whose settle fails clears what the row holds (`clear/1`), so the sweep
-  # stores it again. A run whose newest questions cannot be read at its end is left with
-  # no outcome (`Outcome.at_end/1` is nil), with a warning in the log that has the run's
-  # id, so the sweep reads it again. With the workflow model on, the stage runner raises
-  # for the end of the newest run of a running stage (`Apiary.Stages`), so the end's
-  # transaction rolls back and the lost-run check ends the run again at a later tick
-  # (`Apiary.Dispatches.RunEnd.lose/3`). Any other run ended `lost` is then not settled,
-  # since the sweep reads `run_ended` runs alone.
+  # stores it again. A run whose newest questions, or whose newest verdict, cannot be read
+  # at its end is left with no outcome (`Outcome.at_end/1` is nil), with a warning in the
+  # log that has the run's id, so the sweep reads it again. With the workflow model on,
+  # the stage runner raises for the end of the newest run of a running stage
+  # (`Apiary.Stages`), so the end's transaction rolls back and the lost-run check ends the
+  # run again at a later tick (`Apiary.Dispatches.RunEnd.lose/3`). Any other run ended
+  # `lost` is then not settled, since the sweep reads `run_ended` runs alone.
   #
   # **Locks.** `settle/1` and the sweep lock the run of the queue `FOR UPDATE`, its place
   # in the order every path keeps (`Apiary.Dispatches.RunEnd`), then read the work item's
@@ -204,22 +204,42 @@ defmodule Apiary.Dispatches.Settle do
       []
   end
 
-  # A run whose newest questions cannot be read: no outcome stored, and a warning with its
-  # id, its work item's public id (`wi_…`) and the questions version's (`av_…`), so the
-  # instance admin finds the questions file the store cannot read. At most once an hour
+  # A run whose newest questions, or whose newest verdict, cannot be read
+  # (`Outcome.at_end/1` is nil): no outcome stored, and a warning with its id, its work
+  # item's public id (`wi_…`) and the public id (`av_…`) of the questions version or of
+  # the verdict version, so the instance admin finds the file the store cannot read. The
+  # warning shows the verdict where the questions can be read and the verdict cannot,
+  # read again when the warning is written; the questions otherwise. At most once an hour
   # for each run (`Apiary.Runs.StuckLog`).
-  defp unread(%DispatchRun{id: id, work_item_id: work_item_id}) do
+  defp unread(%DispatchRun{id: id, work_item_id: work_item_id} = dispatch_run) do
     Apiary.Runs.StuckLog.log(:warning, {:settle, id}, nil, fn ->
       work_item = Repo.get(WorkItem, work_item_id)
-      version = work_item && Apiary.Artifacts.newest(work_item, "questions")
+      ids = "dispatch_run=#{id} work_item=#{work_item && work_item.public_id}"
 
-      "run outcome not stored, newest questions unreadable dispatch_run=#{id} " <>
-        "work_item=#{work_item && work_item.public_id} " <>
-        "questions_version=#{version && version.public_id}"
+      if verdict_unread?(work_item, dispatch_run) do
+        version = Apiary.Stages.Artifacts.newest_of_run(dispatch_run, "verdict", "main")
+
+        "run outcome not stored, newest verdict unreadable #{ids} " <>
+          "verdict_version=#{version && version.public_id}"
+      else
+        version = work_item && Apiary.Artifacts.newest(work_item, "questions")
+
+        "run outcome not stored, newest questions unreadable #{ids} " <>
+          "questions_version=#{version && version.public_id}"
+      end
     end)
 
     []
   end
+
+  # Whether the newest questions of `work_item` can be read and the verdict of
+  # `dispatch_run` cannot (`Apiary.Stages.reported_verdict/1`).
+  defp verdict_unread?(%WorkItem{} = work_item, dispatch_run) do
+    match?({:ok, _questions}, Apiary.Explore.Questions.current(work_item)) and
+      Apiary.Stages.reported_verdict(dispatch_run) == {:error, :store_unavailable}
+  end
+
+  defp verdict_unread?(nil, _dispatch_run), do: false
 
   # The column, and nothing else, on a row that holds none (`settle_locked/1`).
   defp write(%DispatchRun{id: id, work_item_id: work_item_id}, outcome) do

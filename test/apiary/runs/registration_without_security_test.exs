@@ -23,7 +23,7 @@ defmodule Apiary.Runs.RegistrationWithoutSecurityTest do
     Repo.insert!(%RunConfiguration{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
-      version: 1,
+      version: 2,
       document: document,
       digest: Render.digest(document),
       rendered_at: DateTime.utc_now()

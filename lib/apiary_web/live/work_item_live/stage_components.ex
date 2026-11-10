@@ -23,6 +23,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   use ApiaryWeb, :html
 
+  alias ApiaryWeb.WorkItemComponents
+
   @note_units 2 * 2_000
 
   ## The stage track
@@ -65,6 +67,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
+  # The stage's waiting or running run: it has a path only at Explore.
+  defp live_run(page),
+    do: Enum.find(page.runs, &(&1.shows in [:running, :queued] and &1.stage_id == page.stage.id))
+
   defp track_class(:done), do: "done"
   defp track_class(:now), do: "now"
   defp track_class(:todo), do: "todo"
@@ -77,15 +83,16 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc """
   The current stage in the rail: its name, its state and round, then what the state
   needs. Waiting for inputs lists each missing required input with Add, and Move back;
-  waiting for answers links to the questions on Explore's tab; waiting for a workflow
-  names the workflow the harness no longer declares; escalated shows the escalation
-  card; at the gate shows the gate card.
+  waiting for answers links to the questions on the current stage's tab, and to the block
+  "What the run needs from you" while an escalation waits too; waiting for a workflow names
+  the workflow the harness no longer declares; escalated shows the escalation card; at the
+  gate shows the gate card.
   """
   attr :id, :string, default: "work-item-stage"
   attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
   attr :number, :integer, required: true, doc: "the work item's number"
   attr :add_path, :any, required: true, doc: "a function of an artifact type: Add's path"
-  attr :answers_path, :string, default: nil, doc: "Explore's tab, where the questions are"
+  attr :answers_path, :string, default: nil, doc: "the current stage's tab, with the questions"
   attr :asking, :atom, default: nil, values: [nil, :changes], doc: "the form showing"
 
   attr :error, :atom,
@@ -102,6 +109,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     default: nil,
     doc: "why the page did not act: the work item moved, or a move back went forward"
 
+  attr :needs_path, :string,
+    default: "#work-item-needs",
+    doc: "where the block \"What the run needs from you\" is (`needs_block/1`)"
+
   def stage_card(assigns) do
     ~H"""
     <section
@@ -112,6 +123,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <div class="q-wi-step-h">
         <h2 id={"#{@id}-h"}>{@page.stage.name}</h2>
         <span id={"#{@id}-state"}><.state_badge state={shown_state(@page)} /></span>
+        <WorkItemComponents.run_link
+          :if={@page.state == :running}
+          id={"#{@id}-run-link"}
+          run={live_run(@page)}
+        />
       </div>
       <p :if={@page.rounds && !@page.at_explore} id={"#{@id}-round"}>
         {gettext("Round %{round} of %{rounds}",
@@ -129,6 +145,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         asking={@asking}
         error={@error}
         check={@check}
+        needs_path={@needs_path}
       />
     </section>
     """
@@ -140,18 +157,27 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   """
   attr :id, :string, default: "work-item-step-state"
   attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
+  attr :quiet, :boolean, default: false, doc: "the stage's run has a late heartbeat"
 
   def stage_badge(assigns) do
     ~H"""
-    <span id={@id}><.state_badge state={shown_state(@page)} /></span>
+    <span id={@id}><.state_badge state={shown_state(@page)} quiet={@quiet} /></span>
     """
   end
 
   attr :state, :atom, required: true
+  attr :quiet, :boolean, default: false
 
   defp state_badge(assigns) do
     assigns =
-      assign(assigns, color: state_color(assigns.state), words: state_words(assigns.state))
+      assign(assigns,
+        color:
+          if(assigns.quiet and assigns.state == :running,
+            do: "warning",
+            else: state_color(assigns.state)
+          ),
+        words: state_words(assigns.state)
+      )
 
     ~H"""
     <.badge color={@color} class="q-wi-badge">{@words}</.badge>
@@ -164,7 +190,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp shown_state(%{state: state}), do: state
 
   defp state_color(:queued), do: "neutral"
-  defp state_color(:running), do: "success"
+  defp state_color(:running), do: "info"
   defp state_color(:at_gate), do: "info"
   defp state_color(:done), do: "neutral"
   defp state_color(_state), do: "warning"
@@ -209,12 +235,18 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
   attr :check, :any, default: nil
+  attr :needs_path, :string, default: "#work-item-needs"
 
   defp stage_body(%{page: %{state: :running}} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :line,
+        gettext("%{stage} is running.", stage: assigns.page.stage.name)
+      )
+
     ~H"""
-    <p :if={!@page.queued} id={"#{@id}-line"}>
-      {gettext("%{stage} is running.", stage: @page.stage.name)}
-    </p>
+    <p :if={!@page.queued} id={"#{@id}-line"}><.rich text={@line} /></p>
     """
   end
 
@@ -251,6 +283,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     >
       {gettext("Answer the questions")}
     </.link>
+    <WorkItemComponents.waits_line
+      :if={@page.escalation && @page.escalation.points != []}
+      count={length(@page.escalation.points)}
+      path={@needs_path}
+    />
     """
   end
 
@@ -282,7 +319,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp stage_body(%{page: %{state: :escalated}} = assigns) do
     ~H"""
-    <.escalation_card id={"#{@id}-escalation"} page={@page} number={@number} />
+    <.escalation_card
+      id={"#{@id}-escalation"}
+      page={@page}
+      number={@number}
+      needs_path={@needs_path}
+    />
     """
   end
 
@@ -456,8 +498,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :line, :string, required: true
   attr :path, :any, default: nil, doc: "the set-up step Harness, where the fix is on it"
 
-  # A line of an escalation's gaps, escaped; in its fix line, the words "the set-up step
-  # Harness" link to that step where the fix is on it.
+  # A line of text, escaped; the words "the set-up step Harness" link to that step where
+  # the fix is on it.
   defp gap_line(assigns) do
     words = "the set-up step Harness"
 
@@ -479,25 +521,29 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :id, :string, required: true
   attr :page, :map, required: true
   attr :number, :integer, required: true
+  attr :needs_path, :string, default: "#work-item-needs"
 
+  # The escalation in the rail: one line, "Waits for you: N points", which links to the
+  # block "What the run needs from you" (`needs_block/1`), the run it came from, and Accept as
+  # it is (only with a result), Move back and Close. Their form has the note field and Run
+  # another round in the block, which name it in their `form` attribute, so the note goes
+  # with every action.
   defp escalation_card(assigns) do
     assigns =
       assign(
         assigns,
         :escalation,
         assigns.page.escalation ||
-          %{cause: :escalate, result: true, gaps: [], run: nil, harness_path: nil}
+          %{cause: :escalate, result: true, points: [], run: nil, harness_path: nil}
       )
 
-    # The card addresses no one: Waiting on you counts no escalation.
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
-      <p id={"#{@id}-cause"}>{cause_words(@escalation.cause, @page, @escalation.gaps != [])}</p>
-      <ul :if={@escalation.gaps != []} id={"#{@id}-gaps"} class="list-disc ps-5">
-        <li :for={{gap, i} <- Enum.with_index(@escalation.gaps)}>
-          <.gap_line line={gap} path={i == 1 && @escalation[:harness_path]} />
-        </li>
-      </ul>
+      <WorkItemComponents.waits_line
+        :if={@escalation.points != []}
+        count={length(@escalation.points)}
+        path={@needs_path}
+      />
       <p :if={@escalation.run} id={"#{@id}-run"} class="text-xs opacity-70">
         {gettext("From attempt %{attempt} · %{workflow}",
           attempt: Format.number(@escalation.run.number),
@@ -513,13 +559,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       >
         <input type="hidden" name="number" value={@number} />
         <input type="hidden" name="seen" value={@page.stage.id} />
-        <.note id={"#{@id}-note"} />
-        <p class="text-xs opacity-70">
-          {gettext("A note you add goes to the next run as work item data.")}
-        </p>
-        <div class="q-wi-acts flex-wrap">
+        <div :if={@escalation.result} class="q-wi-acts flex-wrap">
           <.button
-            :if={@escalation.result}
             id={"#{@id}-accept"}
             type="submit"
             name="how"
@@ -527,9 +568,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             variant="primary"
           >
             {gettext("Accept as it is")}
-          </.button>
-          <.button id={"#{@id}-another"} type="submit" name="how" value="another_round">
-            {gettext("Run another round")}
           </.button>
         </div>
         <div :if={@page.earlier != []} class="q-wi-acts flex-wrap">
@@ -551,25 +589,145 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
-  # The cause, with a colon only where a list of gaps follows it.
-  defp cause_words(:round_limit, page, gaps?) do
-    ran = Format.number(page.round || page.rounds || 1)
-    rounds = Format.number(page.rounds || page.round || 1)
+  ## What the run needs from you
 
-    if gaps?,
-      do: gettext("%{ran} of %{rounds} rounds ran, with these gaps:", ran: ran, rounds: rounds),
-      else: gettext("%{ran} of %{rounds} rounds ran.", ran: ran, rounds: rounds)
+  @doc """
+  The block "What the run needs from you": the points of the stage's open escalation, one
+  numbered sentence each, followed by the sentence of its action: "Answer question N.",
+  with "question N" linked to the question on the current stage's tab, or "Run another
+  round.", or a stopped run's fix line in its place. While the stage is escalated, a reader who may decide
+  finds the note field and Run another round under the points; they belong to the form of
+  the escalation card in the rail (`stage_card/1`). While the stage waits for answers, the
+  answers run the next round, so the block has no form.
+  """
+  attr :id, :string, default: "work-item-needs"
+  attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
+
+  attr :questions, :list,
+    default: [],
+    doc: "the questions of the take in, each with its `id` and `number` as the tabs number them"
+
+  attr :question_path, :string,
+    default: "",
+    doc: "the path of the tab where the questions are; empty on that tab"
+
+  attr :questions_id, :string,
+    default: "work-item-explore-questions",
+    doc: "the id of that tab's questions frame, before `-question-N`"
+
+  attr :class, :string, default: nil
+
+  def needs_block(assigns) do
+    numbers = Map.new(assigns.questions, &{&1.id, &1.number})
+
+    assigns =
+      assign(assigns,
+        points:
+          Enum.map(
+            (assigns.page.escalation || %{points: []}).points,
+            &Map.put(&1, :number, numbers[&1.question])
+          ),
+        form: assigns.page.state == :escalated and assigns.page.can_decide,
+        form_id: "work-item-stage-escalation-form",
+        field: "work-item-stage-escalation"
+      )
+
+    ~H"""
+    <section id={@id} class={["q-xp-frame q-xp-needs", @class]} aria-labelledby={"#{@id}-h"}>
+      <div class="q-xp-frame-h">
+        <.icon name="hero-flag-micro" class="q-xp-frame-i size-4" />
+        <h2 id={"#{@id}-h"} class="q-xp-frame-t">{gettext("What the run needs from you")}</h2>
+      </div>
+      <div class="q-xp-body q-xp-needs-body">
+        <ol :if={@points != []} id={"#{@id}-points"} class="q-xp-needs-points">
+          <li :for={{point, i} <- Enum.with_index(@points, 1)} id={"#{@id}-point-#{i}"}>
+            <.point
+              point={point}
+              href={
+                point.number &&
+                  "#{@question_path}##{@questions_id}-question-#{point.number}"
+              }
+              harness_path={@page.escalation && @page.escalation[:harness_path]}
+            />
+          </li>
+        </ol>
+        <div :if={@form} class="q-xp-needs-form flex flex-col gap-2">
+          <label for={"#{@field}-note"}>{gettext("Note")}</label>
+          <textarea
+            id={"#{@field}-note"}
+            name="note"
+            rows="2"
+            maxlength={note_units()}
+            form={@form_id}
+          ></textarea>
+          <p class="text-xs opacity-70">
+            {gettext("A note you add goes to the next run as work item data.")}
+          </p>
+          <div class="q-wi-acts flex-wrap">
+            <.button
+              id={"#{@field}-another"}
+              type="submit"
+              name="how"
+              value="another_round"
+              form={@form_id}
+            >
+              {gettext("Run another round")}
+            </.button>
+          </div>
+        </div>
+      </div>
+    </section>
+    """
   end
 
-  defp cause_words(:escalate, _page, true), do: gettext("The agent escalated, with these gaps:")
-  defp cause_words(:escalate, _page, false), do: gettext("The agent escalated.")
-  defp cause_words(:check_failed, _page, true), do: gettext("These output checks failed:")
-  defp cause_words(:check_failed, _page, false), do: gettext("The output checks failed.")
+  attr :point, :map, required: true
+  attr :href, :string, default: nil, doc: "the question of an `answer` point, nil for none"
+  attr :harness_path, :any, default: nil
 
-  defp cause_words(:run_stopped, _page, true),
-    do: gettext("The run stopped before its verdict:")
+  # A point's sentence, escaped, then the sentence of its action. An `answer` point adds
+  # "Answer question N.", with "question N" linked to its question; a `run_again` point
+  # adds "Run another round.", or the stop cause's fix line in its place, in which the
+  # words "the set-up step Harness" link to that step where the fix is on it
+  # (`gap_line/1`).
+  defp point(%{point: %{action: :answer, number: n}, href: href} = assigns)
+       when is_integer(n) and is_binary(href) do
+    # The sentence is split at a marker, so that the link keeps its place in any locale.
+    marker = <<0>>
+    [before, rest] = String.split(gettext("Answer %{question}.", question: marker), marker)
 
-  defp cause_words(:run_stopped, _page, false), do: gettext("The run stopped before its verdict.")
+    assigns =
+      assign(assigns,
+        before: before,
+        rest: rest,
+        words: gettext("question %{number}", number: Format.number(n))
+      )
+
+    ~H"""
+    {@point.text} {@before}<.link href={@href} class="q-link">{@words}</.link>{@rest}
+    """
+  end
+
+  defp point(%{point: %{action: :answer}} = assigns) do
+    ~H"""
+    {@point.text} {gettext("Answer the question.")}
+    """
+  end
+
+  defp point(assigns) do
+    fix = assigns.point[:fix]
+
+    assigns =
+      assign(assigns,
+        line: fix || gettext("Run another round."),
+        path: fix && assigns.harness_path
+      )
+
+    ~H"""
+    {@point.text} <.gap_line line={@line} path={@path} />
+    """
+  end
+
+  defp note_units, do: @note_units
 
   ## Move back
 
@@ -621,8 +779,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   @doc """
   The runs of the work item, newest first: each an attempt, counted from the work item's
-  first run ("Attempt 2"), so that it is not taken for the run's number on the server
-  ("Run 18342"), with its workflow, its round and its verdict, or none yet.
+  first run ("Attempt 2"), so that it is not taken for the run's number in its workspace
+  ("Run 3"), with its workflow, its round and its verdict, or none yet.
   """
   attr :id, :string, default: "work-item-runs"
   attr :runs, :list, required: true
@@ -634,7 +792,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       <p :if={@runs == []} id={"#{@id}-none"}>{gettext("No run yet.")}</p>
       <ol :if={@runs != []} class="flex flex-col gap-1">
         <li :for={{run, i} <- Enum.with_index(@runs)} id={"#{@id}-#{i}"}>
-          {run_words(run)}
+          <.rich text={run_words(run)} />
         </li>
       </ol>
     </section>
@@ -642,12 +800,38 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   defp run_words(run) do
-    gettext("Attempt %{attempt} · %{workflow} · round %{round} · %{verdict}",
-      attempt: Format.number(run.number),
+    rich_gettext("%{attempt} · %{workflow} · round %{round} · %{verdict}",
+      attempt: WorkItemComponents.attempt_words(run),
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
-      verdict: shows_words(run.shows)
+      verdict:
+        if(run.shows == :running,
+          do: running_word(%{class: "text-info-soft-content"}),
+          else: shows_words(run.shows)
+        )
     )
+  end
+
+  @doc false
+  # verdict_parts/2 is a stage run's workflow, round and verdict, in the words of its row
+  # in `stage_runs/1`, the word running in the colours `running_class`. A run with no
+  # workflow or no round has no part for it.
+  def verdict_parts(run, running_class) do
+    [
+      run.workflow,
+      run.round && gettext("round %{round}", round: Format.number(run.round)),
+      if(run.shows == :running,
+        do: running_word(%{class: running_class}),
+        else: shows_words(run.shows)
+      )
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+  end
+
+  defp running_word(assigns) do
+    ~H"""
+    <span class={@class}>{shows_words(:running)}</span>
+    """
   end
 
   defp shows_words(:passed), do: gettext("passed")
@@ -656,6 +840,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp shows_words(:queued), do: gettext("queued")
   defp shows_words(:running), do: gettext("running")
   defp shows_words(:no_verdict), do: gettext("ended without a verdict")
+  defp shows_words(:undone), do: undone_word()
+
+  # The word of a run an undo of its take in ended, after its round. The one place it is
+  # set.
+  defp undone_word, do: gettext("undone")
 
   @doc false
   # stage_notes/1 lists what the work item's next run reads as work item data
@@ -782,6 +971,15 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp version_words(type, number),
     do: gettext("%{type} v%{number}", type: type_words(type), number: Format.number(number))
+
+  @doc false
+  # output_versions/1 is the summary's pieces of the record block at a stage after Explore:
+  # "spec v1" for each of the current stage's outputs that has a version, in the stage's
+  # order. An output with no version has no piece, as Explore's proposal and questions do.
+  def output_versions(%{outputs: outputs}) do
+    for %{type: type, version: number} when is_integer(number) <- outputs,
+        do: version_words(type, number)
+  end
 
   @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
   def outputs_words(types), do: types |> Enum.map(&type_words/1) |> words_list()

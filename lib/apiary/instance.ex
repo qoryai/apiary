@@ -1,6 +1,7 @@
 defmodule Apiary.Instance do
   @moduledoc """
-  The instance's setting for how many invitations an organisation makes:
+  The instance's host (`host/0`), and its setting for how many invitations an
+  organisation makes:
   `INVITATIONS_PER_DAY` when set, checked at boot (`boot!/0`), else the value saved in
   Instance settings › Configuration (`Apiary.InstanceConfig`), else 20.
 
@@ -12,6 +13,12 @@ defmodule Apiary.Instance do
   """
 
   @default_invitations_per_day 20
+
+  @doc """
+  host/0 is the host of the instance's public URL, `PUBLIC_URL`'s, with no port.
+  """
+  @spec host() :: String.t() | nil
+  def host, do: URI.parse(ApiaryWeb.Endpoint.url()).host
 
   @doc """
   invitations_per_day/0 is how many invitations an organisation makes in 24 hours:

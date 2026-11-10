@@ -72,14 +72,20 @@ defmodule Apiary.Dispatches.RunEnd do
   # that build (`Apiary.Dispatches.requeue_for_image/1`); a run that came from such a
   # requeue ends with no requeue. An end that finds such an exit with that image not held
   # (`hold/1` read the run before the exit was folded) ends nothing; the projection's end
-  # or the next check ends it with the image held.
+  # or the next check ends it with the image held. A run given the image of a machine
+  # type (`runs.configured_image_from_type`) ends as any exit ends it: no build is cleared
+  # or queued, and nothing is queued again, whatever the type's image is now, and also
+  # once the type is deleted.
   #
   # The run of the queue ends once: `ended`, with its end cause. Its live dispatch, the one
   # handed over, ends with it with the same cause; a stale dispatch of it not yet ended ends
   # with it, `run_ended`; `ended_at` and `end_cause` are set together. The slot the dispatch
-  # took at its claim is freed then, once (`Apiary.Dispatches.Slots.free/2`, which sets
-  # `slot_freed_at` only where it is nil). An end after the first changes neither the run
-  # of the queue nor its dispatches, and frees nothing again; the registered run still
+  # took at its claim is freed then, once, only when no machine is left for it
+  # (`Apiary.Dispatches.Slots.free/2`, which sets `slot_freed_at` only where it is nil):
+  # a dispatch handed over had a machine, so its slot waits for the starter's report that
+  # the machine is `gone` (`Apiary.Dispatches.MachineEnds`). An end after the first
+  # changes neither the run of the queue nor its dispatches, and frees nothing again; the
+  # registered run still
   # takes what comes as before: a run lost takes its later exit, as any run does.
   #
   # The end by a refusal, as the end by an exit, is written after the projection's pass
@@ -352,12 +358,16 @@ defmodule Apiary.Dispatches.RunEnd do
 
   defp missing_unheld?(_dispatch_run, %Run{} = run, _held), do: missing_exit?(run)
 
+  # A run given a machine type's image (`runs.configured_image_from_type`) is not one: its
+  # target's image is not what is missing.
   defp missing_exit?(%Run{
          exit_state: "failed",
          exit_reason: @image_missing,
-         configured_image: image
-       }),
-       do: is_binary(image)
+         configured_image: image,
+         configured_image_from_type: false
+       })
+       when is_binary(image),
+       do: true
 
   defp missing_exit?(%Run{}), do: false
 
@@ -389,17 +399,19 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # For the run of the queue `dispatch_run_id`, read without a lock, when its registered
   # run's folded exit is `failed` with the reason `image_missing` and it started in the
-  # image its pool's record gave it: the pool that claimed it, from its dispatch handed
-  # over, the run's target, read from its registration labels by its workspace's domain
-  # (`Apiary.Lingo.Domain.target/2`), and that image; `:unknown` when the pool or the
-  # target is not found. nil otherwise.
+  # image its pool's record gave it, a target's image (`runs.configured_image_from_type`
+  # false):
+  # the pool that
+  # claimed it, from its dispatch handed over, the run's target, read from its
+  # registration labels by its workspace's domain (`Apiary.Lingo.Domain.target/2`), and
+  # that image; `:unknown` when the pool or the target is not found. nil otherwise.
   defp missing(dispatch_run_id) do
     from(r in Run,
       left_join: d in Dispatch,
       on: d.dispatch_run_id == r.dispatch_run_id and not is_nil(d.handed_over_at),
       where: r.dispatch_run_id == ^dispatch_run_id,
       where: r.exit_state == "failed" and r.exit_reason == ^@image_missing,
-      where: not is_nil(r.configured_image),
+      where: not is_nil(r.configured_image) and not r.configured_image_from_type,
       order_by: [desc_nulls_last: d.handed_over_at],
       limit: 1,
       select: {d.pool_id, r.workspace_id, r.registration_labels, r.configured_image}
@@ -409,14 +421,17 @@ defmodule Apiary.Dispatches.RunEnd do
       nil ->
         nil
 
-      {pool_id, workspace_id, labels, image} when is_binary(pool_id) ->
-        case Domain.target(Repo.get(Workspace, workspace_id), labels) do
-          {:ok, target} -> %{pool_id: pool_id, target: target, image: image}
-          :none -> :unknown
-        end
+      {pool_id, workspace_id, labels, image} ->
+        cond do
+          is_binary(pool_id) ->
+            case Domain.target(Repo.get(Workspace, workspace_id), labels) do
+              {:ok, target} -> %{pool_id: pool_id, target: target, image: image}
+              :none -> :unknown
+            end
 
-      _no_pool ->
-        :unknown
+          true ->
+            :unknown
+        end
     end
   end
 
@@ -830,8 +845,10 @@ defmodule Apiary.Dispatches.RunEnd do
   defp locked_run(id), do: Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
 
   # The run of the queue ended with `cause`, and `detail` kept on it, its live dispatch
-  # with the cause, a stale one not yet ended `run_ended`, and the slot freed once.
-  defp end_locked(%DispatchRun{id: id}, cause, now, detail) do
+  # with the cause, a stale one not yet ended `run_ended`, and the slot freed once where
+  # no machine is left (`Apiary.Dispatches.Slots`). Its workspace's queue changed,
+  # whether or not the slot was freed.
+  defp end_locked(%DispatchRun{id: id, workspace_id: workspace_id}, cause, now, detail) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
         set: [state: :ended, end_cause: cause, end_detail: detail, updated_at: now]
@@ -855,7 +872,7 @@ defmodule Apiary.Dispatches.RunEnd do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
-    Slots.free({:runs, [id]}, now)
+    Enum.uniq([workspace_id | Slots.free({:runs, [id]}, now)])
   end
 
   defp now, do: Apiary.Dispatches.now()

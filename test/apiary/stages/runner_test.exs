@@ -30,6 +30,14 @@ defmodule Apiary.Stages.RunnerTest do
   defp queued(%{actions: [{:queue, spec}]}),
     do: {spec.workflow, spec.entry, spec.loop_entry, spec.round}
 
+  # A point a run or Core writes, with the action run_again.
+  # The point of a run outside a loop that ended with no verdict.
+  @no_verdict %{"text" => "The run stopped before its verdict.", "action" => "run_again"}
+
+  defp again(text), do: %{"text" => text, "action" => "run_again"}
+
+  defp answer(text, question), do: %{"text" => text, "action" => "answer", "question" => question}
+
   describe "entering" do
     test "starts the sequence at once, a loop at its round 1" do
       outcome = Runner.step(explore(), nil, :enter)
@@ -139,48 +147,144 @@ defmodule Apiary.Stages.RunnerTest do
       assert outcome == %{
                state: :escalated,
                position: pos(1, nil, 1),
-               actions: [{:escalate, :check_failed, "No proposal was stored in this stage."}]
+               actions: [
+                 {:escalate, :check_failed, [again("No proposal was stored in this stage.")]}
+               ]
              }
 
       seq = stage([wf("a")], gate: @none)
 
-      assert %{state: :escalated, actions: [{:escalate, :check_failed, _gaps}]} =
-               Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, nil, nil}}, %{
-                 failed_checks: ["proposal"]
+      # One point for each failed check.
+      assert %{state: :escalated, actions: [{:escalate, :check_failed, points}]} =
+               Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+                 failed_checks: ["proposal", "change"]
                })
+
+      assert points == [
+               again("No proposal was stored in this stage."),
+               again("No change was stored in this stage.")
+             ]
     end
   end
 
   describe "a run's end outside a loop" do
-    test "the sequence goes on after each run, whatever the verdict" do
-      for verdict <- [nil, :passed, :changes_requested] do
-        outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:verdict, verdict, "gap"}})
+    test "the sequence goes on after passed and changes-requested" do
+      for verdict <- [:passed, :changes_requested] do
+        outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:verdict, verdict, nil}})
         assert queued(outcome) == {"capture-demo", 1, 0, 1}
       end
     end
 
-    test "escalate escalates" do
-      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:verdict, :escalate, "blocked"}})
+    test "a run with no verdict escalates run_stopped, with its point, at any entry" do
+      seq = stage([wf("a"), wf("b")])
+
+      for {position, points} <- [
+            {pos(0, nil, 1), nil},
+            {pos(1, nil, 1), nil},
+            {pos(1, nil, 2), [again("x")]}
+          ] do
+        outcome = Runner.step(seq, position, {:run, {:verdict, nil, points}})
+
+        assert outcome == %{
+                 state: :escalated,
+                 position: position,
+                 actions: [{:escalate, :run_stopped, [@no_verdict]}]
+               }
+      end
+    end
+
+    test "a run with no verdict escalates before the checks read a failed output" do
+      outcome =
+        Runner.step(stage([wf("a")]), pos(0, nil, 1), {:run, {:verdict, nil, nil}}, %{
+          failed_checks: ["change"]
+        })
+
+      assert outcome.actions == [{:escalate, :run_stopped, [@no_verdict]}]
+    end
+
+    test "a test work item's run with no verdict goes on, as any other verdict" do
+      facts = %{test: true}
+
+      assert queued(Runner.step(build(), pos(0, nil, 1), {:run, {:verdict, nil, nil}}, facts)) ==
+               {"capture-demo", 1, 0, 1}
+
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(stage([wf("a")]), pos(0, nil, 1), {:run, {:verdict, nil, nil}}, facts)
+
+      assert %{actions: [{:escalate, :check_failed, _points}]} =
+               Runner.step(stage([wf("a")]), pos(0, nil, 1), {:run, {:verdict, nil, nil}}, %{
+                 test: true,
+                 failed_checks: ["proposal"]
+               })
+    end
+
+    test "a run of Explore with a result and no verdict goes on; with no result it stops" do
+      seq = stage([wf("a")])
+      no_verdict = {:run, {:verdict, nil, nil}}
+
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(seq, pos(0, nil, 1), no_verdict, %{explore_result: true})
+
+      assert %{actions: [{:escalate, :run_stopped, [@no_verdict]}]} =
+               Runner.step(seq, pos(0, nil, 1), no_verdict, %{explore_result: false})
+    end
+
+    test "a run of Explore that pushed passed or changes-requested goes on to the checks" do
+      seq = stage([wf("a")])
+      no_verdict = {:run, {:verdict, nil, nil}}
+
+      assert %{state: :at_gate, actions: []} =
+               Runner.step(seq, pos(0, nil, 1), no_verdict, %{explore_verdict: true})
+
+      assert %{actions: [{:escalate, :check_failed, _points}]} =
+               Runner.step(seq, pos(0, nil, 1), no_verdict, %{
+                 explore_verdict: true,
+                 failed_checks: ["proposal"]
+               })
+    end
+
+    test "a test work item's run that gave escalate or stopped still escalates" do
+      facts = %{test: true}
+      blocked = [again("blocked")]
+      lost = [again("lost")]
+
+      assert %{actions: [{:escalate, :escalate, ^blocked}]} =
+               Runner.step(build(), pos(0, nil, 1), {:run, {:verdict, :escalate, blocked}}, facts)
+
+      assert %{actions: [{:escalate, :run_stopped, ^lost}]} =
+               Runner.step(build(), pos(0, nil, 1), {:run, {:stopped, lost}}, facts)
+    end
+
+    test "escalate escalates with the verdict's points" do
+      points = [answer("Which page shows the sale?", "q1"), again("The demo has no card.")]
+      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:verdict, :escalate, points}})
 
       assert %{
                state: :escalated,
                position: %{entry: 0},
-               actions: [{:escalate, :escalate, "blocked"}]
+               actions: [{:escalate, :escalate, ^points}]
              } =
                outcome
+
+      # A verdict file with no points still escalates, with none.
+      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:verdict, :escalate, nil}})
+      assert outcome.actions == [{:escalate, :escalate, []}]
     end
 
-    test "a stopped run escalates run_stopped with its cause" do
-      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:stopped, "The run was lost."}})
-      assert outcome.actions == [{:escalate, :run_stopped, "The run was lost."}]
+    test "a stopped run escalates run_stopped with the point of its cause" do
+      points = [again("The run stopped: it was lost.")]
+      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:stopped, points}})
+      assert outcome.actions == [{:escalate, :run_stopped, points}]
     end
 
     test "the last workflow's end runs the checks, then the gate" do
       seq = stage([wf("a"), wf("b")])
-      assert %{state: :at_gate} = Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, nil, nil}})
+
+      assert %{state: :at_gate} =
+               Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, :passed, nil}})
 
       outcome =
-        Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, nil, nil}}, %{
+        Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
           failed_checks: ["change"]
         })
 
@@ -189,9 +293,28 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "questions wait for answers, which rerun the same workflow" do
-      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:questions, "Which page?"}})
+      outcome = Runner.step(build(), pos(0, nil, 1), {:run, {:questions, "Which page?", nil}})
       assert %{state: :waiting_answers, position: %{entry: 0}, actions: []} = outcome
       assert queued(Runner.step(build(), outcome.position, :answered)) == {"implement", 0, nil, 1}
+    end
+
+    test "questions with escalate wait for answers and keep the escalation with its points" do
+      points = [answer("Which page shows the sale?", "q1")]
+
+      outcome =
+        Runner.step(build(), pos(0, nil, 1), {:run, {:questions, "Which page?", points}})
+
+      assert outcome == %{
+               state: :waiting_answers,
+               position: pos(0, nil, 1),
+               actions: [{:escalate, :escalate, points}]
+             }
+
+      # Questions with no escalate verdict, or with no points, keep nothing.
+      for none <- [nil, []] do
+        assert %{state: :waiting_answers, actions: []} =
+                 Runner.step(build(), pos(0, nil, 1), {:run, {:questions, "Which page?", none}})
+      end
     end
   end
 
@@ -212,7 +335,7 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "changes-requested runs the next workflow of the ring" do
-      outcome = Runner.step(build(), pos(1, 0, 1), {:run, {:verdict, :changes_requested, "gap"}})
+      outcome = Runner.step(build(), pos(1, 0, 1), {:run, {:verdict, :changes_requested, nil}})
       assert queued(outcome) == {"fix-demo-findings", 1, 1, 1}
     end
 
@@ -222,29 +345,31 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "a loop of one workflow reruns it as the next round" do
-      outcome = Runner.step(explore(), pos(0, 0, 1), {:run, {:verdict, :changes_requested, "x"}})
+      outcome = Runner.step(explore(), pos(0, 0, 1), {:run, {:verdict, :changes_requested, nil}})
       assert queued(outcome) == {"explore-a-ticket", 0, 0, 2}
     end
 
-    test "at the round limit the stage escalates with the newest gaps" do
-      outcome =
-        Runner.step(build(), pos(1, 1, 3), {:run, {:verdict, :changes_requested, "two gaps"}})
+    test "at the round limit the stage escalates with a point that says so" do
+      outcome = Runner.step(build(), pos(1, 1, 3), {:run, {:verdict, :changes_requested, nil}})
 
       assert outcome.state == :escalated
-      assert outcome.actions == [{:escalate, :round_limit, "two gaps"}]
+      assert outcome.actions == [{:escalate, :round_limit, [again("3 of 3 rounds ran.")]}]
       assert outcome.position == pos(1, 1, 3)
 
       outcome = Runner.step(explore(), pos(0, 0, 3), {:run, {:verdict, nil, nil}})
-      assert outcome.actions == [{:escalate, :round_limit, nil}]
+      assert outcome.actions == [{:escalate, :round_limit, [again("3 of 3 rounds ran.")]}]
     end
 
     test "a loop of one round escalates at once" do
       seq = stage([loop([wf("a")], 1)])
-      assert %{state: :escalated} = Runner.step(seq, pos(0, 0, 1), {:run, {:verdict, nil, nil}})
+
+      outcome = Runner.step(seq, pos(0, 0, 1), {:run, {:verdict, nil, nil}})
+      assert outcome.state == :escalated
+      assert outcome.actions == [{:escalate, :round_limit, [again("1 of 1 round ran.")]}]
     end
 
     test "questions wait; the answers run the same workflow as the next round" do
-      outcome = Runner.step(explore(), pos(0, 0, 1), {:run, {:questions, "Which page?"}})
+      outcome = Runner.step(explore(), pos(0, 0, 1), {:run, {:questions, "Which page?", nil}})
       assert outcome.state == :waiting_answers
 
       assert queued(Runner.step(explore(), outcome.position, :answered)) ==
@@ -252,16 +377,18 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "questions in the loop's last round wait for answers too" do
-      outcome = Runner.step(explore(), pos(0, 0, 3), {:run, {:questions, "Which page?"}})
+      outcome = Runner.step(explore(), pos(0, 0, 3), {:run, {:questions, "Which page?", nil}})
       assert %{state: :waiting_answers, actions: []} = outcome
     end
 
     test "escalate and a stopped run escalate inside a loop too" do
-      assert [{:escalate, :escalate, "g"}] =
-               Runner.step(build(), pos(1, 0, 1), {:run, {:verdict, :escalate, "g"}}).actions
+      points = [again("The demo has no card.")]
 
-      assert [{:escalate, :run_stopped, "c"}] =
-               Runner.step(build(), pos(1, 1, 2), {:run, {:stopped, "c"}}).actions
+      assert [{:escalate, :escalate, ^points}] =
+               Runner.step(build(), pos(1, 0, 1), {:run, {:verdict, :escalate, points}}).actions
+
+      assert [{:escalate, :run_stopped, ^points}] =
+               Runner.step(build(), pos(1, 1, 2), {:run, {:stopped, points}}).actions
     end
   end
 
@@ -298,9 +425,14 @@ defmodule Apiary.Stages.RunnerTest do
       assert outcome.state == :escalated
       assert outcome.position.entry == 2
 
+      # The point of the rounds that ran, then one for each failed check.
       assert outcome.actions == [
                {:escalate, :round_limit,
-                "No demo-video was stored in this stage.\nNo change was stored in this stage."}
+                [
+                  again("3 of 3 rounds ran."),
+                  again("No demo-video was stored in this stage."),
+                  again("No change was stored in this stage.")
+                ]}
              ]
     end
 
@@ -308,7 +440,7 @@ defmodule Apiary.Stages.RunnerTest do
       seq = stage([loop([wf("a")]), wf("b")])
 
       outcome =
-        Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, nil, nil}}, %{failed_checks: ["x"]})
+        Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{failed_checks: ["x"]})
 
       assert [{:checks_failed, 2, _gaps} | queue] = outcome.actions
       assert queued(%{outcome | actions: queue}) == {"a", 0, 0, 2}
@@ -321,7 +453,7 @@ defmodule Apiary.Stages.RunnerTest do
       seq = stage([wf("a")], gate: %{"kind" => "none"})
 
       assert %{state: :done, actions: [:advance]} =
-               Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, nil, nil}})
+               Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
     end
   end
 
@@ -372,6 +504,23 @@ defmodule Apiary.Stages.RunnerTest do
                {"capture-demo", 1, 0, 1}
     end
 
+    test "accept of a stopped run at the last entry goes to the gate, with no checks" do
+      assert %{state: :at_gate, position: %{entry: 1}} =
+               Runner.step(stage([wf("a")]), pos(0, nil, 1), {:accept, :run_stopped}, %{
+                 failed_checks: ["change"]
+               })
+    end
+
+    test "accept of a stopped run at the last entry passes a gate none on, with no checks" do
+      assert %{state: :done, actions: [:advance]} =
+               Runner.step(
+                 stage([wf("a")], gate: %{"kind" => "none"}),
+                 pos(0, nil, 1),
+                 {:accept, :run_stopped},
+                 %{failed_checks: ["change"]}
+               )
+    end
+
     test "another round reruns a stopped run's workflow as the next round" do
       assert queued(Runner.step(build(), pos(1, 1, 2), {:another_round, :run_stopped})) ==
                {"fix-demo-findings", 1, 1, 3}
@@ -417,11 +566,11 @@ defmodule Apiary.Stages.RunnerTest do
       assert a.machine_type == "large"
 
       [{:queue, b}] =
-        Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, nil, nil}}, %{machine: "small"}).actions
+        Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{machine: "small"}).actions
 
       assert b.machine_type == "small"
 
-      [{:queue, c}] = Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, nil, nil}}).actions
+      [{:queue, c}] = Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}).actions
       assert c.machine_type == "default"
     end
 

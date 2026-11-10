@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.StagesLive.Words do
-  # The words of the Stages page that more than one place shows: a stage card's lines, the
+  # The words of the Workflows page that more than one place shows: a stage card's lines, the
   # placement check's lines, a version's changes and a refused save. The canvas gets
   # them as text, never as markup.
   @moduledoc false
@@ -9,6 +9,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   import ApiaryWeb.RichText, only: [rich_gettext: 2]
 
   alias Apiary.Processes
+  alias ApiaryWeb.StagesLive.Draft
 
   # A stage's gate, with each named approver by name: `people` maps a person's user id,
   # as the document keeps it, to the name the page shows. The id is never shown.
@@ -67,8 +68,8 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
-  # The words a screen reader reads for a card: its name, its workflows and loops, its
-  # gate, each in full.
+  # The words a screen reader reads for a card: its name, its description, its workflows
+  # and loops, its gate, each in full.
   @doc false
   def card_label(stage, people) do
     sequence =
@@ -89,7 +90,37 @@ defmodule ApiaryWeb.StagesLive.Words do
           end)
       end
 
-    Enum.join([stage["name"] | sequence] ++ [gate_line(stage, people)], ". ")
+    rest = Enum.join(sequence ++ [gate_line(stage, people)], ". ")
+
+    case label_description(stage) do
+      nil -> stage["name"] <> ". " <> rest
+      text -> stage["name"] <> ". " <> text <> rest
+    end
+  end
+
+  # The stage's description as the document has it, plain text; nil for none or a blank one.
+  @doc false
+  def description(%{"description" => text}) when is_binary(text),
+    do: if(String.trim(text) == "", do: nil, else: text)
+
+  def description(_stage), do: nil
+
+  # The description in the card's label, with the ". " that joins the label's parts: one
+  # final full stop of the text ends it, and after a final "?" or "!" a space alone.
+  defp label_description(stage) do
+    case description(stage) do
+      nil ->
+        nil
+
+      text ->
+        text = String.trim(text)
+
+        cond do
+          String.ends_with?(text, ".") -> text <> " "
+          String.ends_with?(text, ["?", "!"]) -> text <> " "
+          true -> text <> ". "
+        end
+    end
   end
 
   # The label of the "+" after a stage on the canvas.
@@ -143,7 +174,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def add_before(name), do: gettext("Add a stage before %{stage}", stage: name)
 
   # A workflow the harness does not list under `workflows` (spec addition 2): the red
-  # cross's line. On the Stages page, `:workspace` for a harness repository and
+  # cross's line. On the Workflows page, `:workspace` for a harness repository and
   # `:qory_workspace` for the Qory harness; `:qory` for the Qory harness on Instance
   # settings › Workspace types.
   @doc false
@@ -160,7 +191,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def undeclared(stage_name, workflow, :qory_workspace),
     do:
       gettext(
-        "Choose another workflow for %{stage}, or choose a harness that lists %{workflow} under workflows on the Workflow page. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run.",
+        "Choose another workflow for %{stage}. To keep %{workflow}, change the harness in Workspace settings › Harness to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run.",
         stage: stage_name,
         workflow: workflow
       )
@@ -168,14 +199,14 @@ defmodule ApiaryWeb.StagesLive.Words do
   def undeclared(stage_name, workflow, :qory),
     do:
       gettext(
-        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Stages or Workflow page, or someone uses Check again on a work item.",
+        "Choose another workflow for %{stage}, or list %{workflow} in the harness of each workspace of this type. The Qory harness does not list %{workflow}. A workspace on the Qory harness waits at %{stage} once an owner or admin opens its Workflows page, or someone uses Check again on a work item.",
         stage: stage_name,
         workflow: workflow
       )
 
   # A workflow's mark, in words beside the check or the cross: a check for a name a stage
   # may run (`Apiary.Processes.declared_workflows/1`: the Qory harness's names, the names
-  # the harness listed at its last read, and the workflows saved on the Workflow page), a
+  # the harness listed at its last read, and the workflows saved on the Harness page), a
   # cross for any other.
   @doc false
   def mark_text(true), do: gettext("A stage can run it")
@@ -194,7 +225,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def workflow_refused,
     do:
       gettext(
-        "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 64 characters."
+        "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 55 characters."
       )
 
   @doc false
@@ -236,6 +267,9 @@ defmodule ApiaryWeb.StagesLive.Words do
         to: to + 1
       )
 
+  def change({:description_changed, id, _detail}, _older, newer, _people),
+    do: gettext("Changed the description of %{name}.", name: name(newer, id))
+
   def change({:sequence_changed, id, _detail}, _older, newer, _people),
     do: gettext("Changed the sequence of %{name}.", name: name(newer, id))
 
@@ -269,12 +303,18 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
+  # The document's "Default machine type" before and after: "Default" for `default` or
+  # none, else the type's name. The line has no type name for "Default": a version does
+  # not record which type was the default when it was saved.
   def change({:machine_changed, _id, %{from: from, to: to}}, _older, _newer, _people),
     do:
       gettext("Changed the default machine type from %{from} to %{to}.",
-        from: from || gettext("default"),
-        to: to || gettext("default")
+        from: machine_words(from),
+        to: machine_words(to)
       )
+
+  defp machine_words(value) when value in [nil, "", "default"], do: gettext("Default")
+  defp machine_words(value), do: value
 
   defp name(doc, id), do: (Processes.stage(doc, id) || %{})["name"]
 
@@ -299,8 +339,9 @@ defmodule ApiaryWeb.StagesLive.Words do
   def refusal(%{error: :duplicate_stage_id}, _doc),
     do: gettext("Two stages have the same id. Reload the page, then make the change again.")
 
-  def refusal(%{error: error, path: path}, doc) do
+  def refusal(%{error: error, path: path} = refused, doc) do
     {stage, field} = place(path, doc)
+    error_detail = refused[:detail]
 
     cond do
       error == :duplicate_stage_name ->
@@ -312,20 +353,18 @@ defmodule ApiaryWeb.StagesLive.Words do
         gettext("Give every stage a name of 1 to 60 characters.")
 
       String.contains?(path, "machine") ->
-        gettext(
-          "Write a machine type with letters, digits, dots, hyphens and underscores, starting with a letter or a digit."
-        )
+        machine_refused()
 
       String.contains?(path, "approvers") ->
         gettext("%{stage}: choose at least one member who approves, or let any member approve.",
           stage: stage
         )
 
-      field in ["sequence", "inputs", "outputs"] ->
-        gettext(
-          "%{stage}: give every loop 1 to 10 rounds and at least one workflow, and keep at most 20 entries in each list.",
-          stage: stage
-        )
+      field in ["sequence", "inputs", "outputs"] and error_detail == :maxItems ->
+        gettext("%{stage}: keep at most 20 entries in each list.", stage: stage)
+
+      field == "sequence" and Draft.loop_too_long?(Draft.entry_at(doc, path)) ->
+        gettext("%{stage}: keep at most 10 workflows in a loop.", stage: stage)
 
       true ->
         gettext("%{stage}: a value is not valid. Check the stage, then save again.",
@@ -333,6 +372,50 @@ defmodule ApiaryWeb.StagesLive.Words do
         )
     end
   end
+
+  # The banner's line for a stage with rows that show a refused machine type
+  # (`Editor.banner/1`).
+  @doc false
+  def fields_marked(name) do
+    name = if String.trim(name) != "", do: name, else: gettext("A stage")
+    gettext("%{stage}: fix the fields marked below.", stage: name)
+  end
+
+  # A machine type that the schema's pattern or the instance's list does not take, for the
+  # default's and a workflow's.
+  @doc false
+  def machine_refused, do: gettext("Choose a machine type from the list.")
+
+  # A workflow entry whose key no machine type has: the line of its closed row.
+  @doc false
+  def machine_missing_line(key),
+    do: gettext("Pick a machine type: no type has the key %{key}.", key: key)
+
+  # The same, in the notice beside its picker, after the bold "Pick a machine type for
+  # make-mockups.": where the key came from, and the type the runs start on, `fallback`,
+  # by name. `from_update` where the process came from an update from the harness.
+  @doc false
+  def machine_missing(key, workflow, fallback, false),
+    do:
+      rich_gettext(
+        "The %{file} this workspace was made from sets %{setting}, and this Qory Apiary has no machine type with the key %{key}. Until you pick one, runs of %{workflow} start on the default type, %{fallback}.",
+        file: {:m, "process.yaml"},
+        setting: {:m, "machine: " <> key},
+        key: {:m, key},
+        workflow: workflow,
+        fallback: fallback
+      )
+
+  def machine_missing(key, workflow, fallback, true),
+    do:
+      rich_gettext(
+        "The %{file} of the last update from the harness sets %{setting}, and this Qory Apiary has no machine type with the key %{key}. Until you pick one, runs of %{workflow} start on the default type, %{fallback}.",
+        file: {:m, "process.yaml"},
+        setting: {:m, "machine: " <> key},
+        key: {:m, key},
+        workflow: workflow,
+        fallback: fallback
+      )
 
   # A loop's rounds outside 1 to 10, under the field.
   @doc false
@@ -345,6 +428,33 @@ defmodule ApiaryWeb.StagesLive.Words do
     do:
       gettext(
         "The versions changed since this page loaded, so nothing was changed. The page shows them again; check them, then try again."
+      )
+
+  # A save from the harness, or a trial of it made current, where the workspace's harness
+  # choice changed after the person read the difference (`Apiary.Processes.HarnessUpdate`).
+  @doc false
+  def choice_changed,
+    do:
+      gettext(
+        "Press Update from harness again. The harness choice changed after you opened this difference."
+      )
+
+  # A trial from the harness made current, with a stack to copy into the harness the
+  # organisation shares.
+  @doc false
+  def shared_stack_make_current,
+    do:
+      gettext(
+        "Change the stack of the harness your organisation shares, then press Make current again. Every workspace that takes that harness uses its stack."
+      )
+
+  # A save from the harness, or a trial of it made current, with a stack to copy into the
+  # harness the organisation shares (`Apiary.Processes.HarnessUpdate`).
+  @doc false
+  def shared_stack,
+    do:
+      gettext(
+        "Change the stack of the harness your organisation shares, then save again. Every workspace that takes that harness uses its stack."
       )
 
   @doc false

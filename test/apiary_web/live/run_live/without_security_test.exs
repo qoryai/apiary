@@ -46,7 +46,10 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     assert Repo.aggregate(Policy.Rule, :count) == 0
     # The policy's history is the audit trail's entries of its actions.
     assert Repo.aggregate(
-             from(e in Apiary.Audit.Entry, where: like(e.action, "security_policy.%")),
+             from(e in Apiary.Audit.Entry,
+               where: like(e.action, "security_policy.%"),
+               where: fragment("?->>'change' != 'first_version'", e.details)
+             ),
              :count
            ) == 0
   end
@@ -82,8 +85,9 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       run: run,
       scope: scope
     } do
+      # The allowed connections are rows with Connections inline on.
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}?cx=1")
 
       refute_policy(render(lv))
 
@@ -175,7 +179,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(lv, "#run-details #rail-command")
       assert has_element?(lv, "#run-details #rail-record")
       refute has_element?(lv, "#run-details #rail-policy")
-      assert has_element?(lv, "#run-number", Integer.to_string(run.number))
+      assert has_element?(lv, "#run-id", run.public_id)
       refute html =~ "Policy in force"
     end
   end
@@ -195,7 +199,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       html = render(lv)
       refute_policy(html)
 
-      assert has_element?(lv, "#run-#{run.number} .q-rl-denied", "1")
+      assert has_element?(lv, "#run-#{run.public_id} .q-rl-denied", "1")
       refute has_element?(lv, "#runs-page a[href*='/policy']")
     end
   end

@@ -33,14 +33,15 @@ defmodule Apiary.Runs.OldStateNamesMigrationTest do
 
     Repo.query!(
       "INSERT INTO runs (id, organisation_id, workspace_id, node_run_id, state, reason, " <>
-        "inserted_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, now(), now())",
+        "inserted_at, updated_at, number) VALUES ($1, $2, $3, $4, $5, $6, now(), now(), $7)",
       [
         Ecto.UUID.dump!(id),
         Ecto.UUID.dump!(scope.organisation.id),
         Ecto.UUID.dump!(scope.workspace.id),
         Ecto.UUID.dump!(Ecto.UUID.generate()),
         state,
-        reason
+        reason,
+        Apiary.RunEventsFixtures.next_run_number(scope.organisation.id, scope.workspace.id)
       ]
     )
 

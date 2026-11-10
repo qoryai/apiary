@@ -201,9 +201,10 @@ defmodule Apiary.Artifacts.FormatTest do
 
     assert extra =~ "'x'"
 
-    # A list where the schema file allows none is past the bounds, before JSV reads it.
+    # A list longer than any list the schema file allows (20 points) is past the bounds,
+    # before JSV reads it.
     assert {:error, {:schema, %{path: "#", error: "the document has more values" <> _}}} =
-             check(context, "verdict", "a", ~s([1]))
+             check(context, "verdict", "a", Jason.encode!(Enum.to_list(1..21)))
 
     assert {:error, :format} = check(context, "verdict", "a", ~s({"verdict":"passed"} x))
     assert {:error, :format} = check(context, "verdict", "a", <<0xFF>>)
@@ -274,14 +275,125 @@ defmodule Apiary.Artifacts.FormatTest do
       assert error =~ "earlier question"
     end
 
-    test "a question offers 0 to 10 options", context do
+    test "a question offers 0 to 4 options, in any state", context do
       option = &%{"title" => "Option #{&1}", "explanation" => "Why #{&1}."}
+      answer = %{"option" => nil, "note" => "Yes.", "by" => %{"name" => "Ann"}, "at" => @at}
 
+      for state <- [
+            %{"state" => "open"},
+            %{"state" => "answered", "answer" => answer},
+            %{"state" => "withdrawn"}
+          ] do
+        for count <- 1..4 do
+          options = Enum.map(1..count, option)
+          assert {:ok, _} = questions(context, [question(Map.put(state, "options", options))])
+        end
+
+        assert {:error,
+                {:schema,
+                 %{
+                   path: "#/questions/0/options",
+                   error: "value should have at most 4 items, got 5"
+                 }}} =
+                 questions(context, [
+                   question(Map.put(state, "options", Enum.map(1..5, option)))
+                 ])
+      end
+    end
+
+    test "an open question with no option is taken: the member writes the answer", context do
+      assert {:ok, _} = questions(context, [question(%{"options" => []})])
+    end
+
+    test "an option's recommended is an optional boolean", context do
+      option = %{"title" => "The small one", "explanation" => "The checkout shows it."}
+
+      for value <- [true, false] do
+        assert {:ok, _} =
+                 questions(context, [
+                   question(%{"options" => [Map.put(option, "recommended", value)]})
+                 ])
+      end
+
+      assert {:ok, _} = questions(context, [question(%{"options" => [option]})])
+
+      for value <- ["yes", 1, nil] do
+        assert {:error,
+                {:schema,
+                 %{
+                   path: "#/questions/0/options/0/recommended",
+                   error: "value is not of type boolean"
+                 }}} =
+                 questions(context, [
+                   question(%{"options" => [Map.put(option, "recommended", value)]})
+                 ])
+      end
+
+      # An option has no other new member.
+      assert {:error, {:schema, %{path: "#/questions/0/options/0"}}} =
+               questions(context, [question(%{"options" => [Map.put(option, "best", true)]})])
+
+      for member <- ["title", "explanation"] do
+        assert {:error, {:schema, %{path: "#/questions/0/options/0"}}} =
+                 questions(context, [
+                   question(%{
+                     "options" => [option |> Map.put("recommended", true) |> Map.delete(member)]
+                   })
+                 ])
+      end
+    end
+
+    # The schema as `Apiary.Artifacts.Format` builds and runs it with JSV applies
+    # `contains`, `minContains` and `maxContains`: the check below is the schema's.
+    test "at most one option of a question has recommended true, in any state", context do
+      option = &%{"title" => "Option #{&1}", "explanation" => "Why #{&1}."}
+      yes = &Map.put(option.(&1), "recommended", true)
+      no = &Map.put(option.(&1), "recommended", false)
+      by = %{"name" => "Ann Example"}
+      answer = %{"option" => "Option 1", "by" => by, "at" => @at}
+
+      states = [
+        %{"state" => "open"},
+        %{"state" => "answered", "answer" => answer},
+        %{"state" => "withdrawn"}
+      ]
+
+      for state <- states do
+        for options <- [
+              [option.(1), option.(2)],
+              [no.(1), no.(2)],
+              [yes.(1)],
+              [yes.(1), option.(2), no.(3)],
+              [option.(1), no.(2), yes.(3)]
+            ] do
+          assert {:ok, _} =
+                   questions(context, [question(Map.put(state, "options", options))]),
+                 inspect({state, options})
+        end
+
+        for options <- [
+              [yes.(1), yes.(2)],
+              [yes.(1), option.(2), yes.(3)],
+              [yes.(1), yes.(2), yes.(3)]
+            ] do
+          count = Enum.count(options, &(&1["recommended"] == true))
+
+          error =
+            "list contains more than 1 items validating the 'contains' schema, " <>
+              "found #{count} items"
+
+          assert {:error, {:schema, %{path: "#/questions/0/options", error: ^error}}} =
+                   questions(context, [question(Map.put(state, "options", options))]),
+                 inspect({state, options})
+        end
+      end
+
+      # The rule is per question: two questions may each recommend one.
       assert {:ok, _} =
-               questions(context, [question(%{"options" => Enum.map(1..10, option)})])
-
-      assert {:error, {:schema, %{path: "#/questions/0/options"}}} =
-               questions(context, [question(%{"options" => Enum.map(1..11, option)})])
+               questions(context, [
+                 question(%{"options" => [yes.(1)]}),
+                 question(%{"id" => "q2", "options" => [yes.(1)]})
+               ])
     end
 
     test "an answer chooses one of the question's option titles, or none and a note",
@@ -387,6 +499,22 @@ defmodule Apiary.Artifacts.FormatTest do
                review_comments(context, [review_comment(), review_comment()])
 
       assert error =~ "earlier review comment"
+    end
+
+    test "on one output, or on the round of a run, and no mix of the two", context do
+      assert {:ok, _} = review_comments(context, [review_comment(%{"on" => %{"run" => 3}})])
+
+      assert {:ok, _} =
+               review_comments(context, [
+                 review_comment(%{
+                   "on" => %{"artifact" => "mockup", "version" => 2, "screen" => "checkout"}
+                 })
+               ])
+
+      for on <- [%{"run" => 0}, %{"run" => 1, "artifact" => "proposal"}, %{}] do
+        assert {:error, {:schema, %{path: "#/review_comments/0/on"}}} =
+                 review_comments(context, [review_comment(%{"on" => on})])
+      end
     end
 
     test "a key twice in one object is refused at the object's place", context do

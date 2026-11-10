@@ -24,7 +24,7 @@ defmodule Apiary.TimeLimits do
   #
   # ## Refused on save
   #
-  # `workflow`: a lower-case letter, then up to 63 lower-case letters, digits and hyphens.
+  # `workflow`: a lower-case letter, then up to 54 lower-case letters, digits and hyphens.
   # `minutes`: a whole number from 15 to 1440.
   # Each refusal is a changeset error on its field.
   #
@@ -44,7 +44,7 @@ defmodule Apiary.TimeLimits do
   alias Apiary.Runs.Target
   alias Apiary.TimeLimits.{Resolution, TimeLimit}
 
-  @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  @workflow ~r/\A[a-z][a-z0-9-]{0,54}\z/
   @min_minutes 15
   @max_minutes 1440
 

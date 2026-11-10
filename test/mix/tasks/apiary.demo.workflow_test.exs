@@ -244,14 +244,21 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       assert to_string(Stages.status(stopped).escalation.cause) == "run_stopped"
 
       # A run that qory closed because the harness at the target's root has no skill
-      # explore-a-ticket: the escalation names the workflow and that file.
+      # for the workflow explore-a-ticket: the escalation names the workflow and that file.
       missing_skill = items["Show the size guide in German"]
       assert at.(missing_skill.title) == {"Explore", "escalated"}
       escalation = Stages.status(missing_skill).escalation
       assert to_string(escalation.cause) == "run_stopped"
 
-      assert escalation.gaps ==
-               "The run's harness has no skill named explore-a-ticket. The harness comes from the harness file at the root of repository acme/web-shop."
+      assert escalation.points == [
+               %{
+                 "text" =>
+                   "The run stopped: the run's harness has no skill for the workflow explore-a-ticket.",
+                 "action" => "run_again",
+                 "fix" =>
+                   "The harness comes from the harness file at the root of repository acme/web-shop."
+               }
+             ]
 
       assert Repo.one!(
                from r in Apiary.Runs.Run,
@@ -275,7 +282,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       end
 
       assert Enum.map(Artifacts.list(added), & &1.type) |> Enum.sort() ==
-               ["acceptance-criteria", "mockup", "proposal"]
+               ["acceptance-criteria", "mockup", "proposal", "verdict"]
 
       # Shape approved by Dana with Max's criteria: Build has its input and waits at its
       # gate.

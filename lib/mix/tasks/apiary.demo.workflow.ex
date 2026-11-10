@@ -43,7 +43,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       * Save a basket for later: Explore running, its first run waiting for a machine,
         on the trial version;
       * Checkout total ignores the voucher after a reload: Explore at its gate, with
-        version 2 of its proposal, whose run replied to the review comment Dana wrote on
+        version 2 of its proposal, whose run replied to the comment Dana wrote on
         version 1 and closed it;
       * Search returns no results for words with umlauts: Explore approved by Dana,
         Shape at its gate;
@@ -63,9 +63,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         added in Shape, then Shape approved by Dana, Build waiting for its workflows,
         which the harness does not declare;
       * Show the size guide in German: Explore escalated, as a run that stopped. The
-        harness file at the root of `acme/web-shop` has no skill `explore-a-ticket`, so
-        qory closed the run failed with the reason `workflow_not_in_harness`, which the
-        run's page and the work item show with the workflow and that file.
+        harness file at the root of `acme/web-shop` has no skill for the workflow
+        `explore-a-ticket`, so qory closed the run failed with the reason
+        `workflow_not_in_harness`, which the run's page and the work item show with
+        the workflow and that file.
     * Last, Dana saves a trial version (Explore with an optional acceptance-criteria
       output) and assigns the first work item to it.
 
@@ -319,7 +320,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     # its run starts.
     workspace = dana_scope.workspace
     chosen = Apiary.Stacks.Sources.chosen(workspace)
-    :ok = Processes.record_declared(workspace, Processes.qory_workflows(chosen))
+    :ok = Processes.record_declared(workspace, Processes.qory_workflows(chosen, workspace))
 
     Shell.info(
       "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"
@@ -763,7 +764,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     %{status: :confirm, step: %{attempt: attempt}} =
       Explore.current(work_item, DateTime.utc_now())
 
-    ok!(WorkItems.answer(ctx.dana, work_item, attempt, @comment), "a review comment")
+    ok!(WorkItems.answer(ctx.dana, work_item, attempt, @comment), "a comment")
     record_result!(ctx, work_item, {:proposal, proposal(work_item.title, :updated), :reply})
     current(ctx.dana, work_item)
   end
@@ -794,8 +795,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   end
 
   # The run's harness walk read the repository's root harness file, and qory found no
-  # skill explore-a-ticket in the harness it composed from it: the run ends failed with
-  # `workflow_not_in_harness` before its runtime starts, and Explore escalates.
+  # skill for the workflow explore-a-ticket in the harness it composed from it: the run
+  # ends failed with `workflow_not_in_harness` before its runtime starts, and Explore
+  # escalates.
   defp drive!(:workflow_missing, ctx, work_item) do
     record_result!(ctx, work_item, :workflow_not_in_harness)
     current(ctx.dana, work_item)
@@ -905,7 +907,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # the pool's key as a gateway posts them: it starts and exits. `result` is
   # `{:proposal, markdown}`, with `:reply` a third element when the run also replies to
   # each open review comment and closes it; `{:questions, questions}`, the questions it
-  # adds; `:failed`, a run that exits failed; or `:workflow_not_in_harness`. The exit,
+  # adds; `:failed`, a run that exits failed; or `:workflow_not_in_harness`. A proposal
+  # ends with the verdict `passed`, as a normal end with no open question does. The exit,
   # once projected, ends the run of the queue, which reads what the run pushed. Returns
   # the run of the queue.
   defp record_result!(%{key: key}, %WorkItem{} = work_item, result) do
@@ -921,6 +924,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     if result == :workflow_not_in_harness, do: walked_file!(dispatch_run)
     run = hand_over!(dispatch_run, work_item, key, now)
     push_run!(dispatch_run, run, work_item, result, now)
+    push_verdict!(dispatch_run, work_item, result)
 
     meta = %{
       contract_version: 1,
@@ -1003,6 +1007,16 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   defp push_run!(_dispatch_run, _run, _work_item, _result, _now), do: :ok
 
+  defp push_verdict!(dispatch_run, work_item, result) when elem(result, 0) == :proposal do
+    run_push!(dispatch_run, work_item, "verdict", %{
+      filename: "verdict.json",
+      content_type: "application/json",
+      binary: Jason.encode!(%{"verdict" => "passed"})
+    })
+  end
+
+  defp push_verdict!(_dispatch_run, _work_item, _result), do: :ok
+
   defp run_push!(dispatch_run, work_item, type, file) do
     ok!(
       Artifacts.push({:run, dispatch_run}, current_row(work_item), type, [file],
@@ -1027,28 +1041,52 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
             set: [state: :handed_over]
           )
 
+        registered = %{
+          organisation_id: dispatch_run.organisation_id,
+          workspace_id: dispatch_run.workspace_id,
+          node_run_id: dispatch_run.run_id,
+          node_id: key.node_id,
+          access_key_id: key.id,
+          state: "pending",
+          registered_at: now,
+          # A direct registration has every registration column set.
+          registration_labels: %{},
+          registration_about: %{"kind" => "Explore", "title" => work_item.title},
+          registration_digest: :crypto.hash(:sha256, dispatch_run.run_id),
+          registration_interval_seconds: 60,
+          registration_answer_digest:
+            "sha256=" <> Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower),
+          projected_sequence: Run.projected_from(%{registered_at: now}),
+          dispatch_run_id: dispatch_run.id,
+          updated_at: now
+        }
+
+        # The run's record written when it was queued (`Apiary.Dispatches.Queued`), as a
+        # claim registers it: it keeps its id, its number and when it was queued.
         run =
-          Repo.insert!(%Run{
-            public_id: Run.new_public_id(),
-            organisation_id: dispatch_run.organisation_id,
-            workspace_id: dispatch_run.workspace_id,
-            node_run_id: dispatch_run.run_id,
-            node_id: key.node_id,
-            access_key_id: key.id,
-            state: "pending",
-            registered_at: now,
-            # A direct registration has every registration column set.
-            registration_labels: %{},
-            registration_about: %{"kind" => "Explore", "title" => work_item.title},
-            registration_digest: :crypto.hash(:sha256, dispatch_run.run_id),
-            registration_interval_seconds: 60,
-            registration_answer_digest:
-              "sha256=" <> Base.encode16(:crypto.hash(:sha256, "{}"), case: :lower),
-            projected_sequence: Run.projected_from(%{registered_at: now}),
-            dispatch_run_id: dispatch_run.id,
-            inserted_at: now,
-            updated_at: now
-          })
+          case Repo.one(from r in Run, where: r.dispatch_run_id == ^dispatch_run.id) do
+            %Run{} = queued ->
+              queued |> Ecto.Changeset.change(registered) |> Repo.update!()
+
+            nil ->
+              Repo.insert!(
+                struct!(
+                  %Run{
+                    public_id: Run.new_public_id(),
+                    number:
+                      Apiary.Runs.Number.next(
+                        %Workspace{
+                          id: dispatch_run.workspace_id,
+                          organisation_id: dispatch_run.organisation_id
+                        },
+                        %Nodes.Node{id: key.node_id}
+                      ),
+                    inserted_at: now
+                  },
+                  registered
+                )
+              )
+          end
 
         {:ok, run}
       end)
@@ -1058,10 +1096,14 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   # The run's harness walk as the walk's job leaves it for a target with a root harness
   # file: resolved, from that file. The preview runs no walk job.
-  defp walked_file!(%DispatchRun{id: id}) do
+  defp walked_file!(%DispatchRun{id: id, workspace_id: workspace_id}) do
     {1, _rows} =
       Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^id),
-        set: [state: :resolved, origin: :file, workflow: Stages.explore_workflow()]
+        set: [
+          state: :resolved,
+          origin: :file,
+          workflow: Stages.explore_workflow(workspace_id)
+        ]
       )
   end
 

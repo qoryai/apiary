@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
   @moduledoc """
-  The Clean up row of a run's Prepare machine section on the run page
+  The Remove the machine row of a run's Run list on the run page
   (`ApiaryWeb.PreparationComponents.clean_up/3`): each row the page shows from the
   starter's report, the wait of 15 minutes after the run ended and its end on an open
-  page, the report that reaches an open page on the run's topic, a run on a permanent
-  machine, and the runs with no such row.
+  page, the report that reaches an open page on the run's topic, the runs with no such
+  report, a run that goes on and a dispatch released before a machine existed, and a run
+  on a permanent machine, whose last row is Machine stays registered.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -55,12 +56,12 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
     lv
   end
 
-  # The words of the Clean up row, after a check of its name.
+  # The row's name and words.
   defp row(lv) do
-    assert has_element?(lv, "#prepare-machine-clean-up .q-k", "Clean up")
+    assert has_element?(lv, "#prepare-machine-remove .q-k", "Remove the machine")
 
     lv
-    |> element("#prepare-machine-clean-up .q-s")
+    |> element("#prepare-machine-remove.q-prep-row, #prepare-machine-remove > summary")
     |> render()
     |> LazyHTML.from_fragment()
     |> LazyHTML.text()
@@ -86,7 +87,9 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
 
       lv = open(ctx.conn, ctx.scope, run)
       assert row(lv) =~ "Waiting for a report"
-      refute has_element?(lv, "#prepare-machine-clean-up time")
+      # Started is the run's end; there is no duration while no report has come.
+      assert has_element?(lv, "#prepare-machine-remove .q-tc1 time")
+      refute has_element?(lv, "#prepare-machine-remove .q-tc2 .q-d")
 
       timer = :sys.get_state(lv.pid).socket.assigns.clean_up_timer
       left = Process.read_timer(timer)
@@ -129,13 +132,22 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
 
       for {state, words} <- [
             {:deleting, "Machine removal requested"},
-            {:delete_failed, "Removal failed: the machine still exists"},
-            {:gone, "Machine removed"}
+            {:delete_failed, "Removal failed: the machine still exists"}
           ] do
         report!(claimed, state)
         assert row(lv) =~ words
-        assert has_element?(lv, "#prepare-machine-clean-up time")
+        refute has_element?(lv, "#prepare-machine-remove .q-tc2 .q-d")
       end
+
+      # The gone report: no words beside the name, the time from the run's end to the
+      # report, and the cause and the machine's time alive.
+      report!(claimed, :gone)
+      refute row(lv) =~ "Removal failed"
+      refute has_element?(lv, "#prepare-machine-remove .q-s")
+      assert has_element?(lv, "#prepare-machine-remove .q-tc2 .q-d")
+      assert has_element?(lv, "#prepare-machine-remove dt", "Machine removed")
+      assert has_element?(lv, "#prepare-machine-remove dd", "Run ended")
+      assert has_element?(lv, "#prepare-machine-remove dt", "Alive")
 
       assert :sys.get_state(lv.pid).socket.assigns.clean_up_timer == nil
     end
@@ -146,7 +158,7 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
 
       lv = open(ctx.conn, ctx.scope, run)
       assert has_element?(lv, "#prepare-machine")
-      refute has_element?(lv, "#prepare-machine-clean-up")
+      refute has_element?(lv, "#prepare-machine-remove")
 
       report!(claimed, :deleting)
       assert row(lv) =~ "Machine removal requested"
@@ -159,11 +171,12 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
 
       lv = open(ctx.conn, ctx.scope, run)
       :ok = Dispatches.report_machine_end(claimed.key, other.dispatch.public_id, %{state: :gone})
-      refute has_element?(lv, "#prepare-machine-clean-up")
+      refute has_element?(lv, "#prepare-machine-remove")
     end
   end
 
-  test "a dispatch released before a machine existed has no row", ctx do
+  test "a dispatch released before a machine existed has no report: Remove the machine is skipped",
+       ctx do
     pool = pool_fixture(ctx.scope, name: "build-pool")
     %{access_key: key} = enrolled_key_fixture(ctx.scope, pool)
     _gateway = gateway_for!(ctx.scope, pool)
@@ -180,11 +193,24 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
 
     lv = open(ctx.conn, ctx.scope, Repo.get!(Run, registered.id))
     assert has_element?(lv, "#prepare-machine")
-    refute has_element?(lv, "#prepare-machine-clean-up")
+    # After the failed Start the machine, the step that did not run is skipped.
+    assert has_element?(lv, "#prepare-machine-remove.q-prep-skipped[data-state='skipped']")
+    refute has_element?(lv, "#prepare-machine [data-clean-up]")
   end
 
   describe "a run on a permanent machine" do
-    test "on an open page whose section had settled, the run's exit brings the row", ctx do
+    # The last row's name and words.
+    defp stays_row(lv) do
+      lv
+      |> element("#prepare-machine-remove")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
+    test "on an open page whose list had settled, the run's exit brings the row", ctx do
       run =
         ctx.scope
         |> node_fixture()
@@ -193,17 +219,17 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
 
       lv = open(ctx.conn, ctx.scope, run)
       assert :sys.get_state(lv.pid).socket.assigns.preparation_settled
-      refute has_element?(lv, "#prepare-machine-clean-up")
+      refute has_element?(lv, "#prepare-machine-remove")
 
       project!(run, [
         {5, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 2_000}}
       ])
 
       send(lv.pid, :flush)
-      assert row(lv) =~ "Machine stays registered"
+      assert stays_row(lv) == "Machine stays registered"
     end
 
-    test "once it ended, the machine stays registered; before, no row", ctx do
+    test "once it ended, the last row is Machine stays registered; before, no row", ctx do
       node = node_fixture(ctx.scope)
 
       running =
@@ -213,7 +239,7 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
 
       lv = open(ctx.conn, ctx.scope, running)
       assert has_element?(lv, "#prepare-machine")
-      refute has_element?(lv, "#prepare-machine-clean-up")
+      refute has_element?(lv, "#prepare-machine-remove")
 
       ended =
         node
@@ -221,11 +247,13 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
         |> project!(steps(true))
 
       lv = open(ctx.conn, ctx.scope, ended)
-      assert row(lv) =~ "Machine stays registered"
-      refute has_element?(lv, "#prepare-machine-clean-up time")
+      assert has_element?(lv, "#prepare-machine-prepare")
+      assert stays_row(lv) == "Machine stays registered"
+      refute has_element?(lv, "#prepare-machine-remove time")
+      refute has_element?(lv, "#prepare-machine-remove .q-prep-name", "Remove the machine")
     end
 
-    test "with no setup step, once it ended, the section shows the row alone", ctx do
+    test "with no setup step, once it ended, the list shows the row alone", ctx do
       node = node_fixture(ctx.scope)
 
       running =
@@ -247,7 +275,23 @@ defmodule ApiaryWeb.RunLive.ShowCleanUpTest do
       lv = open(ctx.conn, ctx.scope, ended)
       assert has_element?(lv, "#prepare-machine")
       refute has_element?(lv, "#prepare-machine [id^='prepare-machine-step-']")
-      assert row(lv) =~ "Machine stays registered"
+      assert stays_row(lv) == "Machine stays registered"
+    end
+
+    test "with a session, the Timeline is inside Run the agent, above the row", ctx do
+      ended =
+        ctx.scope
+        |> node_fixture()
+        |> node_run_fixture(unique_instance_id(), %{state: "running"})
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data()},
+          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 2_000}}
+        ])
+
+      lv = open(ctx.conn, ctx.scope, ended)
+      assert has_element?(lv, "#prepare-machine-session #prepare-machine-session-agent #timeline")
+      assert stays_row(lv) == "Machine stays registered"
     end
   end
 end

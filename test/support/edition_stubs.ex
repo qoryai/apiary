@@ -47,6 +47,15 @@ defmodule Apiary.EditionStubs do
       do: Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
   end
 
+  defmodule NoEnvironmentRebuild do
+    @moduledoc """
+    Nobody may rebuild a target's environment (`target.rebuild_environment`), as under an
+    edition with a role that reads runs and may not rebuild.
+    """
+    def check(_scope, :"target.rebuild_environment", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule OperatorChain do
     @moduledoc """
     The operator's rows are the whole chain of model choices of every organisation
@@ -762,6 +771,15 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule ReadsNoMachines do
+    @moduledoc """
+    A person reads no machine and no pool of the workspace (`node.read`), as an edition's
+    reader may.
+    """
+    def check(_scope, :"node.read", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule EndsCollectionAtAssign do
     @moduledoc """
     The organisation's live collections titled `ends-at-assign` end as `collection.assign`
@@ -814,6 +832,41 @@ defmodule Apiary.EditionStubs do
     @moduledoc "Nobody changes runtimes (`runtime.write`), whoever asks."
     def check(_scope, :"runtime.write", _subject), do: {:error, :forbidden}
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule RefusesConfirm do
+    @moduledoc """
+    The `work_item.confirm` check fails for the account the test puts (`put/1`, read as
+    `HidesNamed` reads its list), as every change check fails in an edition for a member
+    of a suspended organisation. Every other check is the edition's.
+    """
+
+    @doc "put/1 sets the account id that may not approve a proposal."
+    def put(account_id) do
+      Process.put(:refuses_confirm, account_id)
+      :ok
+    end
+
+    def check(%{user: %{id: id}} = scope, :"work_item.confirm", subject) do
+      if id == refused(),
+        do: {:error, :forbidden},
+        else: Apiary.Edition.module().check(scope, :"work_item.confirm", subject)
+    end
+
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+
+    defp refused do
+      Enum.find_value([self() | Process.get(:"$callers", [])], fn
+        pid when pid == self() ->
+          Process.get(:refuses_confirm)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :refuses_confirm}) do
+            {{:dictionary, :refuses_confirm}, id} -> id
+            _unset -> nil
+          end
+      end)
+    end
   end
 
   defmodule NoProviderWrite do

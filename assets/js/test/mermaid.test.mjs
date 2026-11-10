@@ -4,8 +4,9 @@
 // and the secure list that the vendored Mermaid applies to a document's front matter;
 // the five diagram types it draws (`types`, `type`) and what it shows for a block
 // (`drawing`); the blocks it does not draw, as drawing them would load an address
-// (`loads`); the redraw on a theme change (`watchTheme`); and the width it sets on the
-// <img> (`width`).
+// (`loads`); the redraw on a theme change (`watchTheme`); the width it sets on the
+// <img> (`width`) and the least width (`narrowest`); and the tab stop of a frame that
+// scrolls (`reach`).
 // `node --test 'assets/js/test/*.test.mjs'` (no npm).
 
 import {test} from "node:test"
@@ -16,6 +17,8 @@ import {
   drawing,
   labelCSS,
   loads,
+  narrowest,
+  reach,
   secure,
   settings,
   source,
@@ -520,4 +523,31 @@ test("each type the hook draws is one of the five to the vendored Mermaid", asyn
   // type is classDiagram-v20, which is not in types.
   await assert.rejects(mermaid.parse("classDiagram-v20\n  A <|-- B"), /Parse error/)
   assert.equal(type("classDiagram-v20\n  A <|-- B"), "classDiagram-v20")
+})
+
+test("narrowest is 60% of a diagram's width, rounded up", () => {
+  assert.equal(narrowest(847), 509)
+  assert.equal(narrowest(924), 555)
+  assert.equal(narrowest(100), 60)
+})
+
+test("reach makes a frame a named tab stop while it scrolls, and removes that when it does not", () => {
+  const attrs = new Map()
+  const frame = {
+    scrollWidth: 555,
+    clientWidth: 370,
+    setAttribute: (name, value) => attrs.set(name, value),
+    removeAttribute: name => attrs.delete(name),
+  }
+
+  reach(frame, "Diagram")
+  assert.deepEqual(Object.fromEntries(attrs), {
+    tabindex: "0",
+    role: "group",
+    "aria-label": "Diagram",
+  })
+
+  frame.clientWidth = 555
+  reach(frame, "Diagram")
+  assert.deepEqual(Object.fromEntries(attrs), {})
 })

@@ -1,0 +1,20 @@
+{
+  "runs": [
+    {
+      "id": "rn_0123456789abcdej",
+      "number": 43,
+      "organisation": {
+        "slug": "example-org"
+      },
+      "workspace": {
+        "id": "ws_0123456789abcdef",
+        "slug": "example"
+      },
+      "state": "completed",
+      "created_at": "2026-11-01T10:30:00Z",
+      "started_at": "2026-11-01T10:31:00Z",
+      "duration_seconds": 60
+    }
+  ],
+  "next": null
+}

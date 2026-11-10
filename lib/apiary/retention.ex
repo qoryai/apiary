@@ -624,7 +624,7 @@ defmodule Apiary.Retention do
 
     from d in DispatchRun,
       as: :dispatch_run,
-      join: r in Run,
+      join: r in subquery(Run.registered()),
       on: r.dispatch_run_id == d.id,
       join: w in WorkItem,
       on: w.id == d.work_item_id,

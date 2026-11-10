@@ -4,7 +4,8 @@ defmodule Apiary.Kinds.Runtime do
   the contract's `runtimes.json` names them, the declarations (`declares`) and groups as
   JSON maps with string keys. `model` is the runtime's `model` member as a JSON map, or
   nil for a runtime without one; its `formats` are the model API formats the runtime
-  sends.
+  sends. `egress_hosts` is the exact hosts a run of the runtime needs to reach, `[]` for
+  none.
 
   Three fields are read out of `model`, empty for a runtime without them:
 
@@ -27,7 +28,8 @@ defmodule Apiary.Kinds.Runtime do
             model: nil,
             model_keys: [],
             effort_values: [],
-            endpoint_variable: nil
+            endpoint_variable: nil,
+            egress_hosts: []
 
   @typedoc "A runtime of the catalogue."
   @type t :: %__MODULE__{
@@ -41,6 +43,7 @@ defmodule Apiary.Kinds.Runtime do
           model: map | nil,
           model_keys: [%{String.t() => String.t() | map}],
           effort_values: [String.t()],
-          endpoint_variable: String.t() | nil
+          endpoint_variable: String.t() | nil,
+          egress_hosts: [String.t()]
         }
 end

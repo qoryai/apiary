@@ -1,5 +1,5 @@
 defmodule Apiary.Stacks.SourcesRacesTest do
-  # Two saves of Workspace settings › Workflow (`Apiary.Stacks.Sources.save/3`) of one
+  # Two saves of Workspace settings › Harness (`Apiary.Stacks.Sources.save/3`) of one
   # workspace at the same time. Each side runs on a connection outside the SQL sandbox,
   # so each commits and each waits on the other's locks as it would in production
   # (`Apiary.Races`). Not async: what these tests commit is visible to every other test

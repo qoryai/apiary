@@ -19,6 +19,8 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   # and the exit's end at once, several rounds, are in `Apiary.Dispatches.RunEndRacesTest`.
   use ExUnit.Case, async: false
 
+  @before_compile Apiary.TestSetup
+
   import Ecto.Query
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
@@ -196,7 +198,11 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   defp dispatch!(claimed), do: Repo.get!(Dispatch, claimed.dispatch.id)
 
   defp registered(claimed),
-    do: Repo.one(from r in Run, where: r.dispatch_run_id == ^claimed.dispatch_run.id)
+    do:
+      Repo.one(
+        from r in Apiary.RunEventsFixtures.registered_runs(),
+          where: r.dispatch_run_id == ^claimed.dispatch_run.id
+      )
 
   # The dispatch released once: ended `released`, the slot freed once, one entry, the
   # registered run deleted.
@@ -207,6 +213,22 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
     assert length(entries(claimed)) == 1
     assert Slots.held(ctx.pool.id) == 0
     assert registered(claimed) == nil
+  end
+
+  # The dispatch ended `released`, then a machine showed up for it: its slot is held
+  # until the machine is reported gone, which this reports.
+  defp released_late!(ctx, claimed) do
+    assert %Dispatch{end_cause: :released, late_machine_at: %DateTime{}, slot_freed_at: nil} =
+             dispatch!(claimed)
+
+    assert length(entries(claimed)) == 1
+    assert Slots.held(ctx.pool.id) == 1
+    gone!(ctx, claimed)
+    assert Slots.held(ctx.pool.id) == 0
+  end
+
+  defp gone!(ctx, claimed) do
+    :ok = Dispatches.report_machine_end(ctx.key, dispatch!(claimed).public_id, %{state: :gone})
   end
 
   # Ends what waits of the work item's take in, so the next round's claim takes the run
@@ -268,7 +290,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
 
       assert Task.await(second.task) == {:error, :gone}
       assert queue_run!(claimed).state == :waiting
-      released!(ctx, claimed)
+      released_late!(ctx, claimed)
     end
   end
 
@@ -302,7 +324,7 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
 
       assert Task.await(second.task) == {:error, :unauthorized}
       assert queue_run!(claimed).state == :waiting
-      released!(ctx, claimed)
+      released_late!(ctx, claimed)
     end
   end
 
@@ -417,6 +439,8 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
   end
 
   describe "a release of a prebuild and a build queued for its ref" do
+    @describetag needs: [:factory, :registry]
+
     test "the build first: the release waits on the record, then is superseded by the run that waits",
          ctx do
       claimed = prebuild_started!(ctx)
@@ -521,12 +545,16 @@ defmodule Apiary.Dispatches.ReleaseRacesTest do
       refute handed_over? and Enum.member?(releases, :ok)
 
       # Whatever came first, nothing is left holding the slot, but a run handed over,
-      # which its exit ends.
+      # which its exit ends and whose machine is then reported gone.
       if queue_run!(claimed).state == :handed_over do
         run = Repo.get!(Run, claimed.run.id)
         exited!(run)
         {:ok, _run} = Apiary.Runs.Projector.project(run)
+        gone!(ctx, claimed)
       end
+
+      # A machine that showed up after a release or a close holds the slot until gone.
+      if dispatch!(claimed).late_machine_at, do: gone!(ctx, claimed)
 
       end_waiting!(claimed)
       assert Slots.held(ctx.pool.id) == 0

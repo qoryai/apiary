@@ -27,6 +27,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   # whichever comes first.
   use ExUnit.Case, async: false
 
+  @before_compile Apiary.TestSetup
+
   import Ecto.Query
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures
@@ -98,7 +100,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     do: Dispatches.release(ctx.key, dispatch.public_id, %{reason: @reason})
 
   # The run of the queue, its dispatch and its registered run as the ends left them, held
-  # to one end: the cause on both, the dispatch's slot freed by that end, at its end.
+  # to one end: the cause on both, the dispatch's slot held for its machine past that end,
+  # then freed once the machine is reported gone, which this reports when it was not.
   defp ended!(ctx, handed) do
     dispatch_run = Repo.get!(DispatchRun, handed.dispatch_run.id)
     dispatch = Repo.get!(Dispatch, handed.dispatch.id)
@@ -106,7 +109,16 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     assert dispatch_run.state == :ended
     assert dispatch.end_cause == dispatch_run.end_cause
     assert %DateTime{} = dispatch.ended_at
-    assert dispatch.slot_freed_at == dispatch.ended_at
+
+    # Its machine, once reported gone, freed the slot; until then the slot is held.
+    if dispatch.machine_end_state == :gone do
+      assert %DateTime{} = dispatch.slot_freed_at
+    else
+      assert dispatch.slot_freed_at == nil
+      assert Slots.held(ctx.pool.id) == 1
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :gone})
+    end
+
     assert Slots.held(ctx.pool.id) == 0
 
     {dispatch_run.end_cause, Repo.get!(Run, handed.run.id)}
@@ -240,6 +252,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   end
 
   describe "a prebuild lost after its handover" do
+    @describetag needs: [:factory, :registry]
+
     # A pool with a gateway, whose keys' public halves, and the adapters and entries its
     # collections leave, are deleted as the release's races delete them: the organisation
     # first, then what outlives it.
@@ -396,6 +410,13 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
                  %DispatchRun{state: :waiting, environment_ref: "env-1"}
                ] =
                  runs_of(handed)
+
+        assert Slots.held(ctx.place.pool.id) == 1
+
+        :ok =
+          Dispatches.report_machine_end(ctx.place.key, handed.dispatch.public_id, %{
+            state: :gone
+          })
 
         assert Slots.held(ctx.place.pool.id) == 0
         end_waiting!(handed)
@@ -591,6 +612,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   end
 
   describe "the end of a run whose image was missing" do
+    @describetag needs: [:factory, :registry]
+
     # The end holds the connections and the collections of the records of the image
     # `FOR SHARE`, then the work item `FOR UPDATE`, then the records `FOR UPDATE`, before
     # the run of the queue; it clears the image, queues a prebuild of each collection,

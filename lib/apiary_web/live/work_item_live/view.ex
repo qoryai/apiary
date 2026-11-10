@@ -22,8 +22,9 @@ defmodule ApiaryWeb.WorkItemLive.View do
   # what the page shows (`ApiaryWeb.WorkItemComponents.markdown/1`), as `:rendered` beside
   # the text: the newest proposal, the proposals each earlier run of this take in wrote
   # (the newest proposal's render where a run wrote that version), the proposals of the
-  # runs of the earlier take ins, and every question. A proposal is rendered with the
-  # image files of its version, which its Markdown may show.
+  # runs of the earlier take ins, each where the page read its text, and every question.
+  # A proposal is rendered with the image files of its version, which its Markdown may
+  # show.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -35,7 +36,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   alias Apiary.Artifacts.ArtifactFile
   alias ApiaryWeb.{ArtifactComponents, People, RunComponents, WorkItemComponents}
 
-  @qory [:started, :asked, :proposed, :no_result, :lost, :cancelled]
+  @qory [:started, :asked, :proposed, :replied, :no_result, :lost, :cancelled]
 
   ## People
 
@@ -96,12 +97,30 @@ defmodule ApiaryWeb.WorkItemLive.View do
     }
   end
 
+  @doc false
+  # shown_output/3 is `read`, a stage's output as `Apiary.WorkItems.ExploreView.output/3`
+  # reads it, with its Markdown rendered as a proposal's is (`shown/2`), for work item
+  # `number`; nil for nil.
+  @spec shown_output(Scope.t(), pos_integer, map | nil) :: map | nil
+  def shown_output(%Scope{} = scope, number, read) do
+    shown(read, %{
+      scope: scope,
+      number: number,
+      images?: ApiaryWeb.Features.visible?(scope, :workflow_model)
+    })
+  end
+
   # A proposal as the page shows it: its Markdown rendered with the image files of its
   # version, each a filename and the file's download address
   # (`ApiaryWeb.ArtifactComponents.file_path/4`), for the Markdown's image references.
+  # For a reader not shown the feature `workflow_model`, whose artifact pages serve the
+  # files, the images are nil, so each image shows as “Image: <alt>”, with no link.
   defp shown(%{} = proposal, ctx) do
     images =
       case proposal do
+        _any when not ctx.images? ->
+          nil
+
         %{version_id: version_id, images: filenames} when is_binary(version_id) ->
           for filename <- filenames,
               do:
@@ -204,6 +223,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       [row.owner_id, row.taken_in_by_id, explore.ended_by_id, explore.confirmed_by_id] ++
         explore.answers_by_ids ++
         Enum.map(all_runs, & &1.answered_by_id) ++
+        Enum.map(all_runs, & &1[:sent_by_id]) ++
         Enum.flat_map(take_ins, &[&1.taken_in_by_id, &1.ended_by_id]) ++
         given_ids(explore) ++
         Enum.flat_map(thread, &[&1[:actor_id], &1[:owner_id]]) ++
@@ -216,7 +236,9 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
     %{
       scope: scope,
+      explore_stage: if(Enum.any?(all_runs, &staged?/1), do: Apiary.Stages.explore_stage_id(row)),
       number: row.number,
+      images?: ApiaryWeb.Features.visible?(scope, :workflow_model),
       people: people(scope, ids),
       readable: readable(scope, workspace_ids)
     }
@@ -240,7 +262,9 @@ defmodule ApiaryWeb.WorkItemLive.View do
   end
 
   # The workspaces of `ids` whose runs the scope's person may read, by id.
-  defp readable(scope, ids) do
+  @doc false
+  # readable/2 is the workspaces of `ids` where the reader may read runs, by id.
+  def readable(scope, ids) do
     case ids |> Enum.reject(&is_nil/1) |> Enum.uniq() do
       [] ->
         %{}
@@ -254,14 +278,17 @@ defmodule ApiaryWeb.WorkItemLive.View do
     end
   end
 
-  defp run_path(ctx, %{number: number, workspace_id: workspace_id}) when is_integer(number) do
+  @doc false
+  # run_path/2 is the path of the run's page; nil where the run has no number yet, or the
+  # reader may not read runs in its workspace (`readable/2`).
+  def run_path(ctx, %{number: number, workspace_id: workspace_id}) when is_integer(number) do
     case Map.get(ctx.readable, workspace_id) do
       nil -> nil
       workspace -> ~p"/#{ctx.scope.organisation}/#{workspace}/runs/#{number}"
     end
   end
 
-  defp run_path(_ctx, _run), do: nil
+  def run_path(_ctx, _run), do: nil
 
   defp work_item(row, explore, names, latest, ctx) do
     %{
@@ -309,27 +336,28 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp reason("ticket_closed"), do: :ticket_closed
   defp reason(_other), do: nil
 
-  # Details' runs: those of the current take in handed over, the latest of them, and how
-  # many are not ended; nil before any. Attempts start at 1 in each take in, so a count
-  # across take ins would not match the attempt shown beside it.
+  # Details' runs: those of the current take in, as the fold of the runs counts them, the
+  # latest of them, how many are running, and whether the latest waits for a machine
+  # (`queued`: no state yet or `:pending`, as `run_line` shows it). Nil until one is handed
+  # over, where Details has None yet or the queued run's line. Attempts start at 1 in each
+  # take in, so a count across take ins would not match the attempt shown beside it.
   defp runs_summary(explore, ctx) do
-    case Enum.filter(explore.earlier_runs ++ List.wrap(explore.run), &is_binary(&1.id)) do
-      [] ->
-        nil
+    runs = explore.earlier_runs ++ List.wrap(explore.run)
 
-      runs ->
-        latest = List.last(runs)
+    if Enum.any?(runs, &is_binary(&1.id)) do
+      latest = List.last(runs)
 
-        %{
-          latest: %{
-            id: latest.id,
-            number: latest.number,
-            attempt: latest.attempt,
-            path: run_path(ctx, latest)
-          },
-          count: length(runs),
-          running: Enum.count(runs, &(&1.state in [:pending, :running]))
-        }
+      %{
+        latest: %{
+          id: latest.id,
+          number: latest.number,
+          attempt: latest.attempt,
+          path: run_path(ctx, latest)
+        },
+        count: length(runs),
+        running: Enum.count(runs, &(&1.state == :running)),
+        queued: latest.state in [nil, :pending]
+      }
     end
   end
 
@@ -337,6 +365,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
     run
     |> run(ctx)
     |> Map.put(:answers_by, Enum.map(explore.answers_by_ids, &person(ctx.people, &1)))
+    |> Map.put(:sent_by, if(run[:sent] == true, do: person(ctx.people, run[:sent_by_id])))
   end
 
   # The take in's first run before it exists, as Explore stands then (queued): its place,
@@ -373,11 +402,44 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp run(run, ctx) do
     Map.merge(run, %{
       path: run_path(ctx, run),
+      other_stage: other_stage?(run, ctx),
+      liveness: liveness_of(run[:heard]),
       duration: run.duration_ms && RunComponents.format_duration_ms(run.duration_ms),
       answered_by: run.answered_at && person(ctx.people, run.answered_by_id),
       answers_by: []
     })
   end
+
+  # The fields to follow of a registered run of Explore that is running or about to run;
+  # nil for any other run.
+  @doc false
+  def live_heard(%{heard: %{state: state} = heard, other_stage: false})
+      when state in ["pending", "running"],
+      do: heard
+
+  def live_heard(_run), do: nil
+
+  # A registered running run's state on its page, from the fields of
+  # `Apiary.WorkItems.ExploreView.heard/1`: `:quiet` by the rule of
+  # `ApiaryWeb.RunComponents.quiet_for/2`, else `:alive`. Nil for any other run.
+  @doc false
+  def liveness_of(%{state: "running"} = heard),
+    do: if(RunComponents.quiet_for(heard), do: :quiet, else: :alive)
+
+  def liveness_of(_heard), do: nil
+
+  # Whether the run ran at another stage than Explore: any stage, for a process with no
+  # Explore stage (`explore_stage` nil). `Apiary.WorkItems.Explore.steps/3` reads every run
+  # of the take in, and Explore's tab shows only Explore's.
+  defp other_stage?(%{stage_id: stage_id} = run, %{explore_stage: explore_stage}),
+    do: staged?(run) and stage_id != explore_stage
+
+  defp other_stage?(_run, _ctx), do: false
+
+  # Whether the run has a stage id. `other_stage?/2` reads Explore's stage only for such a
+  # run, and `context/4` reads that stage from the work item's process version.
+  defp staged?(%{stage_id: stage_id}), do: is_binary(stage_id)
+  defp staged?(_run), do: false
 
   defp take_in(take_in, ctx) do
     %{
@@ -445,6 +507,13 @@ defmodule ApiaryWeb.WorkItemLive.View do
       owner: entry.owner_id && person(ctx.people, entry.owner_id)
     }
 
+  defp event_fields(%{kind: :replied} = entry, _row, _names, ctx),
+    do: %{
+      run: run_ref(entry.run, ctx),
+      replies: entry.replies,
+      duration: duration(entry.duration_ms)
+    }
+
   defp event_fields(%{kind: :no_result} = entry, _row, _names, ctx),
     do: %{
       run: run_ref(entry.run, ctx),
@@ -463,6 +532,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       run: run_ref(entry.run, ctx),
       questions: rendered_questions(entry.questions),
       comment: entry[:comment],
+      artifact: entry[:artifact],
       reply: entry[:reply] == true
     }
 
@@ -475,7 +545,14 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp event_fields(_entry, _row, _names, _ctx), do: %{}
 
   defp run_ref(run, ctx) do
-    %{id: run.id, number: run.number, path: run_path(ctx, run), attempt: run.attempt, of: run.of}
+    %{
+      id: run.id,
+      number: run.number,
+      path: run_path(ctx, run),
+      stage_id: run[:stage_id],
+      attempt: run.attempt,
+      of: run.of
+    }
   end
 
   defp duration(ms) when is_integer(ms), do: RunComponents.format_duration_ms(ms)

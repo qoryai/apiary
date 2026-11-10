@@ -84,7 +84,11 @@ defmodule ApiaryWeb.RunDiagnosticsControllerTest do
   end
 
   test "a run of another workspace, or no run, is not found", %{conn: conn, scope: scope} do
-    theirs = run_fixture(scope_fixture(), %{public_id: Run.new_public_id()})
+    # Their second run: this workspace has one run, so it has no run with that number.
+    other = scope_fixture()
+    run_fixture(other, %{public_id: Run.new_public_id()})
+    theirs = run_fixture(other, %{public_id: Run.new_public_id()})
+    assert theirs.number == 2
     base = ~p"/#{scope.organisation}/#{scope.workspace}/runs"
 
     for id <- [
@@ -98,6 +102,22 @@ defmodule ApiaryWeb.RunDiagnosticsControllerTest do
       assert conn.status == 404, id
       assert conn.resp_body == "not found"
     end
+  end
+
+  test "one number in two workspaces: each address has the run of its workspace", %{
+    conn: conn,
+    run: run,
+    path: path
+  } do
+    other = scope_fixture()
+    theirs = run_fixture(other, %{public_id: Run.new_public_id()})
+    assert theirs.number == run.number
+
+    assert document(get(conn, path))["run"]["id"] == run.public_id
+
+    theirs_conn = log_in_user(build_conn(), other.user)
+    their_path = ~p"/#{other.organisation}/#{other.workspace}/runs/#{theirs.number}/diagnostics"
+    assert document(get(theirs_conn, their_path))["run"]["id"] == theirs.public_id
   end
 
   test "the run's rn_ address sends on to its number, percent-encoded too", %{

@@ -1,18 +1,22 @@
 defmodule ApiaryWeb.RunLive.ShowImageTest do
   @moduledoc """
-  The image under the Wall in a run page's rail (`ApiaryWeb.RunLive.Show`), for a run of
-  the workspace's queue: the image Qory gave the run, raw, with "Prebuilt for this
+  The Image row of a run page's rail (`ApiaryWeb.RunLive.Show`), after the Wall, for a
+  run of the workspace's queue: the image Qory gave the run, raw, with "Prebuilt for this
   repository" under it; for a run of the queue given none, the image it reported, with
   "The pool's default image." under it; for a run that started in its policy's image, and
-  any other run, the image it reported, with no line under it.
+  any other run, the image it reported, with no line under it. A run with no wall has no
+  Image row.
   """
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
+
+  alias Apiary.Repo
 
   @moduletag needs: :factory
 
@@ -45,6 +49,65 @@ defmodule ApiaryWeb.RunLive.ShowImageTest do
   defp given_image(image),
     do: %{configured_image: image, started_image_from: "top_level", started_image: image}
 
+  test "a run on a machine type renamed since the run shows the type's name and key now, the image cut",
+       %{conn: conn, scope: scope, key: key} do
+    image = "ghcr.io/acme/agent-shown@sha256:" <> String.duplicate("5e2b", 16)
+
+    # A type with the key shown-ui, which no other test uses, inserted so that no other
+    # test waits on a row this one changes.
+    type =
+      Repo.insert!(%Apiary.MachineTypes.MachineType{
+        key: "shown-ui",
+        name: "Shown UI",
+        vcpus: 2,
+        memory_mib: 4096,
+        disk_gib: 30,
+        arch: "amd64",
+        image: image
+      })
+
+    run =
+      dispatched(
+        scope,
+        key,
+        Map.merge(given_image(image), %{
+          image: image,
+          configured_image_from_type: true,
+          configured_image_machine_type_id: type.id
+        })
+      )
+
+    event_fixture(run, 9, "run.step_started", %{"step" => 1, "name" => image, "kind" => "image"})
+
+    event_fixture(run, 10, "run.step_exited", %{
+      "step" => 1,
+      "state" => "failed",
+      "exit_code" => -1,
+      "duration_ms" => 900
+    })
+
+    event_fixture(run, 11, "run.exited", %{
+      "state" => "failed",
+      "reason" => "image_missing",
+      "exit_code" => -1
+    })
+
+    {:ok, _run} = Apiary.Runs.Projector.project(run)
+
+    {1, _rows} =
+      Repo.update_all(
+        from(t in Apiary.MachineTypes.MachineType, where: t.id == ^type.id),
+        set: [key: "shown-ui-2", name: "Shown UI 2"]
+      )
+
+    lv = open(conn, scope, run)
+
+    assert render(element(lv, "#run-why")) =~ "the machine type Shown UI 2 ("
+    assert has_element?(lv, "#run-why", "shown-ui-2")
+    assert has_element?(lv, ~s(#run-image[title="#{image}"]), "@sha256:5e2b5e2b5e2b…")
+    refute has_element?(lv, "#run-image-source")
+  end
+
   test "an image Qory gave the run: in mono, raw, its whole reference the title, prebuilt",
        %{conn: conn, scope: scope, key: key} do
     run = dispatched(scope, key, Map.merge(given_image(@prebuilt), %{image: @prebuilt}))
@@ -53,6 +116,33 @@ defmodule ApiaryWeb.RunLive.ShowImageTest do
     assert has_element?(lv, ~s(#run-image.font-mono[title="#{@prebuilt}"]), @prebuilt)
     refute has_element?(lv, "#run-image bdi")
     assert has_element?(lv, "#run-image-source", "Prebuilt for this repository")
+  end
+
+  test "the image has a separate row after the Wall, the Key and the Machine type, and the Wall has the wall alone",
+       %{conn: conn, scope: scope, key: key} do
+    run = dispatched(scope, key, %{started_image_from: "none"})
+    lv = open(conn, scope, run)
+
+    facts = lv |> element("#run-facts") |> render() |> LazyHTML.from_fragment()
+    labels = facts |> LazyHTML.query("dt") |> Enum.map(&String.trim(LazyHTML.text(&1)))
+    wall = Enum.find_index(labels, &(&1 == "Wall"))
+    image = Enum.find_index(labels, &(&1 == "Image"))
+    assert image > wall
+    assert Enum.slice(labels, (wall + 1)..(image - 1)//1) -- ["Key", "Machine type"] == []
+
+    assert has_element?(lv, "#run-image-row #run-image", @reported)
+    assert has_element?(lv, "#run-image-row #run-image-source")
+
+    wall_value = facts |> LazyHTML.query("dd") |> Enum.at(wall) |> LazyHTML.text()
+    assert String.trim(wall_value) == "docker"
+  end
+
+  test "a run with no wall has no Image row", %{conn: conn, scope: scope} do
+    run = run_fixture(scope, %{state: "running", wall: nil, image: @reported})
+    lv = open(conn, scope, run)
+
+    refute has_element?(lv, "#run-image-row")
+    refute has_element?(lv, "#run-facts dt", "Image")
   end
 
   test "an image Qory gave the run is shown even where the run reported another",

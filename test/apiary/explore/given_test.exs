@@ -16,7 +16,7 @@ defmodule Apiary.Explore.GivenTest do
   defp document({_version, document}), do: document
 
   describe "from_events/3" do
-    @describetag needs: [:factory, :workflow_model]
+    @describetag needs: :factory
 
     test "gives what from_events/2 gives, from the documents the caller read" do
       %{scope: scope} = sign_up_fixture()
@@ -41,6 +41,146 @@ defmodule Apiary.Explore.GivenTest do
       assert Enum.map(given, & &1.kind) == [:comment, :reply, :answer]
       assert given == Given.from_events(work_item, events)
       assert given == Given.all(work_item)
+    end
+  end
+
+  describe "answers through the moves and Artifacts.push/5" do
+    @describetag needs: :factory
+
+    # Pushes, as the run of the queue `run`, whose registered run is `registered`, the
+    # newest questions with `change` applied to each and the questions `added` after them,
+    # with `Apiary.Artifacts.push/5`, the call the run API makes, which checks the version
+    # (`Questions.check_run/3`).
+    defp push_questions!(run, registered, change, added \\ []) do
+      work_item = reload(%{id: run.work_item_id})
+      {_version, document} = Questions.newest(work_item)
+      at = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+      added =
+        for {text, n} <- Enum.with_index(added, length(document["questions"]) + 1) do
+          %{
+            "id" => "q#{n}",
+            "question" => text,
+            "options" => [],
+            "state" => "open",
+            "asked" => %{"run" => registered.number, "at" => at}
+          }
+        end
+
+      questions = Enum.map(document["questions"], &change.(&1, registered.number, at))
+
+      assert {:ok, _version} =
+               Apiary.Artifacts.push(
+                 {:run, run},
+                 work_item,
+                 "questions",
+                 [Questions.file(%{"questions" => questions ++ added})],
+                 name: "main",
+                 stage_id: run.stage_id
+               )
+    end
+
+    # A run's change: the answered questions `ids` reopened, each answer moved, unchanged,
+    # to the end of the question's history.
+    defp reopen(ids) do
+      fn
+        %{"id" => id, "answer" => answer} = question, run, at ->
+          if id in ids do
+            reopened = Map.put(answer, "reopened", %{"run" => run, "at" => at})
+
+            question
+            |> Map.delete("answer")
+            |> Map.put("state", "open")
+            |> Map.put("history", (question["history"] || []) ++ [reopened])
+          else
+            question
+          end
+
+        question, _run, _at ->
+          question
+      end
+    end
+
+    # A run's change: the open questions `ids` withdrawn.
+    defp withdraw(ids) do
+      fn
+        %{"id" => id, "state" => "open"} = question, _run, _at ->
+          if id in ids, do: Map.put(question, "state", "withdrawn"), else: question
+
+        question, _run, _at ->
+          question
+      end
+    end
+
+    test "pairs each answer with its move, by id, across reopens, withdrawals and take ins" do
+      %{scope: scope} = sign_up_fixture()
+      %{scope: member} = member_fixture(scope)
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      # Take in 1. Run 1 asks q1, q2 and q3. The owner answers q1 and q2 by id in one
+      # move; q3 stays open.
+      work_item =
+        work_item
+        |> reload()
+        |> end_run!(questions_result(["Which basket?", "Which sale?", "Which refund?"]))
+
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, 1, [
+          %{"id" => "q1", "note" => "The main one."},
+          %{"id" => "q2", "note" => "The spring sale."}
+        ])
+
+      # Run 2 reopens q1 and q2, and the member answers q1 again.
+      work_item = end_run!(reload(work_item), &push_questions!(&1, &2, reopen(["q1", "q2"])))
+
+      {:ok, _} =
+        WorkItems.answer(member, work_item, 2, [%{"id" => "q1", "note" => "The other one."}])
+
+      # Run 3 withdraws q2, whose earlier answer is in its history, and q3, never answered.
+      work_item = end_run!(reload(work_item), &push_questions!(&1, &2, withdraw(["q2", "q3"])))
+
+      # Take in 2. Its run 1 reopens q1 again and asks q4, and the owner answers both.
+      {:ok, _closed} = WorkItems.close(scope, work_item)
+      {:ok, again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      work_item =
+        end_run!(reload(again), &push_questions!(&1, &2, reopen(["q1"]), ["Which shop?"]))
+
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, 1, [
+          %{"id" => "q1", "note" => "The third one."},
+          %{"id" => "q4", "note" => "The north shop."}
+        ])
+
+      work_item = reload(work_item)
+      {_version, document} = Questions.newest(work_item)
+
+      assert [
+               %{"id" => "q1", "state" => "answered", "history" => [_, _]},
+               %{"id" => "q2", "state" => "withdrawn", "history" => [_]},
+               %{"id" => "q3", "state" => "withdrawn"},
+               %{"id" => "q4", "state" => "answered"}
+             ] = document["questions"]
+
+      assert [first, second, third] =
+               for(%{kind: :answered} = event <- Explore.events(work_item.id), do: event)
+
+      {owner_id, member_id} = {scope.user.id, member.user.id}
+
+      # Each entry: the move's event, its member, its take in and run, the question, the
+      # answer. The withdrawn q2 keeps its answer; q3, never answered, has none.
+      assert for(
+               entry <- Given.all(work_item),
+               do:
+                 {entry.event_id, entry.by_id, entry.take_in, entry.attempt, entry.id, entry.text}
+             ) == [
+               {first.id, owner_id, 1, 1, "q1", "The main one."},
+               {first.id, owner_id, 1, 1, "q2", "The spring sale."},
+               {second.id, member_id, 1, 2, "q1", "The other one."},
+               {third.id, owner_id, 2, 1, "q1", "The third one."},
+               {third.id, owner_id, 2, 1, "q4", "The north shop."}
+             ]
     end
   end
 
@@ -94,7 +234,11 @@ defmodule Apiary.Explore.GivenTest do
       assert {first_id, second_id} == {first.id, second.id}
     end
 
-    test "a move with no answer at its place gives none, not the question's answer" do
+    # A move adds one answer to each question it answers, and a run's version keeps them
+    # all (`Questions.check_run/3`), so no writer leaves a question with fewer answers than
+    # the moves that answered it. The documents here are built by hand to test that case,
+    # which `Given` handles as a defensive branch.
+    test "a move with no answer at its place has no entry, not the question's answer" do
       reopened =
         questions(%{
           "state" => "open",

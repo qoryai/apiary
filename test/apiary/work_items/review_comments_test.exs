@@ -291,7 +291,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
       assert %{status: :confirm, run: %{attempt: 2, version: 2}} =
                explore = WorkItems.explore(scope, work_item)
 
-      assert explore.run.proposal == %{message: "## What this is\n\nAgain."}
+      assert %{message: "## What this is\n\nAgain.", version_id: "av_" <> _, images: []} =
+               explore.run.proposal
 
       assert [
                %{
@@ -1013,6 +1014,143 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
           comment |> Map.put("replies", [reply]) |> Map.put("state", "closed")
         end
     }
+  end
+
+  describe "Run another round" do
+    test "one run carries the answers, the comment and the open review comments", %{
+      scope: scope
+    } do
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {:ok, _} = WorkItems.send_review_comments(scope, work_item, 1)
+      work_item = end_run!(work_item, questions_result(["Which refund?", "Which sale?"]))
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 2, "Name the refund rule.")
+      before = length(runs(work_item))
+
+      round = %{
+        answers: [%{"id" => "q1", "option" => nil, "note" => "The full price."}],
+        comment: "Also check the basket page."
+      }
+
+      assert {:ok, %WorkItem{}} = WorkItems.another_round(scope, work_item, 2, round)
+
+      # One move, one run.
+      assert length(runs(work_item)) == before + 1
+      assert List.last(runs(work_item)) == {3, 3, :waiting}
+
+      assert List.last(answered_events(work_item)) == %{
+               "take_in" => 1,
+               "attempt" => 2,
+               "count" => 1,
+               "questions" => ["q1"],
+               "review_comment" => "c3"
+             }
+
+      # The comment is a review comment, open beside the others, and the question not
+      # answered stays open.
+      assert [
+               %{"id" => "c1", "state" => "open"},
+               %{"id" => "c2", "state" => "open", "text" => "Name the refund rule."},
+               %{"id" => "c3", "state" => "open", "text" => "Also check the basket page."}
+             ] = review_comments(work_item)
+
+      {_version, questions} = Questions.newest(reload(work_item))
+
+      assert [%{"id" => "q1", "state" => "answered"}, %{"id" => "q2", "state" => "open"}] =
+               questions["questions"]
+
+      # What members gave reads the answer and the comment from the one move.
+      assert [
+               %{kind: :comment, id: "c1"},
+               %{kind: :comment, id: "c2"},
+               %{kind: :answer, id: "q1", text: "The full price."},
+               %{kind: :comment, id: "c3", text: "Also check the basket page."}
+             ] = Apiary.Explore.Given.all(reload(work_item))
+    end
+
+    test "while the questions wait: a comment alone starts one run, and the questions stay open",
+         %{scope: scope} do
+      # Run 1 proposes; run 2, which reads c1, writes two questions and leaves c1 open.
+      work_item = proposed!(scope)
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, @comment)
+      {:ok, _} = WorkItems.send_review_comments(scope, work_item, 1)
+      work_item = end_run!(work_item, questions_result(["Which refund?", "Which sale?"]))
+      before = answered_events(work_item)
+
+      assert {:ok, %WorkItem{}} =
+               WorkItems.another_round(scope, work_item, 2, %{
+                 answers: [],
+                 comment: "Also check the basket page."
+               })
+
+      assert runs(work_item) == [{1, 3, :ended}, {2, 3, :ended}, {3, 3, :waiting}]
+
+      assert answered_events(work_item) -- before == [
+               %{
+                 "take_in" => 1,
+                 "attempt" => 2,
+                 "count" => 2,
+                 "comment" => true,
+                 "review_comment" => "c2",
+                 "review_comments" => ["c1", "c2"]
+               }
+             ]
+
+      assert [
+               %{"id" => "c1", "state" => "open"},
+               %{"id" => "c2", "state" => "open", "text" => "Also check the basket page."}
+             ] = review_comments(work_item)
+
+      {_version, questions} = Questions.newest(reload(work_item))
+      assert Enum.map(questions["questions"], & &1["state"]) == ["open", "open"]
+    end
+
+    test "at the gate: the comment, or the open review comments alone, start one run", %{
+      scope: scope
+    } do
+      work_item = proposed!(scope)
+
+      assert WorkItems.another_round(scope, work_item, 1, %{answers: [], comment: nil}) ==
+               {:error, :not_waiting}
+
+      assert WorkItems.another_round(scope, work_item, 1, %{comment: " \r\n "}) ==
+               {:error, {:invalid, %{comment: :blank}}}
+
+      answers = [%{"id" => "q1", "option" => nil, "note" => "Yes."}]
+
+      assert WorkItems.another_round(scope, work_item, 1, %{answers: answers}) ==
+               {:error, :not_waiting}
+
+      assert runs(work_item) == [{1, 3, :ended}]
+
+      assert {:ok, _} = WorkItems.another_round(scope, work_item, 1, %{comment: @comment})
+      assert runs(work_item) == [{1, 3, :ended}, {2, 3, :waiting}]
+
+      assert answered_events(work_item) == [
+               %{
+                 "take_in" => 1,
+                 "attempt" => 1,
+                 "count" => 1,
+                 "comment" => true,
+                 "review_comment" => "c1",
+                 "review_comments" => ["c1"]
+               }
+             ]
+
+      # The next run leaves c1 open; with a new review comment, both go alone.
+      work_item = end_run!(work_item, understood_result())
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 2, "Name the refund rule.")
+      assert {:ok, _} = WorkItems.another_round(scope, work_item, 2, %{})
+
+      assert List.last(answered_events(work_item)) == %{
+               "take_in" => 1,
+               "attempt" => 2,
+               "count" => 2,
+               "review_comments" => ["c1", "c2"]
+             }
+
+      assert length(runs(work_item)) == 3
+    end
   end
 
   describe "today's form" do

@@ -215,6 +215,7 @@ defmodule ApiaryWeb.PolicyComponents do
   """
   attr :id, :string, required: true
   attr :title, :string, required: true
+  attr :heading, :string, default: "h2", values: ~w(h2 h3), doc: "the title's heading level"
   attr :count, :any, default: nil
   attr :class, :any, default: nil
   attr :rest, :global
@@ -227,7 +228,7 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <section id={@id} class={["q-sect", @class]} aria-labelledby={"#{@id}-h"} {@rest}>
       <header>
-        <h2 id={"#{@id}-h"}>{@title}</h2>
+        <.dynamic_tag tag_name={@heading} id={"#{@id}-h"}>{@title}</.dynamic_tag>
         <span :if={@count} id={"#{@id}-n"} class="q-sect-n">{count_label(@count)}</span>
         <span class="grow"></span>
         {render_slot(@trailing)}
@@ -285,9 +286,9 @@ defmodule ApiaryWeb.PolicyComponents do
     default: nil,
     doc: "the option picked while the choices are open; nil while they are shut"
 
-  attr :served, :boolean,
+  attr :versioned, :boolean,
     default: true,
-    doc: "the workspace's: false on a new workspace, nothing is served yet"
+    doc: "the workspace's: false while it has no policy version; the card then shows no mode"
 
   attr :following, :integer, default: 0, doc: "the workspace's: targets that follow the default"
 
@@ -298,7 +299,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :fact, :any,
     default: nil,
     doc:
-      "the workspace's: :loading, nil, %{denied:, destinations:} or %{uncovered:, destinations:} or :none"
+      "the workspace's: :loading, nil, %{denied:, destinations:}, %{uncovered:, destinations:}, :covered (observe: runs reached out, every destination covered), :none_denied (enforce: runs reached out, none denied) or :none (no run reached out)"
 
   attr :setting, :string,
     default: "follow",
@@ -345,13 +346,25 @@ defmodule ApiaryWeb.PolicyComponents do
     >
       <div class="q-modecard-main">
         <span class="q-modecard-tile" aria-hidden="true">
-          <.icon name={if @floor, do: "hero-lock-closed", else: mode_icon(@shown)} class="size-5" />
+          <%!-- With no policy version yet, the tile shows no mode's icon. --%>
+          <.icon
+            :if={@floor || @versioned}
+            name={if @floor, do: "hero-lock-closed", else: mode_icon(@shown)}
+            class="size-5"
+          />
         </span>
         <div class="q-modecard-text">
           <div class="q-modecard-title">
             <h2 id={"#{@id}-h"} class="q-modecard-h">
-              <span class="q-modecard-label">{gettext("Mode")}<span class="sr-only">: </span></span>
-              <span id={"#{@id}-value"} class="q-modecard-value">{mode_name(@shown)}</span>
+              <span class="q-modecard-label">{gettext("Mode")}<span
+                :if={@versioned}
+                class="sr-only"
+              >: </span></span>
+              <span
+                :if={@versioned}
+                id={"#{@id}-value"}
+                class="q-modecard-value"
+              >{mode_name(@shown)}</span>
             </h2>
             <span :if={@floor} id={"#{@id}-required"} class="badge badge-sm">
               <.icon name="hero-lock-closed-micro" class="size-3" />{gettext("Required by %{name}",
@@ -359,7 +372,7 @@ defmodule ApiaryWeb.PolicyComponents do
               )}
             </span>
             <span
-              :if={!@floor && @level == :workspace}
+              :if={!@floor && @level == :workspace && @versioned}
               id={"#{@id}-source"}
               class="badge badge-sm"
             >
@@ -392,7 +405,8 @@ defmodule ApiaryWeb.PolicyComponents do
               <% @floor -> %>
                 <.rich text={floor_sentence(@setting, @set, @floor.name, reader(@scope))} />
               <% @level == :workspace -> %>
-                {workspace_effect(@mode)}
+                <%!-- With no policy version yet, the card shows no mode. --%>
+                {if @versioned, do: workspace_effect(@mode)}
                 <.rich text={own_sentence(@scope, @own, @following)} />
               <% true -> %>
                 <.rich text={
@@ -405,13 +419,13 @@ defmodule ApiaryWeb.PolicyComponents do
             </span>
           </p>
           <p
-            :if={@level == :workspace && !@floor && (@fact || !@served)}
+            :if={@level == :workspace && !@floor && @fact}
             id={"#{@id}-fact"}
             class="q-modecard-p"
           >
             <.mode_fact
               scope={@scope}
-              fact={if @served, do: @fact, else: :unserved}
+              fact={@fact}
               following={if @own != [], do: @following}
             />
           </p>
@@ -457,7 +471,11 @@ defmodule ApiaryWeb.PolicyComponents do
               />
               <span id={"#{@id}-opt-#{option.value}-h"} class="q-modeopt-h">
                 <.icon name={option.icon} class="size-5" />{option.label}
-                <span :if={option.value == @current} id={"#{@id}-current"} class="badge badge-sm">
+                <span
+                  :if={option.value == @current && @versioned}
+                  id={"#{@id}-current"}
+                  class="badge badge-sm"
+                >
                   {gettext("Current")}
                 </span>
               </span>
@@ -466,7 +484,7 @@ defmodule ApiaryWeb.PolicyComponents do
           </div>
         </fieldset>
 
-        <p :if={@pick == @current} id={"#{@id}-now"} class="q-modecard-p">
+        <p :if={@pick == @current && @versioned} id={"#{@id}-now"} class="q-modecard-p">
           {gettext("%{mode} is the mode now.", mode: @picked.label)}
         </p>
         <div
@@ -706,15 +724,23 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H|<span class="skeleton q-skel inline-block w-64 align-middle"></span>|
   end
 
-  defp mode_fact(%{fact: :unserved} = assigns) do
-    ~H"""
-    {pgettext("plain", "Not served yet: it applies from the first change here.")}
-    """
-  end
-
   defp mode_fact(%{fact: :none} = assigns) do
     ~H"""
     {gettext("No run has reached out in the last 14 days.")}
+    """
+  end
+
+  defp mode_fact(%{fact: :covered} = assigns) do
+    ~H"""
+    {gettext(
+      "Every destination that runs reached in the last 14 days is covered by a rule or allowed for every run."
+    )}
+    """
+  end
+
+  defp mode_fact(%{fact: :none_denied} = assigns) do
+    ~H"""
+    {gettext("No destination that runs reached in the last 14 days was denied.")}
     """
   end
 
@@ -1264,10 +1290,18 @@ defmodule ApiaryWeb.PolicyComponents do
           aria-relevant="additions"
         >
           <h2 class="q-rule-preview-h">{gettext("What this rule does")}</h2>
-          <p id={"#{@id}-preview-#{elem(@reading.preview, 0)}"} class="q-reads">
+          <p
+            :if={elem(@reading.preview, 0) != :refusal}
+            id={"#{@id}-preview-#{elem(@reading.preview, 0)}"}
+            class="q-reads"
+          >
             <.icon name={preview_icon(elem(@reading.preview, 0))} class="size-3.5" />
             <span id={"#{@id}-reads"}><.rich text={elem(@reading.preview, 1)} /></span>
           </p>
+          <%!-- What the save refuses, as the form shows a refusal. --%>
+          <.notice :if={elem(@reading.preview, 0) == :refusal} kind={:error}>
+            <span id={"#{@id}-preview-refusal"}><.rich text={elem(@reading.preview, 1)} /></span>
+          </.notice>
         </div>
         <div :if={@refusal?} id={"#{@id}-refusal"} class="q-refusal" role="alert">
           <.notice kind={:error}>

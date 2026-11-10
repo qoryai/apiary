@@ -22,24 +22,6 @@ Before the release pull request, run `mix apiary.models.update` and commit the
 `priv/models/suggestions.json` it writes. The file contains the Model field's suggestions
 from models.dev.
 
-If the release moves the Qory harness's pin, `latest` in
-`lib/apiary/lingo/domain/definition.ex`, copy the Qory harness's files at that commit
-before the release pull request, from a checkout of qoryai/harness:
-
-```sh
-mix apiary.harness.update ../harness <commit>
-mix gettext.extract --merge
-```
-
-The task reads the files at the commit, not from the checkout's working tree. It copies
-the root `qory.yaml`, the `process.yaml` of the module `software-factory`, and the
-`qory-stack.yaml` of the stacks `core` and `software` into `priv/harness/qory/`, writes
-the commit to `priv/harness/qory/.harness-ref`, and writes the template's name, summary
-and description to `lib/apiary/harnesses/qory_copy/texts.ex` for translation. Set
-`latest` to the same commit, and commit what the task writes. If `process.yaml` changed,
-raise `@template_version` in `lib/apiary/processes.ex`, or an instance that already has
-the workspace type keeps the earlier default.
-
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
 the release body from the changelog, builds the image from the `Dockerfile` for
 `linux/amd64` and `linux/arm64`, and publishes it as `ghcr.io/qoryai/apiary`, tagged

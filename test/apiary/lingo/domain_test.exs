@@ -127,7 +127,7 @@ defmodule Apiary.Lingo.DomainTest do
   describe "a domain's definition" do
     @harness %{
       "git" => "https://github.com/qoryai/harness",
-      "ref" => "1d974d98bc3ba60a643a31b752f91b376bd6381f",
+      "ref" => "main",
       "stack" => "core"
     }
 
@@ -173,8 +173,8 @@ defmodule Apiary.Lingo.DomainTest do
       assert keys == Enum.uniq(keys)
     end
 
-    test "the harness is pinned by a full commit id" do
-      assert Software.definition().harness["ref"] =~ ~r/\A[0-9a-f]{40}\z/
+    test "the harness is the Qory harness on its default branch, with no commit" do
+      assert Software.definition().harness["ref"] == "main"
     end
   end
 

@@ -69,6 +69,53 @@ defmodule Apiary.AccessApproversTest do
       %{work_item: proposed!(scope)}
     end
 
+    test "Run another round with only a decision's option again, from a member who is not among them, sends nothing",
+         %{scope: scope, member: member, work_item: work_item} do
+      [number] = work_item.id |> Questions.take_in_runs(work_item.take_in) |> MapSet.to_list()
+      at = "2026-11-04T10:00:00Z"
+
+      decided = %{
+        "id" => "q1",
+        "question" => "Which store keeps the baskets?",
+        "options" => [
+          %{"title" => "Redis", "explanation" => "The store the other services use."},
+          %{"title" => "Postgres", "explanation" => "The database of the storefront."}
+        ],
+        "state" => "decided",
+        "asked" => %{"run" => number, "at" => at},
+        "decision" => %{
+          "option" => "Redis",
+          "reason" => "The other services use Redis.",
+          "run" => number,
+          "at" => at
+        }
+      }
+
+      {:ok, _version} =
+        Artifacts.push({:member_action, scope}, work_item, "questions", [
+          Questions.file(%{"questions" => [decided]})
+        ])
+
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Also check the basket page.")
+
+      runs = fn ->
+        Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+      end
+
+      count = runs.()
+      round = %{answers: [%{"id" => "q1", "option" => "Redis"}]}
+
+      # With no answer left, the round sends the open review comment, which only an
+      # approver may.
+      assert WorkItems.another_round(member, reload(work_item), 1, round) ==
+               {:error, :not_approver}
+
+      assert runs.() == count
+
+      assert {:ok, _} = WorkItems.another_round(scope, reload(work_item), 1, round)
+      assert runs.() == count + 1
+    end
+
     test "refuses a member who is not among them each approver-only action", %{
       member: member,
       work_item: work_item
@@ -183,7 +230,6 @@ defmodule Apiary.AccessApproversTest do
         assert Access.authorize(member, action, work_item) == :ok
       end
 
-      assert Stages.approver(member, work_item) == :ok
       # The gates are part of the workflow model: off, the action is not found to anyone.
       assert Access.authorize(member, :"gate.approve", work_item) == {:error, :not_found}
     end
@@ -242,6 +288,29 @@ defmodule Apiary.AccessApproversTest do
       assert {version, document} = Questions.newest(reload(work_item))
       assert version.writer == :person and version.user_id == member.user.id
       assert [%{"state" => "answered"}] = document["questions"]
+    end
+
+    test "Run another round with answers and a comment, from a member who is not among them, writes nothing",
+         %{member: member, work_item: work_item} do
+      {_version, before} = Questions.newest(work_item)
+
+      runs = fn ->
+        Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+      end
+
+      count = runs.()
+
+      round = %{
+        answers: [%{"id" => "q1", "option" => nil, "note" => "The spring sale."}],
+        comment: "Also check the basket page."
+      }
+
+      assert WorkItems.another_round(member, work_item, 1, round) == {:error, :not_approver}
+
+      # The answer is not written either: the move writes all of it or nothing.
+      assert {_version, ^before} = Questions.newest(reload(work_item))
+      assert ReviewComments.newest(reload(work_item)) == nil
+      assert runs.() == count
     end
 
     test "a member action of a member who is not among them writes the questions", %{

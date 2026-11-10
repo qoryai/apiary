@@ -40,14 +40,15 @@ defmodule ApiaryWeb.RunPageComponents do
       tool_mark: 1,
       duration: 1,
       offset: 1,
-      time_legend: 1,
       middle: 2,
       subject_name: 1,
-      subject_tip: 1
+      subject_tip: 1,
+      work_item_name: 1
     ]
 
   alias Apiary.ExternalText
   alias Apiary.Runs.Record.Timeline
+  alias Apiary.Runs.RunApi
   alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
 
@@ -93,10 +94,11 @@ defmodule ApiaryWeb.RunPageComponents do
 
   @doc "The agent an item belongs to, in words, where a lane opens or closes."
   attr :lane, :map, required: true
+  attr :rest, :global
 
   def who(assigns) do
     ~H"""
-    <span class={["q-who", "q-lane-#{@lane.color}"]}>
+    <span class={["q-who", "q-lane-#{@lane.color}"]} {@rest}>
       <bdi>{if @lane.id == "main",
         do: gettext("Main session"),
         else: sent(@lane.type) || sent(@lane.id)}</bdi>
@@ -192,7 +194,6 @@ defmodule ApiaryWeb.RunPageComponents do
     values: [
       :no_hooks,
       :vm_wall,
-      :stopped,
       :other_runtime,
       :not_started,
       :no_egress,
@@ -207,17 +208,20 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :wall, :boolean, default: false
   attr :only_result, :boolean, default: false
   attr :at, :any, default: nil, doc: "when retention pruned, for `:pruned` and `:log_pruned`"
-  attr :step, :string, default: nil, doc: "for `:stopped`: the step the run stopped at"
 
   attr :registered, :boolean,
     default: false,
     doc: "for `:not_started`: whether the run registered, else it only pinged"
 
+  attr :sentence, :boolean,
+    default: true,
+    doc: "false leaves the sentence out, for a queued run, which has not pinged"
+
   attr :terminal, :boolean,
     default: true,
     doc:
       "whether the reader is shown the run's terminal (`run.read_log`): a sentence " <>
-        "that says the run has one says so only then"
+        "that includes the terminal is shown only then"
 
   def limits(%{variant: "notice"} = assigns) do
     ~H"""
@@ -227,7 +231,6 @@ defmodule ApiaryWeb.RunPageComponents do
         runtime={@runtime}
         registered={@registered}
         terminal={@terminal}
-        step={@step}
       />
       <span :if={@only_result}>
         {gettext("Only the result, read from the runtime's output, is shown.")}
@@ -245,7 +248,7 @@ defmodule ApiaryWeb.RunPageComponents do
       class="q-limits"
     >
       <.limit_sentence
-        :if={@reason != :no_log}
+        :if={@reason != :no_log and @sentence}
         reason={@reason}
         runtime={@runtime}
         at={@at}
@@ -269,7 +272,6 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :at, :any, default: nil
   attr :registered, :boolean, default: false
   attr :terminal, :boolean, default: true
-  attr :step, :string, default: nil
 
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
@@ -308,12 +310,12 @@ defmodule ApiaryWeb.RunPageComponents do
       if @terminal,
         do:
           rich_gettext(
-            "Session events exist only for Claude Code. This run used %{runtime}, so it has a terminal and connections, and no timeline.",
+            "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
             runtime: {:part, :runtime}
           ),
         else:
           rich_gettext(
-            "Session events exist only for Claude Code. This run used %{runtime}, so it has connections and no timeline.",
+            "Only Claude Code sends session events. This session ran %{runtime}: its connections are under Network access.",
             runtime: {:part, :runtime}
           )
     }>
@@ -346,18 +348,6 @@ defmodule ApiaryWeb.RunPageComponents do
           class="q-tip-wide"
         />
       </:part>
-    </.rich>
-    """
-  end
-
-  defp limit_sentence(%{reason: :stopped} = assigns) do
-    ~H"""
-    <.rich text={
-      rich_gettext("The run stopped before its session started, at the step %{step}.",
-        step: {:part, :step}
-      )
-    }>
-      <:part name={:step}><.external_text text={@step} /></:part>
     </.rich>
     """
   end
@@ -410,6 +400,10 @@ defmodule ApiaryWeb.RunPageComponents do
   `target` is the DOM id of the item `?seq=` points at and `isolate` the lane `?lane=`
   keeps; both are applied by the `TimelineKeys` hook, because a stream's items are not
   rendered again when a parameter changes.
+
+  A row ends with its time since the run started, how long it took, and its event number.
+  A row with `terminal_seq` links to that line of the Terminal
+  (`Apiary.Runs.Record.Overview.terminal_seq/2`) while `terminal_path` is set.
   """
   attr :id, :string, required: true
   attr :stream, :any, required: true
@@ -430,13 +424,28 @@ defmodule ApiaryWeb.RunPageComponents do
 
   attr :earlier, :integer, default: 0, doc: "items before the window"
   attr :later, :integer, default: 0, doc: "items after the window that are not new arrivals"
+  attr :earlier_events, :integer, default: 0, doc: "the items with a sequence among `earlier`"
+  attr :later_events, :integer, default: 0, doc: "the items with a sequence among `later`"
+
+  attr :until, :integer,
+    default: nil,
+    doc: "the sequence of the window's last item while items follow it, nil at the tab's end"
+
   attr :security, :boolean, default: true, doc: "false: connections without rules or modes"
   attr :legend, :boolean, default: false, doc: "whether a row is there for the legend to label"
 
+  attr :keep, :any,
+    default: nil,
+    doc: "a function true of each item of `stream` this list shows; nil: every item"
+
   def timeline(assigns) do
     ~H"""
-    <div class="grid">
-      <.time_legend :if={@legend} first={gettext("Since run start")} second={gettext("Event")} />
+    <div class="grid q-took">
+      <div :if={@legend} class="q-tlegend" aria-hidden="true">
+        <span class="q-tc1">{gettext("Since run start")}</span>
+        <span class="q-tct">{gettext("Took")}</span>
+        <span class="q-tc2">{gettext("Event")}</span>
+      </div>
       <button
         :if={@earlier > 0}
         id={"#{@id}-earlier"}
@@ -444,23 +453,26 @@ defmodule ApiaryWeb.RunPageComponents do
         class="q-tl-more"
         phx-click="load_earlier"
       >
-        <.icon name="hero-arrow-up-micro" class="size-3" /> {earlier_events(@earlier)}
+        <.icon name="hero-arrow-up-micro" class="size-3" />
+        {if @earlier_events > 0,
+          do: earlier_events(@earlier_events),
+          else: gettext("Load earlier")}
       </button>
       <ol
         id={@id}
         class={["q-tl", "q-lanes-#{@rails}"]}
-        aria-label={timeline_label(@earlier, @later)}
+        aria-label={timeline_label(@earlier > 0 && @earlier_events, @later > 0 && @later_events)}
         phx-update="stream"
         phx-hook="TimelineKeys"
-        phx-viewport-top={@earlier > 0 && "load_earlier"}
-        phx-viewport-bottom={@later > 0 && "load_later"}
         data-target={@target}
         data-isolate={@isolate}
         data-cx={if @connections, do: "1", else: "0"}
+        data-until={@until}
         tabindex="0"
       >
         <.timeline_item
           :for={{dom_id, item} <- @stream}
+          :if={is_nil(@keep) or @keep.(item)}
           id={dom_id}
           item={item}
           started_at={@started_at}
@@ -477,22 +489,183 @@ defmodule ApiaryWeb.RunPageComponents do
         phx-click="load_later"
       >
         <.icon name="hero-arrow-down-micro" class="size-3" /> {gettext("Load newer")}
-        <span class="text-faint">· {later_events(@later)}</span>
+        <span :if={@later_events > 0} class="text-faint">· {later_events(@later_events)}</span>
       </button>
+      <span id={"#{@id}-push"} phx-hook="TimelinePush" hidden></span>
     </div>
     """
   end
 
-  # "Oldest first" is only true of a list that starts at the start.
-  defp timeline_label(0, 0), do: gettext("Session timeline, oldest first")
+  @doc """
+  The Timeline's light items with each subagent (`ApiaryWeb.TranscriptComponents.subagents/2`)
+  folded into its start, in sequence order. The start, the head, has `sub`: its subagent
+  with `open`; `lines`, how many items of its lane come after the start; and
+  `hidden_denied`, the sequences of the denied calls left out while it is closed. The head
+  has `seqs` with its finish too, whose message and time it shows. A closed subagent's
+  items after its start are left out, and so is its rail from the start through its
+  finish, except on the rows of another agent whose node sits on that rail: an agent that
+  starts while every rail is taken shares the last one (`Apiary.Runs.Record.Timeline`).
+  The rail keeps its place in the gutter, so a later subagent's rail does not move. When
+  the record's last item is left out, the last row left ends the rails as that item does:
+  faded while the record is being written, else with main's rail ending at it.
 
-  defp timeline_label(earlier, 0) do
+  A subagent is open as the reader chose in `choices` (a head's sequence to true or false),
+  else while it has not finished.
+  """
+  def fold(items, subs, _choices) when map_size(subs) == 0, do: items
+
+  def fold(items, subs, choices) do
+    lines =
+      Enum.frequencies(
+        for item <- items,
+            sub = in_sub(item, subs),
+            sub != nil and item.seq > sub.seq,
+            do: item.lane.index
+      )
+
+    # The denied calls after each subagent's start, which `x` and `Shift+x` reach in a
+    # closed subagent too (`TimelineKeys`).
+    denied =
+      Enum.group_by(
+        for(
+          item <- items,
+          sub = in_sub(item, subs),
+          sub != nil and item.seq > sub.seq and denied_light?(item),
+          do: item
+        ),
+        & &1.lane.index,
+        & &1.seq
+      )
+
+    open =
+      Map.new(subs, fn {lane, sub} ->
+        {lane,
+         case choices[sub.seq] do
+           choice when is_boolean(choice) -> choice
+           nil -> sub.state != :finished
+         end}
+      end)
+
+    # The rails of the closed subagents that have one, each with its lane and the
+    # sequences it spans.
+    shut =
+      for item <- items,
+          sub = in_sub(item, subs),
+          sub != nil and item.seq == sub.seq,
+          not open[item.lane.index],
+          item.link,
+          do: {item.link.rail, item.lane.index, sub.seq, sub.finished_seq}
+
+    items
+    |> Enum.flat_map(fn item ->
+      sub = in_sub(item, subs)
+
+      cond do
+        sub != nil and item.seq == sub.seq ->
+          [
+            item
+            |> Map.merge(%{
+              sub:
+                Map.merge(sub, %{
+                  open: open[item.lane.index],
+                  lines: Map.get(lines, item.lane.index, 0),
+                  hidden_denied:
+                    if(open[item.lane.index], do: [], else: Map.get(denied, item.lane.index, []))
+                }),
+              seqs: Enum.uniq(item.seqs ++ List.wrap(sub.finished_seq))
+            })
+            |> without_rails(shut)
+          ]
+
+        sub != nil and item.seq > sub.seq and not open[item.lane.index] ->
+          []
+
+        true ->
+          [without_rails(item, shut)]
+      end
+    end)
+    |> end_rails(List.last(items))
+  end
+
+  # A light item that `denied?/1` is true of once it is built.
+  defp denied_light?(%{kind: :connection} = item), do: item[:decision] == "denied"
+  defp denied_light?(%{kind: :tool, denied_inside: true}), do: true
+  defp denied_light?(_item), do: false
+
+  # The subagent whose lane the item is in, nil for an item of main or of an agent the
+  # record opened no lane for.
+  defp in_sub(item, subs) do
+    lane = item.lane[:index]
+    if is_integer(lane), do: subs[lane]
+  end
+
+  defp without_rails(item, []), do: item
+
+  defp without_rails(item, shut) do
+    gone =
+      for {rail, lane, from, through} <- shut,
+          spanned?(item, from, through),
+          # An agent that shares the closed subagent's rail keeps it under its node.
+          item.lane.rail != rail or item.lane[:index] == lane,
+          do: rail
+
+    if gone == [], do: item, else: %{item | rails: Enum.reject(item.rails, &(&1.rail in gone))}
+  end
+
+  # Whether a row is on a closed subagent's rail, from its start through its finish. A
+  # row with no sequence (`Apiary.Runs.Record.Overview.list/2`) sits right after the row
+  # of the sequence its `pos` starts with.
+  defp spanned?(%{seq: seq}, from, through) when is_integer(seq),
+    do: seq >= from and (is_nil(through) or seq <= through)
+
+  defp spanned?(%{pos: {after_seq, _}}, from, through),
+    do: after_seq >= from and (is_nil(through) or after_seq < through)
+
+  # The last row ends the rails as the record's last item does (`Timeline.index/2`), when
+  # that item is left out: every rail faded while main's is (the record is being written),
+  # else main's rail ending. A rail that starts or ends at the row keeps its part.
+  defp end_rails([], _last), do: []
+
+  defp end_rails(rows, last) do
+    case List.last(rows) do
+      %{seq: seq} when seq == last.seq ->
+        rows
+
+      row ->
+        live? = Enum.any?(last.rails, &(&1.rail == 0 and &1.part == :live))
+
+        rails =
+          Enum.map(row.rails, fn rail ->
+            cond do
+              rail.part in [:from, :to] -> rail
+              live? -> %{rail | part: :live}
+              rail.rail == 0 -> %{rail | part: :to}
+              true -> rail
+            end
+          end)
+
+        List.replace_at(rows, -1, %{row | rails: rails})
+    end
+  end
+
+  # "Oldest first" is only true of a list that starts at the start. `earlier` and `later` are
+  # the events outside the window, false while no item is there, and 0 while only Main
+  # session or Pushed rows are there: the label then has no count for that side.
+  defp timeline_label(false, false), do: gettext("Session timeline, oldest first")
+
+  defp timeline_label(earlier, later) when earlier in [false, 0] and later in [false, 0],
+    do: gettext("Session timeline, in sequence order")
+
+  defp timeline_label(0, later), do: timeline_label(false, later)
+  defp timeline_label(earlier, 0), do: timeline_label(earlier, false)
+
+  defp timeline_label(earlier, false) do
     gettext("Session timeline, in sequence order; %{earlier} not loaded",
       earlier: earlier_events(earlier)
     )
   end
 
-  defp timeline_label(0, later) do
+  defp timeline_label(false, later) do
     gettext("Session timeline, in sequence order; %{later} not loaded",
       later: later_events(later)
     )
@@ -531,6 +704,7 @@ defmodule ApiaryWeb.RunPageComponents do
       data-seq={@item.sequence}
       data-lane={@item.lane.id}
       data-denied={denied?(@item) && "1"}
+      data-hidden-denied={hidden_denied(@item)}
       tabindex="-1"
     >
       <div class="q-g" aria-hidden="true">
@@ -573,6 +747,10 @@ defmodule ApiaryWeb.RunPageComponents do
   defp denied?(%{kind: :connection, connection: %{decision: "denied"}}), do: true
   defp denied?(%{kind: :tool, denied_inside: true}), do: true
   defp denied?(_item), do: false
+
+  # The sequences of the denied calls a closed subagent's head stands for.
+  defp hidden_denied(%{sub: %{hidden_denied: [_ | _] = seqs}}), do: Enum.join(seqs, " ")
+  defp hidden_denied(_item), do: nil
 
   attr :item, :map, required: true
 
@@ -625,6 +803,12 @@ defmodule ApiaryWeb.RunPageComponents do
   defp node_look(%{kind: :prompt}),
     do: %{glyph: "hero-chat-bubble-left-micro", shape: :round, tone: :solid}
 
+  defp node_look(%{kind: :main_session}),
+    do: %{glyph: "hero-command-line-micro", shape: :round, tone: nil}
+
+  defp node_look(%{kind: :pushed}),
+    do: %{glyph: "hero-arrow-up-tray-micro", shape: :round, tone: :info}
+
   defp node_look(%{kind: :tool, status: :failed}),
     do: %{glyph: "hero-x-mark-micro", shape: :round, tone: :fail}
 
@@ -674,7 +858,13 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :run_started}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run started")}>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      terminal_path={@terminal_path}
+      kind={gettext("Run started")}
+    >
       {run_started_words(@item)}
     </.head>
     """
@@ -690,6 +880,7 @@ defmodule ApiaryWeb.RunPageComponents do
       item={@item}
       started_at={@started_at}
       seq_path={@seq_path}
+      terminal_path={@terminal_path}
       kind={pgettext("plain", "Policy applied again")}
     >
       {gettext("reloaded")} ·
@@ -779,6 +970,7 @@ defmodule ApiaryWeb.RunPageComponents do
       item={@item}
       started_at={@started_at}
       seq_path={@seq_path}
+      terminal_path={@terminal_path}
       kind={pgettext("plain", "Policy applied")}
     >
       <:version><.item_version version={@item[:version]} /></:version>
@@ -830,6 +1022,7 @@ defmodule ApiaryWeb.RunPageComponents do
       item={@item}
       started_at={@started_at}
       seq_path={@seq_path}
+      terminal_path={@terminal_path}
       kind={gettext("Session started")}
     >
       <span :if={@item.model}><.rich text={rich_gettext("model %{model}", model: {:part, :model})}>
@@ -846,89 +1039,223 @@ defmodule ApiaryWeb.RunPageComponents do
   # The prompt on the label's line, its line breaks as spaces, cut at the row's end.
   defp item_body(%{item: %{kind: :prompt}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Prompt")}>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      terminal_path={@terminal_path}
+      kind={gettext("Prompt")}
+    >
       <bdi>{one_line(@item.text)}</bdi>
     </.head>
     """
   end
 
-  # A text of the session: its first line, without its Markdown marks, and the way to the
-  # whole text in the Terminal's Transcript, for a reader of the log.
+  # A text of the session: its first line, without its Markdown marks.
   defp item_body(%{item: %{kind: :text}} = assigns) do
     ~H"""
     <div class="q-hd">
       <span class="q-k">{gettext("Text")}</span>
       <.who :if={@item.who} lane={@item.lane} />
       <span class="q-s q-s-fit"><bdi>{sent(@item.first_line)}</bdi></span>
-      <.link
-        :if={@terminal_path}
-        patch={@terminal_path.(@item.sequence)}
-        class="q-to-term"
-        aria-label={gettext("Show this text in the Terminal")}
-      >
-        {gettext("Terminal")} <span aria-hidden="true">›</span>
-      </.link>
-      <.tail item={@item} started_at={@started_at} seq_path={@seq_path} />
+      <.tail
+        item={@item}
+        started_at={@started_at}
+        seq_path={@seq_path}
+        terminal_path={@terminal_path}
+      />
     </div>
     """
   end
 
-  defp item_body(%{item: %{kind: :tool}} = assigns) do
+  # The main agent's row (`Apiary.Runs.Record.Overview`): its calls, in the words of a
+  # subagent's head, and the first line of its last text. Its items are not folded under
+  # it, so it has no chevron, and its words keep the place of one.
+  defp item_body(%{item: %{kind: :main_session}} = assigns) do
+    assigns =
+      assign(assigns,
+        words:
+          %{state: :finished, calls: assigns.item.calls}
+          |> ApiaryWeb.TranscriptComponents.subagent_words(nil)
+          |> String.replace_prefix(" · ", "")
+      )
+
     ~H"""
-    <details
-      id={"#{@id}-tool"}
-      class="q-tool"
-      open={@item.status == :failed or @item.denied_inside}
-      phx-mounted={JS.ignore_attributes(["open"])}
-    >
-      <summary class="q-hd">
-        <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
-        <span class="q-k q-k-mono"><.external_text text={@item.tool} /></span>
-        <.who :if={@item.who} lane={@item.lane} />
-        <span class="q-s q-s-mono"><.external_text text={@item.summary} /></span>
-        <.badge :if={@item.in_background} color="info" class="self-center">
-          {gettext("In background")}
-        </.badge>
-        <.tail item={@item} started_at={@started_at} seq_path={@seq_path} in_summary>
-          <span :if={@item.status == :failed} class="q-bad">{if @item.interrupted,
-            do: gettext("Interrupted"),
-            else: gettext("Failed")}</span>
-          <span :if={@item.status == :open} class="q-running">{gettext("Running")}</span>
-          <span :if={@item.status == :no_end} class="q-no-end">{gettext("No end recorded")}</span>
-          <span :if={@item.status == :denied} class="q-no-end">{gettext("Not run: denied")}</span>
-          <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
-        </.tail>
-      </summary>
-      <div
-        :if={@item.connections != [] or @item.wells != []}
-        class={["q-xb", (@item.status == :failed or @item.denied_inside) && "q-xb-bad"]}
+    <div class="q-hd">
+      <span class="q-sub-caret" aria-hidden="true"><span class="size-3"></span></span>
+      <span class="q-sub-said">
+        <span class="q-k">{gettext("Main session")}</span>{" "}<span class="q-s q-s-fit">{@words}</span>
+      </span>
+      <span :if={@item[:words]} class="q-s"><bdi>{sent(@item.words)}</bdi></span>
+      <.tail
+        item={@item}
+        started_at={@started_at}
+        seq_path={@seq_path}
+        terminal_path={@terminal_path}
+      />
+    </div>
+    """
+  end
+
+  # A version of an artifact the run pushed: the artifact's type and name, the type alone
+  # while it has no name, and the version's number. No event has its place, so it has no
+  # event number.
+  defp item_body(%{item: %{kind: :pushed}} = assigns) do
+    assigns =
+      assign(assigns,
+        artifact: Enum.join(Enum.reject([assigns.item.type, assigns.item[:name]], &is_nil/1), "/")
+      )
+
+    ~H"""
+    <div class="q-hd">
+      <span class="q-k">{gettext("Pushed")}</span>
+      <span class="q-s"><bdi>{gettext("%{artifact} version %{number}",
+        artifact: @artifact,
+        number: Format.number(@item.number)
+      )}</bdi></span>
+      <.tail
+        item={@item}
+        started_at={@started_at}
+        seq_path={@seq_path}
+        terminal_path={@terminal_path}
+      />
+    </div>
+    """
+  end
+
+  # A call that opens has its Terminal link outside the `<summary>`, as a link there would
+  # be a control inside a control: the summary keeps an empty place for it, and a line
+  # laid over the summary (`q-tool-over`) has the link at that place. That line has the
+  # summary's cells before and after the link too, hidden, so that it wraps where the
+  # summary wraps.
+  #
+  # For a reader without the log (no `terminal_path`), a call's input and output are
+  # blank (`ApiaryWeb.RunLive.Concealed`): a call with no connection then has nothing to
+  # open, and its row is a line with no arrow. A row for a reader of the log, or with
+  # input or output to show, opens as before.
+  defp item_body(%{item: %{kind: :tool} = item} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :opens,
+        is_function(assigns.terminal_path) or item.connections != [] or item.wells != []
+      )
+
+    ~H"""
+    <div :if={!@opens} id={"#{@id}-tool"} class="q-hd">
+      <.tool_head
+        item={@item}
+        started_at={@started_at}
+        seq_path={@seq_path}
+        terminal_path={@terminal_path}
+      />
+    </div>
+    <div :if={@opens} class="q-tool-box">
+      <details
+        id={"#{@id}-tool"}
+        class="q-tool"
+        open={@item.status == :failed or @item.denied_inside}
+        phx-mounted={JS.ignore_attributes(["open"])}
       >
-        <div :if={@item.connections != []} class="q-during">
-          <small>
-            {ngettext(
-              "%{number} connection while this call was open",
-              "%{number} connections while this call was open",
-              @item.connections_count,
-              number: Format.number(@item.connections_count)
-            )}
-          </small>
-          <.connection_row
-            :for={cx <- @item.connections}
-            id={"#{@id}-cx-#{cx.sequence}"}
-            connection={cx}
-            variant="inline"
+        <summary class="q-hd">
+          <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
+          <.tool_head
+            item={@item}
             started_at={@started_at}
-            security={@security}
+            seq_path={@seq_path}
+            terminal_path={@terminal_path}
+            in_summary
           />
-          <small :if={@item.connections_count > length(@item.connections)}>
-            {more_counted(@item.connections_count - length(@item.connections))}
-          </small>
+        </summary>
+        <div
+          :if={@item.connections != [] or @item.wells != []}
+          class={["q-xb", (@item.status == :failed or @item.denied_inside) && "q-xb-bad"]}
+        >
+          <div :if={@item.connections != []} class="q-during">
+            <small>
+              {ngettext(
+                "%{number} connection while this call was open",
+                "%{number} connections while this call was open",
+                @item.connections_count,
+                number: Format.number(@item.connections_count)
+              )}
+            </small>
+            <.connection_row
+              :for={cx <- @item.connections}
+              id={"#{@id}-cx-#{cx.sequence}"}
+              connection={cx}
+              variant="inline"
+              started_at={@started_at}
+              security={@security}
+            />
+            <small :if={@item.connections_count > length(@item.connections)}>
+              {more_counted(@item.connections_count - length(@item.connections))}
+            </small>
+          </div>
+          <div :if={@item.wells != []} class="q-io">
+            <.well :for={well <- @item.wells} well={well} seq={@item.sequence} full={@item.full} />
+          </div>
         </div>
-        <div :if={@item.wells != []} class="q-io">
-          <.well :for={well <- @item.wells} well={well} seq={@item.sequence} full={@item.full} />
-        </div>
+      </details>
+      <div
+        :if={@terminal_path && @item[:terminal_seq]}
+        class="q-hd q-tool-over"
+      >
+        <span class="q-chev size-3" aria-hidden="true"></span>
+        <.tool_head
+          item={@item}
+          started_at={@started_at}
+          seq_path={@seq_path}
+          terminal_path={@terminal_path}
+          over
+        />
       </div>
-    </details>
+    </div>
+    """
+  end
+
+  # A subagent's start folded with its items (`fold/3`): the chevron that opens or closes
+  # them, the agent type, whether it runs and its calls, in the Transcript's words, and the
+  # first line of its last message; how long it ran is in the Took column. A subagent with
+  # no items after its start has no chevron, and its words keep their place.
+  defp item_body(%{item: %{kind: :subagent_started, sub: %{} = sub}} = assigns) do
+    assigns =
+      assign(assigns,
+        said: "#{assigns.id}-said",
+        words:
+          sub
+          |> ApiaryWeb.TranscriptComponents.subagent_words(nil)
+          |> String.replace_prefix(" · ", "")
+      )
+
+    ~H"""
+    <div class="q-hd">
+      <button
+        :if={@item.sub.lines > 0}
+        type="button"
+        class="q-sub-caret"
+        phx-click="subagent_toggle"
+        phx-value-seq={@item.sequence}
+        aria-expanded={to_string(@item.sub.open)}
+        aria-labelledby={@said}
+      >
+        <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
+      </button>
+      <span :if={@item.sub.lines == 0} class="q-sub-caret" aria-hidden="true">
+        <span class="size-3"></span>
+      </span>
+      <span id={@said} class="q-sub-said">
+        <%!-- The space parts the type from the words in the chevron's name. --%>
+        <span class="q-k"><.external_text text={@item.sub.type || @item.agent_type || ""} /></span>{" "}<span class="q-s q-s-fit">{@words}</span>
+      </span>
+      <span :if={@item[:text]} class="q-s"><bdi>{sent(Timeline.first_line(@item.text))}</bdi></span>
+      <.tail
+        item={@item}
+        started_at={@started_at}
+        seq_path={@seq_path}
+        terminal_path={@terminal_path}
+      />
+    </div>
     """
   end
 
@@ -947,16 +1274,25 @@ defmodule ApiaryWeb.RunPageComponents do
       <span :if={@item.kind == :subagent_finished} class="q-s"><bdi>{sent(
         Timeline.first_line(@item.text)
       )}</bdi></span>
-      <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
-        <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
-      </.tail>
+      <.tail
+        item={@item}
+        started_at={@started_at}
+        seq_path={@seq_path}
+        terminal_path={@terminal_path}
+      />
     </div>
     """
   end
 
   defp item_body(%{item: %{kind: :notification}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Notification")}>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      terminal_path={@terminal_path}
+      kind={gettext("Notification")}
+    >
       {said([@item.notification_kind, @item.message])}
     </.head>
     """
@@ -966,7 +1302,13 @@ defmodule ApiaryWeb.RunPageComponents do
   # finished" and its time, and no text.
   defp item_body(%{item: %{kind: :turn_finished}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Turn finished")} />
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      terminal_path={@terminal_path}
+      kind={gettext("Turn finished")}
+    />
     """
   end
 
@@ -976,6 +1318,7 @@ defmodule ApiaryWeb.RunPageComponents do
       item={@item}
       started_at={@started_at}
       seq_path={@seq_path}
+      terminal_path={@terminal_path}
       kind={gettext("Turn failed")}
       tone="error"
     >
@@ -991,8 +1334,14 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :result}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Result")}>
-      {result_words(@item)}
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      terminal_path={@terminal_path}
+      kind={gettext("Result")}
+    >
+      {result_words(Map.put(@item, :duration_ms, nil))}
     </.head>
     """
   end
@@ -1004,21 +1353,33 @@ defmodule ApiaryWeb.RunPageComponents do
     assigns = assign(assigns, :reason, ExternalText.present(assigns.item.reason))
 
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Session ended")}>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      terminal_path={@terminal_path}
+      kind={gettext("Session ended")}
+    >
       <.external_text text={@reason} />
     </.head>
     """
   end
 
-  # Every end of a run: why it ended, in words, else the program's exit, then how long it ran.
+  # Every end of a run: why it ended, in words, else the program's exit. How long it ran is
+  # in the Took column.
   defp item_body(%{item: %{kind: :run_exited}} = assigns) do
     {words, signal} = end_words(assigns.item)
-    assigns = assign(assigns, words: words, signal: signal, said: not is_nil(words || signal))
+    assigns = assign(assigns, words: words, signal: signal)
 
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run ended")}>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      terminal_path={@terminal_path}
+      kind={gettext("Run ended")}
+    >
       {@words}<.external_text text={@signal} />
-      <span :if={@item.duration_ms}><span :if={@said}> · </span><.duration ms={@item.duration_ms} /></span>
     </.head>
     """
   end
@@ -1033,6 +1394,7 @@ defmodule ApiaryWeb.RunPageComponents do
       item={@item}
       started_at={@started_at}
       seq_path={@seq_path}
+      terminal_path={@terminal_path}
       kind={gettext("Run did not start")}
     >
       <span :if={@code} class="font-mono">{@code}</span>
@@ -1059,11 +1421,15 @@ defmodule ApiaryWeb.RunPageComponents do
   # as for a connection that sent none (`Apiary.Runs.Record.Timeline`). A tool with
   # nothing left to show, or only whitespace, reads as no tool
   # (`Apiary.ExternalText.present/1`), so the summary leads with the host and counts
-  # connections.
+  # connections. A group of requests to the run API shows the instance's host, with no
+  # port (`Apiary.Runs.RunApi`).
   defp item_body(%{item: %{kind: :connection_group}} = assigns) do
+    run_api = Enum.any?(assigns.item.connections, &RunApi.run_api?(&1[:rule]))
+
     assigns =
       assign(assigns,
-        host: sent(assigns.item.host) || gettext("n/a"),
+        host: if(run_api, do: RunApi.host(), else: sent(assigns.item.host) || gettext("n/a")),
+        port: if(run_api, do: nil, else: assigns.item.port),
         tool: ExternalText.present(assigns.item.tool)
       )
 
@@ -1077,10 +1443,10 @@ defmodule ApiaryWeb.RunPageComponents do
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span :if={@tool} class="q-dest q-dest-tool">
           <.tool_mark name={@tool} />
-          <span class="q-on"><bdi>{@host}</bdi>:{@item.port}</span>
+          <span class="q-on"><bdi>{@host}</bdi>{@port && ":#{@port}"}</span>
         </span>
         <span :if={!@tool} class="q-dest">
-          <bdi>{@host}</bdi><span class="q-port">:{@item.port}</span>
+          <bdi>{@host}</bdi><span :if={@port} class="q-port">:{@port}</span>
         </span>
         <span class="text-muted">
           · {if @tool,
@@ -1195,9 +1561,67 @@ defmodule ApiaryWeb.RunPageComponents do
 
   ## The head row
 
+  # A tool call's head row: its tool, agent, summary, state and times. A call with
+  # connections inside was the only open call when each of them was made
+  # (`Apiary.Runs.Record.Timeline`).
+  #
+  # With `over`, the cells of the line laid over a summary that set where its Terminal
+  # link wraps: the summary's words and note are on lines after it, so they are left out.
+  # Each cell is `aria-hidden`, as a screen reader reads it in the summary.
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :terminal_path, :any, default: nil
+  attr :in_summary, :boolean, default: false
+  attr :over, :boolean, default: false
+
+  defp tool_head(assigns) do
+    assigns = assign(assigns, :hide, assigns.over && "true")
+
+    ~H"""
+    <span class="q-k q-k-mono" aria-hidden={@hide}><.external_text text={@item.tool} /></span>
+    <.who :if={@item.who} lane={@item.lane} aria-hidden={@hide} />
+    <span :if={!@over} class="q-s q-s-mono"><.external_text text={@item.summary} /></span>
+    <span :if={!@over and @item.connections_count > 0} class="q-only-open">
+      {ngettext(
+        "only open call at a connection",
+        "only open call at %{number} connections",
+        @item.connections_count,
+        number: Format.number(@item.connections_count)
+      )}
+    </span>
+    <.badge :if={@item.in_background and !@over} color="info" class="self-center">
+      {gettext("In background")}
+    </.badge>
+    <span :if={@item.in_background and @over} class="flex self-center" aria-hidden="true">
+      <.badge color="info">{gettext("In background")}</.badge>
+    </span>
+    <.tail
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      terminal_path={@terminal_path}
+      in_summary={@in_summary}
+      over={@over}
+    >
+      <span :if={@item.status == :failed} class="q-bad" aria-hidden={@hide}>{if @item.interrupted,
+        do: gettext("Interrupted"),
+        else: gettext("Failed")}</span>
+      <span :if={@item.status == :open} class="q-running" aria-hidden={@hide}>{gettext("Running")}</span>
+      <span :if={@item.status == :no_end} class="q-no-end" aria-hidden={@hide}>{gettext(
+        "No end recorded"
+      )}</span>
+      <span :if={@item.status == :denied} class="q-no-end" aria-hidden={@hide}>{gettext(
+        "Not run: denied"
+      )}</span>
+    </.tail>
+    """
+  end
+
+  attr :item, :map, required: true
+  attr :started_at, :any, required: true
+  attr :seq_path, :any, required: true
+  attr :terminal_path, :any, default: nil
   attr :kind, :string, required: true
   attr :tone, :string, default: nil
   slot :inner_block
@@ -1211,7 +1635,7 @@ defmodule ApiaryWeb.RunPageComponents do
       <.who :if={@item.who} lane={@item.lane} />
       <span class="q-s">{render_slot(@inner_block)}</span>
       {render_slot(@chips)}
-      <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
+      <.tail item={@item} started_at={@started_at} seq_path={@seq_path} terminal_path={@terminal_path}>
         {render_slot(@version)}
       </.tail>
     </div>
@@ -1294,28 +1718,59 @@ defmodule ApiaryWeb.RunPageComponents do
   defp hosts_or_none(0), do: gettext("none")
   defp hosts_or_none(n), do: hosts_words(n)
 
-  # The item's number, its permalink. Inside a `<summary>` it is text that carries the
-  # path (`data-href`), since a link there would be a control inside a control; the
-  # timeline's `c` copies it either way.
+  # A row's end: its link to the Terminal, its time, how long it took and its number, the
+  # permalink. Inside a `<summary>` neither is a link, since a link there would be a
+  # control inside a control: the number is text with the path in `data-href`, which the
+  # timeline's `c` copies, and the Terminal link's place is kept empty for the link laid
+  # over it (`over`). A row with no event, a Pushed row, has an empty number cell.
+  #
+  # With `over`, the end is that line laid over a summary: the cells before the Terminal
+  # link, the link, then the cells after it; all but the link hidden, which put the link
+  # where the summary keeps its place.
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :terminal_path, :any, default: nil
   attr :in_summary, :boolean, default: false
+  attr :over, :boolean, default: false
   slot :inner_block
 
   defp tail(assigns) do
+    assigns =
+      assign(assigns,
+        took: took(assigns.item),
+        numbered: is_integer(assigns.item.sequence),
+        linked: is_function(assigns.terminal_path) and is_integer(assigns.item[:terminal_seq])
+      )
+
     ~H"""
     <span class="q-t">
       {render_slot(@inner_block)}
+      <span :if={@linked and @in_summary} class="q-to-term q-to-term-place" aria-hidden="true">
+        {gettext("Terminal")} <span>›</span>
+      </span>
+      <.link
+        :if={@linked and !@in_summary}
+        patch={@terminal_path.(@item.terminal_seq)}
+        class="q-to-term"
+        aria-label={gettext("Show this in the Terminal")}
+      >
+        {gettext("Terminal")} <span aria-hidden="true">›</span>
+      </.link>
       <.offset at={@item.time} from={@started_at} class="q-t-at q-tc1" />
+      <span class="q-tct">
+        <.duration :if={@took} ms={@took} precise={@item.kind == :tool} class="q-d" />
+      </span>
+      <span :if={!@numbered} class="q-tc2"></span>
+      <span :if={@numbered and @over} class="q-q q-tc2">#{pad(@item.sequence)}</span>
       <span
-        :if={@in_summary}
+        :if={@numbered and @in_summary}
         class="q-q q-tc2"
         data-permalink
         data-href={@seq_path.(@item.sequence)}
       >#{pad(@item.sequence)}</span>
       <.link
-        :if={!@in_summary}
+        :if={@numbered and !@in_summary and !@over}
         patch={@seq_path.(@item.sequence)}
         class="q-q q-tc2"
         tabindex="-1"
@@ -1324,6 +1779,14 @@ defmodule ApiaryWeb.RunPageComponents do
     </span>
     """
   end
+
+  # How long a row took, in its Took column: a tool call, a subagent, the main agent's
+  # session, a result, and the run. No other row has a duration.
+  @took [:tool, :subagent_started, :subagent_finished, :main_session, :result, :run_exited]
+
+  defp took(%{kind: kind, duration_ms: ms}) when kind in @took and is_integer(ms), do: ms
+
+  defp took(_item), do: nil
 
   # A text of several lines on one line: each run of whitespace a space.
   defp one_line(text) when is_binary(text),
@@ -1399,8 +1862,7 @@ defmodule ApiaryWeb.RunPageComponents do
   # signal is a text the run's report sent, shown as one (`Apiary.ExternalText.present/1`):
   # one with nothing left to show, or only whitespace, is no signal. `-1` with no signal is
   # the gateway's placeholder for an exit it wrote, not the program's, and an exit with
-  # neither has none: nothing is said of either, and the item says how long the run ran
-  # alone.
+  # neither has none: nothing is said of either.
   defp end_words(item) do
     words = RunComponents.reason_words(item)
     signal = if is_nil(words), do: ExternalText.present(Map.get(item, :signal))
@@ -1461,7 +1923,13 @@ defmodule ApiaryWeb.RunPageComponents do
 
   ## P6. The live end
 
-  @doc "Under the last item: listening while the run is alive, the end of the record after."
+  @doc """
+  Under the last item: listening while the run is alive, the end of the record after.
+
+  It has the `LiveEnd` hook (`assets/js/hooks/live_end.js`), outside the timeline's stream:
+  LiveView locks a hook's element until the acknowledgement of the hook's event arrives,
+  and a stream patched inside a locked element appends its new rows at the end of the list.
+  """
   attr :live, :boolean, required: true
   attr :events, :integer, required: true
   attr :last_sequence, :integer, default: nil
@@ -1469,7 +1937,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   def live_end(%{live: true} = assigns) do
     ~H"""
-    <p id="live-end" class="q-tail">
+    <p id="live-end" class="q-tail" phx-hook="LiveEnd">
       <span class="listening-dot mx-1" aria-hidden="true" />
       <span>
         {gettext("Listening for the next batch.")}
@@ -1494,7 +1962,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   def live_end(assigns) do
     ~H"""
-    <p id="live-end" class="q-tail">
+    <p id="live-end" class="q-tail" phx-hook="LiveEnd">
       {gettext("End of the record.")} {ngettext("%{number} event.", "%{number} events.", @events,
         number: Format.number(@events)
       )}
@@ -1560,9 +2028,11 @@ defmodule ApiaryWeb.RunPageComponents do
   box's dark ground, which fills the page's width. Without one it fits the screen to
   the box and offers to wrap.
 
-  The bar: the view (Transcript or Raw, when the run has a Transcript and a log; on pipes
-  the reader's preference kept in `localStorage`), the stream (Raw only), search, follow
-  and wrap (on pipes; both Raw only), the text size (A−, A+ and, at a recorded size, Fit;
+  The bar's controls are the hook's, in two parts with `phx-update="ignore"`, with the
+  `subagents` slot, drawn by the LiveView, between them. The bar: the view (Transcript or Raw, when the run
+  has a Transcript and a log; on pipes the reader's preference kept in `localStorage`),
+  the subagents' controls (Transcript only), the stream (Raw only), search, follow and
+  wrap (on pipes; both Raw only), the text size (A−, A+ and, at a recorded size, Fit;
   11 to 18 px, the reader's preference kept in `localStorage`), the download, Focus (`f`:
   the terminal takes the window; Escape leaves) and Full screen (the browser's, where it
   has one). Without a log (`raw` false) the box has the Transcript alone.
@@ -1581,6 +2051,10 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :raw, :boolean, default: true, doc: "whether the log is there to show in Raw"
   attr :view, :string, default: "raw", doc: ~s("transcript" or "raw": the view it opens in)
   slot :transcript, doc: "the Transcript; none for a run with no runtime events"
+
+  slot :subagents,
+    doc:
+      "the Transcript's controls of its subagents, in the bar after the view, drawn by the LiveView"
 
   def terminal(assigns) do
     pty = assigns.streams == ["terminal"]
@@ -1620,168 +2094,180 @@ defmodule ApiaryWeb.RunPageComponents do
       data-rows={@sized && @rows}
       data-words={Jason.encode!(terminal_words())}
     >
-      <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
-        <a
-          :if={@raw}
-          class="sr-only focus:not-sr-only q-tbtn"
-          href={@src <> "?download=1"}
-          download
-        >
-          {gettext("Read the log as text")}
-        </a>
-        <div :if={@both} class="q-tseg q-tview" role="group" aria-label={gettext("Log view")}>
-          <button type="button" data-view-button="transcript" aria-pressed="false">
-            {gettext("Transcript")}
-          </button>
-          <button type="button" data-view-button="raw" aria-pressed="false">{gettext("Raw")}</button>
-        </div>
-        <div :if={@raw} class="q-tseg q-term-raw" role="group" aria-label={gettext("Stream")}>
-          <%= if length(@streams) > 1 do %>
-            <button :for={stream <- @streams} type="button" data-stream={stream} aria-pressed="false">
-              {stream}
+      <div id={"#{@id}-bar"} class="q-term-bar">
+        <div id={"#{@id}-bar-view"} class="contents" phx-update="ignore">
+          <a
+            :if={@raw}
+            class="sr-only focus:not-sr-only q-tbtn"
+            href={@src <> "?download=1"}
+            download
+          >
+            {gettext("Read the log as text")}
+          </a>
+          <div :if={@both} class="q-tseg q-tview" role="group" aria-label={gettext("Log view")}>
+            <button type="button" data-view-button="transcript" aria-pressed="false">
+              {gettext("Transcript")}
             </button>
-            <button type="button" data-stream="" aria-pressed="true">{gettext("both")}</button>
-          <% else %>
-            <span class="q-tseg-one">{List.first(@streams) || gettext("terminal")}</span>
-          <% end %>
+            <button type="button" data-view-button="raw" aria-pressed="false">{gettext("Raw")}</button>
+          </div>
+          <div :if={@raw} class="q-tseg q-term-raw" role="group" aria-label={gettext("Stream")}>
+            <%= if length(@streams) > 1 do %>
+              <button
+                :for={stream <- @streams}
+                type="button"
+                data-stream={stream}
+                aria-pressed="false"
+              >
+                {stream}
+              </button>
+              <button type="button" data-stream="" aria-pressed="true">{gettext("both")}</button>
+            <% else %>
+              <span class="q-tseg-one">{List.first(@streams) || gettext("terminal")}</span>
+            <% end %>
+          </div>
+          <label :if={@raw} class="q-term-find">
+            <.icon name="hero-magnifying-glass-micro" class="size-4" />
+            <span class="sr-only">
+              {if @both,
+                do: gettext("Search the log. Searching shows the Raw view."),
+                else: gettext("Search the log")}
+            </span>
+            <input
+              type="text"
+              data-find
+              spellcheck="false"
+              autocomplete="off"
+              placeholder={gettext("Search the log")}
+            />
+            <span data-find-count aria-live="polite"></span>
+          </label>
         </div>
-        <label :if={@raw} class="q-term-find">
-          <.icon name="hero-magnifying-glass-micro" class="size-4" />
-          <span class="sr-only">
-            {if @both,
-              do: gettext("Search the log. Searching shows the Raw view."),
-              else: gettext("Search the log")}
+        <div :if={@subagents != []} id={"#{@id}-subagents"} class="q-term-trv q-term-subs">
+          {render_slot(@subagents)}
+        </div>
+        <div id={"#{@id}-bar-tools"} class="contents" phx-update="ignore">
+          <span class="q-term-grow"></span>
+          <span :if={@raw} class="q-term-hint q-term-raw">
+            <.rich text={rich_gettext("%{key} leaves focus", key: {:part, :key})}>
+              <:part name={:key}><kbd>{gettext("esc")}</kbd></:part>
+            </.rich>
           </span>
-          <input
-            type="text"
-            data-find
-            spellcheck="false"
-            autocomplete="off"
-            placeholder={gettext("Search the log")}
-          />
-          <span data-find-count aria-live="polite"></span>
-        </label>
-        <span class="q-term-grow"></span>
-        <span :if={@raw} class="q-term-hint q-term-raw">
-          <.rich text={rich_gettext("%{key} leaves focus", key: {:part, :key})}>
-            <:part name={:key}><kbd>{gettext("esc")}</kbd></:part>
-          </.rich>
-        </span>
-        <button
-          :if={@raw}
-          type="button"
-          class="q-tbtn q-term-raw"
-          aria-pressed={to_string(@live)}
-          title={gettext("Follow the end of the log (End)")}
-          data-follow
-        >
-          <.icon name="hero-arrow-down-micro" class="size-4" />
-          <span class="q-tbtn-lbl" data-follow-label>{if @live,
-            do: gettext("Following"),
-            else: gettext("Jump to end")}</span>
-        </button>
-        <button
-          :if={!@sized and @raw}
-          type="button"
-          class="q-tbtn q-term-raw"
-          title={gettext("Wrap long lines")}
-          aria-pressed="false"
-          data-wrap
-        >
-          <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
-          <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
-        </button>
-        <%!-- The Transcript's: its end, and whether a tool's line and its result wrap. --%>
-        <button
-          :if={@transcript != []}
-          type="button"
-          class="q-tbtn q-term-trv"
-          aria-pressed={to_string(@live)}
-          title={gettext("Follow the end of the log (End)")}
-          data-tr-end
-        >
-          <.icon name="hero-arrow-down-micro" class="size-4" />
-          <span class="q-tbtn-lbl" data-tr-end-label>{if @live,
-            do: gettext("Following"),
-            else: gettext("Jump to end")}</span>
-        </button>
-        <button
-          :if={@transcript != []}
-          type="button"
-          class="q-tbtn q-term-trv"
-          title={gettext("Wrap long lines")}
-          aria-pressed="false"
-          data-tr-wrap
-        >
-          <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
-          <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
-        </button>
-        <span class="q-term-sep" aria-hidden="true"></span>
-        <div class="q-term-sizes" role="group" aria-label={gettext("Text size")}>
           <button
-            type="button"
-            class="q-tbtn"
-            title={gettext("Smaller text")}
-            aria-label={gettext("Smaller text")}
-            data-size-step="-1"
-          >
-            {gettext("A−")}
-          </button>
-          <span class="q-term-px" data-size-label aria-live="polite"></span>
-          <button
-            type="button"
-            class="q-tbtn"
-            title={gettext("Larger text")}
-            aria-label={gettext("Larger text")}
-            data-size-step="1"
-          >
-            {gettext("A+")}
-          </button>
-          <button
-            :if={@sized and @raw}
+            :if={@raw}
             type="button"
             class="q-tbtn q-term-raw"
-            title={gettext("Fit the recorded columns to the width")}
-            aria-pressed="false"
-            data-size-fit
+            aria-pressed={to_string(@live)}
+            title={gettext("Follow the end of the log (End)")}
+            data-follow
           >
-            {gettext("Fit")}
+            <.icon name="hero-arrow-down-micro" class="size-4" />
+            <span class="q-tbtn-lbl" data-follow-label>{if @live,
+              do: gettext("Following"),
+              else: gettext("Jump to end")}</span>
+          </button>
+          <button
+            :if={!@sized and @raw}
+            type="button"
+            class="q-tbtn q-term-raw"
+            title={gettext("Wrap long lines")}
+            aria-pressed="false"
+            data-wrap
+          >
+            <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
+            <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
+          </button>
+          <%!-- The Transcript's: its end, and whether a tool's line and its result wrap. --%>
+          <button
+            :if={@transcript != []}
+            type="button"
+            class="q-tbtn q-term-trv"
+            aria-pressed={to_string(@live)}
+            title={gettext("Follow the end of the log (End)")}
+            data-tr-end
+          >
+            <.icon name="hero-arrow-down-micro" class="size-4" />
+            <span class="q-tbtn-lbl" data-tr-end-label>{if @live,
+              do: gettext("Following"),
+              else: gettext("Jump to end")}</span>
+          </button>
+          <button
+            :if={@transcript != []}
+            type="button"
+            class="q-tbtn q-term-trv"
+            title={gettext("Wrap long lines")}
+            aria-pressed="false"
+            data-tr-wrap
+          >
+            <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
+            <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
+          </button>
+          <span class="q-term-sep" aria-hidden="true"></span>
+          <div class="q-term-sizes" role="group" aria-label={gettext("Text size")}>
+            <button
+              type="button"
+              class="q-tbtn"
+              title={gettext("Smaller text")}
+              aria-label={gettext("Smaller text")}
+              data-size-step="-1"
+            >
+              {gettext("A−")}
+            </button>
+            <span class="q-term-px" data-size-label aria-live="polite"></span>
+            <button
+              type="button"
+              class="q-tbtn"
+              title={gettext("Larger text")}
+              aria-label={gettext("Larger text")}
+              data-size-step="1"
+            >
+              {gettext("A+")}
+            </button>
+            <button
+              :if={@sized and @raw}
+              type="button"
+              class="q-tbtn q-term-raw"
+              title={gettext("Fit the recorded columns to the width")}
+              aria-pressed="false"
+              data-size-fit
+            >
+              {gettext("Fit")}
+            </button>
+          </div>
+          <span :if={@raw} class="q-term-sep" aria-hidden="true"></span>
+          <a
+            :if={@raw}
+            class="q-tbtn"
+            title={gettext("Download the raw bytes")}
+            aria-label={gettext("Download the raw bytes")}
+            href={@src <> "?download=1"}
+            download
+          >
+            <.icon name="hero-arrow-down-tray-micro" class="size-4" />
+            <span class="q-tbtn-lbl" aria-hidden="true">{gettext("Download")}</span>
+          </a>
+          <button
+            type="button"
+            class="q-tbtn"
+            title={gettext("Focus: the terminal takes the window (f)")}
+            aria-pressed="false"
+            aria-keyshortcuts="f"
+            data-focus
+          >
+            <.icon name="hero-arrows-pointing-in-micro" class="size-4" />
+            <span class="q-tbtn-lbl">{gettext("Focus")}</span>
+          </button>
+          <button
+            type="button"
+            class="q-tbtn"
+            title={gettext("Full screen")}
+            aria-label={gettext("Full screen")}
+            aria-pressed="false"
+            data-fullscreen
+            hidden
+          >
+            <.icon name="hero-arrows-pointing-out-micro" class="size-4" />
           </button>
         </div>
-        <span :if={@raw} class="q-term-sep" aria-hidden="true"></span>
-        <a
-          :if={@raw}
-          class="q-tbtn"
-          title={gettext("Download the raw bytes")}
-          aria-label={gettext("Download the raw bytes")}
-          href={@src <> "?download=1"}
-          download
-        >
-          <.icon name="hero-arrow-down-tray-micro" class="size-4" />
-          <span class="q-tbtn-lbl" aria-hidden="true">{gettext("Download")}</span>
-        </a>
-        <button
-          type="button"
-          class="q-tbtn"
-          title={gettext("Focus: the terminal takes the window (f)")}
-          aria-pressed="false"
-          aria-keyshortcuts="f"
-          data-focus
-        >
-          <.icon name="hero-arrows-pointing-in-micro" class="size-4" />
-          <span class="q-tbtn-lbl">{gettext("Focus")}</span>
-        </button>
-        <button
-          type="button"
-          class="q-tbtn"
-          title={gettext("Full screen")}
-          aria-label={gettext("Full screen")}
-          aria-pressed="false"
-          data-fullscreen
-          hidden
-        >
-          <.icon name="hero-arrows-pointing-out-micro" class="size-4" />
-        </button>
       </div>
       <div
         :if={@transcript != []}
@@ -1850,14 +2336,31 @@ defmodule ApiaryWeb.RunPageComponents do
   @header_subjects 3
 
   @doc """
-  The header's line under the title: the kind, then the first three subjects, each a link
-  out with its title and its url's host as the tooltip (`subject_tip/1`), then how many
-  more there are (all of them are in the rail's About). Nothing when the run names neither a kind nor a subject.
+  The header's line under the title: the run's work item, as the runs list shows it
+  (`ApiaryWeb.RunComponents.work_item_name/1`); the kind; then the first three subjects,
+  each a link out with its title and its url's host as the tooltip (`subject_tip/1`), then
+  how many more there are (all of them are in the rail's About). The subject of the work
+  item, `work_item` and its public id, is left out here: the work item is first. Nothing
+  when the run has no work item, no kind and no subject.
   """
   attr :run, :map, required: true
+  attr :scope, :map, default: nil
+
+  attr :work_item, :map,
+    default: nil,
+    doc: "the run's work item, as `Apiary.Runs.list_facts/2` reads it, or nil"
+
+  attr :work_item_link, :boolean,
+    default: false,
+    doc: "whether the work item is a link to its page"
 
   def about_header(assigns) do
-    subjects = shown_subjects(assigns.run.about_subjects)
+    subjects =
+      for subject <- assigns.run.about_subjects || [],
+          not work_item_subject?(subject, assigns.work_item),
+          do: subject
+
+    subjects = shown_subjects(subjects)
 
     assigns =
       assign(assigns,
@@ -1867,7 +2370,17 @@ defmodule ApiaryWeb.RunPageComponents do
       )
 
     ~H"""
-    <p :if={@kind || @subjects != []} id="run-about" class="q-run-about">
+    <p :if={@work_item || @kind || @subjects != []} id="run-about" class="q-run-about">
+      <.work_item_name
+        :if={@work_item}
+        id="run-work-item"
+        scope={@scope}
+        work_item={@work_item}
+        link={@work_item_link}
+        link_class="q-run-wi"
+      >
+        <.icon name="hero-rectangle-stack-micro" class="size-3.5 align-[-2px]" />
+      </.work_item_name>
       <span :if={@kind} id="run-about-kind"><.external_text text={@kind} /></span>
       <span :for={subject <- @subjects}>
         <.external_link href={subject["url"]} title={subject_tip(subject)}>
@@ -1880,6 +2393,14 @@ defmodule ApiaryWeb.RunPageComponents do
     </p>
     """
   end
+
+  # The subject a run of a work item reports for it: the type `work_item` and the work
+  # item's public id (`Apiary.Dispatches.Handover`).
+  defp work_item_subject?(%{"type" => "work_item", "ref" => ref}, %{public_id: ref})
+       when is_binary(ref),
+       do: true
+
+  defp work_item_subject?(_subject, _work_item), do: false
 
   @doc """
   The rail's About, its first section: the kind; each subject, a link out with its title

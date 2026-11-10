@@ -30,6 +30,18 @@ defmodule Apiary.Policy do
   inside the change's transaction (`rerender_in/3`). `effective/2`, which the pages
   read, leaves those hosts out; `effective/3` has them.
 
+  Every document also allows the hosts that the runtimes need
+  (`Apiary.Kinds.Runtimes.egress_hosts/0`), as it allows an integration's hosts, on every
+  path. A deny rule of such a host is refused at save (`check_deny/3`), and so is a rule
+  that limits such a host to paths (`check_paths/1`). A rule saved before a host became a
+  runtime's stays and does not stop a render: a deny of the host is overridden, and a
+  rule's allow held to paths limits nothing in the document (`Apiary.Policy.Resolution`,
+  point 8). A version that an earlier release wrote gains a runtime's host at boot and
+  from `bin/migrate`: `Apiary.Release.FirstVersions` and `Apiary.Release.migrate/1` each
+  render every workspace again (`rerender_all/1`) after they write the versions 1, and a
+  holder gets a new version only where its bytes change. A workspace's next change
+  renders it too.
+
   An edition may keep a level above the workspace's policy
   (`c:Apiary.Edition.above_workspace/1`, an `Apiary.Policy.Above`; the core keeps none):
   its host rules, which every read and render of this module takes in, read once
@@ -42,6 +54,12 @@ defmodule Apiary.Policy do
   `above_changed` change in its history. A level that carries variables only
   (`policy: false`) is none here: everything this module reads, renders and records is
   what it is with no level above.
+
+  ## Version 1
+
+  Every workspace has a policy from its creation: version 1, in `observe` with no rules,
+  which allows everything implicitly. `first_version/1` writes it inside the creation's
+  transaction. A workspace's first change makes version 2.
 
   ## Writes
 
@@ -98,6 +116,7 @@ defmodule Apiary.Policy do
   alias Apiary.{Access, Audit, Connections}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Audit.Entry
+  alias Apiary.Kinds.Runtimes
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Policy.{Above, Activity, Change, ComposedConfiguration, Effective, Error}
   alias Apiary.Policy.{Export, Grammar}
@@ -113,6 +132,7 @@ defmodule Apiary.Policy do
   # repeat the list, and so the history's growth: quadratic in the rules, up to this.
   @rules_max 500
   @nobody "00000000-0000-0000-0000-000000000000"
+  @rerender_origin %{worker: "mix apiary.policy.rerender"}
   # The actions of the policy's writes, whose audit entries are its history.
   @history_actions ~w(security_policy.edit security_policy.lock security_policy.set_mode)
 
@@ -138,23 +158,20 @@ defmodule Apiary.Policy do
   ## Managed
 
   @doc """
-  Whether somebody has made the workspace's policy: there is a change in its history, the
-  first rule or the first change of mode. Until then the workspace serves no run
-  configuration (a run's registration is answered `{"version":1}`, the document
-  of no policy; a reload answers `404`; and the answers to batches name no digest of one),
-  so its machines use their local policy, from
-  `forager.yaml`: an upgrade, or a workspace nobody has looked at, takes no machine's
-  enforcement away. From the first change on, every run of the workspace takes the
-  workspace's policy. The first change anywhere counts, a target's rule or a target's mode
-  included: it starts serving every target of the workspace, the others the baseline. For
-  the pages: "Machines use their local policy until the first change here."
+  Whether the workspace has a run configuration. Every workspace has version 1 from its
+  creation (`first_version/1`), so this is false only for a workspace with no row yet: one
+  that existed before workspaces got version 1 at creation, until `first_versions/0` runs
+  at boot or from `bin/migrate`; one the previous release created during an upgrade, after
+  that run; or one whose version 1 `first_versions/0` could not render. Such a workspace
+  serves no run configuration (a run's registration is answered `{"version":1}`,
+  the document of no policy; a reload answers `404`; and the answers to batches name no
+  digest of one), and its machines use their local policy, from `forager.yaml`.
   """
   @spec managed?(Scope.t()) :: boolean
   def managed?(%Scope{workspace: %Workspace{id: workspace_id}}),
     do: managed_workspace?(workspace_id)
 
-  # The first change is what writes the first version, and nothing else writes one, so a
-  # workspace is managed once it has a run configuration: a fact the audit trail's
+  # A workspace is managed once it has a run configuration: a fact the audit trail's
   # retention cannot take away.
   @doc false
   def managed_workspace?(workspace_id) do
@@ -163,11 +180,11 @@ defmodule Apiary.Policy do
 
   @doc """
   The run configuration rendered for the workspace `workspace_id` with no change made:
-  the mode `observe`, no rule of the workspace or of a target, and the hosts the
-  integrations reaching the workspace and the level above require, as every holder's
-  document is rendered. Stored nowhere: a prebuild of a workspace that serves no run
-  configuration is given it (`Apiary.Runs.Registration`). `{:ok, bytes}`, or
-  `{:error, error}` where the render refuses, as the first change would.
+  the mode `observe`, no rule of the workspace or of a target, and the hosts the runtimes,
+  the integrations reaching the workspace and the level above require, as every holder's
+  document is rendered. Stored nowhere: a prebuild of a workspace with no row yet
+  (`managed?/1`) is given it (`Apiary.Runs.Registration`). `{:ok, bytes}`, or
+  `{:error, error}` where the render refuses.
   """
   @spec default_document(Ecto.UUID.t()) :: {:ok, binary} | {:error, Error.t()}
   def default_document(workspace_id) when is_binary(workspace_id) do
@@ -180,16 +197,17 @@ defmodule Apiary.Policy do
       nil,
       [],
       [],
-      {above(workspace), Connections.egress_hosts(workspace)}
+      {above(workspace), required_hosts(workspace)}
     )
   end
 
   @doc """
-  What the sidebar shows of the policy, in one query: whether the workspace's policy is
-  managed (`managed?/1`), the workspace's mode, the modes the workspace's targets set
-  for themselves, one per target that has one, in no particular order, and `floor`,
-  whether the level above requires `enforce` (then the mode in force is `enforce`,
-  whatever the workspace and its targets set): `%{managed?:, mode:, own_modes:, floor:}`.
+  What the sidebar shows of the policy, in one query: whether the workspace has a row
+  (`managed?/1`; the pages show no mode without one), the workspace's mode, the modes the
+  workspace's targets set for themselves, one per target that has one, in no particular
+  order, and `floor`, whether the level above requires `enforce` (then the mode in force is
+  `enforce`, whatever the workspace and its targets set):
+  `%{managed?:, mode:, own_modes:, floor:}`.
   """
   @spec mode_summary(Scope.t()) :: %{
           managed?: boolean,
@@ -433,26 +451,27 @@ defmodule Apiary.Policy do
   level above the workspace (nil where the edition keeps none). A target that is not the
   workspace's gets the baseline.
 
-  The hosts of the integrations that reach the workspace are left out: `effective/3`
-  with `integrations: true` has them.
+  The hosts of the integrations that reach the workspace and of the runtimes are left out:
+  `effective/3` with `integrations: true` has them.
   """
   @spec effective(Scope.t(), holder) :: Effective.t()
-  # The pages read the policy here, so its rule lists show no integration's host. The
-  # Policy page lists those hosts apart, as "Allowed for every run"
+  # The pages read the policy here, so its rule lists show no integration's or runtime's
+  # host. The Policy page lists those hosts apart, as "Allowed for every run"
   # (`Apiary.Policy.RequiredHosts`).
   def effective(%Scope{} = scope, holder), do: effective(scope, holder, integrations: false)
 
   @doc """
   effective/3 is `effective/2` with `opts`: `integrations: true` takes in the hosts of the
   integrations that reach the workspace (`Apiary.Connections.egress_hosts/1`), each an
-  entry with source `:integration`, as the document served to the workspace's runs has
-  them (`Apiary.Policy.Resolution`).
+  entry with source `:integration`, and of the runtimes
+  (`Apiary.Kinds.Runtimes.egress_hosts/0`), each an entry with source `:runtime`, as the
+  document served to the workspace's runs has them (`Apiary.Policy.Resolution`).
   """
   @spec effective(Scope.t(), holder, keyword) :: Effective.t()
   def effective(%Scope{} = scope, holder, opts) do
     integrations =
       if Keyword.get(opts, :integrations, false),
-        do: Connections.egress_hosts(scope.workspace),
+        do: required_hosts(scope.workspace),
         else: []
 
     target_id =
@@ -634,12 +653,16 @@ defmodule Apiary.Policy do
   cover: what enforce would start denying. A destination is a host, and a path as well
   where the host is held to paths. Each connection is held to the effective policy of
   its run's target (the baseline for a run without one), matched as the gateway
-  matches. Each destination says its allowed `attempts`, how many `runs` made them, when
+  matches. It leaves out what enforce lets through with no rule: a runtime's, an
+  integration's or a model provider's host (`Apiary.Policy.RequiredHosts.covers?`).
+  Each destination says its allowed `attempts`, how many `runs` made them, when
   it was last seen and in which `targets`, and `tool`, the tool whose host it is, whenever
   a request to it in the range named one, handed to the tool or refused by a path rule
   before it reached the tool (nil otherwise); the 50 with the most attempts, most first.
   `unchangeable` is true when no rule can allow it: the wall refused the last attempt of
-  its most recently seen connection, or its host is none a rule can name.
+  its most recently seen connection, or its host is none a rule can name. A request to the
+  run API, which has the wall rule `wall:run-api` (`Apiary.Runs.RunApi`), is left out: the
+  mode does not change what the gateway does with it, so enforce adds no block to it.
 
   Read from `connections` by the workspace and when they were last seen, at most
   20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a
@@ -648,6 +671,26 @@ defmodule Apiary.Policy do
   @spec uncovered(Scope.t(), DateTime.t()) :: {:ok, [uncovered]} | :unavailable
   def uncovered(%Scope{workspace: %Workspace{}} = scope, %DateTime{} = since),
     do: Activity.uncovered(scope, nil, since)
+
+  @doc """
+  Whether a run of the workspace reached out since `since`: a connection of a session,
+  allowed or denied, last seen since then, read from `connections` as `uncovered/2`
+  reads them. One query, which stops at the first such row.
+  """
+  @spec reached?(Scope.t(), DateTime.t()) :: boolean
+  def reached?(%Scope{workspace: %Workspace{}} = scope, %DateTime{} = since),
+    do: Activity.reached?(scope, since)
+
+  @doc """
+  What the connections since `since` show of the rules, for the observe mode card when
+  `uncovered/2` is empty: `:none` when no run reached out; `:covered` when every
+  connection is of a run whose target follows the workspace's mode, and none was denied
+  to a host that no rule covers and not every run is allowed; `:partly` otherwise. Read as
+  `uncovered/2` reads the connections, `:unavailable` beyond the same cap.
+  """
+  @spec covered(Scope.t(), DateTime.t()) :: {:ok, :none | :covered | :partly} | :unavailable
+  def covered(%Scope{workspace: %Workspace{}} = scope, %DateTime{} = since),
+    do: Activity.covered(scope, since)
 
   @doc """
   `uncovered/2` for a holder. For the workspace (`nil`, `:workspace`) it is `uncovered/2`:
@@ -680,6 +723,7 @@ defmodule Apiary.Policy do
           port: non_neg_integer,
           path: String.t(),
           held: boolean,
+          required: boolean,
           locked: String.t() | nil,
           above: String.t() | nil,
           unchangeable: boolean,
@@ -695,7 +739,10 @@ defmodule Apiary.Policy do
   effective policy still does not allow: what a member can act on, each held to the
   policy of its run's target as `uncovered/2` holds them. A destination allowed
   since is left out: the record says it was denied, the rules say it no longer would be.
-  `held` is true when the host is allowed and the path is what no rule covers; `locked`
+  `held` is true when the host is allowed and the path is what no rule covers; `required`
+  is true when every run is allowed the host today, whatever the rules say
+  (`Apiary.Policy.RequiredHosts.covers?`), such as a runtime's host, under the policy of
+  each target whose runs were denied it; `locked`
   names the locked workspace deny that covers the host, when one does, so a page can say
   that only an owner changes it, and `above` the deny of the level above that covers it,
   when one does, which no rule of the workspace changes; `tool` names the tool whose host it is, whenever a
@@ -837,9 +884,9 @@ defmodule Apiary.Policy do
   @doc """
   The run configuration in force for the baseline (`nil`) or for a target: the highest
   version. A target that never had rules is served the baseline's, and the
-  row says so by its `target_id`. A workspace nobody has changed yet (`managed?/1` is
-  false) has none: `{:error, %Error{reason: :unmanaged}}`, and nothing is rendered or
-  stored by asking. The first version is written by the first change alone.
+  row shows that in its `target_id`. A workspace with no row yet (`managed?/1` is false) has
+  none: `{:error, %Error{reason: :unmanaged}}`, and nothing is rendered or stored by
+  asking.
   """
   @spec current_configuration(Scope.t(), holder) :: {:ok, RunConfiguration.t()} | refusal
   def current_configuration(%Scope{workspace: %Workspace{} = workspace} = scope, holder) do
@@ -908,7 +955,7 @@ defmodule Apiary.Policy do
   `%{in_force:, reported:, applied:, drift:}`. `in_force` is read now, never stored;
   `reported` is the `X-Qory-Run-Configuration` of the run's last batch that carried one;
   `applied` is what its last policy applied event named; `in_force` is nil for a workspace
-  nobody has changed, which serves no configuration. `drift` is true when the run
+  with no row yet, which serves no configuration. `drift` is true when the run
   reported a digest other than the one in force, which is a run that has not reloaded
   yet, and false when it reported none: such a run holds no fetched configuration. A run
   of another workspace is a refusal, `{:error, %Apiary.Policy.Error{reason: :not_found}}`,
@@ -1256,10 +1303,36 @@ defmodule Apiary.Policy do
   section under `gateway:` of `~/.config/qory/forager.yaml`, which holds the mode and the
   hosts; and `policy_file`, a document in the contract's policy format for `qory run --policy`, when
   the policy holds paths, which the Forager file's section cannot say (nil otherwise). `notes` are sentences for the page.
+  A rule's paths on a runtime's host are not exported, as a document leaves them out
+  (`Apiary.Policy.Resolution.runtime_paths/2`), nor a deny of a runtime's host
+  (`Apiary.Policy.Resolution.runtime_deny/2`). Each runtime's host is in `allow` of both
+  texts, which have no `allow_first` (`Apiary.Policy.Resolution.runtime_allow/2`).
+  `runtime_blocked` is true when the texts deny a `*.` entry that covers a runtime's host:
+  a node without a server blocks that host, which the texts list as allowed.
   """
   @spec export(Scope.t(), holder) ::
-          {:ok, %{forager_file: String.t(), policy_file: String.t() | nil, notes: [String.t()]}}
-  def export(%Scope{} = scope, holder), do: {:ok, Export.text(effective(scope, holder))}
+          {:ok,
+           %{
+             forager_file: String.t(),
+             policy_file: String.t() | nil,
+             notes: [String.t()],
+             runtime_blocked: boolean
+           }}
+  def export(%Scope{} = scope, holder) do
+    effective = effective(scope, holder)
+    runtime_hosts = Enum.map(Runtimes.egress_hosts(), & &1.host)
+    allow = Resolution.runtime_allow(effective.allow, runtime_hosts)
+    paths = Resolution.runtime_paths(effective.paths, runtime_hosts)
+    deny = Resolution.runtime_deny(effective.deny, runtime_hosts)
+
+    runtime_blocked =
+      Enum.any?(deny, fn entry ->
+        String.starts_with?(entry, "*.") and Enum.any?(runtime_hosts, &Grammar.covers?(entry, &1))
+      end)
+
+    text = Export.text(%{effective | allow: allow, paths: paths, deny: deny})
+    {:ok, Map.put(text, :runtime_blocked, runtime_blocked)}
+  end
 
   ## Several changes at once
 
@@ -1598,7 +1671,8 @@ defmodule Apiary.Policy do
     with :ok <- may_change(scope, existing),
          :ok <- may_lock(scope, existing, attrs),
          :ok <- room(workspace.id, target_id, existing),
-         :ok <- deny_allowed(candidate, undeniable(workspace)) do
+         :ok <- deny_allowed(candidate, undeniable(workspace)),
+         :ok <- paths_allowed(candidate, existing, attrs) do
       store(workspace, scope.user, target_id, existing, candidate, attrs)
     end
   end
@@ -1610,16 +1684,19 @@ defmodule Apiary.Policy do
   host of an API endpoint of a model provider reaching it
   (`Apiary.Connections.provider_hosts/1`). The error's `details` contain that
   integration's connection and the host (`Apiary.Policy.Error`), and its `message` says
-  to remove the host, with the connection's name. A `*.` host is never refused: a `*.`
+  to remove the host, with the connection's name. It is
+  `{:error, %Error{reason: :runtime_host}}`, with the runtime's title, when `host` equals
+  a host that a runtime requires (`Apiary.Kinds.Runtimes.egress_hosts/0`), whether or not
+  a connection lists it too. A `*.` host is never refused: a `*.`
   deny saves, and the integration's host beats it in the resolution
   (`Apiary.Policy.Resolution`, point 7), as a provider's host beats it in the document
   composed for a run (`Apiary.Policy.ComposedConfiguration`).
 
   `place` is `:workspace`, for the scope's workspace and each of its targets, which
-  `allow/3`, `deny/3` and the other writes of this module ask under the workspace's lock;
+  `allow/3`, `deny/3` and the other writes of this module call under the workspace's lock;
   or `:above`, for the level above the workspace (`Apiary.Policy.Above`), whose denies
   hold in every workspace of the scope's organisation. An edition that keeps a level above
-  asks it with `:above` before it saves a deny there, inside the transaction that holds the
+  can call it with `:above` before it saves a deny there, inside the transaction that holds the
   organisation's workspaces (`lock_workspaces/2`), so a write to an integration, which
   locks every workspace of the organisation first, comes wholly before or wholly after it.
   """
@@ -1630,22 +1707,98 @@ defmodule Apiary.Policy do
   def check_deny(%Scope{organisation: %Organisation{} = organisation}, :above, host) do
     deny_allowed(
       %Rule{action: "deny", host: host},
-      Connections.organisation_egress_hosts(organisation) ++
+      Runtimes.egress_hosts() ++
+        Connections.organisation_egress_hosts(organisation) ++
         Connections.organisation_provider_hosts(organisation)
     )
   end
 
-  # The hosts no deny rule of `workspace` may name exactly: the integrations' and the API
-  # endpoints' of the model providers, each with its connection.
-  defp undeniable(%Workspace{} = workspace),
-    do: Connections.egress_hosts(workspace) ++ Connections.provider_hosts(workspace)
+  @doc """
+  check_runtime_deny/1 is `check_deny/3` for the runtimes' hosts alone
+  (`Apiary.Kinds.Runtimes.egress_hosts/0`): `:ok`, or the same
+  `{:error, %Error{reason: :runtime_host}}`. It reads no table, so the rule form calls it
+  as a person types, before the save calls `check_deny/3`.
+  """
+  @spec check_runtime_deny(String.t()) :: :ok | refusal
+  def check_runtime_deny(host) when is_binary(host),
+    do: deny_allowed(%Rule{action: "deny", host: host}, Runtimes.egress_hosts())
 
-  # A deny rule on an integration's host, exactly, is refused; the first connection that
-  # lists the host is the one the refusal contains.
+  @doc """
+  check_paths/1 checks whether a rule that limits `host` to paths may be saved, at any
+  level: `:ok`, or `{:error, %Error{reason: :runtime_host}}` when `host` equals a host that a
+  runtime requires (`Apiary.Kinds.Runtimes.egress_hosts/0`), with `field` `:paths`, the
+  runtime in its `details` (`Apiary.Policy.Error`), and a `message` with the runtime's
+  title. Every write of a rule in this module calls it; an edition that keeps a level above
+  the workspace can call it before it saves a rule there. A `*.` host is never refused: the
+  runtime's host stays on every path (`Apiary.Policy.Resolution`, point 8).
+  """
+  @spec check_paths(String.t()) :: :ok | refusal
+  def check_paths(host) when is_binary(host) do
+    case Enum.find(Runtimes.egress_hosts(), &(&1.host == host)) do
+      nil ->
+        :ok
+
+      %{runtime: runtime} ->
+        {:error,
+         %Error{
+           reason: :runtime_host,
+           message:
+             gettext(
+               "Remove the paths from the rule. %{runtime} needs every path on this host, so no rule can limit it.",
+               runtime: runtime.title
+             ),
+           field: :paths,
+           details: %{runtime: runtime, host: host}
+         }}
+    end
+  end
+
+  # What a save would leave on the rule: the paths the save lists, else those the rule has
+  # (`store/6`). A rule that ends up with no paths, a deny included, limits nothing.
+  defp paths_allowed(%Rule{action: "allow", host: host} = candidate, existing, attrs) do
+    paths =
+      if Map.has_key?(attrs, "paths") or is_nil(existing),
+        do: candidate.paths,
+        else: existing.paths
+
+    if is_list(paths), do: check_paths(host), else: :ok
+  end
+
+  defp paths_allowed(%Rule{}, _existing, _attrs), do: :ok
+
+  # The hosts every document of `workspace` allows that come from no rule: the integrations'
+  # and the runtimes'.
+  defp required_hosts(%Workspace{} = workspace),
+    do: Connections.egress_hosts(workspace) ++ Runtimes.egress_hosts()
+
+  # The hosts no deny rule of `workspace` may name exactly: the runtimes', each with its
+  # runtime, and the integrations' and the API endpoints' of the model providers, each
+  # with its connection.
+  defp undeniable(%Workspace{} = workspace) do
+    Runtimes.egress_hosts() ++
+      Connections.egress_hosts(workspace) ++ Connections.provider_hosts(workspace)
+  end
+
+  # A deny rule on such a host, exactly, is refused. The runtime that lists the host is the
+  # one the refusal contains, else the first connection that lists it.
   defp deny_allowed(%Rule{action: "deny", host: host}, integrations) when is_binary(host) do
     case Enum.find(integrations, &(&1.host == host)) do
       nil ->
         :ok
+
+      %{runtime: runtime} ->
+        {:error,
+         %Error{
+           reason: :runtime_host,
+           message:
+             gettext(
+               "Remove %{host} from the rule. %{integration} needs this host, so no rule can deny it.",
+               host: host,
+               integration: runtime.title
+             ),
+           field: :host,
+           details: %{runtime: runtime, host: host}
+         }}
 
       %{connection: connection} ->
         {:error,
@@ -2067,25 +2220,158 @@ defmodule Apiary.Policy do
   end
 
   @doc """
-  Renders the documents of every managed workspace again through today's resolution, in
-  the workspace's lock, for `mix apiary.policy.rerender`: a holder whose bytes change gets
-  a new version and a `rerendered` change (no change of the rules: `before` equals
-  `after`), and unchanged bytes write nothing. What an upgrade that changed what a render
-  says (a release that put `deny` in the document) needs once.
-  `%{workspaces: n, versions: m}`, the workspaces visited and the versions written.
+  first_version/1 writes version 1 of `workspace`'s policy inside the caller's transaction,
+  on a workspace nobody else can write: the row just inserted, or one the caller has locked
+  `FOR NO KEY UPDATE`. The document is today's render of the workspace, with a
+  `first_version` change that no person made. History and Activity show that change as
+  "Version 1: observe, with no rules": a workspace has no rule and no mode before its
+  version 1, because a rule or a mode is a change, which writes a version in the same
+  transaction. A workspace that has a version is left alone,
+  such as one an edition rendered as it was created. `{:ok, changes}`, for `announce/1` once
+  the caller has committed, or the render's refusal, which the caller rolls back.
   """
-  @spec rerender_all() :: %{workspaces: non_neg_integer, versions: non_neg_integer}
-  def rerender_all do
-    Repo.all(from c in RunConfiguration, distinct: true, select: c.workspace_id)
-    |> Enum.reduce(%{workspaces: 0, versions: 0}, fn workspace_id, totals ->
-      case rerender(workspace_id) do
-        {:ok, versions} ->
-          %{workspaces: totals.workspaces + 1, versions: totals.versions + versions}
+  @spec first_version(%Workspace{}) :: {:ok, [Change.t()]} | refusal
+  def first_version(%Workspace{id: workspace_id, organisation_id: organisation_id} = workspace) do
+    if managed_workspace?(workspace_id) do
+      {:ok, []}
+    else
+      scope = Scope.for_instance(%Organisation{id: organisation_id}, workspace)
+      rerender_in(workspace, scope, action: "first_version", all: true)
+    end
+  end
 
-        {:error, _error} ->
+  @doc """
+  first_versions/0 writes version 1 of every workspace with no run configuration, each in
+  its lock and its transaction, once the migrations have run: at boot after the key check
+  (`Apiary.Release.FirstVersions`) and from `bin/migrate` (`Apiary.Release.migrate/1`). It
+  leaves a workspace alone that its purge, or its organisation's, has claimed, and one
+  that has a version by the time its lock is taken, so a second run writes nothing. A
+  refused render, or one that raises, is logged, and that workspace stays with no row
+  until its first change or the next run. `%{written: n, refused: m, failed: f}`, the
+  workspaces written, refused, and failed with an error.
+  """
+  @spec first_versions() :: %{
+          written: non_neg_integer,
+          refused: non_neg_integer,
+          failed: non_neg_integer
+        }
+  def first_versions do
+    Repo.all(
+      from w in Workspace,
+        as: :workspace,
+        where: is_nil(w.purge_started_at),
+        where:
+          not exists(
+            from c in RunConfiguration, where: c.workspace_id == parent_as(:workspace).id
+          ),
+        order_by: w.id,
+        select: w.id
+    )
+    |> Enum.reduce(%{written: 0, refused: 0, failed: 0}, fn workspace_id, totals ->
+      case first_version_of(workspace_id) do
+        {:ok, []} ->
           totals
+
+        {:ok, _changes} ->
+          %{totals | written: totals.written + 1}
+
+        {:error, %Error{} = error} ->
+          Logger.warning("policy version 1 refused workspace=#{workspace_id}: #{error.message}")
+          %{totals | refused: totals.refused + 1}
+
+        {:failed, message} ->
+          Logger.error("policy version 1 failed workspace=#{workspace_id}: #{message}")
+          %{totals | failed: totals.failed + 1}
       end
     end)
+  end
+
+  # One workspace's version 1, in its transaction. A raise or an exit rolls that
+  # transaction back and is returned, so the next workspace is still written.
+  defp first_version_of(workspace_id) do
+    Repo.transact(fn -> first_version_in_lock(workspace_id) end)
+  rescue
+    error -> {:failed, Exception.message(error)}
+  catch
+    kind, reason -> {:failed, Exception.format_banner(kind, reason, __STACKTRACE__)}
+  end
+
+  defp first_version_in_lock(workspace_id) do
+    case locked_unclaimed(workspace_id) do
+      nil -> {:ok, []}
+      workspace -> first_version(workspace)
+    end
+  end
+
+  # The workspace `workspace_id` in its lock, or nil when it is gone or when its purge, or
+  # its organisation's, has claimed it (`Apiary.Deletion`).
+  defp locked_unclaimed(workspace_id) do
+    Repo.one(
+      from h in Workspace,
+        join: o in assoc(h, :organisation),
+        where: h.id == ^workspace_id,
+        where: is_nil(h.purge_started_at) and is_nil(o.purge_started_at),
+        lock: fragment("FOR NO KEY UPDATE OF ?", h)
+    )
+  end
+
+  @doc """
+  Renders the documents of every managed workspace again through today's resolution, in
+  the workspace's lock: a holder whose bytes change gets a new version and a `rerendered`
+  change by no person (no change of the rules: `before` equals `after`), and unchanged
+  bytes write nothing, so a second run writes nothing. What an upgrade that changed what
+  a render says (a release that put `deny` in the document, or a runtime's new host)
+  needs once: at boot (`Apiary.Release.FirstVersions`), from `bin/migrate`
+  (`Apiary.Release.migrate/1`), and from `mix apiary.policy.rerender`. `origin` is the
+  worker that the audit trail records for each change,
+  `%{worker: "mix apiary.policy.rerender"}` by default. Each workspace is rendered in its
+  transaction, in the order of its id: a refused render, or one that raises or exits, is
+  logged with the workspace's id, that workspace keeps its versions, and the next
+  workspace is rendered. `%{workspaces: n, versions: m, refused: r,
+  failed: f}`: the workspaces rendered, the versions written, and the workspaces refused
+  and failed with an error.
+  """
+  @spec rerender_all(Scope.origin()) :: %{
+          workspaces: non_neg_integer,
+          versions: non_neg_integer,
+          refused: non_neg_integer,
+          failed: non_neg_integer
+        }
+  def rerender_all(origin \\ @rerender_origin) do
+    Repo.all(
+      from c in RunConfiguration,
+        distinct: true,
+        order_by: c.workspace_id,
+        select: c.workspace_id
+    )
+    |> Enum.reduce(
+      %{workspaces: 0, versions: 0, refused: 0, failed: 0},
+      &rerender_counted(&1, &2, origin)
+    )
+  end
+
+  defp rerender_counted(workspace_id, totals, origin) do
+    case rerender_of(workspace_id, origin) do
+      {:ok, versions} ->
+        %{totals | workspaces: totals.workspaces + 1, versions: totals.versions + versions}
+
+      {:error, _error} ->
+        %{totals | refused: totals.refused + 1}
+
+      {:failed, message} ->
+        Logger.error("policy rerender failed workspace=#{workspace_id}: #{message}")
+        %{totals | failed: totals.failed + 1}
+    end
+  end
+
+  # One workspace's render again. A raise or an exit rolls its transaction back and is
+  # returned, so the next workspace is still rendered.
+  defp rerender_of(workspace_id, origin) do
+    rerender(workspace_id, origin)
+  rescue
+    error -> {:failed, Exception.message(error)}
+  catch
+    kind, reason -> {:failed, Exception.format_banner(kind, reason, __STACKTRACE__)}
   end
 
   @doc false
@@ -2094,20 +2380,13 @@ defmodule Apiary.Policy do
   # one whose purge, or its organisation's, has claimed it (`Apiary.Deletion`), is left
   # alone; one marked for deletion and not yet claimed is rendered, so it comes back
   # current if the deletion is cancelled.
-  def rerender(workspace_id) do
+  def rerender(workspace_id, origin \\ @rerender_origin) do
     result =
       Repo.transact(fn ->
-        workspace =
-          Repo.one(
-            from h in Workspace,
-              join: o in assoc(h, :organisation),
-              where: h.id == ^workspace_id,
-              where: is_nil(h.purge_started_at) and is_nil(o.purge_started_at),
-              lock: fragment("FOR NO KEY UPDATE OF ?", h)
-          )
+        workspace = locked_unclaimed(workspace_id)
 
         if workspace do
-          with {:ok, changes} <- rerender_in(workspace, rerender_scope(workspace)),
+          with {:ok, changes} <- rerender_in(workspace, rerender_scope(workspace), origin: origin),
                do: {:ok, length(changes)}
         else
           {:ok, 0}
@@ -2146,12 +2425,13 @@ defmodule Apiary.Policy do
 
   `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`, and a
   change of an integration that reaches the workspace, `Apiary.Connections`) or
-  `"above_changed"` (the level above the workspace changed, `Apiary.Policy.Above`);
+  `"above_changed"` (the level above the workspace changed, `Apiary.Policy.Above`) or
+  `"first_version"` (`first_version/1`);
   `cause`, the id of the entry that caused it, kept in the change's `details.cause` and
-  `Apiary.Policy.Change`'s `cause`; `all`, whether to render an unmanaged workspace too
-  (false by default: `rerender/1` leaves it alone). With `all: true` an unmanaged
-  workspace gets its version 1, and is managed from then on: what a deny of the level
-  above holding everywhere means.
+  `Apiary.Policy.Change`'s `cause`; `all`, whether to render a workspace with no row too
+  (false by default: `rerender/1` leaves it alone). With `all: true` such a workspace gets
+  its version 1: what a deny of the level above holding everywhere means. `origin`, the
+  worker that the audit trail records for each change (`rerender_all/1`), nil by default.
   """
   @spec rerender_in(%Workspace{}, Scope.t(), keyword) :: {:ok, [Change.t()]} | refusal
   def rerender_in(%Workspace{} = workspace, %Scope{user: user}, opts \\ []) do
@@ -2159,6 +2439,7 @@ defmodule Apiary.Policy do
     cause = Keyword.get(opts, :cause)
     scope = Scope.for_instance(%Organisation{id: workspace.organisation_id}, workspace)
     scope = if user, do: %{scope | user: user}, else: scope
+    scope = Scope.put_origin(scope, Keyword.get(opts, :origin))
 
     if Keyword.get(opts, :all, false) or managed_workspace?(workspace.id) do
       render_holders(workspace, [], fn target_id, rendered, store, changes ->
@@ -2190,12 +2471,9 @@ defmodule Apiary.Policy do
     end
   end
 
-  # A render again after an upgrade is nobody's change: the instance's, by the task.
-  defp rerender_scope(%Workspace{} = workspace) do
-    %Organisation{id: workspace.organisation_id}
-    |> Scope.for_instance(workspace)
-    |> Scope.put_origin(%{worker: "mix apiary.policy.rerender"})
-  end
+  # A render again after an upgrade is nobody's change: the instance's.
+  defp rerender_scope(%Workspace{} = workspace),
+    do: Scope.for_instance(%Organisation{id: workspace.organisation_id}, workspace)
 
   # The baseline, and every target that has rules or a mode of its own or has had a
   # configuration of its own. A target with a mode of its own renders the same bytes
@@ -2249,7 +2527,7 @@ defmodule Apiary.Policy do
     holders = [nil | Enum.uniq(Map.keys(own) ++ rendered ++ Map.keys(modes))]
 
     above = above(workspace)
-    integrations = Connections.egress_hosts(workspace)
+    integrations = required_hosts(workspace)
 
     Enum.reduce_while(holders, {:ok, initial}, fn target_id, {:ok, acc} ->
       rules = Map.get(own, target_id, [])
@@ -2294,8 +2572,8 @@ defmodule Apiary.Policy do
     end
   end
 
-  # More integration hosts than the 64 `egress.allow_first` takes is no document the
-  # contract accepts.
+  # More integration and runtime hosts than the 64 `egress.allow_first` takes is no
+  # document the contract accepts.
   defp rendered(effective) do
     case Render.render(effective) do
       {:ok, _document, _allow_first} = rendered ->
@@ -2303,7 +2581,7 @@ defmodule Apiary.Policy do
 
       {:error, {:allow_first_too_long, count}} ->
         Logger.error(
-          "a rendered run configuration was refused: the integrations reaching the workspace require #{count} hosts, more than the 64 of allow_first"
+          "a rendered run configuration was refused: the integrations reaching the workspace and the runtimes require #{count} hosts, more than the 64 of allow_first"
         )
 
         {:error, not_in_contract()}
@@ -2425,9 +2703,8 @@ defmodule Apiary.Policy do
 
   @doc false
   # The configuration in force for a target of the workspace, or the baseline's: a read,
-  # and nothing but a read. A workspace nobody has changed has no baseline row, and none
-  # is made here: the first version is written by the first change and by nothing else
-  # (`render_all/3`), so what a page shows as version 1 is what the first change made.
+  # and nothing but a read. A workspace with no row yet has no baseline row, and none is
+  # made here.
   def in_force(_organisation_id, workspace_id, target_id) do
     own = target_id && Repo.one(newest(workspace_id, target_id))
 
@@ -2440,9 +2717,7 @@ defmodule Apiary.Policy do
   defp unmanaged do
     Error.new(
       :unmanaged,
-      gettext(
-        "Nobody has made this workspace's policy yet: its machines use their local policy, and there is no version until the first change here."
-      )
+      gettext("This workspace has no policy version yet.")
     )
   end
 

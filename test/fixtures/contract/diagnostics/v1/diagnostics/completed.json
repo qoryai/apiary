@@ -27,6 +27,10 @@
       "path": "acme/example"
     },
     "gateway": "ng_0123456789abcdef",
+    "machine": {
+      "key": "standard",
+      "name": "Standard"
+    },
     "variables": [
       "EXAMPLE_API_KEY",
       "LOG_LEVEL"
@@ -128,21 +132,21 @@
       "step": 1,
       "time": "2026-10-30T10:01:02Z",
       "id": "ak_0123456789abcdef",
-      "message": "This key is compromised: it was printed into the output of step 1. Replace it."
+      "message": "This secret is compromised: it was printed into the run's log. Replace it."
     },
     {
       "kind": "acme_api_key",
       "place": "event",
       "sequence": 3,
       "time": "2026-10-30T10:15:42Z",
-      "message": "This key is compromised: it was printed into an event of the run. Replace it.",
+      "message": "This secret is compromised: it was printed into an event of the run. Replace it.",
       "value": "acme-example-secret-0002"
     },
     {
       "kind": "acme_api_key",
       "place": "log",
       "time": "2026-10-30T10:15:40Z",
-      "message": "This key is compromised: it was printed into the run's log. Replace it.",
+      "message": "This secret is compromised: it was printed into the run's log. Replace it.",
       "value": "acme-example-secret-0003"
     }
   ],

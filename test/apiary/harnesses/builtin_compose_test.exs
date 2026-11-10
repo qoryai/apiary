@@ -1,12 +1,12 @@
 defmodule Apiary.Harnesses.BuiltinComposeTest do
   # The built-in harness (`Apiary.Harnesses.Builtin`) composed by a qory binary, against
-  # qory's hello example at the built-in harness's commit, vendored in
-  # test/fixtures/qory-hello/. Each compose runs `qory harness compose --dry-run -f`:
+  # a copy of qory's hello example, vendored in test/fixtures/qory-hello/ at the commit
+  # its README names. Each compose runs `qory harness compose --dry-run -f`:
   # `-f` takes the vendored stack in place of the section's `extends` source, so qory
   # fetches nothing.
   #
   # The binary is QORY_BIN, read when the file compiles. A `qory` on PATH is not used: a
-  # qory older than the pinned commit fails both composes for reasons unrelated to the pin.
+  # qory older than the vendored commit fails both composes for reasons unrelated to it.
   # With QORY_BIN unset or empty, the tests that run qory are skipped.
   use ExUnit.Case, async: true
 
@@ -90,17 +90,17 @@ defmodule Apiary.Harnesses.BuiltinComposeTest do
     {checkout, output, status}
   end
 
-  test "the fixture is qory's hello example at the built-in harness's commit" do
-    %{"extends" => %{"ref" => ref, "path" => path}} = Builtin.document()
+  test "the fixture is qory's hello example at a commit, at the built-in harness's path" do
+    %{"extends" => %{"ref" => "main", "path" => path}} = Builtin.document()
 
-    assert File.read!(Path.join(@fixture, "README.md")) =~ "commit #{ref}"
+    assert File.read!(Path.join(@fixture, "README.md")) =~ ~r/commit [0-9a-f]{40}/
     assert path == "examples/hello"
+    assert File.regular?(Path.join([@fixture, path, "qory-stack.yaml"]))
   end
 
   describe "qory harness compose" do
     if @qory == "" do
-      @describetag skip:
-                     "Set QORY_BIN to a qory built from #{Builtin.document()["extends"]["ref"]} to run this test"
+      @describetag skip: "Set QORY_BIN to a qory binary to run this test"
     end
 
     setup do: %{qory: @qory}

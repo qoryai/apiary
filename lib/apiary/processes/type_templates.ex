@@ -8,20 +8,21 @@ defmodule Apiary.Processes.TypeTemplates do
 
   A type is known by the key of its definition (`Apiary.Lingo.Domain.Definition`), such
   as `qory.software`; the types are the domains of `Apiary.Lingo.Domain.choices/0`. The
-  first read of a type inserts its version 1, a copy of the default the release ships
-  (`Apiary.Processes.default_document/1`, the stages of the copied template of the Qory
-  harness), with no author. A release whose default has a higher version
-  (`Apiary.Processes.default_version/1`) adds it as a new version at the next read, but
-  only while every version of the type is a copy of a release's default: once an instance
-  admin has saved one, a release's default changes nothing.
+  first read of a type inserts its version 1, a copy of the process of the template of the
+  Qory harness (`Apiary.Processes.template_process/1`), at the commit of `main` as last
+  read (Apiary.Harnesses.Qory.current/0), or at the commit a new workspace read
+  (`newest/2`), with no author. A later read where that process differs from the newest
+  version's adds it as a new version, but only while every version of the type is a copy
+  of the Qory harness's: once an instance admin has saved one, the Qory harness changes
+  nothing. Before the Qory harness is first read, a type with no version has none.
 
   A save (`save/4`) is a new version, the newest at once; there is no trial.
 
   ## Texts
 
   Each version also keeps the type's name, summary and description, the "How it works"
-  text (`Apiary.Processes.TypeTemplate`). A copy of the release's default keeps none, and
-  a page shows the texts the release ships instead (`Apiary.Processes.type_texts/1`).
+  text (`Apiary.Processes.TypeTemplate`). A copy of the Qory harness's keeps none, and a
+  page shows the Qory harness's texts instead (`Apiary.Processes.type_texts/1`).
   A save keeps the texts it is given, or the newest version's; a change of a text alone is
   a new version too.
 
@@ -35,7 +36,7 @@ defmodule Apiary.Processes.TypeTemplates do
 
   ## Locks
 
-  A save and the insert of a release's default take a transaction-level advisory lock on
+  A save and the insert of a copy of the Qory harness's take a transaction-level advisory lock on
   the type, `apiary:type-template:<type>`, and nothing else, so the versions of one type
   are made one at a time. The unique index on `{type, number}` refuses a second row of
   one number all the same; a save it refuses is `:stale`.
@@ -46,7 +47,7 @@ defmodule Apiary.Processes.TypeTemplates do
   alias Apiary.{Access, Audit, Processes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Artifacts.Type
-  alias Apiary.Harnesses.QoryCopy
+  alias Apiary.Harnesses.Qory
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Organisation
   alias Apiary.Processes.TypeTemplate
@@ -96,35 +97,43 @@ defmodule Apiary.Processes.TypeTemplates do
 
   @doc """
   list/0 is every workspace type, in the order a person picks one
-  (`Apiary.Lingo.Domain.choices/0`): its key, its name as its newest version shows it
-  (`Apiary.Processes.type_texts/1`, translated in the locale of the caller's process) and
-  its newest version.
+  (`Apiary.Lingo.Domain.choices/0`), that has a version: its key, its name as its newest
+  version shows it (`Apiary.Processes.type_texts/1`) and its newest version.
   """
   @spec list() :: [entry]
   def list do
-    for domain <- Domain.choices() do
-      key = Domain.definition(domain).key
-      newest = newest(key)
+    for domain <- Domain.choices(),
+        key = Domain.definition(domain).key,
+        %TypeTemplate{} = newest <- [newest(key)] do
       %{type: key, name: Processes.type_texts(newest).name, newest: newest}
     end
   end
 
   @doc """
   newest/1 is the newest version of the type with the key `type`, its author preloaded
-  (nil for a copy of the release's default): the one a new workspace copies. Nil for a key
-  no type has. The first read of a type inserts its version 1 (§ Versions).
+  (nil for a copy of the Qory harness's): the one a new workspace copies. Nil for a key
+  no type has, and for a type with no version before the Qory harness is first read. A
+  read inserts a copy of the Qory harness's process at the commit of `main` where it
+  differs (§ Versions).
   """
   @spec newest(String.t()) :: TypeTemplate.t() | nil
   def newest(type) when is_binary(type), do: newest(type, nil)
 
-  @doc false
-  # newest/1, with the release's default at the version `release` (nil: the release's,
-  # `Apiary.Processes.default_version/1`): the tests' seam for a later release's default.
-  @spec newest(String.t(), pos_integer | nil) :: TypeTemplate.t() | nil
-  def newest(type, release) when is_binary(type) do
+  @doc """
+  newest/2 is `newest/1`, with the Qory harness at `commit`, whose files are kept, in place
+  of the commit of `main`: a new workspace's, at the commit it read.
+  """
+  @spec newest(String.t(), String.t() | nil) :: TypeTemplate.t() | nil
+  def newest(type, commit) when is_binary(type) do
     case domain(type) do
-      nil -> nil
-      domain -> type |> ensure(domain, release) |> Repo.preload(:author)
+      nil ->
+        nil
+
+      _domain ->
+        case ensure(type, commit || Qory.current()) do
+          nil -> nil
+          row -> Repo.preload(row, :author)
+        end
     end
   end
 
@@ -167,11 +176,12 @@ defmodule Apiary.Processes.TypeTemplates do
 
   @doc """
   workflows/0 is the workflows a type's process may place: the names the Qory harness
-  declares (`Apiary.Processes.qory_workflows/0`). Every new workspace composes the Qory
-  harness (§ 8 of the workflow model); no workspace's harness is read.
+  declares at the commit of `main` (`Apiary.Processes.qory_workflows/1`). Every new
+  workspace composes the Qory harness (§ 8 of the workflow model); no workspace's harness
+  is read.
   """
   @spec workflows() :: [String.t()]
-  def workflows, do: Processes.qory_workflows()
+  def workflows, do: Processes.qory_workflows(Qory.current())
 
   @doc """
   artifact_types/0 is the standard artifact types, each with its base view. A template's
@@ -203,15 +213,15 @@ defmodule Apiary.Processes.TypeTemplates do
   offered_types/1 is the artifact types the page of the type with the key `type` offers
   for a stage's inputs and outputs, and the list `Apiary.Processes.placement_check/3`
   checks them against on that page: the standard types, and, where `type` is the `type` of
-  the copied template (Apiary.Harnesses.QoryCopy.template/0), that template's custom types.
+  the template of the Qory harness at the commit of `main`
+  (Apiary.Harnesses.Qory.template/1), that template's custom types.
   """
   @spec offered_types(String.t()) :: [%{name: String.t(), base_view: atom}]
   def offered_types(type) when is_binary(type) do
-    template = QoryCopy.template()
-
-    if template.type == type,
-      do: artifact_types(template.artifact_types),
-      else: artifact_types()
+    case Qory.template(Qory.current()) do
+      %{type: ^type} = template -> artifact_types(template.artifact_types)
+      _other -> artifact_types()
+    end
   end
 
   ## Saving
@@ -225,13 +235,14 @@ defmodule Apiary.Processes.TypeTemplates do
 
   `texts:` is a map of the version's name, summary and description (`:name`, `:summary`,
   `:description`). Each is kept trimmed, with `\r\n` as `\n`; a blank text, a text the
-  map does not have, or one equal to the release's (`Apiary.Processes.type_text_defaults/1`),
-  is kept as nil, so a page shows the release's text in each locale. Without `texts:`, the save keeps the newest
+  map does not have, or one equal to the default (`Apiary.Processes.type_text_defaults/1`),
+  is kept as nil, so a page shows the default. Without `texts:`, the save keeps the newest
   version's texts.
 
   The document passes `Apiary.Processes.validate/1`, and one rule of a type's process: a
   gate's `approvers` is `"members"`, since a type has no people to list; a list of people
-  is the error `:named_approvers`, at `#/stages/<index>/gate/approvers`.
+  is the error `:named_approvers`, at `#/stages/<index>/gate/approvers`. A machine type
+  key the instance has no type for is kept, as a workspace's save keeps it.
 
   `{:ok, version}`, its author preloaded, or `{:error, reason}` (`t:reason/0`).
   """
@@ -243,15 +254,18 @@ defmodule Apiary.Processes.TypeTemplates do
     texts = Keyword.get(opts, :texts)
 
     Repo.transact(fn ->
+      # The table of machine types before the type, in the order of a key change
+      # (`rekey_machine/3`), so that the two never wait on each other.
       with :ok <-
              Access.authorize(
                Access.in_instance(scope),
                :"workspace_type.edit",
                Access.instance_organisation()
              ),
-           {:ok, domain} <- known(type),
+           {:ok, _domain} <- known(type),
+           :ok <- Apiary.MachineTypes.hold(),
            :ok <- lock(type),
-           %TypeTemplate{} = newest <- ensure(type, domain, nil),
+           %TypeTemplate{} = newest <- ensure(type, Qory.current()) || {:error, :unknown_type},
            :ok <- fresh(newest, based_on),
            {:ok, texts} <- texts(texts, type, newest),
            :ok <- validate(document),
@@ -260,6 +274,56 @@ defmodule Apiary.Processes.TypeTemplates do
            {:ok, version} <- insert(scope, type, newest, document, texts),
            {:ok, _entry} <- record(instance_scope, organisation, version) do
         {:ok, Repo.preload(version, :author)}
+      end
+    end)
+  end
+
+  @doc """
+  machine_key_types/1 is the newest version of each workspace type whose document uses
+  the machine type key `key` (`Apiary.MachineTypes.uses_key?/2`), by type.
+  """
+  @spec machine_key_types(String.t()) :: [TypeTemplate.t()]
+  def machine_key_types(key) when is_binary(key) do
+    Repo.all(
+      from t in TypeTemplate,
+        distinct: t.type,
+        order_by: [asc: t.type, desc: t.number]
+    )
+    |> Enum.filter(&Apiary.MachineTypes.uses_key?(&1.document, key))
+  end
+
+  @doc """
+  rekey_machine/3 saves, for each version of `machine_key_types/1` for `from` that an
+  instance admin saved, a newer version of its type whose document has the key `to` in
+  each place that had `from`, with the same texts, authored by the scope's person, the
+  instance admin who changed the key, with an entry `workspace_type.edit` each that has
+  `machine_key`, the key before and after. A copy of the Qory harness's process
+  (`release` set) stays as it is: its runs start on the default type until the harness
+  changes the key. Called by `Apiary.MachineTypes.update/3`, in its transaction, which
+  checks the scope and holds the table of machine types. Each type is locked as a save
+  locks it, and its newest version read again under the lock. `:ok`; `{:error,
+  :forbidden}` on an instance with no instance organisation; or `{:error, :stale}` where
+  a version of the type with the next number exists.
+  """
+  @spec rekey_machine(Scope.t(), String.t(), String.t()) ::
+          :ok | {:error, :forbidden | :stale}
+  def rekey_machine(%Scope{} = scope, from, to) when is_binary(from) and is_binary(to) do
+    Enum.reduce_while(machine_key_types(from), :ok, fn %TypeTemplate{type: type}, :ok ->
+      :ok = lock(type)
+      newest = newest_row(type)
+      document = Apiary.MachineTypes.rekey(newest.document, from, to)
+      texts = Map.take(newest, @texts)
+
+      with true <- is_nil(newest.release) || :unchanged,
+           true <- Apiary.MachineTypes.uses_key?(newest.document, from) || :unchanged,
+           {:ok, instance_scope, organisation} <- instance_scope(scope),
+           {:ok, version} <- insert(scope, type, newest, document, texts),
+           {:ok, _entry} <-
+             record(instance_scope, organisation, version, %{machine_key: %{from: from, to: to}}) do
+        {:cont, :ok}
+      else
+        :unchanged -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
@@ -375,58 +439,67 @@ defmodule Apiary.Processes.TypeTemplates do
     end
   end
 
-  defp record(scope, organisation, version) do
+  defp record(scope, organisation, version, details \\ %{}) do
     Audit.record(Repo, scope, :"workspace_type.edit", organisation, %{
       after: %{type: version.type, version: version.number},
-      details: %{
-        change: "save",
-        type: version.type,
-        number: version.number,
-        based_on: version.based_on
-      }
+      details:
+        Map.merge(
+          %{
+            change: "save",
+            type: version.type,
+            number: version.number,
+            based_on: version.based_on
+          },
+          details
+        )
     })
   end
 
-  ## The release's default
+  ## The Qory harness's default
 
   defp domain(type) do
     Enum.find(Domain.choices(), &(Domain.definition(&1).key == type))
   end
 
-  # The type's newest row, after the insert of the release's default where the type has
-  # none, or where its newest row copies an older default of the release's.
-  defp ensure(type, domain, release) do
-    release = release || Processes.default_version(domain)
+  # The type's newest row, after the insert of the process of the Qory harness at
+  # `commit` where the type has none, or where its newest row copies another process of
+  # the Qory harness's. Nil for a type with no row and no files of `commit` kept.
+  defp ensure(type, commit) do
+    document = Processes.template_process(commit)
+    row = newest_row(type)
 
-    case newest_row(type) do
-      %TypeTemplate{release: older} = row when is_nil(older) or older >= release -> row
-      _none_or_older -> seed(type, domain, release)
-    end
+    if current?(row, document), do: row, else: seed(type, document)
   end
 
-  defp seed(type, domain, release) do
+  # Whether `row` stays the newest: an instance admin's save, the copy of `document`, or
+  # any row where no process of the Qory harness is kept.
+  defp current?(%TypeTemplate{release: nil}, _document), do: true
+  defp current?(%TypeTemplate{document: document}, document), do: true
+  defp current?(_row, nil), do: true
+  defp current?(_row, _document), do: false
+
+  defp seed(type, document) do
     {:ok, row} =
       Repo.transact(fn ->
         :ok = lock(type)
+        row = newest_row(type)
 
-        case newest_row(type) do
-          %TypeTemplate{release: older} = row when is_nil(older) or older >= release ->
-            {:ok, row}
+        if current?(row, document) do
+          {:ok, row}
+        else
+          {:ok, _inserted} =
+            Repo.insert(
+              %TypeTemplate{
+                type: type,
+                number: if(row, do: row.number + 1, else: 1),
+                document: document,
+                release: if(row, do: row.release + 1, else: 1)
+              },
+              on_conflict: :nothing,
+              conflict_target: [:type, :number]
+            )
 
-          row ->
-            {:ok, _inserted} =
-              Repo.insert(
-                %TypeTemplate{
-                  type: type,
-                  number: if(row, do: row.number + 1, else: 1),
-                  document: Processes.default_document(domain),
-                  release: release
-                },
-                on_conflict: :nothing,
-                conflict_target: [:type, :number]
-              )
-
-            {:ok, newest_row(type)}
+          {:ok, newest_row(type)}
         end
       end)
 

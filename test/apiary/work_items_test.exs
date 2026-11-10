@@ -327,6 +327,67 @@ defmodule Apiary.WorkItemsTest do
       refute inspect(all) =~ "123456"
     end
 
+    test "each comment's post: a member's comment in each state, nil for a source's", ctx do
+      item = ticket(ctx, ctx.collection, %{key: "#1204"})
+      w = work_item(ctx, item)
+      at = DateTime.utc_now() |> DateTime.truncate(:second)
+      source = comment!(item, 1, DateTime.add(at, -10, :minute))
+
+      members =
+        for {{state, failure}, n} <-
+              Enum.with_index(
+                [posting: nil, posted: nil, not_posted: :unreachable, kept: nil],
+                2
+              ) do
+          {ref, url} =
+            if state == :posted,
+              do: {"c#{n}", "https://forge.example.com/acme/shop/issues/12#c#{n}"},
+              else: {nil, nil}
+
+          Repo.insert!(%Apiary.Sources.Comment{
+            organisation_id: item.organisation_id,
+            item_id: item.id,
+            external_ref: ref,
+            url: url,
+            author_name: "Member #{n}",
+            author_kind: :person,
+            author_id: ctx.scope.user.id,
+            comment_id: "sc_000000000000000#{n}",
+            post_state: state,
+            post_failure: failure,
+            body: "Comment #{n}",
+            body_format: "markdown",
+            source_created_at: DateTime.add(at, n - 10, :minute),
+            source_updated_at: DateTime.add(at, n - 10, :minute)
+          })
+        end
+
+      seen = WorkItems.ticket(ctx.scope, w, :all).comments
+      fields = [:comment_id, :post_state, :post_failure, :author_id, :url]
+      assert Enum.map(seen, & &1.public_id) == Enum.map([source | members], & &1.id)
+
+      assert Map.take(hd(seen), fields) == %{
+               comment_id: nil,
+               post_state: nil,
+               post_failure: nil,
+               author_id: nil,
+               url: source.url
+             }
+
+      assert Enum.map(tl(seen), &Map.take(&1, fields)) ==
+               Enum.map(members, &Map.take(&1, fields))
+
+      assert Enum.map(tl(seen), &{&1.post_state, &1.post_failure, &1.author_id}) == [
+               {:posting, nil, ctx.scope.user.id},
+               {:posted, nil, ctx.scope.user.id},
+               {:not_posted, :unreachable, ctx.scope.user.id},
+               {:kept, nil, ctx.scope.user.id}
+             ]
+
+      assert Enum.map(tl(seen), & &1.url) ==
+               [nil, "https://forge.example.com/acme/shop/issues/12#c3", nil, nil]
+    end
+
     test "after the integration's uninstall, and once the adapter is removed", ctx do
       item = ticket(ctx, ctx.collection, %{key: "#1204"})
       w = work_item(ctx, item)

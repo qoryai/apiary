@@ -108,10 +108,15 @@ defmodule Apiary.Artifacts do
   #
   # In the transaction, under the work item's lock, a version a run pushes of the
   # questions or the review comments keeps what members wrote in the artifact's newest
-  # version (`Apiary.Explore.Questions.check_run/3`,
+  # version, and each decision in a version of the questions matches its question
+  # (`Apiary.Explore.Questions.check_run/3`,
   # `Apiary.Explore.ReviewComments.check_run/4`), else
   # `{:invalid, {:kept, 0, reason}}`, with the rule it breaks; a newest version whose file
-  # cannot be read is `{:error, :store_unavailable}`. Numbers compare by value there.
+  # cannot be read is `{:error, :store_unavailable}`. Numbers compare by value there. A
+  # version of the verdict, from any writer, has each `answer` point about a question that
+  # is open in the newest questions of the work item's current take in, else
+  # `{:invalid, {:kept, 0, {:not_open, point, question}}}`, `point` counted from 1: the run
+  # pushes its questions first (`points_open/3`).
   #
   # Then a version of the questions or the review comments, from any writer, is stored
   # with each number that is an integer in value written as an integer: a file with
@@ -379,6 +384,37 @@ defmodule Apiary.Artifacts do
           else: switch(scope, held, type, on?)
       end
     end)
+  end
+
+  @doc false
+  # show_template_types/3 shows the standard types `names` in `workspace` too, for a save
+  # of its harness's template (Apiary.Processes.HarnessUpdate), inside the caller's
+  # transaction, in which the caller has locked the workspace: `shown_standard_types` in
+  # the order of `Type.standard_names/0`, and an audit entry `show` for each type it
+  # shows, as `switch_type/4` writes one. `:ok`.
+  @spec show_template_types(Scope.t(), Workspace.t(), [String.t()]) :: :ok
+  def show_template_types(%Scope{}, %Workspace{}, []), do: :ok
+
+  def show_template_types(%Scope{} = scope, %Workspace{} = workspace, names) do
+    held = Repo.get!(Workspace, workspace.id)
+    hideable = Type.standard_names() -- Type.always_on()
+    added = Enum.filter(hideable, &(&1 in names and not shown?(&1, held.shown_standard_types)))
+
+    if added != [] do
+      shown = Enum.filter(hideable, &(&1 in added or shown?(&1, held.shown_standard_types)))
+
+      {1, _rows} =
+        Repo.update_all(from(w in Workspace, where: w.id == ^held.id),
+          set: [shown_standard_types: shown, updated_at: DateTime.utc_now()]
+        )
+
+      for name <- added do
+        type = Enum.find(Type.standard(), &(&1.name == name))
+        {:ok, _entry} = audit_type(scope, held, :show, type)
+      end
+    end
+
+    :ok
   end
 
   # The scope's places and the workspace held, the workspace `FOR NO KEY UPDATE`, and the
@@ -928,6 +964,7 @@ defmodule Apiary.Artifacts do
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
            :ok <- members_kept(writer, artifact, staged),
+           :ok <- points_open(held, artifact, staged),
            {:ok, kept} <- integers(type, staged) do
         keep(writer, held, artifact, fields, kept, now)
       else
@@ -987,7 +1024,11 @@ defmodule Apiary.Artifacts do
     module = if type == "questions", do: Questions, else: ReviewComments
 
     number =
-      Repo.one(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run_id, select: r.number)
+      Repo.one(
+        from r in Apiary.Runs.Run.registered(),
+          where: r.dispatch_run_id == ^run_id,
+          select: r.number
+      )
 
     with {:ok, newest} <- newest_document(module, artifact),
          {:ok, question_ids} <- question_ids(module, artifact) do
@@ -1004,6 +1045,49 @@ defmodule Apiary.Artifacts do
   end
 
   defp members_kept(_writer, _artifact, _stored), do: :ok
+
+  # A verdict, checked under the work item's lock: the question of each `answer` point is
+  # open in the newest questions, and is a question of the work item's current take in
+  # (`Apiary.Explore.Questions.open_in_take_in/2`), so the person can answer it; else
+  # `{:invalid, {:kept, 0, {:not_open, point, question}}}`, with `point` counted from 1.
+  # The format check passed, so the file is one JSON document of the verdict's format. The
+  # newest questions, where their file cannot be read, are `{:error, :store_unavailable}`.
+  defp points_open(%WorkItem{} = held, %Artifact{type: "verdict"}, [file]) do
+    with {:ok, text} <- File.read(file.staged.path),
+         {:ok, %{} = document} <- Jason.decode(text) do
+      case answer_points(document) do
+        [] -> :ok
+        answers -> answers_open(held, answers)
+      end
+    else
+      _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
+    end
+  end
+
+  defp points_open(_held, _artifact, _staged), do: :ok
+
+  defp answer_points(%{"points" => points}) when is_list(points) do
+    for {%{"action" => "answer", "question" => question}, point} <- Enum.with_index(points, 1),
+        do: {point, question}
+  end
+
+  defp answer_points(_document), do: []
+
+  defp answers_open(held, answers) do
+    with {:ok, newest} <- Questions.current(held) do
+      document = if newest, do: elem(newest, 1)
+
+      open =
+        document
+        |> Questions.open_in_take_in(Questions.take_in_runs(held.id, held.take_in || 0))
+        |> MapSet.new(& &1["id"])
+
+      case Enum.find(answers, fn {_point, question} -> not MapSet.member?(open, question) end) do
+        nil -> :ok
+        {point, question} -> {:error, {:invalid, {:kept, 0, {:not_open, point, question}}}}
+      end
+    end
+  end
 
   # The document of the artifact's newest version: `{:ok, nil}` for no version.
   defp newest_document(module, artifact) do
@@ -1291,7 +1375,7 @@ defmodule Apiary.Artifacts do
   # preload needs to match each run to its run of the queue.
   defp runs_query,
     do:
-      from(r in Apiary.Runs.Run,
+      from(r in Apiary.Runs.Run.registered(),
         select: struct(r, [:id, :public_id, :number, :dispatch_run_id])
       )
 

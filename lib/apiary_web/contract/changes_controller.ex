@@ -20,11 +20,12 @@ defmodule ApiaryWeb.Contract.ChangesController do
   #      `400` `invalid_request`;
   #   4. else the answer is `200`, signed: `{version: 1, revision, cursor, changes}`, the
   #      entries of the key's adapter's feed after the cursor, at most a page of them
-  #      (`Apiary.Adapters.Feed.page_size/0`), in order, those of a kind the revision the
-  #      request named (`X-Qory-Contract-Version`) does not define left out, and the
-  #      cursor where the page ends, past any entry left out. A request with no `after`
-  #      reads from the start. `revision` is the request's revision, inside the signed
-  #      body.
+  #      (`Apiary.Adapters.Feed.page_size/0`), and fewer where the body would pass
+  #      4,194,304 bytes (`Apiary.Adapters.Feed.max_body/0`), but at least one, in
+  #      order, those of a kind the revision in the request
+  #      (`X-Qory-Contract-Version`) does not define left out, and the cursor where the
+  #      page ends, past any entry left out. A request with no `after` reads from the
+  #      start. `revision` is the request's revision, inside the signed body.
   #
   # **The hold.** While the feed has no entry after the cursor, the request is held, up to
   # 25 seconds, the feed read again every second, and answered within one poll interval
@@ -160,20 +161,10 @@ defmodule ApiaryWeb.Contract.ChangesController do
 
   defp now, do: System.monotonic_time(:millisecond)
 
-  defp answer(conn, revision, %{seq: seq, changes: changes}) do
-    body =
-      Jason.encode!(
-        Jason.OrderedObject.new([
-          {"version", 1},
-          {"revision", revision},
-          {"cursor", Feed.cursor(seq)},
-          {"changes", changes}
-        ])
-      )
-
+  defp answer(conn, revision, page) do
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(200, body)
+    |> send_resp(200, Feed.body(revision, page))
   end
 
   defp refuse(conn, status, code), do: conn |> put_status(status) |> json(%{error: code})

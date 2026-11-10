@@ -10,14 +10,16 @@ defmodule Apiary.Application do
   # (`Apiary.Organisations.InvitationSweep`) and the purge of what was deleted and is past
   # its grace period (`Apiary.Deletion.PurgeSweep`); then, every ten minutes, the purge of
   # the request signatures an adapter's replay check no longer needs
-  # (`Apiary.Adapters.SeenRequestsPurge`); then, every minute, the sweep of the claims of
-  # node pools whose lease lapsed (`Apiary.Dispatches.Sweep`). The edition's follow
-  # (`Apiary.Edition.crontab/0`).
+  # (`Apiary.Adapters.SeenRequestsPurge`); every five minutes, the read of the newest
+  # commit of the Qory harness's `main` (`Apiary.Harnesses.QoryRefresh`); then, every
+  # minute, the sweep of the claims of node pools whose lease lapsed
+  # (`Apiary.Dispatches.Sweep`). The edition's follow (`Apiary.Edition.crontab/0`).
   @crontab [
     {"40 2 * * *", Apiary.Audit.PruneSweep},
     {"50 2 * * *", Apiary.Organisations.InvitationSweep},
     {"20 3 * * *", Apiary.Deletion.PurgeSweep},
     {"*/10 * * * *", Apiary.Adapters.SeenRequestsPurge},
+    {"*/5 * * * *", Apiary.Harnesses.QoryRefresh},
     {"* * * * *", Apiary.Dispatches.Sweep}
   ]
 
@@ -99,7 +101,13 @@ defmodule Apiary.Application do
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Apiary.Supervisor]
-    Supervisor.start_link(children, opts)
+
+    with {:ok, _pid} = started <- Supervisor.start_link(children, opts) do
+      # The pages read the Qory harness's stored files: the first read comes now, not at
+      # the cron's next tick.
+      :ok = Apiary.Harnesses.QoryRefresh.enqueue_at_boot()
+      started
+    end
   end
 
   @doc false
@@ -124,6 +132,9 @@ defmodule Apiary.Application do
       # The files read from public harness repositories, by commit
       # (`Apiary.Harnesses.PublicGit.Cache`).
       Apiary.Harnesses.PublicGit.Cache,
+      # What was decoded of the stored files of the Qory harness, by commit
+      # (`Apiary.Harnesses.Qory.Memo`).
+      Apiary.Harnesses.Qory.Memo,
       # The holds of adapters' reads of their change feeds, a few per key
       # (`ApiaryWeb.Contract.ChangesController`).
       {Registry, keys: :unique, name: ApiaryWeb.Contract.ChangesController.Holds},
@@ -147,6 +158,7 @@ defmodule Apiary.Application do
       retention() ++
       installer() ++
       Apiary.Edition.children() ++
+      first_versions() ++
       setup() ++
       [
         # Start to serve requests, typically the last entry
@@ -197,6 +209,19 @@ defmodule Apiary.Application do
   defp migrator do
     if Application.get_env(:apiary, :migrate_on_boot, false) do
       [Apiary.Release.Migrator]
+    else
+      []
+    end
+  end
+
+  # Version 1 of the policy of each workspace that has none, then a render again of every
+  # workspace, after the key check, because a render has the hosts of the integrations
+  # that reach the workspace, and after the caches and the edition's processes, before the
+  # endpoint. Only where the migrator runs: with MIGRATE_ON_BOOT=false, `bin/migrate`
+  # writes the versions 1 and renders every workspace again.
+  defp first_versions do
+    if Application.get_env(:apiary, :migrate_on_boot, false) do
+      [Apiary.Release.FirstVersions]
     else
       []
     end

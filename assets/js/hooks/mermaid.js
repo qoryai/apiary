@@ -41,7 +41,9 @@
 // with the new colours (watchTheme below).
 // The <img> gets the diagram's width from the SVG's max-width (width below): Mermaid
 // writes width="100%", so without it the CSS width rule of .q-mermaid-diagram has no
-// effect.
+// effect. The image scales down to its frame (.q-mermaid-frame), to 60% of that width at
+// most (narrowest below), where its 16 px labels are about 10 px. A frame narrower than
+// that scrolls sideways, and Tab reaches it while it scrolls (reach below).
 
 let library = null
 
@@ -354,11 +356,33 @@ const colours = el => {
   return Object.fromEntries(Object.entries(variables).filter(([, value]) => value !== undefined))
 }
 
+// The least width in pixels of a diagram `pixels` wide: 60% of it, rounded up.
+export const narrowest = pixels => Math.ceil(pixels * 0.6)
+
 const paint = (img, svg) => {
   img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
   const pixels = width(svg)
-  if (pixels) img.width = pixels
-  else img.removeAttribute("width")
+  if (pixels) {
+    img.width = pixels
+    img.style.minWidth = `${narrowest(pixels)}px`
+  } else {
+    img.removeAttribute("width")
+    img.style.removeProperty("min-width")
+  }
+}
+
+// A frame that scrolls is a tab stop with the name `label`, so the keyboard can scroll it;
+// a frame that shows the whole diagram is neither.
+export const reach = (frame, label) => {
+  if (frame.scrollWidth > frame.clientWidth) {
+    frame.setAttribute("tabindex", "0")
+    frame.setAttribute("role", "group")
+    frame.setAttribute("aria-label", label)
+  } else {
+    frame.removeAttribute("tabindex")
+    frame.removeAttribute("role")
+    frame.removeAttribute("aria-label")
+  }
 }
 
 const show = (el, pre, svg) => {
@@ -368,8 +392,12 @@ const show = (el, pre, svg) => {
   img.className = "q-mermaid-diagram"
   img.alt = el.dataset.alt ?? ""
   paint(img, svg)
-  figure.appendChild(img)
+  const frame = document.createElement("div")
+  frame.className = "q-mermaid-frame"
+  frame.appendChild(img)
+  figure.appendChild(frame)
   pre.before(figure)
+  new ResizeObserver(() => reach(frame, img.alt)).observe(frame)
   const details = document.createElement("details")
   details.className = "q-mermaid-details"
   const summary = document.createElement("summary")
@@ -458,7 +486,10 @@ const redraw = async el => {
     if (!figure.isConnected || !img || !pre) continue
     if (!draws(blockText(pre))) continue
     const svg = await render(mermaid, blockText(pre))
-    if (svg) paint(img, svg)
+    if (svg) {
+      paint(img, svg)
+      reach(img.parentElement, img.alt)
+    }
   }
 }
 

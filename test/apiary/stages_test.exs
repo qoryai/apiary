@@ -10,19 +10,22 @@ defmodule Apiary.StagesTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
+  import Apiary.MachineTypesFixtures
 
   alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo, Stages, WorkItems}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Organisations.Workspace
   alias Apiary.Stages.{Escalation, GateDecision}
-  alias Apiary.WorkItems.{Confirmation, Moves, WorkItem}
+  alias Apiary.WorkItems.{Confirmation, Explore, Moves, WorkItem}
 
   @moduletag needs: [:factory, :workflow_model]
 
   @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
   @build "st_6ns22c4pav"
+  # The point of a run outside a loop that ended with no verdict (`Apiary.Stages.Points`).
+  @no_verdict %{"text" => "The run stopped before its verdict.", "action" => "run_again"}
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
 
   setup do
@@ -104,20 +107,47 @@ defmodule Apiary.StagesTest do
     ]
   end
 
-  # The end of a run that pushes the verdict `verdict`, as `Apiary.StagesFixtures.end_run!/3`
-  # takes it.
-  defp verdict(verdict) do
+  # The end of a run that pushes the verdict `verdict`, with `points` where given, as
+  # `Apiary.StagesFixtures.end_run!/3` takes it.
+  defp verdict(verdict, points \\ nil) do
+    document =
+      if points,
+        do: %{"verdict" => verdict, "points" => points},
+        else: %{"verdict" => verdict}
+
     fn run, _registered ->
       {:ok, _version} =
         Stages.Artifacts.push_json(
           {:run, run},
           Repo.get!(WorkItem, run.work_item_id),
           "verdict",
-          %{"verdict" => verdict},
+          document,
           stage_id: run.stage_id
         )
     end
   end
+
+  # A point that asks a person to run another round, as a run or Core writes it.
+  defp again(text), do: %{"text" => text, "action" => "run_again"}
+
+  # A run of Explore that pushed proposal version 1 and a question, then a second run of
+  # the take in, queued by the answer: the work item, waiting for that second run's end.
+  defp answered_after_proposal!(scope) do
+    work_item =
+      take_in!(scope)
+      |> end_run!(fn run, registered ->
+        push_result!(run, registered, understood_result())
+        push_result!(run, registered, questions_result(["Which basket?"]))
+      end)
+
+    assert work_item.stage_state == :waiting_answers
+    {:ok, _work_item} = WorkItems.answer(scope, work_item, 1, %{"1" => "The small one."})
+    assert %DispatchRun{attempt: 2, state: :waiting} = newest_run(work_item)
+    reload(work_item)
+  end
+
+  # The end of a run that pushes its proposal and no verdict.
+  defp proposal_only, do: &push_output!(&1, &2, understood_result())
 
   # The text of a version's first file.
   defp read_text(%{files: [file | _rest]}) do
@@ -169,10 +199,19 @@ defmodule Apiary.StagesTest do
                stage_entry: 0,
                loop_entry: nil,
                workflow: "explore-a-ticket",
-               machine_type: "default"
+               machine_type: "standard"
              } = run
 
       assert run.process_version_id == version.id
+
+      # The process picks the default type, and the run has the seeded default's spec.
+      assert run.machine_spec == %{
+               "vcpus" => 2,
+               "memory_mib" => 4096,
+               "disk_gib" => 30,
+               "arch" => "amd64",
+               "virtualization" => false
+             }
 
       # The work items' topic of the workspace gets only its message, which every Work items
       # list reads; the stage's change goes on the work item's topic (`Stages.topic/1`).
@@ -311,9 +350,10 @@ defmodule Apiary.StagesTest do
 
       # The waiting line has no time of a read, and Check again is not its fix.
       assert Stages.status(work_item).gaps ==
-               "Explore uses capture-demo, which the Qory harness does not list. Choose " <>
-                 "another workflow for Explore, or choose a harness that lists capture-demo " <>
-                 "under workflows on the Workflow page."
+               "Choose another workflow for Explore in Workspace settings › Workflows. To " <>
+                 "keep capture-demo, change the harness in Workspace settings › Harness to " <>
+                 "one that lists it under workflows. Explore uses capture-demo, which the " <>
+                 "Qory harness does not list."
 
       # No adapter and no public host is called: the default read takes the Qory names.
       for stub <- [Apiary.Adapters.Calls, Apiary.Harnesses.PublicGit] do
@@ -333,6 +373,39 @@ defmodule Apiary.StagesTest do
       work_item = take_in!(scope)
       assert work_item.stage_id == @explore
       assert [%DispatchRun{stage_id: @explore}] = runs(work_item)
+    end
+
+    test "take_in_starts/2 reads the run a take in would queue, by the take in's rule", %{
+      scope: scope
+    } do
+      ticket = backlog_ticket_fixture(scope)
+
+      assert Stages.take_in_starts(scope.workspace, ticket.public_id) ==
+               {:run, "explore-a-ticket"}
+
+      save!(scope, [
+        explore_stage(%{"inputs" => [%{"type" => "acceptance-criteria", "required" => true}]})
+      ])
+
+      assert Stages.take_in_starts(scope.workspace, ticket.public_id) == :none
+
+      # The work item a take in again brings back: its version of the input counts.
+      work_item = take_in!(scope)
+      item = Repo.get!(Apiary.Sources.Item, work_item.item_id)
+
+      {:ok, _version} =
+        Artifacts.push(
+          {:person, scope},
+          work_item,
+          "acceptance-criteria",
+          [%{filename: "criteria.md", binary: "- The price is the sale price."}],
+          stage_id: @explore
+        )
+
+      assert Stages.take_in_starts(scope.workspace, item.public_id) ==
+               {:run, "explore-a-ticket"}
+
+      assert Repo.aggregate(WorkItem, :count) == 1
     end
 
     test "waits for a required input", %{scope: scope} do
@@ -362,6 +435,156 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "the machine type of a queued run" do
+    test "is the type the entry picks, with its spec, kept after the type changes", %{
+      scope: scope
+    } do
+      large = machine_type_fixture(key: "large", disk_gib: 60)
+
+      save!(scope, [
+        stage(@explore, "Explore", [%{"workflow" => "explore-a-ticket", "machine" => "large"}])
+      ])
+
+      work_item = take_in!(scope)
+      assert [run] = runs(work_item)
+      assert run.machine_type == "large"
+      assert run.machine_spec == spec(%{disk_gib: 60})
+
+      # A later change of the type changes no queued run.
+      large |> Ecto.Changeset.change(vcpus: 8) |> Repo.update!()
+      assert Repo.get!(DispatchRun, run.id).machine_spec == spec(%{disk_gib: 60})
+    end
+
+    test "is the document's type for an entry that picks none", %{scope: scope} do
+      machine_type_fixture(key: "large")
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "large",
+        "stages" => [stage(@explore, "Explore", [%{"workflow" => "explore-a-ticket"}])]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+
+      assert [%DispatchRun{machine_type: "large", machine_spec: spec}] =
+               scope |> take_in!() |> runs()
+
+      assert spec == spec()
+    end
+
+    test "is the default type for a type deleted after the save", %{scope: scope} do
+      large = machine_type_fixture(key: "large")
+
+      save!(scope, [
+        stage(@explore, "Explore", [%{"workflow" => "explore-a-ticket", "machine" => "large"}])
+      ])
+
+      Repo.delete!(large)
+
+      assert [%DispatchRun{machine_type: "standard", machine_spec: %{"vcpus" => 2}}] =
+               scope |> take_in!() |> runs()
+    end
+  end
+
+  describe "whether a run is a run of Explore" do
+    # No commit or file of the Qory harness kept, as before its first read, and so no
+    # process version made from a commit of it.
+    defp no_harness_kept! do
+      {_count, _rows} = Repo.delete_all("qory_harness_heads")
+      {_count, _rows} = Repo.delete_all("qory_harness_files")
+      Repo.query!("UPDATE process_versions SET template = template - 'commit'")
+      :ok
+    end
+
+    test "is kept when the run is queued, so its end does not wait on the stored harness files",
+         %{scope: scope} do
+      work_item = take_in!(scope)
+      assert %DispatchRun{explore: true, workflow: "explore-a-ticket"} = newest_run(work_item)
+
+      # The window before the first read of the Qory harness: no files are kept.
+      no_harness_kept!()
+      assert Stages.explore_workflow(scope.workspace) == nil
+      assert Stages.explore_run?(newest_run(work_item))
+
+      work_item = end_run!(work_item, understood_result())
+      assert work_item.stage_state == :at_gate
+      assert [%{stage_id: @explore}] = versions(work_item, "proposal")
+    end
+
+    test "is not known at the queue before the first read, nor after it while none is kept",
+         %{scope: scope} do
+      no_harness_kept!()
+
+      assert Stages.explore_at_queue("explore", "explore-a-ticket", scope.workspace.id) == nil
+      assert Stages.explore_at_queue("explore", nil, scope.workspace.id)
+      refute Stages.explore_at_queue("build", "explore-a-ticket", scope.workspace.id)
+
+      run = %DispatchRun{
+        step: "explore",
+        workflow: "explore-a-ticket",
+        workspace_id: scope.workspace.id
+      }
+
+      assert Stages.explore_run?(run) == nil
+      assert Stages.known_explore(run) == nil
+    end
+
+    test "not known, leaves the end of the run for later, and is read once the files are kept",
+         %{scope: scope} do
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+      no_harness_kept!()
+
+      # A run queued before the first read, its record with no answer, which ended lost.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [explore: nil, state: :ended, end_cause: :lost]
+        )
+
+      assert {:ok, []} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      refute escalation(work_item)
+      assert %DispatchRun{explore: nil} = Repo.get!(DispatchRun, run.id)
+
+      # The first read keeps the files: the end is read as a run of Explore that stopped.
+      {:ok, _commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
+
+      assert {:ok, [_told]} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %DispatchRun{explore: true} = Repo.get!(DispatchRun, run.id)
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+    end
+
+    test "reads the commit the workspace's harness settings choose, not main's",
+         %{scope: scope} do
+      files =
+        Map.new(Apiary.QoryHarnessFixture.files(), fn {path, content} ->
+          {path, String.replace(content, "explore-a-ticket", "explore-v2")}
+        end)
+
+      Apiary.QoryHarnessFixture.serve!(files, tags: ["v2"])
+      {:ok, _row} = Apiary.Stacks.Sources.choose(scope, {:qory, {:tag, "v2"}})
+
+      assert Stages.explore_workflow(scope.workspace) == "explore-v2"
+      assert Processes.qory_workflows(Apiary.Harnesses.Qory.current()) == ["explore-a-ticket"]
+    end
+
+    test "reads the newest commit kept where the chosen commit's files are not kept",
+         %{scope: scope} do
+      {:ok, row} =
+        Apiary.Stacks.Sources.choose(
+          scope,
+          {:qory, {:commit, Apiary.QoryHarnessFixture.commit()}}
+        )
+
+      row
+      |> Ecto.Changeset.change(version_name: String.duplicate("ab", 20))
+      |> Repo.update!()
+
+      assert Apiary.Harnesses.Qory.workspace_commit(scope.workspace) == nil
+      assert Stages.explore_workflow(scope.workspace) == "explore-a-ticket"
+    end
+  end
+
   describe "the end of a run of Explore" do
     test "a proposal the run pushed, with no open question, opens the gate", %{
       scope: scope
@@ -379,9 +602,9 @@ defmodule Apiary.StagesTest do
                versions(work_item, "proposal")
 
       assert proposal.run_id == run.id
-      # The run pushed its proposal; Core writes no verdict for it, and the run list shows
-      # it passed, as when Core wrote one.
-      assert versions(work_item, "verdict") == []
+      # The run pushed its proposal and its verdict, which the run list shows.
+      assert [%{writer: :run, run_id: run_id}] = versions(work_item, "verdict")
+      assert run_id == run.id
 
       assert [%{filename: "proposal.md", content_type: "text/markdown; charset=utf-8"}] =
                proposal.files
@@ -412,7 +635,7 @@ defmodule Apiary.StagesTest do
              ] = Stages.runs(work_item)
 
       assert Map.keys(run) |> Enum.sort() ==
-               ~w(attempt ended_at id of round stage_id started_at status take_in verdict workflow)a
+               ~w(attempt end_cause ended_at id of round stage_id started_at status take_in verdict workflow)a
 
       public_id = work_item.public_id
       assert_receive {:stage_changed, ^public_id}
@@ -486,16 +709,395 @@ defmodule Apiary.StagesTest do
       refute escalation(work_item)
     end
 
-    test "a run that pushed no proposal escalates check_failed", %{scope: scope} do
-      work_item = take_in!(scope) |> end_run!(nil)
+    test "a run that pushed no proposal and passed escalates check_failed", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(verdict("passed"))
 
       assert work_item.stage_state == :escalated
 
       assert %Escalation{
                cause: :check_failed,
                round: 1,
-               gaps: "No proposal was stored in this stage."
+               points: [
+                 %{"text" => "No proposal was stored in this stage.", "action" => "run_again"}
+               ]
              } = escalation(work_item)
+
+      assert %{verdict: :passed} = hd(Stages.runs(work_item))
+    end
+
+    test "a run that pushed no proposal and changes-requested escalates check_failed", %{
+      scope: scope
+    } do
+      work_item = take_in!(scope) |> end_run!(verdict("changes-requested"))
+
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{
+               cause: :check_failed,
+               round: 1,
+               points: [
+                 %{"text" => "No proposal was stored in this stage.", "action" => "run_again"}
+               ]
+             } = escalation(work_item)
+
+      assert %{verdict: :failed} = hd(Stages.runs(work_item))
+    end
+
+    test "a run with no proposal and no verdict escalates run_stopped", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(nil)
+
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{cause: :run_stopped, round: 1, points: [@no_verdict]} =
+               escalation(work_item)
+
+      assert %{verdict: nil} = hd(Stages.runs(work_item))
+    end
+
+    test "a proposal with no verdict goes on to the gate, and Confirm moves the work item on",
+         %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(proposal_only())
+
+      assert work_item.stage_state == :at_gate
+      refute escalation(work_item)
+      assert versions(work_item, "verdict") == []
+      assert [%{number: 1}] = versions(work_item, "proposal")
+      assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
+      assert %{verdict: :passed} = hd(Stages.runs(work_item))
+
+      assert {:ok, %WorkItem{stage_id: @shape}} = WorkItems.confirm(scope, work_item, 1)
+    end
+
+    test "the run list reads a proposal with no verdict as passed where the run did not stop", %{
+      scope: scope
+    } do
+      save!(scope, [
+        explore_stage(%{
+          "sequence" => [
+            %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "explore-a-ticket"}]}}
+          ]
+        })
+      ])
+
+      work_item = take_in!(scope) |> end_run!(proposal_only())
+
+      assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
+      refute escalation(work_item)
+      assert [%{verdict: nil}, %{verdict: :passed}] = Stages.runs(work_item)
+    end
+
+    test "another round after a run with no result reruns, and a proposal reaches Confirm", %{
+      scope: scope
+    } do
+      work_item = take_in!(scope) |> end_run!(nil)
+      assert %Escalation{cause: :run_stopped, points: [@no_verdict]} = escalation(work_item)
+
+      assert {:ok, %WorkItem{stage_state: :running}} =
+               Stages.resolve_escalation(scope, work_item, :another_round, nil,
+                 expect_stage: @explore
+               )
+
+      assert %DispatchRun{attempt: 2, round: 1} = newest_run(work_item)
+
+      work_item = end_run!(work_item, proposal_only())
+
+      assert work_item.stage_state == :at_gate
+      assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
+      assert {:ok, %WorkItem{stage_id: @shape}} = WorkItems.confirm(scope, work_item, 2)
+    end
+
+    test "a rerun after a review comment with no verdict goes on: the take in has its proposal",
+         %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      assert work_item.stage_state == :at_gate
+
+      assert {:ok, %{}} = WorkItems.answer(scope, work_item, 1, "Also read the sale page.")
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+
+      work_item = end_run!(reload(work_item), nil)
+
+      assert work_item.stage_state == :at_gate
+      refute escalation(work_item)
+      assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
+    end
+
+    test "open questions wait, ahead of a passed verdict", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(questions_result())
+
+      assert [%{writer: :run}] = versions(work_item, "verdict")
+      assert work_item.stage_state == :waiting_answers
+      refute escalation(work_item)
+    end
+
+    test "open questions wait with no verdict too", %{scope: scope} do
+      asks = &push_output!(&1, &2, questions_result())
+      work_item = take_in!(scope) |> end_run!(asks)
+
+      assert versions(work_item, "verdict") == []
+      assert work_item.stage_state == :waiting_answers
+      refute escalation(work_item)
+    end
+
+    test "a run that passed and then failed stopped: its exit comes before the verdict", %{
+      scope: scope
+    } do
+      work_item =
+        take_in!(scope)
+        |> end_run!(verdict("passed"), %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %Escalation{cause: :run_stopped, points: [%{"text" => text}]} = escalation(work_item)
+      assert text =~ "The run stopped: "
+      assert %{verdict: nil} = hd(Stages.runs(work_item))
+    end
+
+    test "a run with a proposal, passed and a failed exit has no verdict, also after Approve", %{
+      scope: scope
+    } do
+      proposal_and_passed = fn run, registered ->
+        proposal_only().(run, registered)
+        verdict("passed").(run, registered)
+      end
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(proposal_and_passed, %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert %{verdict: nil} = hd(Stages.runs(work_item))
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+
+      assert %WorkItem{stage_id: @shape} = work_item
+      assert %{verdict: nil} = hd(Stages.runs(work_item))
+    end
+
+    test "a confirmation is refused while the stage is escalated, and writes nothing", %{
+      scope: scope
+    } do
+      outputs = [
+        %{"type" => "proposal", "required" => true},
+        %{"type" => "mockup", "required" => true}
+      ]
+
+      save!(scope, [explore_stage(%{"outputs" => outputs}), stage(@shape, "Shape", [])])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      run = newest_run(work_item)
+
+      # The proposal waits, and the stage escalated: the mockup is missing.
+      assert %Escalation{cause: :check_failed} = escalation(work_item)
+      assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
+
+      assert {:error, :not_waiting} = WorkItems.confirm(scope, work_item, run.attempt)
+
+      assert %WorkItem{stage_state: :escalated, stage_id: @explore} = reload(work_item)
+      refute Repo.get_by(Confirmation, work_item_id: work_item.id)
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      assert {:ok, %WorkItem{stage_id: @shape}} =
+               WorkItems.confirm(scope, work_item, run.attempt)
+    end
+
+    test "Accept as it is at the last stage with a gate none closes the work item", %{
+      scope: scope
+    } do
+      save!(scope, [explore_stage(%{"gate" => %{"kind" => "none"}})])
+      work_item = take_in!(scope) |> end_run!(nil)
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      {:ok, _work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      assert %WorkItem{state: :closed, stage_id: @explore, stage_state: :done} =
+               reload(work_item)
+    end
+
+    test "a verdict with another name counts as none: the run stops, with no verdict", %{
+      scope: scope
+    } do
+      other = fn run, _registered ->
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            [
+              %{
+                filename: "verdict.json",
+                content_type: "application/json",
+                binary: Jason.encode!(%{"verdict" => "passed"})
+              }
+            ],
+            name: "other",
+            stage_id: run.stage_id
+          )
+      end
+
+      work_item = take_in!(scope) |> end_run!(other)
+
+      assert %Escalation{cause: :run_stopped, points: [@no_verdict]} = escalation(work_item)
+      assert %{verdict: nil} = hd(Stages.runs(work_item))
+    end
+
+    test "another workflow's verdict file that cannot be read raises; readable, it counts", %{
+      scope: scope
+    } do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "write"}])])
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+      work_item = end_run!(work_item, verdict("passed"))
+      assert work_item.stage_state == :at_gate
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :running, stage_entry: 0]
+        )
+
+      [file] = hd(versions(work_item, "verdict")).files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      assert_raise Apiary.Stages.VerdictUnreadable, fn ->
+        Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      end
+
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      refute escalation(work_item)
+
+      File.rename!(path <> ".away", path)
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %WorkItem{stage_state: :at_gate} = reload(work_item)
+      refute escalation(work_item)
+    end
+
+    test "Explore's escalate escalates, with its points, and a proposal with changes-requested goes on",
+         %{
+           scope: scope
+         } do
+      push = fn verdict ->
+        fn run, registered ->
+          proposal_only().(run, registered)
+          points = if verdict == "escalate", do: [again("The ticket has no basket.")]
+          verdict(verdict, points).(run, registered)
+        end
+      end
+
+      escalated = take_in!(scope) |> end_run!(push.("escalate"))
+      assert %Escalation{cause: :escalate} = escalation(escalated)
+
+      gate = take_in!(scope) |> end_run!(push.("changes-requested"))
+      assert gate.stage_state == :at_gate
+      refute escalation(gate)
+    end
+
+    test "a test work item's run with no verdict goes on to the checks", %{scope: scope} do
+      {:ok, work_item} = WorkItems.take_in_test(scope, "Hi! Where are you running?")
+      work_item = end_run!(reload(work_item), nil)
+
+      assert %WorkItem{test: true, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :check_failed} = escalation(work_item)
+    end
+
+    test "a verdict under another name is not the verdict of a run that did not stop", %{
+      scope: scope
+    } do
+      {:ok, work_item} = WorkItems.take_in_test(scope, "Hi! Where are you running?")
+
+      other = fn run, _registered ->
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            [
+              %{
+                filename: "verdict.json",
+                content_type: "application/json",
+                binary: Jason.encode!(%{"verdict" => "passed"})
+              }
+            ],
+            name: "other",
+            stage_id: run.stage_id
+          )
+      end
+
+      work_item = end_run!(reload(work_item), other)
+
+      assert %Escalation{cause: :check_failed} = escalation(work_item)
+      assert %{verdict: nil} = hd(Stages.runs(work_item))
+    end
+
+    test "a test work item's run with no verdict reaches the gate with no required output", %{
+      scope: scope
+    } do
+      save!(scope, [explore_stage(%{"outputs" => []})])
+      {:ok, work_item} = WorkItems.take_in_test(scope, "Hi! Where are you running?")
+      work_item = end_run!(reload(work_item), nil)
+
+      assert %WorkItem{test: true, stage_state: :at_gate} = work_item
+      refute escalation(work_item)
+    end
+
+    test "a workflow with no verdict, not the last entry, escalates; Accept starts the next", %{
+      scope: scope
+    } do
+      save!(scope, [
+        stage(@explore, "Explore", [%{"workflow" => "write"}, %{"workflow" => "check"}])
+      ])
+
+      work_item = take_in!(scope)
+      assert %DispatchRun{workflow: "write"} = newest_run(work_item)
+      work_item = end_run!(work_item, nil)
+
+      assert work_item.stage_state == :escalated
+      assert %Escalation{cause: :run_stopped, points: [@no_verdict]} = escalation(work_item)
+      assert %DispatchRun{workflow: "write"} = newest_run(work_item)
+
+      assert {:ok, %WorkItem{stage_state: :running, stage_entry: 1}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      assert %DispatchRun{workflow: "check"} = newest_run(work_item)
+
+      # The last entry's run with no verdict, on a run after another round too.
+      work_item = end_run!(reload(work_item), nil)
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      assert {:ok, %WorkItem{stage_state: :running, stage_entry: 1}} =
+               Stages.resolve_escalation(scope, work_item, :another_round, nil,
+                 expect_stage: @explore
+               )
+
+      assert %DispatchRun{workflow: "check"} = newest_run(work_item)
+      work_item = end_run!(reload(work_item), nil)
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      assert {:ok, %WorkItem{stage_state: :at_gate, stage_entry: 2}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+    end
+
+    test "a workflow outside a loop goes on after passed and changes-requested", %{scope: scope} do
+      save!(scope, [
+        stage(@explore, "Explore", [
+          %{"workflow" => "write"},
+          %{"workflow" => "check"},
+          %{"workflow" => "ship"}
+        ])
+      ])
+
+      work_item = take_in!(scope) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_state: :running, stage_entry: 1} = work_item
+
+      work_item = end_run!(work_item, verdict("changes-requested"))
+      assert %WorkItem{stage_state: :running, stage_entry: 2} = work_item
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_state: :at_gate} = work_item
+      refute escalation(work_item)
     end
 
     test "in a loop, a run with no verdict starts the next round", %{scope: scope} do
@@ -507,11 +1109,16 @@ defmodule Apiary.StagesTest do
         })
       ])
 
-      work_item = take_in!(scope) |> end_run!(understood_result())
+      work_item = take_in!(scope) |> end_run!(proposal_only())
       assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
 
       work_item = end_run!(work_item, nil)
-      assert %Escalation{cause: :round_limit, round: 2} = escalation(work_item)
+
+      assert %Escalation{
+               cause: :round_limit,
+               round: 2,
+               points: [%{"text" => "2 of 2 rounds ran.", "action" => "run_again"}]
+             } = escalation(work_item)
     end
 
     test "a run that exited failed escalates run_stopped", %{scope: scope} do
@@ -521,8 +1128,15 @@ defmodule Apiary.StagesTest do
       assert work_item.stage_state == :escalated
 
       # With no proposal written, it reads as a run with no result.
-      assert %Escalation{cause: :run_stopped, gaps: "The run ended without a result."} =
-               escalation(work_item)
+      assert %Escalation{
+               cause: :run_stopped,
+               points: [
+                 %{
+                   "text" => "The run stopped: it ended without a result.",
+                   "action" => "run_again"
+                 }
+               ]
+             } = escalation(work_item)
     end
 
     test "a run that failed after it wrote a proposal escalates run_stopped with its version",
@@ -536,7 +1150,12 @@ defmodule Apiary.StagesTest do
 
       assert %Escalation{
                cause: :run_stopped,
-               gaps: "The run failed after it wrote proposal version 1."
+               points: [
+                 %{
+                   "text" => "The run stopped: it failed after it wrote proposal version 1.",
+                   "action" => "run_again"
+                 }
+               ]
              } = escalation(work_item)
 
       # The proposal is the stage's output, so the member may accept it as it is.
@@ -575,9 +1194,307 @@ defmodule Apiary.StagesTest do
 
       assert %Escalation{
                cause: :run_stopped,
-               gaps: "The run stopped reporting and was marked lost."
+               points: [
+                 %{
+                   "text" =>
+                     "The run stopped: Qory Apiary got no report from it and marked it lost.",
+                   "action" => "run_again"
+                 }
+               ]
              } =
                escalation(work_item)
+    end
+
+    test "a run that pushed the verdict escalate escalates with its points, and nothing waits for Approve",
+         %{scope: scope} do
+      points = [
+        %{
+          "text" => "The ticket describes two baskets. Say which one to change.",
+          "action" => "run_again"
+        }
+      ]
+
+      work_item = scope |> answered_after_proposal!() |> end_run!(verdict("escalate", points))
+
+      assert work_item.stage_state == :escalated
+      assert %Escalation{cause: :escalate, round: 1, points: ^points} = escalation(work_item)
+
+      assert %{state: :escalated, escalation: %{cause: :escalate, points: ^points}, gaps: nil} =
+               Stages.status(work_item)
+
+      # Proposal version 1 of the first run stays, and waits for no confirmation.
+      assert [%{number: 1}] = versions(work_item, "proposal")
+      assert %DispatchRun{attempt: 2, result_outcome: :none} = newest_run(work_item)
+      assert %{status: :no_result} = Explore.current(work_item, DateTime.utc_now())
+      refute Stages.status(work_item, scope).gate.approvable?
+      assert WorkItems.confirm(scope, work_item, 2) == {:error, :not_waiting}
+      assert [%{attempt: 2, verdict: :failed} | _] = Stages.runs(work_item)
+    end
+
+    test "a run with no verdict, or a verdict other than escalate, keeps the proposal's Approve",
+         %{scope: scope} do
+      for pushed <- [nil, verdict("passed"), verdict("changes-requested")] do
+        work_item = scope |> answered_after_proposal!() |> end_run!(pushed)
+
+        assert work_item.stage_state == :at_gate
+        refute escalation(work_item)
+        assert %DispatchRun{attempt: 2, result_outcome: :proposal} = newest_run(work_item)
+        assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
+        assert Stages.status(work_item, scope).gate.approvable?
+      end
+    end
+
+    test "open questions with escalate wait for answers and keep the escalation with its points",
+         %{scope: scope} do
+      points = [
+        %{
+          "text" => "The ticket describes two baskets.",
+          "action" => "answer",
+          "question" => "q1"
+        },
+        %{"text" => "The ticket links no sale page.", "action" => "run_again"}
+      ]
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, questions_result(["Which basket?"]))
+          verdict("escalate", points).(run, registered)
+        end)
+
+      # Open questions come first: the stage waits for answers, with the escalation open.
+      assert work_item.stage_state == :waiting_answers
+      assert %DispatchRun{result_outcome: :questions} = newest_run(work_item)
+
+      assert %Escalation{cause: :escalate, round: 1, points: ^points, resolved_at: nil} =
+               escalation(work_item)
+
+      assert %{
+               state: :waiting_answers,
+               escalation: %{cause: :escalate, points: ^points},
+               gaps: nil
+             } =
+               Stages.status(work_item, scope)
+
+      # The answers run the next round and resolve the escalation as another round.
+      {:ok, _work_item} = WorkItems.answer(scope, work_item, 1, %{"1" => "The small one."})
+
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      assert %DispatchRun{attempt: 2, state: :waiting} = newest_run(work_item)
+      refute escalation(work_item)
+
+      assert [%Escalation{resolution: :another_round, resolved_at: %DateTime{}}] =
+               Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+    end
+
+    test "an answer point whose question the run withdrew after its verdict asks for another round",
+         %{scope: scope} do
+      points = [
+        %{
+          "text" => "The ticket describes two baskets.",
+          "action" => "answer",
+          "question" => "q1"
+        },
+        %{"text" => "The ticket links no sale page.", "action" => "run_again"}
+      ]
+
+      # The run asks q1, gives its verdict with a point about q1, then withdraws q1.
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, questions_result(["Which basket?"]))
+          verdict("escalate", points).(run, registered)
+
+          work_item = Repo.get!(WorkItem, run.work_item_id)
+          {_version, document} = Apiary.Explore.Questions.newest(work_item)
+
+          withdrawn =
+            update_in(document["questions"], fn questions ->
+              for question <- questions, do: %{question | "state" => "withdrawn"}
+            end)
+
+          {:ok, _version} =
+            Stages.Artifacts.push_json({:run, run}, work_item, "questions", withdrawn,
+              stage_id: run.stage_id
+            )
+        end)
+
+      # No question is open, so the stage escalates; the point keeps its sentence and asks
+      # for another round, and no point is dropped.
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{cause: :escalate, points: stored} = escalation(work_item)
+
+      assert stored == [
+               %{"text" => "The ticket describes two baskets.", "action" => "run_again"},
+               %{"text" => "The ticket links no sale page.", "action" => "run_again"}
+             ]
+    end
+
+    test "while answers wait, an open escalation's other actions are refused", %{scope: scope} do
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, questions_result(["Which basket?"]))
+
+          verdict("escalate", [
+            %{"text" => "The ticket links no sale page.", "action" => "run_again"}
+          ]).(run, registered)
+        end)
+
+      assert work_item.stage_state == :waiting_answers
+      assert %Escalation{cause: :escalate} = escalation(work_item)
+
+      for resolution <- [:accept, :another_round, {:move_back, @explore}, :close] do
+        assert Stages.resolve_escalation(scope, work_item, resolution, nil,
+                 expect_stage: work_item.stage_id
+               ) == {:error, :not_escalated}
+      end
+
+      # Nothing changed: the stage still waits, with the escalation open.
+      assert %WorkItem{stage_state: :waiting_answers, state: state} = reload(work_item)
+      assert state != :closed
+      assert %Escalation{resolved_at: nil} = escalation(work_item)
+    end
+
+    test "after an escalate, another round with no verdict keeps the proposal's Approve",
+         %{scope: scope} do
+      points = [%{"text" => "The ticket describes two baskets.", "action" => "run_again"}]
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, understood_result())
+          verdict("escalate", points).(run, registered)
+        end)
+
+      assert %Escalation{cause: :escalate, points: ^points} = escalation(work_item)
+
+      {:ok, _work_item} =
+        Stages.resolve_escalation(scope, work_item, :another_round, nil,
+          expect_stage: work_item.stage_id
+        )
+
+      work_item = end_run!(reload(work_item), nil)
+
+      assert work_item.stage_state == :at_gate
+      refute escalation(work_item)
+
+      assert [%Escalation{resolution: :another_round}] =
+               Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+
+      assert %DispatchRun{attempt: 2, result_outcome: :proposal} = newest_run(work_item)
+      assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
+      assert Stages.status(work_item, scope).gate.approvable?
+    end
+
+    test "a run that pushed escalate, then passed, keeps the proposal's Approve", %{
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> answered_after_proposal!()
+        |> end_run!(fn run, registered ->
+          verdict("escalate", [%{"text" => "The ticket is unclear.", "action" => "run_again"}]).(
+            run,
+            registered
+          )
+
+          verdict("passed").(run, registered)
+        end)
+
+      assert work_item.stage_state == :at_gate
+      refute escalation(work_item)
+      assert %DispatchRun{attempt: 2, result_outcome: :proposal} = newest_run(work_item)
+    end
+
+    test "a run that pushed a proposal and escalate, then exited failed, escalates escalate",
+         %{scope: scope} do
+      points = [
+        %{
+          "text" => "The ticket describes two baskets. Say which one to change.",
+          "action" => "run_again"
+        }
+      ]
+
+      work_item =
+        scope
+        |> answered_after_proposal!()
+        |> end_run!(
+          fn run, registered ->
+            push_result!(run, registered, understood_result(%{"message" => "Version 2."}))
+            verdict("escalate", points).(run, registered)
+          end,
+          %{exit_state: "failed", outcome_state: "failed"}
+        )
+
+      assert [%{number: 2}, %{number: 1}] = versions(work_item, "proposal")
+      assert work_item.stage_state == :escalated
+      assert %Escalation{cause: :escalate, points: ^points} = escalation(work_item)
+      assert %DispatchRun{attempt: 2, result_outcome: :none} = newest_run(work_item)
+    end
+
+    test "a lost run that pushed escalate escalates run_stopped", %{scope: scope} do
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+      registered = %Apiary.Runs.Run{}
+
+      verdict("escalate", [%{"text" => "The ticket is unclear.", "action" => "run_again"}]).(
+        run,
+        registered
+      )
+
+      run |> Ecto.Changeset.change(state: :ended, end_cause: :lost) |> Repo.update!()
+
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+
+      assert %Escalation{
+               cause: :run_stopped,
+               points: [
+                 %{
+                   "text" =>
+                     "The run stopped: Qory Apiary got no report from it and marked it lost.",
+                   "action" => "run_again"
+                 }
+               ]
+             } = escalation(work_item)
+    end
+
+    test "an end whose verdict the store cannot read raises and changes nothing",
+         %{scope: scope} do
+      # A point no other test writes, so no other test stores the same file.
+      points = [again("Which basket #{System.unique_integer([:positive])}?")]
+      work_item = take_in!(scope) |> end_run!(verdict("escalate", points))
+      run = newest_run(work_item)
+      assert %Escalation{cause: :escalate} = escalation(work_item)
+
+      # The end again, as the stage runner reads it, with the verdict's file away.
+      Repo.delete_all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :running]
+        )
+
+      [file] = Stages.Artifacts.newest_of_run(run, "verdict", "main").files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      assert Stages.reported_verdict(run) == {:error, :store_unavailable}
+      assert Apiary.Explore.Outcome.at_end(run) == nil
+
+      assert_raise Apiary.Stages.VerdictUnreadable, fn ->
+        Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      end
+
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      refute escalation(work_item)
+
+      # Readable again, the end escalates.
+      File.rename!(path <> ".away", path)
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+      assert %Escalation{cause: :escalate, points: ^points} = escalation(work_item)
     end
 
     test "an end whose newest questions cannot be read raises and changes nothing, lost or not",
@@ -734,7 +1651,9 @@ defmodule Apiary.StagesTest do
       # The same text, but the work item's number.
       texts =
         for work_item <- [by_claim, by_sweep] do
-          assert %Escalation{cause: :run_stopped, gaps: text} = escalation(work_item)
+          assert %Escalation{cause: :run_stopped, points: [%{"text" => text}]} =
+                   escalation(work_item)
+
           String.replace(text, "##{reload(work_item).number}", "#N")
         end
 
@@ -934,8 +1853,12 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{loop_entry: nil, of: 3} = newest_run(work_item)
       work_item = end_run!(work_item, understood_result())
 
-      assert %Escalation{cause: :check_failed, gaps: "No mockup was stored in this stage."} =
-               escalation(work_item)
+      assert %Escalation{
+               cause: :check_failed,
+               points: [
+                 %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
+               ]
+             } = escalation(work_item)
 
       assert [%{check: :passed}, %{check: :missing}, %{check: :not_checked}] =
                Stages.status(work_item).outputs
@@ -1024,8 +1947,15 @@ defmodule Apiary.StagesTest do
 
       work_item = work_item |> end_run!(verdict("passed")) |> end_run!(verdict("passed"))
 
-      assert %Escalation{cause: :round_limit, gaps: ^gaps} = escalation(work_item)
-      assert %{gaps: ^gaps} = Stages.status(work_item)
+      # At the limit, the escalation has the point of the rounds that ran and one for each
+      # failed check, and status shows the points instead of the gaps.
+      points = [
+        %{"text" => "3 of 3 rounds ran.", "action" => "run_again"},
+        %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
+      ]
+
+      assert %Escalation{cause: :round_limit, points: ^points} = escalation(work_item)
+      assert %{gaps: nil, escalation: %{points: ^points}} = Stages.status(work_item)
       assert [%{kind: :check}, %{kind: :check}] = Stages.notes(work_item)
     end
 
@@ -1056,6 +1986,142 @@ defmodule Apiary.StagesTest do
         end)
 
       assert %WorkItem{stage_state: :running, stage_round: 2} = work_item
+    end
+  end
+
+  describe "the end of a run of a workflow other than Explore" do
+    test "the verdict escalate escalates with its points", %{scope: scope} do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      points = [%{"text" => "The demo needs a login.", "action" => "run_again"}]
+      work_item = take_in!(scope) |> end_run!(verdict("escalate", points))
+
+      assert work_item.stage_state == :escalated
+      assert %Escalation{cause: :escalate, round: 1, points: ^points} = escalation(work_item)
+      assert %DispatchRun{explore: false, result_outcome: :none} = newest_run(work_item)
+    end
+
+    # Not an end by the exit, whose end, settle and stage share one transaction
+    # (`Apiary.Dispatches.SettleTest`): an exit stored with no outcome (`end_run!/3`), as
+    # Settle leaves one it cannot settle yet, then its settle.
+    test "an exit stored with no outcome: an unreadable verdict raises, the sweep settles it",
+         %{scope: scope} do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      # A point no other test writes, so no other test stores the same file.
+      points = [again("The demo skips step #{System.unique_integer([:positive])}.")]
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+      paths = self()
+
+      # The run pushes escalate, and its file is gone from the store at the exit.
+      unreadable = fn run, registered ->
+        verdict("escalate", points).(run, registered)
+        [file] = Stages.Artifacts.newest_of_run(run, "verdict", "main").files
+        {:ok, path} = Artifacts.open_file(file)
+        File.rename!(path, path <> ".away")
+        send(paths, {:path, path})
+      end
+
+      assert_raise Apiary.Stages.VerdictUnreadable, fn -> end_run!(work_item, unreadable) end
+
+      assert_received {:path, path}
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      # The settle rolled back: the end has no outcome, and the stage has not moved.
+      assert %DispatchRun{state: :ended, result_outcome: nil} = Repo.get!(DispatchRun, run.id)
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      refute escalation(work_item)
+
+      File.rename!(path <> ".away", path)
+      Settle.sweep(DateTime.utc_now())
+
+      assert %WorkItem{stage_state: :escalated} = reload(work_item)
+      assert %Escalation{cause: :escalate, points: ^points} = escalation(work_item)
+    end
+
+    test "open questions with escalate wait for answers and keep the escalation", %{
+      scope: scope
+    } do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      points = [%{"text" => "The demo needs a login.", "action" => "run_again"}]
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, questions_result(["Which basket?"]))
+          verdict("escalate", points).(run, registered)
+        end)
+
+      assert work_item.stage_state == :waiting_answers
+      assert %Escalation{cause: :escalate, points: ^points} = escalation(work_item)
+      assert %{escalation: %{points: ^points}} = Stages.status(work_item)
+
+      # The next round resolves it as another round.
+      {:ok, _run} = Repo.transact(fn -> Stages.next_run(work_item.id, work_item.take_in) end)
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      refute escalation(work_item)
+
+      assert %Escalation{resolution: :another_round} =
+               Repo.get_by(Escalation, work_item_id: work_item.id)
+    end
+
+    test "with a verdict alone, waits for a question an earlier run of the take in left open",
+         %{scope: scope} do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      work_item = take_in!(scope) |> end_run!(questions_result(["Which basket?"]))
+      assert work_item.stage_state == :waiting_answers
+
+      # The next run of the take in starts while the question is open.
+      {:ok, _run} = Repo.transact(fn -> Stages.next_run(work_item.id, work_item.take_in) end)
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      assert [%DispatchRun{take_in: 1}, %DispatchRun{take_in: 1}] = runs(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+
+      assert work_item.stage_state == :waiting_answers
+      assert escalation(work_item) == nil
+    end
+
+    test "with a verdict, does not wait for a question an earlier take in left open", %{
+      scope: scope
+    } do
+      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      work_item = work_item |> reload() |> end_run!(questions_result(["Which basket?"]))
+      assert work_item.stage_state == :waiting_answers
+
+      {:ok, _closed} = WorkItems.close(scope, reload(work_item))
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      assert %WorkItem{take_in: 2} = work_item = reload(work_item)
+
+      # The run of take in 2 pushes `passed` and a version of the questions that keeps
+      # take in 1's question open.
+      work_item =
+        end_run!(work_item, fn run, registered ->
+          verdict("passed").(run, registered)
+          {_version, document} = Apiary.Explore.Questions.newest(reload(work_item))
+
+          {:ok, _version} =
+            Artifacts.push(
+              {:run, run},
+              reload(work_item),
+              "questions",
+              [Apiary.Explore.Questions.file(document)],
+              name: "main",
+              stage_id: run.stage_id
+            )
+        end)
+
+      assert %DispatchRun{take_in: 2} = run = newest_run(work_item)
+      pushed = Enum.find(versions(work_item, "questions"), &(&1.run_id == run.id))
+
+      assert %{"questions" => [%{"id" => "q1", "state" => "open"}]} =
+               Stages.Artifacts.read_json(pushed)
+
+      assert work_item.stage_state == :at_gate
     end
   end
 
@@ -1441,7 +2507,7 @@ defmodule Apiary.StagesTest do
                    }
                  ]
                }
-             ] = Stages.artifact_index(work_item)
+             ] = Enum.filter(Stages.artifact_index(work_item), &(&1.type == "proposal"))
     end
   end
 

@@ -154,12 +154,12 @@ defmodule Apiary.Runs.ListingTest do
       assert Enum.map(Filters.families(), & &1.label) ==
                ["Alive", "Ended well", "Cancelled", "Ended badly"]
 
-      # Every state is in exactly one family.
+      # Every state the pages show is in exactly one family: the six and queued.
       states = Filters.families() |> Enum.flat_map(& &1.states)
-      assert Enum.sort(states) == Enum.sort(Apiary.Runs.Run.states())
+      assert Enum.sort(states) == Enum.sort(Apiary.Runs.Run.shown_states())
       assert length(states) == length(Enum.uniq(states))
 
-      assert Filters.family_states("alive") == ~w(pending running)
+      assert Filters.family_states("alive") == ~w(queued pending running)
       assert Filters.family_states("ended_well") == ~w(completed)
       assert Filters.family_states("cancelled") == ~w(cancelled)
       assert Filters.family_states("ended_badly") == ~w(failed lost)
@@ -170,12 +170,14 @@ defmodule Apiary.Runs.ListingTest do
         assert Filters.families_of(Enum.reverse(family.states)) == [family.key]
       end
 
-      assert Filters.families_of(~w(completed cancelled running pending)) ==
+      assert Filters.families_of(~w(completed cancelled running pending queued)) ==
                ~w(alive ended_well cancelled)
 
-      assert Filters.families_of(Apiary.Runs.Run.states()) ==
+      assert Filters.families_of(Apiary.Runs.Run.shown_states()) ==
                ~w(alive ended_well cancelled ended_badly)
 
+      # Alive without Queued is no whole family.
+      assert Filters.families_of(~w(completed cancelled running pending)) == nil
       assert Filters.families_of(~w(completed failed running pending)) == nil
       assert Filters.families_of(~w(failed)) == nil
       assert Filters.families_of(~w(running completed)) == nil
@@ -366,6 +368,15 @@ defmodule Apiary.Runs.ListingTest do
       assert [%{key: :node, value: "spot-runners"}] = Filters.tokens(f)
     end
 
+    test "machine-type: is a machine type's name, apart from machine:" do
+      {f, []} = query("machine-type:large")
+      assert {f.machine_type, f.node} == {"large", nil}
+      assert Filters.to_params(f) == %{"machine_type" => "large"}
+      assert [%{key: :machine_type, value: "large"}] = Filters.tokens(f)
+      assert Filters.any?(f)
+      assert parse(%{"machine_type" => "large"}).machine_type == "large"
+    end
+
     test "item: is a work item's number, typed with or without #, and nothing else" do
       {f, []} = query("item:3")
       assert f.item == 3
@@ -418,8 +429,8 @@ defmodule Apiary.Runs.ListingTest do
       assert f.states == ~w(cancelled)
 
       {f, []} = query("STATE:Completed,alive")
-      assert f.states == ~w(pending running completed)
-      assert Filters.to_params(f) == %{"state" => "pending,running,completed"}
+      assert f.states == ~w(queued pending running completed)
+      assert Filters.to_params(f) == %{"state" => "queued,pending,running,completed"}
     end
 
     test "started: a preset, a day, from, up to, and two days" do
@@ -1509,6 +1520,195 @@ defmodule Apiary.Runs.ListingTest do
 
       assert narrowed.host.options == [{"files.cdn.example", "files.cdn.example", 1}]
       assert [{{"gitlab.example", "acme/shop"}, _, 1}] = narrowed.target.options
+    end
+  end
+
+  describe "the requests to the run API" do
+    # Forager records a run's requests to the run API with the placeholder host and the
+    # rule `wall:run-api`; the page shows the instance's host in its place
+    # (`Apiary.Runs.RunApi`), so the filters find them by either host.
+    @run_api %{
+      "host" => "run-api.qory.invalid",
+      "port" => 80,
+      "method" => "HTTP",
+      "rule" => "wall:run-api"
+    }
+
+    setup %{scope: scope} do
+      read = Map.merge(@run_api, %{"request_method" => "GET", "path" => "/v1/runs/r1/work-item"})
+
+      outside =
+        Map.merge(@run_api, %{
+          "request_method" => "POST",
+          "path" => "outside",
+          "decision" => "denied",
+          "outcome" => "refused"
+        })
+
+      registry = %{"host" => "registry.example", "rule" => "registry.example"}
+      started(scope, shop(), 100, egress: [read, outside, registry])
+      :ok
+    end
+
+    defp hosts(scope, params) do
+      %{rows: rows} = Runs.page_destinations(scope, cx(params), @now)
+      rows |> Enum.map(&{&1.host, &1.path}) |> Enum.sort()
+    end
+
+    @found [
+      {"run-api.qory.invalid", "/v1/runs/r1/work-item"},
+      {"run-api.qory.invalid", "outside"}
+    ]
+
+    test "host: finds them by the instance's host, in any case, and by the placeholder", %{
+      scope: scope
+    } do
+      instance = Apiary.Instance.host()
+
+      assert hosts(scope, %{"host" => instance}) == @found
+      assert hosts(scope, %{"host" => String.upcase(instance)}) == @found
+      assert hosts(scope, %{"host" => "run-api.qory.invalid"}) == @found
+      assert hosts(scope, %{"host" => "registry.example"}) == [{"registry.example", ""}]
+    end
+
+    test "the free text finds them by the instance's host and by the placeholder", %{
+      scope: scope
+    } do
+      instance = Apiary.Instance.host()
+
+      assert hosts(scope, %{"q" => instance}) == @found
+      assert hosts(scope, %{"q" => "run-api.qory"}) == @found
+      assert hosts(scope, %{"q" => "registry"}) == [{"registry.example", ""}]
+    end
+
+    test "the Host facet and its suggestions list them under the instance's host", %{
+      scope: scope
+    } do
+      instance = Apiary.Instance.host()
+      facets = Runs.destination_facets(scope, cx(%{}), now: @now)
+
+      assert Enum.sort(facets.host.options) == [
+               {instance, instance, 1},
+               {"registry.example", "registry.example", 1}
+             ]
+
+      assert facets.host.total == 2
+
+      narrowed =
+        Runs.destination_facets(scope, cx(%{}),
+          now: @now,
+          narrow: %{"host" => String.slice(instance, 0, 4)}
+        )
+
+      assert narrowed.host.options == [{instance, instance, 1}]
+
+      # The suggestions keep the hosts of the denied destinations: the run API's denied
+      # request is one.
+      decided =
+        Runs.destination_facets(scope, cx(%{"decision" => "denied"}),
+          now: @now,
+          decided: true
+        )
+
+      assert decided.host.options == [{instance, instance, 1}]
+    end
+
+    test "the Host menu's box finds them by the placeholder too", %{scope: scope} do
+      instance = Apiary.Instance.host()
+
+      for narrow <- ["run-api", "QORY.INVALID", String.slice(instance, 0, 4)] do
+        facets = Runs.destination_facets(scope, cx(%{}), now: @now, narrow: %{"host" => narrow})
+        assert facets.host.options == [{instance, instance, 1}]
+        assert facets.host.total == 1
+      end
+    end
+
+    test "each host finds the rows that show it; the instance's in any case is one entry", %{
+      scope: scope
+    } do
+      instance = Apiary.Instance.host()
+
+      # Beside the run API's requests: a CONNECT to the placeholder another rule denied,
+      # which shows the placeholder, and a pull from the instance itself.
+      started(scope, shop(), 60,
+        egress: [
+          %{
+            "host" => "run-api.qory.invalid",
+            "port" => 443,
+            "decision" => "denied",
+            "outcome" => "refused",
+            "rule" => ""
+          }
+        ]
+      )
+
+      started(scope, shop(), 50, egress: [%{"host" => instance, "rule" => instance}])
+
+      registry = {"registry.example", "registry.example", 1}
+      facets = Runs.destination_facets(scope, cx(%{}), now: @now)
+
+      assert Enum.sort(facets.host.options) == [
+               {instance, instance, 2},
+               registry,
+               {"run-api.qory.invalid", "run-api.qory.invalid", 1}
+             ]
+
+      # The instance's host, in any case: its rows and the run API's requests, one entry.
+      for chosen <- [instance, String.upcase(instance)] do
+        facets = Runs.destination_facets(scope, cx(%{"host" => chosen}), now: @now)
+
+        assert Enum.sort(facets.host.options) == [
+                 {instance, chosen, 2},
+                 registry,
+                 {"run-api.qory.invalid", "run-api.qory.invalid", 1}
+               ]
+
+        assert hosts(scope, %{"host" => chosen}) == [{instance, ""} | @found]
+      end
+
+      # The placeholder, in any case: the rows recorded with it, an entry apart.
+      for chosen <- ["run-api.qory.invalid", "RUN-API.qory.invalid"] do
+        facets = Runs.destination_facets(scope, cx(%{"host" => chosen}), now: @now)
+
+        assert Enum.sort(facets.host.options) == [
+                 {instance, instance, 2},
+                 registry,
+                 {"run-api.qory.invalid", chosen, 2}
+               ]
+
+        assert hosts(scope, %{"host" => chosen}) == [{"run-api.qory.invalid", ""} | @found]
+      end
+    end
+
+    test "a row recorded with the instance's host in other case is under that host", %{
+      scope: scope
+    } do
+      instance = Apiary.Instance.host()
+      mixed = String.capitalize(instance)
+      started(scope, shop(), 50, egress: [%{"host" => mixed, "rule" => instance}])
+
+      facets = Runs.destination_facets(scope, cx(%{}), now: @now)
+
+      assert Enum.sort(facets.host.options) == [
+               {instance, instance, 2},
+               {"registry.example", "registry.example", 1}
+             ]
+
+      for chosen <- [instance, String.upcase(instance)] do
+        assert hosts(scope, %{"host" => chosen}) == Enum.sort([{mixed, ""} | @found])
+      end
+    end
+
+    test "a chosen host past the facet's first 50 is counted by the instance's host too", %{
+      scope: scope
+    } do
+      egress = for n <- 1..50, do: %{"host" => "a#{n}.example", "rule" => "*.example"}
+      started(scope, shop(), 50, egress: egress)
+      instance = Apiary.Instance.host()
+
+      facets = Runs.destination_facets(scope, cx(%{"host" => instance}), now: @now)
+
+      assert [{^instance, ^instance, 1} | _] = facets.host.options
     end
   end
 

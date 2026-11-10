@@ -2,7 +2,9 @@ defmodule Apiary.Release.Migrator do
   @moduledoc """
   Runs pending database migrations at boot, before the endpoint accepts requests: the
   core's and the edition's, then the edition's step after them
-  (`Apiary.Release.migrate/0`).
+  (`Apiary.Release.migrate/1`). Version 1 of the policy of each workspace that has none is
+  written later in the boot, after the key check, and every workspace is rendered again
+  (`Apiary.Release.FirstVersions`).
 
   The application's supervisor starts this child only when `config :apiary, :migrate_on_boot`
   is true (the default for production releases; `MIGRATE_ON_BOOT=false` turns it off).
@@ -27,15 +29,15 @@ defmodule Apiary.Release.Migrator do
   end
 
   @doc """
-  Runs `Apiary.Release.migrate/0` in a task and waits for it. Returns `:ignore` on
-  success so nothing stays in the supervision tree; exits on failure.
+  Runs `Apiary.Release.migrate/1` with `first_versions: false` in a task and waits for it.
+  Returns `:ignore` on success so nothing stays in the supervision tree; exits on failure.
   """
   @spec start_link() :: :ignore
   def start_link do
     Logger.info("Running pending database migrations")
 
     try do
-      task = Task.async(&Apiary.Release.migrate/0)
+      task = Task.async(fn -> Apiary.Release.migrate(first_versions: false) end)
       Task.await(task, :infinity)
 
       Logger.info("Database migrations are up to date")

@@ -165,7 +165,8 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Contract.AdapterRequest, kind: :pool
       end
 
-      # A run's diagnostics, signed with a diagnostics key, which no other pipeline takes.
+      # A run's diagnostics and the run list, signed with a diagnostics key, which no other
+      # pipeline takes.
       pipeline :contract_diagnostics do
         plug :accepts, ["json"]
         plug ApiaryWeb.Contract.SignedRequest, kinds: [:diagnostics]
@@ -212,7 +213,7 @@ defmodule ApiaryWeb.Routes do
         get "/health", HealthController, :show
       end
 
-      # The private image registry's token route, with the opt-in feature `registry`: a
+      # The private image registry's token route, with the feature `registry`: a
       # run's gateway sets the run's credential on the request, and no pipeline reads more
       # than the controller does (`ApiaryWeb.RegistryTokenController`). Every method but
       # GET is told 405.
@@ -270,14 +271,18 @@ defmodule ApiaryWeb.Routes do
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_diagnostics
 
+        # No log of the dispatch: its parameters are the query, which contains run ids.
+        get "/runs", RunListController, :index, log: false
         get "/runs/:run_id/diagnostics", DiagnosticsController, :show
       end
 
-      # An adapter's read of its change feed, after a cursor.
+      # An adapter's read of its change feed, after a cursor, and its report that it
+      # stopped trying to post the comment of one of the feed's entries.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_adapter
 
         get "/work-items/changes", ChangesController, :index
+        post "/work-items/changes/failed", ChangesFailedController, :create
       end
 
       # An adapter's requests: its declaration as it starts, and the secrets it stores in
@@ -412,6 +417,10 @@ defmodule ApiaryWeb.Routes do
           # integration's page in the connection's organisation, after the return the
           # adapter hands back, when the link carries one.
           get "/integrations/:connection_id", AdapterRedirectController, :show
+          # A work item's permanent address, by its public id (`wi_…`), with the `factory`
+          # feature, as `Apiary.WorkItems.stable_url/1` returns it: to the work item's
+          # page, wherever the work item is when the link is followed.
+          get "/work-items/:work_item_id", WorkItemRedirectController, :show
         end
 
         scope "/", ApiaryWeb do
@@ -574,6 +583,16 @@ defmodule ApiaryWeb.Routes do
                  :revoke
 
             live "/instance/qory-pool-and-gateway/:node_id/settings", InstanceLive.Node, :settings
+
+            # Instance settings › Machine types, with the `factory` feature, for the
+            # instance's admins: the machine types runs start on, Add machine type
+            # (`…/new`), a type's Edit (`…/:key/edit`) and its Delete, confirmed in its row
+            # (`…/:key/delete`), by the type's key. The fixed path goes first, so that `:key`
+            # never takes it.
+            live "/instance/machine-types", InstanceLive.MachineTypes, :index
+            live "/instance/machine-types/new", InstanceLive.MachineTypes, :new
+            live "/instance/machine-types/:key/edit", InstanceLive.MachineTypes, :edit
+            live "/instance/machine-types/:key/delete", InstanceLive.MachineTypes, :delete
 
             # Instance settings › Diagnostics keys, with the `observability` feature, for
             # the instance's admins: the keys that read any run's diagnostics, the command
@@ -770,8 +789,10 @@ defmodule ApiaryWeb.Routes do
               # thread; and the Backlog, the tickets it takes in from, and one ticket by its
               # public id (`tk_…`).
               live "/work", WorkItemLive.Index, :index
-              live "/work/:number", WorkItemLive.Show, :ticket
+              live "/work/:number", WorkItemLive.Show, :open
+              live "/work/:number/ticket", WorkItemLive.Show, :ticket
               live "/work/:number/explore", WorkItemLive.Show, :explore
+              live "/work/:number/stages/:stage_id", WorkItemLive.Show, :stage
               live "/work/:number/thread", WorkItemLive.Show, :thread
               # A work item's artifacts, with the `workflow_model` feature: Add a version by
               # hand, and one version's page, by the version's public id (`av_…`).
@@ -878,9 +899,10 @@ defmodule ApiaryWeb.Routes do
               live "/settings/work-sources", CollectionsLive, :sources
               live "/settings/destinations", CollectionsLive, :destinations
               live "/settings/choose", ChooseCollectionsLive, :settings
-              # The workflow of the workspace's runs and the harness source it comes from,
-              # with the `factory` feature.
-              live "/settings/workflow", WorkflowLive, :edit
+              # The workspace's harness: its source, stack and version, with the `factory`
+              # feature; with `workflow_model`, also Keep the process at the latest and
+              # Update from harness, else the workflow of the workspace's runs.
+              live "/settings/harness", HarnessLive, :edit
               # The workspace's artifact types, with the `workflow_model` feature: the list,
               # `?name=<type>` opening Add a type with that name; each form a page, and
               # Delete confirmed on its row. A type is named by its public id (`at_…`).
@@ -888,9 +910,9 @@ defmodule ApiaryWeb.Routes do
               live "/settings/artifact-types/new", ArtifactLive.Types, :new
               live "/settings/artifact-types/:type_id/edit", ArtifactLive.Types, :edit
               live "/settings/artifact-types/:type_id/delete", ArtifactLive.Types, :delete
-              # The workspace's stages, with the `factory` feature and the feature
-              # `workflow_model`; the Workflow page links to it.
-              live "/settings/stages", StagesLive.Index, :edit
+              # The Workflows page: the workspace's stages, with the `factory` feature and
+              # the feature `workflow_model`; the Harness page links to it.
+              live "/settings/workflows", StagesLive.Index, :edit
               # The stored secrets and the variables, one section of two views, with the
               # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by
@@ -973,8 +995,8 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/runs/:run_id/diagnostics", RunDiagnosticsController, :show
 
           # The workspace's process as a `process.yaml`, as an attachment, for Export
-          # process.yaml on the Stages page, with the `workflow_model` feature. Not a page.
-          get "/:org/:workspace/settings/stages/process.yaml", ProcessExportController, :show
+          # process.yaml on the Workflows page, with the `workflow_model` feature. Not a page.
+          get "/:org/:workspace/settings/workflows/process.yaml", ProcessExportController, :show
 
           # A target's policy had a page of its own, by the target row's id; it is the
           # Policy tab of the target's page now, where these send on to.

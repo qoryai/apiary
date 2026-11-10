@@ -1,13 +1,14 @@
 defmodule ApiaryWeb.PreparationCleanUpTest do
-  # The Clean up row of the Prepare machine section (`ApiaryWeb.PreparationComponents`):
-  # what it shows for each report of the pool's starter, and with no report before and
-  # after the 15 minutes from the run's end, for a run on a permanent machine, and when it
-  # is not shown; when it stops waiting; and its words and time as rendered.
+  # The Remove the machine row of the Run list (`ApiaryWeb.PreparationComponents`): what
+  # it shows for each report of the pool's starter, and with no report before and after
+  # the 15 minutes from the run's end, and when it is not shown; when it stops waiting;
+  # its start, its duration, its cause and the machine's time alive; Machine stays
+  # registered for a run on a permanent machine.
   use ExUnit.Case, async: true
 
   import Phoenix.LiveViewTest
 
-  alias ApiaryWeb.PreparationComponents
+  alias ApiaryWeb.{Format, PreparationComponents}
 
   @ended ~U[2026-10-15 12:00:00.000000Z]
   @report_at ~U[2026-10-15 12:03:04.000000Z]
@@ -19,11 +20,14 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
         pool: %{id: "np_0123456789abcdef", name: "build-pool", place: :workspace, operator: nil},
         machine_type: nil,
         requested_at: DateTime.add(@ended, -600, :second),
+        queued_at: nil,
         requested_ms: 1_000,
+        started_as: nil,
         release_reason: nil,
         handed_over_at: DateTime.add(@ended, -590, :second),
         ended_at: @ended,
         end: nil,
+        removal_cause: :run_ended,
         started: %{
           state: "succeeded",
           started_at: DateTime.add(@ended, -599, :second),
@@ -114,65 +118,122 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
   end
 
   describe "the row" do
-    defp row(clean_up) do
-      html =
-        render_component(&PreparationComponents.prepare_machine/1,
-          preparation: preparation(machine()),
-          alive: false,
-          clean_up: clean_up
-        )
+    defp list(clean_up, machine \\ machine()) do
+      render_component(&PreparationComponents.run_list/1,
+        preparation: preparation(machine),
+        alive: false,
+        clean_up: clean_up
+      )
+      |> LazyHTML.from_fragment()
+    end
 
-      row = html |> LazyHTML.from_fragment() |> LazyHTML.query("#prepare-machine-clean-up")
+    defp row(clean_up, machine \\ machine()) do
+      row = clean_up |> list(machine) |> LazyHTML.query("#prepare-machine-remove")
       assert Enum.count(row) == 1
       row
     end
 
     defp text(row), do: row |> LazyHTML.text() |> String.split() |> Enum.join(" ")
 
-    test "is the last row, with its words, and the report's time for a report" do
-      for {clean_up, words, timed?} <- [
-            {{:report, :gone, @report_at}, "Machine removed", true},
-            {{:report, :deleting, @report_at}, "Machine removal requested", true},
-            {{:report, :delete_failed, @report_at}, "Removal failed: the machine still exists",
-             true},
-            {{:waiting, minutes(15)}, "Waiting for a report", false},
-            {:no_report, "No removal report", false},
-            {:stays, "Machine stays registered", false}
+    defp head(row), do: row |> LazyHTML.query(".q-prep-row") |> text()
+
+    defp facts(row) do
+      terms = row |> LazyHTML.query("dt") |> Enum.map(&text/1)
+      values = row |> LazyHTML.query("dd") |> Enum.map(&text/1)
+      Enum.zip(terms, values)
+    end
+
+    test "a gone report: from the run's end to the report, opening to its time, Cause and Alive" do
+      row = row({:report, :gone, @report_at})
+
+      # The mark states the result to a screen reader: the machine is removed.
+      assert head(row) =~ ~r/^Succeeded Remove the machine\b/
+      refute head(row) =~ "Waiting"
+
+      assert row |> LazyHTML.query(".q-tc1 time") |> LazyHTML.attribute("datetime") ==
+               [DateTime.to_iso8601(@ended)]
+
+      # From the run's end at 12:00:00 to the report at 12:03:04.
+      assert text(LazyHTML.query(row, ".q-tc2")) == "3 m 04 s"
+
+      # The machine was started 599 s before the run's end, 783 s before the report.
+      assert facts(row) == [
+               {"Machine removed", Format.time(@report_at, seconds: true)},
+               {"Cause", "Run ended"},
+               {"Alive", "13 m 03 s"}
+             ]
+
+      assert row |> LazyHTML.attribute("data-clean-up") == ["gone"]
+
+      assert LazyHTML.query(list({:report, :gone, @report_at}), "details#prepare-machine-remove")
+             |> Enum.count() == 1
+    end
+
+    test "Cause is Keep-alive lost for a lost run, and is left out for any other run" do
+      row = row({:report, :gone, @report_at}, machine(%{removal_cause: :keep_alive_lost}))
+      assert {"Cause", "Keep-alive lost"} in facts(row)
+
+      row = row({:report, :gone, @report_at}, machine(%{removal_cause: nil}))
+
+      assert facts(row) == [
+               {"Machine removed", Format.time(@report_at, seconds: true)},
+               {"Alive", "13 m 03 s"}
+             ]
+    end
+
+    test "waiting for a report, then none: the words, the run's end, and no duration" do
+      for {clean_up, words} <- [
+            {{:waiting, minutes(15)}, "Waiting for a report"},
+            {:no_report, "No removal report"}
           ] do
         row = row(clean_up)
-        assert text(row) =~ "Clean up " <> words
 
-        times = LazyHTML.query(row, "time")
-        assert Enum.count(times) == if(timed?, do: 1, else: 0), words
+        assert head(row) ==
+                 "Remove the machine " <> words <> " " <> text(LazyHTML.query(row, ".q-tc1"))
 
-        if timed?,
-          do: assert(LazyHTML.attribute(times, "datetime") == [DateTime.to_iso8601(@report_at)])
+        assert text(LazyHTML.query(row, ".q-tc2")) == "", words
+
+        assert row |> LazyHTML.query(".q-tc1 time") |> LazyHTML.attribute("datetime") ==
+                 [DateTime.to_iso8601(@ended)]
+
+        # No time alive without the gone report: the row opens to the cause alone.
+        assert facts(row) == [{"Cause", "Run ended"}], words
+      end
+    end
+
+    test "with neither a cause nor a time alive, the row does not open" do
+      html = list(:no_report, machine(%{removal_cause: nil}))
+      assert html |> LazyHTML.query("div#prepare-machine-remove") |> Enum.count() == 1
+      assert html |> LazyHTML.query("details#prepare-machine-remove") |> Enum.count() == 0
+    end
+
+    test "a report other than gone has its words beside the name, and no duration" do
+      for {state, mark, words} <- [
+            {:deleting, "", "Machine removal requested"},
+            {:delete_failed, "Failed ", "Removal failed: the machine still exists"}
+          ] do
+        row = row({:report, state, @report_at})
+        assert head(row) =~ ~r/^#{mark}Remove the machine #{words}/
+        assert text(LazyHTML.query(row, ".q-tc2")) == "", words
       end
     end
 
     test "comes after every other row, and is not there without a clean up" do
-      html =
-        render_component(&PreparationComponents.prepare_machine/1,
-          preparation: preparation(machine()),
-          alive: false,
-          clean_up: :no_report
-        )
-
       ids =
-        html
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query(".q-prep-steps > li > [id]")
+        :no_report
+        |> list()
+        |> LazyHTML.query("#prepare-machine > .q-prep-steps > li > [id]")
         |> LazyHTML.attribute("id")
 
-      assert List.last(ids) == "prepare-machine-clean-up"
+      assert List.last(ids) == "prepare-machine-remove"
 
       html =
-        render_component(&PreparationComponents.prepare_machine/1,
+        render_component(&PreparationComponents.run_list/1,
           preparation: preparation(machine()),
           alive: false
         )
 
-      refute html =~ "prepare-machine-clean-up"
+      refute html =~ "prepare-machine-remove"
     end
   end
 end

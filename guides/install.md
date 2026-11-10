@@ -481,17 +481,29 @@ environment variable SMTP_TLS must be always, if_available or never
 - `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.
 <!-- /feature -->
+<!-- feature: secrets -->
+- `secrets`: stored secrets and variables, and the organisation's integrations. Needs
+  `security`.
+<!-- /feature -->
+<!-- feature: security -->
+- `path_rules`: the Paths field of a policy rule's form. Needs `security`.
+<!-- /feature -->
 <!-- feature: factory -->
 - `factory`: the work items of a workspace and what they are taken in from: the adapters'
   steps of the instance's set-up, every step of the workspace set-up but **Name**, the
-  test run among them, model providers and model, and workflow. Opt-in. Needs
+  test run among them, model providers and model, and workflow. Needs
   `observability`, `security` and `secrets`.
+<!-- /feature -->
+<!-- feature: security -->
+- `registry`: the private image registry's tokens and each run's registry credential. On
+  where `QORY_REGISTRY` is set, unless `all-…` or a list leaves it out. If it is on and
+  `QORY_REGISTRY` is not set, the boot stops. Needs `security`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `workflow_model`: changes to the process of each workspace, its stages in order, each
   with its workflows and its gate. Owners and admins save numbered versions, and trial
   versions that chosen work items are assigned to. With the switch off, each workspace
-  keeps version 1 of its process, a copy of its type's default. Opt-in. Needs
+  keeps version 1 of its process, a copy of its type's default. Needs
   `observability`, `security`, `secrets` and `factory`.
 <!-- /feature -->
 
@@ -512,12 +524,6 @@ The record and the security policy, and nothing else:
 ```sh
 QORY_FEATURES=observability,security
 ```
-
-Every feature but the security policy:
-
-```sh
-QORY_FEATURES=all-security
-```
 <!-- /feature -->
 <!-- feature: factory -->
 
@@ -527,12 +533,21 @@ The work items and their set-up, with the features they need:
 QORY_FEATURES=observability,security,secrets,factory
 ```
 <!-- /feature -->
+<!-- feature: workflow_model -->
+
+Every feature but changes to the process:
+
+```sh
+QORY_FEATURES=all-workflow_model
+```
+<!-- /feature -->
 
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
 
-An opt-in feature is on only when a list names it: `all`, `all-…`, and a value that is not
-set or empty leave it off, with or without an upgrade.
+Every feature in this list is on by default, unless its entry has a condition. An edition
+may add an opt-in feature, which is on only when a list contains it: `all`, `all-…`, and a
+value that is not set or empty leave it off, with or without an upgrade.
 
 The value is read once, at boot. A name that is not a feature, or a feature without one it
 needs, stops the boot:
@@ -681,6 +696,43 @@ Qory Apiary reads a public harness repository from its host over HTTPS, from pub
 addresses only. Allow the Qory Apiary server outbound HTTPS to each host your harnesses
 use, such as `github.com:443`.
 <!-- /feature -->
+<!-- feature: factory -->
+
+### The Qory harness
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `QORY_HARNESS_URL` | `https://github.com/qoryai/harness` | The https address of the Qory harness's git repository, which a workspace of a Qory type starts with. Its host must serve it to anyone. Not set, or empty, is the default. |
+| `QORY_BUILTIN_HARNESS_URL` | `https://github.com/qoryai/qory` | The https address of the git repository of the built-in harness, whose `examples/hello` on `main` the run of a test work item composes. Its host must serve it to anyone. Not set, or empty, is the default. |
+
+The Qory Apiary release contains no copy of the Qory harness. Qory Apiary reads the
+repository over git's HTTPS protocol, as `git ls-remote` and `git fetch` read it, from
+public addresses only:
+
+- At boot and every 5 minutes, it reads the newest commit of `main`, and of each branch
+  that a workspace's harness settings follow, and keeps that commit's files in the
+  database. The pages read only the kept files, so a restart or an outage of the host
+  leaves them as they were.
+- A new workspace reads `main`. If the read fails, the workspace is not made.
+- After a run on the Qory harness is queued, Qory Apiary reads the harness once. If the
+  host is out of reach or returns `502`, `503` or `504`, the read runs again after 10 s
+  and after 30 s, and the third failure ends the run before it starts. Any other failure
+  ends the run at once.
+- When a machine claims a run of a workspace on the Qory harness, Qory Apiary reads the
+  commit that the branch, tag or commit in the workspace's harness settings is at, and
+  the machine composes the harness at that commit. With none set, the branch is `main`.
+  The run of a test work item reads `main` of `QORY_BUILTIN_HARNESS_URL` the same way.
+  A run at a full commit id makes no read at claim.
+  - If the branch, tag or commit does not exist, the run ends before it starts.
+  - If the read times out, finds no address or connection, or the host returns `429`,
+    `500`, `502`, `503` or `504`, the run stays queued, and it ends if the reads still
+    fail 10 minutes after the first failure.
+  - If the read fails for another cause, the run ends before it starts.
+
+Allow the Qory Apiary server outbound HTTPS to the hosts of both repositories. The values
+are read at boot, so a change takes a restart. After a change of `QORY_HARNESS_URL`, the
+saved harness settings read the new address too.
+<!-- /feature -->
 
 ### Sign-up and invitations
 
@@ -822,8 +874,9 @@ steps, with a check mark on each one done. **Back**, at the foot of a step's for
 the step before it in the same progress, so the first step with a page in each progress
 has no **Back**. A step you open again shows what you saved there, and you can change
 it. The step **Name**, opened again, shows the workspace's name, which an owner or admin
-can change, and its type, which can't be changed. A column headed **About this step**,
-beside the form or under it on a window narrower than 1024 px, shows what the step does.
+can change, and its type, which can't be changed. A column headed “About” and the
+step's topic, such as **About mail**, beside the form or under it on a window narrower
+than 1024 px, shows what the step does.
 Two pages come after the set-up link's page:
 
 1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
@@ -854,7 +907,7 @@ With the `factory` feature, both pages have more steps:
 - **Connect Qory Apiary** has one step for each adapter that **Instance settings ›
   Adapters** lists, at `/instance/set-up?step=<adapter id>`, then **Mail** where the page
   has that step. An adapter's step shows **State:** with **Set up** or **Not set up**.
-  While **Set up** shows, the column **About this step** lists, under **In the new tab**,
+  While **Set up** shows, the column **About adapters** lists, under **In the new tab**,
   the adapter's steps for its set-up, where the adapter has some. Select **Set up**: the
   adapter's set-up page opens in a new tab. Follow those steps there. Back on the set-up
   page, once the state shows **Set up**, select **Continue**. The step of an adapter
@@ -871,9 +924,10 @@ With the `factory` feature, both pages have more steps:
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
     connect an adapter, select **Connect** beside it on the step, or, once one is
     connected, on the page that **Connect another source**, or **Connect another
-    destination**, opens, and follow the steps that the column **About this step** lists under its
-    name. **Back** returns to the step. **Choose** opens the account's
-    collections: choose **All repositories, including new ones**, in the adapter's word
+    destination**, opens, and follow the steps that the column **About work sources**, or
+    **About destinations**, lists under its name. **Back** returns to the step.
+    **Choose** opens the account's collections: choose **All repositories, including
+    new ones**, in the adapter's word
     for its collections, or **Only selected** and tick them, then **Save**. All also
     assigns to the workspace each collection that the adapter lists for the account
     later. A new collection joins a workspace only through All or a tick, also in an

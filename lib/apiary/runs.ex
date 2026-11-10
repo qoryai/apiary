@@ -6,7 +6,8 @@ defmodule Apiary.Runs do
   watched by `Apiary.Runs.Liveness`; this module is what pages call. Every function takes
   the caller's scope first and reads only the scope's workspace. One reads more:
   `workspace_facts/3`, for the organisation's overview, which reads the workspaces of the
-  scope's organisation it is given.
+  scope's organisation it is given. One reads the whole instance and takes no scope:
+  `list_instance_runs/2`, for `GET /v1/runs` signed with a diagnostics key.
 
   Changes are announced on two topics of `Apiary.PubSub`:
 
@@ -36,7 +37,7 @@ defmodule Apiary.Runs do
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
-  alias Apiary.Runs.{Connection, Filters, ListFacts, Target, Run}
+  alias Apiary.Runs.{Connection, Filters, ListFacts, RunApi, Target, Run}
   alias Apiary.WorkItems.WorkItem
 
   @default_limit 50
@@ -72,6 +73,24 @@ defmodule Apiary.Runs do
         workspace_id: workspace_id
       }) do
     Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id, id))
+  end
+
+  @doc "Ends `subscribe/2` for one run of the scope's workspace."
+  def unsubscribe(%Scope{workspace: %Workspace{id: workspace_id}}, %Run{
+        id: id,
+        workspace_id: workspace_id
+      }) do
+    Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id, id))
+  end
+
+  @doc """
+  The queued runs of the scope's workspace (`Apiary.Runs.Run.queued?/1`), and its runs
+  with the ids `ids`, whatever their state: what the runs list reads again when the
+  workspace's queue changes. One query.
+  """
+  @spec queued_or(Scope.t(), [Ecto.UUID.t()]) :: [Run.t()]
+  def queued_or(%Scope{} = scope, ids) when is_list(ids) do
+    Repo.all(where(in_scope(scope), ^dynamic([run: r], ^Run.queued_condition() or r.id in ^ids)))
   end
 
   @doc false
@@ -130,7 +149,7 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's workspace by its `public_id`, `rn_…`, the id the API gives;
+  One run of the scope's workspace by its `public_id`, `rn_` and 16 characters, the id in the API;
   raises `Ecto.NoResultsError` when the workspace has none such, which a run of
   another workspace and a malformed id both are, the node's run id among them.
   """
@@ -141,9 +160,9 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's workspace by `param`: its number (`Run.parse_number/1`), the
-  form the run's URL carries, or its `public_id`, `rn_…`; nil for a run the workspace has
-  not got, a run of another workspace among them, and for anything of neither shape.
+  One run of the scope's workspace by `param`: its number in that workspace
+  (`Run.parse_number/1`), the form in the run's URL, or its `public_id`, `rn_` and 16
+  characters; nil for a number or id the workspace does not have and for anything of neither shape.
   """
   @spec get_run_by_param(Scope.t(), term) :: Run.t() | nil
   def get_run_by_param(%Scope{} = scope, param) do
@@ -166,12 +185,27 @@ defmodule Apiary.Runs do
     )
   end
 
+  @doc """
+  A page of the runs of every workspace of the instance, for `GET /v1/runs` signed with a
+  diagnostics key (`Apiary.AccessKeys.diagnostics_scope/1`): `query` is the request's raw
+  query string. `{:ok, document}`, the contract's run list, `%{"runs" => rows, "next" =>
+  id or nil}`, or `{:error, parameter}` with the name of the parameter the request breaks
+  the rule of (`Apiary.Runs.RunList`). One query reads the page's runs, after a query for
+  the workspace and one for `before` when the request has them. `opts`: `now`, the time
+  the answer is built (the current time).
+  """
+  @spec list_instance_runs(String.t(), keyword) :: {:ok, map} | {:error, String.t()}
+  def list_instance_runs(query, opts \\ []) when is_binary(query),
+    do: Apiary.Runs.RunList.answer(query, opts)
+
   ## The runs list
 
   @doc """
   A page of the workspace's runs under the filters, in their order (`sort`: newest first by
-  when they started, a run that has only registered placed by when it registered; oldest
-  first; the longest first, by the duration its exit gave or else the time it reported
+  when they started, a run that has not started placed by when its record was written
+  (when it was queued, for a run of a workspace's queue; else when it registered), the
+  queued runs (`Apiary.Runs.Run.queued?/1`) before all others, the most recently queued
+  first; oldest first; the longest first, by the duration its exit gave or else the time it reported
   elapsed; the most denials first), `per` to a page. Returns the page's runs, the page it
   is (the last one, when the filters asked for one beyond it), the total, the pages and
   the page size.
@@ -182,10 +216,48 @@ defmodule Apiary.Runs do
     pages = max(ceil(total / filters.per), 1)
     page = min(filters.page, pages)
 
-    runs = Repo.all(page_query(query, filters, page))
+    runs = page_of(query, filters, page)
 
     %{runs: runs, page: page, total: total, pages: pages, per: filters.per}
   end
+
+  # Newest first, the queued runs (`Apiary.Runs.Run.queued?/1`) come first, the most
+  # recently queued first; then the other runs from the index, in its order. A page with
+  # the last queued runs is filled up with the first of the others after them.
+  defp page_of(query, %Filters{sort: "newest", per: per}, page) do
+    offset = (page - 1) * per
+    queued_runs = where(query, ^Run.queued_condition())
+
+    queued =
+      Repo.all(
+        from r in queued_runs,
+          order_by: [desc: r.inserted_at, desc: r.id],
+          limit: ^per,
+          offset: ^offset
+      )
+
+    rest_offset =
+      cond do
+        length(queued) == per -> nil
+        queued != [] or offset == 0 -> 0
+        true -> max(offset - Repo.aggregate(queued_runs, :count), 0)
+      end
+
+    if rest_offset do
+      rest =
+        from r in sorted(not_queued(query), "newest"),
+          limit: ^(per - length(queued)),
+          offset: ^rest_offset
+
+      queued ++ Repo.all(rest)
+    else
+      queued
+    end
+  end
+
+  defp page_of(query, filters, page), do: Repo.all(page_query(query, filters, page))
+
+  defp not_queued(query), do: where(query, ^dynamic(not (^Run.queued_condition())))
 
   # Newest and oldest first are the order of the index
   # `runs_workspace_id_started_or_first_heard_index`, expression included, read forwards or
@@ -225,7 +297,7 @@ defmodule Apiary.Runs do
   the name of the workflow the run's claim handed to its machine, `:prebuild` for a run
   that builds an environment, or nil where the run was handed none; `stage` the stage of
   the workspace's process that placed it, `%{name:, round:}`, where its name adds to the
-  workflow's, else nil; `work_item` its work item, `%{number:, title:, here:,
+  workflow's, else nil; `work_item` its work item, `%{number:, public_id:, title:, here:,
   target_system:, target_path:}`, where the work item moved to another workspace `here`
   false and the number and the target nil, else nil; `started_by` how it started: `:direct` (a run of no queue),
   `:image_requeue`, `:process` (any other run the stage runner placed), `{:test_run, person}`,
@@ -237,9 +309,18 @@ defmodule Apiary.Runs do
   @spec list_facts(Scope.t(), [Run.t()]) :: %{Ecto.UUID.t() => map}
   def list_facts(%Scope{} = scope, runs) when is_list(runs), do: ListFacts.of(scope, runs)
 
+  @doc """
+  The work item of `run`, the `work_item` of `list_facts/2` for the run alone, in one read:
+  nil for a run of no work item and for a run of another workspace.
+  """
+  @spec work_item(Scope.t(), Run.t()) :: map | nil
+  def work_item(%Scope{} = scope, %Run{} = run), do: ListFacts.work_item(scope, run)
+
+  # The query of a page of the runs that are not queued, which newest first follow the
+  # queued ones (`page_of/3`).
   @doc false
   def page_runs_query(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()),
-    do: scope |> filtered(filters, now) |> page_query(filters, filters.page)
+    do: scope |> filtered(filters, now) |> not_queued() |> page_query(filters, filters.page)
 
   @doc """
   The page of the list, under the filters and in their order, that holds the first run
@@ -258,7 +339,13 @@ defmodule Apiary.Runs do
       case filters.sort do
         "newest" ->
           Repo.aggregate(
-            from(r in query, where: coalesce(r.started_at, r.inserted_at) >= ^next),
+            where(
+              query,
+              ^dynamic(
+                [run: r],
+                coalesce(r.started_at, r.inserted_at) >= ^next or ^Run.queued_condition()
+              )
+            ),
             :count
           )
 
@@ -576,15 +663,24 @@ defmodule Apiary.Runs do
   defp facet_limit(_n), do: @facet_size
 
   defp state_facet(scope, filters, now) do
+    # A queued run (`Apiary.Runs.Run.queued?/1`) is counted as `queued`, apart from the
+    # other pending runs.
     counts =
       Repo.all(
         from r in filtered(scope, %{filters | states: []}, now),
-          group_by: r.state,
-          select: {r.state, count(r.id)}
+          group_by: ^[dynamic([run: r], r.state), Run.queued_condition()],
+          select:
+            ^%{
+              state: dynamic([run: r], r.state),
+              queued: Run.queued_condition(),
+              n: dynamic([run: r], count(r.id))
+            }
       )
-      |> Map.new()
+      |> Enum.reduce(%{}, fn %{state: state, queued: queued, n: n}, acc ->
+        Map.update(acc, if(queued, do: "queued", else: state), n, &(&1 + n))
+      end)
 
-    options = for state <- Run.states(), count = counts[state], do: {state, state, count}
+    options = for state <- Run.shown_states(), count = counts[state], do: {state, state, count}
     %{options: options, total: length(options)}
   end
 
@@ -863,16 +959,34 @@ defmodule Apiary.Runs do
     {from, to} = Filters.bounds(f, now, Scope.time_zone(scope))
 
     in_scope(scope)
-    |> where_if(f.states != [], dynamic([r], r.state in ^f.states))
+    |> where_if(f.states != [], where_states(f.states))
     |> where_target(scope, f.target)
     |> where_text(:runtime, f.runtime)
     |> where_host(f.host)
     |> where_node(scope, f.node)
+    |> where_machine_type(f.machine_type)
     |> where_item(scope, f.item)
     |> where_query(f.q)
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
     |> where_if(from, dynamic([r], coalesce(r.started_at, r.inserted_at) >= ^from))
     |> where_if(to, dynamic([r], coalesce(r.started_at, r.inserted_at) < ^to))
+  end
+
+  # The states the page shows (`Apiary.Runs.Run.shown_states/0`) as a condition: `queued`
+  # is a queued run (`Apiary.Runs.Run.queued?/1`), `pending` any other pending run.
+  defp where_states(states) do
+    stored = states -- ["queued", "pending"]
+    condition = dynamic([run: r], r.state in ^stored)
+
+    condition =
+      if "queued" in states,
+        do: dynamic(^condition or ^Run.queued_condition()),
+        else: condition
+
+    if "pending" in states,
+      do:
+        dynamic([run: r], ^condition or (r.state == "pending" and not (^Run.queued_condition()))),
+      else: condition
   end
 
   defp where_if(query, condition, dynamic) do
@@ -916,6 +1030,14 @@ defmodule Apiary.Runs do
         select: n.id
 
     where(query, [r], r.node_id in subquery(nodes))
+  end
+
+  # A machine type by its key: the runs whose run of the queue was queued on it.
+  defp where_machine_type(query, nil), do: query
+
+  defp where_machine_type(query, key) do
+    queued = from d in DispatchRun, where: d.machine_type == ^key, select: d.id
+    where(query, [r], r.dispatch_run_id in subquery(queued))
   end
 
   # A work item by its number in the scope's workspace: the runs of its runs of the queue,
@@ -1363,7 +1485,8 @@ defmodule Apiary.Runs do
   destinations, as the rail counts it (`destination_target_counts/3`), a host in runs;
   `narrow:` as there. `decided: true` keeps the hosts to those of the destinations the
   filters' `decision` lists, as the list itself does (the query field's suggestions); the
-  Filter menu's hosts do not.
+  Filter menu's hosts do not. A host is the one the row shows: the instance's for a request
+  to the run API (`Apiary.Runs.RunApi`).
   """
   def destination_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
@@ -1395,8 +1518,49 @@ defmodule Apiary.Runs do
   defp destination_host_facet(scope, filters, now, narrow, limit, decided) do
     base = connections_in(scope, %{filters | host: nil}, now)
     like = like(narrow)
-    grouped = from c in base, group_by: c.host
-    grouped = if like, do: where(grouped, [c], ilike(c.host, ^like)), else: grouped
+
+    instance = RunApi.host()
+    placeholder = RunApi.placeholder()
+
+    # The host a row is listed under, as the `host:` filter finds it: the instance's for its
+    # rows in any case and for the run API's requests, the placeholder for its rows in any
+    # case, else the host as recorded.
+    shown =
+      from c in base,
+        select: %{
+          host:
+            fragment(
+              "CASE WHEN ? = ? OR lower(?) = ? THEN ? WHEN lower(?) = ? THEN ? ELSE ? END",
+              c.last_rule,
+              ^RunApi.rule(),
+              c.host,
+              ^instance,
+              ^instance,
+              c.host,
+              ^placeholder,
+              ^placeholder,
+              c.host
+            ),
+          recorded: c.host,
+          run_id: c.run_id,
+          allowed: c.allowed,
+          denied: c.denied
+        }
+
+    grouped = from c in subquery(shown), group_by: c.host
+
+    # The box finds a host by what the row shows or by what was recorded, so the run API's
+    # entry by either host.
+    grouped =
+      if like,
+        do:
+          having(
+            grouped,
+            [c],
+            ilike(c.host, ^like) or fragment("bool_or(? ILIKE ?)", c.recorded, ^like)
+          ),
+        else: grouped
+
     grouped = if decided, do: having_decision(grouped, filters.decision), else: grouped
 
     rows =
@@ -1415,19 +1579,36 @@ defmodule Apiary.Runs do
     options = Enum.take(rows, limit)
 
     options =
-      if is_binary(filters.host) and not Enum.any?(options, &(elem(&1, 1) == filters.host)) do
-        n =
-          Repo.one(
-            from c in base, where: c.host == ^filters.host, select: count(c.run_id, :distinct)
-          )
+      cond do
+        RunApi.either_host?(filters.host) ->
+          chosen_run_api_host(base, filters.host, options)
 
-        [{filters.host, filters.host, n} | options]
-      else
-        options
+        is_binary(filters.host) and not Enum.any?(options, &(elem(&1, 1) == filters.host)) ->
+          [{filters.host, filters.host, chosen_runs(base, filters.host)} | options]
+
+        true ->
+          options
       end
 
     %{options: options, total: total}
   end
+
+  # The instance's host or the placeholder, chosen in any case, is the one entry of that
+  # host: chosen by the text the filter has, counting the runs the filter finds, in place
+  # of the entry in that host's lower case, or first where the list has none.
+  defp chosen_run_api_host(base, chosen, options) do
+    host = if RunApi.host?(chosen), do: RunApi.host(), else: RunApi.placeholder()
+    entry = {host, chosen, chosen_runs(base, chosen)}
+
+    case Enum.find_index(options, fn {_label, value, _n} -> value in [host, chosen] end) do
+      nil -> [entry | options]
+      index -> List.replace_at(options, index, entry)
+    end
+  end
+
+  defp chosen_runs(base, host),
+    do:
+      Repo.one(from c in base, where: ^connection_host(host), select: count(c.run_id, :distinct))
 
   # The workspace's connection rows of one channel under the filters, joined to their run
   # (for the target). The destinations, their counts, facets and rule options read the
@@ -1454,7 +1635,7 @@ defmodule Apiary.Runs do
 
     scope
     |> Edition.client_reads(:workspace_connections, nil, connections)
-    |> where_if(f.host, dynamic([c], c.host == ^f.host))
+    |> where_if(f.host, connection_host(f.host))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))
     |> where_target(scope, f.target)
@@ -1462,13 +1643,43 @@ defmodule Apiary.Runs do
     |> where_tools(f.tools)
   end
 
-  # The free text of the connections: a destination whose host or path holds it.
+  # The rows of a host: those recorded with it. The instance's host finds its rows in any
+  # case and the requests to the run API, which the rows show with it; the placeholder
+  # finds its rows in any case, those requests among them (`Apiary.Runs.RunApi`).
+  defp connection_host(nil), do: nil
+
+  defp connection_host(host) do
+    cond do
+      RunApi.host?(host) ->
+        dynamic(
+          [c],
+          fragment("lower(?)", c.host) == ^RunApi.host() or c.last_rule == ^RunApi.rule()
+        )
+
+      RunApi.either_host?(host) ->
+        dynamic([c], fragment("lower(?)", c.host) == ^RunApi.placeholder())
+
+      true ->
+        dynamic([c], c.host == ^host)
+    end
+  end
+
+  # The free text of the connections: a destination whose host or path contains it, the
+  # host as recorded or, for a request to the run API, the instance's.
   defp where_destination_text(query, nil), do: query
 
   defp where_destination_text(query, q) do
     case like(q) do
-      nil -> query
-      pattern -> where(query, [c], ilike(c.host, ^pattern) or ilike(c.path, ^pattern))
+      nil ->
+        query
+
+      pattern ->
+        where(
+          query,
+          [c],
+          ilike(c.host, ^pattern) or ilike(c.path, ^pattern) or
+            (c.last_rule == ^RunApi.rule() and ilike(^RunApi.host(), ^pattern))
+        )
     end
   end
 
@@ -1626,7 +1837,8 @@ defmodule Apiary.Runs do
 
   @doc """
   The workspace's runs from `from` on, one row per day they started in the scope's time
-  zone (`Apiary.Accounts.Scope.time_zone/1`; a pending run by when it registered), oldest
+  zone (`Apiary.Accounts.Scope.time_zone/1`; a run that has not started by when its
+  record was written), oldest
   first; a day with no run has no row. `from` and `to` are moments: the start of a day in
   that zone (`Apiary.Days.start_of/2`) counts whole days. One grouped query
   over the index the runs list reads by; the caller fills the days in. `to`, when given,

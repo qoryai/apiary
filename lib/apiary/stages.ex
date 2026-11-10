@@ -21,7 +21,7 @@ defmodule Apiary.Stages do
   #     the workspace's current version.
   #   * `next_run/2`, from `Apiary.Dispatches.queue_next/3`: answers to a run's questions,
   #     a send of the review comments while those questions wait, Explore again after a
-  #     run that stopped, or a review comment on Explore's proposal at its gate, run the
+  #     run that stopped, or a send of the review comments at a stage's gate, run the
   #     stage's next round.
   #   * `run_ended/1`, from the end of a run (`Apiary.Dispatches.RunEnd.finish/5`) and from
   #     its settle (`Apiary.Dispatches.Settle.settle/1`), in their transaction: the runner
@@ -39,25 +39,42 @@ defmodule Apiary.Stages do
   # ## Explore
   #
   # A run of explore-a-ticket pushes its `proposal` and its `questions` during the run
-  # through the run API, and Core pushes nothing for it. At its end, the newest questions
-  # of the work item with a question of the run's take in that waits for an answer make
-  # the stage wait for answers, whatever else the run did
+  # through the run API, and Core pushes nothing for it. At the end of every run of
+  # Explore, and of a run of any other workflow that ended by its exit, the newest
+  # questions of the work item with a question of the run's take in that waits for an
+  # answer make the stage wait for answers, whatever else the run did
   # (`Apiary.Explore.Questions.open_in_take_in/2`; one left open in an earlier take in
-  # does not count); otherwise a run that stopped escalates, `run_stopped`, with the
-  # cause, and any other counts as a run with no verdict. Newest questions whose file
-  # cannot be read raise `Apiary.Stages.QuestionsUnreadable`. A refusal or a lost run
+  # does not count). A run that also pushed the verdict `escalate` keeps its escalation,
+  # with the verdict's points, open while the stage waits for answers; the answers resolve
+  # it as another round (`next_run/2`). Otherwise a run of Explore that ended by its exit
+  # and whose newest verdict named `main` is `escalate` escalates, `escalate`, with the
+  # verdict's points, as a run of any other workflow does (`reported_verdict/1`). Explore reads only
+  # `escalate`: any other verdict counts as none. Otherwise a run of Explore that stopped
+  # escalates, `run_stopped`, with the cause, and any other counts as a run with no
+  # verdict, which goes on where the run's take in has a proposal or the run left open
+  # questions (`Apiary.Explore.Outcome`), or where the run pushed `passed` or
+  # `changes-requested`, to the stage's checks; it escalates, `run_stopped`, otherwise
+  # (`Apiary.Stages.Runner`). Newest questions whose file cannot be read raise
+  # `Apiary.Stages.QuestionsUnreadable` at those ends. At the end of a run of any
+  # workflow, a verdict whose file the store cannot read raises
+  # `Apiary.Stages.VerdictUnreadable`. A refusal or a lost run
   # (`Apiary.Dispatches.RunEnd`) rolls back and stores nothing, as the run of the queue is
   # still handed over: the lost-run check ends it again at a later tick
   # (`Apiary.Dispatches.RunEnd.lose/3`). An exit is stored with no outcome
   # (`Apiary.Dispatches.Settle`); the settle sweep settles it later, and then the stage
   # acts, unless the file becomes unreadable after Settle read it; then the exit rolls
-  # back and the lost-run check ends it again. A settle that raises rolls back, and the
-  # settle sweep settles the run again. A claim, a failed harness walk and a held run
+  # back and the lost-run check ends it again. A settle that raises rolls back, and
+  # the settle sweep settles the run again. A claim, a failed harness walk and a held run
   # whose build failed store the end and leave the stage as it is
   # (`run_ended_or_later/2`), and the stage sweep acts on the end later (`sweep/3`). Any
-  # other workflow reports with artifacts: its newest `verdict` and its `questions`.
+  # other workflow reports with artifacts: the open questions of the run's take in, else
+  # the newest `verdict` the run pushed, else stopped when its registered run failed, was
+  # lost or was cancelled (`reported_result/2`).
   #
   # ## What a person does
+  #
+  # `resolve_escalation/4` acts only on a stage that is `:escalated`: while an
+  # escalation's stage waits for answers, it is `{:error, :not_escalated}`.
   #
   # `approve/3`, `request_changes/4`, `resolve_escalation/4` and `move/4` ask
   # `gate.approve` (`Apiary.Access`) of the work item, before its lock and again of the
@@ -91,13 +108,15 @@ defmodule Apiary.Stages do
   # The ends one stage sweep reads at most (`sweep/3`).
   @stage_batch 100
 
-  alias Apiary.{Access, Audit, Dispatches, Features, Processes, Repo}
+  alias Apiary.{Access, Audit, Dispatches, Features, MachineTypes, Processes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Run
   alias Apiary.Stacks.Sources
-  alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Runner, StopCause}
+  alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Points, Runner}
+  alias Apiary.Stages.StopCause
   alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, WorkItem}
 
@@ -154,7 +173,9 @@ defmodule Apiary.Stages do
 
   # take_in/2 places the work item `id`, locked by the caller's transaction, at take in
   # `take_in` in the first stage of its workspace's current version, and starts it:
-  # `{:ok, run}`, nil when the stage waits.
+  # `{:ok, run}`, nil when the stage waits. The caller holds the table of machine types
+  # from before it locks the work item (`Apiary.MachineTypes.hold/0`), so no key change
+  # commits between the read of the current version and the commit.
   @doc false
   @spec take_in(Ecto.UUID.t(), pos_integer) :: {:ok, DispatchRun.t() | nil}
   def take_in(id, take_in) when is_binary(id) and is_integer(take_in) do
@@ -171,8 +192,8 @@ defmodule Apiary.Stages do
   # next_run/2 runs the next round of the stage of the work item `id`, locked by the
   # caller's transaction: after answers, or a send of the review comments while the
   # questions wait, the same workflow; after an escalation or a run that stopped, another
-  # round; at the gate, after a comment on the proposal, another round from where the
-  # stage's sequence runs again (`Apiary.Stages.Runner.step/4`).
+  # round; at the gate, after a send of the review comments on the stage's outputs, another
+  # round from where the stage's sequence runs again (`Apiary.Stages.Runner.step/4`).
   # `{:ok, run}`; `{:error, :not_waiting}` when the stage
   # waits for a workflow; `:not_placed` for a work item the runner did not place.
   @doc false
@@ -183,30 +204,8 @@ defmodule Apiary.Stages do
     work_item = %{lock!(id) | take_in: take_in}
 
     with {:ok, version, stage} <- placed(work_item) do
-      event =
-        case work_item.stage_state do
-          :waiting_answers ->
-            :answered
-
-          :escalated ->
-            case open_escalation(work_item) do
-              %Escalation{cause: cause} = escalation ->
-                :ok = resolve!(escalation, :another_round, nil, nil)
-                {:another_round, cause}
-
-              nil ->
-                {:another_round, :run_stopped}
-            end
-
-          # A comment on the proposal: at the end of the sequence, another round runs
-          # it again, its last loop for a stage with one, else from its start.
-          :at_gate ->
-            {:another_round, :run_stopped}
-
-          _stopped ->
-            {:another_round, :run_stopped}
-        end
-
+      {event, escalation} = next_event(work_item)
+      if escalation, do: :ok = resolve!(escalation, :another_round, nil, nil)
       {work_item, run} = apply_event(work_item, version, stage, event)
       tell_now(work_item)
       if run, do: {:ok, run}, else: {:error, :not_waiting}
@@ -214,6 +213,23 @@ defmodule Apiary.Stages do
       _not_placed -> :not_placed
     end
   end
+
+  # The event of the next round `next_run/2` runs, with the open escalation it resolves as
+  # another round, or nil for none.
+  defp next_event(%WorkItem{stage_state: :waiting_answers} = work_item),
+    do: {:answered, open_escalation(work_item)}
+
+  defp next_event(%WorkItem{stage_state: :escalated} = work_item) do
+    case open_escalation(work_item) do
+      %Escalation{cause: cause} = escalation -> {{:another_round, cause}, escalation}
+      nil -> {{:another_round, :run_stopped}, nil}
+    end
+  end
+
+  # A send of the review comments at the gate: at the end of the sequence, another round
+  # runs it again, its last loop for a stage with one, else from its start. A run that stopped
+  # runs another round too.
+  defp next_event(%WorkItem{}), do: {{:another_round, :run_stopped}, nil}
 
   # hold_work_item/1 locks the work item of the run of the queue `dispatch_run_id`
   # `FOR UPDATE`, before the run is locked, in the order every path keeps.
@@ -247,8 +263,9 @@ defmodule Apiary.Stages do
          %WorkItem{} = work_item <- lock!(work_item_id),
          true <- current_run?(work_item, run),
          {:ok, version, stage} <- placed(work_item),
-         {:ok, result} <- run_result(work_item, run, context) do
-      {work_item, _run} = apply_event(work_item, version, stage, {:run, result}, run.id)
+         {:ok, result, run_facts} <- run_result(work_item, run, context) do
+      event = {:run, result}
+      {work_item, _run} = apply_event(work_item, version, stage, event, run.id, run_facts)
       told(work_item)
     else
       _other -> []
@@ -426,7 +443,7 @@ defmodule Apiary.Stages do
   # run_workflow/1 is the workflow a run of a stage starts, its `workflow`, with the
   # workflow model on: the name its harness walk, its documents, its time limits and its
   # model choice are read by. nil for a run the stage runner did not queue, or with the
-  # workflow model off, which keep the workflow the Workflow page saved
+  # workflow model off, which keep the workflow the Harness page saved
   # (`Apiary.Stacks.workflow/2`).
   @doc false
   @spec run_workflow(DispatchRun.t()) :: String.t() | nil
@@ -436,17 +453,74 @@ defmodule Apiary.Stages do
 
   def run_workflow(%DispatchRun{}), do: nil
 
-  # Transition (D1): explore_workflow/0 is the workflow whose runs return today's explore
-  # v1 result: the first workflow of the default process that the Qory harness lists, in
-  # stage order. Nil for none, and then no stage is Explore.
+  # Transition (D1): explore_workflow/1 is the workflow whose runs return today's explore
+  # v1 result in `workspace`, a workspace or its id: the first workflow of the process of
+  # the Qory harness's template that the template's stack lists, in stage order, at the
+  # commit the runs of the workspace's current version compose, else at the commit of the
+  # workspace's harness settings, as the stored files have it
+  # (`Apiary.Processes.HarnessUpdate.qory_in_use/1`). It reads the database only. Nil for
+  # none, and then no stage is Explore.
+  # Where that commit's files are not kept, as before the first read of the harness or
+  # after the instance's harness address changed, the newest commit kept stands in
+  # (`Apiary.Harnesses.Qory.newest/0`).
   @doc false
-  @spec explore_workflow() :: String.t() | nil
-  def explore_workflow do
-    listed = Processes.qory_workflows()
+  @spec explore_workflow(Workspace.t() | Ecto.UUID.t()) :: String.t() | nil
+  def explore_workflow(workspace) do
+    commit = Processes.HarnessUpdate.qory_in_use(workspace)
+    commit = if Processes.template_process(commit), do: commit, else: Qory.newest()
+    listed = Processes.qory_workflows(commit)
 
-    Processes.default_document("software")["stages"]
-    |> Enum.flat_map(&Runner.workflows/1)
-    |> Enum.find(&(&1 in listed))
+    case Processes.template_process(commit) do
+      %{"stages" => stages} when is_list(stages) ->
+        stages |> Enum.flat_map(&Runner.workflows/1) |> Enum.find(&(&1 in listed))
+
+      _none ->
+        nil
+    end
+  end
+
+  # take_in_starts/2 is the run a take in of the ticket `item_id` (`tk_…`) into
+  # `workspace` would queue, read before the take in with nothing written but the version
+  # `Apiary.Processes.current/1` makes for a workspace with none, as a page shows it
+  # (`ApiaryWeb.SpendDialog.take_in_line/3`). It follows the take in's rule
+  # (`Apiary.Dispatches.queue/2`). With the workflow model, the take in enters the first
+  # stage of the workspace's current version (`take_in/2`): the runner's step on that
+  # entry, on the facts of the ticket's work item, which Take in again and Take in here
+  # bring back, or of a new one with no artifacts. `{:run, workflow}`, or `:none` where
+  # the stage waits, as for a required input with no version. Without it, a run of
+  # `explore_workflow/1`.
+  @doc false
+  @spec take_in_starts(Workspace.t(), String.t()) :: {:run, String.t() | nil} | :none
+  def take_in_starts(%Workspace{} = workspace, item_id) when is_binary(item_id) do
+    if on?() do
+      version = Processes.current(workspace)
+
+      case version.document["stages"] do
+        [first | _rest] ->
+          entered(%{taken_in(workspace, item_id) | workspace_id: workspace.id}, version, first)
+
+        _none ->
+          :none
+      end
+    else
+      {:run, explore_workflow(workspace)}
+    end
+  end
+
+  # The work item of the ticket `item_id` in the organisation of `workspace`, in any of
+  # its workspaces and states; for a ticket with none, a work item whose id no row has, so
+  # that every artifact, decision and check the runner reads of it is none.
+  defp taken_in(%Workspace{organisation_id: organisation_id}, item_id) do
+    Repo.one(
+      from i in Apiary.Sources.Item,
+        join: w in WorkItem,
+        on:
+          w.organisation_id == i.organisation_id and w.adapter_id == i.adapter_id and
+            w.external_ref == i.external_ref,
+        where: i.public_id == ^item_id and i.organisation_id == ^organisation_id,
+        limit: 1,
+        select: w
+    ) || %WorkItem{id: Ecto.UUID.generate(), organisation_id: organisation_id}
   end
 
   # confirmed/3 approves Explore's gate for the work item whose proposal the scope's
@@ -526,7 +600,7 @@ defmodule Apiary.Stages do
 
   # confirmed_stage_id/2 is the stage whose proposal a confirmation of the run `attempt`
   # of the work item's take in confirms: the stage that run ran in, or, for a run with no
-  # stage, the stage that runs `explore_workflow/0` (`explore_stage_id/1`).
+  # stage, the stage that runs `explore_workflow/1` (`explore_stage_id/1`).
   @doc false
   @spec confirmed_stage_id(WorkItem.t(), pos_integer) :: String.t() | nil
   def confirmed_stage_id(%WorkItem{id: id, take_in: take_in} = work_item, attempt) do
@@ -540,7 +614,7 @@ defmodule Apiary.Stages do
 
   # run_stage_id/2 is the stage a version that the run of the queue `run` pushes for
   # `work_item` is made in: the run's stage, or, for a run of Explore with no stage, one
-  # queued before the workflow model was on, the stage that runs `explore_workflow/0`
+  # queued before the workflow model was on, the stage that runs `explore_workflow/1`
   # (`explore_stage_id/1`), as `confirmed_stage_id/2` reads it. So the Exists check of
   # that stage finds the proposal the run pushed. nil for another run with no stage.
   @doc false
@@ -552,32 +626,28 @@ defmodule Apiary.Stages do
     do: if(explore_run?(run), do: explore_stage_id(work_item))
 
   # explore_stage_id/1 is the id of the stage of the work item's process version that runs
-  # `explore_workflow/0`; nil for none.
+  # `explore_workflow/1`; nil for none.
   @doc false
   @spec explore_stage_id(WorkItem.t()) :: String.t() | nil
   def explore_stage_id(%WorkItem{} = work_item) do
     case Processes.version_for(work_item) do
-      %{document: %{"stages" => stages}} ->
-        explore = explore_workflow()
-        Enum.find_value(stages, &(explore in Runner.workflows(&1) && &1["id"]))
+      %{document: %{"stages" => _stages}} = version ->
+        explore_stage_in(version, explore_workflow(work_item.workspace_id))
 
       _none ->
         nil
     end
   end
 
-  # approver/2 is whether the scope's person is among the approvers of the stage of
-  # the work item `work_item`: `:ok` with the workflow model off, for a work item the
-  # runner did not place, and for a person among the approvers of its stage, or a stage
-  # that lists none; `{:error, :not_approver}` otherwise. The approver rule alone, with
-  # no role: the one `Apiary.Access` asks after the role for `gate.approve`,
-  # `work_item.confirm` and `work_item.review_comment`
-  # (`Apiary.Stages.Approvers.allows?/2`). Only the work item page asks it; a move asks
-  # `Apiary.Access`.
+  # explore_stage_in/2 is the id of the stage of the process version `version` that runs
+  # the workflow `explore` (`explore_workflow/1`); nil for none. A list reads `explore`
+  # once for all its work items.
   @doc false
-  @spec approver(Scope.t(), WorkItem.t()) :: :ok | {:error, :not_approver}
-  def approver(%Scope{} = scope, %WorkItem{} = work_item),
-    do: if(Approvers.allows?(scope, work_item), do: :ok, else: {:error, :not_approver})
+  @spec explore_stage_in(map | nil, String.t() | nil) :: String.t() | nil
+  def explore_stage_in(%{document: %{"stages" => stages}}, explore) when is_list(stages),
+    do: Enum.find_value(stages, &(explore in Runner.workflows(&1) && &1["id"]))
+
+  def explore_stage_in(_version, _explore), do: nil
 
   ## What a person does
 
@@ -671,19 +741,12 @@ defmodule Apiary.Stages do
 
       case placed(work_item) do
         {:ok, version, stage} ->
-          cond do
-            work_item.state != :exploring ->
+          case on_version_added(work_item, stage) do
+            nil ->
               {:ok, work_item}
 
-            work_item.stage_state == :waiting_inputs ->
-              {work_item, _run} = apply_event(work_item, version, stage, :resume)
-              {:ok, work_item}
-
-            work_item.stage_state == :at_gate and Runner.people?(stage) ->
-              {work_item, _run} = apply_event(work_item, version, stage, :version_added)
-              {:ok, work_item}
-
-            true ->
+            event ->
+              {work_item, _run} = apply_event(work_item, version, stage, event)
               {:ok, work_item}
           end
 
@@ -692,6 +755,17 @@ defmodule Apiary.Stages do
       end
     end)
   end
+
+  # The runner's event for a version a person added in the work item's stage
+  # (`version_added/1`): `:resume` for a stage that waits for inputs, `:version_added` at
+  # the gate of a stage with no workflow; nil where the stage is left as it is.
+  defp on_version_added(%WorkItem{state: :exploring, stage_state: :waiting_inputs}, _stage),
+    do: :resume
+
+  defp on_version_added(%WorkItem{state: :exploring, stage_state: :at_gate}, stage),
+    do: if(Runner.people?(stage), do: :version_added)
+
+  defp on_version_added(%WorkItem{}, _stage), do: nil
 
   # check_workflows/2 reads the workflow names the workspace's harness lists now, as the
   # scope's person, through the harness sources (`Apiary.Stacks.Sources`), stores them as
@@ -725,14 +799,14 @@ defmodule Apiary.Stages do
 
       with :ok <- live(work_item),
            {:ok, version, stage} <- placed(work_item) do
-        cond do
-          work_item.stage_state != :waiting_workflow ->
+        case on_found(work_item, fn -> facts(work_item, version, stage) end) do
+          nil ->
             {:ok, work_item}
 
-          facts(work_item, version, stage).undeclared != [] ->
+          :still_missing ->
             {:error, :still_missing}
 
-          true ->
+          :resume ->
             {work_item, _run} = apply_event(work_item, version, stage, :resume)
             {:ok, work_item}
         end
@@ -742,6 +816,14 @@ defmodule Apiary.Stages do
       end
     end)
   end
+
+  # The step after a read of the harness's workflows (`start_found/1`) for a stage that
+  # waits for a workflow: `:resume` where the facts that `facts` returns have no
+  # undeclared workflow, else `:still_missing`; nil for a stage in another state.
+  defp on_found(%WorkItem{stage_state: :waiting_workflow}, facts),
+    do: if(facts.().undeclared == [], do: :resume, else: :still_missing)
+
+  defp on_found(%WorkItem{}, _facts), do: nil
 
   # approve/3 approves the gate of the work item's stage, with the scope's person's
   # `note`: the decision covers the newest version of each output made in the stage, and
@@ -766,10 +848,10 @@ defmodule Apiary.Stages do
   end
 
   # Today's confirmation, where Explore's proposal waits for it at the gate of the stage
-  # that runs `explore_workflow/0`: the gate approves what a member confirms, so the two are
+  # that runs `explore_workflow/1`: the gate approves what a member confirms, so the two are
   # one act. The gate of any other stage confirms nothing.
   defp confirm_explore(scope, work_item, stage) do
-    if explore_workflow() in Runner.workflows(stage),
+    if explore_workflow(work_item.workspace_id) in Runner.workflows(stage),
       do: confirm_today(scope, work_item),
       else: {:ok, false}
   end
@@ -918,6 +1000,145 @@ defmodule Apiary.Stages do
     end)
   end
 
+  ## What an act would start
+
+  # starts/2 is the workflow of the run that `act` would queue for the work item, by the
+  # runner's rules (`Runner.step/4`) on the facts read now, with nothing written:
+  # `{:run, workflow}`, or `:none` where `act` queues no run, or the work item is not
+  # `:exploring` or not placed. A page reads it at a click, to confirm the spend first
+  # (`ApiaryWeb.SpendDialog`). It reads no access: the act checks that. `act` is one of:
+  #
+  #   * `:approve` - the gate approved, at the gate: the next stage entered (`approve/4`);
+  #   * `:request_changes` - at the gate (`request_changes/5`);
+  #   * `:accept`, `:another_round` - the open escalation resolved so
+  #     (`resolve_escalation/5`);
+  #   * `{:move, stage_id}` - that stage of the version entered (`move/5`, and a move
+  #     back that resolves an escalation);
+  #   * `:found` - a stage that waits for a workflow, once the harness lists it
+  #     (`check_workflows/3`);
+  #   * `{:version_added, type}` - a version of `type` added in the stage
+  #     (`add_version/5`), counted as existing;
+  #   * `:next_run` - the next round of the stage (`next_run/2`).
+  @doc false
+  @spec starts(WorkItem.t(), term) :: {:run, String.t()} | :none
+  def starts(%WorkItem{id: id}, act) do
+    with %WorkItem{state: :exploring} = work_item <- Repo.get(WorkItem, id),
+         {:ok, version, stage} <- placed(work_item) do
+      would_start(work_item, version, stage, act)
+    else
+      _other -> :none
+    end
+  end
+
+  # at_stage?/2 is whether the work item, read now, is open and in the stage with
+  # `stage_id`: a page reads it at a click, so a click on a stage the work item has left
+  # confirms no spend.
+  @doc false
+  @spec at_stage?(WorkItem.t(), String.t() | nil) :: boolean
+  def at_stage?(%WorkItem{id: id}, stage_id) when is_binary(stage_id),
+    do: match?(%WorkItem{state: :exploring, stage_id: ^stage_id}, Repo.get(WorkItem, id))
+
+  def at_stage?(%WorkItem{}, nil), do: false
+
+  # The approval covers the stage's newest outputs (`approve_locked/6`), which each later
+  # stage then reads as its inputs of those types: the next stage, and each stage that a
+  # stage passing on enters.
+  defp would_start(work_item, version, stage, :approve) do
+    with :ok <- at_gate(work_item, stage),
+         :ok <- outputs_exist(work_item, stage),
+         %{} = next <- next_stage(version, stage) do
+      artifacts = Artifacts.list(work_item)
+      ids = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
+      covered = for a <- artifacts, v <- a.versions, v.public_id in ids, uniq: true, do: a.type
+      approved = &%{&1 | missing_inputs: &1.missing_inputs -- covered}
+
+      stepped(work_item, version, next, :enter, approved, approved)
+    else
+      _no_run -> :none
+    end
+  end
+
+  defp would_start(work_item, version, stage, :request_changes) do
+    if at_gate(work_item, stage) == :ok,
+      do: stepped(work_item, version, stage, :request_changes, & &1),
+      else: :none
+  end
+
+  defp would_start(%WorkItem{stage_state: :escalated} = work_item, version, stage, resolution)
+       when resolution in [:accept, :another_round] do
+    %Escalation{cause: cause} =
+      open_escalation(work_item) || placed_escalation(work_item, version, stage)
+
+    stepped(work_item, version, stage, {resolution, cause}, & &1)
+  end
+
+  defp would_start(work_item, version, _stage, {:move, stage_id}) when is_binary(stage_id),
+    do: entered(work_item, version, Processes.stage(version, stage_id))
+
+  # Once the harness lists the stage's workflows.
+  defp would_start(work_item, version, stage, :found) do
+    found = &%{&1 | undeclared: []}
+
+    case on_found(work_item, fn -> found.(facts(work_item, version, stage)) end) do
+      :resume -> stepped(work_item, version, stage, :resume, found)
+      _no_run -> :none
+    end
+  end
+
+  # The added version counts as existing: as an input of the stage, or as an output at
+  # its gate.
+  defp would_start(work_item, version, stage, {:version_added, type}) when is_binary(type) do
+    case on_version_added(work_item, stage) do
+      :resume ->
+        stepped(work_item, version, stage, :resume, fn facts ->
+          %{facts | missing_inputs: facts.missing_inputs -- [type]}
+        end)
+
+      :version_added ->
+        stepped(work_item, version, stage, :version_added, fn facts ->
+          %{facts | failed_checks: facts.failed_checks -- [type]}
+        end)
+
+      nil ->
+        :none
+    end
+  end
+
+  defp would_start(work_item, version, stage, :next_run) do
+    {event, _escalation} = next_event(work_item)
+    stepped(work_item, version, stage, event, & &1)
+  end
+
+  defp would_start(_work_item, _version, _stage, _act), do: :none
+
+  # The run that entering `stage` queues, on the facts read now as `later` changes them;
+  # none for no stage.
+  defp entered(work_item, version, stage, later \\ & &1)
+  defp entered(_work_item, _version, nil, _later), do: :none
+
+  defp entered(work_item, version, stage, later),
+    do: stepped(work_item, version, stage, :enter, later, later)
+
+  # The run that the runner's outcome of `event` queues, on the facts read now as `adjust`
+  # changes them: its first `:queue`, or what its `:advance` enters, in the order
+  # `apply_outcome/5` applies them. Each stage that an `:advance` enters reads its facts
+  # as `later` changes them.
+  defp stepped(work_item, version, stage, event, adjust, later \\ & &1) do
+    facts = adjust.(facts(work_item, version, stage))
+    %{actions: actions} = Runner.step(stage, position(work_item), event, facts)
+
+    Enum.reduce_while(actions, :none, fn
+      {:queue, %{workflow: workflow}}, _none ->
+        {:halt, {:run, workflow}}
+
+      :advance, _none ->
+        {:halt, entered(work_item, version, next_stage(version, stage), later)}
+
+      _other, none ->
+        {:cont, none}
+    end)
+  end
+
   ## Reading
 
   # status/2 is where the work item stands in its stage, as the work item page draws it;
@@ -927,6 +1148,9 @@ defmodule Apiary.Stages do
   # one, the gate of a stage with no workflow is not approvable. `loop` is whether the
   # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
   # loop, the limit of the loop it left, which a later entry's runs do not count by.
+  # `escalation` is the open escalation with its `points` (`shown_points/5`), also while
+  # the stage waits for answers; `gaps` is why a stage waits for a workflow, else the
+  # failed checks that started its round, nil with an escalation.
   @doc false
   @spec status(WorkItem.t(), Scope.t() | nil) :: map | nil
   def status(%WorkItem{} = work_item, scope \\ nil) do
@@ -951,7 +1175,7 @@ defmodule Apiary.Stages do
         outputs: outputs,
         missing_outputs: missing,
         inputs: inputs(work_item, version, stage, artifacts),
-        escalation: escalation_map(escalation),
+        escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
         waiting_workflow: waiting_workflow(work_item, stage),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
@@ -1023,19 +1247,23 @@ defmodule Apiary.Stages do
   # registered run (`rn_…`, nil before a claim registers it), its workflow, stage, round,
   # `take_in` and `attempt` (its place in the take in, from 1), `of` (the attempts its
   # take in may reach), `status` (the state of the run of the
-  # queue: waiting, claimed, handed_over or ended), `verdict` from its verdict artifact
+  # queue: waiting, claimed, handed_over or ended), `end_cause` (why the run of the queue
+  # ended, nil while it has not), `verdict` from its verdict artifact
   # (`:passed`; `:failed` for changes-requested or escalate; nil for none), and when it
-  # started and ended, nil for not yet. A run of Explore pushes no verdict: one whose
-  # outcome is its proposal (`Apiary.Explore.Outcome`) has the verdict `:passed`, as the
-  # work item page showed it when Core wrote that verdict for it.
+  # started and ended, nil for not yet. A run of Explore with no verdict whose outcome is
+  # its proposal (`Apiary.Explore.Outcome`) has the verdict `:passed`, as the work item
+  # page showed it when Core wrote that verdict for it. A run that an escalation
+  # `run_stopped` came from has none, whatever it pushed: one run never reads as passed
+  # and stopped.
   @doc false
   @spec runs(WorkItem.t()) :: [map]
   def runs(%WorkItem{id: id} = work_item) do
     verdicts = run_verdicts(work_item)
+    stopped = stopped_runs(work_item)
 
     Repo.all(
       from d in DispatchRun,
-        left_join: r in Run,
+        left_join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == d.id,
         where: d.work_item_id == ^id and not is_nil(d.stage_id),
         order_by: [desc: d.take_in, desc: d.attempt],
@@ -1051,7 +1279,11 @@ defmodule Apiary.Stages do
         attempt: dispatch_run.attempt,
         of: dispatch_run.of,
         status: dispatch_run.state,
-        verdict: verdicts[dispatch_run.id] || (run && verdicts[run.id]) || proposed(dispatch_run),
+        end_cause: dispatch_run.end_cause,
+        verdict:
+          unless MapSet.member?(stopped, dispatch_run.id) do
+            verdicts[dispatch_run.id] || (run && verdicts[run.id]) || proposed(dispatch_run)
+          end,
         started_at: run && run.started_at,
         ended_at: ended_at(dispatch_run, run)
       }
@@ -1063,6 +1295,17 @@ defmodule Apiary.Stages do
 
   defp proposed(%DispatchRun{}), do: nil
 
+  # The runs of the queue of the work item that an escalation `run_stopped` came from,
+  # resolved or not.
+  defp stopped_runs(%WorkItem{id: id}) do
+    Repo.all(
+      from e in Escalation,
+        where: e.work_item_id == ^id and e.cause == :run_stopped and not is_nil(e.run_id),
+        select: e.run_id
+    )
+    |> MapSet.new()
+  end
+
   defp ended_at(%DispatchRun{state: :ended}, %Run{exited_at: %DateTime{} = at}), do: at
   defp ended_at(%DispatchRun{state: :ended, updated_at: at}, _run), do: at
   defp ended_at(_dispatch_run, _run), do: nil
@@ -1070,7 +1313,7 @@ defmodule Apiary.Stages do
   # The verdict of each run that stored one, by the run's id: the newest of its versions.
   defp run_verdicts(work_item) do
     for artifact <- Artifacts.list(work_item),
-        artifact.type == "verdict",
+        artifact.type == "verdict" and artifact.name == "main",
         version <- Enum.reverse(artifact.versions),
         is_binary(version.run_id),
         into: %{} do
@@ -1211,8 +1454,9 @@ defmodule Apiary.Stages do
 
   defp enter_locked(work_item, version, stage), do: apply_event(work_item, version, stage, :enter)
 
-  defp apply_event(work_item, version, stage, event, run_id \\ nil) do
-    facts = facts(work_item, version, stage)
+  # `more` is facts of the run that ended, beside the stage's (`facts/3`).
+  defp apply_event(work_item, version, stage, event, run_id \\ nil, more \\ %{}) do
+    facts = Map.merge(facts(work_item, version, stage), more)
     outcome = Runner.step(stage, position(work_item), event, facts)
     apply_outcome(work_item, version, stage, outcome, run_id)
   end
@@ -1226,8 +1470,8 @@ defmodule Apiary.Stages do
         {:ok, run} = queue!(work_item, version, stage, spec)
         {work_item, run}
 
-      {:escalate, cause, gaps}, {work_item, run} ->
-        :ok = escalate!(work_item, version, stage, position, cause, gaps, run_id)
+      {:escalate, cause, points}, {work_item, run} ->
+        :ok = escalate!(work_item, version, stage, position, cause, points, run_id)
         {work_item, run}
 
       {:checks_failed, round, gaps}, {work_item, run} ->
@@ -1253,13 +1497,17 @@ defmodule Apiary.Stages do
   # The next stage of the version after `stage`, entered; after the last, the stage is
   # done and the work item closes.
   defp advance(work_item, version, stage) do
-    stages = version.document["stages"]
-    index = Enum.find_index(stages, &(&1["id"] == stage["id"]))
-
-    case Enum.at(stages, index + 1) do
+    case next_stage(version, stage) do
       nil -> {finish(work_item, version, stage), nil}
       next -> enter_locked(work_item, version, next)
     end
+  end
+
+  # The stage of the version after `stage`; nil after the last.
+  defp next_stage(version, stage) do
+    stages = version.document["stages"]
+    index = Enum.find_index(stages, &(&1["id"] == stage["id"]))
+    Enum.at(stages, index + 1)
   end
 
   # The last stage is done: in the same transaction the instance closes the work item,
@@ -1293,7 +1541,8 @@ defmodule Apiary.Stages do
       undeclared: undeclared(workspace, declarations),
       declarations: declarations,
       failed_checks: missing(outputs(work_item, stage, artifacts)),
-      machine: version.document["machine"]
+      machine: version.document["machine"],
+      test: work_item.test
     }
   end
 
@@ -1347,7 +1596,7 @@ defmodule Apiary.Stages do
         stage_entry: spec.entry,
         loop_entry: spec.loop_entry,
         workflow: spec.workflow,
-        machine_type: spec.machine_type
+        machine_type: MachineTypes.run_key(spec.machine_type, version.document["machine"])
       }
     })
   end
@@ -1364,7 +1613,7 @@ defmodule Apiary.Stages do
     )
   end
 
-  defp escalate!(work_item, version, stage, position, cause, gaps, run_id) do
+  defp escalate!(work_item, version, stage, position, cause, points, run_id) do
     :ok = close_open(work_item, :close, nil, nil)
 
     %Escalation{
@@ -1375,7 +1624,7 @@ defmodule Apiary.Stages do
       process_version_id: version.id,
       round: position.round,
       cause: cause,
-      gaps: gaps,
+      points: points,
       run_id: run_id,
       inserted_at: DateTime.utc_now()
     }
@@ -1402,8 +1651,10 @@ defmodule Apiary.Stages do
       newest == run.attempt
   end
 
-  # What the run gave, as the runner reads it; `:unsettled` while a run ended by its exit
-  # has no outcome stored yet (`Apiary.Dispatches.Settle`).
+  # What the run gave, as the runner reads it, with the facts of the run for the runner
+  # (`Apiary.Stages.Runner.facts/0`); `:unsettled` while a run ended by its exit has no
+  # outcome stored yet (`Apiary.Dispatches.Settle`), and while whether it is a run of
+  # Explore is not known yet (`known_explore/1`).
   defp run_result(_work_item, %DispatchRun{end_cause: :run_ended, result_outcome: nil}, _ctx),
     do: :unsettled
 
@@ -1412,43 +1663,111 @@ defmodule Apiary.Stages do
        do: :ignored
 
   defp run_result(work_item, %DispatchRun{} = run, context) do
-    cond do
-      explore_run?(run) -> {:ok, explore_result(work_item, run, context)}
-      run.end_cause == :run_ended -> {:ok, reported_result(work_item, run)}
-      true -> {:ok, {:stopped, stop_cause(run, work_item, context)}}
+    case known_explore(run) do
+      nil -> :unsettled
+      %DispatchRun{explore: true} = run -> explore_result(work_item, run, context)
+      %DispatchRun{end_cause: :run_ended} = run -> {:ok, reported_result(work_item, run), %{}}
+      run -> {:ok, {:stopped, stopped_points(run, work_item, context)}, %{}}
     end
   end
 
-  # explore_run?/1 is whether the run of the queue `run` is a run of Explore: one of the
-  # step `explore` with no workflow, as every run with the workflow model off, or of
-  # `explore_workflow/0`.
+  # Whether `run` is a run of Explore whose take in has a proposal, or that left open
+  # questions, as Settle stored its outcome (`Apiary.Explore.Outcome` returns these only
+  # for a run of Explore).
+  defp explore_result?(%DispatchRun{result_outcome: outcome}),
+    do: outcome in [:proposal, :questions]
+
+  # explore_run?/1 is whether the run of the queue `run` is a run of Explore, as its
+  # record keeps it (`Apiary.Dispatches.DispatchRun`), else as `explore_at_queue/3` reads
+  # it now, with nothing written: nil where that is not known yet, which reads as neither
+  # (`known_explore/1`).
   @doc false
-  @spec explore_run?(DispatchRun.t()) :: boolean
-  def explore_run?(%DispatchRun{step: "explore", workflow: workflow}),
-    do: is_nil(workflow) or workflow == explore_workflow()
+  @spec explore_run?(DispatchRun.t()) :: boolean | nil
+  def explore_run?(%DispatchRun{explore: explore}) when is_boolean(explore), do: explore
 
-  def explore_run?(%DispatchRun{}), do: false
+  def explore_run?(%DispatchRun{} = run),
+    do: explore_at_queue(run.step, run.workflow, run.workspace_id)
 
-  # Explore: open questions first, then a run that stopped, else a run with no verdict. A
-  # run whose registered run failed after it pushed a proposal stopped, and its cause
-  # names the proposal's version (`StopCause.failed_after_proposal/1`), where the run
-  # pushed none it reads as any stopped run.
+  # known_explore/1 is `run` once whether it is a run of Explore is known: as its record
+  # keeps it, else as `explore_at_queue/3` reads it now, written to its record. Nil where
+  # that is still not known, as no files of the Qory harness are kept yet: the claim
+  # leaves such a run queued, and the stage runner leaves its end for its sweep.
+  @doc false
+  @spec known_explore(DispatchRun.t()) :: DispatchRun.t() | nil
+  def known_explore(%DispatchRun{explore: explore} = run) when is_boolean(explore), do: run
+
+  def known_explore(%DispatchRun{id: id} = run) do
+    case explore_at_queue(run.step, run.workflow, run.workspace_id) do
+      nil ->
+        nil
+
+      explore ->
+        {_count, _rows} =
+          Repo.update_all(from(r in DispatchRun, where: r.id == ^id and is_nil(r.explore)),
+            set: [explore: explore]
+          )
+
+        %{run | explore: explore}
+    end
+  end
+
+  # explore_at_queue/3 is whether a run of `step` and `workflow`, queued in the workspace
+  # `workspace_id` now, is a run of Explore, as the run keeps it
+  # (`Apiary.Dispatches.DispatchRun`): one of the step `explore` with no workflow, or of
+  # `explore_workflow/1`; nil where no files of the Qory harness are kept yet, and the
+  # run's end reads it then.
+  @doc false
+  @spec explore_at_queue(String.t(), String.t() | nil, Ecto.UUID.t()) :: boolean | nil
+  def explore_at_queue("explore", nil, _workspace_id), do: true
+
+  def explore_at_queue("explore", workflow, workspace_id) do
+    case explore_workflow(workspace_id) do
+      nil -> if Qory.newest(), do: false
+      explore -> workflow == explore
+    end
+  end
+
+  def explore_at_queue(_step, _workflow, _workspace_id), do: false
+
+  # Explore: open questions first, with the points of the verdict `escalate` where the run
+  # pushed one, then the verdict `escalate` of a run that ended by its exit (`verdict!/1`),
+  # then a run that stopped, else a run with no verdict. A verdict other than `escalate`
+  # counts as none. A run whose registered run failed after it pushed a proposal stopped,
+  # and its cause shows the proposal's version
+  # (`StopCause.failed_after_proposal/1`); where the run pushed none, it reads as any
+  # stopped run. Beside it, the facts of the run for the runner: whether its take in has a
+  # proposal or it left open questions (`explore_result?/1`), and whether it pushed
+  # `passed` or `changes-requested`, so that a run with neither stops its stage.
   defp explore_result(work_item, run, context) do
     open = open_questions(work_item, run)
+    verdict = verdict!(run)
 
-    cond do
-      open != [] ->
-        {:questions, question_texts(open)}
+    result =
+      cond do
+        open != [] ->
+          {:questions, question_texts(open), escalate_points(verdict, open)}
 
-      stopped?(run) ->
-        case failed_proposal(run) do
-          nil -> {:stopped, stop_cause(run, work_item, context)}
-          version -> {:stopped, StopCause.failed_after_proposal(version)}
-        end
+        match?({:verdict, :escalate, _points}, verdict) ->
+          open_points(verdict, open)
 
-      true ->
-        {:verdict, nil, nil}
-    end
+        stopped?(run) ->
+          case failed_proposal(run) do
+            nil ->
+              {:stopped, stopped_points(run, work_item, context)}
+
+            version ->
+              {:stopped, Points.run_stopped(StopCause.failed_after_proposal(version), nil)}
+          end
+
+        true ->
+          {:verdict, nil, nil}
+      end
+
+    pushed =
+      open == [] and
+        match?({:verdict, value, _points} when value in [:passed, :changes_requested], verdict)
+
+    {:ok, result, %{explore_result: explore_result?(run), explore_verdict: pushed}}
   end
 
   # The open questions of the work item's newest questions that are of the run's take in
@@ -1473,7 +1792,7 @@ defmodule Apiary.Stages do
   defp stopped?(%DispatchRun{end_cause: :run_ended} = run) do
     match?(
       %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
-      Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id)
+      Repo.one(from r in Run.registered(), where: r.dispatch_run_id == ^run.id)
     )
   end
 
@@ -1486,7 +1805,7 @@ defmodule Apiary.Stages do
       from v in Apiary.Artifacts.Version,
         join: a in Apiary.Artifacts.Artifact,
         on: a.id == v.artifact_id,
-        join: r in Run,
+        join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == v.run_id,
         where: v.run_id == ^id and a.type == "proposal" and a.name == "main",
         where: r.exit_state == "failed",
@@ -1496,57 +1815,111 @@ defmodule Apiary.Stages do
 
   defp failed_proposal(%DispatchRun{}), do: nil
 
-  # A workflow that reports with artifacts: the questions it pushed that wait for an
-  # answer, else its newest verdict, each of the artifact named `main`; a run whose
-  # registered run failed or was lost stopped.
+  # A run of a workflow other than Explore: the open questions of the run's take in
+  # (`open_questions/2`), with the points of its verdict `escalate` where it pushed one,
+  # else the newest verdict named `main` that the run pushed (`verdict!/1`), else stopped
+  # when its registered run failed, was lost or was cancelled.
   defp reported_result(work_item, run) do
-    mine =
-      for artifact <- Artifacts.list(work_item),
-          artifact.type in ["questions", "verdict"] and artifact.name == "main",
-          version <- artifact.versions,
-          version.run_id == run.id,
-          do: {artifact.type, version}
-
-    questions = Enum.find(mine, &(elem(&1, 0) == "questions"))
-    verdict = Enum.find(mine, &(elem(&1, 0) == "verdict"))
-    registered = Repo.one(from r in Run, where: r.dispatch_run_id == ^run.id)
-
-    open =
-      if questions,
-        do: Apiary.Explore.Questions.open(Artifacts.read_json(elem(questions, 1))),
-        else: []
+    open = open_questions(work_item, run)
 
     cond do
       open != [] ->
-        {:questions, question_texts(open)}
+        {:questions, question_texts(open), escalate_points(verdict!(run), open)}
 
-      verdict ->
-        document = Artifacts.read_json(elem(verdict, 1)) || %{}
-        {:verdict, verdict(document["verdict"]), document["gaps"]}
+      verdict = verdict!(run) ->
+        open_points(verdict, open)
 
-      match?(%Run{exit_state: state} when state in ["failed", "lost", "cancelled"], registered) ->
-        {:stopped, stop_cause(run, work_item)}
+      match?(
+        %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
+        Repo.one(from r in Run.registered(), where: r.dispatch_run_id == ^run.id)
+      ) ->
+        {:stopped, stopped_points(run, work_item, %{})}
 
       true ->
         {:verdict, nil, nil}
     end
   end
 
+  # reported_verdict/1 is the newest version of the `verdict` named `main` that `run`
+  # pushed, where `run` ended by its exit, as the stage runner reads it:
+  # `{:verdict, verdict, points}`, with a nil verdict for a value other than `passed`,
+  # `changes-requested` or `escalate`, or for a file that is not a JSON object;
+  # `{:error, :store_unavailable}` when the store cannot read its file; nil where the run
+  # pushed none or ended another way. `Apiary.Explore.Outcome` reads it for Explore's
+  # `escalate`.
+  @doc false
+  @spec reported_verdict(DispatchRun.t()) ::
+          Runner.run_result() | {:error, :store_unavailable} | nil
+  def reported_verdict(%DispatchRun{end_cause: :run_ended} = run) do
+    case Artifacts.newest_of_run(run, "verdict", "main") do
+      nil ->
+        nil
+
+      version ->
+        with {:ok, document} <- Artifacts.stored_json(version) do
+          document = document || %{}
+          {:verdict, verdict(document["verdict"]), points(document["points"])}
+        end
+    end
+  end
+
+  def reported_verdict(%DispatchRun{}), do: nil
+
+  # The verdict of a run of any workflow as `reported_verdict/1` reads it; a verdict whose
+  # file the store cannot read raises, so the end is not read as one with no verdict.
+  defp verdict!(run) do
+    case reported_verdict(run) do
+      {:error, :store_unavailable} -> raise Apiary.Stages.VerdictUnreadable
+      verdict -> verdict
+    end
+  end
+
+  # The points of a verdict `escalate`, with the open questions `open` (`open_points/2`);
+  # nil for any other verdict and for none.
+  defp escalate_points(verdict, open) do
+    case open_points(verdict, open) do
+      {:verdict, :escalate, points} -> points
+      _other -> nil
+    end
+  end
+
+  # The verdict `escalate` with each `answer` point whose question is not among the open
+  # questions `open` turned into a `run_again` point with the same sentence: a question
+  # withdrawn after the verdict can no longer be answered. No point is dropped.
+  defp open_points({:verdict, :escalate, points}, open) when is_list(points) do
+    ids = MapSet.new(open, & &1["id"])
+
+    {:verdict, :escalate,
+     for point <- points do
+       if point["action"] == "answer" and not MapSet.member?(ids, point["question"]),
+         do: point |> Map.delete("question") |> Map.put("action", "run_again"),
+         else: point
+     end}
+  end
+
+  defp open_points(verdict, _open), do: verdict
+
+  # The points of a verdict's file: its list of point objects, nil for none. A run's
+  # point never has `fix`, which only Core writes (`Apiary.Stages.Points`).
+  defp points(points) when is_list(points),
+    do: for(%{} = point <- points, do: Map.take(point, ~w(text action question)))
+
+  defp points(_none), do: nil
+
   defp verdict("passed"), do: :passed
   defp verdict("changes-requested"), do: :changes_requested
   defp verdict("escalate"), do: :escalate
   defp verdict(_none), do: nil
 
-  # Why a run ended before it started, by its end cause (`Apiary.Dispatches.DispatchRun`),
-  # the end of the sentence `stop_cause/1` shows.
-  # stop_cause/3 is why `run` stopped, as an escalation shows it (`StopCause.text/3`).
-  @doc false
-  @spec stop_cause(DispatchRun.t(), WorkItem.t(), StopCause.context()) :: String.t()
-  def stop_cause(run, work_item, context \\ %{}), do: StopCause.text(run, work_item, context)
+  # The point of why `run` stopped, with its fix where it has one
+  # (`Apiary.Stages.StopCause.parts/3`, `Apiary.Stages.Points.run_stopped/2`).
+  defp stopped_points(run, work_item, context) do
+    {cause, fix} = StopCause.parts(run, work_item, context)
+    Points.run_stopped(cause, fix)
+  end
 
-  # The questions of a `questions` version that wait for an answer, as the gaps of an
-  # escalation and the questions a stage waits on show them: the text of each, one after
-  # the other.
+  # The questions of a `questions` version that wait for an answer, as the questions a
+  # stage waits on show them: the text of each, one after the other.
   defp question_texts(questions) do
     questions
     |> List.wrap()
@@ -1697,9 +2070,14 @@ defmodule Apiary.Stages do
   end
 
   # The open escalation of the work item, stored now for a work item that the migration
-  # placing open work items placed as escalated without one; else `{:error, :not_escalated}`.
+  # placing open work items placed as escalated without one; else `{:error, :not_escalated}`,
+  # as for a stage that waits for answers with an escalation open: open questions come
+  # first.
   defp escalation!(work_item, version, stage) do
     cond do
+      work_item.stage_state != :escalated ->
+        {:error, :not_escalated}
+
       escalation = open_escalation(work_item) ->
         escalation
 
@@ -1759,14 +2137,19 @@ defmodule Apiary.Stages do
     :ok
   end
 
-  defp escalation_map(nil), do: nil
+  defp escalation_map(nil, _work_item, _stage, _outputs, _artifacts), do: nil
 
-  defp escalation_map(%Escalation{} = escalation) do
+  defp escalation_map(%Escalation{} = escalation, work_item, stage, outputs, artifacts) do
     run = escalation.run_id && Repo.get(DispatchRun, escalation.run_id)
+    # A run that ended before its record kept whether it is a run of Explore reads it as
+    # `explore_run?/1` does, with nothing written.
+    run = run && %{run | explore: explore_run?(run)}
+    stopped = run_stopped?(run, artifacts)
 
     %{
       cause: escalation.cause,
-      gaps: escalation.gaps,
+      points: shown_points(escalation, run, stopped, work_item, stage, outputs),
+      no_verdict: escalation.cause == :run_stopped and is_struct(run) and not stopped,
       round: escalation.round,
       run: run && %{id: run.id, attempt: run.attempt, workflow: run.workflow},
       build_run: build_run(run, escalation),
@@ -1774,6 +2157,96 @@ defmodule Apiary.Stages do
       inserted_at: escalation.inserted_at
     }
   end
+
+  # The escalation's points. An escalation with none (one open when points replaced its
+  # gaps, or `placed_escalation/3`) shows the points the stage runner writes for its cause
+  # (`Apiary.Stages.Runner`), from what the stage reads now: the round limit, with the
+  # failed checks where the work item is past the sequence's end; the failed checks (none
+  # where every output exists now, as the failed types are not kept); why the run stopped
+  # (`run_stopped?/2`), with no claim context (`stopped_run_points/2`); else no verdict,
+  # also with no run. A run's `escalate` with no points shows none.
+  defp shown_points(
+         %Escalation{points: [_ | _] = points},
+         _run,
+         _stopped,
+         _work_item,
+         _stage,
+         _outputs
+       ),
+       do: points
+
+  defp shown_points(
+         %Escalation{cause: :round_limit, round: round},
+         _run,
+         _stopped,
+         work_item,
+         stage,
+         outputs
+       )
+       when is_integer(round) and round > 0 do
+    rounds = shown_rounds(stage, work_item.stage_entry) || round
+    checks = if past_end?(stage, work_item), do: missing(outputs), else: []
+    Points.round_limit(round, rounds) ++ Points.check_failed(checks)
+  end
+
+  defp shown_points(
+         %Escalation{cause: :check_failed},
+         _run,
+         _stopped,
+         _work_item,
+         _stage,
+         outputs
+       ),
+       do: Points.check_failed(missing(outputs))
+
+  defp shown_points(%Escalation{cause: :run_stopped}, run, stopped, work_item, _stage, _outputs) do
+    if stopped,
+      do: stopped_run_points(run, work_item),
+      else: Points.no_verdict()
+  end
+
+  defp shown_points(_escalation, _run, _stopped, _work_item, _stage, _outputs), do: []
+
+  # Whether the work item is past its sequence's last entry, where the stage runner runs
+  # the checks (`Runner.at_end?/2`): a loop that reaches its round limit there writes the
+  # failed checks with it, one that reaches it in its body does not.
+  defp past_end?(stage, %WorkItem{stage_entry: entry}) when is_integer(entry),
+    do: Runner.at_end?(stage, %{entry: entry})
+
+  defp past_end?(_stage, _work_item), do: false
+
+  # Whether the escalation's run stopped as the stage runner read its end: a run with no
+  # end did not; a run of a workflow other than Explore that ended by its exit and pushed
+  # a verdict named `main` ended with that verdict (`reported_result/2`), so its
+  # `run_stopped` is one of no verdict; else `stopped?/1`. `artifacts` is the work item's
+  # artifacts with their versions (`Artifacts.list/1`).
+  defp run_stopped?(%DispatchRun{end_cause: nil}, _artifacts), do: false
+
+  defp run_stopped?(%DispatchRun{explore: false, end_cause: :run_ended} = run, artifacts),
+    do: not pushed_verdict?(run, artifacts) and stopped?(run)
+
+  defp run_stopped?(%DispatchRun{} = run, _artifacts), do: stopped?(run)
+  defp run_stopped?(nil, _artifacts), do: false
+
+  defp pushed_verdict?(%DispatchRun{id: id}, artifacts) do
+    Enum.any?(artifacts, fn artifact ->
+      artifact.type == "verdict" and artifact.name == "main" and
+        Enum.any?(artifact.versions, &(&1.run_id == id))
+    end)
+  end
+
+  # The point of why `run` stopped, as its end wrote it: for a run of Explore that pushed a
+  # proposal before its registered run failed, the proposal's version
+  # (`explore_result/3`); else its stop cause, without the claim's gateway and keys, which
+  # the run does not keep (`stopped_points/3`).
+  defp stopped_run_points(%DispatchRun{explore: true} = run, work_item) do
+    case failed_proposal(run) do
+      nil -> stopped_points(run, work_item, %{})
+      version -> Points.run_stopped(StopCause.failed_after_proposal(version), nil)
+    end
+  end
+
+  defp stopped_run_points(run, work_item), do: stopped_points(run, work_item, %{})
 
   # For a run that stopped because its environment's build failed, the public id of the
   # run whose page has the build's log (`StopCause.build_run/1`); nil otherwise.
@@ -1928,7 +2401,8 @@ defmodule Apiary.Stages do
     end)
   end
 
-  # A stage that waits for a workflow shows why; any other, its gaps.
+  # A stage that waits for a workflow shows why; any other with no escalation, the gaps
+  # of the failed checks that started its round. An escalation has its points instead.
   defp shown_gaps(nil, %WorkItem{stage_state: :waiting_workflow} = work_item, stage, artifacts) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
@@ -1962,15 +2436,16 @@ defmodule Apiary.Stages do
   @doc false
   @spec not_in_qory(String.t(), String.t()) :: String.t()
   def not_in_qory(stage, workflow) do
-    "#{stage} uses #{workflow}, which the Qory harness does not list. " <>
-      "Choose another workflow for #{stage}, or choose a harness that lists #{workflow} " <>
-      "under workflows on the Workflow page."
+    "Choose another workflow for #{stage} in Workspace settings › Workflows. " <>
+      "To keep #{workflow}, change the harness in Workspace settings › Harness to one " <>
+      "that lists it under workflows. #{stage} uses #{workflow}, which the Qory harness " <>
+      "does not list."
   end
 
-  defp gaps(%Escalation{gaps: gaps}, _work_item, _stage, _artifacts), do: gaps
+  defp gaps(%Escalation{}, _work_item, _stage, _artifacts), do: nil
 
-  # With no escalation, the newer of the failed checks that started the round and the
-  # stage's newest verdict.
+  # With no escalation, the failed checks that started the round, unless the stage made
+  # a verdict after them.
   defp gaps(nil, work_item, stage, artifacts) do
     check =
       Repo.one(
@@ -1983,21 +2458,10 @@ defmodule Apiary.Stages do
 
     verdict = newest_made_in(artifacts, "verdict", stage["id"])
 
-    cond do
-      check &&
-          (is_nil(verdict) or DateTime.compare(check.inserted_at, verdict.inserted_at) == :gt) ->
-        check.gaps
-
-      verdict ->
-        text((Artifacts.read_json(verdict) || %{})["gaps"])
-
-      true ->
-        nil
-    end
+    if check &&
+         (is_nil(verdict) or DateTime.compare(check.inserted_at, verdict.inserted_at) == :gt),
+       do: check.gaps
   end
-
-  defp text(text) when is_binary(text), do: text
-  defp text(_other), do: nil
 
   defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)

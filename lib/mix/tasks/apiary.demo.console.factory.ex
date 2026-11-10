@@ -33,7 +33,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   #     scope.
   #
   # Dana also stores the stack of Main's explore runs with `Apiary.Stacks.put_stack/3`,
-  # not through Workspace settings › Workflow, as that page reads the workflows of a
+  # not through Workspace settings › Harness, as that page reads the workflows of a
   # stack through an adapter before its save (`Apiary.Stacks.Sources.save/3`) stores the
   # one chosen: the workflow `hello` at the workspace, with a harness document that
   # extends the stack `examples/hello` of qory's repository at one commit, as that page's
@@ -44,7 +44,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   # The key pair each adapter enrols is made here and kept in memory only: its secret
   # signs the enrolment's proof and the connect return, and is then dropped.
   #
-  # Left out: a claim of a run (`Apiary.Dispatches.claim/3`) needs a gateway with a key,
+  # Left out: a claim of a run (`Apiary.Dispatches.claim/4`) needs a gateway with a key,
   # which the demo has none of, so no run is claimed, ends or gives a result, and no work item
   # waits for an answer, waits at Confirm, is confirmed or is sent to Explore again: each
   # of those needs a run that ended.
@@ -73,12 +73,12 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
   @grant_ref "G_acme"
 
   # The workflow of Main's explore runs, and its harness document: it extends the stack
-  # `examples/hello` of qory's repository at one commit.
+  # `examples/hello` of qory's repository on the branch `main`.
   @workflow "hello"
   @harness """
   extends:
     git: https://github.com/qoryai/qory
-    ref: fd0a7da85ca956469a0113daeb4b44f938d82019
+    ref: main
     path: examples/hello
   """
 

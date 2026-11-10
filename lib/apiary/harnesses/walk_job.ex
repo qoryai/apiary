@@ -12,7 +12,7 @@ defmodule Apiary.Harnesses.WalkJob do
   # The job walks the run's harness while the row is pending and the run waits, and
   # writes the result on the row, the row held `FOR UPDATE`. A walk that failed ends the
   # run before it starts, `harness_unresolved` (`fail/3`); a claim takes no run whose walk
-  # has not resolved (`Apiary.Dispatches.waiting_query/1`). A walk that timed out or
+  # has not resolved (`Apiary.Dispatches.waiting_query/2`). A walk that timed out or
   # reached no adapter, or no public repository's host, is tried again after 10 seconds,
   # then after 30; after the third attempt it fails `adapter_unavailable`, or
   # `source_unreachable` for a host. A refusal is not tried again. A job that
@@ -174,6 +174,7 @@ defmodule Apiary.Harnesses.WalkJob do
       target_version: walked.target_version,
       document: walked.document,
       stack_id: walked.stack_id,
+      ref_kind: Map.get(walked, :ref_kind),
       owner_organisation_id: walked.owner_organisation_id,
       harness_hidden: walked.harness_hidden,
       pins: walked.pins,
@@ -277,6 +278,8 @@ defmodule Apiary.Harnesses.WalkJob do
         ),
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
+
+    _ended = Apiary.Dispatches.Queued.ended([run.id], now)
 
     if failure.call_failure, do: :ok = Calls.record_failure(Repo, run, failure.call_failure)
 

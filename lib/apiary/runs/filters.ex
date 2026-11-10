@@ -37,10 +37,15 @@ defmodule Apiary.Runs.Filters do
   target holds it; the destinations whose host or path holds it. `apply_query/3` reads what
   the reader typed: `qualifier:value` words set the filters the URL carries (`repo:` or
   `target:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`, its older word),
-  `item:`, `started:` and `denied:` on the runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
+  `machine-type:`, `item:`, `started:` and `denied:` on the runs list; `repo:`, `host:`,
+  `decision:`, `tools:` and `seen:` on the connections), and
   the other words are `q`. A value in double quotes may hold spaces. A word whose qualifier
   the page does not know is free text; a qualifier it knows with a value it cannot read is
   refused and named. `tokens/2` writes the filters back as those words.
+
+  `machine_type` is the key of a machine type (`machine_type=large`, typed
+  `machine-type:large`): the runs whose run of the queue was queued on that type
+  (`Apiary.MachineTypes`). `machine:` means a node.
 
   `item` is a work item's number in the workspace (`item=3`, typed `item:3` or `item:#3`):
   the runs of its runs of the queue.
@@ -60,7 +65,7 @@ defmodule Apiary.Runs.Filters do
   # go in a URL: `state=failed,lost`. The families runs are counted in (`Apiary.Runs.Run`):
   # one definition.
   @families [
-    %{key: "alive", label: gettext_noop("Alive"), states: Run.alive_states()},
+    %{key: "alive", label: gettext_noop("Alive"), states: ["queued" | Run.alive_states()]},
     %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
     %{key: "cancelled", label: gettext_noop("Cancelled"), states: Run.cancelled_states()},
     %{key: "ended_badly", label: gettext_noop("Ended badly"), states: Run.ended_badly_states()}
@@ -97,6 +102,7 @@ defmodule Apiary.Runs.Filters do
       "host" => :host,
       "machine" => :node,
       "node" => :node,
+      "machine-type" => :machine_type,
       "item" => :item,
       "started" => :started,
       "denied" => :denied,
@@ -120,6 +126,7 @@ defmodule Apiary.Runs.Filters do
             runtime: nil,
             host: nil,
             node: nil,
+            machine_type: nil,
             item: nil,
             q: nil,
             since: "all",
@@ -146,6 +153,7 @@ defmodule Apiary.Runs.Filters do
           runtime: nil | String.t(),
           host: nil | String.t(),
           node: nil | String.t(),
+          machine_type: nil | String.t(),
           item: nil | pos_integer(),
           q: nil | String.t(),
           since: nil | String.t(),
@@ -277,6 +285,7 @@ defmodule Apiary.Runs.Filters do
         {per, d12} = read(params, "per", &per/1)
         {node, d13} = read(params, "node", &text/1)
         {item, d14} = read(params, "item", &item/1)
+        {machine_type, d15} = read(params, "machine_type", &text/1)
 
         %{
           filters
@@ -284,9 +293,10 @@ defmodule Apiary.Runs.Filters do
             runtime: runtime,
             denials: denials == true,
             node: node,
+            machine_type: machine_type,
             item: item,
             per: per || @default_per,
-            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13 ++ d14
+            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13 ++ d14 ++ d15
         }
 
       :connections ->
@@ -326,6 +336,7 @@ defmodule Apiary.Runs.Filters do
       {"runtime", f.runtime},
       {"host", f.host},
       {"node", f.node},
+      {"machine_type", f.machine_type},
       {"item", f.item && Integer.to_string(f.item)},
       {"q", q_param(f)},
       {"since", f.since not in [nil, @default_since[kind]] && f.since},
@@ -348,7 +359,8 @@ defmodule Apiary.Runs.Filters do
   """
   def any?(%__MODULE__{kind: kind} = f) do
     f.states != [] or f.target != nil or f.runtime != nil or f.host != nil or f.node != nil or
-      f.item != nil or f.q != nil or f.since != @default_since[kind] or f.denials or
+      f.machine_type != nil or f.item != nil or f.q != nil or f.since != @default_since[kind] or
+      f.denials or
       f.decision != nil or
       f.tools
   end
@@ -412,7 +424,7 @@ defmodule Apiary.Runs.Filters do
             _other -> current
           end
 
-        name when name in ~w(runtime host node item) ->
+        name when name in ~w(runtime host node machine_type item) ->
           Map.merge(current, Map.take(form, [name]))
 
         name when name in ~w(denials tools) ->
@@ -506,7 +518,7 @@ defmodule Apiary.Runs.Filters do
   end
 
   defp qualifier(word, kind) do
-    with [_, name, value] <- Regex.run(~r/\A([A-Za-z]+):(.*)\z/su, word),
+    with [_, name, value] <- Regex.run(~r/\A([A-Za-z][A-Za-z-]*):(.*)\z/su, word),
          qualifier when not is_nil(qualifier) <- @qualifiers[kind][String.downcase(name)] do
       {qualifier, unquote_word(value)}
     else
@@ -538,7 +550,7 @@ defmodule Apiary.Runs.Filters do
       |> Enum.map(&(&1 |> String.downcase() |> String.replace(~r/[\s-]/, "_")))
       |> Enum.map(fn word ->
         cond do
-          word in Run.states() -> [word]
+          word in Run.shown_states() -> [word]
           states = family_states(word) -> states
           true -> nil
         end
@@ -549,7 +561,8 @@ defmodule Apiary.Runs.Filters do
       else: :error
   end
 
-  defp query_params(name, value, _kind, _resolve) when name in [:runtime, :host, :node] do
+  defp query_params(name, value, _kind, _resolve)
+       when name in [:runtime, :host, :node, :machine_type] do
     if text(value),
       do: {:ok, [Atom.to_string(name)], %{Atom.to_string(name) => value}},
       else: :error
@@ -588,7 +601,7 @@ defmodule Apiary.Runs.Filters do
   end
 
   # The states in the order every page lists them.
-  defp order(states), do: Run.states() |> Enum.filter(&(&1 in states)) |> Enum.join(",")
+  defp order(states), do: Run.shown_states() |> Enum.filter(&(&1 in states)) |> Enum.join(",")
 
   defp yes_no(value) do
     case String.downcase(value) do
@@ -671,7 +684,8 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The filters as the query writes them, one token each, in the order the page shows them:
   `%{key:, value:, without:}`, `key` the qualifier (`:target`, `:state`,
-  `:runtime`, `:host`, `:node`, `:item`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
+  `:runtime`, `:host`, `:node`, `:machine_type`, `:item`, `:started`, `:denied`,
+  `:decision`, `:tools`), `value` what
   follows it (quoted when it holds a space), `without` the filters with it removed, nil
   for the connections' widest window, which cannot be. The free text is not a token, nor
   is a default but the connections' window, which is always said. `target_text:` writes a target (by default
@@ -689,6 +703,7 @@ defmodule Apiary.Runs.Filters do
       {:runtime, f.runtime, [runtime: nil]},
       {:host, f.host, [host: nil]},
       {:node, f.node, [node: nil]},
+      {:machine_type, f.machine_type, [machine_type: nil]},
       {:item, f.item && Integer.to_string(f.item), [item: nil]},
       {:decision, f.decision, [decision: nil]},
       {:started, range_text(f), range_without(f)},
@@ -944,7 +959,7 @@ defmodule Apiary.Runs.Filters do
           |> String.split(",", trim: true)
           |> Enum.uniq()
 
-        known = Enum.filter(Run.states(), &(&1 in chosen))
+        known = Enum.filter(Run.shown_states(), &(&1 in chosen))
         {known, if(length(known) == length(chosen) and chosen != [], do: [], else: ["state"])}
 
       {:ok, _other} ->

@@ -73,6 +73,22 @@ defmodule Apiary.Sources.Ingest do
   # marked and was updated before `complete.since` is marked deleted, and keeps
   # `complete.since`.
   #
+  # **A member's comment** (one with a `comment_id`, written in Qory Apiary) is never
+  # written over by a sent comment and never marked deleted. A sent comment with its
+  # `comment_id` is its echo, the comment the adapter posted for it: the member's comment
+  # takes the sent ref, URL and `updated_at`, becomes `:posted`, and keeps its text and
+  # name; a comment the adapter sent earlier with that ref and no `comment_id` is the same
+  # comment, and is deleted, so no second row stays. Once the member's comment has a ref,
+  # an echo with another ref changes nothing, and an echo with the ref of another member's
+  # posted comment changes neither comment. An echo sent `deleted`, or a comment sent
+  # `deleted` without `comment_id` with the ref of a member's posted comment, clears that
+  # comment's ref and URL and marks it `:not_posted` for `:deleted_at_source`; any other
+  # sent comment with that ref changes nothing. A `comment_id` of no member's comment of
+  # the item is left out, and the comment is kept as any other. With `complete`, a posted
+  # member's comment whose ref the body leaves out, updated before `complete.since`, is
+  # cleared the same way. Once a change to a member's comment commits, the work items of
+  # its ticket are told too (`Apiary.Sources.Posts.work_items/1`).
+  #
   # **Locks.** For items, in this order: the collection's connection, `FOR NO KEY
   # UPDATE`, so that one connection's posts and listings of collections are taken one at a
   # time and never beside its end, while a foreign key check on the connection
@@ -106,7 +122,7 @@ defmodule Apiary.Sources.Ingest do
   alias Apiary.{Dispatches, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Collections, Connection, Connections}
-  alias Apiary.Sources.{Comment, Item, Listing, Wire}
+  alias Apiary.Sources.{Comment, Item, Listing, Posts, Wire}
   alias Apiary.WorkItems
   alias Apiary.WorkItems.WorkItem
 
@@ -606,18 +622,22 @@ defmodule Apiary.Sources.Ingest do
   # module says: `{:ok, changed}` once it commits, or `{:error, refusal}`.
   @spec comments(Scope.t() | nil, Wire.comments()) :: {:ok, changed} | {:error, refusal}
   def comments(key_scope, %{item_ref: ref, comments: comments, complete: complete}) do
-    with {:ok, rows} <- comment_rows(comments) do
-      Repo.transact(fn ->
-        with {:ok, adapter_id} <- Connections.key_rights(key_scope, @action),
-             {:ok, collection, item} <- hold_item(key_scope, adapter_id, bounded(ref)) do
-          {:ok, put_comments(collection, item, rows, complete)}
-        end
-      end)
+    with {:ok, rows} <- comment_rows(comments),
+         {:ok, {changed, members_of}} <-
+           Repo.transact(fn ->
+             with {:ok, adapter_id} <- Connections.key_rights(key_scope, @action),
+                  {:ok, collection, item} <- hold_item(key_scope, adapter_id, bounded(ref)) do
+               {:ok, put_comments(collection, item, rows, complete)}
+             end
+           end) do
+      Posts.work_items(members_of)
+      {:ok, changed}
     end
   end
 
-  # The comments as the table holds them, each with whether it was sent deleted, by ref;
-  # `{:error, :invalid}` for one it would not hold.
+  # The comments as rows of the table, each with whether it was sent deleted and its
+  # `comment_id`, nil for none, by ref;
+  # `{:error, :invalid}` for one the table refuses.
   defp comment_rows(comments) do
     changesets =
       Enum.map(comments, fn comment ->
@@ -631,17 +651,17 @@ defmodule Apiary.Sources.Ingest do
            truncated: comment.truncated,
            source_created_at: comment.created_at,
            source_updated_at: comment.updated_at
-         }), comment.deleted}
+         }), comment.deleted, comment.comment_id}
       end)
 
-    if Enum.all?(changesets, fn {changeset, _deleted} -> changeset.valid? end),
+    if Enum.all?(changesets, fn {changeset, _deleted, _id} -> changeset.valid? end),
       do:
         {:ok,
          changesets
-         |> Enum.map(fn {changeset, deleted} ->
-           {Ecto.Changeset.apply_changes(changeset), deleted}
+         |> Enum.map(fn {changeset, deleted, comment_id} ->
+           {Ecto.Changeset.apply_changes(changeset), deleted, comment_id}
          end)
-         |> Enum.sort_by(fn {row, _deleted} -> row.external_ref end)},
+         |> Enum.sort_by(fn {row, _deleted, _id} -> row.external_ref end)},
       else: {:error, :invalid}
   end
 
@@ -707,12 +727,144 @@ defmodule Apiary.Sources.Ingest do
 
   defp put_comments(%Collection{} = collection, %Item{} = item, rows, complete) do
     now = DateTime.utc_now()
+    members = members(item)
+    {echoes, rows} = Enum.split_with(rows, &member_echo?(&1, members))
+    echoed = Enum.sum_by(echoes, &echo(item, &1, members, now))
     written = upsert_comments(item, rows, now)
-    marked = if complete, do: mark_others(item, rows, complete.since, now), else: 0
+    refs = Enum.map(echoes ++ rows, fn {row, _deleted, _id} -> row.external_ref end)
 
-    if written > 0 or marked > 0,
-      do: add(%{}, collection.workspace_id, [item.public_id]),
-      else: %{}
+    {marked, cleared} =
+      if complete,
+        do:
+          {mark_others(item, refs, complete.since, now),
+           clear_left_out(item, refs, complete.since, now)},
+        else: {0, 0}
+
+    changed =
+      if echoed + written + marked + cleared > 0,
+        do: add(%{}, collection.workspace_id, [item.public_id]),
+        else: %{}
+
+    # A member's comment that changed shows on the Ticket tab of the ticket's work items.
+    {changed, if(echoed + cleared > 0, do: [item.id], else: [])}
+  end
+
+  # The comments members wrote on `item` in Qory Apiary, held by the item's lock.
+  defp members(%Item{id: item_id}),
+    do: Repo.all(from c in Comment, where: c.item_id == ^item_id and not is_nil(c.comment_id))
+
+  # Whether a sent comment is about a member's comment, which it never writes over: one
+  # with the `comment_id` of a member's comment of the item, or one with the ref of a
+  # member's comment that was posted.
+  defp member_echo?({row, _deleted, comment_id}, members) do
+    Enum.any?(members, fn member ->
+      (comment_id != nil and member.comment_id == comment_id) or
+        member.external_ref == row.external_ref
+    end)
+  end
+
+  # A sent comment about a member's comment (`member_echo?/2`), as in the moduledoc: 1 when
+  # it changed the member's comment, 0 otherwise. The member's comment is read again
+  # here, so an echo sees what an earlier one of the same body wrote.
+  defp echo(item, {row, deleted, comment_id}, members, now) do
+    case Enum.find(members, &(comment_id != nil and &1.comment_id == comment_id)) do
+      %Comment{id: id} -> echo_of(item, Repo.get!(Comment, id), row, deleted, now)
+      nil when deleted -> item |> posted_with(row.external_ref) |> clear(row, now)
+      nil -> 0
+    end
+  end
+
+  # The comment is posted with another ref: the first one stays.
+  defp echo_of(_item, %Comment{external_ref: ref}, row, _deleted, _now)
+       when ref != nil and ref != row.external_ref,
+       do: 0
+
+  defp echo_of(_item, member, row, true, now), do: clear(member, row, now)
+
+  # Another member's comment of the item is posted with the sent ref: that comment and
+  # its ref stay, and nothing is stored for the sent comment, as for another ref above.
+  defp echo_of(item, %Comment{id: id} = member, row, false, now) do
+    case posted_with(item, row.external_ref) do
+      %Comment{id: other} when other != id -> 0
+      _same_or_none -> posted(item, member, row, now)
+    end
+  end
+
+  # The member's comment of `item` posted with the ref `ref`, nil for none.
+  defp posted_with(%Item{id: item_id}, ref) do
+    Repo.one(
+      from c in Comment,
+        where: c.item_id == ^item_id and c.external_ref == ^ref and not is_nil(c.comment_id)
+    )
+  end
+
+  # The member's comment posted at its source as the sent comment: its ref, its URL and
+  # its time, its text and name kept. A comment the adapter sent earlier with that ref,
+  # without `comment_id`, is the same comment, and is deleted.
+  defp posted(%Item{id: item_id}, %Comment{id: id}, row, now) do
+    Repo.delete_all(
+      from c in Comment,
+        where: c.item_id == ^item_id and c.external_ref == ^row.external_ref,
+        where: is_nil(c.comment_id)
+    )
+
+    {count, _} =
+      Repo.update_all(from(c in Comment, where: c.id == ^id),
+        set: [
+          external_ref: row.external_ref,
+          url: row.url,
+          source_updated_at: row.source_updated_at,
+          post_state: :posted,
+          post_failure: nil,
+          updated_at: now
+        ]
+      )
+
+    count
+  end
+
+  # The member's comment deleted at its source, as the sent comment `row` shows: kept, its
+  # ref and URL cleared, not posted, for `:deleted_at_source`, with the sent comment's
+  # time.
+  defp clear(nil, _row, _now), do: 0
+
+  defp clear(%Comment{id: id}, row, now) do
+    {count, _} =
+      Repo.update_all(from(c in Comment, where: c.id == ^id),
+        set: [
+          external_ref: nil,
+          url: nil,
+          source_updated_at: row.source_updated_at,
+          post_state: :not_posted,
+          post_failure: :deleted_at_source,
+          updated_at: now
+        ]
+      )
+
+    count
+  end
+
+  # Clears, as `clear/3` does but keeping its time, every posted member's comment of
+  # `item` whose ref is not among the body's refs, updated before `since`. How many were
+  # cleared.
+  defp clear_left_out(%Item{id: item_id}, refs, since, now) do
+    {count, _} =
+      Repo.update_all(
+        from(c in Comment,
+          where: c.item_id == ^item_id and not is_nil(c.comment_id),
+          where: not is_nil(c.external_ref) and c.external_ref not in ^refs,
+          where: c.source_updated_at < ^since
+        ),
+        set: [
+          external_ref: nil,
+          url: nil,
+          post_state: :not_posted,
+          post_failure: :deleted_at_source,
+          updated_at: now
+        ]
+      )
+
+    count
   end
 
   # One statement for the body's comments: each made, or written over the one kept when
@@ -722,7 +874,7 @@ defmodule Apiary.Sources.Ingest do
 
   defp upsert_comments(%Item{} = item, rows, now) do
     rows =
-      for {%Comment{} = row, deleted} <- rows do
+      for {%Comment{} = row, deleted, _comment_id} <- rows do
         %{
           id: Ecto.UUID.generate(),
           organisation_id: item.organisation_id,
@@ -780,14 +932,16 @@ defmodule Apiary.Sources.Ingest do
   end
 
   # Marks deleted every comment of `item` the body did not name, not marked yet, and
-  # updated before `since`, each keeping `since`. How many were marked.
-  defp mark_others(%Item{id: item_id}, rows, since, now) do
-    refs = Enum.map(rows, fn {row, _deleted} -> row.external_ref end)
-
+  # updated before `since`, each keeping `since`. How many were marked. A comment a member
+  # wrote in Qory Apiary, one with a `comment_id`, is never marked, posted or not: one
+  # with no ref is in no set the adapter sends, and an empty list of refs would mark it,
+  # as `NOT (NULL = ANY('{}'))` is true.
+  defp mark_others(%Item{id: item_id}, refs, since, now) do
     {count, _} =
       Repo.update_all(
         from(c in Comment,
           where: c.item_id == ^item_id and is_nil(c.deleted_at),
+          where: is_nil(c.comment_id),
           where: c.source_updated_at < ^since and c.external_ref not in ^refs
         ),
         set: [deleted_at: now, deleted_by_complete_at: since, updated_at: now]

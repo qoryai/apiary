@@ -498,6 +498,68 @@ defmodule Apiary.Adapters.CollectionsAssignTest do
       end
     end
 
+    test "the order with some collections sorted as assigned, paged the same way; the count unchanged",
+         ctx do
+      {:ok, :accepted} = post(ctx, titled(refs(1, 4)))
+
+      {:ok, 2} =
+        Collections.assign_collections(
+          ctx.scope,
+          ctx.connection,
+          ids(ctx, ["R001", "R002"]),
+          ctx.workspace
+        )
+
+      as_assigned = ids(ctx, ["R003"])
+      list = &Collections.list_collections(ctx.scope, ctx.connection, &1)
+      public_id = &Repo.get!(Collection, id(ctx, &1)).public_id
+      title = &("Title of " <> &1)
+
+      assert names(list.(order: :unassigned_first)) == Enum.map(~w(R003 R004 R001 R002), title)
+
+      assert names(list.(order: :unassigned_first, sort_as_assigned: as_assigned)) ==
+               Enum.map(~w(R004 R001 R002 R003), title)
+
+      assert names(
+               list.(
+                 order: :unassigned_first,
+                 sort_as_assigned: as_assigned,
+                 after: public_id.("R002")
+               )
+             ) == [title.("R003")]
+
+      assert names(
+               list.(
+                 order: :unassigned_first,
+                 sort_as_assigned: as_assigned,
+                 after: public_id.("R004")
+               )
+             ) == Enum.map(~w(R001 R002 R003), title)
+
+      # Past the last row, sorted as assigned: nothing, and not the rows linked to none.
+      assert list.(
+               order: :unassigned_first,
+               sort_as_assigned: as_assigned,
+               after: public_id.("R003")
+             ) == []
+
+      assert names(list.(order: :unassigned_first, sort_as_assigned: [])) ==
+               Enum.map(~w(R003 R004 R001 R002), title)
+
+      assert list.(order: :title, sort_as_assigned: as_assigned) == list.(order: :title)
+
+      assert Collections.count_collections(ctx.scope, ctx.connection,
+               view: :unassigned,
+               sort_as_assigned: as_assigned
+             ) == 2
+
+      for value <- [nil, "R003", %{}] do
+        assert_raise ArgumentError, "sort_as_assigned is a list of collection ids", fn ->
+          list.(order: :unassigned_first, sort_as_assigned: value)
+        end
+      end
+    end
+
     test "the listing-complete marker: kept from the first listing that completes", ctx do
       refute Collections.listing_complete?(Repo.get!(Connection, ctx.connection.id))
       {:ok, :accepted} = post(ctx, titled(["A"]))

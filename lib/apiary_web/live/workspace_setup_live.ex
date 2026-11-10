@@ -137,7 +137,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     process where the save reads a harness repository, and a refusal shows its reason
   #     under the destination; while it saves, every select is disabled. A person whom
   #     `harness.save` does not allow sees the choices and the selects disabled, and who
-  #     may. About this step has what a harness is, the order of a run's harness (a
+  #     may. About harnesses has what a harness is, the order of a run's harness (a
   #     target's root `harness.yaml` or `qory.yaml` that sets a harness first, then the
   #     stack set for the target, then the workspace's harness, then the Qory harness), and
   #     what each version means (`ApiaryWeb.HarnessComponents.about/1`);
@@ -155,9 +155,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     a pool of the workspace, its name links to its page for a person whom
   #     `access_key.create_code` allows on it. Anyone else reads who acts
   #     (`c:Apiary.Edition.machines_who_may/2`). While the workspace has no pool, a person
-  #     whom `node.create` allows on it chooses: Qory Pool, the instance's pool, chosen
-  #     first, or A pool for the workspace, with the line that the Qory Pool then stops
-  #     taking its runs, and Add pool, which makes a pool of the workspace
+  #     whom `node.create` and `node.set_limit` allow on it, as making a pool needs both,
+  #     chooses: Qory Pool, the instance's pool, chosen first, or A pool for the
+  #     workspace, with the line that the Qory Pool then stops taking its runs, and Add
+  #     pool, which makes a pool of the workspace
   #     (`Apiary.Nodes.create_node/2`) named `Apiary.WorkspaceSetup.pool_name/1`. Where
   #     another node of the workspace has that name, no pool is made, and the line under
   #     Add pool says to rename that node. Anyone else sees the instance's pool, read
@@ -184,7 +185,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     command that installs qory, with Copy. The step reads
   #     the pools again once the first outstanding code expires, and as a machine enrols
   #     a key on a pool of the workspace or a code of it is cancelled
-  #     (`Apiary.AccessKeys.subscribe/2`, once per pool). About this step has what a node
+  #     (`Apiary.AccessKeys.subscribe/2`, once per pool). About machines has what a node
   #     pool and a node are, whose runs the instance's pool and a pool of the workspace
   #     take, and why runs need a ready pool and a gateway;
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
@@ -196,7 +197,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     failed, read again as the workspace's queue and
   #     its runs change (`Apiary.Dispatches.subscribe/1`, `Apiary.Runs.subscribe/1`) and
   #     once a wait for a machine passes. Once it passed, Go to the workspace. A person
-  #     whom `work_item.take_in` does not allow sees who may. About this step has what the
+  #     whom `work_item.take_in` does not allow sees who may. About test runs has what the
   #     test run adds and when it passes, its harness (`Apiary.Harnesses.Builtin`), what it
   #     leaves alone, and that a pass finishes the set-up.
   #
@@ -238,6 +239,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     OverviewComponents,
     SetUpComponents,
     SettingsComponents,
+    SpendDialog,
     TemplateReads
   }
 
@@ -263,6 +265,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
        attempt: 0,
        test_notice: nil,
        test_form: test_form(gettext("Hi! Where are you running?")),
+       spend: nil,
        linked: nil,
        unplaced: [],
        listing: false,
@@ -278,6 +281,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
+    # A URL change closes the spend's dialog (`ApiaryWeb.SpendDialog`), confirming nothing.
+    socket = assign(socket, :spend, nil)
     scope = socket.assigns.current_scope
     organisation = scope.organisation
     creates = Access.can?(scope, :"workspace.create", organisation)
@@ -559,14 +564,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   # Each pool's line, who may act on a pool that is not ready, and who acts for anyone
-  # else. `makes_pool` is of Add pool (`node.create`); `pool_codes` has, for each pool
-  # of the workspace whose command the person may get (`access_key.create_code`), its
-  # outstanding codes and its keys. The command got stays while its code is outstanding,
-  # on a read again of the step; an entry to the step, which assigns `step` anew, starts
-  # without it. The choice and the line on a taken name stay while the workspace has no
-  # pool. `shared_line` is the line of the instance's pool, for a person who keeps the
-  # choice once the
-  # workspace has its one pool (`keeps_choice?/2`); `pool_removable` is the pool that
+  # else. `makes_pool` is of Add pool (`node.create` and `node.set_limit`, as making a
+  # pool needs both); `pool_codes` has, for each pool of the workspace whose command the
+  # person may get (`access_key.create_code`), its outstanding codes and its keys. The
+  # command got stays while its code is outstanding, on a read again of the step; an
+  # entry to the step, which assigns `step` anew, starts without it. The choice and the
+  # line on a taken name stay while the workspace has no pool. `shared_line` is the line
+  # of the instance's pool, for a person who keeps the choice once the workspace has its
+  # one pool (`keeps_choice?/2`); `pool_removable` is the pool that
   # Qory Pool offers to remove (`removable_pool/2`); the confirmation of its removal stays open
   # on a read again of the step (`pool_removing`), and an entry to the step starts with it
   # closed. The page listens to each pool of the workspace once (`pool_listened`), and reads
@@ -624,7 +629,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       qory_pool_ready: qory_pool_ready,
       qory_pool_hidden: qory_pool_hidden,
       enrols: MapSet.new(Map.keys(pool_codes)),
-      makes_pool: Access.can?(scope, :"node.create", workspace),
+      makes_pool:
+        Access.can?(scope, :"node.create", workspace) and
+          Access.can?(scope, :"node.set_limit", workspace),
       pool_codes: pool_codes,
       pool_issued: issued,
       pool_choice: pool_choice(socket, workspace_pools, qory_pool_hidden),
@@ -865,6 +872,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp harness_targets(scope, flow),
     do: HarnessTargets.targets(scope, flow.workspace, flow.domain)
+
+  # Where the harness chosen here changes later: Workspace settings › Harness, with the
+  # `workflow_model` feature or without it.
+  defp later_harness,
+    do:
+      gettext("You can change this later in Workspace settings › %{page}.",
+        page: SettingsComponents.harness_label()
+      )
 
   ## The Model step's form
 
@@ -1346,7 +1361,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           HarnessComponents.unchanged?(choice, chosen) and no_save? ->
             {:noreply, go_on(socket)}
 
-          match?({:repository, _source, _stack, _version}, choice) ->
+          # A save that reads a repository runs outside the page's process.
+          match?({:repository, _source, _stack, _version}, choice) or
+              match?({:qory, _version}, choice) ->
             {:noreply,
              socket
              |> assign(saving: true, harness_refusal: nil)
@@ -1392,19 +1409,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       when is_map(params),
       do: {:noreply, HarnessTargets.save(socket, edit, params, &target_saved/3)}
 
-  def handle_event("run_test", params, %{assigns: %{step: :test, may: true}} = socket) do
-    line =
-      case params do
-        %{"test" => %{"line" => line}} -> line
-        _other -> nil
-      end
+  def handle_event("run_test", params, %{assigns: %{step: :test, may: true}} = socket),
+    do: test_run(socket, params, :ask)
 
-    cond do
-      not is_binary(line) -> {:noreply, socket}
-      is_nil(socket.assigns.machines) -> {:noreply, reload(socket)}
-      true -> run_test(socket, line)
+  # Confirm in the spend's dialog of Run the test (`ApiaryWeb.SpendDialog`).
+  def handle_event("spend_confirm", params, %{assigns: %{step: :test, may: true}} = socket) do
+    case SpendDialog.take(socket.assigns.spend, params) do
+      {"run_test", params} -> test_run(assign(socket, :spend, nil), params, :act)
+      nil -> {:noreply, socket}
     end
   end
+
+  def handle_event("spend_cancel", _params, socket), do: {:noreply, assign(socket, :spend, nil)}
 
   # The Machines step's choice between the instance's pool and a pool for the workspace,
   # while the workspace has none.
@@ -1678,6 +1694,42 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
+  # Run the test: from a click (`:ask`) with a line, the spend's dialog opens with the
+  # line kept in the form; from its Confirm (`:act`), the test runs.
+  defp test_run(socket, params, mode) do
+    line =
+      case params do
+        %{"test" => %{"line" => line}} -> line
+        _other -> nil
+      end
+
+    cond do
+      not is_binary(line) ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns.machines) ->
+        {:noreply, reload(socket)}
+
+      # A blank line takes no test in: the field shows its error at once. Nor does a test
+      # that a machine runs: the step shows the line to wait.
+      mode == :ask and String.trim(line) != "" and socket.assigns.test_state != :running ->
+        spend =
+          SpendDialog.ask("run_test", params,
+            title: gettext("Run the test?"),
+            action: gettext("Run the test"),
+            line: SpendDialog.test_line(socket.assigns.current_scope.workspace),
+            return_to: "set-up-test-run",
+            # Lower than 170 px, so the step's field and button stay in sight above it.
+            top: 290
+          )
+
+        {:noreply, assign(socket, test_form: test_form(line), spend: spend)}
+
+      true ->
+        run_test(socket, line)
+    end
+  end
+
   defp run_test(socket, line) do
     scope = socket.assigns.current_scope
 
@@ -1864,6 +1916,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       <:crumb :if={@sub}>{connect_label(@step, has_connection?(assigns))}</:crumb>
       <:crumb :if={!@sub}>{SetUpComponents.step_label(@step)}</:crumb>
       <.flow_step {assigns} />
+      <SpendDialog.dialog :if={@spend} spend={@spend} />
     </Layouts.app>
     """
   end
@@ -1897,7 +1950,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     """
   end
 
-  # The second sentence of the step's About this step: the edition's, else the core's.
+  # The heading of the context of Work sources and Destinations, and of their Connect pages.
+  defp about(:sources), do: gettext("About work sources")
+  defp about(:destinations), do: gettext("About destinations")
+
+  # The second sentence of the context of Work sources and Destinations: the edition's,
+  # else the core's.
   defp connects_sentence(nil, organisation),
     do:
       gettext("Owners and admins of %{organisation} connect it once for the organisation.",
@@ -1954,7 +2012,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         <SetUpComponents.back steps={@steps} page={@page_path} up={@up} />
       </div>
 
-      <:context :if={Enum.any?(@unconnected, &(&1.id in @ready))}>
+      <:context :if={Enum.any?(@unconnected, &(&1.id in @ready))} about={about(@step)}>
         <.connect_help unconnected={@unconnected} ready={@ready} />
       </:context>
     </SetUpComponents.frame>
@@ -2069,7 +2127,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context>
+      <:context about={about(@step)}>
         <p :if={@step == :sources} id="set-up-what">
           {pgettext("plain", "Bring tickets in from a system such as an issue tracker.")}
           {connects_sentence(@connects_line, @flow.organisation)}
@@ -2201,7 +2259,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </p>
       <.acts :if={!@may} steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context>
+      <:context about={gettext("About models")}>
         <p id="set-up-what">
           {gettext("A model provider's key lets runs in %{workspace} call a model.",
             workspace: @flow.workspace.name
@@ -2385,7 +2443,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </.button>
       </div>
 
-      <:context>
+      <:context about={gettext("About test runs")}>
         <p id="set-up-what">
           {gettext(
             "The test run adds a test work item to %{workspace} and queues its run. The test passes once a machine takes the run and the run completes.",
@@ -2488,7 +2546,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </p>
 
         <p id="set-up-later" class="text-[13px]/5 text-muted">
-          {gettext("You can change this later in Workspace settings › Workflow.")}
+          {later_harness()}
         </p>
 
         <%!-- Continue is below the destinations' forms, which may not nest in the harness
@@ -2510,8 +2568,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </div>
 
       <.acts :if={!@may} steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
-      <:context>
-        <HarnessComponents.about />
+      <:context about={gettext("About harnesses")}>
+        <HarnessComponents.about process={Features.visible?(@current_scope, :workflow_model)} />
       </:context>
     </SetUpComponents.frame>
     """
@@ -2747,7 +2805,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context>
+      <:context about={gettext("About machines")}>
         <p id="set-up-what">
           {gettext(
             "A pool takes the waiting runs of %{workspace} and starts each run on a machine that joined the pool.",
@@ -2959,9 +3017,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp pool_state_line({:not_ready, :gateway_without_key}),
     do: gettext("Not ready: the gateway has no active key")
 
-  # The failure code of a refused save, for the page's tests: the walk's, or `limited`.
+  # The failure code of a refused save, for the page's tests: the walk's, the Qory
+  # harness's read, or `limited`.
   defp harness_refusal_code({{:walk, %{failure: failure}}, _words}), do: failure
   defp harness_refusal_code({{:limited, _seconds}, _words}), do: "limited"
+  defp harness_refusal_code({{:qory, {:ref_missing, _ref}}, _words}), do: "qory_ref_missing"
+  defp harness_refusal_code({{:qory, {:unreadable, _cause, _hop}}, _words}), do: "qory_unreadable"
   defp harness_refusal_code({:shared, _words}), do: "shared"
   defp harness_refusal_code(_refusal), do: nil
 

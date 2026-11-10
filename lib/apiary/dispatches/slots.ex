@@ -2,13 +2,53 @@ defmodule Apiary.Dispatches.Slots do
   @moduledoc false
 
   # The slots of a node pool's instance limit its claims take (the provisioner contract's
-  # `claim.schema.json`): each dispatch takes one at its claim, and its slot is freed
-  # once, at the first of its release (`Apiary.Dispatches.Release`), the lapse of its
-  # lease before its handover, its end before its handover because its work item was
-  # closed or undone, or its run's end.
-  # A dispatch holds its slot while `slot_freed_at` is nil, and `slot_freed_at` is set
-  # once: every write here sets it only where it is nil, so a slot freed twice keeps the
-  # first time.
+  # `claim.schema.json`): each dispatch takes one at its claim. A pool's limit counts the
+  # machines that may exist, so a dispatch for which a machine was made holds its slot
+  # until the starter reports that machine `gone` (`Apiary.Dispatches.MachineEnds`).
+  # A dispatch holds its slot while `slot_freed_at` is nil. Every free here sets it only
+  # where it is nil, so a second free while the slot is freed changes nothing;
+  # `hold_again/2` sets it back to nil, and the next free writes the time of that free.
+  #
+  # **The rule, in one place: `due/2`.** A held slot is due to be freed once its dispatch
+  # is done, ended or stale, and no machine is left for it: none was made, or the starter
+  # reported it `gone`. A machine was made for a dispatch when its `dispatched` came
+  # (`dispatched_at`), it was handed over (`handed_over_at`, also at a redemption of its
+  # run code), the starter reported its machine's end (`machine_end_state`), or a machine
+  # showed up too late (`late_machine_at`, `late_machine/2`); and for a stale dispatch
+  # whose slot is held, as only `hold_again/2` holds a stale dispatch's slot. A `gone`
+  # with no report and no `dispatched` before it frees the slot as any `gone` does. Every
+  # path that ends a dispatch frees through `due/2`: its release (`free_slot/2`,
+  # `Apiary.Dispatches.Release`), its end before its handover because its work item was
+  # closed or undone or its run could not be formed, and its run's end, the lost-run check
+  # and a machine stopped among them (`free/3`, through `free_due/2`). So does a report of
+  # `gone` (`free_slot/2`). A slot not due waits for that report.
+  #
+  # **The safety net.** A dispatch done or handed over whose slot is still held has it
+  # freed once the latest of its `dispatched_at`, its `handed_over_at` (a redemption of
+  # its run code hands it over with no `dispatched`), its `machine_end_at` (its last
+  # report) and its `late_machine_at` is `@net_minutes`, 60, past its machine's
+  # lifetime, the claim answer's `max_lifetime_minutes`: 90 for a prebuild, else 1470
+  # (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`, read again from the
+  # step of its run of the queue, which never changes). A dispatch with none of the four
+  # counts from its `claimed_at`, which is earlier than any of them. The starter deletes
+  # a machine at
+  # the end of its lifetime, so a slot past the net counts a machine whose `gone` was
+  # lost. The sweep, every minute (`Apiary.Dispatches.Sweep`), and every claim run the
+  # net through `free/3`. A `gone` after the net is kept and frees nothing more; a
+  # `deleting` or `delete_failed` after it takes the slot back, as after a lapse, until
+  # the net passes again from that report's time.
+  #
+  # **A lapse frees at once.** The lapse of a lease before its handover frees the slot
+  # and requeues the run, unless a machine for it already showed up that is not `gone`:
+  # a report, or a late machine. A machine that shows up after the slot was freed, by a
+  # lapse, a release, a close or an undo, takes the slot back, even past the pool's
+  # limit, so the pool's further claims wait: a `dispatched` refused `lease_expired` or
+  # `gone` (`Apiary.Dispatches.Handover`), a redemption of its run code refused because
+  # the dispatch is stale or ended (`Apiary.Runs.RunCode`), both through
+  # `late_machine/2`, or a report other than `gone` (`hold_again/2`). A `gone` that came
+  # first leaves the slot freed. A close ends the run its claim registered, cancelled,
+  # as a failed start leaves a run (`Apiary.Dispatches.Queued`): a redemption of its run
+  # code after the close is a late machine, as after a release.
   #
   # - `held/1` counts the slots a pool's dispatches hold, read from the partial index on
   #   the held ones. `Apiary.Nodes.check_instance_limit/3` adds them to the pool's live
@@ -29,7 +69,7 @@ defmodule Apiary.Dispatches.Slots do
   #   prebuild of a ref its collection no longer has waits again as well: the claim that
   #   takes it ends it, `superseded` (`Apiary.Dispatches`). A dispatch of a run that ends
   #   so ends with it (`run_ended`). A dispatch that ended with its slot still held has it
-  #   freed.
+  #   freed where `due/2` returns it.
   #   Whatever the state of the pool or of the key that claimed it: a deleted pool's or a
   #   revoked key's dispatch lapses at its `lease_until` as any other does. Its run then
   #   waits for the workspace's other pools, unless it is a prebuild: a lapsed prebuild
@@ -38,7 +78,16 @@ defmodule Apiary.Dispatches.Slots do
   #   prebuilds `lost` (`Apiary.Dispatches.end_deleted_prebuilds/1`).
   #   It answers the ids of the workspaces whose queue or slots changed, for the caller to
   #   tell once its transaction commits (`Apiary.Dispatches.broadcast/1`).
-  # - `free_slot/2` frees one dispatch's slot, for the paths that end a dispatch.
+  # - `free_slot/2` frees one dispatch's slot where `due/2` returns it: for a release, and
+  #   for a report of `gone`.
+  # - `hold_again/2` takes back the slot of one dispatch for which a machine showed up,
+  #   and `late_machine/2` writes when a machine showed up too late, then does the same.
+  #
+  # The writes for one dispatch take turns at its row: a report holds it `FOR UPDATE`
+  # (`Apiary.Dispatches.MachineEnds`), and so do a `dispatched` and a release, and every
+  # other write here asks its conditions again once it holds the row. A claim counts the
+  # held slots under its pool's row; a slot taken back without that lock counts from the
+  # next claim on.
   #
   # **Locks.** Every path that locks more than one of these takes them in this order (a
   # free of more than one batch takes the records once, then the rest batch by batch, as
@@ -188,13 +237,17 @@ defmodule Apiary.Dispatches.Slots do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, Queued}
   alias Apiary.Environments.Record
   alias Apiary.Repo
 
   # The lapsed dispatches one batch takes at most; `free/2` takes the next, after the
   # last run of the one before, while a whole one lapsed.
   @batch 500
+
+  # The minutes past a machine's lifetime after which the safety net frees the slot of a
+  # dispatch whose machine was never reported `gone` (`due/2`).
+  @net_minutes 60
 
   # The slots the dispatches of `pool_id` hold.
   @doc false
@@ -224,13 +277,18 @@ defmodule Apiary.Dispatches.Slots do
     in_transaction!()
     records = lock_records(pool, now)
     :ok = records_made.()
-    lapsed = lapse(pool, now, records, nil, [])
-    ended = free_ended(pool, now)
-    Enum.uniq(lapsed ++ ended)
+    {lapsed, requeued} = lapse(pool, now, records, nil, {[], []})
+    freed = free_due(pool, now)
+    # Each run that waits again is a new queued run, with the next number: its run record
+    # failed in its batch (`Apiary.Dispatches.Queued`). The counters are taken last, once
+    # every batch locked its runs, by workspace: no counter is held while a batch locks
+    # runs of the queue, and two lapses take the counters in the same order.
+    _queued = Queued.requeue!(requeued, now)
+    Enum.uniq(lapsed ++ freed)
   end
 
-  # Frees the slot of `dispatch` at `now`, once: `true` when this call freed it, `false`
-  # when it was freed before.
+  # Frees the slot of `dispatch` at `now`, once, where `due/2` returns it: `true` when
+  # this call freed it, `false` when it was freed before or is not due.
   @doc false
   @spec free_slot(Dispatch.t(), DateTime.t()) :: boolean
   def free_slot(%Dispatch{id: id}, %DateTime{} = now) when is_binary(id) do
@@ -238,17 +296,107 @@ defmodule Apiary.Dispatches.Slots do
 
     {count, _rows} =
       Repo.update_all(
-        from(d in Dispatch, where: d.id == ^id and is_nil(d.slot_freed_at)),
+        due(from(d in Dispatch, where: d.id == ^id), now),
         set: [slot_freed_at: now, updated_at: now]
       )
 
     count == 1
   end
 
+  # Takes back, at `now`, the freed slot of `dispatch`, for which a machine showed up
+  # after its slot was freed: a late machine or a report other than `gone`, written
+  # before this call. Nothing changes for a dispatch whose machine was reported `gone`,
+  # or for one with no sign of a machine, which a later `due/2` would free again. `true`
+  # when this call took the slot back.
+  @doc false
+  @spec hold_again(Dispatch.t(), DateTime.t()) :: boolean
+  def hold_again(%Dispatch{id: id}, %DateTime{} = now) when is_binary(id) do
+    in_transaction!()
+
+    from(d in Dispatch,
+      where: d.id == ^id,
+      where:
+        not is_nil(d.stale_at) or not is_nil(d.machine_end_state) or
+          not is_nil(d.late_machine_at)
+    )
+    |> take_back(now)
+    |> Kernel.==(1)
+  end
+
+  # Writes that a machine showed up at `now` for `dispatch`, which takes none any more: a
+  # `dispatched` refused, or a redemption of its run code refused because the dispatch is
+  # stale or ended. `late_machine_at` keeps the latest time, and the slot is taken back
+  # (`hold_again/2`). Under the lock the caller holds on the dispatch's row.
+  @doc false
+  @spec late_machine(Dispatch.t(), DateTime.t()) :: boolean
+  def late_machine(%Dispatch{id: id} = dispatch, %DateTime{} = now) when is_binary(id) do
+    in_transaction!()
+
+    {1, _rows} =
+      Repo.update_all(from(d in Dispatch, where: d.id == ^id),
+        set: [late_machine_at: now, updated_at: now]
+      )
+
+    hold_again(dispatch, now)
+  end
+
+  # The held slots of `query` due to be freed at `now`: the rule of the moduledoc. A
+  # dispatch done, ended or stale, with no machine left: none was made, or it was reported
+  # `gone`. Or the safety net: a dispatch done or handed over whose last sign of a
+  # machine is older than the machine's lifetime and `@net_minutes`.
+  defp due(query, now) do
+    prebuild = DispatchRun.prebuild()
+    prebuild_cutoff = cutoff(now, DispatchRun.machine_lifetime_minutes(prebuild))
+    other_cutoff = cutoff(now, DispatchRun.max_machine_lifetime_minutes())
+
+    from d in query,
+      join: r in DispatchRun,
+      on: r.id == d.dispatch_run_id,
+      where: is_nil(d.slot_freed_at),
+      where:
+        ((not is_nil(d.ended_at) or not is_nil(d.stale_at)) and
+           (fragment("? = 'gone'", d.machine_end_state) or
+              (is_nil(d.dispatched_at) and is_nil(d.handed_over_at) and
+                 is_nil(d.machine_end_state) and is_nil(d.late_machine_at) and
+                 is_nil(d.stale_at)))) or
+          ((not is_nil(d.ended_at) or not is_nil(d.stale_at) or not is_nil(d.handed_over_at)) and
+             fragment(
+               "GREATEST(?, ?, ?, ?, ?) <= CASE WHEN ? = ? THEN ? ELSE ? END",
+               d.dispatched_at,
+               d.handed_over_at,
+               d.machine_end_at,
+               d.late_machine_at,
+               d.claimed_at,
+               r.step,
+               ^prebuild,
+               type(^prebuild_cutoff, :utc_datetime_usec),
+               type(^other_cutoff, :utc_datetime_usec)
+             ))
+  end
+
+  # The time at or before which the last sign of a machine whose lifetime is `minutes` is
+  # past that lifetime and `@net_minutes`, at `now`.
+  defp cutoff(now, minutes), do: DateTime.add(now, -(minutes + @net_minutes) * 60, :second)
+
+  # The freed slots of `query` held again at `now`, unless their machine was reported
+  # `gone`: how many.
+  defp take_back(query, now) do
+    {count, _rows} =
+      Repo.update_all(
+        from(d in query,
+          where: not is_nil(d.slot_freed_at),
+          where: is_nil(d.machine_end_state) or fragment("? <> 'gone'", d.machine_end_state)
+        ),
+        set: [slot_freed_at: nil, updated_at: now]
+      )
+
+    count
+  end
+
   # One batch of the lapsed dispatches, by run id, after the run `after_id`, then the
   # next, while a whole one lapsed. The environment records were locked before the first
   # (`lock_records/2`); then the runs, then their dispatches (the moduledoc).
-  defp lapse(pool, now, records, after_id, workspaces) do
+  defp lapse(pool, now, records, after_id, {workspaces, requeued}) do
     candidates =
       pool
       |> candidates(now, records)
@@ -257,7 +405,7 @@ defmodule Apiary.Dispatches.Slots do
 
     case candidates do
       [] ->
-        workspaces
+        {workspaces, requeued}
 
       run_ids ->
         runs =
@@ -276,6 +424,15 @@ defmodule Apiary.Dispatches.Slots do
             ),
             set: [stale_at: now, slot_freed_at: now, updated_at: now]
           )
+
+        # A dispatch whose machine already showed up, reported and not `gone` or late,
+        # keeps its slot: its run waits again all the same.
+        _held =
+          from(d in Dispatch,
+            where: d.id in ^Enum.map(stale, &elem(&1, 2)),
+            where: not is_nil(d.machine_end_state) or not is_nil(d.late_machine_at)
+          )
+          |> take_back(now)
 
         stale_dispatches = Map.new(stale, fn {run_id, _workspace_id, id} -> {run_id, id} end)
         stale_workspaces = Enum.map(stale, &elem(&1, 1))
@@ -302,12 +459,15 @@ defmodule Apiary.Dispatches.Slots do
           )
 
         _superseded = wait_again(prebuilds, now)
+
+        # The runs that wait again get their new records after the last batch (`free/2`).
+        requeued = Enum.map(claimed, & &1.id) ++ requeued
         workspaces = Enum.uniq(stale_workspaces ++ workspaces)
 
         # Another batch, after the last run of this one, while a whole one lapsed.
         if length(candidates) == @batch,
-          do: lapse(pool, now, records, List.last(run_ids), workspaces),
-          else: workspaces
+          do: lapse(pool, now, records, List.last(run_ids), {workspaces, requeued}),
+          else: {workspaces, requeued}
     end
   end
 
@@ -415,6 +575,7 @@ defmodule Apiary.Dispatches.Slots do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
+    _ended = Queued.ended(superseded, now)
     superseded
   end
 
@@ -463,14 +624,14 @@ defmodule Apiary.Dispatches.Slots do
     |> of_pool(pool)
   end
 
-  defp free_ended(pool, now) do
+  # The held slots of `pool`'s dispatches that `due/2` returns, freed at `now`: the
+  # ids of their workspaces.
+  defp free_due(pool, now) do
     {_count, rows} =
       Repo.update_all(
-        from(d in Dispatch,
-          where: is_nil(d.slot_freed_at) and not is_nil(d.ended_at),
-          select: d.workspace_id
-        )
-        |> of_pool(pool),
+        from(d in Dispatch, select: d.workspace_id)
+        |> of_pool(pool)
+        |> due(now),
         set: [slot_freed_at: now, updated_at: now]
       )
 

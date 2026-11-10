@@ -43,6 +43,7 @@ defmodule Apiary.WorkItems.LookupsWithoutFactoryTest do
       no_result: 0,
       waiting: 0,
       waiting_you: 0,
+      waiting_listed: 0,
       ready: 0
     }
 

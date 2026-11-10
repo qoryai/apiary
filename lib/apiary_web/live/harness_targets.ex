@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.HarnessTargets do
   # The handling of a workspace's destinations, each with its Stack select
   # (`ApiaryWeb.HarnessComponents.targets/1`), shared by the set-up's Harness step
-  # (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Workflow
-  # (`ApiaryWeb.WorkflowLive`).
+  # (`ApiaryWeb.WorkspaceSetupLive`) and Workspace settings › Harness
+  # (`ApiaryWeb.HarnessLive`).
   #
   # The functions take and return the page's socket. They read the assigns
   # `current_scope`; `chosen`, the workspace's harness (`Apiary.Stacks.Sources.chosen/1`);
@@ -20,7 +20,7 @@ defmodule ApiaryWeb.HarnessTargets do
 
   import Phoenix.LiveView, only: [cancel_async: 2, connected?: 1, put_flash: 3, start_async: 3]
 
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
   alias Apiary.Stacks.Sources
   alias Apiary.WorkspaceSetup
   alias ApiaryWeb.HarnessComponents
@@ -64,13 +64,16 @@ defmodule ApiaryWeb.HarnessTargets do
 
   @doc false
   # read_workspace_stacks/1 assigns the stacks the workspace's saved harness exports, as a
-  # destination's Stack offers them: the Qory harness's from the release's list, with no
-  # read; a harness repository's read outside the page's process at the `ref` a run reads
+  # destination's Stack offers them: the Qory harness's from its stored files at the
+  # choice's version, with no read; a harness repository's read outside the page's process at the `ref` a run reads
   # it at, once per repository and `ref`, where a person who may save has a destination.
   @spec read_workspace_stacks(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
-  def read_workspace_stacks(%{assigns: %{chosen: %{choice: :qory}}} = socket),
+  def read_workspace_stacks(%{assigns: %{chosen: %{choice: :qory} = chosen}} = socket),
     do:
-      assign(socket, workspace_stacks: Definition.qory_harness().stacks, workspace_stacks_of: nil)
+      assign(socket,
+        workspace_stacks: Qory.stacks(Qory.chosen_commit(chosen)),
+        workspace_stacks_of: nil
+      )
 
   def read_workspace_stacks(%{assigns: %{may: true, harness_targets: [_ | _]}} = socket) do
     %{chosen: chosen, current_scope: scope} = socket.assigns

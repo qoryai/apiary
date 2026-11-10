@@ -21,10 +21,13 @@ defmodule Apiary.Dispatches.HandoverTest do
   alias Apiary.{Dispatches, ExploreInputsSchema, Nodes, Repo, WorkItems}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Inputs, Slots}
+  alias Apiary.Harnesses.{Builtin, Qory, RunHarness}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.{Registration, Run, RunCode}
   alias Apiary.Sources.Comment
   alias Apiary.WorkItems.WorkItem
+  alias Apiary.PublicGitServer
+  alias Apiary.QoryHarnessFixture
 
   @moduletag needs: :factory
 
@@ -69,11 +72,19 @@ defmodule Apiary.Dispatches.HandoverTest do
   defp dispatch!(%{dispatch: dispatch}), do: dispatch!(dispatch)
   defp dispatch!(%Dispatch{id: id}), do: Repo.get!(Dispatch, id)
   defp queue_run!(%DispatchRun{id: id}), do: Repo.get!(DispatchRun, id)
-  defp runs, do: Repo.aggregate(Run, :count)
+  # The runs a claim registered: the record of a run of the queue that no claim
+  # registered left out (`Apiary.RunEventsFixtures.registered_runs/0`).
+  defp runs, do: Repo.aggregate(Apiary.RunEventsFixtures.registered_runs(), :count)
 
   # The runs registered for a run of the queue, a run whose start failed left out.
   defp queue_runs,
-    do: Repo.aggregate(from(r in Run, where: not is_nil(r.dispatch_run_id)), :count)
+    do:
+      Repo.aggregate(
+        from(r in Apiary.RunEventsFixtures.registered_runs(),
+          where: not is_nil(r.dispatch_run_id)
+        ),
+        :count
+      )
 
   # The run the claim `claimed` registered, failed with `cause` once it left its run of
   # the queue: its id and its public id kept, its node's run id another, its dispatch the
@@ -138,6 +149,20 @@ defmodule Apiary.Dispatches.HandoverTest do
 
     assert Slots.held(ctx.pool.id) == 0
     assert runs() == 0
+
+    # The run's record, written when it was queued, ended with the cause and kept its
+    # number.
+    state =
+      if Atom.to_string(cause) in Apiary.Dispatches.Queued.cancelled(),
+        do: "cancelled",
+        else: "failed"
+
+    reason = Atom.to_string(cause)
+
+    assert %Run{state: ^state, reason: ^reason, number: number} =
+             Repo.get_by!(Run, dispatch_run_id: run.id)
+
+    assert is_integer(number)
   end
 
   describe "the run a claim of an explore run registers" do
@@ -432,10 +457,18 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "a run that cannot be stored is unavailable, and nothing is written", ctx do
       {_work_item, queued} = queued!(ctx)
 
-      # A row of the run's id in the workspace already, which no product path writes: the
+      # A run of the queue with no record, as the previous release queued it, and a row of
+      # the run's id in the workspace already, which no product path writes: the
       # registered run cannot be inserted.
+      :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
+
       in_the_way =
         Repo.insert!(%Run{
+          number:
+            Apiary.RunEventsFixtures.next_run_number(
+              ctx.scope.organisation.id,
+              ctx.scope.workspace.id
+            ),
           organisation_id: ctx.scope.organisation.id,
           workspace_id: ctx.scope.workspace.id,
           node_run_id: queued.run_id,
@@ -500,7 +533,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert %Dispatch{handed_over_at: nil, dispatched_at: nil} = dispatch!(claimed)
     end
 
-    test "a dispatch that ended is gone, before lease_expired, its registered run deleted",
+    test "a dispatch that ended is gone, before lease_expired, its registered run cancelled",
          ctx do
       {work_item, _queued} = queued!(ctx)
       claimed = claimed!(ctx)
@@ -508,7 +541,11 @@ defmodule Apiary.Dispatches.HandoverTest do
       {:ok, _changed} =
         Repo.transact(fn -> Dispatches.cancel_for_close([work_item.id], Dispatches.now()) end)
 
-      assert runs() == 0
+      number = claimed.registered.number
+
+      assert %Run{state: "cancelled", reason: "closed", number: ^number} =
+               Repo.get!(Run, claimed.registered.id)
+
       lapse!(claimed)
       assert dispatched(ctx.key, claimed) == {:error, :gone}
     end
@@ -534,11 +571,13 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
 
-      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: %DateTime{}, dispatched_at: nil} =
+      # The lapse freed the slot; the late dispatched shows that a machine was started, so
+      # the stale dispatch takes it back until its machine is gone.
+      assert %Dispatch{stale_at: %DateTime{}, slot_freed_at: nil, dispatched_at: nil} =
                dispatch!(claimed)
 
       assert queue_run!(queued).state == :waiting
-      assert Slots.held(ctx.pool.id) == 0
+      assert Slots.held(ctx.pool.id) == 1
       assert queue_runs() == 0
       failed = start_failed!(claimed, "lease_lapsed")
       assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
@@ -632,6 +671,556 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
   end
 
+  describe "the harness at the claim" do
+    # A run whose harness walk resolved `git` on `ref`, its pin at the commit the walk at
+    # the queue read. The run has no process version, as with the feature
+    # `workflow_model` off, so its harness is read as its walk has it (`on_version!/3`
+    # puts it on one).
+    defp walked!(ctx, git, ref, at, changes \\ []) do
+      {_work_item, queued} = queued!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [process_version_id: nil]
+        )
+
+      walk_resolved!(
+        queued,
+        [
+          origin: :setting,
+          workflow: "explore-a-ticket",
+          document: %{"extends" => %{"git" => git, "ref" => ref, "stack" => "software"}},
+          pins: [%{"git" => git, "ref" => ref, "at" => at}]
+        ] ++ changes
+      )
+
+      queued
+    end
+
+    # The info/refs requests the test's stub answered for the Qory harness's repository.
+    defp ref_reads do
+      path = URI.parse(Qory.git()).path <> "/info/refs"
+
+      Stream.repeatedly(fn ->
+        receive do
+          {:git_request, "GET", _host, ^path, _headers} -> :read
+          {:git_request, _method, _host, _path, _headers} -> :other
+        after
+          0 -> nil
+        end
+      end)
+      |> Enum.take_while(& &1)
+      |> Enum.count(&(&1 == :read))
+    end
+
+    # A host that answers every request with `status`.
+    defp answer!(status),
+      do: PublicGitServer.serve(%{}, answer: fn conn -> Plug.Conn.send_resp(conn, status, "") end)
+
+    defp walk!(%DispatchRun{id: id}), do: Repo.get_by!(RunHarness, dispatch_run_id: id)
+
+    test "the Qory harness is at the commit its branch is at when the claim reads it, which the walk's pin records",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      # main moved after the walk at the queue read it.
+      newer = QoryHarnessFixture.serve!(QoryHarnessFixture.explore_named("Discover"))
+
+      claimed = claimed!(ctx)
+
+      assert claimed.documents.harness.harness == %{
+               "extends" => %{"git" => Qory.git(), "ref" => newer.commit, "stack" => "software"}
+             }
+
+      assert walk!(queued).pins == [%{"git" => Qory.git(), "ref" => "main", "at" => newer.commit}]
+
+      # The walk keeps the version the settings chose, and nothing is stored of the read.
+      assert walk!(queued).document["extends"]["ref"] == "main"
+      assert Qory.head("main") == QoryHarnessFixture.commit()
+    end
+
+    test "the Qory harness at a tag is at the tag's commit", ctx do
+      tagged = QoryHarnessFixture.serve!(QoryHarnessFixture.files(), tags: ["v1.0.0"])
+      queued = walked!(ctx, Qory.git(), "v1.0.0", tagged.commit, ref_kind: :tag)
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == tagged.commit
+      assert [%{"at" => at}] = walk!(queued).pins
+      assert at == tagged.commit
+    end
+
+    test "a walk's ref kind is a branch, a tag or a commit, or none", ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      id = Ecto.UUID.dump!(walk!(queued).id)
+
+      for kind <- [nil, "branch", "tag", "commit"] do
+        assert {:ok, %{num_rows: 1}} =
+                 Repo.query("UPDATE run_harnesses SET ref_kind = $1 WHERE id = $2", [kind, id])
+      end
+
+      assert_raise Postgrex.Error, ~r/run_harnesses_ref_kind_check/, fn ->
+        Repo.query!("UPDATE run_harnesses SET ref_kind = 'latest' WHERE id = $1", [id])
+      end
+    end
+
+    test "a test work item's built-in harness is at the commit of qory's main", ctx do
+      {:ok, work_item} = WorkItems.take_in_test(ctx.scope, "Hello! Where are you running?")
+      [queued] = Repo.all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      git = Builtin.document()["extends"]["git"]
+
+      assert claimed!(ctx).documents.harness.harness == %{
+               "extends" => %{
+                 "git" => git,
+                 "ref" => QoryHarnessFixture.builtin_commit(),
+                 "path" => "examples/hello"
+               }
+             }
+
+      assert walk!(queued).pins == [
+               %{"git" => git, "ref" => "main", "at" => QoryHarnessFixture.builtin_commit()}
+             ]
+    end
+
+    test "a branch the built-in harness's repository does not have ends the run, marked built-in",
+         ctx do
+      {:ok, work_item} = WorkItems.take_in_test(ctx.scope, "Hello! Where are you running?")
+      [queued] = Repo.all(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+      walk = walk!(queued)
+      git = Builtin.git()
+
+      walk
+      |> Ecto.Changeset.change(
+        document: put_in(walk.document, ["extends", "ref"], "gone"),
+        pins: [%{"git" => git, "ref" => "gone", "at" => "gone"}]
+      )
+      |> Repo.update!()
+
+      ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+
+      assert %DispatchRun{end_cause: :harness_unresolved, end_detail: "ref_missing"} =
+               queue_run!(queued)
+
+      assert %RunHarness{
+               failure: "ref_missing",
+               failure_rule: %{
+                 "rule" => "claim",
+                 "values" => %{"url" => ^git, "ref" => "gone", "builtin" => true}
+               }
+             } = walk!(queued)
+    end
+
+    test "a ref the Qory harness does not have ends the run harness_unresolved, ref_missing",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "gone", QoryHarnessFixture.commit())
+
+      log = ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+
+      assert %DispatchRun{
+               state: :ended,
+               end_cause: :harness_unresolved,
+               end_detail: "ref_missing",
+               result_outcome: :error
+             } = queue_run!(queued)
+
+      assert [%Dispatch{end_cause: :harness_unresolved, ended_at: %DateTime{}}] =
+               Repo.all(from d in Dispatch, where: d.dispatch_run_id == ^queued.id)
+
+      assert %RunHarness{
+               state: :failed,
+               origin: nil,
+               document: nil,
+               failure: "ref_missing",
+               failed_source: "https://github.com/qoryai/harness",
+               failure_rule: %{
+                 "rule" => "claim",
+                 "values" => %{"url" => "https://github.com/qoryai/harness", "ref" => "gone"}
+               }
+             } = walk!(queued)
+
+      assert Slots.held(ctx.pool.id) == 0
+      assert runs() == 0
+      assert log =~ "end_cause=harness_unresolved failure=ref_missing"
+    end
+
+    test "a read that meets the host's limit leaves the run queued, and records the time once",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      answer!(429)
+
+      assert claim(ctx) == {:ok, :none}
+      assert %DispatchRun{state: :waiting} = queue_run!(queued)
+      assert %RunHarness{state: :resolved, read_failed_at: %DateTime{} = first} = walk!(queued)
+
+      assert claim(ctx) == {:ok, :none}
+      assert %DispatchRun{state: :waiting} = queue_run!(queued)
+      assert walk!(queued).read_failed_at == first
+      assert runs() == 0
+    end
+
+    test "a read that still fails 10 minutes after the first ends the run harness_unresolved, harness_unreadable",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      answer!(429)
+      assert claim(ctx) == {:ok, :none}
+
+      walk!(queued)
+      |> Ecto.Changeset.change(read_failed_at: DateTime.add(Dispatches.now(), -601))
+      |> Ecto.Changeset.force_change(:updated_at, DateTime.add(Dispatches.now(), -31))
+      |> Repo.update!()
+
+      ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+
+      assert %DispatchRun{end_cause: :harness_unresolved, end_detail: "harness_unreadable"} =
+               queue_run!(queued)
+
+      assert %RunHarness{
+               state: :failed,
+               failure: "harness_unreadable",
+               failure_rule: %{
+                 "rule" => "claim",
+                 "values" => %{
+                   "url" => "https://github.com/qoryai/harness",
+                   "ref" => "main",
+                   "cause" => %{"cause" => "rate_limited"},
+                   "host" => "github.com",
+                   "port" => 443
+                 }
+               }
+             } = walk!(queued)
+
+      assert runs() == 0
+    end
+
+    test "a read that met a server error leaves the run queued", ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      answer!(500)
+
+      ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+      assert %DispatchRun{state: :waiting} = queue_run!(queued)
+      assert %RunHarness{state: :resolved, read_failed_at: %DateTime{}} = walk!(queued)
+    end
+
+    test "a read that met another 5xx status ends the run at once", ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      answer!(501)
+
+      ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+
+      assert %DispatchRun{end_cause: :harness_unresolved, end_detail: "harness_unreadable"} =
+               queue_run!(queued)
+
+      assert %RunHarness{failure_rule: %{"values" => %{"cause" => %{"cause" => "failed"}}}} =
+               walk!(queued)
+    end
+
+    test "a read that succeeds clears the first failure, so a later failure waits again",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      answer!(429)
+      assert claim(ctx) == {:ok, :none}
+
+      # The failure was an hour before; the next read succeeds, and the claim takes the run.
+      walk!(queued)
+      |> Ecto.Changeset.change(read_failed_at: DateTime.add(Dispatches.now(), -3600))
+      |> Ecto.Changeset.force_change(:updated_at, DateTime.add(Dispatches.now(), -3600))
+      |> Repo.update!()
+
+      QoryHarnessFixture.serve!()
+      claimed = claimed!(ctx)
+      assert walk!(queued).read_failed_at == nil
+
+      # The pool's starter releases the run, and a read a minute later times out.
+      assert Dispatches.release(ctx.key, claimed.dispatch.public_id, %{reason: "No machine."}) ==
+               :ok
+
+      assert queue_run!(queued).state == :waiting
+
+      walk!(queued)
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.force_change(:updated_at, DateTime.add(Dispatches.now(), -60))
+      |> Repo.update!()
+
+      answer!(504)
+      ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+
+      assert %DispatchRun{state: :waiting} = queue_run!(queued)
+      assert %RunHarness{read_failed_at: %DateTime{} = failed_at} = walk!(queued)
+      assert DateTime.diff(Dispatches.now(), failed_at) < 60
+    end
+
+    test "a claim does not read again, for 30 seconds, an address and ref whose runs all failed",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      answer!(429)
+      assert claim(ctx) == {:ok, :none}
+      assert ref_reads() == 1
+
+      assert claim(ctx) == {:ok, :none}
+      assert ref_reads() == 0
+      assert %DispatchRun{state: :waiting} = queue_run!(queued)
+
+      # A run of the same address and ref with no failed read: the claim reads it again.
+      other = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      assert claim(ctx) == {:ok, :none}
+      assert ref_reads() == 1
+      assert %DispatchRun{state: :waiting} = queue_run!(other)
+
+      # 31 seconds after the last failure.
+      for run <- [queued, other] do
+        walk!(run)
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.force_change(:updated_at, DateTime.add(Dispatches.now(), -31))
+        |> Repo.update!()
+      end
+
+      assert claim(ctx) == {:ok, :none}
+      assert ref_reads() == 1
+    end
+
+    test "a claim of a pool at its limit reads no harness", ctx do
+      set_node!(ctx.pool, instance_limit: 1)
+      at = String.duplicate("ab", 20)
+      walked!(ctx, "https://code.example.com/acme/harness", "main", at)
+      assert claimed!(ctx)
+
+      walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      QoryHarnessFixture.serve!()
+
+      assert claim(ctx) == {:ok, :none}
+      assert ref_reads() == 0
+    end
+
+    test "a read that fails for another cause ends the run at once", ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      answer!(404)
+
+      ExUnit.CaptureLog.capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+
+      assert %DispatchRun{end_cause: :harness_unresolved, end_detail: "harness_unreadable"} =
+               queue_run!(queued)
+
+      assert %RunHarness{failure_rule: %{"values" => %{"cause" => %{"cause" => "not_found"}}}} =
+               walk!(queued)
+    end
+
+    test "a run whose read waits is passed, and the claim takes the next run", ctx do
+      waiting = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      at = String.duplicate("ab", 20)
+      next = walked!(ctx, "https://code.example.com/acme/harness", "main", at)
+      answer!(429)
+
+      assert claimed!(ctx).run.id == next.id
+      assert %DispatchRun{state: :waiting} = queue_run!(waiting)
+    end
+
+    # The repo's event of each query runs in the process that sent the query: there,
+    # `Repo.in_transaction?/0` is whether the query ran in a transaction.
+    test "the claim reads the harness before its transaction, never inside it", ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      QoryHarnessFixture.serve!()
+      handler = "claim-walks-#{System.unique_integer()}"
+      test = self()
+
+      # The read of the waiting runs' walks, the one query that joins the runs to their walks.
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, meta, _config ->
+          if self() == test and meta.source == "dispatch_runs" and
+               meta.query =~ ~s(INNER JOIN "run_harnesses"),
+             do: send(test, {:walks_read, Repo.in_transaction?()})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      assert claimed!(ctx).run.id == queued.id
+      assert ref_reads() == 1
+      assert_received {:walks_read, false}
+      refute_received {:walks_read, true}
+    end
+
+    test "the claim reads each address and ref once, for every run that has them", ctx do
+      first = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      second = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      QoryHarnessFixture.serve!()
+
+      assert claimed!(ctx).run.id == first.id
+      assert ref_reads() == 1
+
+      assert claimed!(ctx).run.id == second.id
+      assert ref_reads() == 1
+    end
+
+    test "the Qory harness at a full commit id is sent at that commit, with no read", ctx do
+      commit = QoryHarnessFixture.commit()
+      queued = walked!(ctx, Qory.git(), commit, commit)
+      PublicGitServer.serve(%{}, answer: fn _conn -> flunk("no read at the claim") end)
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == commit
+      assert walk!(queued).pins == [%{"git" => Qory.git(), "ref" => commit, "at" => commit}]
+    end
+
+    test "a harness repository on a branch is sent at the commit the walk's pin records, with no read",
+         ctx do
+      git = "https://code.example.com/acme/harness"
+      at = String.duplicate("ab", 20)
+      queued = walked!(ctx, git, "main", at)
+      PublicGitServer.serve(%{}, answer: fn _conn -> flunk("no read at the claim") end)
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == at
+      assert walk!(queued).pins == [%{"git" => git, "ref" => "main", "at" => at}]
+      assert walk!(queued).document["extends"]["ref"] == "main"
+    end
+
+    test "a harness repository at a commit is sent at that commit", ctx do
+      git = "https://code.example.com/acme/harness"
+      commit = String.duplicate("cd", 20)
+      walked!(ctx, git, commit, commit)
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == commit
+    end
+
+    test "a harness repository whose pin is no commit is sent as the walk resolved it", ctx do
+      walked!(ctx, "https://code.example.com/acme/harness", "main", "main")
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == "main"
+    end
+
+    # A version of the workspace of `ctx` with the harness record `template`, based on
+    # `based_on`, and a version based on it with none, written directly; `run` on the
+    # second.
+    defp on_version!(ctx, run, template) do
+      workspace = ctx.scope.workspace
+      v1 = Apiary.Processes.current(workspace)
+
+      insert = fn number, based_on, template ->
+        Repo.insert!(%Apiary.Processes.Version{
+          organisation_id: workspace.organisation_id,
+          workspace_id: workspace.id,
+          public_id: Apiary.PublicId.generate("pv"),
+          number: number,
+          status: :trial,
+          document: v1.document,
+          template: template,
+          based_on_id: based_on.id
+        })
+      end
+
+      made = insert.(2, v1, template)
+      edited = insert.(3, made, nil)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+          set: [process_version_id: edited.id]
+        )
+    end
+
+    test "a run of a process version composes the commit its version came from, with no read",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      commit = String.duplicate("ab", 20)
+      on_version!(ctx, queued, %{"source" => "qory", "git" => Qory.git(), "commit" => commit})
+      PublicGitServer.serve(%{}, answer: fn _conn -> flunk("no read at the claim") end)
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == commit
+      assert walk!(queued).pins == [%{"git" => Qory.git(), "ref" => "main", "at" => commit}]
+      assert walk!(queued).document["extends"]["ref"] == "main"
+    end
+
+    test "a run of a process version of the Qory harness at another address is read", ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+
+      on_version!(ctx, queued, %{
+        "source" => "qory",
+        "git" => "https://code.example.com/acme/old-harness",
+        "commit" => String.duplicate("ab", 20)
+      })
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] ==
+               QoryHarnessFixture.commit()
+    end
+
+    test "a run of a process version of a harness repository on a branch composes its commit",
+         ctx do
+      git = "https://code.example.com/acme/harness"
+      queued = walked!(ctx, git, "main", String.duplicate("cd", 20), ref_kind: :branch)
+      commit = String.duplicate("ef", 20)
+      on_version!(ctx, queued, %{"source" => "repository", "git" => git, "commit" => commit})
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == commit
+      assert walk!(queued).pins == [%{"git" => git, "ref" => "main", "at" => commit}]
+    end
+
+    test "a run of a process version of another harness is sent as today", ctx do
+      git = "https://code.example.com/acme/harness"
+      at = String.duplicate("cd", 20)
+      queued = walked!(ctx, git, "main", at, ref_kind: :branch)
+      on_version!(ctx, queued, %{"source" => "qory", "commit" => String.duplicate("ef", 20)})
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == at
+    end
+
+    test "a run of a process version on a tag of the Qory harness composes the tag's commit",
+         ctx do
+      tagged = QoryHarnessFixture.serve!(QoryHarnessFixture.files(), tags: ["v1.0.0"])
+      queued = walked!(ctx, Qory.git(), "v1.0.0", tagged.commit, ref_kind: :tag)
+      on_version!(ctx, queued, %{"source" => "qory", "commit" => String.duplicate("ef", 20)})
+
+      assert claimed!(ctx).documents.harness.harness["extends"]["ref"] == tagged.commit
+    end
+
+    test "a run at another step with the column NULL is read and claimed at its first claim, with no files kept",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      QoryHarnessFixture.serve!()
+
+      # Queued before the first read of the Qory harness, at a step other than explore: it
+      # is known not to be a run of Explore without the files.
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [explore: nil, step: "build", workflow: "explore-a-ticket"]
+        )
+
+      {_count, _rows} = Repo.delete_all("qory_harness_heads")
+      {_count, _rows} = Repo.delete_all("qory_harness_files")
+
+      assert claimed!(ctx).run.id == queued.id
+      assert ref_reads() == 1
+      assert %DispatchRun{explore: false} = queue_run!(queued)
+    end
+
+    test "a run not known to be a run of Explore stays queued, with no read, and is claimed once it is known",
+         ctx do
+      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
+      QoryHarnessFixture.serve!()
+
+      # Queued before the first read of the Qory harness: no files kept, the column NULL,
+      # and a process version made from no commit of the harness.
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [explore: nil, workflow: "explore-a-ticket"]
+        )
+
+      {_count, _rows} =
+        Repo.update_all(
+          from(v in Apiary.Processes.Version, where: v.workspace_id == ^queued.workspace_id),
+          set: [template: %{"type" => "qory.software", "version" => 1}]
+        )
+
+      {_count, _rows} = Repo.delete_all("qory_harness_heads")
+      {_count, _rows} = Repo.delete_all("qory_harness_files")
+
+      # A read of its walk stores no files, so the claim reads nothing.
+      assert claim(ctx) == {:ok, :none}
+      assert ref_reads() == 0
+      assert %DispatchRun{state: :waiting, explore: nil} = queue_run!(queued)
+
+      # The first read keeps the files: the next claim sets the column and takes the run.
+      {:ok, _commit} = Qory.read({:branch, "main"})
+
+      assert claimed!(ctx).run.id == queued.id
+      assert %DispatchRun{explore: true} = queue_run!(queued)
+    end
+  end
+
   describe "a run the claim cannot form" do
     test "with run variables that break their rules ends variables_invalid", ctx do
       {work_item, queued} = queued!(ctx, %{target_path: "acme/shop/web"})
@@ -685,9 +1274,14 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert %Apiary.Stages.Escalation{
                cause: :run_stopped,
-               gaps:
-                 "The run did not start, because the work item's ticket is no longer in Qory Apiary.\n" <>
-                   "Close the work item, or take the ticket in again."
+               points: [
+                 %{
+                   "text" =>
+                     "The run stopped: it did not start, because the work item's ticket is no longer in Qory Apiary.",
+                   "action" => "run_again",
+                   "fix" => "Close the work item, or take the ticket in again."
+                 }
+               ]
              } = Repo.get_by!(Apiary.Stages.Escalation, work_item_id: work_item.id)
 
       public_id = work_item.public_id
@@ -719,6 +1313,11 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert claim(ctx) == {:ok, :none}
       assert %DispatchRun{state: :ended, end_cause: :ticket_gone} = queue_run!(queued)
       assert %Dispatch{end_cause: :run_ended} = dispatch!(stale)
+
+      # The late dispatched took the slot back: it stays held past the end, until the
+      # machine is gone.
+      assert Slots.held(ctx.pool.id) == 1
+      :ok = Dispatches.report_machine_end(ctx.key, stale.dispatch.public_id, %{state: :gone})
       assert Slots.held(ctx.pool.id) == 0
       assert queue_runs() == 0
       start_failed!(stale, "lease_lapsed")
@@ -979,13 +1578,38 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert %Dispatch{dispatched_at: ^at, external_ref: "job-1"} = dispatch!(claimed)
     end
 
+    test "records the vendor's machine type the first dispatched reports, once", ctx do
+      queued!(ctx)
+      claimed = claimed!(ctx)
+
+      assert Dispatches.dispatched(ctx.key, id(claimed), %{
+               external: nil,
+               machine_type: "example-type"
+             }) == :ok
+
+      assert %Dispatch{dispatched_at: %DateTime{} = at, vendor_machine_type: "example-type"} =
+               dispatch!(claimed)
+
+      assert Dispatches.dispatched(ctx.key, id(claimed), %{
+               external: nil,
+               machine_type: "example-type-2"
+             }) == :ok
+
+      assert %Dispatch{dispatched_at: ^at, vendor_machine_type: "example-type"} =
+               dispatch!(claimed)
+    end
+
     test "with no job named records when alone", ctx do
       queued!(ctx)
       claimed = claimed!(ctx)
       assert dispatched(ctx.key, claimed) == :ok
 
-      assert %Dispatch{dispatched_at: %DateTime{}, external_type: nil, external_ref: nil} =
-               dispatch!(claimed)
+      assert %Dispatch{
+               dispatched_at: %DateTime{},
+               external_type: nil,
+               external_ref: nil,
+               vendor_machine_type: nil
+             } = dispatch!(claimed)
     end
 
     test "after the lease lapsed is lease_expired, the lapse committed", ctx do
@@ -1018,4 +1642,243 @@ defmodule Apiary.Dispatches.HandoverTest do
   end
 
   defp usec(%DateTime{} = at), do: %{at | microsecond: {0, 6}}
+
+  describe "a late machine" do
+    # The first redemption of the claim's run code, under a fresh key pair, relayed by
+    # the gateway the claim bound it to.
+    defp redeem(%{run_code: code}) do
+      request = run_code_request(code, ed25519_key_pair(), DateTime.utc_now())
+      RunCode.redeem(request, relayed_by: bound_gateway(code))
+    end
+
+    defp gone!(ctx, claimed),
+      do: :ok = Dispatches.report_machine_end(ctx.key, id(claimed), %{state: :gone})
+
+    # A person's close of the work item.
+    defp close!(ctx, %WorkItem{id: id}) do
+      {:ok, _closed} =
+        Repo.transact(fn ->
+          work_item = Repo.one!(from w in WorkItem, where: w.id == ^id, lock: "FOR UPDATE")
+          WorkItems.close_locked([work_item], {:person, ctx.scope.user.id}, Dispatches.now())
+        end)
+    end
+
+    test "a dispatched after a close holds the slot, a claim waits, and gone frees it", ctx do
+      set_node!(ctx.pool, instance_limit: 1)
+      {work_item, _queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      {_other, next} = queued!(ctx)
+
+      close!(ctx, work_item)
+      assert %Dispatch{end_cause: :closed, slot_freed_at: %DateTime{}} = dispatch!(claimed)
+
+      assert dispatched(ctx.key, claimed) == {:error, :gone}
+
+      assert %Dispatch{late_machine_at: %DateTime{}, slot_freed_at: nil} = dispatch!(claimed)
+      assert Slots.held(ctx.pool.id) == 1
+      assert claim(ctx) == {:ok, :none}
+
+      # The sweep keeps it: the late machine is a machine.
+      Dispatches.sweep(Dispatches.now())
+      assert Slots.held(ctx.pool.id) == 1
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+      assert {:ok, %{run: %{id: id}}} = claim(ctx)
+      assert id == next.id
+    end
+
+    test "a dispatched after an undo takes the slot back, and gone frees it", ctx do
+      {work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+
+      # An undo works once no claim has the run: after the release here.
+      :ok = Dispatches.release(ctx.key, id(claimed), %{reason: "no capacity"})
+      assert {:ok, :ok} = Repo.transact(fn -> {:ok, Dispatches.cancel_for_undo(work_item)} end)
+      assert %DispatchRun{state: :ended, end_cause: :undone} = queue_run!(queued)
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert dispatched(ctx.key, claimed) == {:error, :gone}
+      assert %Dispatch{late_machine_at: %DateTime{}, slot_freed_at: nil} = dispatch!(claimed)
+      assert Slots.held(ctx.pool.id) == 1
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "after a failed start, a run key for the run id finds the run gone, and the run that waits again has no dispatch",
+         ctx do
+      {_work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, id(claimed), %{reason: "no capacity"})
+
+      waiting = Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
+      assert Run.queued?(waiting)
+      assert waiting.node_run_id == queued.run_id
+
+      # A run key this server signed for the run id, as one redeemed before the start
+      # failed would be: the run that waits again is no run it can attach.
+      now = DateTime.utc_now(:second)
+
+      {:ok, run_key, _payload} =
+        Apiary.Runs.RunKey.issue(%{
+          run_id: queued.run_id,
+          workspace: ctx.scope.workspace.public_id,
+          node_id: ctx.pool.public_id,
+          gateway: ctx.gateway.public_id,
+          gateway_url: "https://gateway.example:8443",
+          gateway_public_keys: [:crypto.strong_rand_bytes(32)],
+          instance_id: "i_build-01",
+          issued: now,
+          attach_by: DateTime.add(now, 600, :second)
+        })
+
+      {gateway_key, _seed} = ctx.gateway_key
+      {:ok, body} = Apiary.Runs.Attach.parse(Apiary.ContractFixtures.attach_body(run_key))
+      assert Apiary.Runs.Attach.attach(gateway_key, queued.run_id, body, %{}) == {:error, :gone}
+
+      # Diagnostics of the run that waits again show no dispatch, not the released one.
+      assert Apiary.Runs.Diagnostics.document(waiting, :instance)["dispatches"] == []
+    end
+
+    # What a run of the queue that left `claimed` leaves of the run its claim registered.
+    defp left(%Run{id: id} = run) do
+      %{
+        node_id: run.node_id,
+        gateway_id: run.gateway_id,
+        run_documents: run.run_documents,
+        run_key_payload: run.run_key_payload,
+        credentials:
+          Repo.aggregate(from(c in Apiary.Runs.RunCredential, where: c.run_id == ^id), :count)
+      }
+    end
+
+    test "a redemption after a close is refused, keeps the slot until gone, and issues no run key",
+         ctx do
+      {work_item, _queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      registered = claimed.registered
+      close!(ctx, work_item)
+
+      # The run ended cancelled with its number, as a failed start leaves a run: its node,
+      # gateway and credential entries kept, no documents, a fresh run id on the machine.
+      closed = Repo.get!(Run, registered.id)
+      assert %Run{state: "cancelled", reason: "closed", number: number} = closed
+      assert number == registered.number
+      assert closed.node_run_id != registered.node_run_id
+      assert closed.node_instance_id == closed.node_run_id
+
+      assert left(closed) == %{
+               left(registered)
+               | run_documents: nil
+             }
+
+      assert redeem(claimed) == {:error, :unauthorized}
+      assert %Dispatch{late_machine_at: %DateTime{}, slot_freed_at: nil} = dispatch!(claimed)
+      assert Slots.held(ctx.pool.id) == 1
+
+      # No run key, so no run configuration and no secrets.
+      assert left(Repo.get!(Run, registered.id)) == left(closed)
+      assert %{run_key_payload: nil} = left(closed)
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    test "a release and a close leave the run the claim registered alike", ctx do
+      {first, _queued} = queued!(ctx)
+      released = claimed!(ctx)
+      :ok = Dispatches.release(ctx.key, id(released), %{reason: "no capacity"})
+      # The retry that waits ends too, so the next claim takes the next work item's run.
+      close!(ctx, first)
+
+      {work_item, _queued} = queued!(ctx)
+      closed = claimed!(ctx)
+      close!(ctx, work_item)
+
+      for %{registered: registered} <- [released, closed] do
+        run = Repo.get!(Run, registered.id)
+        assert left(run) == %{left(registered) | run_documents: nil}
+        assert run.node_run_id != registered.node_run_id
+        assert run.node_instance_id == run.node_run_id
+      end
+    end
+
+    test "a redemption after a release is refused, holds the slot, a claim waits, and gone frees it",
+         ctx do
+      set_node!(ctx.pool, instance_limit: 1)
+      {_work_item, queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+
+      :ok = Dispatches.release(ctx.key, id(claimed), %{reason: "no capacity"})
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert redeem(claimed) == {:error, :unauthorized}
+      assert %Dispatch{late_machine_at: %DateTime{}, slot_freed_at: nil} = dispatch!(claimed)
+      assert Slots.held(ctx.pool.id) == 1
+      assert claim(ctx) == {:ok, :none}
+      assert queue_run!(queued).state == :waiting
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+      assert {:ok, %{run: %{id: id}}} = claim(ctx)
+      assert id == queued.id
+    end
+
+    test "a redemption after a lapse is refused and holds the slot; after gone it takes nothing back",
+         ctx do
+      {_work_item, _queued} = queued!(ctx)
+      claimed = claimed!(ctx)
+      lapse!(claimed)
+      Dispatches.sweep(Dispatches.now())
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert redeem(claimed) == {:error, :unauthorized}
+      assert %Dispatch{late_machine_at: first, slot_freed_at: nil} = dispatch!(claimed)
+      assert %DateTime{} = first
+
+      gone!(ctx, claimed)
+      assert Slots.held(ctx.pool.id) == 0
+
+      # A later late machine keeps the latest time and takes nothing back.
+      assert dispatched(ctx.key, claimed) == {:error, :lease_expired}
+      assert %Dispatch{late_machine_at: latest, slot_freed_at: %DateTime{}} = dispatch!(claimed)
+      assert DateTime.compare(latest, first) == :gt
+      assert Slots.held(ctx.pool.id) == 0
+    end
+
+    @tag needs: [:factory, :registry]
+    test "the net of a prebuild whose dispatched came 70 minutes after its claim counts from that dispatched",
+         ctx do
+      {_collection, _run} = prebuild!(ctx)
+      claimed = claimed!(ctx)
+      now = DateTime.utc_now()
+      claimed_at = DateTime.add(now, -70 * 60, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(d in Dispatch, where: d.id == ^claimed.dispatch.id),
+          set: [
+            claimed_at: claimed_at,
+            lease_until: usec(DateTime.truncate(DateTime.add(claimed_at, 600, :second), :second))
+          ]
+        )
+
+      Dispatches.sweep(Dispatches.now())
+      assert Slots.held(ctx.pool.id) == 0
+
+      assert dispatched(ctx.key, claimed) in [{:error, :lease_expired}, {:error, :gone}]
+      %Dispatch{late_machine_at: late} = dispatch!(claimed)
+      assert DateTime.diff(late, claimed_at, :second) >= 70 * 60
+
+      # 90 + 60 minutes from the claim is too early, and so is a microsecond before the
+      # net counted from the dispatched.
+      net = DateTime.add(late, (90 + 60) * 60, :second)
+      Dispatches.sweep(DateTime.add(claimed_at, (90 + 60) * 60, :second))
+      Dispatches.sweep(DateTime.add(net, -1, :microsecond))
+      assert Slots.held(ctx.pool.id) == 1
+
+      Dispatches.sweep(net)
+      assert Slots.held(ctx.pool.id) == 0
+    end
+  end
 end

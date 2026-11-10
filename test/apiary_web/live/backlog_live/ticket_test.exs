@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.BacklogLive.TicketTest do
   # The full ticket (`ApiaryWeb.BacklogLive.Ticket`): its page, with Backlog back and Take
   # in with its hint, for whoever may read the workspace's work items, and why in place of
-  # Take in to a person who may not take a ticket in; Take in leads to the new work item,
-  # and a refusal is a flash; an id of no ticket of this Backlog, and a person outside the
-  # workspace, find no page.
+  # Take in to a person who may not take a ticket in; Take in, confirmed in the take in's
+  # dialog, leads to the new work item, and a refusal is a flash; an id of no ticket of
+  # this Backlog, and a person outside the workspace, find no page.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -67,6 +67,7 @@ defmodule ApiaryWeb.BacklogLive.TicketTest do
     {:ok, view, _html} = live(ctx.conn, ticket_path(ctx.scope, ctx.ticket.public_id))
 
     view |> element("#ticket-take-in-button") |> render_click()
+    confirm_take_in(view)
 
     %WorkItem{number: number} = Repo.get_by!(WorkItem, item_id: ctx.ticket.id)
 
@@ -81,6 +82,7 @@ defmodule ApiaryWeb.BacklogLive.TicketTest do
     {:ok, view, _html} = live(ctx.conn, ticket_path(ctx.scope, ctx.ticket.public_id))
 
     render_click(view, "take_in", %{"id" => other.id})
+    confirm_take_in(view)
 
     %WorkItem{number: number} = Repo.get_by!(WorkItem, item_id: ctx.ticket.id)
     refute Repo.get_by(WorkItem, item_id: other.id)
@@ -98,6 +100,7 @@ defmodule ApiaryWeb.BacklogLive.TicketTest do
 
     {:ok, view, _html} = live(ctx.conn, ticket_path(ctx.scope, ctx.ticket.public_id))
     view |> element("#ticket-take-in-button") |> render_click()
+    confirm_take_in(view)
 
     assert render(view) =~ "sent no repository for this ticket"
     refute Repo.get_by(WorkItem, item_id: ctx.ticket.id)

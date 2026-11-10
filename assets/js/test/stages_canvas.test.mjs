@@ -9,6 +9,7 @@ import assert from "node:assert/strict"
 import {readFileSync} from "node:fs"
 
 import * as canvas from "../hooks/stages_canvas.js"
+import {stageCard} from "../stage_card.js"
 
 const {
   ADD_SIZE,
@@ -19,6 +20,7 @@ const {
   SIDE,
   ZOOM,
   column,
+  descriptionLines,
   dropY,
   estimateHeight,
   fitViewport,
@@ -108,6 +110,53 @@ test("names reach the card as text, unchanged, with the full label for a screen 
   assert.equal(card.ariaLabel, "<b>Release</b>")
   assert.equal(stages(view)[0].ariaLabel, view.stages[0].label)
   assert.deepEqual(stages(view)[1].data.alerts, ["x"])
+})
+
+test("a description reaches the card as text, unchanged; a stage without one has an empty one", () => {
+  const text = "Plan the <b>Checkout</b> change.\n**Not Markdown.**"
+  const v = {...view, stages: [{...view.stages[0], description: text}, view.stages[1], {...view.stages[2], description: null}]}
+  const [first, second, third] = stages(v)
+  assert.equal(first.data.description, text)
+  assert.equal(second.data.description, "")
+  assert.equal(third.data.description, "")
+})
+
+test("a description adds to a card's estimated height, at most three lines", () => {
+  const card = stages(view, {})[1].data
+  const height = estimateHeight(card)
+  assert.ok(estimateHeight({...card, description: "Short."}) > height)
+  assert.ok(estimateHeight({...card, description: "a".repeat(200)}) > estimateHeight({...card, description: "Short."}))
+  assert.equal(estimateHeight({...card, description: "a".repeat(500)}), estimateHeight({...card, description: "a".repeat(200)}))
+})
+
+test("a description's line breaks count as lines, up to three", () => {
+  assert.equal(descriptionLines("Short."), 1)
+  assert.equal(descriptionLines("Plan the change.\nA member checks it."), 2)
+  assert.equal(descriptionLines("One.\n\nThree."), 3)
+  assert.equal(descriptionLines("a\nb\nc\nd\ne"), 3)
+  assert.equal(descriptionLines(`${"a".repeat(60)}\nb`), 3)
+})
+
+// The card as plain objects: `h` returns each element's type, props and children.
+const h = (type, props, ...children) => ({type, props: props || {}, children})
+const drawn = data => stageCard(h, {data, selected: false, words: {no_workflow: "No workflow"}, handle: () => null})
+const byKey = (card, key) => card.children.find(child => child?.props?.key === key)
+
+test("a card draws its description under the name, as text with its line breaks, cut to three lines", () => {
+  const text = "Plan the <b>Checkout</b> change.\nA member checks it."
+  const data = {...stages(view)[1].data, description: text}
+  const card = drawn(data)
+  const description = byKey(card, "description")
+
+  assert.equal(card.children.indexOf(description), card.children.indexOf(byKey(card, "name")) + 1)
+  assert.equal(description.type, "p")
+  assert.deepEqual(description.children, [text])
+  assert.equal(description.props.title, text)
+  const classes = description.props.className.split(" ")
+  for (const name of ["whitespace-pre-line", "line-clamp-3", "break-words"]) assert.ok(classes.includes(name), name)
+
+  // A card without a description draws no line for it.
+  assert.equal(byKey(drawn({...data, description: ""}), "description"), undefined)
 })
 
 test("each workflow's mark reaches the card as text, and a card with none has no marks", () => {
@@ -302,7 +351,7 @@ test("a canvas whose cards open nothing draws cards a click does not select", ()
   const preview = {...view, editable: false, selectable: false}
   assert.ok(stages(preview).every(node => node.selectable === false))
   // Tab stops on no card of the preview (React Flow gives a node that is not focusable no
-  // tabindex), and on each card of the Stages page; each card stays a labelled group.
+  // tabindex), and on each card of the Workflows page; each card stays a labelled group.
   assert.ok(stages(preview).every(node => node.focusable === false))
   assert.ok(stages(view).every(node => node.focusable === true))
   assert.ok([...stages(view), ...stages(preview)].every(n => n.ariaRole === "group" && n.ariaLabel))

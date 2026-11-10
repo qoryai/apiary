@@ -169,6 +169,7 @@ defmodule Apiary.Runs.ListFactsTest do
     # claim would.
     defp run_of!(scope, queued) do
       run = started_run(scope)
+      :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
 
       {1, _rows} =
         Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
@@ -276,13 +277,18 @@ defmodule Apiary.Runs.ListFactsTest do
       assert facts(scope, requeued).started_by == :image_requeue
       assert facts(scope, second).started_by == {:taken_in_again, user.id}
 
-      assert %{number: number, title: "The checkout keeps the old price", here: true} =
-               facts(scope, first).work_item
+      assert %{
+               number: number,
+               public_id: public_id,
+               title: "The checkout keeps the old price",
+               here: true
+             } = facts(scope, first).work_item
 
       assert number == work_item.number
+      assert public_id == work_item.public_id
     end
 
-    test "a comment on Qory's proposal", %{scope: scope, user: user} do
+    test "a comment on the proposal", %{scope: scope, user: user} do
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
 
       first = started_run(scope)
@@ -360,7 +366,7 @@ defmodule Apiary.Runs.ListFactsTest do
       assert %{started_by: :direct, work_item: nil, workflow: nil} = facts(scope, direct)
     end
 
-    test "a work item that moved to another workspace: its title alone, no number, no target",
+    test "a work item that moved to another workspace: its title and public id, no number, no target",
          %{scope: scope} do
       work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Say hello"})
       run = started_run(scope)
@@ -374,6 +380,7 @@ defmodule Apiary.Runs.ListFactsTest do
 
       assert facts(scope, run).work_item == %{
                number: nil,
+               public_id: work_item.public_id,
                title: "Say hello",
                here: false,
                target_system: nil,
@@ -385,6 +392,82 @@ defmodule Apiary.Runs.ListFactsTest do
       other = sign_up_fixture().scope
       run = started_run(other)
       assert Runs.list_facts(scope, [run]) == %{}
+    end
+  end
+
+  describe "the work item of one run (`Runs.work_item/2`)" do
+    # The queries `fun` makes, in this process.
+    defp queries(fun) do
+      test = self()
+      counter = :counters.new(1, [])
+      handler = "list-facts-work-item-#{inspect(make_ref())}"
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, _metadata, _config ->
+          if self() == test, do: :counters.add(counter, 1, 1)
+        end,
+        nil
+      )
+
+      try do
+        result = fun.()
+        {result, :counters.get(counter, 1)}
+      after
+        :telemetry.detach(handler)
+      end
+    end
+
+    @tag needs: [:observability, :factory, :workflow_model]
+    test "is the list's work item of the run, in one read", %{scope: scope} do
+      # A run a stage placed, of a work item with a take in: the list reads the stage's
+      # version and the work item's events besides the run.
+      work_item = Apiary.StagesFixtures.taken_in_fixture(scope)
+
+      [queued] =
+        Repo.all(from d in Apiary.Dispatches.DispatchRun, where: d.work_item_id == ^work_item.id)
+
+      run = started_run(scope)
+      :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
+          set: [dispatch_run_id: queued.id]
+        )
+
+      {facts, list_reads} = queries(fn -> facts(scope, run) end)
+      {one, reads} = queries(fn -> Runs.work_item(scope, run) end)
+
+      assert %{public_id: public_id, here: true} = one
+      assert public_id == work_item.public_id
+      assert one == facts.work_item
+      assert reads == 1
+      assert list_reads == 3
+    end
+
+    test "a work item that moved, no work item, and another workspace's run", %{scope: scope} do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope, %{title: "Say hello"})
+      moved = started_run(scope)
+      queue_run!(scope, moved, work_item: work_item)
+      elsewhere = workspace_fixture(scope.organisation)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [workspace_id: elsewhere.id]
+        )
+
+      assert Runs.work_item(scope, moved) == facts(scope, moved).work_item
+      assert %{number: nil, here: false, title: "Say hello"} = Runs.work_item(scope, moved)
+
+      direct = started_run(scope)
+      assert Runs.work_item(scope, direct) == nil
+
+      other = sign_up_fixture().scope
+      theirs = started_run(other)
+      queue_run!(other, theirs)
+      assert Runs.work_item(scope, theirs) == nil
+      assert %{here: true} = Runs.work_item(other, theirs)
     end
   end
 

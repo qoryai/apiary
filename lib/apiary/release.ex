@@ -19,15 +19,31 @@ defmodule Apiary.Release do
   """
   @app :apiary
 
+  # The worker that the audit trail records for each version `migrate/1` renders again.
+  @migrate_origin %{worker: "Apiary.Release.migrate/1"}
+
+  require Logger
+
   @doc """
-  Runs every pending migration, `bin/migrate`'s and `Apiary.Release.Migrator`'s at boot:
-  the core's and the edition's folders (`c:Apiary.Edition.migrations_paths/0`), which
-  Ecto merges by version into one sequence, and then the edition's step after them
-  (`c:Apiary.Edition.after_migrate/0`), on the same repository. Raises on a migration that
-  fails, so the step after them never runs on a schema half migrated.
+  Runs every pending migration, for `bin/migrate`: the core's and the edition's folders
+  (`c:Apiary.Edition.migrations_paths/0`), which Ecto merges by version into one sequence,
+  then the edition's step after them (`c:Apiary.Edition.after_migrate/0`), and then
+  version 1 of the policy of each workspace that has none (`Apiary.Policy.first_versions/0`),
+  and then a render again of every workspace that has a version
+  (`Apiary.Policy.rerender_all/1`), on the same repository. Raises on a migration that
+  fails, so the steps after them never run on a schema half migrated. A workspace whose
+  version 1 or whose render again fails is logged and left for the next run. Version 1
+  and the render again run only once the key check passes (`Apiary.KeyCheck.check/0`,
+  where it is on), as at boot: with another `APIARY_ENCRYPTION_SECRET` the hosts of the
+  integrations cannot be read, so the failure is logged and every version 1 and every
+  render again left for the next run.
+
+  At boot, `Apiary.Release.Migrator` runs the same steps with `first_versions: false`, and
+  `Apiary.Release.FirstVersions` writes the versions once the key check has passed, then
+  renders every workspace again.
   """
-  @spec migrate() :: :ok
-  def migrate do
+  @spec migrate(keyword) :: :ok
+  def migrate(opts \\ []) do
     load_app()
 
     for repo <- repos() do
@@ -35,6 +51,13 @@ defmodule Apiary.Release do
         Ecto.Migrator.with_repo(repo, fn repo ->
           Ecto.Migrator.run(repo, Apiary.Edition.migrations_paths(), :up, all: true)
           :ok = Apiary.Edition.after_migrate()
+
+          if Keyword.get(opts, :first_versions, true) and keys_checked?() do
+            _totals = Apiary.Policy.first_versions()
+            _rerendered = with_pubsub(fn -> Apiary.Policy.rerender_all(@migrate_origin) end)
+          end
+
+          :ok
         end)
     end
 
@@ -83,14 +106,20 @@ defmodule Apiary.Release do
   Renders every managed workspace's run configurations again, as
   `mix apiary.policy.rerender` does where there is Mix:
   `bin/apiary eval "Apiary.Release.policy_rerender()"`. See
-  `Apiary.Policy.rerender_all/0`.
+  `Apiary.Policy.rerender_all/0`. It runs after the same key check as `migrate/1`: under
+  another encryption secret it renders nothing, logs why, and returns `:key_check_failed`
+  for the repository.
   """
   def policy_rerender do
     load_app()
 
     for repo <- repos() do
       {:ok, result, _} =
-        Ecto.Migrator.with_repo(repo, fn _repo -> with_pubsub(&Apiary.Policy.rerender_all/0) end)
+        Ecto.Migrator.with_repo(repo, fn _repo ->
+          if keys_checked?(),
+            do: with_pubsub(&Apiary.Policy.rerender_all/0),
+            else: :key_check_failed
+        end)
 
       result
     end
@@ -629,6 +658,30 @@ defmodule Apiary.Release do
 
   defp repos do
     Application.fetch_env!(@app, :ecto_repos)
+  end
+
+  # The boot's key check, run as `Apiary.KeyCheck.start_link/0` runs it, but logged
+  # without an exit: a version 1 rendered under another encryption secret would be
+  # written without the hosts of the integrations, and never written again.
+  defp keys_checked? do
+    if Apiary.KeyCheck.enabled?() do
+      case Apiary.KeyCheck.check() do
+        :ok ->
+          true
+
+        {:error, messages} ->
+          Logger.error(
+            "Set APIARY_ENCRYPTION_SECRET and APIARY_SIGNING_SECRET to the instance's keys " <>
+              "and run bin/migrate again: policy version 1 is not written and no policy is " <>
+              "rendered again, because the key check failed."
+          )
+
+          Enum.each(messages, &Logger.error/1)
+          false
+      end
+    else
+      true
+    end
   end
 
   defp load_app do

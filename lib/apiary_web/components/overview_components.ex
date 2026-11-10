@@ -12,9 +12,9 @@ defmodule ApiaryWeb.OverviewComponents do
   browser under the `Ticker` hook, as everywhere.
 
   The policy's parts are the `security` feature's: the policy lines of `guard/1`, the
-  attention items of kinds `:denied` (an allow is a rule), `:behind`, `:enforce` and
-  `:unmanaged`. None of them asks for itself; the caller leaves them out where the feature
-  is off, and what remains names, links to and offers nothing of the policy.
+  attention items of kinds `:denied` (an allow is a rule), `:behind` and `:enforce`. None
+  of them asks for itself; the caller leaves them out where the feature is off, and what
+  remains names, links to and offers nothing of the policy.
   """
   use Phoenix.Component
   use ApiaryWeb, :verified_routes
@@ -54,6 +54,10 @@ defmodule ApiaryWeb.OverviewComponents do
   alias Apiary.Runs.Preparation
   alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
+
+  # The run API's rule, which a head of `shown_host/1` matches on. A function head cannot
+  # call `Apiary.Runs.RunApi.rule/0`, so the rule is set here at compile time.
+  @run_api_rule Apiary.Runs.RunApi.rule()
 
   ## The summary
 
@@ -401,9 +405,6 @@ defmodule ApiaryWeb.OverviewComponents do
   defp mark(%{kind: :enforce}),
     do: %{tone: "plain", icon: "hero-shield-exclamation-micro", word: gettext("Policy")}
 
-  defp mark(%{kind: :unmanaged}),
-    do: %{tone: "plain", icon: "hero-shield-check-micro", word: gettext("Policy")}
-
   defp mark(%{kind: :idle_key}),
     do: %{tone: "faint", icon: "hero-key-micro", word: gettext("Access key")}
 
@@ -449,12 +450,6 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_subject(%{item: %{kind: :unmanaged}} = assigns) do
-    ~H"""
-    <span class="q-ar-t">{gettext("Qory Apiary serves no policy yet")}</span>
-    """
-  end
-
   defp attention_subject(%{item: %{kind: :idle_key}} = assigns) do
     ~H"""
     <span class="q-ar-t q-mono" title={@item.key.label}>{@item.key.label}</span>
@@ -466,20 +461,20 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <span
       class="q-host q-dest-tool q-ar-t q-mono"
-      title={destination_title(@d, @item.port)}
+      title={destination_title(@d)}
     >
       <.tool_mark name={@d.tool} /><span
         :if={@item.path not in [nil, ""]}
         class="q-path"
-      >{@d.path}</span><span class="q-port"><bdi>{@d.host}</bdi>:{@item.port}</span>
+      >{@d.path}</span><span class="q-port"><bdi>{@d.host}</bdi>{port_words(@d)}</span>
     </span>
     """
   end
 
   defp denied_subject(assigns) do
     ~H"""
-    <span class="q-host q-ar-t q-mono" title={destination_title(@d, @item.port)}>
-      <bdi>{@d.host}</bdi><span class="q-port">:{@item.port}</span><span
+    <span class="q-host q-ar-t q-mono" title={destination_title(@d)}>
+      <bdi>{@d.host}</bdi><span :if={@d.port} class="q-port">:{@d.port}</span><span
         :if={@item.held && @item.path not in [nil, ""]}
         class="q-path"
       >{@d.path}</span>
@@ -491,17 +486,24 @@ defmodule ApiaryWeb.OverviewComponents do
   # system's text is shown (`shown/1`), or marked (`Apiary.ExternalText.marked/1`) where
   # nothing is left of one it sent, since the item's case follows what was sent. A host
   # the wall refused for its form, and a path it refused as one that reads two ways
-  # (`wall`), are marked, since what is wrong with them is the reason.
+  # (`wall`), are marked, since what is wrong with them is the reason. A request to the run
+  # API shows the instance's host, with no port (`Apiary.Runs.RunApi`).
   defp shown_destination(item) do
     %{
       host: shown_host(item),
+      port: if(run_api?(item), do: nil, else: item.port),
       path: shown_path(item),
       tool: shown_sent(item[:tool])
     }
   end
 
+  defp run_api?(%{wall: %{rule: rule}}), do: Apiary.Runs.RunApi.run_api?(rule)
+  defp run_api?(_item), do: false
+
   defp shown_host(%{wall: %{rule: "wall:host-form"}, host: host}),
     do: Apiary.ExternalText.marked(host)
+
+  defp shown_host(%{wall: %{rule: @run_api_rule}}), do: Apiary.Runs.RunApi.host()
 
   defp shown_host(%{host: host}), do: shown_sent(host)
 
@@ -564,7 +566,7 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_where(%{item: %{kind: kind}} = assigns) when kind in [:enforce, :unmanaged] do
+  defp attention_where(%{item: %{kind: :enforce}} = assigns) do
     ~H"""
     {gettext("Policy")}
     """
@@ -644,17 +646,6 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_reason(%{item: %{kind: :unmanaged}} = assigns) do
-    ~H"""
-    {ngettext(
-      "%{number} run under the machines' policies",
-      "%{number} runs under the machines' policies",
-      @item.runs,
-      number: Format.number(@item.runs)
-    )}
-    """
-  end
-
   defp attention_reason(%{item: %{kind: :idle_key}} = assigns) do
     ~H"""
     <%= if @item.key.last_used_at do %>
@@ -723,12 +714,6 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp reason_title(%{kind: :enforce}, true), do: mode_tip()
 
-  defp reason_title(%{kind: :unmanaged}, _can),
-    do:
-      gettext(
-        "The first rule you add, or a mode you set, puts the runs under the workspace's policy."
-      )
-
   defp reason_title(%{kind: :idle_key}, _can),
     do: gettext("A key nobody uses is a key to revoke.")
 
@@ -779,6 +764,19 @@ defmodule ApiaryWeb.OverviewComponents do
     <span :if={@tip} id={"#{@item.id}-act"} class="q-act-lock" title={@tip}>
       <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
     </span>
+    """
+  end
+
+  # A host that every run is allowed today, such as a runtime's: no rule changes it, so it
+  # has the lock with the hint of its row's lock on Network access. The hint opens above
+  # the lock, flush with its right edge (`q-tip-end`), so the card's edge does not cut it.
+  defp attention_act(%{item: %{kind: :denied, required: true}} = assigns) do
+    ~H"""
+    <ApiaryWeb.RunComponents.act_lock
+      id={"#{@item.id}-act"}
+      tip={gettext("Allowed for every run")}
+      placement="tooltip-top q-tip-end"
+    />
     """
   end
 
@@ -993,18 +991,6 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_act(%{item: %{kind: :unmanaged}} = assigns) do
-    ~H"""
-    <.link
-      id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
-      class="q-act"
-    >
-      {gettext("Open policy")}
-    </.link>
-    """
-  end
-
   defp attention_act(%{item: %{kind: :idle_key}} = assigns) do
     ~H"""
     <.link
@@ -1054,15 +1040,24 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   # The destination as shown (`shown_destination/1`), whole, for a cut subject's title.
-  defp destination_title(%{tool: tool, host: host, path: path}, port)
-       when is_binary(tool),
-       do:
-         gettext("%{destination}, a host the tool %{tool} serves",
-           destination: "#{host}:#{port}#{path}",
-           tool: tool
-         )
+  defp destination_title(%{tool: tool} = d) when is_binary(tool),
+    do:
+      gettext("%{destination}, a host the tool %{tool} serves",
+        destination: destination_words(d),
+        tool: tool
+      )
 
-  defp destination_title(%{host: host, path: path}, port), do: "#{host}:#{port}#{path}"
+  defp destination_title(d), do: destination_words(d)
+
+  # A request to the run API has no port, and a space before its path.
+  defp destination_words(%{port: nil, host: host, path: path}) when path not in [nil, ""],
+    do: "#{host} #{path}"
+
+  defp destination_words(%{port: nil, host: host}), do: "#{host}"
+  defp destination_words(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
+
+  defp port_words(%{port: nil}), do: ""
+  defp port_words(%{port: port}), do: ":#{port}"
 
   # A run Apiary marked lost when nothing was heard, which a heartbeat still revives, or one
   # whose exit said it was lost (`Apiary.Runs.Fold`): the session stopped responding, or the
@@ -1664,8 +1659,12 @@ defmodule ApiaryWeb.OverviewComponents do
               <span></span>
               <span class="skeleton q-skel-line q-gr-d w-3/4"></span>
             <% true -> %>
+              <%!-- A workspace with no policy version yet shows no mode: its machines use
+                   their local policy. --%>
               <span class="q-gr-v" id="overview-policy-version">
-                {mode_word(@policy.summary.mode)}<span :if={@policy.version}> · v{@policy.version.version}</span>
+                <span :if={@policy.summary.managed?}>
+                  {mode_word(@policy.summary.mode)}<span :if={@policy.version}> · v{@policy.version.version}</span>
+                </span>
               </span>
               <.link
                 id="overview-policy-open"
@@ -1674,7 +1673,9 @@ defmodule ApiaryWeb.OverviewComponents do
               >
                 {gettext("Open")}
               </.link>
-              <span class="q-gr-d" id="overview-policy-mode">{policy_detail(@policy)}</span>
+              <span :if={@policy.summary.managed?} class="q-gr-d" id="overview-policy-mode">
+                {policy_detail(@policy)}
+              </span>
           <% end %>
         </div>
         <div :if={@security? && @policy && !@policy_failed?} id="overview-own" class="q-gr">
@@ -1728,12 +1729,12 @@ defmodule ApiaryWeb.OverviewComponents do
   defp mode_word("observe"), do: gettext("observe")
   defp mode_word(mode), do: mode
 
-  defp policy_detail(%{summary: %{managed?: false}}),
-    do: gettext("Machines use their local policy until the first change here.")
-
   defp policy_detail(%{version: %{rendered_at: at}} = policy) do
     [
-      gettext("In force since %{date}; %{following} of %{targets} follow it.",
+      ngettext(
+        "In force since %{date}; %{following} of %{targets} follows it.",
+        "In force since %{date}; %{following} of %{targets} follow it.",
+        policy.following,
         date: Format.short_date(at),
         following: Format.number(policy.following),
         targets:
@@ -1749,7 +1750,10 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp policy_detail(policy),
     do:
-      gettext("%{following} of %{targets} follow it.",
+      ngettext(
+        "%{following} of %{targets} follows it.",
+        "%{following} of %{targets} follow it.",
+        policy.following,
         following: Format.number(policy.following),
         targets:
           ngettext("%{number} target", "%{number} targets", policy.targets,
@@ -1882,6 +1886,11 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
 
+  attr :may_set_limit, :boolean,
+    default: false,
+    doc:
+      "whether the reader may set a pool's limit (`node.set_limit`), which adding a pool needs too"
+
   attr :target, :any,
     default: nil,
     doc: "the newest node or pool in use that holds no active key, or nil"
@@ -1948,7 +1957,9 @@ defmodule ApiaryWeb.OverviewComponents do
         </p>
         <.steps current={@current} class="my-5">
           <:step title={gettext("Add a machine")}>
-            {gettext("One per machine, or a pool of machines that share one key.")}
+            {if @may_set_limit,
+              do: gettext("One per machine, or a pool of machines that share one key."),
+              else: gettext("One per machine.")}
           </:step>
           <:step title={gettext("Connect it")}>
             {pgettext(
@@ -1974,6 +1985,7 @@ defmodule ApiaryWeb.OverviewComponents do
             <.icon name="hero-server" class="size-4" /> {gettext("New machine")}
           </.button>
           <.button
+            :if={@may_set_limit}
             id={"#{@id}-new-pool"}
             navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/machines/new-pool"}
             class="max-[479px]:w-full"
@@ -2160,9 +2172,10 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc false
   # test_failed/1 is the line of a test run that failed for `cause`
   # (`Apiary.WorkspaceSetup.test_run/2`), which the set-up's Test run step shows. A run
-  # that stopped while its machine was prepared shows the step and the cause line of its
-  # Prepare machine section (`Apiary.Runs.Preparation`), with a link to that section;
-  # any other run its end as the run page shows it. `path` is the run page's path.
+  # that stopped while its machine was prepared shows the step and the cause line of the
+  # **Run** list in the run's Timeline (`Apiary.Runs.Preparation`), with a link to the
+  # run's Timeline; any other run its end as the run page shows it. `path` is the run
+  # page's path.
   attr :cause, :atom, required: true
   attr :dispatch_run, :any, default: nil
   attr :run, :any, default: nil
@@ -2186,7 +2199,7 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns =
       assign(assigns,
         step: Preparation.stopped_step(assigns.preparation),
-        what: stopped.what,
+        what: ApiaryWeb.PreparationComponents.cause_what(stopped),
         fix: ApiaryWeb.Support.stored_line(stopped.fix)
       )
 
@@ -2194,9 +2207,9 @@ defmodule ApiaryWeb.OverviewComponents do
     <.rich text={rich_gettext("The test run stopped at %{step}.", step: {:part, :step})}>
       <:part name={:step}><.external_text text={@step} /></:part>
     </.rich>
-    {@what} <.rich text={@fix} />
+    <.rich text={@what} /> <.rich text={@fix} />
     <.link id="set-up-test-preparation" navigate={@path <> "#prepare-machine"} class="q-link">
-      {gettext("Open the run's Prepare machine section")}
+      {gettext("Open the run's Timeline")}
     </.link>
     """
   end
@@ -2314,7 +2327,7 @@ defmodule ApiaryWeb.OverviewComponents do
       rich_gettext(
         "%{contact_support} with run %{run}. The machine stopped sending for 10 minutes.",
         contact_support: ApiaryWeb.Support.rich(),
-        run: run.number
+        run: run.public_id
       )
 
   # How a test run's run ended, as the run page's header shows its state and reason

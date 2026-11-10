@@ -147,6 +147,7 @@ defmodule Apiary.StagesFixtures do
 
     registered =
       %Run{
+        number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
         node_run_id: run.run_id,
@@ -163,7 +164,7 @@ defmodule Apiary.StagesFixtures do
         outcome_digest: :crypto.strong_rand_bytes(32)
       })
       |> Ecto.Changeset.change(run_changes)
-      |> Repo.insert!()
+      |> Apiary.RunEventsFixtures.insert_run!()
 
     # What the run pushes, it pushes while it is live (`Apiary.Artifacts.push/5` refuses a
     # run that ended); then it ends.

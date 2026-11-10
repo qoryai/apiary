@@ -2,7 +2,7 @@ defmodule Apiary.Harnesses.PublicGit do
   # Reads a file of a public git repository the way anyone may: git's smart-HTTP protocol
   # over HTTPS, with no credential and no adapter, through `Apiary.Integrations.Fetch`,
   # which connects only to public addresses, pinned, at the port the address has. A run's
-  # harness walk (`Apiary.Harnesses.Walk`) and Workspace settings › Workflow
+  # harness walk (`Apiary.Harnesses.Walk`) and Workspace settings › Harness
   # (`Apiary.Stacks.Sources`) read a harness source no link reaches with it.
   #
   # ## The requests
@@ -80,6 +80,7 @@ defmodule Apiary.Harnesses.PublicGit do
     * `{:unreachable, seconds}`: no address, no connection, no answer within `seconds`,
       or a `502`, `503` or `504`;
     * `:rate_limited`: the host answered `429`, a limit of how often it is read;
+    * `:server_error`: the host returned `500`;
     * `:late`: the session's budget gave no time for another request;
     * `:no_calls`: the session's budget counted no request left;
     * `:too_large`: an answer, a file or the inflated packs over a limit;
@@ -92,6 +93,7 @@ defmodule Apiary.Harnesses.PublicGit do
           | :not_allowed
           | {:unreachable, pos_integer}
           | :rate_limited
+          | :server_error
           | :late
           | :no_calls
           | :too_large
@@ -170,6 +172,21 @@ defmodule Apiary.Harnesses.PublicGit do
         {:ok, content, commit}
       end
       |> at_hop(address(repository.base))
+    end
+  end
+
+  @doc false
+  # commit/2 is the full commit id `at` names in `git`, as `git ls-remote` lists it, with
+  # no fetch: `{:ok, commit}`, or `{:error, cause, hop}`. A full commit id is taken as it
+  # is once the host serves the repository; whether the host has that commit shows only
+  # when a file is read at it.
+  @spec commit(String.t(), String.t()) :: {:ok, String.t()} | {:error, cause, hop}
+  def commit(git, at) when is_binary(git) and is_binary(at) do
+    with {:ok, repository} <- repository(git) do
+      case resolve(repository, at) do
+        {:ok, commit, _given} -> {:ok, commit}
+        {:error, cause} -> {:error, cause, address(repository.base)}
+      end
     end
   end
 

@@ -289,7 +289,7 @@ defmodule Apiary.Runs.StepsTest do
       for {kind, step} <- Enum.with_index(Step.kinds(), 1),
           do: assert(%Step{} = row.(%{step: step, kind: kind}))
 
-      assert %Step{state: "running", kind: nil} = row.(%{step: 9})
+      assert %Step{state: "running", kind: nil} = row.(%{step: 100})
     end
 
     test "the steps go with their run", %{scope: scope, run: run} do

@@ -3,9 +3,9 @@ defmodule Apiary.Audit do
   The audit trail: what people, access keys and the instance did to what Qory
   Apiary holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
   when, from where, and the fields it changed as they were and as they are. A member's
-  answer, review comment or reply leaves two entries: the move's, `work_item.answer`, and
-  `artifact.write` for the artifact version it writes. A review comment, a reply and a
-  send of the review comments ask `work_item.review_comment` (`Apiary.Access`) and write
+  answer, comment or reply leaves two entries: the move's, `work_item.answer`, and
+  `artifact.write` for the artifact version it writes. A comment, a reply and a
+  send of the comments ask `work_item.review_comment` (`Apiary.Access`) and write
   the entry `work_item.answer`. The trail is not the record: the
   record is what runs did (their events, their log), the trail is what was done to Qory
   Apiary. The events the gateway posts are the record and leave no entry.
@@ -523,6 +523,7 @@ defmodule Apiary.Audit do
         )
         |> filter_workspace(filters[:workspace_id])
         |> filter_action(filters[:action])
+        |> filter_first_versions(filters[:first_versions])
         |> Repo.all()
 
       {:ok, %{entries: Enum.take(rows, @page_size), page: page, more?: length(rows) > @page_size}}
@@ -539,6 +540,20 @@ defmodule Apiary.Audit do
   end
 
   defp filter_workspace(query, _id), do: query
+
+  # `first_versions: false` leaves out each workspace's `first_version` entry of its policy,
+  # for a reader who is not shown the policy. No person made it, so it is the one entry of the
+  # policy's actions that a workspace has where the `security` feature is off.
+  defp filter_first_versions(query, false) do
+    where(
+      query,
+      [e],
+      e.action != "security_policy.edit" or
+        fragment("?->>'change' IS DISTINCT FROM 'first_version'", e.details)
+    )
+  end
+
+  defp filter_first_versions(query, _first_versions), do: query
 
   defp filter_action(query, action) when is_atom(action) and not is_nil(action),
     do: filter_action(query, Atom.to_string(action))

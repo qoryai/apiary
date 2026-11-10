@@ -14,7 +14,7 @@ defmodule ApiaryWeb.DocsControllerTest do
 
   # A tree per set of features, as `mix docs` builds them, each page saying which it is.
   # The security tree is `observability+security`: every feature is more, the core's
-  # opt-in `secrets` among them.
+  # `secrets` among them.
   @every "all"
 
   defp security_tree, do: ApiaryWeb.DocsController.tree_name([:observability, :security])

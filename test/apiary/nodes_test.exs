@@ -240,30 +240,44 @@ defmodule Apiary.NodesTest do
       assert [_created] = entries(pool)
     end
 
-    test "a pool is made with a limit of 1, and not with one given", %{scope: scope} do
-      assert {:error, :forbidden} =
-               Nodes.create_node(scope, %{kind: "pool", name: "ci", instance_limit: 3})
+    test "a pool is refused, with a limit and without one", %{scope: scope, pool: pool} do
+      for attrs <- [%{instance_limit: 3}, %{instance_limit: ""}, %{}] do
+        assert {:error, :forbidden} =
+                 Nodes.create_node(scope, Map.merge(%{kind: "pool", name: "ci"}, attrs))
+      end
 
       refute Repo.get_by(Node, workspace_id: scope.workspace.id, name: "ci")
 
-      assert {:ok, %Node{kind: :pool, instance_limit: 1} = pool} =
-               Nodes.create_node(scope, %{kind: "pool", name: "ci", instance_limit: ""})
+      # The one creation recorded is the setup's pool.
+      pool_id = pool.id
 
-      assert [%Entry{action: "node.create", after: %{"instance_limit" => 1}}] = entries(pool)
+      assert [%Entry{subject_id: ^pool_id}] =
+               Repo.all(from e in Entry, where: e.action == "node.create")
+    end
 
-      # One who may set the limit raises it.
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.None)
+    test "a node and a gateway are made", %{scope: scope} do
+      # A node's limit is 1, whoever makes it, with a limit given, an empty one or none.
+      for {name, attrs} <- [
+            {"build-07", %{instance_limit: 4}},
+            {"build-08", %{instance_limit: ""}},
+            {"build-09", %{}}
+          ] do
+        assert {:ok, %Node{kind: :node, instance_limit: 1}} =
+                 Nodes.create_node(scope, Map.merge(%{kind: "node", name: name}, attrs))
+      end
 
-      assert {:ok, %Node{instance_limit: 20}} =
-               Nodes.update_node(scope, pool, %{instance_limit: 20})
-
-      # A node's limit is 1, whoever makes it.
-      assert {:ok, %Node{kind: :node, instance_limit: 1}} =
-               Nodes.create_node(scope, %{kind: "node", name: "build-09", instance_limit: 4})
+      # A gateway's is none, a limit given or not.
+      assert {:ok, %Node{kind: :gateway, instance_limit: nil}} =
+               Nodes.create_node(scope, %{
+                 kind: "gateway",
+                 name: "edge-09",
+                 url: "https://gateway.example",
+                 instance_limit: 3
+               })
     end
   end
 
-  test "one who may set a pool's limit makes it without one, as before", %{scope: scope} do
+  test "one who may set a pool's limit makes it without one", %{scope: scope} do
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.None)
     assert Apiary.Access.can?(scope, :"node.set_limit", scope.workspace)
 

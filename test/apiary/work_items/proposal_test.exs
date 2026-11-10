@@ -33,6 +33,22 @@ defmodule Apiary.WorkItems.ProposalTest do
     do: %{question: text, options: for(t <- titles, do: %{title: t, explanation: "Why #{t}."})}
 
   describe "the questions as the pages draw them" do
+    test "marks only the option the run recommends" do
+      assert %{options: [yes, no, other]} =
+               Proposal.question(%{
+                 "question" => "Which?",
+                 "options" => [
+                   %{"title" => "Yes", "explanation" => "e", "recommended" => true},
+                   %{"title" => "No", "explanation" => "e", "recommended" => false},
+                   %{"title" => "Other", "explanation" => "e"}
+                 ]
+               })
+
+      assert yes == %{title: "Yes", explanation: "e", recommended: true}
+      assert no == %{title: "No", explanation: "e", recommended: false}
+      assert other == %{title: "Other", explanation: "e", recommended: false}
+    end
+
     test "question/1 is a question with its options, and a text offers none" do
       assert Proposal.question(%{
                "id" => "q1",
@@ -45,8 +61,12 @@ defmodule Apiary.WorkItems.ProposalTest do
              }) == %{
                question: "Which refund applies to **this order**?",
                options: [
-                 %{title: "Full refund", explanation: "The policy covers it."},
-                 %{title: "Store credit", explanation: "No return is needed."}
+                 %{
+                   title: "Full refund",
+                   explanation: "The policy covers it.",
+                   recommended: false
+                 },
+                 %{title: "Store credit", explanation: "No return is needed.", recommended: false}
                ]
              }
 
@@ -55,6 +75,45 @@ defmodule Apiary.WorkItems.ProposalTest do
 
       assert Proposal.question("Stored before options?") ==
                %{question: "Stored before options?", options: []}
+    end
+
+    test "question/1 keeps an option's recommended: true only where the option has true" do
+      option = %{"title" => "Full refund", "explanation" => "The policy covers it."}
+
+      assert %{
+               options: [
+                 %{title: "Full refund", recommended: true},
+                 %{title: "Full refund", recommended: false},
+                 %{title: "Full refund", recommended: false}
+               ]
+             } =
+               Proposal.question(%{
+                 "question" => "Which refund?",
+                 "options" => [
+                   Map.put(option, "recommended", true),
+                   Map.put(option, "recommended", false),
+                   option
+                 ]
+               })
+    end
+
+    test "check_answers/2 reads a recommended option as any other" do
+      question =
+        Proposal.question(%{
+          "question" => "Which refund?",
+          "options" => [
+            %{"title" => "Full refund", "explanation" => "Why.", "recommended" => true},
+            %{"title" => "Store credit", "explanation" => "Why not."}
+          ]
+        })
+
+      for title <- ["Full refund", "Store credit"] do
+        assert Proposal.check_answers([question], %{"1" => %{"option" => title}}) ==
+                 {:ok, [{1, "Which refund?", title, false}]}
+      end
+
+      assert Proposal.check_answers([question], %{"1" => %{"option" => "Neither"}}) ==
+               {:error, :invalid}
     end
   end
 

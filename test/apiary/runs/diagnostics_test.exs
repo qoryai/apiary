@@ -14,6 +14,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
   import Apiary.RunEventsFixtures
 
   alias Apiary.{DiagnosticsSchema, Dispatches, Repo}
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Runs.{Diagnostics, LogChunk, Run}
 
   @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
@@ -47,8 +48,15 @@ defmodule Apiary.Runs.DiagnosticsTest do
     test "each document is valid, and each invalid one refused", %{schema: schema} do
       dir = DiagnosticsSchema.fixtures_dir()
       valid = Path.wildcard(Path.join(dir, "diagnostics/*.json"))
-      invalid = Path.wildcard(Path.join(dir, "invalid/*.json"))
-      assert length(valid) == 4 and length(invalid) == 16
+      # The files of the run list, `runs-…`, are checked under its schemas
+      # (`Apiary.Runs.RunListTest`).
+      invalid =
+        dir
+        |> Path.join("invalid/*.json")
+        |> Path.wildcard()
+        |> Enum.reject(&String.starts_with?(Path.basename(&1), "runs-"))
+
+      assert length(valid) == 4 and length(invalid) == 22
 
       for file <- valid do
         assert DiagnosticsSchema.validate(schema, file |> File.read!() |> Jason.decode!()) ==
@@ -364,7 +372,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
                }
              } = document["preparation"]
 
-      assert text =~ "Setup failed with exit code 2."
+      assert text =~ "Set up the dev container failed with exit code 2."
     end
 
     test "lists every step in number order, a push step too, and a failed push is no stop",
@@ -398,6 +406,51 @@ defmodule Apiary.Runs.DiagnosticsTest do
              ] = document["preparation"]["steps"]
 
       refute Map.has_key?(document["preparation"], "stopped")
+    end
+
+    test "has the time of the first session's start, also when that session's wall failed",
+         %{schema: schema} do
+      %{scope: scope} = sign_up_fixture()
+      run = run_fixture(scope, %{public_id: Run.new_public_id()})
+
+      events_fixture(run, [
+        {1, "run.started", started_data()},
+        {2, "run.step_started", %{"step" => 1, "name" => "join session 1", "kind" => "join"}},
+        {3, "run.step_exited",
+         %{"step" => 1, "state" => "succeeded", "exit_code" => -1, "duration_ms" => 300}},
+        {4, "session.started", session_started_data(), time: at(4.7)},
+        {5, "run.step_started", %{"step" => 2, "name" => "start the wall", "kind" => "wall"}},
+        {6, "run.step_exited",
+         %{"step" => 2, "state" => "failed", "exit_code" => 125, "duration_ms" => 2700}}
+      ])
+
+      {:ok, run} = Apiary.Runs.Projector.project(run)
+      document = valid!(schema, Diagnostics.document(run, :instance))
+
+      assert document["preparation"]["session_started_at"] ==
+               at(4) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+      assert %{"cause" => "step_failed", "step" => 2} = document["preparation"]["stopped"]
+    end
+  end
+
+  describe "a queued run" do
+    @describetag needs: :factory
+
+    test "is valid, pending, with its queue row waiting and no dispatch", %{schema: schema} do
+      Apiary.EditionKit.hide_instance_organisation()
+      %{scope: scope} = sign_up_fixture()
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      run = Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
+
+      document = valid!(schema, Diagnostics.document(run, :instance))
+
+      assert %{"state" => "pending", "id" => id, "step" => "explore"} = document["run"]
+      assert id == run.public_id
+      assert document["run"]["work_item"] == work_item.public_id
+      assert document["queue"] == %{"state" => "waiting"}
+      assert document["dispatches"] == []
     end
   end
 
@@ -591,6 +644,37 @@ defmodule Apiary.Runs.DiagnosticsTest do
       end
     end
 
+    test "has the machine type: the claim's key, else the queued run's, with the type's name",
+         %{schema: schema, scope: scope, run: run, dispatch: dispatch} = ctx do
+      machine = fn ->
+        valid!(schema, Jason.decode!(Diagnostics.encode(run, scope)))["run"]["machine"]
+      end
+
+      # The type Browser tests (`browser`) is seeded.
+      set = fn schema_module, id, value ->
+        {1, _rows} =
+          Repo.update_all(from(r in schema_module, where: r.id == ^id),
+            set: [machine_type: value]
+          )
+      end
+
+      set.(Apiary.Dispatches.Dispatch, dispatch.id, "browser")
+      set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "standard")
+      assert machine.() == %{"key" => "browser", "name" => "Browser tests"}
+
+      # A dispatch of an answer with no offers has no key; the queued run has one.
+      set.(Apiary.Dispatches.Dispatch, dispatch.id, nil)
+      assert machine.() == %{"key" => "standard", "name" => "Standard"}
+
+      # A key no type has today: the key alone.
+      set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "gone")
+      assert machine.() == %{"key" => "gone"}
+
+      # A run queued before machine types: no record of the type.
+      set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "default")
+      assert machine.() == nil
+    end
+
     test "has no machine log for a member, who is no instance admin",
          %{schema: schema, scope: scope, run: run} do
       %{scope: member} = join_fixture(scope, user_fixture())
@@ -599,6 +683,22 @@ defmodule Apiary.Runs.DiagnosticsTest do
       document = valid!(schema, Jason.decode!(Diagnostics.encode(run, member)))
       refute Map.has_key?(document, "machine_logs")
       assert Map.has_key?(document, "log")
+    end
+
+    test "has the run's workflow up to 55 characters, and leaves out a longer one",
+         %{schema: schema, scope: scope, run: run} = ctx do
+      longest = "a" <> String.duplicate("b", 54)
+
+      for {workflow, shown} <- [{longest, longest}, {longest <> "c", nil}] do
+        {1, _} =
+          Repo.update_all(
+            from(h in RunHarness, where: h.dispatch_run_id == ^ctx.dispatch_run.id),
+            set: [state: :resolved, workflow: workflow]
+          )
+
+        document = valid!(schema, Jason.decode!(Diagnostics.encode(run, scope)))
+        assert document["run"]["workflow"] == shown
+      end
     end
 
     test "a run whose start failed has the dispatch it keeps, with the release reason",
@@ -628,7 +728,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert id == dispatch.public_id
       refute Map.has_key?(document, "queue")
 
-      # Why the preparation stopped, as the run page's Prepare machine section says it.
+      # Why the preparation stopped, as the run page's Run list shows it.
       assert %{"cause" => "machine_not_made", "text" => text} =
                document["preparation"]["stopped"]
 
@@ -641,7 +741,9 @@ defmodule Apiary.Runs.DiagnosticsTest do
       earlier = DateTime.add(dispatch.claimed_at, -60, :second)
 
       {1, _} =
-        Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [inserted_at: earlier])
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [inserted_at: earlier, registered_at: earlier]
+        )
 
       run = Repo.get!(Run, run.id)
 

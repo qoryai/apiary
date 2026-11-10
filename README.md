@@ -1,5 +1,7 @@
 # 🐝 Qory Apiary
 
+This repository is part of [Qory](https://github.com/qoryai/qory). Its README lists every part and how to install Qory.
+
 The control plane for coding agent runs.
 
 Every run of a connected machine reports to Qory Apiary: its session, terminal and every

@@ -21,7 +21,11 @@ defmodule Apiary.Processes.Export do
     * `stack` is the stack the base of the workspace's harness choice extends
       (Apiary.Stacks.choice/1), else `Apiary.Organisations.Workspace.qory_stack/1`.
     * `process` is the current version's document. Each gate that lists people is written
-      with `approvers: members`, because the list has user ids of this instance.
+      with `approvers: members`, because the list has user ids of this instance. Each
+      `machine`, of the document or of a workflow entry, is written with the key the
+      document has: `Apiary.Harnesses.Reader.template/1` reads any key, and in a workspace
+      made from the file on an instance with no type of that key, the runs of an entry
+      with such a key start on the workspace's default type.
     * `artifact_types` lists each standard type the workspace shows, by name alone, less
       the types no workspace can hide, then each custom type's definition.
 

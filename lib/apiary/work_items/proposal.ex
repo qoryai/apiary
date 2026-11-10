@@ -6,8 +6,9 @@ defmodule Apiary.WorkItems.Proposal do
   # ## The questions as the pages draw them
   #
   # `question/1` is one question of a questions document (`Apiary.Explore.Questions`):
-  # `%{question: text, options: [%{title: text, explanation: text}]}`, the question and the
-  # options the run offers, none for a question that offers none.
+  # `%{question: text, options: [%{title: text, explanation: text, recommended: boolean}]}`,
+  # the question and the options the run offers, none for a question that offers none.
+  # `recommended` is true only for an option whose `recommended` is true in the document.
   #
   # ## The checks
   #
@@ -43,10 +44,10 @@ defmodule Apiary.WorkItems.Proposal do
   # `{:ok, [{id, option, note}]}`, in the order given, the option as the question's title
   # and the note cleaned, nil for none (`Apiary.Explore.Questions.answer/4`); or
   # `{:error, errors}` by id: `:unknown_id` (no question has the id), `:not_open` (the
-  # question is answered or closed), `:unknown_option` (no option of the question has the
-  # title), `:note_required` (no option and no note), `{:too_long, 2000}` and
-  # `:characters` (the note); or `{:error, :invalid}` for no list, an empty one, an entry
-  # of another shape, or an id twice.
+  # question is neither open nor decided: answered or closed), `:unknown_option` (no
+  # option of the question has the title), `:note_required` (no option and no note),
+  # `{:too_long, 2000}` and `:characters` (the note); or `{:error, :invalid}` for no
+  # list, an empty one, an entry of another shape, or an id twice.
   #
   # `check_comment(text)` checks a member's review comment on a proposal, or a reply to
   # one: `{:ok, text}`, at most 2,000 code points; or `{:error, error}` (`:blank`,
@@ -62,7 +63,7 @@ defmodule Apiary.WorkItems.Proposal do
   @refused ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
 
   @typedoc "An option a run offers for a question."
-  @type option :: %{title: String.t(), explanation: String.t()}
+  @type option :: %{title: String.t(), explanation: String.t(), recommended: boolean}
 
   @typedoc "A question a run asks, as the work item pages draw it."
   @type question :: %{question: String.t(), options: [option]}
@@ -96,8 +97,13 @@ defmodule Apiary.WorkItems.Proposal do
   @spec question(map | String.t()) :: question
   def question(%{"question" => text} = question) when is_binary(text) do
     options =
-      for %{"title" => title, "explanation" => explanation} <- List.wrap(question["options"]),
-          do: %{title: title, explanation: explanation}
+      for %{"title" => title, "explanation" => explanation} = option <-
+            List.wrap(question["options"]),
+          do: %{
+            title: title,
+            explanation: explanation,
+            recommended: option["recommended"] == true
+          }
 
     %{question: text, options: options}
   end
@@ -247,7 +253,7 @@ defmodule Apiary.WorkItems.Proposal do
 
   defp by_id(%{"id" => id}, nil), do: {id, {:error, :unknown_id}}
 
-  defp by_id(%{"id" => id}, %{"state" => state}) when state != "open",
+  defp by_id(%{"id" => id}, %{"state" => state}) when state not in ["open", "decided"],
     do: {id, {:error, :not_open}}
 
   defp by_id(%{"id" => id} = given, question) do

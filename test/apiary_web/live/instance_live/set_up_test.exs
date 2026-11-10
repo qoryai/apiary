@@ -178,7 +178,7 @@ defmodule ApiaryWeb.InstanceLive.SetUpTest do
 
     {:ok, lv, _html} = live(conn, ~p"/instance/set-up")
 
-    assert words(lv, "#set-up-context h2") == "About this step"
+    assert words(lv, "#set-up-context h2") == "About adapters"
 
     assert words(lv, "#set-up-what") ==
              "Organisations on this instance bring in tickets from #{adapter.name} once its " <>
@@ -516,6 +516,8 @@ defmodule ApiaryWeb.InstanceLive.SetUpMailTest do
   test "shows the context and the form of Instance settings › Mail, with Skip", %{conn: conn} do
     Mail.put_test_source(:none)
     lv = mail_step(conn)
+
+    assert words(lv, "#set-up-context h2") == "About mail"
 
     assert words(lv, "#set-up-what") ==
              "Qory Apiary sends invitations, log-in links and password links by mail; without " <>

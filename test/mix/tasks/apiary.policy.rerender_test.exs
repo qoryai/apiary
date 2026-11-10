@@ -9,6 +9,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
   @moduletag needs: :security
 
   import Apiary.OrganisationsFixtures
+  import ExUnit.CaptureLog, only: [with_log: 1]
 
   alias Apiary.Policy
   alias Apiary.Policy.{Change, Render, RunConfiguration}
@@ -72,8 +73,12 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     own = age!(scope, target)
     changes_before = length(changes(scope, nil)) + length(changes(scope, target))
 
+    # The two: this workspace, and Main of the instance's organisation, which every test sees.
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 2 new versions."]}
+
+    assert_received {:mix_shell, :info,
+                     ["Rendered 2 workspaces again: 2 new versions, 0 refused, 0 failed."]}
+
     assert_received {:policy_changed, %{action: "rerendered"}}
 
     assert %{version: version} = configuration = current!(scope, nil)
@@ -82,6 +87,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     assert egress(configuration) == %{
              "mode" => "observe",
              "allow" => ["*.example"],
+             "allow_first" => ["api.anthropic.com"],
              "deny" => ["tracker.example"]
            }
 
@@ -100,25 +106,31 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
 
     # Run again: the bytes are current, nothing is written and nothing is announced.
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 0 new versions."]}
+
+    assert_received {:mix_shell, :info,
+                     ["Rendered 2 workspaces again: 0 new versions, 0 refused, 0 failed."]}
+
     refute_received {:policy_changed, _}
     assert current!(scope, nil).version == baseline + 1
     assert current!(scope, target).version == own + 1
     assert length(changes(scope, nil)) + length(changes(scope, target)) == changes_before + 2
   end
 
-  test "a workspace without deny rules renders the bytes it had, and an unmanaged workspace is untouched",
+  test "a workspace without deny rules renders the bytes it had, and one with no row is untouched",
        %{scope: scope} do
     {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
     version = current!(scope, nil).version
     %{scope: unmanaged} = sign_up_fixture()
+    no_policy_version!(unmanaged.workspace)
     refute Policy.managed?(unmanaged)
 
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 0 new versions."]}
+
+    assert_received {:mix_shell, :info,
+                     ["Rendered 2 workspaces again: 0 new versions, 0 refused, 0 failed."]}
 
     assert current!(scope, nil).version == version
-    assert Enum.map(changes(scope, nil), & &1.action) == ["rule_added"]
+    assert Enum.map(changes(scope, nil), & &1.action) == ["rule_added", "first_version"]
     refute Policy.managed?(unmanaged)
     assert {:error, _} = Policy.current_configuration(unmanaged, nil)
 
@@ -126,5 +138,34 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
              from(c in RunConfiguration, where: c.workspace_id == ^unmanaged.workspace.id),
              :count
            ) == 0
+  end
+
+  test "a workspace whose render raises is counted as failed, and the task exits with 1",
+       %{scope: scope} do
+    {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+    raising = scope.workspace.id
+    on_exit(fn -> Application.delete_env(:apiary, Apiary.Policy.Above) end)
+
+    Application.put_env(:apiary, Apiary.Policy.Above,
+      answer: fn workspace -> if workspace.id == raising, do: raise("no level above") end
+    )
+
+    {exit, log} = with_log(fn -> catch_exit(Rerender.run([])) end)
+    assert exit == {:shutdown, 1}
+
+    assert_received {:mix_shell, :info,
+                     ["Rendered 1 workspace again: 0 new versions, 0 refused, 1 failed."]}
+
+    assert log =~ "policy rerender failed workspace=#{raising}: no level above"
+  end
+
+  test "says one workspace and one new version in the singular", %{scope: scope} do
+    {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.example"})
+    age!(scope, nil)
+
+    Rerender.run([])
+
+    assert_received {:mix_shell, :info,
+                     ["Rendered 2 workspaces again: 1 new version, 0 refused, 0 failed."]}
   end
 end

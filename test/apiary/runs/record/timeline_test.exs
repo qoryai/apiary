@@ -21,6 +21,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
         tool_use_id: data["tool_use_id"],
         agent_id: data["agent_id"],
         agent_type: data["agent_type"],
+        bare: data["bare"] == true,
         host: data["host"],
         port: data["port"] && to_string(data["port"]),
         decision: data["decision"],
@@ -120,6 +121,21 @@ defmodule Apiary.Runs.Record.TimelineTest do
       assert index.by_seq == %{1 => 1, 4 => 1, 2 => 2, 3 => 2}
     end
 
+    test "an item's at is the time of the event at its seq" do
+      index =
+        index([
+          tool(1, "started", "a"),
+          tool(2, "finished", "a"),
+          tool(3, "finished", "b"),
+          tool(4, "started", "b")
+        ])
+
+      # The second call's end came first: its item is at the end's sequence and time.
+      assert [%{seq: 1, at: first}, %{seq: 3, at: second}] = index.items
+      assert first == at(1)
+      assert second == at(3)
+    end
+
     test "an end without its start is an item of its own; a start without an end is open only while the run is alive" do
       events = [tool(1, "finished", "lost"), tool(2, "started", "open")]
 
@@ -149,6 +165,71 @@ defmodule Apiary.Runs.Record.TimelineTest do
 
       assert [%{seq: 1, tool_state: :no_end, inner: []}, %{seq: 2, kind: :connection}] =
                index.items
+    end
+
+    test "a call's item has the type of its end, nil while it has none" do
+      index =
+        index(
+          [
+            tool(1, "started", "a"),
+            tool(2, "started", "b"),
+            tool(3, "started", "c"),
+            tool(4, "started", "d"),
+            tool(5, "finished", "a"),
+            tool(6, "failed", "b"),
+            event(7, "runtime.tool_denied", %{"tool" => "Bash", "tool_use_id" => "c"})
+          ],
+          alive: true
+        )
+
+      assert [
+               %{seq: 1, end_type: :finished},
+               %{seq: 2, end_type: :failed},
+               %{seq: 3, end_type: :denied},
+               %{seq: 4, end_type: nil, tool_state: :open}
+             ] = index.items
+    end
+
+    test "a call's item has the type of its first end, and no tool" do
+      index =
+        index([
+          tool(1, "started", "a", %{"tool" => "Read"}),
+          tool(2, "failed", "a", %{"tool" => "Write"}),
+          tool(3, "finished", "a"),
+          event(4, "runtime.tool_started", %{"tool" => "Grep"})
+        ])
+
+      assert [%{seq: 1, end_type: :failed}, %{seq: 4, end_type: nil}] = index.items
+      refute Enum.any?(index.items, &Map.has_key?(&1, :tool))
+    end
+
+    test "an end without its start has its type; the start, when it comes, joins it" do
+      events = [
+        tool(1, "failed", "lost"),
+        event(2, "runtime.tool_denied", %{"tool" => "Bash", "tool_use_id" => "never"}),
+        tool(3, "finished", "late"),
+        tool(4, "started", "late", %{"tool" => "Read"})
+      ]
+
+      assert [
+               %{seq: 1, end_type: :failed},
+               %{seq: 2, end_type: :denied},
+               %{seq: 3, end_type: :finished, start_seq: 4}
+             ] = index(events).items
+
+      assert [%{status: :failed}, %{status: :denied}, %{status: :finished, tool: "Read"}] =
+               build(events)
+    end
+
+    test "a call the record ends late has the late end's type" do
+      index =
+        index([
+          tool(1, "started", "t", %{"tool" => "Read"}),
+          event(2, "runtime.turn_finished"),
+          tool(3, "denied", "t")
+        ])
+
+      assert [%{seq: 1, end_type: :denied}, %{seq: 2}] = index.items
     end
 
     test "runtime.result is the session's but not a hook's" do
@@ -969,6 +1050,33 @@ defmodule Apiary.Runs.Record.TimelineTest do
       assert [%{runtime: "codex", runtime_version: "0.52.0"}] = Timeline.build(index.items, slim)
       assert "dev.qory.session.started" in Timeline.types()
       assert Timeline.kind("dev.qory.session.started") == nil
+    end
+
+    test "the run's start shows the session the fold takes the run's runtime from" do
+      started = event(1, "run.started", %{"host" => "build-01"})
+      agent = event(2, "session.started", %{"runtime" => "claude", "runtime_version" => "2.1"})
+      helper = event(4, "session.started", %{"runtime" => "git", "bare" => true})
+      other = event(6, "session.started", %{"runtime" => "sh", "bare" => true})
+      later = event(8, "session.started", %{"runtime" => "codex", "bare" => false})
+
+      shows = fn events ->
+        [%{session_seq: _} = item] = index([started | events]).items
+        item.session_seq
+      end
+
+      # A bare session after an agent's leaves it.
+      assert shows.([agent, helper]) == 2
+      # Only bare sessions: the first of them.
+      assert shows.([helper, other]) == 4
+      # An agent's session replaces a bare one, and `false` is no mark.
+      assert shows.([helper, agent]) == 2
+      assert shows.([helper, later]) == 8
+      assert shows.([agent, helper, later]) == 8
+      assert shows.([helper, agent, other]) == 2
+
+      # By `extend/3` too, as a live page reads it.
+      extended = index([started, agent]) |> Timeline.extend(light([helper]))
+      assert [%{session_seq: 2, seqs: [1, 2]}] = extended.items
     end
 
     test "a step's start and exit are read and make no item" do

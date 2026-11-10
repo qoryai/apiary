@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/changes-failed.schema.json",
+  "title": "Comment post failed",
+  "description": "The body of the signed POST /v1/work-items/changes/failed, application/json, with which an adapter reports that it stopped trying to post the comment of a comment entry of the change feed (changes.schema.json) on its item. The control plane marks that comment not posted and stores reason, and keeps the comment with the item's other comments. The adapter sends the report after a failure that trying again cannot fix. After any other failure, it sends the report with reason unreachable, once its retries end. It sends one report for one comment entry, and none for a comment it posted. The control plane checks permissions first, in the order of refusal.schema.json: it returns 403 forbidden for a request the access key has no permission for. The request has no connection_id and no collection_ref, so connection_unknown, connection_ended, connection_suspended and collection_not_linked do not apply to it. The control plane returns a signed 204 and changes nothing for a comment_id that is not the comment_id of a comment entry in the adapter's change feed. It does the same for the comment_id of a comment that it already matched to a posted comment (source-item-comments.schema.json, comment_id). So a repeated or late report is never an error. On success the control plane returns a signed 204 with no body. The adapter acts on each answer as follows. On the signed 204, it does not send the report again. On 403 forbidden or 400 invalid_request, it stops sending the report. On a transient failure, no answer, a 5xx or an unsigned answer, it sends the report again, built anew as definitions.schema.json describes a retry, with backoff, and on a signed 429 it waits the seconds of Retry-After first. The adapter logs each refusal with the comment_id, and never with the comment's text, an access key or a secret. The request is signed with the adapter's access key as definitions.schema.json describes. Set time from the adapter's clock and sign each request anew: the control plane returns an unsigned 401 for a time more than 300 seconds off its clock, either way, and for a request whose signature it has already seen; definitions.schema.json has the replay rule. Send only the members this schema defines: the control plane returns 400 invalid_request for any other member.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "time", "comment_id", "reason"],
+  "properties": {
+    "version": {
+      "description": "The document format. Set it to 1: the control plane returns 400 invalid_request for any other version.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the adapter built the body, RFC 3339 in UTC with whole seconds. Set it from the adapter's clock: the control plane returns an unsigned 401 for a time more than 300 seconds off its clock, either way.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "comment_id": {
+      "description": "The comment_id of the comment entry whose comment the adapter stopped trying to post.",
+      "$ref": "definitions.schema.json#/$defs/comment_id"
+    },
+    "reason": {
+      "description": "Why the adapter stopped trying to post the comment: item_gone, the source returned that the item does not exist, as after it was deleted; not_permitted, the source returned that the integration's account has no permission to comment on the item; too_long, the comment with its first line is longer than the source's limit for a comment; unreachable, each request to the source timed out, failed to connect or returned a busy status, until the adapter's retries ended.",
+      "type": "string",
+      "enum": ["item_gone", "not_permitted", "too_long", "unreachable"]
+    }
+  }
+}

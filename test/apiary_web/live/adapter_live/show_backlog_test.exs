@@ -43,6 +43,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     |> Enum.join(" ")
   end
 
+  # Each row's words; the last column, Unassign, is left out (tested in `ShowUnassignTest`).
   defp rows(lv) do
     lv
     |> render()
@@ -51,7 +52,7 @@ defmodule ApiaryWeb.AdapterLive.ShowBacklogTest do
     |> LazyHTML.query("#collections-table tr")
     |> Enum.map(fn row ->
       row
-      |> LazyHTML.query("th, td")
+      |> LazyHTML.query("th:not(.q-int-act), td:not(.q-int-act)")
       |> Enum.map_join(" ", &LazyHTML.text/1)
       |> String.split()
       |> Enum.join(" ")

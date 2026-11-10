@@ -15,7 +15,7 @@ defmodule ApiaryWeb.Contract.Configuration do
   (`apiary_public_key`, `Apiary.SigningKey.apiary_public_key/0`), for information. So the
   document, and its digest, differ by node, and for a node or a node pool by its
   workspace, alone: a gateway's changes only when those members change.
-  The `run` section is in every document: a workspace nobody has given a policy answers a
+  The `run` section is in every document: a workspace with no row yet answers a
   registration with the document of no policy.
 
   The members are written in the contract's order: `version`, `node_id`, `workspaces`

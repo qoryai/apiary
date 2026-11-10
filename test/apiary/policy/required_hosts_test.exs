@@ -13,7 +13,6 @@ defmodule Apiary.Policy.RequiredHostsTest do
 
   alias Apiary.{Connections, ModelChoices, Policy, Repo}
   alias Apiary.Harnesses.RunHarness
-  alias Apiary.Lingo.Domain.Definition
   alias Apiary.Policy.{ComposedConfiguration, RequiredHosts}
   alias Apiary.Registry.RunAccess
   alias Apiary.Runs.{ProviderCredential, Run, RunCredentials, Target}
@@ -46,13 +45,48 @@ defmodule Apiary.Policy.RequiredHostsTest do
     connection
   end
 
+  describe "runtimes" do
+    @describetag needs: :security
+
+    test "are the catalogue's, required by Qory Apiary, as a document has them" do
+      %{scope: scope} = sign_up_fixture()
+
+      assert RequiredHosts.runtimes() == %{
+               key: :runtimes,
+               rows: [
+                 %{
+                   host: "api.anthropic.com",
+                   source: {:runtime, "Claude Code"},
+                   required_by: :instance
+                 }
+               ]
+             }
+
+      {:ok, document} = Policy.default_document(scope.workspace.id)
+
+      assert Jason.decode!(document)["security_policy"]["egress"]["allow_first"] ==
+               hosts(RequiredHosts.runtimes())
+    end
+
+    @tag needs: :secrets
+    test "sit in the page's order, between the harness sources and the integrations" do
+      %{scope: scope} = sign_up_fixture()
+      integration!(scope, "tracker", ["api.tracker.example"])
+
+      keys = Enum.map(RequiredHosts.of(scope.workspace).groups, & &1.key)
+
+      assert Enum.drop_while(keys, &(&1 == :harness)) |> Enum.take(2) ==
+               [:runtimes, :integrations]
+    end
+  end
+
   describe "harness sources" do
     @describetag needs: :factory
 
     test "are the hosts a run's stack_hosts has for the workspace's chosen harness" do
       %{scope: scope} = sign_up_fixture()
       run = sealed_run_fixture(scope).run
-      git = Definition.qory_harness().git
+      git = Apiary.Harnesses.Qory.git()
 
       RunHarness
       |> Repo.get_by!(dispatch_run_id: run.dispatch_run_id)
@@ -127,7 +161,7 @@ defmodule Apiary.Policy.RequiredHostsTest do
       {:ok, _stack} =
         Stacks.put_stack(scope, {:target, target}, harness_document(git), choice: :repository)
 
-      rows = same_as_run(scope, [Definition.qory_harness().git, git])
+      rows = same_as_run(scope, [Apiary.Harnesses.Qory.git(), git])
 
       assert Enum.sort(Enum.map(rows, &{&1.host, &1.source, &1.required_by})) == [
                {"github.com", :qory, :instance},

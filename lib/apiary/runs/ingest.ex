@@ -63,7 +63,7 @@ defmodule Apiary.Runs.Ingest do
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.Serving
   alias Apiary.Repo
-  alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run, Sender}
+  alias Apiary.Runs.{Batch, Delivery, Event, Number, Projector, Run, Sender}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
   @log "dev.qory.run.log"
@@ -324,10 +324,12 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
-  # The run of this id the key's workspace holds, its row locked; nil for none.
+  # The run of this id in the key's workspace, its row locked; nil for none. A queued
+  # run's record, which no claim registered, is no run here (`Run.registered/0`): a batch
+  # for it is a batch for a run of the queue.
   defp workspace_run(access_key, batch) do
     Repo.one(
-      from r in Run,
+      from r in Run.registered(),
         where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject,
         lock: "FOR UPDATE"
     )
@@ -345,7 +347,7 @@ defmodule Apiary.Runs.Ingest do
       Repo.one(
         from d in DispatchRun,
           where: d.run_id == ^run_id,
-          left_join: r in Run,
+          left_join: r in subquery(Run.registered()),
           on: r.dispatch_run_id == d.id,
           left_join: w in Workspace,
           on: w.id == r.workspace_id,
@@ -365,7 +367,7 @@ defmodule Apiary.Runs.Ingest do
 
   defp own_run(access_key, batch) do
     Repo.one(
-      from r in Run,
+      from r in Run.registered(),
         where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject
     )
   end
@@ -400,8 +402,28 @@ defmodule Apiary.Runs.Ingest do
 
   # Two first batches of one run may arrive at once: the insert that loses waits
   # for the one that wins and inserts nothing, and the read after it sees the row.
-  # The read locks the row for the rest of the transaction.
+  # The read locks the row for the rest of the transaction. The run's number locks the
+  # workspace's counter until the transaction ends, and an insert that does nothing returns
+  # its number to the counter.
   defp upsert_run(access_key, batch, meta, now) do
+    workspace = %Workspace{
+      id: access_key.workspace_id,
+      organisation_id: access_key.organisation_id
+    }
+
+    {inserted, _rows} =
+      insert_run(access_key, batch, meta, Number.next(workspace, access_key.node), now)
+
+    if inserted == 0, do: Number.give_back(workspace)
+
+    Repo.one!(
+      from r in Run,
+        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp insert_run(access_key, batch, meta, number, now) do
     PublicId.Insert.insert_all(
       Run,
       [
@@ -409,6 +431,7 @@ defmodule Apiary.Runs.Ingest do
           %{
             id: Ecto.UUID.generate(),
             public_id: Run.new_public_id(),
+            number: number,
             organisation_id: access_key.organisation_id,
             workspace_id: access_key.workspace_id,
             node_run_id: batch.subject,
@@ -424,12 +447,6 @@ defmodule Apiary.Runs.Ingest do
       ],
       on_conflict: :nothing,
       conflict_target: [:workspace_id, :node_run_id]
-    )
-
-    Repo.one!(
-      from r in Run,
-        where: r.workspace_id == ^access_key.workspace_id and r.node_run_id == ^batch.subject,
-        lock: "FOR UPDATE"
     )
   end
 

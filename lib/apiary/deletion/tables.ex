@@ -29,7 +29,9 @@ defmodule Apiary.Deletion.Tables do
   `users_tokens` (an account belongs to no organisation), `purged_organisations` (what the
   instance keeps of a purged organisation), `access_key_public_keys` (the ledger of public
   keys, which outlives the keys, `Apiary.AccessKeys.PublicKey`), `type_template_versions`
-  (the workspace types' default processes, `Apiary.Processes.TypeTemplate`) and Oban's.
+  (the workspace types' default processes, `Apiary.Processes.TypeTemplate`),
+  `qory_harness_files` and `qory_harness_heads` (the files of the Qory harness by commit,
+  Apiary.Harnesses.Qory) and Oban's.
   """
 
   @typedoc "What a table holds: an organisation's rows, or a workspace's too."
@@ -99,6 +101,7 @@ defmodule Apiary.Deletion.Tables do
     {"work_items", :workspace},
     {"process_versions", :workspace},
     {"work_item_counters", :workspace},
+    {"run_counters", :workspace},
     {"retention_runs", :workspace},
     {"policy_rules", :workspace},
     {"connection_workspaces", :workspace},

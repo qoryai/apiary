@@ -35,6 +35,23 @@ defmodule Apiary.OrganisationsTest do
       assert membership.organisation_id == organisation.id
     end
 
+    test "a failed read of the Qory harness for Main is refused, creating nothing" do
+      organisations = Repo.aggregate(Organisation, :count)
+
+      Apiary.PublicGitServer.serve(%{},
+        answer: fn conn -> Plug.Conn.send_resp(conn, 503, "") end
+      )
+
+      assert {:error, {:qory, {:unreadable, _cause, _hop}}} =
+               Organisations.sign_up_user(
+                 %{email: unique_user_email(), organisation_name: "Acme Ltd"},
+                 nil,
+                 open: true
+               )
+
+      assert Repo.aggregate(Organisation, :count) == organisations
+    end
+
     test "Main is of the domain the form gives, and of the default domain without one" do
       {:ok, %{workspace: workspace}} =
         Organisations.sign_up_user(

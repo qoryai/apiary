@@ -19,18 +19,20 @@ defmodule Apiary.Environments do
   # has prebuilds (`holds?/1`) read no, and the runs start in the pool's default image.
   # A target's page shows that, with no Rebuild (`section/2`, `:no_registry`). A claim
   # there takes no prebuild
-  # (`Apiary.Dispatches.waiting_query/1`). In a workspace whose
+  # (`Apiary.Dispatches.waiting_query/2`). In a workspace whose
   # domain has prebuilds (`holds?/1`, `Apiary.Lingo.Domain.prebuilds?/1`), a waiting run
   # that is not a prebuild, of a work item whose target a live collection of the
   # workspace with an `environment_ref` has, is held for a node pool while no record of
   # such a collection for that pool keeps an image whose `built_ref` is its collection's
   # `environment_ref`, built for the target (`held/1`, a subquery on the run as
-  # `:run`). A claim of the pool takes no held run (`Apiary.Dispatches.claim/3`); a run
+  # `:run`). A claim of the pool takes no held run (`Apiary.Dispatches.claim/4`); a run
   # whose target no collection names, or of a workspace whose domain has no prebuilds, is
   # never held and starts in the pool's default image. On an instance with the feature
   # `security`, a run whose target's run configuration in force names an image in its
   # `security_policy` is never held either (`unset_by_policy/1`): it starts in that
-  # image, so it needs no build, queues none and ends with no build's failure.
+  # image, so it needs no build, queues none and ends with no build's failure. Nor is a
+  # run whose machine type has an image (`Apiary.MachineTypes.no_image/1`): it starts in
+  # that image (`Apiary.Runs.Attach`).
   #
   # Whenever a run is held and no prebuild of its collection's `environment_ref` for the
   # pool waits, is claimed or is handed over, the pool's next claim queues one: before it
@@ -234,7 +236,18 @@ defmodule Apiary.Environments do
 
   import Ecto.Query, only: [dynamic: 2, from: 2]
 
-  alias Apiary.{Access, Audit, Dispatches, Features, InstanceConfig, Policy, Registry, Repo}
+  alias Apiary.{
+    Access,
+    Audit,
+    Dispatches,
+    Features,
+    InstanceConfig,
+    MachineTypes,
+    Policy,
+    Registry,
+    Repo
+  }
+
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.DispatchRun
@@ -1091,15 +1104,20 @@ defmodule Apiary.Environments do
   # `exists/1`, when the run is held for the node pool `pool_id`: the run's workspace has
   # a domain with prebuilds, its work item's target has a live collection assigned to the
   # run's workspace with an `environment_ref`, no such collection has a record for the
-  # pool whose image was built for the target from that `environment_ref`, and the run
+  # pool whose image was built for the target from that `environment_ref`, the run
   # configuration in force for the target names no image (`unset_by_policy/1`; the
-  # moduledoc). It reads the run's workspace, so one query serves the instance's pool,
-  # whose runs are in many workspaces.
+  # moduledoc), and the run's machine type has no image (`Apiary.MachineTypes.no_image/1`),
+  # as a run starts in the policy's image, else in its type's, before the target's. It
+  # reads the run's workspace, so one query serves the instance's pool, whose runs are in
+  # many workspaces.
   @doc false
   @spec held(Ecto.UUID.t()) :: Ecto.Query.t()
   def held(pool_id) when is_binary(pool_id) do
     from w in WorkItem,
       as: :work_item,
+      join: d in DispatchRun,
+      as: :held_run,
+      on: d.id == parent_as(:run).id,
       join: s in Workspace,
       as: :workspace,
       on: s.id == parent_as(:run).workspace_id,
@@ -1116,6 +1134,7 @@ defmodule Apiary.Environments do
       where: w.id == parent_as(:run).work_item_id,
       where: ^prebuilt_domain(),
       where: ^unset_by_policy(:workspace),
+      where: ^MachineTypes.no_image(:held_run),
       group_by: w.id,
       having: count(e.id) == 0,
       select: w.id

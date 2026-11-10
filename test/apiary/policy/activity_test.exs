@@ -5,13 +5,15 @@ defmodule Apiary.Policy.ActivityTest do
   # The security policy: left out of a run without the security feature.
   @moduletag needs: :security
 
+  import Apiary.ConnectionsFixtures, only: [ready_release!: 3]
+  import Apiary.DescriptionFixtures, only: [tracker_description: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures
 
-  alias Apiary.Policy
-  alias Apiary.Policy.Activity
-  alias Apiary.Runs.Target
+  alias Apiary.{Connections, ModelChoices, Policy}
+  alias Apiary.Policy.{Activity, Rule}
+  alias Apiary.Runs.{RunApi, Target}
 
   @site %{"forge" => "github.example", "repository" => "acme/site"}
   @docs %{"forge" => "github.example", "repository" => "acme/docs"}
@@ -57,6 +59,113 @@ defmodule Apiary.Policy.ActivityTest do
     |> Map.merge(%{api: api, cdn: cdn, ads: ads, git: git, mcp: mcp})
   end
 
+  describe "uncovered/2 on the hosts enforce does not deny" do
+    @describetag needs: [:security, :secrets]
+
+    @runtime_host "api.anthropic.com"
+    @integration_host "api.tracker.example"
+    @provider_host "api.deepseek.com"
+
+    setup %{scope: scope} do
+      release =
+        ready_release!(
+          scope,
+          tracker_description(%{
+            "name" => "tracker",
+            "egress_hosts" => [@integration_host],
+            "roles" => %{
+              "credential" => %{"argument" => "[A-Z]+", "hosts" => [@integration_host]}
+            }
+          }),
+          "codeberg.org/northwind/tracker"
+        )
+
+      {:ok, _integration} = Connections.create_integration(scope, release.id, %{})
+
+      {:ok, provider} =
+        Connections.create_provider(scope, %{
+          provider: "deepseek",
+          keys: [%{value_id: "main", value: "sk-example-model-key-0123456789"}]
+        })
+
+      {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+      :ok
+    end
+
+    defp uncovered_on(scope, hosts) do
+      {:ok, destinations} = Policy.uncovered(scope, since())
+      for %{host: host} = destination <- destinations, host in hosts, do: {host, destination.path}
+    end
+
+    test "a runtime's, an integration's and a provider's host are out, a host with no rule stays",
+         %{scope: scope} do
+      hosts = [@runtime_host, @integration_host, @provider_host, "cdn.example"]
+      started_run(scope, %{}, egress: Enum.map(hosts, &allowed/1))
+
+      assert uncovered_on(scope, hosts) == [{"cdn.example", nil}]
+    end
+
+    test "a saved rule's paths on a runtime's host do not count: the document has none",
+         %{scope: scope} do
+      Repo.insert!(%Rule{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        kind: "host",
+        action: "allow",
+        host: @runtime_host,
+        paths: ["/v1/*"],
+        locked: false
+      })
+
+      started_run(scope, %{}, egress: [allowed(@runtime_host, %{"path" => "/v2/messages"})])
+
+      assert uncovered_on(scope, [@runtime_host]) == []
+    end
+
+    test "a rule's paths on an integration's host still count: the document has them",
+         %{scope: scope} do
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: @integration_host, paths: ["/rest/*"]})
+
+      started_run(scope, %{},
+        egress: [
+          allowed(@integration_host, %{"path" => "/rest/tickets"}),
+          allowed(@integration_host, %{"path" => "/admin"})
+        ]
+      )
+
+      assert uncovered_on(scope, [@integration_host]) == [{@integration_host, "/admin"}]
+    end
+
+    test "a *. allow held to paths holds a provider's host, and leaves an integration's alone",
+         %{scope: scope} do
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "*.deepseek.com", paths: ["/v1/*"]})
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "*.tracker.example", paths: ["/v1/*"]})
+
+      started_run(scope, %{},
+        egress: [
+          allowed(@provider_host, %{"path" => "/v1/messages"}),
+          allowed(@provider_host, %{"path" => "/admin"}),
+          allowed(@integration_host, %{"path" => "/admin"})
+        ]
+      )
+
+      assert uncovered_on(scope, [@provider_host, @integration_host]) ==
+               [{@provider_host, "/admin"}]
+    end
+
+    test "an attempt denied on such a host stays in the denied list and the summary",
+         %{scope: scope} do
+      started_run(scope, %{}, egress: [denied(@runtime_host), denied(@integration_host)])
+
+      {:ok, destinations} = Policy.denied_destinations(scope, since())
+      hosts = Enum.map(destinations, & &1.host)
+      assert @runtime_host in hosts
+      assert @integration_host in hosts
+
+      assert {:ok, %{denied: 6}} = Policy.denied_summary(scope, since())
+    end
+  end
+
   describe "uncovered/2" do
     test "what was let through and no rule of the run's target covers, most attempts first",
          ctx do
@@ -72,6 +181,27 @@ defmodule Apiary.Policy.ActivityTest do
 
       # Allowed in acme/site by its own rule, uncovered in acme/docs.
       assert %{host: "mcp.example", runs: 1, targets: [%{path: "acme/docs"}]} = mcp
+    end
+
+    test "leaves out a request to the run API: enforce adds no block to it" do
+      %{scope: scope} = sign_up_fixture()
+
+      run =
+        started_run(scope, @site,
+          egress: [
+            allowed(RunApi.placeholder(), %{"port" => 80, "rule" => RunApi.rule()}),
+            allowed(RunApi.placeholder(), %{"port" => 80, "rule" => RunApi.rule()}),
+            allowed("new.example")
+          ]
+        )
+
+      target = Repo.get!(Target, run.target_id)
+
+      assert {:ok, [%{host: "new.example", attempts: 1}]} = Policy.uncovered(scope, since())
+      assert {:ok, [%{host: "new.example"}]} = Policy.uncovered(scope, target, since())
+
+      assert {:ok, %{uncovered: [%{host: "new.example"}]}} =
+               Policy.overview_activity(scope, since(), since())
     end
 
     test "nothing older than since, and :unavailable beyond the cap", ctx do

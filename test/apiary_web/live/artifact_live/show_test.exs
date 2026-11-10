@@ -13,7 +13,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo}
+  alias Apiary.{ArtifactStoreHook, Artifacts, Processes, Repo, WorkItems}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.ArtifactComponents
 
@@ -156,7 +156,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         })
       end
 
-      version = %{version | files: Enum.reverse(Repo.preload(version, :files, force: true).files)}
+      files = Repo.preload(version, :files, force: true).files
+      version = %{version | files: Enum.sort_by(files, &(&1.filename == "proposal.md"))}
       assert List.last(version.files).filename == "proposal.md"
       type = ApiaryWeb.ArtifactLive.Load.type(ctx.work_item, "proposal")
 
@@ -251,6 +252,74 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute has_element?(view, ~s(a[href="javascript:x"]))
     end
 
+    test "a questions version shows a question's context as the Explore tab shows it", ctx do
+      context =
+        "See the [order export](https://example.com/export).\n\n<script>window.pwned = true</script>\n\n" <>
+          "[bad](javascript:alert(1)) and [mail](mailto:a@example.com)"
+
+      version =
+        pushed!(ctx, "questions", [
+          {"questions.json",
+           Jason.encode!(%{
+             "questions" => [
+               %{
+                 "id" => "q1",
+                 "question" => "Which [order export](https://example.com/export)?",
+                 "context" => context,
+                 "options" => [],
+                 "state" => "open",
+                 "asked" => %{"run" => 1, "at" => "2026-11-05T10:00:00Z"}
+               }
+             ]
+           })}
+        ])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(
+               view,
+               ~s(table .q-ticket-formatted.q-xp-md a[href="https://example.com/export"]),
+               "order export"
+             )
+
+      assert has_element?(view, ~s(table .q-ticket-formatted a[href="mailto:a@example.com"]))
+      refute has_element?(view, ~s(a[href^="javascript:"]))
+      refute render(view) =~ "<script>window.pwned"
+
+      # The question itself is plain text, on the tab too.
+      assert has_element?(view, "table td", "Which [order export](https://example.com/export)?")
+    end
+
+    test "only a questions document's context is Markdown" do
+      markdown = "See [the plan](https://example.com/plan)."
+
+      shown = fn name, view, value ->
+        render_component(&ArtifactComponents.view/1,
+          id: "view",
+          type: %Apiary.Artifacts.Type{name: name, base_view: :structured, view: view},
+          version: %Apiary.Artifacts.Version{
+            files: [%Apiary.Artifacts.ArtifactFile{filename: "a.json"}]
+          },
+          content: %{"a.json" => {:json, value}},
+          path: fn _file -> "/a.json" end
+        )
+      end
+
+      assert shown.("questions", :questions, %{"context" => markdown}) =~
+               ~s(<a href="https://example.com/plan")
+
+      for {name, view, value} <- [
+            {"questions", :questions, %{"note" => markdown}},
+            {"bid-set", nil, %{"context" => markdown}},
+            {"verdict", :verdict, %{"context" => markdown}},
+            {"change", :change, %{"context" => markdown}}
+          ] do
+        html = shown.(name, view, value)
+        assert html =~ markdown, name
+        refute html =~ "<a href", name
+      end
+    end
+
     test "says the table is cut only when values are left out" do
       shown = fn values ->
         render_component(&ArtifactComponents.view/1,
@@ -270,7 +339,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert shown.(%{"a" => List.duplicate(1, 5000)}) =~ "Shown: the first 5,000 values."
     end
 
-    test "shows the run that made a version, without its round, or A run for one with no number",
+    test "shows the run that made a version with its round, or A run for one with no number",
          ctx do
       import Ecto.Query
 
@@ -280,10 +349,9 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
-      short = "Run #{ctx.claimed.number}"
-      assert has_element?(view, "#artifact-writer a", short)
-      assert has_element?(view, "#artifact-history a", short)
-      refute render(view) =~ "round 2"
+      writer = "Run #{ctx.claimed.number} · round 2"
+      assert has_element?(view, "#artifact-writer a", writer)
+      assert has_element?(view, "#artifact-history a", writer)
 
       %{dispatch_run: unclaimed} =
         explore_run_fixture(ctx.work_item, state: :waiting, registered: false)
@@ -313,6 +381,29 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       html = render_component(&ArtifactComponents.made_by/1, version: version, scope: ctx.scope)
       assert html =~ ~s(href="/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/runs/)
+    end
+
+    # A work item moves with its artifacts, and its runs stay in the workspace they ran in:
+    # this workspace may have another run with that number.
+    test "shows a run of another workspace without a link, after a real move", ctx do
+      connection = ticket_connection_fixture(ctx.scope)
+      ticket = backlog_ticket_fixture(ctx.scope, connection: connection)
+      {:ok, work_item} = WorkItems.take_in(ctx.scope, ticket.public_id)
+      %{dispatch_run: run, run: claimed} = explore_run_fixture(work_item, state: :handed_over)
+      pushed!(%{ctx | run: run, work_item: work_item}, "explainer", [{"plan.md", "# First"}])
+
+      there = workspace_scope(ctx.scope.user, workspace_fixture(ctx.scope.organisation))
+
+      %{work_item: moved} =
+        moved_work_item_fixture(ctx.scope, work_item, ticket, connection, there)
+
+      assert moved.workspace_id == there.workspace.id
+
+      [%{versions: [version]}] = Artifacts.list(moved)
+
+      html = render_component(&ArtifactComponents.made_by/1, version: version, scope: there)
+      assert html =~ "Run #{claimed.number}"
+      refute html =~ "href="
     end
 
     test "offers a document over 256 KiB as a download, not shown", ctx do
@@ -399,6 +490,118 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       {:ok, view, _html} = live(log_in_user(build_conn(), member), page(ctx, version))
       assert has_element?(view, "#artifact-add")
+    end
+
+    test "the page's two columns use the class with the 1007 px breakpoint", ctx do
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(view, ".q-art-cols #artifact-details")
+      refute render(view) =~ "lg:grid-cols-[minmax(0,1fr)_18rem]"
+    end
+
+    test "a proposal's Sources are a closed fold under its text; another type's are a heading",
+         ctx do
+      text = """
+      ## Background
+
+      The invoice shows the wrong currency.
+
+      ## Sources
+
+      - [Invoice guide](https://help.example.com/invoices)
+      - web: src/invoice.ts
+      """
+
+      version = pushed!(ctx, "proposal", [{"proposal.md", text}], name: "main")
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      html = render_async(view)
+      doc = LazyHTML.from_fragment(html)
+
+      assert has_element?(view, "details.q-xp-sources:not([open]) > summary", "Sources (2)")
+      assert has_element?(view, "details.q-xp-sources a", "Invoice guide")
+      assert has_element?(view, ".q-ticket-formatted h4", "Background")
+      refute has_element?(view, "h4", "Sources")
+
+      # The fold follows the text in the section, nothing after it.
+      assert doc |> LazyHTML.query("section > details.q-xp-sources:last-child") |> Enum.count() ==
+               1
+
+      other = pushed!(ctx, "explainer", [{"plan.md", text}])
+      {:ok, view, _html} = live(ctx.conn, page(ctx, other))
+      render_async(view)
+
+      assert has_element?(view, ".q-ticket-formatted h4", "Sources")
+      refute has_element?(view, "details.q-xp-sources")
+    end
+
+    test "a wide table scrolls in a frame on a version's page, and only there", ctx do
+      version =
+        pushed!(ctx, "explainer", [{"plan.md", "| A | B |\n|---|---|\n| one | two |\n"}])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      assert has_element?(view, ".q-art-cols .q-ticket-formatted table")
+
+      css = File.read!(Path.expand("../../../../assets/css/app.css", __DIR__))
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted \{\s*contain: inline-size;\s*overflow-wrap: break-word;\s*\}/
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted table \{\s*display: block;\s*overflow-x: auto;[^}]*scrollbar-color: auto;\s*\}/
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted table::-webkit-scrollbar \{\s*height: 8px;\s*\}/
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted table::-webkit-scrollbar-thumb \{\s*border-radius: 4px;\s*background-color: var\(--q-faint\);\s*\}/
+
+      assert css =~
+               ~r/\.q-art-cols \.q-ticket-formatted table::-webkit-scrollbar-track \{\s*background-color: var\(--color-base-200\);\s*\}/
+
+      refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted \{[^}]*contain:/
+      refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted table \{[^}]*display: block/
+      refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted table::-webkit-scrollbar/
+    end
+
+    test "a member who approves nothing adds a version: Add a version stores it", ctx do
+      %{user: member} = member_fixture(ctx.scope, :member)
+
+      push_proposal(%{ctx | conn: log_in_user(build_conn(), member)}, [
+        {"proposal.md", "# Gift cards"}
+      ])
+
+      assert [%{versions: [version]}] = Artifacts.list(ctx.work_item)
+      assert version.user_id == member.id
+    end
+
+    test "has no Add a version for the questions and the review comments", ctx do
+      questions = pushed!(ctx, "questions", [{"questions.json", ~s({"questions": []})}])
+
+      comments =
+        pushed!(ctx, "review-comments", [{"review-comments.json", ~s({"review_comments": []})}])
+
+      proposal = pushed!(ctx, "proposal", [{"proposal.md", "# Proposal"}])
+
+      for version <- [questions, comments] do
+        {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+        refute has_element?(view, "#artifact-add")
+        refute render(view) =~ "Add a version"
+      end
+
+      {:ok, _type} =
+        Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
+          name: "bid-set",
+          base_view: :structured,
+          json_schema: %{"type" => "object"}
+        })
+
+      bids = pushed!(ctx, "bid-set", [{"bids.json", ~s({"campaign": "Web shop"})}])
+
+      for version <- [proposal, bids] do
+        {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+        assert has_element?(view, "#artifact-add")
+      end
     end
 
     test "is not found for another work item's version or another workspace", ctx do
@@ -1032,12 +1235,11 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       ])
       |> render_upload("criteria.md")
 
-      assert {:error, {:live_redirect, _to}} =
-               view
-               |> form("#artifact-form",
-                 artifact: %{type: "acceptance-criteria", name: "main", note: ""}
-               )
-               |> render_submit()
+      view
+      |> form("#artifact-form", artifact: %{type: "acceptance-criteria", name: "main", note: ""})
+      |> render_submit()
+
+      assert {:error, {:live_redirect, _to}} = confirm_spend(view)
 
       assert %{stage_state: :running} = Repo.get!(WorkItem, work_item.id)
     end

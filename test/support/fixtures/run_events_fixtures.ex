@@ -16,15 +16,128 @@ defmodule Apiary.RunEventsFixtures do
   @doc "`seconds` after `t0/0`."
   def at(seconds), do: DateTime.add(@t0, round(seconds * 1000), :millisecond)
 
+  @doc "The next number of the workspace's runs, for a run a test writes straight to the table."
+  def next_run_number(organisation_id, workspace_id) do
+    {:ok, number} =
+      Repo.transact(fn ->
+        {:ok,
+         Apiary.Runs.Number.next(%Apiary.Organisations.Workspace{
+           id: workspace_id,
+           organisation_id: organisation_id
+         })}
+      end)
+
+    number
+  end
+
   @doc "A pending run in the scope's workspace, as the receiver creates it on a first event."
   def run_fixture(%Scope{organisation: organisation, workspace: workspace}, attrs \\ %{}) do
     %Run{
+      number: Apiary.RunEventsFixtures.next_run_number(organisation.id, workspace.id),
       organisation_id: organisation.id,
       workspace_id: workspace.id,
       node_run_id: Ecto.UUID.generate()
     }
     |> Ecto.Changeset.change(Map.new(attrs))
-    |> Repo.insert!()
+    |> insert_run!()
+  end
+
+  @doc """
+  Inserts the run of `changeset`, or, when its `dispatch_run_id` has a queued run record
+  (`Apiary.Dispatches.Queued`), writes it onto that record, as the claim does: the record
+  keeps its id, its `rn_` id, its number and its `inserted_at` unless the changeset changes
+  it. A run of the queue gets a registration, as a claim writes one
+  (`Apiary.Runs.Run.registered?/1`), at the changeset's `registered_at`, else its
+  `inserted_at`, else now.
+  `queued: true` in `opts` leaves it out, for a record no claim registered.
+  """
+  def insert_run!(%Ecto.Changeset{data: %Run{}} = changeset, opts \\ []) do
+    changeset = registered(changeset, Keyword.get(opts, :queued, false))
+
+    case queued_record(Ecto.Changeset.get_field(changeset, :dispatch_run_id)) do
+      %Run{} = queued ->
+        run = Ecto.Changeset.apply_changes(changeset)
+        kept = [:id, :public_id, :number, :inserted_at, :updated_at]
+        fields = Run.__schema__(:fields) -- kept
+
+        queued
+        |> Ecto.Changeset.change(Map.take(Map.from_struct(run), fields))
+        |> Ecto.Changeset.change(Map.take(changeset.changes, [:inserted_at, :updated_at]))
+        |> Repo.update!()
+
+      nil ->
+        Repo.insert!(changeset)
+    end
+  end
+
+  defp registered(changeset, true), do: changeset
+
+  defp registered(changeset, false) do
+    if is_nil(Ecto.Changeset.get_field(changeset, :dispatch_run_id)) or
+         Ecto.Changeset.get_field(changeset, :registered_at) do
+      changeset
+    else
+      at = Ecto.Changeset.get_change(changeset, :inserted_at) || DateTime.utc_now()
+
+      # A registration sets its columns together (`runs_registration_check`).
+      Enum.reduce(registration(at), changeset, fn {field, value}, changeset ->
+        if Ecto.Changeset.get_field(changeset, field),
+          do: changeset,
+          else: Ecto.Changeset.put_change(changeset, field, value)
+      end)
+    end
+  end
+
+  defp registration(at) do
+    [
+      registered_at: at,
+      registration_labels: %{},
+      registration_about: %{},
+      registration_digest: :crypto.hash(:sha256, "registration"),
+      registration_interval_seconds: 30,
+      registration_answer_digest: "sha256=" <> String.duplicate("0", 64)
+    ]
+  end
+
+  @doc """
+  The runs a registration or a claim wrote: every run but the record of a run of the queue
+  written when it was queued (`Apiary.Dispatches.Queued`) that no claim registered, waiting
+  or ended while it waited. What a test counted as the runs before a queued run had a
+  record.
+  """
+  def registered_runs do
+    import Ecto.Query, only: [from: 2]
+
+    from r in Run,
+      where:
+        is_nil(r.dispatch_run_id) or not is_nil(r.registered_at) or not is_nil(r.node_id) or
+          not is_nil(r.started_at) or not is_nil(r.attached_at)
+  end
+
+  @doc """
+  Deletes the record of the run of the queue `dispatch_run_id` written when it was queued,
+  while no claim registered it, for a test that links another run to that run of the
+  queue, as the queue was before it wrote records.
+  """
+  def forget_queued!(dispatch_run_id) do
+    case queued_record(dispatch_run_id) do
+      %Run{} = run -> Repo.delete!(run)
+      nil -> nil
+    end
+
+    :ok
+  end
+
+  defp queued_record(nil), do: nil
+
+  defp queued_record(dispatch_run_id) do
+    import Ecto.Query, only: [from: 2]
+
+    Repo.one(
+      from r in Run,
+        where: r.dispatch_run_id == ^dispatch_run_id and r.state == "pending",
+        where: is_nil(r.node_id) and is_nil(r.registered_at)
+    )
   end
 
   @doc """
@@ -296,6 +409,52 @@ defmodule Apiary.RunEventsFixtures do
        %{"session" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 15_000}},
       {23, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 16_000}}
     ]
+  end
+
+  @doc """
+  The events of the step of the kind `machine` that `qory run` sends right after it
+  redeems the run's code: its start, named `start machine`, one `run.log` line per part of
+  the machine's start, `<name>  <seconds> s`, each at the part's start, and its exit. From
+  `sequence` on, as step `step`, the first part starting at `at`. `parts` are `{name,
+  seconds}`, by default the five parts of a start; `same_time: true` gives every line the
+  time of the step's start.
+
+  Forager's contract has no fixture of this kind at this commit: these events follow the
+  shape `qory run` sends. When the contract has one, it replaces this.
+  """
+  def machine_step_events(sequence, step, at, opts \\ []) do
+    parts =
+      Keyword.get(opts, :parts, [
+        {"boot", 14.8},
+        {"read start data", 0.1},
+        {"set firewall", 1.4},
+        {"start Docker", 3.2},
+        {"write run code", 0.1}
+      ])
+
+    {lines, ended} =
+      Enum.map_reduce(Enum.with_index(parts, 1), at, fn {{name, seconds}, n}, part_at ->
+        time = if opts[:same_time], do: at, else: part_at
+        data = step_log_data(step, "#{name}  #{seconds} s\n")
+
+        {{sequence + n, "run.log", data, time: time},
+         DateTime.add(part_at, round(seconds * 1000), :millisecond)}
+      end)
+
+    [
+      {sequence, "run.step_started",
+       %{"step" => step, "name" => "start machine", "kind" => "machine"}, time: at}
+      | lines
+    ] ++
+      [
+        {sequence + length(parts) + 1, "run.step_exited",
+         %{
+           "step" => step,
+           "state" => "succeeded",
+           "exit_code" => 0,
+           "duration_ms" => DateTime.diff(ended, at, :millisecond)
+         }, time: ended}
+      ]
   end
 
   @doc "The data of a `run.log` line of step `step`, on stderr, as the host work writes it."

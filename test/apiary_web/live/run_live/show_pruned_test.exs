@@ -11,10 +11,10 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
   setup :register_and_log_in_user
 
   # A whole run, projected, then pruned by the job under `setting`.
-  defp pruned(scope, setting) do
+  defp pruned(scope, setting, events \\ record()) do
     {:ok, workspace} = Retention.update_retention(scope, setting)
     run = run_fixture(scope)
-    events_fixture(run, record())
+    events_fixture(run, events)
     {:ok, run} = Projector.project(run)
 
     now = DateTime.add(DateTime.utc_now(), 400 * 86_400, :second)
@@ -49,7 +49,6 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     refute html =~ "No session events arrived"
   end
 
-  @tag :feature_sets
   test "its terminal says the same, and its connections are still there", %{
     conn: conn,
     scope: scope
@@ -69,16 +68,14 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     assert html =~ "api.example.com"
     assert html =~ "tracker.example.net"
 
-    {:ok, lv, html} =
+    {:ok, lv, _html} =
       live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
-    assert has_element?(lv, "#run-number", Integer.to_string(run.number))
+    assert has_element?(lv, "#run-id", run.public_id)
 
-    # the policy card is `security`'s
-    if Apiary.Features.on?(:security),
-      do:
-        assert(html =~ "The policy event was pruned with the run&#39;s events on #{today(zone)}."),
-      else: refute(html =~ "The policy event")
+    # With its policy event pruned, the run has no Policy and no Policy in force.
+    refute has_element?(lv, "#rail-policy")
+    refute has_element?(lv, "#run-facts .q-kv-policy")
   end
 
   test "a run that lost only its log keeps its timeline", %{conn: conn, scope: scope} do
@@ -97,5 +94,62 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     assert has_element?(lv, ".q-limits", "Log output pruned")
     assert has_element?(lv, ".q-limits", "The timeline and the connections are whole.")
     refute has_element?(lv, "#terminal")
+  end
+
+  # A run of two agent sessions, each with a prompt and an answer, and the join of the
+  # second between them: with its row, the page shows the Run list.
+  defp two_sessions do
+    session = fn start, n, prompt, answer ->
+      [
+        {start, "session.started", session_started_data(%{"session" => n})},
+        {start + 1, "runtime.started", %{"session" => n, "session_id" => "session-000#{n}"}},
+        {start + 2, "runtime.text", %{"session" => n, "role" => "user", "text" => prompt}},
+        {start + 3, "runtime.text", %{"session" => n, "role" => "assistant", "text" => answer}},
+        {start + 4, "runtime.result",
+         %{"session" => n, "outcome" => "success", "result" => "ok"}},
+        {start + 5, "session.exited", %{"session" => n, "state" => "succeeded", "exit_code" => 0}}
+      ]
+    end
+
+    [{1, "run.started", started_data()}] ++
+      session.(2, 1, "Map the checkout", "The checkout has four steps.") ++
+      [
+        {8, "run.step_started", %{"step" => 1, "name" => "join session 2", "kind" => "join"}},
+        {9, "run.step_exited",
+         %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+      ] ++
+      session.(10, 2, "Add a test", "The storefront has a test.") ++
+      [{16, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}]
+  end
+
+  test "a run of two sessions whose events were pruned has no Timeline and no session rows",
+       %{conn: conn, scope: scope} do
+    run = pruned(scope, %{events_retention_days: 30}, two_sessions())
+
+    {:ok, lv, _html} =
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+    assert has_element?(lv, ".q-limits", "Events pruned")
+    refute has_element?(lv, "#timeline")
+    refute has_element?(lv, "#timeline-2")
+    refute has_element?(lv, "#prepare-machine-session")
+    refute has_element?(lv, "#prepare-machine-session-2")
+  end
+
+  test "a run of two sessions that lost only its log keeps a Timeline per session", %{
+    conn: conn,
+    scope: scope
+  } do
+    run = pruned(scope, %{log_retention_days: 30}, two_sessions())
+
+    {:ok, lv, _html} =
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+    assert has_element?(lv, "#prepare-machine-session #timeline")
+    assert has_element?(lv, "#prepare-machine-session-2 #timeline-2")
+    assert has_element?(lv, "#timeline #main-session")
+    assert has_element?(lv, "#timeline-2 #main-session-2")
+    assert has_element?(lv, "#timeline-2 #e-13")
+    refute has_element?(lv, ".q-limits", "Events pruned")
   end
 end

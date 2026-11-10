@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.StagesLive.Draft do
-  # The process document as the Stages page edits it before a save: pure functions over
+  # The process document as the Workflows page edits it before a save: pure functions over
   # the document's map, with string keys as the schema has them. Every change keeps the
   # fields it does not touch, unknown fields included (the spec's § The process
   # document). A stage's id is made once, when the stage is added, and never changes.
@@ -68,7 +68,7 @@ defmodule ApiaryWeb.StagesLive.Draft do
   def put_machine(doc, machine) do
     case String.trim(machine || "") do
       "" -> doc
-      value -> %{doc | "machine" => value}
+      value -> Map.put(doc, "machine", value)
     end
   end
 
@@ -146,6 +146,7 @@ defmodule ApiaryWeb.StagesLive.Draft do
   def apply_form(stage, params) when is_map(params) do
     stage
     |> put_name(params["name"])
+    |> put_description(params["description"])
     |> Map.update!("sequence", &merge_sequence(&1, params["sequence"]))
     |> Map.update!("inputs", &merge_artifacts(&1, params["inputs"]))
     |> Map.update!("outputs", &merge_artifacts(&1, params["outputs"]))
@@ -157,26 +158,71 @@ defmodule ApiaryWeb.StagesLive.Draft do
 
   defp put_name(stage, _name), do: stage
 
+  # A blank description removes the key, so a stage without one is as before. A browser
+  # sends a textarea's line breaks as CRLF; the document keeps LF, no white space at the
+  # start or the end, and at most 500 code points of whole graphemes
+  # (`Apiary.Processes.description/1`).
+  defp put_description(stage, text) when is_binary(text) do
+    text = Apiary.Processes.description(text)
+
+    if text == "",
+      do: Map.delete(stage, "description"),
+      else: Map.put(stage, "description", text)
+  end
+
+  defp put_description(stage, _text), do: stage
+
   defp merge_sequence(sequence, %{} = params) do
-    for {entry, i} <- Enum.with_index(sequence) do
-      case {entry, params[to_string(i)]} do
-        {%{"loop" => loop}, %{} = p} ->
-          body =
-            for {e, j} <- Enum.with_index(loop["body"]),
-                do: merge_entry(e, p["body"][to_string(j)])
+    if sequence_fits?(sequence, params) do
+      for {entry, i} <- Enum.with_index(sequence) do
+        case {entry, params[to_string(i)]} do
+          {%{"loop" => loop}, %{} = p} ->
+            body =
+              for {e, j} <- Enum.with_index(loop["body"]),
+                  do: merge_entry(e, p["body"][to_string(j)])
 
-          %{
-            entry
-            | "loop" => %{loop | "rounds" => rounds(p["rounds"], loop["rounds"]), "body" => body}
-          }
+            %{
+              entry
+              | "loop" => %{
+                  loop
+                  | "rounds" => rounds(p["rounds"], loop["rounds"]),
+                    "body" => body
+                }
+            }
 
-        {entry, p} ->
-          merge_entry(entry, p)
+          {entry, p} ->
+            merge_entry(entry, p)
+        end
       end
+    else
+      sequence
     end
   end
 
   defp merge_sequence(sequence, _params), do: sequence
+
+  # Whether the form's rows have the sequence's shape: the same number of rows, with a loop
+  # of the same number of workflows at the same places. Only the buttons change the shape.
+  # A form that a reconnect recovers does not fit after an unsaved Remove or Remove loop,
+  # because mount loads the saved rows; merged by place, its values would go to the wrong
+  # rows. A keystroke sent after a button click and before its patch arrives has the old
+  # shape too, so that event writes no rows, and the next change event sends the whole form.
+  @doc false
+  def sequence_fits?(sequence, %{} = params) do
+    rows?(sequence, params) and
+      sequence
+      |> Enum.with_index()
+      |> Enum.all?(fn {entry, i} -> entry_fits?(entry, params["#{i}"]) end)
+  end
+
+  defp entry_fits?(%{"loop" => %{"body" => body}}, %{"body" => %{} = form}), do: rows?(body, form)
+  defp entry_fits?(%{"loop" => _loop}, _form), do: false
+  defp entry_fits?(_entry, %{"body" => _form}), do: false
+  defp entry_fits?(_entry, form), do: is_map(form)
+
+  # Whether `form`'s keys are the places of `list`: "0", "1", and so on.
+  defp rows?(list, form),
+    do: MapSet.new(Map.keys(form)) == MapSet.new(0..(length(list) - 1)//1, &to_string/1)
 
   # A workflow name that breaks the schema's pattern keeps the entry's workflow, and the
   # page shows an error under the field (`workflow_name?/1`).
@@ -201,10 +247,54 @@ defmodule ApiaryWeb.StagesLive.Draft do
 
   # Whether `text` is a workflow name the process schema takes
   # (`priv/schemas/process/v1.schema.json`, `workflow_name`): a lower-case letter, then up
-  # to 63 lower-case letters, digits and hyphens.
+  # to 54 lower-case letters, digits and hyphens.
   @doc false
-  def workflow_name?(text) when is_binary(text), do: text =~ ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  def workflow_name?(text) when is_binary(text), do: text =~ ~r/\A[a-z][a-z0-9-]{0,54}\z/
   def workflow_name?(_text), do: false
+
+  # The machine types of the document's workflows that break the process schema's pattern
+  # (`priv/schemas/process/v1.schema.json`, `machine`), each once: a lower-case letter, then
+  # up to 63 lower-case letters, digits and hyphens.
+  @doc false
+  def invalid_machines(doc) do
+    for stage <- doc["stages"],
+        entry <- stage["sequence"],
+        %{"machine" => machine} <- entry_workflows(entry),
+        not machine?(machine),
+        uniq: true,
+        do: machine
+  end
+
+  # The sequence entry at a place such as `#/stages/1/sequence/0`, nil for another place.
+  @doc false
+  def entry_at(doc, path) do
+    with [_all, stage, entry] <- Regex.run(~r{^#/stages/(\d+)/sequence/(\d+)}, path),
+         %{"sequence" => sequence} <- Enum.at(doc["stages"] || [], String.to_integer(stage)) do
+      Enum.at(sequence, String.to_integer(entry))
+    else
+      _other -> nil
+    end
+  end
+
+  # Whether the entry is a loop with more workflows than the process schema takes
+  # (`priv/schemas/process/v1.schema.json`, `loop_entry`).
+  @doc false
+  def loop_too_long?(%{"loop" => %{"body" => body}}), do: length(body) > 10
+  def loop_too_long?(_entry), do: false
+
+  # Whether a workflow of the sequence entry, or of any entry in the stage, has one of
+  # the machine types in `machines`.
+  @doc false
+  def machine_in?(%{"sequence" => sequence}, machines),
+    do: Enum.any?(sequence, &machine_in?(&1, machines))
+
+  def machine_in?(entry, machines),
+    do: Enum.any?(entry_workflows(entry), &(&1["machine"] in machines))
+
+  defp entry_workflows(%{"loop" => %{"body" => body}}), do: body
+  defp entry_workflows(entry), do: [entry]
+
+  defp machine?(text), do: text =~ ~r/\A[a-z][a-z0-9-]{0,63}\z/
 
   defp rounds(text, previous), do: if(rounds?(text), do: String.to_integer(text), else: previous)
 
@@ -220,21 +310,25 @@ defmodule ApiaryWeb.StagesLive.Draft do
   def rounds?(_text), do: false
 
   defp merge_artifacts(list, %{} = params) do
-    for {item, i} <- Enum.with_index(list) do
-      case params[to_string(i)] do
-        %{} = p ->
-          item =
-            if is_binary(p["type"]) and p["type"] != "",
-              do: %{item | "type" => p["type"]},
+    if rows?(list, params) do
+      for {item, i} <- Enum.with_index(list) do
+        case params[to_string(i)] do
+          %{} = p ->
+            item =
+              if is_binary(p["type"]) and p["type"] != "",
+                do: %{item | "type" => p["type"]},
+                else: item
+
+            if is_binary(p["required"]),
+              do: %{item | "required" => p["required"] == "true"},
               else: item
 
-          if is_binary(p["required"]),
-            do: %{item | "required" => p["required"] == "true"},
-            else: item
-
-        _other ->
-          item
+          _other ->
+            item
+        end
       end
+    else
+      list
     end
   end
 

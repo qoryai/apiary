@@ -13,7 +13,8 @@ defmodule ApiaryWeb.PageComponents do
   - `page_form/1` and `page_form_foot/1`: a create or edit form as a separate page, never
     a dialog, with Cancel back to where it was opened from.
   - `not_on_runs/1`: the one plain line a page over data no run receives says.
-  - `context_column/1`: a form with its context, About this step, in a column beside it.
+  - `context_column/1`: a form with its context, headed "About" and the page's topic, in a
+    column beside it.
 
   Two more patterns are `ApiaryWeb.CoreComponents`': the confirmation in place, never a
   dialog (`inline_confirm/1`, and a deletion's, `ApiaryWeb.SettingsComponents.deletion_confirm/1`),
@@ -90,7 +91,7 @@ defmodule ApiaryWeb.PageComponents do
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the bar's name: the kind of thing, as Target"
-  attr :current, :atom, required: true, doc: "the key of the page's tab"
+  attr :current, :any, required: true, doc: "the key of the page's tab, an atom or a stage's id"
 
   attr :place, :string,
     default: "thing",
@@ -99,7 +100,7 @@ defmodule ApiaryWeb.PageComponents do
       "a thing's tabs (sticky, scrolling sideways), or a settings section's (in the flow, wrapping)"
 
   slot :tab, required: true do
-    attr :key, :atom, required: true
+    attr :key, :any, required: true
     attr :patch, :string
     attr :navigate, :string
     attr :icon, :string
@@ -187,7 +188,11 @@ defmodule ApiaryWeb.PageComponents do
   slot :actions, doc: "at most one primary and one default action"
 
   slot :context,
-    doc: "why the section exists and what it changes, in a column beside it (`context_column/1`)"
+    doc: "why the section exists and what it changes, in a column beside it (`context_column/1`)" do
+    attr :about, :string,
+      required: true,
+      doc: "the column's heading: About and the page's topic, such as \"About models\""
+  end
 
   slot :inner_block, required: true
 
@@ -216,7 +221,9 @@ defmodule ApiaryWeb.PageComponents do
         <% else %>
           <.context_column>
             {render_slot(@inner_block)}
-            <:context>{render_slot(@context)}</:context>
+            <:context :for={context <- @context} about={context.about}>
+              {render_slot(context)}
+            </:context>
           </.context_column>
         <% end %>
       </section>
@@ -227,28 +234,35 @@ defmodule ApiaryWeb.PageComponents do
   @doc """
   context_column/1 is a form with its context: why the page exists and what it changes,
   and the steps the reader takes outside it, never a field, an option or a button the form
-  shows. The context is an `<aside>` headed About this step, after the form in reading
-  order. It stands beside the form where the page has 840 px for both, and under the
-  form below that, so a settings page beside the sidebar and the second column shows it
-  beside from a 1366 px screen (`docs/ui.md`, Settings). A settings page passes its
-  `context` slot (`settings_page/1`, `ApiaryWeb.SettingsComponents.layout/1`), which
-  renders this.
+  shows. The context is an `<aside>` headed by the context's `about`, "About" and the
+  page's topic, such as "About models", after the form in reading order. It stands
+  beside the form where the page has 840 px for both, and under the form below that, so
+  a settings page beside the sidebar and the second column shows it beside from a
+  1366 px screen (`docs/ui.md`, Settings). A settings page passes its `context` slot
+  (`settings_page/1`, `ApiaryWeb.SettingsComponents.layout/1`), which renders this.
 
       <.settings_page section={:model} title={gettext("Model")}>
         <.form ... novalidate>...</.form>
-        <:context><p>{gettext("Main's default model. ...")}</p></:context>
+        <:context about={gettext("About models")}>
+          <p>{gettext("Main's default model. ...")}</p>
+        </:context>
       </.settings_page>
   """
   attr :id, :string, default: "page-context"
   slot :inner_block, required: true, doc: "the form, and what the page shows with it"
-  slot :context, required: true, doc: "the column's paragraphs and lists"
+
+  slot :context, required: true, doc: "the column's paragraphs and lists" do
+    attr :about, :string,
+      required: true,
+      doc: "the column's heading: About and the page's topic, such as \"About models\""
+  end
 
   def context_column(assigns) do
     ~H"""
     <div class="q-context-grid">
       <div class="q-context-main">{render_slot(@inner_block)}</div>
       <aside id={@id} class="q-context" aria-labelledby={"#{@id}-h"}>
-        <h2 id={"#{@id}-h"} class="q-context-h">{gettext("About this step")}</h2>
+        <h2 id={"#{@id}-h"} class="q-context-h">{hd(@context).about}</h2>
         {render_slot(@context)}
       </aside>
     </div>

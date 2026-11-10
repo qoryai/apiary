@@ -190,7 +190,9 @@ defmodule Apiary.Adapters.Collections do
   #      items first, then their work items (`Apiary.Sources.Ingest`);
   #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
   #      right after the work item it numbers;
-  #   7. the adapter's feed counter, last.
+  #   7. the adapter's feed counter;
+  #   8. for a work item that moves, the target's counter of run numbers
+  #      (`Apiary.Runs.Number.raise_past/2`), last.
   #
   # A start that changes the adapter's `items` holds, after its row, the adapter's
   # connections that have not ended `FOR SHARE`, by id, then every live collection of
@@ -1297,7 +1299,11 @@ defmodule Apiary.Adapters.Collections do
   #     linked to no workspace first, then those linked to one, each by title, then id.
   #     The page after `after:` starts past that row in the same order: its link to a
   #     workspace or none, its title, its id. Another order raises `ArgumentError`, as
-  #     another view does.
+  #     another view does;
+  #   * `sort_as_assigned:` internal ids of collections (`id`, not the `sc_…` public id)
+  #     that `:unassigned_first` sorts, and pages past, as if each were linked to a
+  #     workspace, wherever it is linked: a row a person unassigned keeps its place.
+  #     A value that is not a list raises `ArgumentError`;
   #
   # A page of `page_size/0` rows may have more after it; a shorter one is the last. Each
   # row's `backlog` is its switch, which `set_collection_backlog/4` turns (`row/0`).
@@ -1325,11 +1331,15 @@ defmodule Apiary.Adapters.Collections do
 
   defp page_query(%Connection{} = connection, opts) do
     order = Keyword.get(opts, :order, :title)
+    as_assigned = Keyword.get(opts, :sort_as_assigned, [])
+
+    unless is_list(as_assigned),
+      do: raise(ArgumentError, "sort_as_assigned is a list of collection ids")
 
     connection
     |> found_query(opts)
-    |> sort(order)
-    |> after_row(connection, Keyword.get(opts, :after), order)
+    |> sort(order, as_assigned)
+    |> after_row(connection, Keyword.get(opts, :after), order, as_assigned)
     |> join(:left, [c], w in assoc(c, :workspace))
     |> join(:inner, [c], n in assoc(c, :adapter))
     |> limit(@page_size)
@@ -1358,17 +1368,23 @@ defmodule Apiary.Adapters.Collections do
   defp in_list(_query, _list),
     do: raise(ArgumentError, "a list is :sources or :destinations")
 
-  defp sort(query, :title), do: order_by(query, [c], asc: c.title, asc: c.id)
+  defp sort(query, :title, _as_assigned), do: order_by(query, [c], asc: c.title, asc: c.id)
 
-  defp sort(query, :unassigned_first),
+  defp sort(query, :unassigned_first, as_assigned),
     do:
       order_by(query, [c],
-        asc: fragment("? IS NOT NULL", c.workspace_id),
+        asc:
+          fragment(
+            "(? IS NOT NULL OR ? = ANY(?))",
+            c.workspace_id,
+            c.id,
+            type(^as_assigned, {:array, :binary_id})
+          ),
         asc: c.title,
         asc: c.id
       )
 
-  defp sort(_query, _order),
+  defp sort(_query, _order, _as_assigned),
     do: raise(ArgumentError, "an order is :title or :unassigned_first")
 
   defp view(query, :all), do: query
@@ -1411,35 +1427,38 @@ defmodule Apiary.Adapters.Collections do
     end
   end
 
-  defp after_row(query, _connection, nil, _order), do: query
+  defp after_row(query, _connection, nil, _order, _as_assigned), do: query
 
-  defp after_row(query, %Connection{id: connection_id}, public_id, order) do
+  defp after_row(query, %Connection{id: connection_id}, public_id, order, as_assigned) do
     with true <- Collection.public_id?(public_id),
          {assigned, title, id} <-
            Repo.one(
              from c in Collection,
                where: c.public_id == ^public_id and c.connection_id == ^connection_id,
-               select: {not is_nil(c.workspace_id), c.title, c.id}
+               select: {not is_nil(c.workspace_id) or c.id in ^as_assigned, c.title, c.id}
            ) do
-      past(query, order, assigned, title, id)
+      past(query, order, assigned, title, id, as_assigned)
     else
       _none -> where(query, false)
     end
   end
 
   # The rows past the one whose link to a workspace or none, title and id are `assigned`,
-  # `title` and `id`, in `order`.
-  defp past(query, :title, _assigned, title, id),
+  # `title` and `id`, in `order`, with the collections of `as_assigned` sorted as linked
+  # to one.
+  defp past(query, :title, _assigned, title, id, _as_assigned),
     do:
       where(query, [c], fragment("(?, ?) > (?, ?)", c.title, c.id, ^title, type(^id, :binary_id)))
 
-  defp past(query, :unassigned_first, assigned, title, id) do
+  defp past(query, :unassigned_first, assigned, title, id, as_assigned) do
     where(
       query,
       [c],
       fragment(
-        "(? IS NOT NULL, ?, ?) > (?, ?, ?)",
+        "(? IS NOT NULL OR ? = ANY(?), ?, ?) > (?, ?, ?)",
         c.workspace_id,
+        c.id,
+        type(^as_assigned, {:array, :binary_id}),
         c.title,
         c.id,
         ^assigned,
@@ -1496,9 +1515,9 @@ defmodule Apiary.Adapters.Collections do
   # count_collections/3 is how many live collections of `connection` the filters of
   # `opts` find, to a person who may read the instance's adapters in the scope's
   # organisation (`adapter.read`): `view:`, `search:`, `workspace:`, `grant:` and `list:`
-  # as `list_collections/3` takes them, the rows of all its pages counted; `after:` and
-  # `order:` are not read. 0 to anyone else, and for a connection of another
-  # organisation.
+  # as `list_collections/3` takes them, the rows of all its pages counted; `after:`,
+  # `order:` and `sort_as_assigned:` are not read. 0 to anyone else, and for a
+  # connection of another organisation.
   @spec count_collections(Scope.t(), Connection.t(), keyword) :: non_neg_integer
   def count_collections(scope, connection, opts \\ [])
 
@@ -1603,7 +1622,7 @@ defmodule Apiary.Adapters.Collections do
   defp readable?(_scope, _connection), do: false
 
   @doc false
-  # assign_collections/4 links the collections of `connection` whose ids, the ids Qory
+  # assign_collections/5 links the collections of `connection` whose ids, the ids Qory
   # Apiary gives them (`id`, never a ref), are `ids` to `workspace`, of the scope's
   # organisation, or to none for `nil` (`collection.assign`, owners and admins, asked of
   # the organisation), in one transaction. In this order:
@@ -1622,6 +1641,8 @@ defmodule Apiary.Adapters.Collections do
   #     assigned, and its tickets come in as before;
   #   * `{:error, :not_found}` for an id that names no live collection of the connection:
   #     of another connection or organisation, ended, or none;
+  #   * with `from:` in `opts`, a workspace's id, `{:error, :moved}` unless every
+  #     collection asked for is linked to that workspace as it is locked;
   #   * `{:ok, count}`, how many changed their link: the others are as asked already.
   #
   # It holds the connection `FOR SHARE`, so the connection does not end meanwhile, and the
@@ -1638,10 +1659,18 @@ defmodule Apiary.Adapters.Collections do
   # the organisation's, is about the workspace, or the organisation when it unlinks, with
   # the count, the connection's public id and the workspace's id (nil when it unlinks);
   # none when nothing changed. After the commit, the collections changed are broadcast.
-  @spec assign_collections(Scope.t(), Connection.t(), [Ecto.UUID.t()], Workspace.t() | nil) ::
-          {:ok, non_neg_integer} | {:error, :invalid | :ended | :other_domain | Access.reason()}
-  def assign_collections(%Scope{} = scope, %Connection{} = connection, ids, workspace)
-      when is_list(ids) and (is_nil(workspace) or is_struct(workspace, Workspace)) do
+  @spec assign_collections(
+          Scope.t(),
+          Connection.t(),
+          [Ecto.UUID.t()],
+          Workspace.t() | nil,
+          [{:from, Ecto.UUID.t()}]
+        ) ::
+          {:ok, non_neg_integer}
+          | {:error, :invalid | :ended | :other_domain | :moved | Access.reason()}
+  def assign_collections(%Scope{} = scope, %Connection{} = connection, ids, workspace, opts \\ [])
+      when is_list(ids) and (is_nil(workspace) or is_struct(workspace, Workspace)) and
+             is_list(opts) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"collection.assign", scope.organisation),
            {:ok, ids, every_id?} <- cast_ids(ids),
@@ -1650,7 +1679,8 @@ defmodule Apiary.Adapters.Collections do
            {:ok, workspace_id} <- lock_target(organisation_id, workspace),
            :ok <- served(held, workspace),
            true <- every_id? || {:error, :not_found},
-           {:ok, collections} <- lock_collections(organisation_id, connection, ids) do
+           {:ok, collections} <- lock_collections(organisation_id, connection, ids),
+           :ok <- linked_to(collections, Keyword.fetch(opts, :from)) do
         changed = Enum.reject(collections, &(&1.workspace_id == workspace_id))
         :ok = insert_targets(organisation_id, workspace, collections)
         :ok = relink(scope, connection, changed, workspace, workspace_id)
@@ -1665,6 +1695,15 @@ defmodule Apiary.Adapters.Collections do
       {:error, _reason} = refused ->
         refused
     end
+  end
+
+  # With `from:`, whether every collection, as locked, is linked to that workspace.
+  defp linked_to(_collections, :error), do: :ok
+
+  defp linked_to(collections, {:ok, workspace_id}) do
+    if Enum.all?(collections, &(&1.workspace_id == workspace_id)),
+      do: :ok,
+      else: {:error, :moved}
   end
 
   # At most 10,000 ids (`@max_assign`): those that are UUIDs, once each and sorted, and

@@ -202,6 +202,7 @@ defmodule ApiaryWeb.Contract.RunVariablesServedTest do
 
   test "a workspace that serves none: the document of no policy and the variables, under their digest",
        ctx do
+    no_policy_version!(ctx.scope.workspace)
     {run_id, run_key} = registered(ctx)
     conn = attach(ctx.gateway_key, run_id, run_key)
     assert conn.status == 200

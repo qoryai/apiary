@@ -26,6 +26,7 @@ defmodule Apiary.WorkItems.WorkListTest do
     no_result: 0,
     waiting: 0,
     waiting_you: 0,
+    waiting_listed: 0,
     ready: 0
   }
   @empty %{
@@ -576,6 +577,7 @@ defmodule Apiary.WorkItems.WorkListTest do
                no_result: 2,
                waiting: 2,
                waiting_you: 1,
+               waiting_listed: 0,
                ready: 1
              }
     end
@@ -632,6 +634,26 @@ defmodule Apiary.WorkItems.WorkListTest do
 
       assert stages.explore == WorkList.band_size() + 2
       assert WorkItems.list_bands(scope, search: "nothing like it").bands.explore == []
+    end
+
+    # A work item with no `stage_state` (not placed, or the workflow model off) ranks
+    # after one that waits for the reader, though it changed later.
+    test "put an escalated work item that waits for the reader before one with no stage state",
+         %{scope: scope} do
+      base = DateTime.utc_now()
+
+      escalated =
+        at!(scope, :shape)
+        |> set!(
+          stage_id: "st_0000000000",
+          stage_state: :escalated,
+          updated_at: DateTime.add(base, -60, :second)
+        )
+
+      unplaced = at!(scope, :shape) |> set!(stage_state: nil, updated_at: base)
+
+      assert ids(%{rows: WorkItems.list_bands(scope).bands.shape}) ==
+               [escalated.public_id, unplaced.public_id]
     end
 
     test "are empty to anyone who may not read the work items", %{scope: scope} do

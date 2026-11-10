@@ -19,6 +19,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   alias Apiary.{Dispatches, Repo, Stacks, WorkItems}
   alias Apiary.Harnesses.{Builtin, Reader}
   alias Apiary.Policy.ComposedConfiguration
+  alias Apiary.QoryHarnessFixture
   alias Apiary.Runs.RunCredential
   alias ApiaryWeb.Contract.SignedRequest
 
@@ -294,10 +295,14 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
         claim = claim(ctx)
         documents = documents(claim)
 
+        # The built-in harness at the commit of qory's main when the claim read it.
+        resolved =
+          put_in(Builtin.document(), ["extends", "ref"], QoryHarnessFixture.builtin_commit())
+
         assert Map.take(documents, @harness) == %{
                  "workflow" => "hello",
                  "harness_hidden" => false,
-                 "harness" => %{"harness" => Builtin.document()}
+                 "harness" => %{"harness" => resolved}
                }
 
         refute Map.has_key?(documents, "access")

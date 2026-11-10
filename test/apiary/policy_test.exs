@@ -36,11 +36,37 @@ defmodule Apiary.PolicyTest do
     do: Jason.decode!(document)["security_policy"]
 
   describe "the mode" do
-    test "is observe until it is set; nothing is rendered until the first change, which is version 1",
+    test "is observe until it is set; version 1 is there from the creation, and the first change is version 2",
          %{scope: scope} do
       assert Policy.get_mode(scope) == "observe"
+      assert Policy.managed?(scope)
+      assert %{version: 1, changed_by_id: nil} = first = current!(scope, nil)
 
-      # A read of a workspace nobody has changed renders and stores nothing.
+      assert policy(first)["egress"] == %{
+               "mode" => "observe",
+               "allow" => [],
+               "allow_first" => ["api.anthropic.com"]
+             }
+
+      assert %{in_force: digest, drift: false} = Policy.digests(scope, run_fixture(scope))
+      assert digest == first.digest
+
+      assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
+      assert Policy.get_mode(scope) == "enforce"
+      assert %{version: 2, audit_entry_id: change_id} = second = current!(scope, nil)
+      assert is_binary(change_id)
+      assert policy(second)["egress"]["mode"] == "enforce"
+      assert second.changed_by_id == scope.user.id
+
+      assert {:error, %Error{reason: :invalid, field: :mode}} = Policy.set_mode(scope, "log")
+      assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
+      assert %{total: 2} = Policy.list_changes(scope, nil)
+    end
+
+    test "with no row, a read renders and stores nothing, and the first change is version 1",
+         %{scope: scope} do
+      no_policy_version!(scope.workspace)
+
       assert {:error, %Error{reason: :unmanaged}} = Policy.current_configuration(scope, nil)
 
       assert {:error, %Error{reason: :unmanaged}} =
@@ -78,15 +104,16 @@ defmodule Apiary.PolicyTest do
                %Apiary.Audit.Entry{
                  id: id,
                  action: "security_policy.edit",
-                 details: %{"change" => "rule_added", "subject" => "api.example", "version" => 1}
+                 details: %{"change" => "rule_added", "subject" => "api.example", "version" => 2}
                }
              ] =
                Repo.all(
                  from e in Apiary.Audit.Entry,
-                   where: e.workspace_id == ^scope.workspace.id and like(e.action, "security%")
+                   where: e.workspace_id == ^scope.workspace.id and like(e.action, "security%"),
+                   where: fragment("?->>'change' = 'rule_added'", e.details)
                )
 
-      assert %{version: 1, audit_entry_id: ^id} = current!(scope, nil)
+      assert %{version: 2, audit_entry_id: ^id} = current!(scope, nil)
     end
   end
 
@@ -198,7 +225,10 @@ defmodule Apiary.PolicyTest do
       assert back.version_after == 1
 
       # The workspace's change is the workspace's, not the target's.
-      assert %{items: [%{action: "mode_changed"} = workspace], total: 1} =
+      assert %{
+               items: [%{action: "mode_changed"} = workspace, %{action: "first_version"}],
+               total: 2
+             } =
                Policy.list_changes(scope, nil)
 
       assert %{mode: {"observe", "enforce"}} = Policy.diff(workspace)
@@ -226,10 +256,12 @@ defmodule Apiary.PolicyTest do
       assert {:error, %Error{reason: :invalid, field: :mode}} =
                Policy.set_mode(scope, nil, :inherit)
 
-      refute Policy.managed?(scope)
+      assert %{version: 1} = current!(scope, nil)
+      assert %{target_id: nil} = current!(scope, target)
 
       assert {:ok, _} = Policy.set_mode(scope, target, "enforce")
-      assert Policy.managed?(scope)
+      assert %{version: 1} = current!(scope, nil)
+      assert current!(scope, target).target_id == target.id
     end
 
     test "a locked rule of the workspace holds under the target's own mode", ctx do
@@ -246,6 +278,7 @@ defmodule Apiary.PolicyTest do
         assert policy(current!(scope, target))["egress"] == %{
                  "mode" => mode,
                  "allow" => ["api.example"],
+                 "allow_first" => ["api.anthropic.com"],
                  "deny" => ["mcp.example"]
                }
       end
@@ -290,7 +323,7 @@ defmodule Apiary.PolicyTest do
       scope: scope
     } do
       assert Policy.mode_summary(scope) == %{
-               managed?: false,
+               managed?: true,
                mode: "observe",
                own_modes: [],
                floor: false
@@ -328,6 +361,7 @@ defmodule Apiary.PolicyTest do
       assert Enum.sort(own) == ["enforce", "observe"]
 
       %{scope: other} = sign_up_fixture()
+      no_policy_version!(other.workspace)
 
       assert Policy.mode_summary(other) == %{
                managed?: false,
@@ -358,20 +392,22 @@ defmodule Apiary.PolicyTest do
       assert policy(current!(scope, nil))["egress"] == %{
                "mode" => "observe",
                "allow" => ["api.example"],
+               "allow_first" => ["api.anthropic.com"],
                "paths" => %{"api.example" => ["/a", "/b/*"]}
              }
 
       assert {:ok, %Rule{}} = Policy.remove_rule(scope, rule.id)
       assert [] = Policy.list_rules(scope, nil)
 
-      assert %{items: [removed, changed, added], total: 3} = Policy.list_changes(scope, nil)
+      assert %{items: [removed, changed, added, %{action: "first_version"}], total: 4} =
+               Policy.list_changes(scope, nil)
 
       assert [added.action, changed.action, removed.action] ==
                ~w(rule_added rule_changed rule_removed)
 
       assert Enum.all?([added, changed, removed], &(&1.subject == "api.example"))
       assert Enum.all?([added, changed, removed], &(&1.changed_by.id == scope.user.id))
-      assert [added.version_after, changed.version_after, removed.version_after] == [1, 2, 3]
+      assert [added.version_after, changed.version_after, removed.version_after] == [2, 3, 4]
 
       assert %{added: [%{"host" => "api.example"}], removed: [], changed: [], mode: nil} =
                Policy.diff(added)
@@ -386,28 +422,28 @@ defmodule Apiary.PolicyTest do
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
 
-      assert %{total: 1} = Policy.list_changes(scope, nil)
-      assert %{version: 1} = current!(scope, nil)
+      assert %{total: 2} = Policy.list_changes(scope, nil)
+      assert %{version: 2} = current!(scope, nil)
     end
 
     test "a change that renders the same bytes writes a change and no version", %{scope: scope} do
       {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example"})
 
-      assert %{total: 1, items: [%Change{version_after: 1}]} = Policy.list_changes(scope, nil)
-      assert %{version: 1, changed_by_id: changed_by} = current!(scope, nil)
+      assert %{total: 2, items: [%Change{version_after: 2} | _]} = Policy.list_changes(scope, nil)
+      assert %{version: 2, changed_by_id: changed_by} = current!(scope, nil)
       assert changed_by == scope.user.id
 
       # A lock holds against targets and leaves the workspace's document as it was.
       {:ok, _rule} = Policy.lock(scope, rule)
 
-      assert %{total: 2, items: [%Change{action: "rule_locked", version_after: 1} | _]} =
+      assert %{total: 3, items: [%Change{action: "rule_locked", version_after: 2} | _]} =
                Policy.list_changes(scope, nil)
 
-      assert %{version: 1} = current!(scope, nil)
+      assert %{version: 2} = current!(scope, nil)
 
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "cdn.example"})
-      assert %{version: 2} = current!(scope, nil)
-      assert %{total: 2} = Policy.list_configurations(scope, nil)
+      assert %{version: 3} = current!(scope, nil)
+      assert %{total: 3} = Policy.list_configurations(scope, nil)
     end
 
     test "what is not in the contract's grammar is refused with a sentence", %{scope: scope} do
@@ -431,7 +467,7 @@ defmodule Apiary.PolicyTest do
                Policy.allow(scope, nil, %{host: "api.example", paths: ["/a/*/b"]})
 
       assert [] = Policy.list_rules(scope, nil)
-      assert %{total: 0} = Policy.list_changes(scope, nil)
+      assert %{total: 1, items: [%{action: "first_version"}]} = Policy.list_changes(scope, nil)
     end
 
     test "a rule is a host rule: a credential is refused, and nothing is written", %{
@@ -446,7 +482,7 @@ defmodule Apiary.PolicyTest do
       end
 
       assert [] = Policy.list_rules(scope, nil)
-      assert %{total: 0} = Policy.list_changes(scope, nil)
+      assert %{total: 1, items: [%{action: "first_version"}]} = Policy.list_changes(scope, nil)
     end
 
     test "the run configuration selects no credential, and the contract's schema accepts it",
@@ -479,10 +515,11 @@ defmodule Apiary.PolicyTest do
       assert policy(current!(scope, nil))["egress"] == %{
                "mode" => "observe",
                "allow" => ["*.s.example"],
+               "allow_first" => ["api.anthropic.com"],
                "deny" => ["a.s.example"]
              }
 
-      assert %{total: 2} = Policy.list_changes(scope, nil)
+      assert %{total: 3} = Policy.list_changes(scope, nil)
     end
 
     test "a deny of a host nothing allows renders a version: it holds under observe", %{
@@ -490,11 +527,12 @@ defmodule Apiary.PolicyTest do
     } do
       {:ok, _rule} = Policy.deny(scope, nil, %{host: "ads.example"})
 
-      assert %{version: 1} = current!(scope, nil)
+      assert %{version: 2} = current!(scope, nil)
 
       assert policy(current!(scope, nil))["egress"] == %{
                "mode" => "observe",
                "allow" => [],
+               "allow_first" => ["api.anthropic.com"],
                "deny" => ["ads.example"]
              }
     end
@@ -527,7 +565,7 @@ defmodule Apiary.PolicyTest do
       assert {:ok, %Rule{paths: ["/a"]}} =
                Policy.allow(scope, nil, %{host: "git.example", paths: ""})
 
-      assert %{total: 1} = Policy.list_changes(scope, nil)
+      assert %{total: 2} = Policy.list_changes(scope, nil)
 
       assert {:ok, %Rule{paths: nil}} =
                Policy.allow(scope, nil, %{host: "git.example", paths: nil})
@@ -699,8 +737,8 @@ defmodule Apiary.PolicyTest do
       assert own.digest == current!(scope, nil).digest
 
       assert %{total: 2} = Policy.list_changes(scope, target)
-      assert %{total: 2} = Policy.list_changes(scope, nil)
-      assert %{total: 4} = Policy.list_changes(scope, :all)
+      assert %{total: 3} = Policy.list_changes(scope, nil)
+      assert %{total: 5} = Policy.list_changes(scope, :all)
 
       assert [%{target: %Target{}, rule_count: 0}] = Policy.list_targets(scope)
     end
@@ -735,9 +773,10 @@ defmodule Apiary.PolicyTest do
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
       baseline = current!(scope, nil)
 
-      assert {:ok, %{id: id}} = Policy.get_configuration(scope, nil, "1")
+      assert {:ok, %{id: id}} = Policy.get_configuration(scope, nil, "2")
       assert id == baseline.id
-      assert {:error, %Error{reason: :not_found}} = Policy.get_configuration(scope, nil, 2)
+      assert {:ok, %{version: 1}} = Policy.get_configuration(scope, nil, 1)
+      assert {:error, %Error{reason: :not_found}} = Policy.get_configuration(scope, nil, 3)
       assert {:error, %Error{reason: :not_found}} = Policy.get_configuration(scope, nil, "x")
 
       # A run of a target without rules reported the baseline's digest.
@@ -775,7 +814,7 @@ defmodule Apiary.PolicyTest do
         ])
 
       assert Map.keys(versions) |> Enum.sort() == Enum.sort([nil, ctx.site.id])
-      assert %RunConfiguration{version: 2, document: nil, digest: "sha256=" <> _} = versions[nil]
+      assert %RunConfiguration{version: 3, document: nil, digest: "sha256=" <> _} = versions[nil]
       assert %RunConfiguration{version: 2, document: nil} = versions[ctx.site.id]
       assert versions[nil].digest == current!(ctx.scope, nil).digest
 
@@ -785,14 +824,14 @@ defmodule Apiary.PolicyTest do
     end
 
     test "configurations_for_changes/2: what each change rendered, the baseline's first", ctx do
-      %{items: [cdn, mcp, api]} = Policy.list_changes(ctx.scope, :all)
+      %{items: [cdn, mcp, api, %{action: "first_version"}]} = Policy.list_changes(ctx.scope, :all)
       by_change = Policy.configurations_for_changes(ctx.scope, [cdn.id, mcp.id, api.id, "x"])
 
-      assert [%{target_id: nil, version: 1, document: nil}] = by_change[api.id]
+      assert [%{target_id: nil, version: 2, document: nil}] = by_change[api.id]
       assert [%{target_id: site_id, version: 1}] = by_change[mcp.id]
       assert site_id == ctx.site.id
       # The workspace's second rule rendered the baseline and the target that has rules.
-      assert [%{target_id: nil, version: 2}, %{target_id: ^site_id, version: 2}] =
+      assert [%{target_id: nil, version: 3}, %{target_id: ^site_id, version: 2}] =
                by_change[cdn.id]
 
       # A change that rendered the same bytes has no key: a lock leaves the workspace's
@@ -807,7 +846,7 @@ defmodule Apiary.PolicyTest do
 
       assert Map.keys(changes) |> Enum.sort() == Enum.sort([nil, ctx.site.id])
 
-      assert %Change{subject: "cdn.example", before: nil, after: nil, version_after: 2} =
+      assert %Change{subject: "cdn.example", before: nil, after: nil, version_after: 3} =
                changes[nil]
 
       assert changes[nil].changed_by.id == ctx.scope.user.id
@@ -818,8 +857,10 @@ defmodule Apiary.PolicyTest do
       %{scope: other} = sign_up_fixture()
       %{items: changes} = Policy.list_changes(ctx.scope, :all)
 
-      assert Policy.newest_versions(other, [nil, ctx.site]) == %{}
-      assert Policy.last_changes(other, [nil, ctx.site.id]) == %{}
+      # Only its version 1, and nothing of the target.
+      assert [nil] = Map.keys(Policy.newest_versions(other, [nil, ctx.site]))
+      assert %{nil => %{action: "first_version"}} = Policy.last_changes(other, [nil, ctx.site.id])
+      assert map_size(Policy.last_changes(other, [nil, ctx.site.id])) == 1
       assert Policy.configurations_for_changes(other, Enum.map(changes, & &1.id)) == %{}
     end
   end
@@ -1067,7 +1108,7 @@ defmodule Apiary.PolicyTest do
       assert {:error, %Error{reason: :not_found}} = Policy.get_change(scope, change.id)
       assert [] = Policy.list_rules(scope, target)
       assert %{items: []} = Policy.list_changes(scope, target)
-      assert %{items: []} = Policy.list_changes(scope, :all)
+      assert %{items: [%{action: "first_version"}]} = Policy.list_changes(scope, :all)
       assert [] = Policy.list_targets(scope)
       assert [] = Policy.suggestions(scope, target)
       assert Policy.effective(scope, target).allow == []
@@ -1179,12 +1220,14 @@ defmodule Apiary.PolicyTest do
 
       assert policy(current!(scope, nil))["egress"] == %{
                "mode" => "enforce",
-               "allow" => ["10.0.0.1"]
+               "allow" => ["10.0.0.1"],
+               "allow_first" => ["api.anthropic.com"]
              }
 
       assert policy(current!(scope, target))["egress"] == %{
                "mode" => "enforce",
-               "allow" => ["10.0.0.1", "api.example"]
+               "allow" => ["10.0.0.1", "api.example"],
+               "allow_first" => ["api.anthropic.com"]
              }
 
       for configuration <- Repo.all(RunConfiguration) do
@@ -1539,6 +1582,7 @@ defmodule Apiary.PolicyTest do
                egress:
                  mode: enforce
                  allow:
+                   - "api.anthropic.com"
                    - "api.example"
                    - "*.example"
              """
@@ -1559,6 +1603,7 @@ defmodule Apiary.PolicyTest do
                egress:
                  mode: observe
                  allow:
+                   - "api.anthropic.com"
                    - "*.example"
                  deny:
                    - "tracker.example"
@@ -1574,6 +1619,7 @@ defmodule Apiary.PolicyTest do
              egress:
                mode: observe
                allow:
+                 - "api.anthropic.com"
                  - "git.example"
                  - "*.example"
                deny:
@@ -1619,6 +1665,7 @@ defmodule Apiary.PolicyTest do
              egress:
                mode: observe
                allow:
+                 - "api.anthropic.com"
                  - "git.example"
                paths:
                  "git.example":

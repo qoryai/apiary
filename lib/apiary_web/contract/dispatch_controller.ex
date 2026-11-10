@@ -25,7 +25,8 @@ defmodule ApiaryWeb.Contract.DispatchController do
   # refused, `403` `forbidden`, one answer; a dispatch that ended, `410` `gone`; one whose
   # lease lapsed before its handover, `409` `lease_expired`; anything Qory could not do,
   # `503` `unavailable`. Else `204`, signed, with no body: the first `dispatched` of a
-  # dispatch records when and the job it names, a later one nothing.
+  # dispatch records when, the job it has and the machine type it reports, a later one
+  # nothing.
   #
   # A release accepted gives the dispatch's run back (`Apiary.Dispatches.release/3`), with
   # the body's `reason`, with the refusals in the contract's order: the key
@@ -68,7 +69,7 @@ defmodule ApiaryWeb.Contract.DispatchController do
     with {:ok, body} <- Wire.decode(conn.assigns.raw_body),
          {:ok, dispatched} <- Wire.dispatched(body),
          {:ok, conn} <- AdapterRequest.accept(conn, dispatched.time) do
-      meta = %{external: dispatched.external}
+      meta = %{external: dispatched.external, machine_type: dispatched.machine_type}
 
       case Dispatches.dispatched(conn.assigns.access_key, dispatch_id, meta) do
         :ok -> send_resp(conn, 204, "")

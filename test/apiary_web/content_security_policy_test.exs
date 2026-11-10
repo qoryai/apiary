@@ -50,6 +50,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       "a redirect or a line of text, never a page: it leads a person of the connection's " <>
         "organisation to the integration's page, and raises not found for anyone else " <>
         "(`test/apiary_web/controllers/adapter_redirect_controller_test.exs` holds it)",
+    "/work-items/:work_item_id" =>
+      "a redirect, never a page: it leads a person who may read the work item to its " <>
+        "page, and raises not found for anyone else " <>
+        "(`test/apiary_web/controllers/work_item_redirect_controller_test.exs` tests it)",
     "/docs/admin" =>
       "for an instance admin alone (`test/apiary_web/controllers/docs_controller_test.exs` " <>
         "holds it)",
@@ -458,6 +462,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("code_id", "/instance/adapters/" <> _, p), do: p.adapter_code_id
   defp value_of("instance", _path, p), do: p.instance
   defp value_of("type", "/instance/workspace-types/" <> _, p), do: p.workspace_type
+  defp value_of("key", "/instance/machine-types/" <> _, _p), do: "standard"
   # A workspace type's page, where a kind card leads.
   defp value_of("type", "/:org/workspaces/new/:type", p), do: p.workspace_type
   defp value_of("code_id", _path, p), do: p.code_id
@@ -468,6 +473,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("version_id", _path, p), do: p.version_id
   defp value_of("type_id", "/:org/:workspace/settings/artifact-types/" <> _, p), do: p.type_id
   defp value_of("number", _path, p), do: p.work_item_number
+  # The stage of the default process that runs Explore's workflow.
+  defp value_of("stage_id", _path, _p), do: "st_r79kph11eg"
   defp value_of("n", _path, _p), do: 1
   defp value_of("adapter_id", _path, p), do: p.adapter_id
   defp value_of("provider_id", _path, p), do: p.provider_id
@@ -631,7 +638,12 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       %{dispatch_run: run} =
         Apiary.WorkItemsFixtures.explore_run_fixture(work_item, state: :handed_over)
 
-      dir = Path.join(System.tmp_dir!(), "apiary-csp-#{System.unique_integer([:positive])}")
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "apiary-csp-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
       previous = Application.get_env(:apiary, :artifacts_dir)
       Application.put_env(:apiary, :artifacts_dir, dir)
 

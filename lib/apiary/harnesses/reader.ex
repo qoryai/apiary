@@ -367,8 +367,11 @@ defmodule Apiary.Harnesses.Reader do
     end
   end
 
-  # One path segment as qory's exports allow a name (qory internal/exports, `segment`).
-  defp segment?(name),
+  @doc false
+  # segment?/1 is whether `name` is one path segment as qory's exports allow a name (qory
+  # internal/exports, `segment`).
+  @spec segment?(String.t()) :: boolean
+  def segment?(name),
     do:
       name != "" and not String.contains?(name, ["/", "\\", "@"]) and
         not String.starts_with?(name, ".")
@@ -385,8 +388,13 @@ defmodule Apiary.Harnesses.Reader do
   does not define, is `:invalid_template`. Where the schema refuses an entry of
   `artifact_types` whose `name` is text, whatever else it refuses, it is
   `{:invalid_artifact_type, name}` for the first such entry, with the first
-  #{@max_type_name} characters of the name. The schema checks `process` loosely; the
-  caller checks it as a process, and checks what `artifact_types` means.
+  #{@max_type_name} characters of the name. A `process` may have any machine type key the
+  schema takes, in its document and in each workflow entry: the instance may have no type
+  of the key, and the runs of an entry with such a key start on the workspace's default
+  type (`Apiary.MachineTypes`). The schema checks `process` loosely; the caller checks it
+  as a process, and checks what `artifact_types` means. Each CRLF and each lone CR in a
+  stage's `description` is LF in `process`
+  (`Apiary.Processes.with_description_line_breaks/1`).
   """
   @spec template(binary) ::
           {:ok, template} | {:error, reason | {:invalid_artifact_type, String.t()}}
@@ -394,21 +402,25 @@ defmodule Apiary.Harnesses.Reader do
     with {:ok, file} <- parse(bytes) do
       case JSV.validate(file, template_root(), cast: false) do
         {:ok, _file} ->
-          {:ok,
-           %{
-             name: file["name"],
-             summary: file["summary"],
-             description: file["description"],
-             type: file["type"],
-             stack: file["stack"],
-             process: file["process"],
-             artifact_types: file["artifact_types"]
-           }}
+          template_file(file)
 
         {:error, %JSV.ValidationError{errors: errors}} ->
           {:error, template_refusal(file, errors)}
       end
     end
+  end
+
+  defp template_file(file) do
+    {:ok,
+     %{
+       name: file["name"],
+       summary: file["summary"],
+       description: file["description"],
+       type: file["type"],
+       stack: file["stack"],
+       process: Apiary.Processes.with_description_line_breaks(file["process"]),
+       artifact_types: file["artifact_types"]
+     }}
   end
 
   # An error's path is in JSV's order, the last key first.

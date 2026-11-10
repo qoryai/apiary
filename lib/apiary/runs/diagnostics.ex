@@ -4,24 +4,26 @@ defmodule Apiary.Runs.Diagnostics do
   contract (`priv/contract/diagnostics/v1/diagnostics.schema.json`, vendored from the
   integrations at the commit in `test/fixtures/contract/diagnostics/v1/.contract-ref`),
   `version` 1. The run page's Copy diagnostics copies it, and
-  `GET /v1/runs/<run id>/diagnostics`, signed with a diagnostics key, answers with it.
+  `GET /v1/runs/<run id>/diagnostics`, signed with a diagnostics key, answers with it. The
+  same key lists the instance's runs, one page at a time, with `GET /v1/runs`, to find
+  the run id (`Apiary.Runs.RunList`, the run list of the same contract).
 
   **What it contains.** `instance`, the product's name in the edition and the version;
   `run`, the run's id, state, reason, exit, times, organisation, workspace, step,
-  workflow, work item, target, gateway and the names of its variables; `queue`, the
-  state and end cause of the run's row in its workspace's queue; `dispatches`, the
-  dispatch whose claim registered the run, at most one, with the starter's release
-  reason; `preparation`, the run's steps from the machine's start on
+  workflow, work item, target, gateway, machine type and the names of its variables;
+  `queue`, the state and end cause of the run's row in its workspace's queue;
+  `dispatches`, the dispatch whose claim registered the run, at most one, with the
+  starter's release reason; `preparation`, the run's steps from the machine's start on
   (`Apiary.Runs.Preparation`), each with its output, and why it stopped; `events`, the
   run's last events, at most `max_events/0`, with `events_omitted`; `log`, the run's
   output that belongs to no step, its last `max_log_bytes/0` bytes, with `truncated`;
   `machine_logs`; and `leaked_secrets`, the secrets found in the run's text when it was
   stored, with `leaked_secrets_omitted` (`Apiary.Runs.LeakedSecrets`). A secret of a
-  machine log is listed only in a document with `machine_logs`. Each member is written from the run's columns one by one, so a
-  column marked `redact: true` on the run (the run key, the run code's hash, the registry
-  credential's hash, the provider's ids) is never in it, and the variables appear by name
-  alone. A value outside its pattern in the contract is left out, as a member the run has
-  not got is.
+  machine log is listed only in a document with `machine_logs`. Each member is written
+  from the run's columns one by one, so a column marked `redact: true` on the run (the run
+  key, the run code's hash, the registry credential's hash, the provider's ids) is never
+  in it, and the variables appear by name alone. A value outside its pattern in the
+  contract is left out, as a member the run has not got is.
 
   **Who reads what.** The reader is a person who reads the run and its log (`run.read`
   and `run.read_log`; the caller checks both), or a diagnostics key, which reads as the
@@ -56,7 +58,7 @@ defmodule Apiary.Runs.Diagnostics do
   alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLogs}
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{Event, LeakedSecrets, LogChunk, Preparation, Run}
+  alias Apiary.Runs.{Event, LeakedSecrets, LogChunk, Preparation, Record, Run}
   alias Apiary.WorkItems.WorkItem
 
   @max_bytes 8 * 1024 * 1024
@@ -76,9 +78,10 @@ defmodule Apiary.Runs.Diagnostics do
 
   @code ~r/\A[a-z][a-z0-9_]{0,63}\z/
   @step ~r/\A[a-z][a-z_]{0,39}\z/
-  @workflow ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  @workflow ~r/\A[a-z][a-z0-9-]{0,54}\z/
   @variable ~r/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
   @place_text ~r/\A[^\x00-\x1f\x7f]{1,256}\z/u
+  @machine_name ~r/\A[^\x00-\x1f\x7f]{1,100}\z/u
   @int32 -2_147_483_648..2_147_483_647
 
   @typedoc "The document: a map with string keys, as JSON has it."
@@ -155,7 +158,7 @@ defmodule Apiary.Runs.Diagnostics do
         "version" => 1,
         "time" => time(now),
         "instance" => instance(),
-        "run" => run_member(run),
+        "run" => run_member(run, dispatch),
         "dispatches" => if(dispatch, do: [dispatch_member(dispatch)], else: []),
         "preparation" => preparation(scope, run),
         "leaked_secrets" => Enum.map(leaked, &leaked_member/1),
@@ -192,7 +195,7 @@ defmodule Apiary.Runs.Diagnostics do
     %{"edition" => text(Apiary.ProductName.edition_name()), "version" => text(version)}
   end
 
-  defp run_member(%Run{} = run) do
+  defp run_member(%Run{} = run, dispatch) do
     %{
       "id" => run.public_id,
       "state" => run.state,
@@ -211,8 +214,25 @@ defmodule Apiary.Runs.Diagnostics do
     |> put("work_item", work_item(run.dispatch_run))
     |> put("target", target(run))
     |> put("gateway", run.gateway && run.gateway.public_id)
+    |> put("machine", machine(dispatch, run.dispatch_run))
     |> put("variables", variables(run.registration_variables))
   end
+
+  # The machine type the run used: the key of its dispatch's claim answer, else the key its
+  # queued run has, with the name of the type that has the key today. Nil where neither
+  # has a key, or the run has the key `default` of a run queued before machine types.
+  defp machine(dispatch, dispatch_run) do
+    keys = [dispatch && dispatch.machine_type, dispatch_run && dispatch_run.machine_type]
+
+    with key when is_binary(key) <- Enum.find(keys, &Apiary.MachineTypes.MachineType.key?/1) do
+      put(%{"key" => key}, "name", Apiary.MachineTypes.get(key) |> type_name())
+    end
+  end
+
+  defp type_name(%Apiary.MachineTypes.MachineType{name: name}),
+    do: name |> text() |> matching(@machine_name)
+
+  defp type_name(nil), do: nil
 
   defp organisation_slug(%Organisation{slug: slug}), do: slug
   defp workspace_id(%Workspace{public_id: public_id}), do: public_id
@@ -253,8 +273,8 @@ defmodule Apiary.Runs.Diagnostics do
   defp queue(nil), do: nil
 
   # The dispatch whose claim registered the run. A run whose start failed keeps it in
-  # `dispatch_id`. Any other run: of the run's row in the queue, the one claimed last at
-  # or before the run's row was written. A claim writes its run in the transaction that
+  # `dispatch_id`. Any other run a claim registered: of the run's row in the queue, the
+  # one claimed last at or before the claim registered the run. A claim writes its run in the transaction that
   # writes the dispatch, at the claim's time, and a dispatch released or lapsed before
   # its handover takes its run with it, so no later dispatch of the row is the run's. Nil
   # for a run registered without a claim.
@@ -267,8 +287,15 @@ defmodule Apiary.Runs.Diagnostics do
   defp dispatch(%Run{dispatch_run_id: nil}), do: nil
 
   defp dispatch(%Run{dispatch_run_id: id} = run) do
-    registered = run.inserted_at
+    # A claim registers a run on the record written when it was queued: the registration
+    # is when the claim wrote it, not the record's `inserted_at`. A queued run's record,
+    # which no claim registered, has no dispatch.
+    registered = run.registered_at || run.inserted_at
 
+    if Run.registered?(run), do: claimed_by(id, registered)
+  end
+
+  defp claimed_by(id, registered) do
     Repo.one(
       from d in Dispatch,
         join: p in assoc(d, :pool),
@@ -296,13 +323,15 @@ defmodule Apiary.Runs.Diagnostics do
 
   # The preparation (`Apiary.Runs.Preparation`), read under `scope` with the steps'
   # output. Its `steps` have every step of the run in number order, push steps too.
+  # `session_started_at` is the time of the run's first `dev.qory.session.started`, as
+  # the contract has it, bare or not, and also when that session's wall failed.
   defp preparation(%Scope{} = scope, %Run{} = run) do
     preparation = Preparation.read(scope, run, log: true, release_reason: :as_stored)
 
     steps = Enum.sort_by(preparation.steps ++ preparation.after_session, & &1.number)
 
     %{"steps" => Enum.map(steps, &step_member/1)}
-    |> put("session_started_at", time(preparation.session_started_at))
+    |> put("session_started_at", time(Record.session_started_at(scope, run)))
     |> put("stopped", stopped_member(preparation.stopped))
   end
 
@@ -323,8 +352,8 @@ defmodule Apiary.Runs.Diagnostics do
     )
   end
 
-  defp output_member(%{text: text, truncated: truncated}),
-    do: %{"text" => text(text), "truncated" => truncated}
+  defp output_member(%{truncated: truncated} = output),
+    do: %{"text" => text(Preparation.output_text(output)), "truncated" => truncated}
 
   defp stopped_member(nil), do: nil
 

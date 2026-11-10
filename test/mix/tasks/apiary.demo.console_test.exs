@@ -166,9 +166,14 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
              from c in EnrolmentCode, where: c.workspace_id == ^main.id and is_nil(c.cancelled_at)
            ) == 1
 
-    # Every run of Main is placed on a node; the history's on the instance of its host,
-    # which is recorded, the recordings' on dana-laptop, as no instance.
-    refute Repo.exists?(from r in Run, where: r.workspace_id == ^main.id and is_nil(r.node_id))
+    # Every run of Main a claim registered is placed on a node; the history's on the
+    # instance of its host, which is recorded, the recordings' on dana-laptop, as no
+    # instance. A run queued that no claim registered, waiting or ended, has no node.
+    refute Repo.exists?(
+             from r in Run,
+               where: r.workspace_id == ^main.id and is_nil(r.node_id),
+               where: is_nil(r.dispatch_run_id) or not is_nil(r.registered_at)
+           )
 
     refute Repo.exists?(
              from r in Run,
@@ -315,7 +320,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     assert base == %{
              "git" => "https://github.com/qoryai/qory",
-             "ref" => "fd0a7da85ca956469a0113daeb4b44f938d82019",
+             "ref" => "main",
              "path" => "examples/hello"
            }
 

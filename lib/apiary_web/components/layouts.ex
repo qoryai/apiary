@@ -220,13 +220,13 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's page or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's: on a workspace's page a node, a node pool, with the `security` feature
-  a network access rule, and with the `secrets` feature an integration, a secret and a
-  variable; on an organisation's page a gateway, where the console offers the
-  organisation's (`ApiaryWeb.NodeComponents.organisation_gateways?/0`); and everywhere an
-  invitation; of them,
-  only what the reader may do there, each entry's action asked of the workspace or the
-  organisation as its `place` says.
+  then the core's: on a workspace's page a node, a node pool for one who may set its
+  limit too (`node.set_limit`), with the `security` feature a network access rule, and
+  with the `secrets` feature an integration, a secret and a variable; on an
+  organisation's page a gateway, where the console offers the organisation's
+  (`ApiaryWeb.NodeComponents.organisation_gateways?/0`); and everywhere an invitation; of
+  them, only what the reader may do there, each entry's action asked of the workspace or
+  the organisation as its `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
           [Entry.t()]
@@ -240,15 +240,9 @@ defmodule ApiaryWeb.Layouts do
             icon: "hero-server",
             path: ~p"/#{organisation}/#{workspace}/machines/new",
             action: :"node.create"
-          },
-          %Entry{
-            key: :node_pool,
-            label: gettext("New pool"),
-            icon: "hero-server-stack",
-            path: ~p"/#{organisation}/#{workspace}/machines/new-pool",
-            action: :"node.create"
           }
         ] ++
+          pool_entries(scope, organisation, workspace) ++
           security_entries(scope, organisation, workspace) ++
           secrets_entries(scope, organisation, workspace)
       else
@@ -288,6 +282,24 @@ defmodule ApiaryWeb.Layouts do
   end
 
   def new_entries(_scope, _place), do: []
+
+  # New's entry of a node pool, shown for `node.set_limit` beside the entry's
+  # `node.create`, as making a pool needs both (`Apiary.Nodes.create_node/2`).
+  defp pool_entries(scope, organisation, workspace) do
+    if Access.can?(scope, :"node.set_limit", workspace) do
+      [
+        %Entry{
+          key: :node_pool,
+          label: gettext("New pool"),
+          icon: "hero-server-stack",
+          path: ~p"/#{organisation}/#{workspace}/machines/new-pool",
+          action: :"node.create"
+        }
+      ]
+    else
+      []
+    end
+  end
 
   # New's entry of the `security` feature, which asks `visible?(scope, :security)`: a rule of
   # the workspace's policy, on its New rule page.
@@ -367,7 +379,7 @@ defmodule ApiaryWeb.Layouts do
   Configuration last; the core's each for an instance admin who may take its page's
   action, asked in their instance scope (`Apiary.Access.instance_scope/1`): General
   `instance.rename` or `instance.support_save`, Workspace types `workspace_type.edit`,
-  Adapters and Pool and gateway `instance.read_factory`, Diagnostics keys
+  Adapters, Pool and gateway, and Machine types `instance.read_factory`, Diagnostics keys
   `instance.read_observability`, Mail `instance.mail_save`, Configuration
   `instance.configure`. It
   reads the database, so it is read once with the navigation's counts
@@ -432,6 +444,19 @@ defmodule ApiaryWeb.Layouts do
           place: :instance
         }
 
+    # The machine types runs start on, with the `factory` feature, as the pool and gateway.
+    # After them, before Diagnostics keys.
+    machine_types =
+      may?.(:"instance.read_factory") &&
+        %Entry{
+          section: :instance,
+          key: :machine_types,
+          label: gettext("Machine types"),
+          icon: "hero-cpu-chip",
+          path: ~p"/instance/machine-types",
+          place: :instance
+        }
+
     # The keys that read any run's diagnostics, with the `observability` feature, which the
     # instance has or not, as the adapters. After Nodes, before Mail.
     diagnostics_keys =
@@ -473,7 +498,8 @@ defmodule ApiaryWeb.Layouts do
     for %Entry{} = entry <-
           [general] ++
             ApiaryWeb.Edition.instance_sections(scope) ++
-            [workspace_types, adapters, nodes, diagnostics_keys, mail, configuration],
+            [workspace_types, adapters, nodes, machine_types, diagnostics_keys, mail] ++
+            [configuration],
         do: %{entry | place: :instance, section: entry.section || :instance}
   end
 
@@ -2706,7 +2732,7 @@ defmodule ApiaryWeb.Layouts do
   defp nav_count_title(_entry, _count), do: nil
 
   # The mode in force is a word, not a colour: observe is not a fault. Absent while the
-  # workspace has no policy of Qory's yet.
+  # workspace has no policy version yet.
   defp policy_mode(%{mode: mode}) when mode in ["observe", "enforce"], do: mode
   defp policy_mode(_counts), do: nil
 

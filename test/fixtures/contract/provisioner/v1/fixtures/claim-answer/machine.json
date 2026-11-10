@@ -5,6 +5,13 @@
   "pool_id": "np_f1xt0re000000000",
   "lease_until": "2026-10-15T12:05:00Z",
   "machine": "small",
+  "machine_spec": {
+    "vcpus": 2,
+    "memory_mib": 4096,
+    "disk_gib": 50,
+    "arch": "amd64",
+    "virtualization": false
+  },
   "run_code": "qecr_01JB8Z3K5Q7R9T2V4W6X8Y0A1C.uoES-kuj1vk0sq0qoGlmAg",
   "gateway_url": "https://gateway.example:8443",
   "max_lifetime_minutes": 1470

@@ -528,7 +528,8 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert has_element?(view, "#nav-network[href='#{workspace_path(scope, "/network")}']")
     end
 
-    # An opt-in feature is listed only where the instance has it.
+    # A feature on by default is listed on or off; an opt-in one only where the instance
+    # has it.
     @tag with_features: Apiary.Features.all()
     test "lists path_rules, on, with what it covers, where the instance has it", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/instance/configuration")
@@ -536,16 +537,19 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert text(view, "#config-feature-path_rules") =~ "path_rules"
       assert text(view, "#config-feature-path_rules-value") == "On"
       assert text(view, "#config-feature-path_rules") =~ "Paths on a policy rule's form."
+      assert text(view, "#config-feature-registry-value") == "On"
     end
 
-    @tag with_features: Apiary.Features.all() -- [:path_rules]
-    test "does not list path_rules where the instance does not have it", %{conn: conn} do
+    @tag with_features: Apiary.Features.all() -- [:path_rules, :registry]
+    test "lists path_rules off, and not registry, where the instance does not have them",
+         %{conn: conn} do
       {:ok, view, html} = live(conn, ~p"/instance/configuration")
 
       assert has_element?(view, "#config-feature-security")
-      refute has_element?(view, "#config-feature-path_rules")
-      refute html =~ "path_rules"
-      refute html =~ "Paths on a policy rule's form."
+      assert text(view, "#config-feature-path_rules-value") == "Off"
+      assert text(view, "#config-feature-path_rules") =~ "Paths on a policy rule's form."
+      refute has_element?(view, "#config-feature-registry")
+      refute html =~ "registry"
     end
   end
 

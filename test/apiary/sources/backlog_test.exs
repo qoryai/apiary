@@ -274,7 +274,9 @@ defmodule Apiary.Sources.BacklogTest do
                number: taken_item.number,
                state: :exploring,
                path: path <> Integer.to_string(taken_item.number),
-               finished: false
+               finished: false,
+               elsewhere: nil,
+               ended: nil
              }
 
       assert rows[ctx.open.public_id].work_item == nil
@@ -289,11 +291,11 @@ defmodule Apiary.Sources.BacklogTest do
   end
 
   describe "the integration" do
-    # The integration of `connection`, as a row names it: its adapter's name and public
-    # id.
+    # The integration of `connection`, as a row names it: its adapter's name, public id,
+    # and whether the adapter posts comments.
     defp integration(connection) do
       adapter = Repo.get!(Node, connection.adapter_id)
-      %{name: adapter.name, id: adapter.public_id}
+      %{name: adapter.name, id: adapter.public_id, comments: adapter.comments == true}
     end
 
     # The repository's queries `fun` makes in this process, by their count.
@@ -347,14 +349,14 @@ defmodule Apiary.Sources.BacklogTest do
       item = ticket(ctx.collection)
       adapter = Repo.get!(Node, ctx.connection.adapter_id)
       adapter = Apiary.NodesFixtures.describe_title(adapter, "Acme Tracker")
-      titled = %{name: "Acme Tracker", id: adapter.public_id}
+      titled = %{name: "Acme Tracker", id: adapter.public_id, comments: false}
 
       assert row(ctx.scope, item).integration == titled
       assert Backlog.get_ticket(ctx.scope, item.public_id).integration == titled
 
       # A title that fails the check: the adapter's name.
       Apiary.NodesFixtures.describe_title(adapter, "Acme\u0007Tracker")
-      named = %{name: adapter.name, id: adapter.public_id}
+      named = %{name: adapter.name, id: adapter.public_id, comments: false}
       assert row(ctx.scope, item).integration == named
     end
 

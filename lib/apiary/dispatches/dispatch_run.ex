@@ -152,15 +152,26 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :adapter_failure_code, :string
     # Where the run is in its work item's process (`Apiary.Processes`): the version it
     # started under, the stage, the round, the entry of the stage's sequence and, inside a
-    # loop, the entry of the loop's body, the workflow, and the machine type its entry
-    # asked for. Nil for a run the process did not start. No changeset casts them.
+    # loop, the entry of the loop's body, the workflow. Nil for a run the process did not
+    # start. No changeset casts them.
     belongs_to :process_version, Apiary.Processes.Version
     field :stage_id, :string
     field :round, :integer
     field :stage_entry, :integer
     field :loop_entry, :integer
     field :workflow, :string
+    # The machine type the run is queued on, and its spec as the provisioner contract
+    # writes it, both as they were when the run was queued (`Apiary.MachineTypes.resolve/1`),
+    # and whether the type was the default type then: a pool without offers takes such a
+    # run. A run queued before machine types has no spec, and its claim reads it as the
+    # default type. No changeset casts them.
     field :machine_type, :string
+    field :machine_spec, :map
+    field :machine_type_was_default, :boolean, default: false
+    # Whether the run is a run of Explore, as it was when the run was queued, or when a
+    # claim or the stage runner first read it (`Apiary.Stages.known_explore/1`); nil while
+    # that is not known: the run is not claimed, and its end waits.
+    field :explore, :boolean
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -219,6 +230,23 @@ defmodule Apiary.Dispatches.DispatchRun do
   @doc false
   @spec prebuild() :: String.t()
   def prebuild, do: @prebuild
+
+  # machine_lifetime_minutes/1 is the minutes the starter lets the machine of a claim of a
+  # run of the queue of `step` live, as `max_lifetime_minutes` in the claim's response sets
+  # it: 90 for a prebuild, which Qory ends 75 minutes after its attach
+  # (`Apiary.Dispatches.RunEnd`), and 1470, the contract's most, for any other step. A
+  # run's step never changes, so a dispatch's lifetime is read again from its run of the
+  # queue (`Apiary.Dispatches.Slots`).
+  @doc false
+  @spec machine_lifetime_minutes(String.t()) :: pos_integer
+  def machine_lifetime_minutes(@prebuild), do: 90
+  def machine_lifetime_minutes(step) when is_binary(step), do: max_machine_lifetime_minutes()
+
+  # max_machine_lifetime_minutes/0 is the contract's most, 1470: the lifetime of the
+  # machine of a claim of any step but a prebuild.
+  @doc false
+  @spec max_machine_lifetime_minutes() :: pos_integer
+  def max_machine_lifetime_minutes, do: 1470
 
   # prebuild_changeset/2 is the changeset of a new run of the queue for the step
   # `prebuild`: the collection whose target it builds, the node pool it is held for, the

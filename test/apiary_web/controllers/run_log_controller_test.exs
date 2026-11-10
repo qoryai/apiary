@@ -243,7 +243,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert {through(conn), size(conn)} == {"10", nil}
     end
 
-    test "download=1 is every chunk as an attachment named after the run's number", %{
+    test "download=1 is every chunk as an attachment with the run's id as its file name", %{
       conn: conn,
       scope: scope
     } do
@@ -258,7 +258,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert conn.resp_body == "building\n" <> <<255, 0, 10>>
 
       assert get_resp_header(conn, "content-disposition") ==
-               [~s(attachment; filename="run-#{run.number}.log")]
+               [~s(attachment; filename="#{run.public_id}.log")]
     end
 
     test "the run's rn_ address sends on to its number, with the query, percent-encoded too",

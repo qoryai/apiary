@@ -7,7 +7,7 @@
 # the environment's or the file's, is also written to $APIARY_KEYS_DIR/postgres-password
 # (mode 0644), for the postgres image's POSTGRES_PASSWORD_FILE.
 #
-# With QORY_REGISTRY set and not blank, for the opt-in feature registry: the registry
+# With QORY_REGISTRY set and not blank, for the feature registry: the registry
 # signing key, an ECDSA P-256 key in PEM, in $APIARY_KEYS_DIR/registry-token.key (mode
 # 0600), generated once and never changed; and, with APIARY_REGISTRY_CERT_DIR set and not
 # blank, a self-signed certificate of that key in $APIARY_REGISTRY_CERT_DIR/

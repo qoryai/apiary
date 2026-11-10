@@ -154,14 +154,16 @@ defmodule Apiary.WorkItems.MemberActionsTest do
                  text: "Which basket?",
                  options: [],
                  answer: "The one on the checkout page.",
-                 custom: true
+                 custom: true,
+                 recommended: false
                },
                %{
                  public_id: "2",
                  text: "Which sale?",
                  options: [],
                  answer: "The spring sale.",
-                 custom: true
+                 custom: true,
+                 recommended: false
                }
              ]
     end
@@ -227,6 +229,31 @@ defmodule Apiary.WorkItems.MemberActionsTest do
 
       assert {:ok, _content_type} =
                Apiary.Artifacts.Format.check(questions_type, "questions.json", path)
+    end
+
+    test "a member's answer on a question with a recommended option writes a version the schema takes",
+         ctx do
+      options = [
+        %{"title" => "The small one", "explanation" => "The checkout.", "recommended" => true},
+        %{"title" => "The large one", "explanation" => "The shop."}
+      ]
+
+      asked!(ctx.work_item, [
+        %{"question" => "Which basket?", "options" => options},
+        %{"question" => "Which sale?", "options" => options}
+      ])
+
+      answers = %{"1" => %{"option" => "The large one"}, "2" => %{"custom" => "The spring one."}}
+      assert {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, answers)
+
+      assert [
+               %{
+                 "state" => "answered",
+                 "options" => ^options,
+                 "answer" => %{"option" => "The large one"}
+               },
+               %{"state" => "answered", "options" => ^options, "answer" => %{"option" => nil}}
+             ] = questions(ctx.work_item)
     end
 
     test "an option title the question does not have is refused, nothing written", ctx do
@@ -512,6 +539,216 @@ defmodule Apiary.WorkItems.MemberActionsTest do
 
       assert WorkItems.answer(ctx.scope, ctx.work_item, 1, [%{"id" => "q1", "note" => "Yes."}]) ==
                {:error, {:invalid, :form}}
+    end
+  end
+
+  describe "a member's answer to a run's decision" do
+    @options [
+      %{"title" => "Redis", "explanation" => "The store the other services use."},
+      %{"title" => "Postgres", "explanation" => "The database of the storefront."}
+    ]
+
+    # The work item's questions with `question`, decided by the latest run, after them:
+    # written by a member action, which the run's check does not read.
+    defp decide!(ctx, id \\ "q1", state \\ "decided") do
+      [number] = ctx.work_item.id |> Questions.take_in_runs(1) |> MapSet.to_list()
+      at = "2026-11-04T10:00:00Z"
+
+      question = %{
+        "id" => id,
+        "question" => "Which store keeps the baskets?",
+        "options" => @options,
+        "state" => state,
+        "asked" => %{"run" => number, "at" => at},
+        "decision" => %{
+          "option" => "Redis",
+          "reason" => "The other services use Redis.",
+          "run" => number,
+          "at" => at
+        }
+      }
+
+      {:ok, _version} =
+        Apiary.Artifacts.push({:member_action, ctx.scope}, ctx.work_item, "questions", [
+          Questions.file(%{"questions" => (questions(ctx.work_item) || []) ++ [question]})
+        ])
+
+      question
+    end
+
+    defp count_entries(action, work_item),
+      do:
+        Repo.aggregate(
+          from(e in Entry, where: e.action == ^action and e.subject_id == ^work_item.id),
+          :count
+        )
+
+    test "a decided question of the take in is one a member may answer", ctx do
+      proposed!(ctx.work_item)
+      decided = decide!(ctx)
+      runs = Questions.take_in_runs(ctx.work_item.id, 1)
+      document = %{"questions" => questions(ctx.work_item)}
+
+      assert Questions.answerable_in_take_in(document, runs) == [decided]
+      assert Questions.answerable_in_take_in(document, MapSet.new([999])) == []
+
+      # The option of the decision again, with no note, changes nothing.
+      assert Questions.same_as_decision?(decided, "Redis", nil)
+      assert Questions.same_as_decision?(decided, "Redis", " ")
+      refute Questions.same_as_decision?(decided, "Redis", "Only for the baskets.")
+      refute Questions.same_as_decision?(decided, "Postgres", nil)
+      refute Questions.same_as_decision?(decided, nil, "Keep both.")
+      refute Questions.same_as_decision?(Map.put(decided, "state", "withdrawn"), "Redis", nil)
+    end
+
+    test "Run another round writes the answer, answered, with the decision kept", ctx do
+      proposed!(ctx.work_item)
+      decided = decide!(ctx)
+      writes = count_entries("artifact.write", ctx.work_item)
+
+      round = %{answers: [%{"id" => "q1", "option" => "Postgres"}]}
+      assert {:ok, %WorkItem{}} = WorkItems.another_round(ctx.scope, ctx.work_item, 1, round)
+
+      assert [%{"state" => "answered", "answer" => answer, "decision" => decision}] =
+               questions(ctx.work_item)
+
+      assert %{"option" => "Postgres", "by" => %{"name" => _name}} = answer
+      assert decision == decided["decision"]
+
+      data = %{"take_in" => 1, "attempt" => 1, "count" => 1, "questions" => ["q1"]}
+      assert [{:taken_in, _}, {:answered, ^data}] = kinds(ctx.work_item)
+      assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
+
+      # The entries of an answer to an open question: the move and the new version.
+      assert entry("work_item.answer", ctx.work_item).details == data
+      assert count_entries("artifact.write", ctx.work_item) == writes + 1
+    end
+
+    test "a written answer is the note, as for an open question", ctx do
+      proposed!(ctx.work_item)
+      decided = decide!(ctx)
+
+      round = %{answers: [%{"id" => "q1", "option" => nil, "note" => " Keep both. "}]}
+      assert {:ok, _} = WorkItems.another_round(ctx.scope, ctx.work_item, 1, round)
+
+      assert [%{"state" => "answered", "answer" => answer, "decision" => decision}] =
+               questions(ctx.work_item)
+
+      assert %{"option" => nil, "note" => "Keep both."} = answer
+      assert decision == decided["decision"]
+    end
+
+    test "the option of the decision again with a note is written as the answer", ctx do
+      proposed!(ctx.work_item)
+      decided = decide!(ctx)
+      writes = count_entries("artifact.write", ctx.work_item)
+
+      round = %{answers: [%{"id" => "q1", "option" => "Redis", "note" => "Only for baskets."}]}
+      assert {:ok, _} = WorkItems.another_round(ctx.scope, ctx.work_item, 1, round)
+
+      assert [%{"state" => "answered", "answer" => answer, "decision" => decision}] =
+               questions(ctx.work_item)
+
+      assert %{"option" => "Redis", "note" => "Only for baskets."} = answer
+      assert decision == decided["decision"]
+
+      data = %{"take_in" => 1, "attempt" => 1, "count" => 1, "questions" => ["q1"]}
+      assert entry("work_item.answer", ctx.work_item).details == data
+      assert count_entries("artifact.write", ctx.work_item) == writes + 1
+      assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
+    end
+
+    test "the option of the decision again writes nothing", ctx do
+      proposed!(ctx.work_item)
+      decide!(ctx)
+      before = written(ctx.work_item)
+
+      for answers <- [
+            [%{"id" => "q1", "option" => "Redis"}],
+            [%{"id" => "q1", "option" => " Redis ", "note" => " "}]
+          ] do
+        assert WorkItems.another_round(ctx.scope, ctx.work_item, 1, %{answers: answers}) ==
+                 {:error, :not_waiting},
+               inspect(answers)
+
+        assert WorkItems.answer(ctx.scope, ctx.work_item, 1, answers) ==
+                 {:error, {:invalid, :form}}
+      end
+
+      assert written(ctx.work_item) == before
+
+      # With a comment, Run another round sends the comment alone.
+      round = %{answers: [%{"id" => "q1", "option" => "Redis"}], comment: "Use one store."}
+      assert {:ok, _} = WorkItems.another_round(ctx.scope, ctx.work_item, 1, round)
+      assert [%{"state" => "decided"} = question] = questions(ctx.work_item)
+      refute Map.has_key?(question, "answer")
+    end
+
+    test "an answer by id answers the open and the decided questions together", ctx do
+      asked_with_options!(ctx.work_item)
+      decide!(ctx, "q4")
+      before = written(ctx.work_item)
+
+      # The option of the decision alone is no answer to send.
+      assert WorkItems.answer(ctx.scope, ctx.work_item, 1, [
+               %{"id" => "q4", "option" => "Redis"}
+             ]) == {:error, :not_waiting}
+
+      assert written(ctx.work_item) == before
+
+      answers = [
+        %{"id" => "q2", "note" => "The spring sale."},
+        %{"id" => "q4", "option" => "Postgres"}
+      ]
+
+      assert {:ok, _} = WorkItems.answer(ctx.scope, ctx.work_item, 1, answers)
+
+      assert [
+               %{"state" => "open"},
+               %{"state" => "answered"},
+               %{"state" => "open"},
+               %{"state" => "answered", "answer" => %{"option" => "Postgres"}, "decision" => _}
+             ] = questions(ctx.work_item)
+    end
+
+    test "a decided question of an earlier take in is not answered", ctx do
+      ticket = backlog_ticket_fixture(ctx.scope)
+      {:ok, work_item} = WorkItems.take_in(ctx.scope, ticket.public_id)
+
+      work_item =
+        WorkItem |> Repo.get!(work_item.id) |> Apiary.StagesFixtures.end_run!(understood_result())
+
+      decide!(%{ctx | work_item: work_item})
+      {:ok, closed} = WorkItems.close(ctx.scope, Repo.get!(WorkItem, work_item.id))
+
+      {:ok, _again} =
+        WorkItems.take_in_again(ctx.scope, ticket.public_id, %{owner_id: ctx.scope.user.id})
+
+      # Take in 2's first run gives a proposal; q1 is take in 1's decision.
+      Apiary.StagesFixtures.end_run!(Repo.get!(WorkItem, closed.id), understood_result())
+      work_item = Repo.get!(WorkItem, closed.id)
+      assert %{take_in: 2, status: :confirm} = WorkItems.explore(ctx.scope, work_item)
+      before = written(work_item)
+
+      round = %{answers: [%{"id" => "q1", "option" => "Postgres"}]}
+
+      assert WorkItems.another_round(ctx.scope, work_item, 1, round) ==
+               {:error, {:invalid, %{"q1" => :not_open}}}
+
+      assert written(work_item) == before
+    end
+
+    test "a withdrawn decided question is not answered", ctx do
+      proposed!(ctx.work_item)
+      decide!(ctx, "q1", "withdrawn")
+      before = written(ctx.work_item)
+
+      round = %{answers: [%{"id" => "q1", "option" => "Postgres"}]}
+
+      assert WorkItems.another_round(ctx.scope, ctx.work_item, 1, round) ==
+               {:error, {:invalid, %{"q1" => :not_open}}}
+
+      assert written(ctx.work_item) == before
     end
   end
 

@@ -24,8 +24,12 @@ defmodule ApiaryWeb.TranscriptComponents do
       turn's end in their place.
     * Result: `✓` or `✗`, the outcome, turns, duration and cost.
 
-  A subagent's lines are indented. A line read from the session's output has a link to
-  that line in Raw (`data-raw-line`, followed by the `Terminal` hook).
+  A subagent's lines are indented. On the Terminal tab a subagent's start heads its lines
+  (`arrange/4`): its agent type, whether it runs or how long it ran, and how many calls it
+  made, then its last message once it finished. The group follows its head whatever
+  arrived between, and it closes when the subagent finishes; the reader opens or closes it
+  with the head's caret or with Show and Hide. A line read from the session's output has a
+  link to that line in Raw (`data-raw-line`, followed by the `Terminal` hook).
 
   A line drawn with `controls` false has no button: no fold of a result, no "Show all"
   of a text, and thinking is its line alone, closed. The runs list's preview draws its
@@ -59,15 +63,31 @@ defmodule ApiaryWeb.TranscriptComponents do
   def transcript?(%{kind: :turn_finished}, 0), do: true
   def transcript?(_item, _texts), do: false
 
+  # A subagent's start that the record opened a lane for: the head of its lines. A start
+  # without an agent id is in the main agent's lane, index 0, and heads nothing.
+  defp head?(%{kind: :subagent_started, lane: %{index: index}})
+       when is_integer(index) and index > 0,
+       do: true
+
+  defp head?(_item), do: false
+
+  @doc """
+  Whether an item has a line at its sequence among `lines/3` with `subagents: true`: an
+  item of `transcript?/2`, or a subagent's start the record opened a lane for.
+  """
+  def line?(item, texts), do: transcript?(item, texts) or head?(item)
+
   @doc """
   The Transcript's lines from the index's light items (`Timeline.index/2`), in sequence
-  order: the items of `transcript?/2`. A tool call whose result came after a line of
-  another agent (a subagent's prompt, calls and texts) is two lines: the call, with
-  `part: :call`, and the result at the result's sequence, with `part: :result`, after
+  order: the items of `transcript?/2`, and with `subagents: true` each subagent's start,
+  which `arrange/4` makes the head of its lines. A tool call whose result came after a
+  line of another agent (a subagent's prompt, calls and texts) is two lines: the call,
+  with `part: :call`, and the result at the result's sequence, with `part: :result`, after
   those lines. The choice reads sequences and agents only.
   """
-  def lines(items, texts) do
-    shown = Enum.filter(items, &transcript?(&1, texts))
+  def lines(items, texts, opts \\ []) do
+    heads? = Keyword.get(opts, :subagents, false)
+    shown = Enum.filter(items, &(transcript?(&1, texts) or (heads? and head?(&1))))
 
     {lines, results} =
       shown
@@ -84,6 +104,142 @@ defmodule ApiaryWeb.TranscriptComponents do
 
     if results == [], do: lines, else: Enum.sort_by(lines ++ results, & &1.seq)
   end
+
+  @doc """
+  The subagents of the index's light items (`Timeline.index/2`), by their lane's index:
+  each started with a subagent start the record opened a lane for. Each is `%{seq, type,
+  calls, finished_seq, state}`: `seq` is its start's sequence, `type` its agent type,
+  `calls` how many tool calls it made, and `finished_seq` its finish's sequence, nil while
+  the record has none. `state` is `:finished` once the finish is recorded; `:running`
+  while the record is being written (`alive?`) and neither its session nor the run ended
+  after its start; else `:ended`: the record lacks its finish, and has no event for
+  how it ended.
+  """
+  def subagents(items, alive?) do
+    items
+    |> Enum.reduce(%{}, fn item, subs ->
+      lane = item.lane[:index]
+
+      case item.kind do
+        # A second start of an agent id still open is in the first one's lane, which
+        # keeps its first start and its count.
+        :subagent_started when is_integer(lane) and lane > 0 and not is_map_key(subs, lane) ->
+          Map.put(subs, lane, %{
+            seq: item.seq,
+            type: item.lane[:type],
+            calls: 0,
+            finished_seq: nil,
+            ended: false
+          })
+
+        :subagent_finished when is_map_key(subs, lane) ->
+          put_in(subs, [lane, :finished_seq], item.seq)
+
+        :tool when is_map_key(subs, lane) ->
+          update_in(subs, [lane, :calls], &(&1 + 1))
+
+        kind when kind in [:session_ended, :run_exited] ->
+          Map.new(subs, fn {lane, sub} -> {lane, %{sub | ended: true}} end)
+
+        _kind ->
+          subs
+      end
+    end)
+    |> Map.new(fn {lane, sub} ->
+      state =
+        cond do
+          sub.finished_seq -> :finished
+          alive? and not sub.ended -> :running
+          true -> :ended
+        end
+
+      {lane, sub |> Map.delete(:ended) |> Map.put(:state, state)}
+    end)
+  end
+
+  @doc """
+  The lines of `lines/2` (with `subagents: true`) with each subagent's lines under its
+  start, its head, whatever arrived between: each line has `pos`, its place, `{head, seq}`
+  for a line of a subagent and `{seq, seq}` for any other, and the lines are in `pos`
+  order. A head has `sub`, its subagent (`subagents/2`) with `open` and `lines`, how many
+  lines its group has; a line of a group has `group`, its head's sequence. The lines of a
+  closed group are left out. A call and its result that `lines/2` drew apart are one line
+  again where they end up next to each other.
+
+  A group is open as the reader chose in `choices` (a head's sequence to true or false),
+  else while its subagent has not finished, or when it has the line `focused` points at.
+  """
+  def arrange(lines, subs, choices \\ %{}, focused \\ nil)
+
+  def arrange(lines, subs, _choices, _focused) when map_size(subs) == 0,
+    do: Enum.map(lines, &Map.put(&1, :pos, {&1.seq, &1.seq}))
+
+  def arrange(lines, subs, choices, focused) do
+    tagged =
+      Enum.map(lines, fn line ->
+        lane = line.lane[:index]
+        sub = is_integer(lane) && subs[lane]
+
+        cond do
+          sub && line.kind == :subagent_started && line.seq == sub.seq -> {:head, lane, line}
+          # A second start of an agent id still open: its first start heads its lines.
+          sub && line.kind == :subagent_started -> {:again, lane, line}
+          sub && line.seq > sub.seq -> {:kid, lane, line}
+          true -> {:line, nil, line}
+        end
+      end)
+
+    counts = Enum.frequencies(for {:kid, lane, _line} <- tagged, do: lane)
+
+    with_focus =
+      Enum.find_value(tagged, fn
+        {:kid, lane, %{seq: ^focused}} -> lane
+        _tagged -> nil
+      end)
+
+    open =
+      Map.new(subs, fn {lane, sub} ->
+        {lane,
+         case choices[sub.seq] do
+           choice when is_boolean(choice) -> choice
+           nil -> sub.state != :finished or lane == with_focus
+         end}
+      end)
+
+    tagged
+    |> Enum.flat_map(fn
+      {:head, lane, line} ->
+        sub = subs[lane]
+
+        [
+          Map.merge(line, %{
+            pos: {line.seq, line.seq},
+            sub: Map.merge(sub, %{open: open[lane], lines: Map.get(counts, lane, 0)}),
+            seqs: Enum.uniq(line.seqs ++ List.wrap(sub.finished_seq))
+          })
+        ]
+
+      {:kid, lane, line} ->
+        head = subs[lane].seq
+        if open[lane], do: [Map.merge(line, %{pos: {head, line.seq}, group: head})], else: []
+
+      {:again, _lane, _line} ->
+        []
+
+      {:line, _lane, line} ->
+        [Map.put(line, :pos, {line.seq, line.seq})]
+    end)
+    |> Enum.sort_by(& &1.pos)
+    |> join_results()
+  end
+
+  # A call drawn apart from its result (`lines/2`) is one line again where the grouping put
+  # the two together: no line of another agent is between them any more.
+  defp join_results([%{part: :call, result_seq: seq} = call, %{part: :result, seq: seq} | rest]),
+    do: [Map.delete(call, :part) | join_results(rest)]
+
+  defp join_results([line | rest]), do: [line | join_results(rest)]
+  defp join_results([]), do: []
 
   # For each item, the sequence of the first later item of another agent, or nil.
   defp next_other_agent(items) do
@@ -179,11 +335,18 @@ defmodule ApiaryWeb.TranscriptComponents do
     ~H"""
     <li
       id={@id}
-      class={["q-tr-i", "q-tr-#{@item.kind}", @item.lane.id != "main" && "q-tr-sub"]}
+      class={[
+        "q-tr-i",
+        "q-tr-#{@item.kind}",
+        @item.lane.id != "main" && !@item[:sub] && "q-tr-sub",
+        @item[:group] && "q-tr-in"
+      ]}
       data-seq={@item.sequence}
       data-part={@item[:part]}
+      data-group={@item[:group]}
     >
       <.body
+        id={@id}
         item={@item}
         raw={@raw}
         open={@open}
@@ -194,11 +357,93 @@ defmodule ApiaryWeb.TranscriptComponents do
     """
   end
 
+  attr :id, :string, default: nil
   attr :item, :map, required: true
   attr :raw, :boolean, required: true
   attr :open, :boolean, default: false
   attr :result_text, :boolean, default: false
   attr :controls, :boolean, default: true
+
+  # A subagent's start that heads its lines (`arrange/4`): the caret that opens or closes
+  # them (a dot for a subagent with no lines), the agent type, whether it runs or how long
+  # it ran, and its calls; under it the subagent's last message, folded as a result is,
+  # and Show or Hide.
+  defp body(%{item: %{kind: :subagent_started, sub: %{} = sub}} = assigns) do
+    out =
+      case assigns.item[:text] do
+        text when is_binary(text) and text != "" ->
+          %{
+            text: text,
+            lines: count_lines(text),
+            cut: false,
+            truncated: false,
+            tone: nil
+          }
+
+        _none ->
+          nil
+      end
+
+    assigns =
+      assign(assigns,
+        sub: sub,
+        out: out,
+        toggles: assigns.controls and sub.lines > 0,
+        said: "#{assigns.id}-said"
+      )
+
+    ~H"""
+    <div class="q-tr-row">
+      <button
+        :if={@toggles}
+        type="button"
+        class="q-tr-mark q-tr-caret"
+        phx-click="subagent_toggle"
+        phx-value-seq={@item.sequence}
+        aria-expanded={to_string(@sub.open)}
+        aria-labelledby={@said}
+      >
+        {if @sub.open, do: "▾", else: "▸"}
+      </button>
+      <span :if={!@toggles} class="q-tr-mark q-tr-caret" aria-hidden="true">⏺</span>
+      <span id={@said} class="q-tr-head">
+        <b class="q-tr-tool"><.external_text text={@sub.type || @item[:agent_type] || ""} /></b>{subagent_words(
+          @sub,
+          @item[:duration_ms]
+        )}
+      </span>
+    </div>
+    <.output
+      :if={@out}
+      out={@out}
+      seq={@item.sequence}
+      open={@open}
+      raw={@raw}
+      item={@item}
+      controls={@controls}
+    />
+    <div :if={@toggles and @sub.calls > 0} class="q-tr-out">
+      <span class="q-tr-hook" aria-hidden="true"></span>
+      <button
+        type="button"
+        class="q-tr-fold"
+        phx-click="subagent_toggle"
+        phx-value-seq={@item.sequence}
+        aria-expanded={to_string(@sub.open)}
+      >
+        {if @sub.open,
+          do:
+            ngettext("Hide %{number} call", "Hide %{number} calls", @sub.calls,
+              number: Format.number(@sub.calls)
+            ),
+          else:
+            ngettext("Show %{number} call", "Show %{number} calls", @sub.calls,
+              number: Format.number(@sub.calls)
+            )}
+      </button>
+    </div>
+    """
+  end
 
   defp body(%{item: %{kind: :prompt}} = assigns) do
     ~H"""
@@ -456,6 +701,65 @@ defmodule ApiaryWeb.TranscriptComponents do
   end
 
   defp cut_words, do: gettext("Cut at 64 KiB. Raw has every byte.")
+
+  @doc """
+  The words after a subagent's type (`subagents/2`): " · running · 2 calls so far",
+  " · finished in 51 s · 3 calls", or, for a subagent whose finish the record lacks,
+  " · 3 calls". `duration_ms` is how long it ran, nil while that is unknown. The
+  Transcript's head and the Timeline's (`ApiaryWeb.RunPageComponents`) read them.
+  """
+  def subagent_words(sub, duration_ms) do
+    calls = Format.number(sub.calls)
+
+    state =
+      case sub.state do
+        :running ->
+          gettext("running")
+
+        :finished when is_integer(duration_ms) ->
+          gettext("finished in %{duration}",
+            duration: ApiaryWeb.RunComponents.format_duration_ms(max(duration_ms, 0))
+          )
+
+        _state ->
+          nil
+      end
+
+    counted =
+      if sub.state == :running,
+        do: ngettext("%{number} call so far", "%{number} calls so far", sub.calls, number: calls),
+        else: ngettext("%{number} call", "%{number} calls", sub.calls, number: calls)
+
+    [state, counted] |> Enum.reject(&is_nil/1) |> Enum.map_join(&(" · " <> &1))
+  end
+
+  @doc """
+  The Transcript's part of the terminal's bar on a run with subagents: how many there are
+  and how many run, and the buttons that open and close every subagent's lines.
+  """
+  attr :count, :integer, required: true
+  attr :running, :integer, required: true
+
+  def subagents_bar(assigns) do
+    ~H"""
+    <span class="q-tr-subs">
+      {ngettext(
+        "%{number} subagent, %{running} running",
+        "%{number} subagents, %{running} running",
+        @count,
+        number: Format.number(@count),
+        running: Format.number(@running)
+      )}
+    </span>
+    <span class="q-term-sep" aria-hidden="true"></span>
+    <button type="button" class="q-tbtn" phx-click="subagents_all" phx-value-open="true">
+      {gettext("Expand all")}
+    </button>
+    <button type="button" class="q-tbtn" phx-click="subagents_all" phx-value-open="false">
+      {gettext("Collapse all")}
+    </button>
+    """
+  end
 
   defp shown(text) when is_binary(text) and text != "", do: Apiary.ExternalText.present(text)
   defp shown(_text), do: nil

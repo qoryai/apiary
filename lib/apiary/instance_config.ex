@@ -360,14 +360,24 @@ defmodule Apiary.InstanceConfig do
           {:ok, %{key => pos_integer}}
           | {:error, Ecto.Changeset.t() | :sudo | :not_found | :forbidden}
   def save(scope, part, attrs) when is_map_key(@parts, part) and is_map(attrs) do
+    with :ok <- authorize_save(scope), do: write(scope, part, attrs)
+  end
+
+  @doc """
+  authorize_save/1 is whether the person of `scope` may change the instance's settings:
+  `:ok` where they may (`instance.configure`, asked in the instance's organisation,
+  `Apiary.Access.in_instance/1`) and signed in recently (`Apiary.Accounts.sudo_mode?/2`);
+  else the refusals of `save/3`. `Apiary.MachineTypes` asks it for each change of a type.
+  """
+  @spec authorize_save(Scope.t() | nil) :: :ok | {:error, :sudo | :not_found | :forbidden}
+  def authorize_save(scope) do
     with :ok <-
            Access.authorize(
              Access.in_instance(scope),
              :"instance.configure",
              Access.instance_organisation()
            ),
-         :ok <- if(Accounts.sudo_mode?(scope.user), do: :ok, else: {:error, :sudo}),
-         do: write(scope, part, attrs)
+         do: if(Accounts.sudo_mode?(scope.user), do: :ok, else: {:error, :sudo})
   end
 
   defp write(scope, part, attrs) do

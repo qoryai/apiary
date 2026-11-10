@@ -302,6 +302,34 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert {:ok, %{process: %{"machine" => "default"}}} = Reader.template(text)
     end
 
+    test "takes any machine type key, the process's and an entry's, as the file has it" do
+      text = String.replace(source(@template), "  stages:\n", "  machine: large\n  stages:\n")
+      assert {:ok, %{process: %{"machine" => "large"}}} = Reader.template(text)
+
+      text =
+        String.replace(
+          source(@template),
+          "- workflow: draft-an-answer\n",
+          "- workflow: draft-an-answer\n          machine: browser\n"
+        )
+
+      assert text != source(@template)
+      assert {:ok, %{process: process}} = Reader.template(text)
+
+      assert %{"workflow" => "draft-an-answer", "machine" => "browser"} in Apiary.MachineTypes.entries(
+               process
+             )
+
+      text =
+        String.replace(
+          source(@template),
+          "- workflow: draft-an-answer\n",
+          "- workflow: draft-an-answer\n          machine: default\n"
+        )
+
+      assert {:ok, _template} = Reader.template(text)
+    end
+
     test "refuses a file without each key" do
       for key <- ~w(apiVersion name summary description type stack process),
           do: assert(Reader.template(without(key)) == {:error, :invalid_template}, key)
@@ -554,10 +582,10 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   # qory's process.schema.json, vendored from the qory commit in the `.contract-ref` file
   # beside it, by its SHA-256 there.
-  @qory_ref "82100a339393a94e282e0b9aa82492755a10f5e0"
+  @qory_ref "173471878608f4d7f9de2b3eaf8b21c6715adbac"
   @vendored "priv/contract/harness/v1"
   @vendored_sha256 %{
-    "process.schema.json" => "b60e7757bfc4afdc40c31d9d41d86412488d4093583996af108c7900231f84ea"
+    "process.schema.json" => "7a9087ce63e4f070269835f79783205e8970f9a3dfc56a066cff99a4f23d479a"
   }
 
   describe "the file vendored from qory" do

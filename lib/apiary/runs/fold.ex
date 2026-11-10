@@ -19,28 +19,42 @@ defmodule Apiary.Runs.Fold do
   revive (Times, below): `latest` carries,
   per rank, the highest sequence already projected. A rank is a type where one event wins
   (`ranks/0`); `run.started` and `ping` also share the rank of the `forager_version`, which
-  the later of the two decides, and `session.started` and `run.resized` share the rank of
-  the terminal's size, which the later of them decides: `terminal_cols` and
-  `terminal_rows` are the size the record last said, `terminal` of a session's start on a
-  pseudo-terminal, then each resize. A session's start on pipes reports no size and
-  leaves both null.
+  the later of the two decides. What a run's sessions decide has no rank, because one late
+  start can change what every other start and resize counts for: a pass with a session's
+  start or a resize reads those of the run already projected and works it out again
+  (`Sessions`, next).
 
-  A run is opened once, `run.started` (`opened_by` `run`, which `Apiary.Runs.Batch`
+  Sessions: a run is opened once, `run.started` (`opened_by` `run`, which `Apiary.Runs.Batch`
   requires), and each session that joins it has a `session.started` and a
   `session.exited`. What the run runs, `runtime`, `runtime_version`, `command`, `args`,
-  `dir`, `interactive` and `image`, is the `session.started` with the highest sequence.
-  `session.exited` is folded into nothing: how the run ended is its `run.exited`.
+  `dir`, `interactive` and `image`, is one session's, whole, chosen by sequence alone: the
+  `session.started` with the highest sequence of those without `bare`, else, in a run
+  whose sessions are all bare, the one with the lowest sequence. A session is bare when
+  its start has `bare` set to `true`, Forager's mark of a session with no runtime, and any
+  other value is no mark. So a short helper session never replaces the agent, whichever
+  of the two has the higher sequence or arrives first. `terminal_cols` and `terminal_rows`
+  are the later by sequence of the `terminal` of that one session's start, which on pipes
+  leaves both null, and the last resize that counts. A resize counts unless its `session`
+  is a bare session other than the one chosen, so a helper's resize leaves the agent's
+  size; a resize with no `session` counts, and one that is not a size changes nothing.
+  How a session ended is not folded: how the run ended is its `run.exited`. What a
+  session used, measured over everything behind its wall, is: `peak_memory_bytes`, the
+  highest peak memory that a `session.exited` reported, and `cpu_time_ms`, the sum of
+  the CPU time the `session.exited` events reported, each an integer from 0 to the
+  largest `bigint`, or absent. A value outside that range, or of another type, is
+  absent; a sum that would pass the largest `bigint` stays at it. Each is null while no
+  session reported it, and neither depends on the order in which the events arrive.
 
   The steps of the run's host work and joins (`Apiary.Runs.Step`) are folded by `step`,
   their number, an integer from 1: `steps` has one delta per number, the start's `name`,
   `kind` and sequence from its `run.step_started`, and the exit's `state`, `exit_code`,
   `duration_ms` and sequence from its `run.step_exited`. Of two starts, or two exits, with
   one number, which the contract forbids, the lower sequence decides, in this pass
-  and against what is stored (`Apiary.Runs.Projector`). A `kind` outside the contract's
-  six is absent. An exit's `state` other than `succeeded`, `failed` and `cancelled`, or
-  none, is `failed`, the rule of a run's exit without a state (`exit_state/2`). A step
-  event whose `step` is not such an integer is folded into nothing. A log chunk keeps its
-  event's `step`, read the same way.
+  and against what is stored (`Apiary.Runs.Projector`). A `kind` outside
+  `Apiary.Runs.Step.kinds/0` is absent. An exit's `state` other than `succeeded`, `failed`
+  and `cancelled`, or none, is `failed`, the rule of a run's exit without a state
+  (`exit_state/2`). A step event whose `step` is not such an integer is folded into
+  nothing. A log chunk keeps its event's `step`, read the same way.
 
   An egress event is folded into the connection of its destination (host, port and path)
   and its channel: `channel` `stack` for the stack proxy, which fetches the run's harness
@@ -145,7 +159,6 @@ defmodule Apiary.Runs.Fold do
   @cut_mark "…"
 
   @forager_version "forager_version"
-  @terminal_rank "terminal"
 
   # The most a result may say a session cost, in dollars, before the value is read as
   # absent: a runtime's accounting error, not a bill.
@@ -157,15 +170,37 @@ defmodule Apiary.Runs.Fold do
   """
   def ranks(@ping), do: [@ping, @forager_version]
   def ranks(@started), do: [@started, @forager_version]
-  def ranks(@session_started), do: [@session_started, @terminal_rank]
-  def ranks(@resized), do: [@terminal_rank]
   def ranks(type) when type in [@policy_applied, @heartbeat, @exited, @refused], do: [type]
   def ranks(_type), do: []
 
   @doc "The types whose highest projected sequence seeds a rank."
   def rank_types(@forager_version), do: [@ping, @started]
-  def rank_types(@terminal_rank), do: [@session_started, @resized]
   def rank_types(type), do: [type]
+
+  @doc """
+  The numbers of the sessions whose resizes do not count, from all the run's session starts
+  (maps with `sequence` and `data`): the bare sessions, less the one the run shows.
+  """
+  @spec uncounted_sessions([map()]) :: MapSet.t(pos_integer())
+  def uncounted_sessions(starts) do
+    shown = shown_start(starts)
+    shown_number = if shown && bare?(shown.data), do: session_number(shown.data)
+
+    for %{data: %{"bare" => true} = data} <- starts,
+        number = session_number(data),
+        number != shown_number,
+        into: MapSet.new(),
+        do: number
+  end
+
+  @doc """
+  The size a resize's `data` sets, given `uncounted_sessions/1`: nil when it is not a size,
+  or when it comes from a session that does not count.
+  """
+  @spec resize_size(map(), MapSet.t(pos_integer())) :: {pos_integer(), pos_integer()} | nil
+  def resize_size(data, uncounted) do
+    if session_number(data) not in uncounted, do: size(data)
+  end
 
   @int4 2_147_483_647
   @int8 9_223_372_036_854_775_807
@@ -187,9 +222,11 @@ defmodule Apiary.Runs.Fold do
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
-  # The states a step's exit says, and the kinds of step the contract lists.
+  # The states a step's exit can have, and the kinds of step: the contract's eight,
+  # `machine`, which `qory run` sends from its machine record, and `copy`, which it sends
+  # around the copy of the run's work back from the wall.
   @step_states ~w(succeeded failed cancelled)
-  @step_kinds ~w(fetch compose image build setup join wall push)
+  @step_kinds ~w(fetch compose image build setup join wall push machine copy)
 
   defstruct run: %{},
             latest: %{},
@@ -218,7 +255,9 @@ defmodule Apiary.Runs.Fold do
   `time` stands for it) into `run` (any map with the run's fields, the schema struct
   included). `latest` maps a type of `ranked_types/0` to the highest sequence of it
   already projected. `projected` says what the fold needs of the events already projected:
-  `beat`, the `time` and `received_at` of the heartbeat with the highest sequence, absent
+  `beat`, the `time` and `received_at` of the heartbeat with the highest sequence, `starts`,
+  the run's session starts as maps with `sequence` and `data`, and `resize`, the `sequence`
+  and `size` of the last resize that counts, given the starts of `events` too; each absent
   or nil when there is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
@@ -233,11 +272,13 @@ defmodule Apiary.Runs.Fold do
       beat: projected[:beat]
     }
 
+    events = Enum.sort_by(events, & &1.sequence)
+
     acc =
       events
-      |> Enum.sort_by(& &1.sequence)
       |> Enum.reduce(acc, &event(&2, &1))
       |> count_beat()
+      |> sessions(events, projected)
 
     %{acc | run: settle(acc.run), log_chunks: Enum.reverse(acc.log_chunks)}
   end
@@ -322,27 +363,17 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
-  # What the run runs is its last session's: the `session.started` with the highest
-  # sequence decides every member, one the event leaves out included.
-  defp event(acc, %{type: @session_started, data: data} = event) do
-    acc
-    |> terminal_size(event, terminal(data))
-    |> ranked(event, fn run ->
-      Map.merge(run, %{
-        runtime: string(data, "runtime"),
-        runtime_version: string(data, "runtime_version"),
-        command: string(data, "command", @long_text),
-        args: strings(data, "args"),
-        dir: string(data, "dir", @long_text),
-        interactive: boolean(data, "interactive"),
-        image: string(data, "image")
-      })
-    end)
-  end
+  # How one session ended is folded into nothing, and so is a refused join, which has no
+  # `session.started`. What the session used is folded into the run's (the moduledoc): an
+  # event that reported neither value changes nothing.
+  defp event(acc, %{type: @session_exited, data: data}) do
+    run =
+      acc.run
+      |> used(:peak_memory_bytes, integer(data, "peak_memory_bytes", 0..@int8), &max/2)
+      |> used(:cpu_time_ms, integer(data, "cpu_time_ms", 0..@int8), &min(&1 + &2, @int8))
 
-  # How one session ended is folded into nothing; a refused join has no `session.started`
-  # and changes nothing either.
-  defp event(acc, %{type: @session_exited}), do: acc
+    %{acc | run: run}
+  end
 
   defp event(acc, %{type: @policy_applied, data: data} = event) do
     ranked(acc, event, fn run ->
@@ -360,14 +391,6 @@ defmodule Apiary.Runs.Fold do
   # another instance than the one that attached the run is folded into nothing.
   defp event(acc, %{type: @heartbeat} = event) do
     if attaching_instance?(acc.run, event), do: heartbeat(acc, event), else: acc
-  end
-
-  # A resize that is not a size is nothing: the run keeps the size it had.
-  defp event(acc, %{type: @resized, data: data} = event) do
-    case size(data) do
-      nil -> acc
-      size -> terminal_size(acc, event, size)
-    end
   end
 
   defp event(acc, %{type: @log, data: data, sequence: sequence}) do
@@ -523,7 +546,8 @@ defmodule Apiary.Runs.Fold do
   end
 
   # Session events and types this revision does not know: kept in `events`, marked
-  # projected by the projector, nothing folded.
+  # projected by the projector, nothing folded. A session's start and a resize are read
+  # after the pass's events (`sessions/3`).
   defp event(acc, _event), do: acc
 
   # The fields of a step's delta. A delta has every one, nil where its events said
@@ -598,6 +622,17 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
+  # `run` with `field` set to `value`, or to `value` and the field's value combined by
+  # `combine` when it has one; `run` as it is for no value.
+  defp used(run, _field, nil, _combine), do: run
+
+  defp used(run, field, value, combine) do
+    case Map.get(run, field) do
+      nil -> Map.put(run, field, value)
+      before -> Map.put(run, field, combine.(before, value))
+    end
+  end
+
   defp add_cost(nil, cost), do: cost
   defp add_cost(%Decimal{} = sum, cost), do: Decimal.add(sum, cost)
 
@@ -661,8 +696,9 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # A run whose exit or refusal said how it ended. A run Apiary marked lost by its own
-  # check has neither, and a start or a heartbeat revives it.
+  # A run with an exit or a refusal, which records how it ended. A run that Qory Apiary
+  # marked lost after its keep-alive stopped has neither, and a start or a heartbeat
+  # revives it.
   defp ended?(%{state: state}) when state in @terminal, do: true
   defp ended?(run), do: exited?(run)
 
@@ -689,18 +725,70 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # `session.started` and `run.resized` both say the terminal's size: the later decides. A
-  # session's start says none on pipes, which is `{nil, nil}`.
-  defp terminal_size(acc, %{sequence: sequence}, {cols, rows}) do
-    if sequence > Map.get(acc.latest, @terminal_rank, 0) do
-      %{
-        acc
-        | run: %{acc.run | terminal_cols: cols, terminal_rows: rows},
-          latest: Map.put(acc.latest, @terminal_rank, sequence)
-      }
-    else
+  # What the run runs and the terminal's size, from every session's start and resize of the
+  # run, projected or in this pass: see the moduledoc. Read again whole, because one start
+  # can change what every other start and resize counts for, whichever arrives last.
+  defp sessions(acc, events, projected) do
+    starts = Enum.filter(events, &(&1.type == @session_started))
+    resizes = Enum.filter(events, &(&1.type == @resized))
+
+    if starts == [] and resizes == [] do
       acc
+    else
+      starts = List.wrap(projected[:starts]) ++ starts
+      shown = shown_start(starts)
+      uncounted = uncounted_sessions(starts)
+
+      sizes =
+        for %{sequence: sequence, data: data} <- resizes,
+            size = resize_size(data, uncounted),
+            do: {sequence, size}
+
+      sizes = if shown, do: [{shown.sequence, terminal(shown.data)} | sizes], else: sizes
+
+      sizes =
+        case projected[:resize] do
+          %{sequence: sequence, size: size} -> [{sequence, size} | sizes]
+          nil -> sizes
+        end
+
+      run = if shown, do: session_members(acc.run, shown.data), else: acc.run
+      %{acc | run: put_size(run, sizes)}
     end
+  end
+
+  # The session the run shows: the highest sequence of the starts that are not bare, else
+  # the lowest of the bare ones.
+  defp shown_start(starts) do
+    case Enum.reject(starts, &bare?(&1.data)) do
+      [] -> Enum.min_by(starts, & &1.sequence, fn -> nil end)
+      others -> Enum.max_by(others, & &1.sequence)
+    end
+  end
+
+  defp bare?(data), do: match?(%{"bare" => true}, data)
+
+  defp session_number(data), do: integer(data, "session", 1..@int4)
+
+  # The later of the sizes. With none, such as a resize that is not a size, the run keeps
+  # the size it had.
+  defp put_size(run, []), do: run
+
+  defp put_size(run, sizes) do
+    {_sequence, {cols, rows}} = Enum.max_by(sizes, &elem(&1, 0))
+    %{run | terminal_cols: cols, terminal_rows: rows}
+  end
+
+  defp session_members(run, data) do
+    Map.merge(run, %{
+      runtime: string(data, "runtime"),
+      runtime_version: string(data, "runtime_version"),
+      command: string(data, "command", @long_text),
+      args: strings(data, "args"),
+      dir: string(data, "dir", @long_text),
+      interactive: boolean(data, "interactive"),
+      image: string(data, "image")
+    })
   end
 
   # The size a session's start reports: `terminal`, or none on pipes.

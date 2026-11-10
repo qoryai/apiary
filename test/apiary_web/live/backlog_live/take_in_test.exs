@@ -2,8 +2,8 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
   # The ticket over the Backlog's list (`?ticket=`) and Take in
   # (`ApiaryWeb.BacklogLive.Index`): the panel, its Take in with the hint beside it, Close;
   # to a person who may not take a ticket in, why in place of Take in; Take in from the
-  # panel and from a row, which leads to the new work item; and each refusal, said in a
-  # flash.
+  # panel and from a row, confirmed in the take in's dialog, which leads to the new work
+  # item; and each refusal, said in a flash.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -152,6 +152,7 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
 
       view |> element("#backlog-ticket-take-in-button") |> render_click()
+      confirm_take_in(view)
 
       %WorkItem{number: number, state: :exploring} =
         Repo.get_by!(WorkItem, item_id: ctx.ticket.id)
@@ -163,6 +164,7 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))
 
       view |> element("#ticket-#{ctx.ticket.public_id} button.q-bl-take") |> render_click()
+      confirm_take_in(view)
 
       %WorkItem{number: number} = Repo.get_by!(WorkItem, item_id: ctx.ticket.id)
       assert_redirect(view, work_path(ctx.scope, number))
@@ -177,6 +179,7 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
 
       {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
       view |> element("#backlog-ticket-take-in-button") |> render_click()
+      confirm_take_in(view)
 
       adapter = Repo.get!(Apiary.Nodes.Node, ctx.ticket.adapter_id)
 
@@ -207,8 +210,9 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
     test "a ticket closed at its source: says so", ctx do
       {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
 
-      ctx.ticket |> Ecto.Changeset.change(state: :closed) |> Repo.update!()
       view |> element("#backlog-ticket-take-in-button") |> render_click()
+      ctx.ticket |> Ecto.Changeset.change(state: :closed) |> Repo.update!()
+      confirm_take_in(view)
 
       adapter = Repo.get!(Apiary.Nodes.Node, ctx.ticket.adapter_id)
       assert flash(view) =~ "This ticket is closed at #{adapter.name}, so it was not taken in."
@@ -217,10 +221,10 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
 
     test "a ticket someone took in meanwhile: its work item's number", ctx do
       {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
+      view |> element("#backlog-ticket-take-in-button") |> render_click()
 
       {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
-      # The page has read the ticket again meanwhile; a press sent before that still says.
-      render_click(view, "take_in", %{"id" => ctx.ticket.public_id})
+      confirm_take_in(view)
 
       assert flash(view) =~
                "Someone took this ticket in already, as work item ##{work_item.number}."

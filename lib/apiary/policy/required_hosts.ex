@@ -8,6 +8,8 @@ defmodule Apiary.Policy.RequiredHosts do
   #
   #   * harness sources: `ComposedConfiguration.workspace_stack_hosts/1`, beside
   #     `ComposedConfiguration.stack_hosts/1`;
+  #   * runtimes: `Apiary.Kinds.Runtimes.egress_hosts/0`, which the policy of every
+  #     workspace renders;
   #   * integrations: `Apiary.Connections.egress_hosts/1`, which the policy of every
   #     workspace renders;
   #   * model providers: `Apiary.Runs.ProviderCredential.workspace_hosts/1`, beside
@@ -20,18 +22,19 @@ defmodule Apiary.Policy.RequiredHosts do
   # What the run's target, work item or claim add (the harness sources that the pins of its
   # walk name, the provider and API it is given, the one collection it takes) is not here.
   #
-  # `required_by` is `:instance` for the Qory harness and the registry's hosts, and for
-  # the rest the level that chose it: `:organisation` for an integration added for every
-  # workspace of the organisation, else `:workspace`.
+  # `required_by` is `:instance` for the Qory harness, the runtimes' and the registry's
+  # hosts, and for the rest the level that chose it: `:organisation` for an integration
+  # added for every workspace of the organisation, else `:workspace`.
 
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.Connections
   alias Apiary.Connections.Connection
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.Definition
+  alias Apiary.Harnesses.Qory
+  alias Apiary.Kinds.Runtimes
   alias Apiary.Organisations.Workspace
-  alias Apiary.Policy.ComposedConfiguration
+  alias Apiary.Policy.{ComposedConfiguration, Grammar}
   alias Apiary.Registry.RunAccess
   alias Apiary.Repo
   alias Apiary.Runs.{ProviderCredential, RunCredentials}
@@ -41,6 +44,7 @@ defmodule Apiary.Policy.RequiredHosts do
   @type source ::
           :qory
           | {:repository, String.t()}
+          | {:runtime, String.t()}
           | {:integration, String.t()}
           | {:provider, String.t()}
           | :instance
@@ -53,7 +57,66 @@ defmodule Apiary.Policy.RequiredHosts do
           required_by: :instance | :workspace | :organisation
         }
 
-  @type group :: %{key: :harness | :integrations | :providers | :registry | :forge, rows: [row]}
+  @type group :: %{
+          key: :harness | :runtimes | :integrations | :providers | :registry | :forge,
+          rows: [row]
+        }
+
+  @doc false
+  # first_hosts/1 is the hosts of the groups whose hosts a run's document has in
+  # `egress.allow_first` on every path a rule does not limit: the runtimes', the
+  # integrations' and the model providers'. The other groups stay out: only the stack
+  # proxy reads the harness sources' hosts, the registry's hosts are held to paths, and a
+  # target's system is added only for a run with a work credential.
+  @spec first_hosts(Workspace.t()) :: %{
+          runtimes: [String.t()],
+          integrations: [String.t()],
+          providers: [String.t()]
+        }
+  def first_hosts(%Workspace{} = workspace) do
+    %{
+      runtimes: Enum.map(Runtimes.egress_hosts(), & &1.host),
+      integrations: Enum.map(Connections.egress_hosts(workspace), & &1.host),
+      providers: Enum.map(ProviderCredential.workspace_hosts(workspace), & &1.host)
+    }
+  end
+
+  @doc false
+  # covers?/4 is whether enforce lets a request to `host` and `path` through whatever the
+  # rules say, given `first_hosts/1` and the `paths` of the effective policy, which the
+  # pages read without these hosts:
+  #
+  #   * a runtime's host is on every path (`Apiary.Policy.Resolution`, point 8);
+  #   * an integration's host is held only to a rule's paths on the host itself: a `*.` key
+  #     leaves it on every path (point 7);
+  #   * a provider's host is held as any allowed host is: a composed document adds no `/*`.
+  @spec covers?(map, %{optional(String.t()) => [String.t()]}, String.t(), String.t() | nil) ::
+          boolean
+  def covers?(%{} = first, paths, host, path) do
+    cond do
+      host in first.runtimes -> true
+      host in first.integrations -> on_paths?(Map.get(paths, host), path)
+      host in first.providers -> on_paths?(held(paths, host), path)
+      true -> false
+    end
+  end
+
+  @doc false
+  # held/2 is the paths that hold `host`, from the `paths` of an effective policy: its name
+  # as a key, else a `*.` key that covers it, else nil.
+  def held(paths, host) do
+    case paths do
+      %{^host => list} ->
+        list
+
+      _ ->
+        Enum.find_value(paths, fn {key, list} -> if Grammar.matches?([key], host), do: list end)
+    end
+  end
+
+  defp on_paths?(nil, _path), do: true
+  defp on_paths?(_paths, path) when path in [nil, ""], do: true
+  defp on_paths?(paths, path), do: Enum.any?(paths, &Grammar.path_matches?(&1, path))
 
   @doc false
   # of/1 is the groups that have a row, in the page's order, and `target_required?`, whether
@@ -64,6 +127,7 @@ defmodule Apiary.Policy.RequiredHosts do
     groups =
       [
         harness(workspace),
+        runtimes(),
         integrations(workspace),
         providers(workspace),
         registry(),
@@ -79,7 +143,7 @@ defmodule Apiary.Policy.RequiredHosts do
     rows =
       for %{host: host, git: git, shared: shared} <-
             ComposedConfiguration.workspace_stack_hosts(workspace) do
-        qory? = git == Definition.qory_harness().git
+        qory? = git == Qory.git()
 
         %{
           host: host,
@@ -94,6 +158,15 @@ defmodule Apiary.Policy.RequiredHosts do
       end
 
     %{key: :harness, rows: rows}
+  end
+
+  @doc false
+  def runtimes do
+    rows =
+      for %{host: host, runtime: runtime} <- Runtimes.egress_hosts(),
+          do: %{host: host, source: {:runtime, runtime.title}, required_by: :instance}
+
+    %{key: :runtimes, rows: rows}
   end
 
   @doc false

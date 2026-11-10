@@ -6,6 +6,7 @@ defmodule Apiary.Processes.ExportTest do
   # Not async: each test sets the instance's features, which are the whole node's.
   use Apiary.DataCase, async: false
 
+  import Apiary.MachineTypesFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Artifacts, Organisations, Processes, Stacks}
@@ -82,12 +83,17 @@ defmodule Apiary.Processes.ExportTest do
     %{scope: admin, user: user} = sign_up_fixture()
     {:ok, _user} = Organisations.grant_instance_admin(user)
     newest = TypeTemplates.newest("qory.software")
+    # A stage description no other save writes, so the document changes.
+    described =
+      update_in(newest.document, ["stages", Access.at(0)], fn stage ->
+        Map.put(stage, "description", "Version #{System.unique_integer([:positive])}.")
+      end)
 
     assert {:ok, %TypeTemplate{}} =
              TypeTemplates.save(
                admin,
                "qory.software",
-               Map.put(newest.document, "machine", "m-#{System.unique_integer([:positive])}"),
+               described,
                texts: %{summary: summary, description: description}
              )
   end
@@ -184,6 +190,47 @@ defmodule Apiary.Processes.ExportTest do
                Enum.map(saved["stages"], &Map.delete(&1, "gate"))
 
       refute Processes.export(workspace) =~ scope.user.id
+    end
+
+    test "writes each machine type key as the document has it, which the harness reader reads", %{
+      scope: scope,
+      workspace: workspace
+    } do
+      large = machine_type_fixture(%{key: "large"})
+
+      typed =
+        current(workspace)
+        |> Map.put("machine", large.key)
+        |> update_in(["stages", Access.at(0), "sequence"], fn _sequence ->
+          [
+            %{"workflow" => "explore-a-ticket", "machine" => large.key},
+            %{"workflow" => "shape", "machine" => "default"},
+            %{
+              "loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix", "machine" => "large"}]}
+            }
+          ]
+        end)
+
+      saved!(scope, typed)
+      saved = current(workspace)
+      assert saved["machine"] == "large"
+
+      template = exported(workspace)
+
+      assert template.process["machine"] == "large"
+
+      assert hd(template.process["stages"])["sequence"] == [
+               %{"workflow" => "explore-a-ticket", "machine" => "large"},
+               %{"workflow" => "shape", "machine" => "default"},
+               %{
+                 "loop" => %{
+                   "rounds" => 2,
+                   "body" => [%{"workflow" => "fix", "machine" => "large"}]
+                 }
+               }
+             ]
+
+      assert tl(template.process["stages"]) == tl(saved["stages"])
     end
   end
 

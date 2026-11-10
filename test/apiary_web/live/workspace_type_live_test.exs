@@ -36,7 +36,7 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
                    end)
 
   @summary "Agents change code in your repositories. Each ticket needs a repository."
-  @stages "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › Stages."
+  @stages "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › Workflows."
 
   setup do
     {:ok, %{user: user, organisation: organisation}} =
@@ -194,6 +194,32 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
            )
 
     assert has_element?(view, "#breadcrumb [aria-current=page]", "Software factory")
+  end
+
+  test "a stage's description shows on its card; a stage without one shows none", %{
+    conn: conn,
+    user: user,
+    path: path
+  } do
+    newest = TypeTemplates.newest("qory.software")
+    text = "Turn the ticket into a plan for the storefront.\nA member approves the plan."
+
+    document =
+      Map.update!(newest.document, "stages", fn [explore, shape | rest] ->
+        [explore, Map.put(shape, "description", text) | rest]
+      end)
+
+    {:ok, _version} =
+      TypeTemplates.save(instance_admin_scope(), "qory.software", document,
+        based_on: newest.number
+      )
+
+    {:ok, view, _html} = conn |> log_in_user(user) |> live(path)
+
+    assert [explore, shape | rest] = canvas_view(view)["stages"]
+    assert shape["name"] == "Shape"
+    assert shape["description"] == text
+    assert Enum.all?([explore | rest], &is_nil(&1["description"]))
   end
 
   test "shows the name, summary and description an instance admin saved", %{
@@ -748,6 +774,44 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
     test "an edition's refusal of the new workspace is the general error, and nothing is made",
          %{conn: conn, user: user, organisation: organisation, template_path: path} do
       :ok = Apiary.Edition.put_test_stub(RefusesWorkspace)
+
+      view =
+        open(
+          conn,
+          user,
+          organisation,
+          String.replace_prefix(path, ~p"/#{organisation}/workspaces/new/", "")
+        )
+
+      view |> element("#workspace-type-create") |> render_click()
+
+      assert flash_error(view) =~ squash("Nothing was changed. Try again.")
+      assert workspaces(organisation) == []
+    end
+
+    test "a refused render of the new workspace's policy is the general error, and nothing is made",
+         %{conn: conn, user: user, organisation: organisation, template_path: path} do
+      on_exit(fn -> Application.delete_env(:apiary, Apiary.Policy.Above) end)
+
+      # A document over the 1 MiB the gateway reads.
+      above = %Apiary.Policy.Above{
+        id: Ecto.UUID.generate(),
+        name: "Northwind",
+        slug: "northwind",
+        rules:
+          for n <- 1..11 do
+            %Apiary.Policy.Rule{
+              id: Ecto.UUID.generate(),
+              kind: "host",
+              action: "allow",
+              host: "h#{n}.example",
+              paths: for(m <- 1..100, do: "/" <> String.duplicate("a", 1000) <> "/#{n}/#{m}"),
+              locked: false
+            }
+          end
+      }
+
+      Application.put_env(:apiary, Apiary.Policy.Above, answer: fn _workspace -> above end)
 
       view =
         open(

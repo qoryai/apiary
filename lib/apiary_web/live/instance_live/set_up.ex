@@ -345,7 +345,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
           scope={@scope}
         />
 
-        <:context :if={@row}>
+        <:context :if={@row} about={gettext("About adapters")}>
           <p id="set-up-what">
             {gettext(
               "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the %{adapter} adapter's set-up page in a new tab, and this step shows the new state without a reload.",
@@ -359,7 +359,7 @@ defmodule ApiaryWeb.InstanceLive.SetUp do
             guide={@guide}
           />
         </:context>
-        <:context :if={@step == :mail}>
+        <:context :if={@step == :mail} about={gettext("About mail")}>
           <p id="set-up-what">
             {gettext(
               "Qory Apiary sends invitations, log-in links and password links by mail; without mail, an admin copies each link by hand. Get the SMTP server's host name, port, username and password from your mail provider. Mail turns on when you follow the test link that Qory Apiary emails you, while you are signed in."

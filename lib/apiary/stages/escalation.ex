@@ -1,8 +1,10 @@
 defmodule Apiary.Stages.Escalation do
   # A stage of a work item that waits for a person (`Apiary.Stages`): at `round`, for
-  # `cause`, with the `gaps` the agent stated or the cause of a stopped run, from the run
-  # of the queue `run_id` (nil for the output checks). Open while `resolved_at` is nil, at
-  # most one per work item. A person resolves it with `resolution`, with their `note`.
+  # `cause`, with the `points` a person reads, from the run of the queue `run_id` (nil for
+  # the output checks). Each point is `%{"text", "action", "question"?}`: the run's verdict
+  # writes them for `escalate`, and the stage runner writes them for the causes it sets
+  # (`Apiary.Stages.Runner`). Open while `resolved_at` is nil, at most one per work item.
+  # A person resolves it with `resolution`, with their `note`.
   @moduledoc false
   use Ecto.Schema
 
@@ -18,7 +20,7 @@ defmodule Apiary.Stages.Escalation do
     field :stage_id, :string
     field :round, :integer
     field :cause, Ecto.Enum, values: @causes
-    field :gaps, :string
+    field :points, {:array, :map}, default: []
     field :resolution, Ecto.Enum, values: @resolutions
     field :note, :string
     field :resolved_at, :utc_datetime_usec

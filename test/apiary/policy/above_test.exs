@@ -87,6 +87,7 @@ defmodule Apiary.Policy.AboveTest do
     assert egress!(scope, nil) == %{
              "mode" => "observe",
              "allow" => ["api.example"],
+             "allow_first" => ["api.anthropic.com"],
              "deny" => ["paste.example"],
              "paths" => %{"api.example" => ["/v1/*"]}
            }
@@ -262,6 +263,7 @@ defmodule Apiary.Policy.AboveTest do
   describe "rerender_in/3" do
     test "renders an unmanaged workspace with all: true, as the level's change, and announces it",
          %{scope: scope} do
+      no_policy_version!(scope.workspace)
       above!([rule("deny", "paste.example")])
       target = target_fixture(scope)
       Repo.update_all(from(p in Target, where: p.id == ^target.id), set: [egress_mode: "enforce"])
@@ -301,6 +303,7 @@ defmodule Apiary.Policy.AboveTest do
       assert egress!(scope, nil) == %{
                "mode" => "observe",
                "allow" => [],
+               "allow_first" => ["api.anthropic.com"],
                "deny" => ["paste.example"]
              }
 
@@ -338,7 +341,7 @@ defmodule Apiary.Policy.AboveTest do
                end)
 
       assert message =~ "Eight Wonders's policy"
-      assert {:ok, %{version: 1}} = Policy.current_configuration(scope, nil)
+      assert {:ok, %{version: 2}} = Policy.current_configuration(scope, nil)
     end
   end
 

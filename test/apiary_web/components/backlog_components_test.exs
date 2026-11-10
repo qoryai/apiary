@@ -174,6 +174,43 @@ defmodule ApiaryWeb.BacklogComponentsTest do
       end
     end
 
+    test "an ended work item of another workspace the reader may not read: Take in here, with no workspace" do
+      work_item = %{number: nil, state: :closed, path: nil, finished: false, elsewhere: nil}
+      html = row(ticket(%{work_item: work_item}), workspace: "Shop ops")
+
+      assert text(html, ".q-bl-act button") == "Take in here"
+
+      assert attr(html, ".q-bl-act button", "title") == [
+               "Take in here moves the work item to Shop ops, with a Shop ops number."
+             ]
+
+      assert attr(html, ".q-bl-act button", "phx-value-return") == ["ticket-tk_01-here"]
+      assert count(html, ".q-bl-wi") == 0
+    end
+
+    for {state, finished} <- [exploring: false, closed: true] do
+      test "a work item of another workspace, #{state}: Taken in, with no number and no link" do
+        work_item = %{
+          number: nil,
+          state: unquote(state),
+          path: nil,
+          finished: unquote(finished)
+        }
+
+        html = row(ticket(%{work_item: work_item}))
+
+        assert count(html, "a.q-bl-wi") == 0
+        assert text(html, "span.q-bl-wi") == "Taken in"
+        refute text(html, ".q-bl-act") =~ "#"
+
+        assert attr(html, "span.q-bl-wi", "title") == [
+                 "Taken in as a work item of another workspace"
+               ]
+
+        assert count(html, ".q-bl-act button") == 0
+      end
+    end
+
     test "finished: the work item's number links its page, and no action" do
       work_item = %{number: 69, state: :closed, path: "/acme/shop/work/69", finished: true}
       html = row(ticket(%{work_item: work_item}))

@@ -194,7 +194,7 @@ defmodule Apiary.ModelChoicesTest do
     test "refuses a workflow that is no workflow name, and a workflow at the default", ctx do
       %{scope: scope, provider: provider} = ctx
 
-      for name <- ["Hello", "hello_world", "-hello", "", "a" <> String.duplicate("b", 64)] do
+      for name <- ["Hello", "hello_world", "-hello", "", "a" <> String.duplicate("b", 55)] do
         assert ModelChoices.put_choice(scope, {:workspace, name}, attrs(provider)) ==
                  {:error, :not_found}
       end
@@ -203,6 +203,11 @@ defmodule Apiary.ModelChoicesTest do
                {:error, :not_found}
 
       assert Repo.aggregate(ModelChoice, :count) == 0
+
+      longest = "a" <> String.duplicate("b", 54)
+
+      assert {:ok, %ModelChoice{workflow: ^longest}} =
+               ModelChoices.put_choice(scope, {:workspace, longest}, attrs(provider))
     end
   end
 
@@ -541,8 +546,9 @@ defmodule Apiary.ModelChoicesTest do
       {:ok, rule} = Policy.deny(scope, nil, %{host: "*.anthropic.com"})
       {:ok, _} = Policy.lock(scope, rule)
 
-      # An exact deny of the provider's host is refused at save (Apiary.Policy.check_deny/3).
-      assert {:error, %Policy.Error{reason: :integration_host}} =
+      # An exact deny of the provider's host, which is also the runtime's, is refused at save
+      # (Apiary.Policy.check_deny/3).
+      assert {:error, %Policy.Error{reason: :runtime_host}} =
                Policy.deny(scope, target, %{host: "api.anthropic.com"})
 
       assert {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))

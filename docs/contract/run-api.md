@@ -82,7 +82,9 @@ Returns `200` with the work item snapshot:
   "outputs": [
     {"type": "demo-video", "required": true, "version": null, "check": "missing"}
   ],
-  "verdict": {"verdict": "changes-requested", "gaps": "...", "version": {"id": "av_...", "number": 1}},
+  "verdict": {"verdict": "escalate",
+              "points": [{"text": "...", "action": "answer", "question": "q4"}],
+              "version": {"id": "av_...", "number": 1}},
   "gaps": "...",
   "ticket": {"external_ref": "...", "url": "...", "title": "...", "body": "...",
              "filed_by": {"name": "Dana", "kind": "person"}, "filed_at": "...", "collection": "..."},
@@ -101,8 +103,12 @@ Returns `200` with the work item snapshot:
   there is none.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
-- `verdict` is the work item's newest verdict, or null for none. `gaps` is the stage's
-  gaps.
+- `verdict` is the work item's newest verdict, or null for none. It can be from an earlier
+  stage or an earlier run. At a run's end, the stage reads only a verdict that run pushed.
+  `points` is its list of points, as the verdict's file has them, or null for a verdict
+  with none.
+- `gaps` is why the stage waits for a workflow, or the failed checks that started its
+  round; null otherwise.
 - `ticket`, `instruction`, `comments` and `comments_omitted` are the same as in
   Explore's input, within the same bound: at most 768 KiB encoded, with the oldest
   comments left out first and counted in `comments_omitted`. A test work item has no
@@ -120,8 +126,11 @@ Returns `200` with the work item snapshot:
 - For a work item that is in no stage, `stage` has all five members: `id` is the stage
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
   `state` are null; `inputs` and `outputs` are empty lists.
-- `run.number` is the run's number on the server, from 1, the number in the address of
-  the run's page. No two runs on a server have the same number.
+- `run.number` is the run's number in its workspace, from 1, the number in the address of
+  the run's page. A run takes its number when it is queued, before a machine takes it. No two runs of a workspace have the same number, and each workspace
+  counts its runs apart from the others. A work item that moves into a workspace whose
+  count is lower raises that count to the work item's highest number, so the workspace's
+  numbers jump.
 - `run.workflow` and `run.round` are null for a run that has neither.
 
 Errors: `410` `ticket_gone` when the ticket of a work item is no longer kept; `409`
@@ -250,7 +259,9 @@ Checks, in order, after the checks of every request:
    `changes-requested` or `escalate`. A JSON file of a standard type, such as `questions`,
    `review-comments` or `verdict`, has each key once in each object: a key that comes
    twice is refused at the object's place, such as "at #/questions/0, the object has the
-   key state twice", before the schema check.
+   key state twice", before the schema check. A question in `questions` has 0 to 4
+   `options`, and at most one option has `recommended` true: a fifth option is refused
+   as "at #/questions/0/options, value should have at most 4 items, got 5".
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
@@ -344,18 +355,37 @@ Checks, in order, after the checks of every request:
    declares a prefix, or `xmlns`, twice is not well-formed XML and gets the "Make
    checkout.svg a well-formed SVG file …" message.
 7. A version of `questions` or `review-comments` that changes what members wrote,
-   compared with the newest version: `422` `invalid_artifact`, with the file in `names`
+   compared with the newest version, or a version of `questions` that breaks one of the
+   `decision` rules of this check: `422` `invalid_artifact`, with the file in `names`
    and the rule it breaks in `message`. In `questions`, the run keeps every `id` and the
    `asked` and `follows` of each question, keeps the questions of the newest version
    first, in the same order, and adds new questions after them, adds no `answer` and
    changes none, keeps each `history`, keeps `question`, `context` and `options` of each
-   question that stays `answered`, moves the answer of a question it reopens unchanged
-   to the end of its `history` with `reopened.run` set to its `run.number`, and adds
-   each question `open` with `asked.run` set to its `run.number` and with `follows`, if
-   any, set to ids of questions before it in the version; an absent `follows` and an
-   empty one are the same. In `review-comments`, the run keeps every review comment and
-   every earlier reply unchanged, adds no review comment, and adds at most one reply to
-   an open review comment, by `{"run": <run.number>}`, which it closes; a reply with the
+   question that stays `answered`, each option's `recommended` included, moves the
+   answer of a question it reopens unchanged to the end of its `history` with
+   `reopened.run` set to its `run.number`, and adds each question with `asked.run` set
+   to its `run.number` and with `follows`, if any, set to ids of questions before it in
+   the version; an absent `follows` and an empty one are the same.
+
+   The `decision` rules:
+
+   - A version may add a question as `open`, without a `decision`, or as `decided`,
+     with its `decision`.
+   - A question that the newest version has does not change to `decided`: a run
+     records a decision only on a question it adds.
+   - A question that the version adds as `decided` has the title of one of its
+     `options` in `decision.option`, and its `asked.run` in `decision.run`. The JSON
+     Schema of the format cannot check this.
+   - The run keeps the `decision` of each question that the newest version has,
+     unchanged, also when it withdraws or reopens the question, and adds a `decision`
+     to none of them.
+   - The run keeps `question` and `options` of each question that has a `decision`, in
+     every state, each option's `recommended` included, and its `context` while it
+     stays `decided` or `answered`.
+
+   In `review-comments`, the run keeps every review comment and every earlier reply
+   unchanged, adds no review comment, and adds at most one reply to an open review
+   comment, by `{"run": <run.number>}`, which it closes; a reply with the
    outcome `asked` has in `question` the id of a question of the newest version of
    `questions` stored when the run pushes `review-comments`, so the run pushes its
    questions first. Numbers compare by value, as the schemas' integers do: `4.0` is `4`.
@@ -372,21 +402,49 @@ Checks, in order, after the checks of every request:
 The body, at most 64 KiB:
 
 ```json
-{"verdict": "changes-requested", "gaps": "The demo skips the gift card step."}
+{"verdict": "escalate",
+ "points": [
+   {"text": "The ticket does not say who may cancel a booking.",
+    "action": "answer", "question": "q4"},
+   {"text": "The checks script failed on the spec's links.", "action": "run_again"}
+ ]}
 ```
 
 - `verdict`: `passed`, `changes-requested` or `escalate`.
-- `gaps`: optional text, 1 to 20000 code points, with no control character but a tab
-  or a line break, and none of the bidirectional, separator and format characters that
-  the schema of the type `verdict` refuses (`priv/schemas/artifacts/verdict.schema.json`).
+- `points`: what a person reads when the stage escalates, 1 to 20 points, required with
+  `escalate` and absent otherwise. Each point has `text`, one plain sentence on one line
+  of 1 to 500 characters that says what is wrong, with no action, and `action`: `answer`,
+  with `question`, the id of an open question, or `run_again`, without `question`. The
+  work item page adds the action's sentence: "Answer question 4." or "Run another
+  round." The schema of the type `verdict`
+  checks them (`priv/schemas/artifacts/verdict.schema.json`, a copy of qory's
+  `contracts/harness/v1/verdict.schema.json`).
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
-file, `verdict.json`, `{"verdict": ..., "gaps": ...}`, without `gaps` when the body
-has none. A run of any workflow may give a verdict. Returns `201` with the version, as
-`POST artifacts` does.
+file, `verdict.json`, `{"verdict": ..., "points": ...}`, without `points` when the body
+has none. A run of any workflow may push a verdict. For a run of Explore, only
+`escalate` changes what happens: the stage escalates with the points. Explore treats
+`passed` and `changes-requested` as no verdict. A run that leaves questions open and
+gives `escalate` waits for answers first: its escalation is kept, and the answers run the
+next round. Returns `201` with the version, as `POST artifacts` does.
 
-Checks: a body over 64 KiB is `413` `payload_too_large`; a body that is not this object
-is `400` `invalid_request`.
+A run of a workflow entry outside a loop must push a verdict. Make `qory run verdict
+passed` the last step of the workflow, on a first run and on a rerun. A run that ends with
+no verdict and no open question stops the stage: a member sees "The run stopped before its
+verdict." with **Run another round** and, where an output has a version or no output is
+required, **Accept as it is**. `changes-requested` outside a loop goes on to the next entry,
+as `passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
+work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal, or
+that left open questions: Explore's result is its proposal or its questions. A run of
+Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
+
+Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
+`verdict` and `points`, or a `verdict` that is not one of the three, is `400`
+`invalid_request`; points the schema refuses are `422` `invalid_artifact`. The question
+of each `answer` point must be open in the newest `questions` of the work item's current
+take in, so the run pushes its questions first; otherwise the verdict is `422`
+`invalid_artifact`, with the message "Push the questions first, or point at an open
+question in verdict.json: point 2 is about question q7, which is not open."
 
 ## Errors
 
@@ -403,7 +461,7 @@ is `400` `invalid_request`.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, or a run's version of `questions` or `review-comments` changes what members wrote |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, or a verdict's `answer` point is about a question that is not open |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
@@ -452,6 +510,9 @@ The messages:
       attribute", "the url() in the style element", "the url() in the xmlns:a
       attribute", "the @import in the text of the desc element" or "the image-set() in
       the style attribute". A name past 64 characters is cut to 64 and "…".
+  - For a version of `verdict` whose `answer` point is about a question that is not open:
+    "Push the questions first, or point at an open question in verdict.json: point 2 is
+    about question q7, which is not open."
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
     - "Fix sources.json to match the format of proposal sources: at #, additional
@@ -463,3 +524,24 @@ The messages:
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review
     comment you reply to in review-comments.json."
+  - For a version of `questions` that breaks one of the `decision` rules of check 7, the
+    message of the rule, in the order of the rules:
+    - A question added open with a decision: "Add each question in questions.json as
+      open, with no decision, or as decided, with its decision."
+    - A question of the newest version set to decided: "Record each decision in
+      questions.json on a question you add, and set no question already in it to
+      decided."
+    - A decision whose option is not one of the question's option titles: "Set
+      decision.option of each question in questions.json to the title of one of the
+      question's options."
+    - A decision whose run is not the question's asked.run: "Set decision.run of each
+      question in questions.json to the question's asked.run: only the run that asked a
+      question records a decision on it."
+    - A decision changed, dropped or added later: "Leave the decision of each question in
+      questions.json as the newest version of questions has it, and add none: only the
+      run that adds a question records its decision."
+    - The question or options of a question with a decision changed, or its context
+      while it stays decided or answered: "Leave question and options of each question
+      with a decision in questions.json as the newest version of questions has them, and
+      its context while it stays decided or answered: to change them, withdraw the
+      question and add a new one."

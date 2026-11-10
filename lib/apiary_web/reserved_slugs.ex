@@ -37,7 +37,7 @@ defmodule ApiaryWeb.ReservedSlugs do
   @instance ~w(
     .well-known admin api assets dev docs favicon-32.png favicon.ico favicon.svg fonts health
     images instance integrations invitations live new phoenix registry robots.txt settings setup
-    users v1
+    users v1 work-items
   )
 
   # The organisation's own pages, the second segment of `/:org/…`, the palette's answers

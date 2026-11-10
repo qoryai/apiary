@@ -61,7 +61,7 @@ defmodule Apiary.Artifacts.SchemaError do
   end
 
   # JSV's message for one error: `{:leaf, message}`, or `{:pointer, message}` for one
-  # whose level is below JSV's default, a message that points at a deeper error or one
+  # whose level is below JSV's cause level, a message that points at a deeper error or one
   # that its parent's error reports.
   defp message(%{kind: kind, args: args, data: data, formatter: formatter}) do
     case formatter.format_error(kind, Map.new(args), data) do
@@ -69,7 +69,7 @@ defmodule Apiary.Artifacts.SchemaError do
         {:leaf, message}
 
       %{message: message} = map when is_binary(message) ->
-        if Map.get(map, :level, ErrorFormatter.level_default()) < ErrorFormatter.level_default(),
+        if Map.get(map, :level, ErrorFormatter.level_cause()) < ErrorFormatter.level_cause(),
           do: {:pointer, message},
           else: {:leaf, message}
 

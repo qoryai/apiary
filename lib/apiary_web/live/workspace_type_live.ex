@@ -13,7 +13,7 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
   Beside it, a side panel has the template's name, its summary, "How it works" with its
   description (`Apiary.Processes.type_texts/1`, a blank line between paragraphs),
   "Stages" with one line on where they change after, with the feature `factory` the
-  harness line, "Harness: Qory harness, stack software" (the copied template's `stack`),
+  harness line, "Harness: Qory harness, stack software" (the template's `stack`),
   and **Create workspace**. Without `workflow_model` there is no canvas: "How it works"
   takes the main area, and the side panel has the name, the summary, the harness line
   where there is one and Create workspace.
@@ -42,7 +42,7 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
   use ApiaryWeb, :live_view
 
   alias Apiary.{Access, Features, Organisations, Processes}
-  alias Apiary.Harnesses.QoryCopy
+  alias Apiary.Harnesses.Qory
   alias Apiary.Processes.TypeTemplates
   alias Apiary.Stacks.Sources
   alias ApiaryWeb.{SetUpComponents, SettingsComponents}
@@ -83,11 +83,16 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
     )
   end
 
-  # The harness line of the Qory template, with the feature `factory`; without it the page
-  # has no harness line.
+  # The harness line of the Qory template, at the commit of `main` as last read, with the
+  # feature `factory`; without it, or before the Qory harness is first read, the page has
+  # no harness line.
   defp qory_harness_line(scope) do
-    if Features.visible?(scope, :factory),
-      do: gettext("Harness: Qory harness, stack %{stack}", stack: QoryCopy.template().stack)
+    with true <- Features.visible?(scope, :factory),
+         %{stack: stack} <- Qory.template(Qory.current()) do
+      gettext("Harness: Qory harness, stack %{stack}", stack: stack)
+    else
+      _none -> nil
+    end
   end
 
   # The page of a template of a place that New workspace lists, read once the socket is
@@ -291,8 +296,8 @@ defmodule ApiaryWeb.WorkspaceTypeLive do
               </h2>
               <p class="text-[13px]/5 text-muted">
                 {gettext(
-                  "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › %{stages}.",
-                  stages: SettingsComponents.stages_label()
+                  "The workspace starts with the stages shown. After you create it, owners and admins can change them in Workspace settings › %{workflows}.",
+                  workflows: SettingsComponents.workflows_label()
                 )}
               </p>
             </section>

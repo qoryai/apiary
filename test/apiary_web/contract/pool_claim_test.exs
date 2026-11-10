@@ -13,6 +13,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
   import Apiary.DispatchedRunsFixtures, only: [gateway_for!: 2]
+  import Apiary.MachineTypesFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -221,7 +222,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert signed_answer?(conn)
       assert Repo.get!(DispatchRun, run.id).state == :waiting
       assert dispatches() == 0
-      assert Repo.aggregate(Run, :count) == 0
+      assert Repo.aggregate(Apiary.RunEventsFixtures.registered_runs(), :count) == 0
     end
 
     test "without pool_id covers the key's pool; with an empty queue and no wait it is 204, signed",
@@ -237,6 +238,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
   end
 
   describe "a claim of a prebuild or of a run without a target" do
+    @tag needs: [:factory, :registry]
     test "takes a prebuild held for its pool, answered 200, signed, its machine living 90 minutes",
          ctx do
       collection = collection_fixture(ctx.scope, target_path: "acme/shop")
@@ -301,6 +303,191 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert {conn.status, conn.resp_body} == {204, ""}
       assert Repo.get!(DispatchRun, run.id).state == :waiting
       assert dispatches() == 0
+    end
+  end
+
+  describe "machine types" do
+    # A run of `work_item` queued, then set to the type `name` with `spec`, nil for a run
+    # queued before machine types, as a type that was not the default when it was queued.
+    defp typed!(work_item, name, spec) do
+      run = queue!(work_item)
+
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+        set: [machine_type: name, machine_spec: spec, machine_type_was_default: false]
+      )
+
+      run
+    end
+
+    defp offers(ctx), do: Repo.get!(Node, ctx.pool.id).offers
+
+    test "a claim without offers takes a run of the default type, with the answer as before, and leaves a run of another type waiting",
+         ctx do
+      large = typed!(work_item_fixture(ctx.scope), "large", spec())
+      standard = queued!(ctx.scope)
+      assert standard.machine_type == "standard"
+
+      conn = claim(ctx, body())
+      assert conn.status == 200
+      assert claimed_run_id(conn) == standard.run_id
+
+      assert members(conn.resp_body) ==
+               @fixtures
+               |> Path.join("claim-answer/default-machine.json")
+               |> File.read!()
+               |> members()
+
+      dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^standard.id)
+      assert {dispatch.machine_type, dispatch.machine_spec} == {nil, nil}
+      assert offers(ctx) == nil
+
+      conn = claim(ctx, body(%{}, 1))
+      assert {conn.status, conn.resp_body} == {204, ""}
+      assert Repo.get!(DispatchRun, large.id).state == :waiting
+    end
+
+    test "a claim without offers takes a run with no spec, one queued on the old default, and one of the new default",
+         ctx do
+      before = typed!(work_item_fixture(ctx.scope), nil, nil)
+      standard = queued!(ctx.scope)
+      assert {standard.machine_type, standard.machine_type_was_default} == {"standard", true}
+      large = machine_type_fixture(key: "large")
+      # Queued on large while standard is the default; taken as the default once large is.
+      on_large = typed!(work_item_fixture(ctx.scope), "large", spec())
+      make_default!(large)
+
+      conn = claim(ctx, body())
+      assert claimed_run_id(conn) == before.run_id
+      refute Map.has_key?(Jason.decode!(conn.resp_body), "machine")
+
+      conn = claim(ctx, body(%{}, 1))
+      assert conn.status == 200
+      assert claimed_run_id(conn) == standard.run_id
+      answer = Jason.decode!(conn.resp_body)
+      refute Map.has_key?(answer, "machine")
+      refute Map.has_key?(answer, "machine_spec")
+      dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^standard.id)
+      assert {dispatch.machine_type, dispatch.machine_spec} == {nil, nil}
+
+      conn = claim(ctx, body(%{}, 2))
+      assert conn.status == 200
+      assert claimed_run_id(conn) == on_large.run_id
+      refute Map.has_key?(Jason.decode!(conn.resp_body), "machine")
+
+      conn = claim(ctx, body(%{}, 3))
+      assert {conn.status, conn.resp_body} == {204, ""}
+    end
+
+    test "a run queued on the default type, and only such a run, has machine_type_was_default",
+         ctx do
+      make_default!(machine_type_fixture(key: "large"))
+      assert %{machine_type: "large", machine_type_was_default: true} = queued!(ctx.scope)
+
+      assert Apiary.MachineTypes.queued_on("standard") ==
+               %{
+                 machine_type: "standard",
+                 machine_spec: spec(%{vcpus: 2, memory_mib: 4096, disk_gib: 30}),
+                 machine_type_was_default: false
+               }
+    end
+
+    test "a claim with offers takes the oldest run one of them fits, and the answer has its type and spec",
+         ctx do
+      huge = typed!(work_item_fixture(ctx.scope), "huge", spec(%{vcpus: 64}))
+      large = typed!(work_item_fixture(ctx.scope), "large", spec())
+
+      offered = [
+        spec(%{vcpus: 2, memory_mib: 4096, disk_gib: 30}),
+        spec(%{vcpus: 8, memory_mib: 32_768, disk_gib: 100})
+      ]
+
+      conn = claim(ctx, body(%{"offers" => offered}))
+      assert conn.status == 200
+      assert signed_answer?(conn)
+      assert claimed_run_id(conn) == large.run_id
+
+      answer = Jason.decode!(conn.resp_body)
+      assert {:ok, _} = JSV.validate(answer, validator("claim-answer"))
+      assert {answer["machine"], answer["machine_spec"]} == {"large", spec()}
+
+      assert members(conn.resp_body) ==
+               @fixtures |> Path.join("claim-answer/machine.json") |> File.read!() |> members()
+
+      {"machine_spec", spec_object} =
+        conn.resp_body
+        |> Jason.decode!(objects: :ordered_objects)
+        |> Map.get(:values)
+        |> List.keyfind("machine_spec", 0)
+
+      assert keys(spec_object.values) == ~w(vcpus memory_mib disk_gib arch virtualization)
+
+      dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^large.id)
+      assert {dispatch.machine_type, dispatch.machine_spec} == {"large", spec()}
+      assert offers(ctx) == offered
+
+      conn = claim(ctx, body(%{"offers" => offered}, 1))
+      assert {conn.status, conn.resp_body} == {204, ""}
+      assert Repo.get!(DispatchRun, huge.id).state == :waiting
+    end
+
+    test "a pool with offers takes a run queued before machine types by the default type's spec",
+         ctx do
+      run = typed!(work_item_fixture(ctx.scope), nil, nil)
+      arm = [spec(%{vcpus: 2, memory_mib: 4096, disk_gib: 30, arch: "arm64"})]
+      amd = [spec(%{vcpus: 2, memory_mib: 4096, disk_gib: 30})]
+
+      conn = claim(ctx, body(%{"offers" => arm}))
+      assert {conn.status, conn.resp_body} == {204, ""}
+      assert offers(ctx) == arm
+
+      conn = claim(ctx, body(%{"offers" => amd}, 1))
+      assert claimed_run_id(conn) == run.run_id
+      answer = Jason.decode!(conn.resp_body)
+      assert {answer["machine"], answer["machine_spec"]} == {"standard", hd(amd)}
+      assert offers(ctx) == amd
+    end
+
+    test "a run of a type that needs virtualization fits only an offer with it", ctx do
+      run = typed!(work_item_fixture(ctx.scope), "vm", spec(%{virtualization: true}))
+
+      conn = claim(ctx, body(%{"offers" => [spec(%{vcpus: 64})]}))
+      assert {conn.status, conn.resp_body} == {204, ""}
+
+      conn = claim(ctx, body(%{"offers" => [spec(%{virtualization: true})]}, 1))
+      assert claimed_run_id(conn) == run.run_id
+    end
+
+    test "a claim without offers after one with offers clears the pool's offers", ctx do
+      conn = claim(ctx, body(%{"offers" => [spec()]}))
+      assert conn.status == 204
+      assert offers(ctx) == [spec()]
+
+      conn = claim(ctx, body(%{}, 1))
+      assert conn.status == 204
+      assert offers(ctx) == nil
+    end
+
+    test "offers the contract refuses are 400 invalid_request, and the pool keeps none", ctx do
+      queued!(ctx.scope)
+
+      for {offered, offset} <- [
+            {[], 0},
+            {[spec(%{arch: "riscv64"})], 1},
+            {List.duplicate(spec(), 65), 2}
+          ] do
+        conn = claim(ctx, body(%{"offers" => offered}, offset))
+        assert json_response(conn, 400) == %{"error" => "invalid_request"}
+      end
+
+      assert offers(ctx) == nil
+      assert dispatches() == 0
+    end
+
+    test "a prebuild is queued on the default type", ctx do
+      run = prebuild!(collection_fixture(ctx.scope), ctx.pool)
+
+      assert {run.machine_type, run.machine_spec["vcpus"], run.machine_type_was_default} ==
+               {"standard", 2, true}
     end
   end
 
@@ -435,8 +622,16 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
         Task.async(fn ->
           Process.sleep(200)
 
+          # The dispatch ends with no machine, which frees its slot.
           {:ok, true} =
-            Repo.transact(fn -> {:ok, Slots.free_slot(held, Dispatches.now())} end)
+            Repo.transact(fn ->
+              {1, _rows} =
+                Repo.update_all(from(d in Dispatch, where: d.id == ^held.id),
+                  set: [ended_at: Dispatches.now(), end_cause: :closed]
+                )
+
+              {:ok, Slots.free_slot(held, Dispatches.now())}
+            end)
 
           Dispatches.broadcast([pool.workspace_id])
         end)

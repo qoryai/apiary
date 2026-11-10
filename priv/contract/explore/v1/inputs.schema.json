@@ -14,6 +14,23 @@
     "comments_omitted",
     "domain"
   ],
+  "if": {
+    "not": {
+      "required": [
+        "ticket"
+      ]
+    }
+  },
+  "then": {
+    "properties": {
+      "comments": {
+        "maxItems": 0
+      },
+      "comments_omitted": {
+        "const": 0
+      }
+    }
+  },
   "properties": {
     "version": {
       "description": "The version of the step's input. The job refuses a version it does not read.",
@@ -45,7 +62,7 @@
       }
     },
     "run": {
-      "description": "Which run of the current take in this is.",
+      "description": "The run's place within the current take in of the work item, as attempt counts it.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -129,7 +146,7 @@
       }
     },
     "comments": {
-      "description": "The comments on the item at the source, oldest first: empty when ticket is absent. The array has no maxItems: the bound on the object's size bounds it, and when the whole object would be larger than that bound, the control plane keeps the newest comments and counts the ones it dropped in comments_omitted.",
+      "description": "The comments on the item at the source, oldest first: empty when ticket is absent. With ticket, the array has no maxItems: the bound on the object's size bounds it, and when the whole object would be larger than that bound, the control plane keeps the newest comments and counts the ones it dropped in comments_omitted.",
       "type": "array",
       "items": {
         "type": "object",
@@ -156,7 +173,7 @@
       }
     },
     "comments_omitted": {
-      "description": "How many of the oldest comments the control plane dropped to keep the object within its bound, from 0: 0 when it dropped none.",
+      "description": "How many of the oldest comments the control plane dropped to keep the object within its bound, from 0: 0 when it dropped none, and 0 when ticket is absent.",
       "type": "integer",
       "minimum": 0
     },

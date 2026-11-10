@@ -196,8 +196,12 @@ defmodule Apiary.Dispatches.MachineLogsTest do
       assert {failed.dispatch_id, failed.dispatch_run_id} == {dispatch.id, queued.id}
       assert %DispatchRun{state: :ended, end_cause: :lost} = Repo.get!(DispatchRun, queued.id)
       assert %Dispatch{end_cause: :lost, ended_at: %DateTime{}} = Repo.get!(Dispatch, dispatch.id)
-      assert Apiary.Dispatches.Slots.held(ctx.pool.id) == 0
       assert_received {:run_changed, %Run{id: id, state: "failed"}} when id == registered.id
+
+      # Its machine was made: the slot is held until the machine is gone.
+      assert Apiary.Dispatches.Slots.held(ctx.pool.id) == 1
+      :ok = Dispatches.report_machine_end(ctx.key, dispatch.public_id, %{state: :gone})
+      assert Apiary.Dispatches.Slots.held(ctx.pool.id) == 0
 
       # The lost-run check at the code's expiry changes nothing more.
       Apiary.Runs.Liveness.check(DateTime.add(DateTime.utc_now(), 1000, :second))
@@ -236,6 +240,7 @@ defmodule Apiary.Dispatches.MachineLogsTest do
                Repo.one!(from r in Run, where: r.dispatch_id == ^dispatch.id)
     end
 
+    @tag needs: [:factory, :registry]
     test "of a prebuild records its build lost, as the code's expiry would", ctx do
       %{dispatch: dispatch, run: run, collection: collection} =
         prebuild_handed_over!(ctx.scope, ctx.key)

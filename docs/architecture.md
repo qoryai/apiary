@@ -430,8 +430,9 @@ an organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), and nothi
 answers it: in the core, nothing is hidden. The answer does not depend on the workspace.
 An edition's features are listed after the core's (`c:Apiary.Edition.features/0`), and
 `Apiary.Features.built/0` names the ones a page of an edition may show or hide for an
-organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) is on only
-where `QORY_FEATURES` lists it by name, and is never one of those. A feature may have
+organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) is on
+where `QORY_FEATURES` lists it by name, and is never one of those. The core's opt-in
+feature, `registry`, is also on with `all` where `QORY_REGISTRY` is set. A feature may have
 **parts** (`Apiary.Features.parts/0`), which an edition may hide apart from the rest of the
 feature, and which are never on or off apart from it: the core's one part of a feature is
 the run's Terminal, `observability.terminal`, the run's log, which `run.read_log` belongs

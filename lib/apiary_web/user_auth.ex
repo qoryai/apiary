@@ -404,24 +404,24 @@ defmodule ApiaryWeb.UserAuth do
       else: []
   end
 
-  # The word beside Policy: the workspace's default mode, once the workspace has a policy
-  # of Qory's, and the modes of the targets that set their own. One read. Where the
-  # `security` feature is off, or hidden from the reader, there is no Policy entry to put it
-  # beside: nothing is read, and the counts carry no mode at all.
+  # The word beside Policy: the workspace's default mode, and the modes of the targets that
+  # set one; none for a workspace with no policy version yet. One read. Where the `security`
+  # feature is off, or hidden from the reader, there is no Policy entry to put it beside:
+  # nothing is read, and the counts carry no mode at all.
   defp policy_mode(%Scope{workspace: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
     if Apiary.Access.can?(scope, :"security_policy.read", scope.workspace) do
       case Apiary.Policy.mode_summary(scope) do
+        %{managed?: false} ->
+          %{mode: nil, own_modes: []}
+
         # Under a required mode every target enforces: the word is enforce, none its own.
-        %{managed?: true, floor: true} ->
+        %{floor: true} ->
           %{mode: "enforce", own_modes: []}
 
-        %{managed?: true, mode: mode, own_modes: own_modes} ->
+        %{mode: mode, own_modes: own_modes} ->
           %{mode: mode, own_modes: own_modes}
-
-        _unmanaged ->
-          %{mode: nil, own_modes: []}
       end
     else
       %{}

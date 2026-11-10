@@ -10,6 +10,11 @@ defmodule Apiary.Dispatches do
   #
   # ## Queueing: `queue/2`, `queue_next/3`, `cancel_for_undo/1` and `cancel_for_close/2`
   #
+  # Every run written to the queue, a prebuild included, is written with its run record,
+  # in the same transaction, as its last step: `pending`, with no machine, its `rn_` id
+  # and the next number of its workspace (`Apiary.Dispatches.Queued`). A run of the queue
+  # that ends before its handover ends its record too, which keeps its number.
+  #
   # `queue(work_item, take_in)` writes, inside the caller's transaction, the first run of a
   # take in of `work_item`: waiting, `attempt` 1 of `of/0`, for the step `step/0`, in the
   # workspace the work item is in as the transaction reads it, its row locked
@@ -79,14 +84,16 @@ defmodule Apiary.Dispatches do
   # cause `run_ended`; a claimed run's live dispatch, neither stale nor handed over, ends
   # with it, end cause `closed`: a dispatch that ended, which the provisioner contract
   # answers `410 gone`. The slot each ended dispatch held is freed once
-  # (`Apiary.Dispatches.Slots.free/2`), and a claimed run's registered run is deleted
-  # with its run code (`Apiary.Dispatches.Handover.drop/1`). A handed-over run is left as
-  # it is: it goes on to its end, and its exit and its result are taken as before.
+  # (`Apiary.Dispatches.Slots.free/2`), and the run record of each ends cancelled, end
+  # reason `closed`, a claimed run's run code with it (`Apiary.Dispatches.Queued`). A
+  # handed-over run is left as it is: it goes on to its end, and its exit and its result
+  # are taken as before.
   #
-  # ## Claiming: `claim/3`
+  # ## Claiming: `claim/4`
   #
-  # `claim(access_key, now, body)` is one try at a claim by the node pool of `access_key`,
-  # for the claim's raw `body`, in one transaction:
+  # `claim(access_key, now, body, offers)` is one try at a claim by the node pool of
+  # `access_key`, for the claim's raw `body` and its `offers`, the machines the pool can
+  # start (nil for none), in one transaction:
   #
   #   1. the key read again as a request's verification reads it
   #      (`Apiary.AccessKeys.fetch_for_verification/1`): revoked, of a pool deleted, or of a
@@ -104,7 +111,9 @@ defmodule Apiary.Dispatches do
   #      row locked `FOR NO KEY UPDATE`, so two claims of one pool, and a claim and a
   #      registration on the pool (`Apiary.Nodes.check_instance_limit/3`, which locks it
   #      `FOR UPDATE`), take turns, while a prebuild's writes, whose foreign keys to the
-  #      pool take `FOR KEY SHARE`, never wait on it (`Apiary.Dispatches.Slots`);
+  #      pool take `FOR KEY SHARE`, never wait on it (`Apiary.Dispatches.Slots`); then
+  #      the claim's offers kept as the pool's (`nodes.offers`), written only when they
+  #      differ;
   #   4. the gateway the pool's choice resolves to now (`Apiary.Gateways.resolve/1`),
   #      read `FOR SHARE`, with its active keys: a choice that leads to no gateway,
   #      direct among them, is `{:error, :no_gateway}`
@@ -119,15 +128,22 @@ defmodule Apiary.Dispatches do
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
   #      take, or, for the instance's pool, of any workspace with no pool in use: no pool
   #      that is not deleted, enrolled or not, in a workspace and an organisation in use
-  #      (`waiting_query/1`); locked `FOR UPDATE SKIP LOCKED`, so two claims never take one run and
-  #      neither waits on the other; none is `{:ok, :none}`. A prebuild is taken only by
+  #      (`waiting_query/2`); locked `FOR UPDATE SKIP LOCKED`, so two claims never take
+  #      one run and neither waits on the other; none is `{:ok, :none}`. The run's
+  #      machine type has to fit the pool (`fit/2`): with offers, one of them fits the
+  #      type's spec (`Apiary.MachineTypes.fits?/2`), the default type's for a run queued
+  #      before machine types; without offers, the run is of the default type, was
+  #      queued on the type that was the default then, or was queued before machine
+  #      types. A prebuild is taken only by
   #      the pool it is held for, and only on an instance with a registry
   #      (`Apiary.Registry.configured?/0`). A run held for the pool's build of its target
   #      is not taken (`Apiary.Environments.held/1`), nor one that a key change or a
   #      cleared image held again after that read (`Apiary.Environments.claim_image/2`): it
   #      waits, and so does a run whose harness walk is pending
-  #      (`Apiary.Harnesses.WalkJob`). An explore run is given the image its target's build made for the pool,
-  #      nil for the pool's default. A run whose work item has no target is taken as any
+  #      (`Apiary.Harnesses.WalkJob`), whose harness the claim reads again later
+  #      (`Apiary.Dispatches.HarnessReads`), or of which it is not known yet whether it
+  #      is a run of Explore (`Apiary.Stages.known_explore/1`). An explore run is given
+  #      the image its target's build made for the pool, nil for the pool's default. A run whose work item has no target is taken as any
   #      other. A run whose work item is no longer live (closed, undone, its
   #      connection ended, or gone) or no longer in the run's workspace is not handed
   #      out: it ends, `undone` for a work item undone and `closed` otherwise; nor is a
@@ -137,8 +153,9 @@ defmodule Apiary.Dispatches do
   #      longer has: it ends, `superseded`. A stale dispatch of a run ended so ends with
   #      it (`run_ended`), and the next is taken, up to 100 per claim;
   #   7. the run claimed and its dispatch written: its pool, its access key, its
-  #      organisation and its workspace from the run, `claimed_at` `now` and
-  #      `lease_until` `now` in whole seconds plus `lease_seconds/0`;
+  #      organisation and its workspace from the run, `claimed_at` `now`, `lease_until`
+  #      `now` in whole seconds plus `lease_seconds/0`, and, for a pool with offers, the
+  #      machine type and spec of the claim answer (`machine/3`);
   #   8. the run registered through that gateway, with a run code bound to it
   #      (`Apiary.Dispatches.Handover.register/2`). A run the claim cannot form ends, with
   #      its dispatch, and the next is taken, within the same 100; a run that cannot be
@@ -228,11 +245,12 @@ defmodule Apiary.Dispatches do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Environments, Nodes, PublicId, Repo}
+  alias Apiary.{Access, AccessKeys, Environments, MachineTypes, Nodes, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, MachineEnds, MachineLogs, Release}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, HarnessReads, MachineEnds}
+  alias Apiary.Dispatches.{MachineLogs, Queued, Release}
   alias Apiary.Dispatches.{RunEnd, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Environments.Record
@@ -421,7 +439,9 @@ defmodule Apiary.Dispatches do
   # step `step/0`, in the work item's organisation and workspace, with `image_requeue`,
   # and its harness walk (`Apiary.Harnesses.WalkJob.queue/2`); the workspace is told.
   # `stage` is the run's place in the work item's process, empty for a run the stage
-  # runner did not start.
+  # runner did not start. The run is queued on the machine type of its place, or on the
+  # default type, with that type's spec (`machine_type/1`); a run requeued for its image
+  # keeps the type and spec of the run before it.
   defp insert_run(work_item, take_in, attempt, of, image_requeue \\ false, stage \\ %{}) do
     %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
@@ -432,6 +452,8 @@ defmodule Apiary.Dispatches do
         image_requeue: image_requeue
       }
       |> struct!(stage)
+      |> struct!(machine_type(stage))
+      |> explore_at_queue()
       |> DispatchRun.queue_changeset(%{
         work_item_id: id,
         step: @step,
@@ -444,10 +466,25 @@ defmodule Apiary.Dispatches do
 
     with {:ok, run} <- result,
          {:ok, _walk} <- WalkJob.queue(run, harness_place(work_item)) do
+      Queued.insert!(run)
       broadcast([workspace_id])
       {:ok, run}
     end
   end
+
+  # The machine type and spec a run is queued on, and whether the type is the default:
+  # those `stage` has, for a run requeued with the place of the run before it, else those
+  # of the type named in its `machine_type`, or of the default type for none
+  # (`Apiary.MachineTypes.queued_on/1`).
+  defp machine_type(%{machine_spec: %{}} = stage),
+    do: Map.take(stage, [:machine_type, :machine_spec, :machine_type_was_default])
+
+  defp machine_type(stage), do: MachineTypes.queued_on(stage[:machine_type])
+
+  # `run` with whether it is a run of Explore, as known when it is queued
+  # (`Apiary.Stages.explore_at_queue/3`).
+  defp explore_at_queue(%DispatchRun{workspace_id: workspace_id, workflow: workflow} = run),
+    do: %{run | explore: Apiary.Stages.explore_at_queue(@step, workflow, workspace_id)}
 
   # What the run's harness walk is for: `:test` for a test work item, `test` set and no
   # connection, as the database holds them together (`work_items_test_check`), which gets
@@ -524,6 +561,7 @@ defmodule Apiary.Dispatches do
 
     result =
       %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}
+      |> struct!(machine_type(%{}))
       |> DispatchRun.prebuild_changeset(%{
         source_collection_id: collection_id,
         pool_id: pool_id,
@@ -536,7 +574,14 @@ defmodule Apiary.Dispatches do
         returning: true
       )
 
-    with {:ok, _run} <- result, do: broadcast([workspace_id])
+    # A prebuild that repeats one already waiting is that run: only a new one is written
+    # with its run record, and so takes a number. The upsert keeps the waiting run's
+    # `queued_at`, so a run whose `queued_at` is this call's is new.
+    with {:ok, run} <- result do
+      if DateTime.compare(run.queued_at, now) == :eq, do: Queued.insert!(run)
+      broadcast([workspace_id])
+    end
+
     result
   end
 
@@ -548,7 +593,7 @@ defmodule Apiary.Dispatches do
   # (`Apiary.Environments.build_failed/6`): the workspace and the work items to tell. A
   # run a claim took is no longer waiting and is left as it is, and so is a run whose
   # target's run configuration names an image (`Apiary.Environments.unset_by_policy/1`),
-  # as no build holds it.
+  # or whose machine type has one (`Apiary.MachineTypes.no_image/1`), as no build holds it.
   @doc false
   @spec end_held(
           [Ecto.UUID.t()],
@@ -565,6 +610,7 @@ defmodule Apiary.Dispatches do
     {_count, ended} =
       Repo.update_all(
         from(r in DispatchRun,
+          as: :run,
           join: w in WorkItem,
           as: :work_item,
           on: w.id == r.work_item_id,
@@ -572,6 +618,7 @@ defmodule Apiary.Dispatches do
           where: r.step != ^@prebuild and fragment("? = 'waiting'", r.state),
           where: w.target_system == ^system and w.target_path == ^path,
           where: ^Environments.unset_by_policy(workspace_id),
+          where: ^MachineTypes.no_image(:run),
           select: {r.id, r.work_item_id}
         ),
         set: [state: :ended, end_cause: :build_failed, result_outcome: :error, updated_at: now]
@@ -587,6 +634,8 @@ defmodule Apiary.Dispatches do
         ),
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
+
+    _ended = Queued.ended(run_ids, now)
 
     told =
       case ended_work_items do
@@ -672,7 +721,9 @@ defmodule Apiary.Dispatches do
       :stage_entry,
       :loop_entry,
       :workflow,
-      :machine_type
+      :machine_type,
+      :machine_spec,
+      :machine_type_was_default
     ])
   end
 
@@ -752,6 +803,7 @@ defmodule Apiary.Dispatches do
           set: [ended_at: now, end_cause: :run_ended, updated_at: now]
         )
 
+      _ended = Queued.ended(waiting, now)
       broadcast(freed)
       :ok
     end
@@ -810,8 +862,9 @@ defmodule Apiary.Dispatches do
             set: [ended_at: now, end_cause: :closed, updated_at: now]
           )
 
-        # A claimed run's registered run goes with its run code (`Handover.drop/1`).
-        _dropped = Handover.drop(run_ids)
+        # The run record of each run ends cancelled, `closed`, and keeps its number; a
+        # claimed run's run code redeems no more (`Apiary.Dispatches.Queued`).
+        _ended = Queued.ended(run_ids, now)
         freed = Slots.free({:runs, run_ids}, now)
         {:ok, Enum.uniq(workspace_ids ++ lapsed ++ freed)}
     end
@@ -819,26 +872,52 @@ defmodule Apiary.Dispatches do
 
   ## Claiming
 
-  # claim/3 is one try at a claim by the node pool of `access_key` at `now`, for the
-  # claim's raw `body` (the moduledoc): `{:ok, claimed}`, `{:ok, :none}` when the pool can
-  # claim nothing now, or `{:error, :unauthorized | :forbidden | :no_gateway |
-  # :unavailable}`, after which nothing is written.
+  # claim/4 is one try at a claim by the node pool of `access_key` at `now`, for the
+  # claim's raw `body` and its `offers`, nil for none (the moduledoc): `{:ok, claimed}`,
+  # `{:ok, :none}` when the pool can claim nothing now, or `{:error, :unauthorized |
+  # :forbidden | :no_gateway | :unavailable}`, after which nothing is written.
+  #
+  # The pool keeps the claim's offers (`nodes.offers`) once the pool is locked, written
+  # only when they differ from the ones it has. A pool with offers takes only a run whose
+  # machine type one of them fits, and the claim answer has the type's key and spec; a
+  # pool with none takes only a run of the default type, or queued on the type that was
+  # the default then, and the answer has neither (`fit/2`). A run queued before machine
+  # types, with no spec, is of the default type.
   @doc false
-  @spec claim(AccessKey.t(), DateTime.t(), binary) ::
+  @spec claim(AccessKey.t(), DateTime.t(), binary, [MachineTypes.spec()] | nil) ::
           {:ok, claimed | :none}
           | {:error, :unauthorized | :forbidden | :no_gateway | :unavailable}
-  def claim(%AccessKey{key_id: key_id}, %DateTime{} = now, body \\ "")
-      when is_binary(key_id) and is_binary(body) do
+  def claim(%AccessKey{key_id: key_id}, %DateTime{} = now, body \\ "", offers \\ nil)
+      when is_binary(key_id) and is_binary(body) and (is_list(offers) or is_nil(offers)) do
+    # The reads of the harnesses of the runs the claim may take, made before it locks
+    # anything (`Apiary.Dispatches.HarnessReads`), and only while the pool, read without a
+    # lock, is below its limit: a claim at the limit takes no run, and reads nothing. The
+    # runs are those whose machine type fits the claim's offers (`fit/2`), as at the pick.
+    reads =
+      with {:ok, key} <- current_key(key_id),
+           %Node{} = pool <-
+             Repo.one(
+               from n in Node,
+                 where: n.id == ^key.node_id and n.kind == :pool and is_nil(n.deleted_at)
+             ),
+           :ok <- below_limit(pool, now) do
+        fit = fit(%{pool | offers: offers}, MachineTypes.default_type())
+        HarnessReads.prefetch(waiting_query(key, fit), @max_ended, now)
+      else
+        _no_read -> %{}
+      end
+
     result =
       Repo.transact(fn ->
         with {:ok, key} <- current_key(key_id),
              :ok <- may_claim(key),
              builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
              {:ok, pool} <- lock_pool(key),
+             pool = keep_offers(pool, offers),
              {:ok, gateway, keys} <- Handover.gateway(pool) do
           freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
           queued = Environments.queue_builds(builds, pool)
-          through = %{gateway: gateway, keys: keys, body: body}
+          through = %{gateway: gateway, keys: keys, body: body, reads: reads}
 
           case take(key, pool, through, now) do
             {:error, :unavailable} = error -> error
@@ -855,7 +934,14 @@ defmodule Apiary.Dispatches do
         # text of why a run stopped reads (`Apiary.Stages.claim_ended/2`).
         {staged, freed} = Enum.split_with(freed, &match?({:stage_run, _id}, &1))
         ids = Enum.map(staged, &elem(&1, 1))
-        broadcast(freed ++ Apiary.Stages.claim_ended(ids, Map.take(through, [:gateway, :keys])))
+        # A run taken leaves the workspace's queue: why its other queued runs wait may change
+        # (`Apiary.Runs.Waiting`).
+        broadcast(
+          freed ++
+            taken_in(taken) ++
+            Apiary.Stages.claim_ended(ids, Map.take(through, [:gateway, :keys]))
+        )
+
         Handover.broadcast_run({:ok, %{run: registered(taken)}})
         {:ok, taken}
 
@@ -870,6 +956,9 @@ defmodule Apiary.Dispatches do
 
   defp registered(%{registered: run}), do: run
   defp registered(:none), do: nil
+
+  defp taken_in(%{run: %DispatchRun{workspace_id: workspace_id}}), do: [workspace_id]
+  defp taken_in(:none), do: []
 
   defp queued_in([]), do: []
   defp queued_in([%DispatchRun{workspace_id: workspace_id} | _rest]), do: [workspace_id]
@@ -917,6 +1006,13 @@ defmodule Apiary.Dispatches do
     end
   end
 
+  defp keep_offers(%Node{offers: offers} = pool, offers), do: pool
+
+  defp keep_offers(%Node{id: id} = pool, offers) do
+    {1, _rows} = Repo.update_all(from(n in Node, where: n.id == ^id), set: [offers: offers])
+    %{pool | offers: offers}
+  end
+
   defp lock_pool(%AccessKey{node_id: pool_id} = key) do
     pool =
       Repo.one(
@@ -939,10 +1035,11 @@ defmodule Apiary.Dispatches do
 
   # The oldest waiting run the pool may take, claimed and registered through the gateway
   # `through` has, with the workspaces whose queue it ended runs of; `:none` at the limit
-  # or with none to take; `{:error, :unavailable}` when a run could not be registered.
+  # or with none to take; `{:error, :unavailable}` when a run could not be registered. The
+  # default type is read once per claim, and every run the claim looks at fits against it.
   defp take(key, pool, through, now) do
     case below_limit(pool, now) do
-      :ok -> pick(key, pool, through, now, @max_ended, [])
+      :ok -> pick(key, pool, through, now, MachineTypes.default_type(), @max_ended, [], [])
       :at_limit -> {:none, []}
     end
   end
@@ -950,56 +1047,86 @@ defmodule Apiary.Dispatches do
   # A waiting run whose work item, or a prebuild whose collection, can no longer be
   # handed out is ended, with any stale dispatch of it (`run_ended`), and the next one
   # looked at; so is a run claimed that the claim cannot form
-  # (`Apiary.Dispatches.Handover.register/2`): `max` at most per claim.
-  defp pick(_key, _pool, _through, _now, 0, ended), do: {:none, ended}
+  # (`Apiary.Dispatches.Handover.register/2`): `max` at most per claim. A run whose
+  # harness the claim reads again later (`Apiary.Dispatches.HarnessReads.at_claim/3`),
+  # or of which it is not known yet whether it is a run of Explore
+  # (`Apiary.Stages.known_explore/1`), or whose machine type a change or a delete holds
+  # (`for_run/2`), stays waiting, and the claim passes it (`skipped`).
+  defp pick(_key, _pool, _through, _now, _default, 0, ended, _skipped), do: {:none, ended}
 
-  defp pick(key, pool, through, now, max, ended) do
-    case key |> waiting_query() |> Repo.one() do
+  defp pick(key, pool, through, now, default, max, ended, skipped) do
+    case Repo.one(from r in waiting_query(key, fit(pool, default)), where: r.id not in ^skipped) do
       nil ->
         {:none, ended}
 
       %DispatchRun{} = run ->
-        case for_run(run, pool) do
-          :held ->
-            pick(key, pool, through, now, max - 1, ended)
-
-          {:ok, for} ->
-            claimed = claim_run(key, pool, run, for, now)
-
-            case Handover.register(Map.merge(claimed, Map.put(through, :key, key)), now) do
-              {:ok, registered} ->
-                {Map.merge(claimed, %{
-                   registered: registered.run,
-                   run_code: registered.run_code,
-                   gateway_url: registered.gateway_url,
-                   documents: registered.documents
-                 }), ended}
-
-              {:ended, changed} ->
-                pick(key, pool, through, now, max - 1, staged(run) ++ changed ++ ended)
-
-              {:error, :unavailable} = error ->
-                error
-            end
-
-          {:end, cause} ->
-            {1, _rows} =
-              Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
-                set: [state: :ended, end_cause: cause, updated_at: now]
-              )
-
-            # A stale dispatch of the run ends with it; the lapse freed its slot already.
-            {_count, _rows} =
-              Repo.update_all(
-                from(d in Dispatch,
-                  where: d.dispatch_run_id == ^run.id,
-                  where: not is_nil(d.stale_at) and is_nil(d.ended_at)
-                ),
-                set: [ended_at: now, end_cause: :run_ended, updated_at: now]
-              )
-
-            pick(key, pool, through, now, max - 1, [run.workspace_id | staged(run) ++ ended])
+        case Apiary.Stages.known_explore(run) do
+          nil -> pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
+          run -> pick_run(key, pool, through, now, {run, default, max, ended, skipped})
         end
+    end
+  end
+
+  defp pick_run(key, pool, through, now, {run, default, max, ended, skipped}) do
+    case for_run(run, pool) do
+      :held ->
+        pick(key, pool, through, now, default, max - 1, ended, skipped)
+
+      :skip ->
+        pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
+
+      {:ok, for} ->
+        case HarnessReads.at_claim(run, through.reads, now) do
+          :wait ->
+            pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
+
+          read ->
+            register(key, pool, through, now, {run, for, read, default}, {max, ended, skipped})
+        end
+
+      {:end, cause} ->
+        {1, _rows} =
+          Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+            set: [state: :ended, end_cause: cause, updated_at: now]
+          )
+
+        # A stale dispatch of the run ends with it; the lapse freed its slot already.
+        {_count, _rows} =
+          Repo.update_all(
+            from(d in Dispatch,
+              where: d.dispatch_run_id == ^run.id,
+              where: not is_nil(d.stale_at) and is_nil(d.ended_at)
+            ),
+            set: [ended_at: now, end_cause: :run_ended, updated_at: now]
+          )
+
+        _ended = Queued.ended([run.id], now)
+        ended = [run.workspace_id | staged(run) ++ ended]
+        pick(key, pool, through, now, default, max - 1, ended, skipped)
+    end
+  end
+
+  # The run `run` claimed for `for` with the machine type and spec of the claim answer
+  # (`machine/3`, for the default type `default`), and registered with the harness `read`,
+  # or, where it cannot be formed, ended and the next one looked at.
+  defp register(key, pool, through, now, {run, for, read, default}, {max, ended, skipped}) do
+    claimed = claim_run(key, pool, run, for, now, machine(pool, run, default))
+    registering = through |> Map.put(:key, key) |> Map.put(:harness_read, read)
+
+    case Handover.register(Map.merge(claimed, registering), now) do
+      {:ok, registered} ->
+        {Map.merge(claimed, %{
+           registered: registered.run,
+           run_code: registered.run_code,
+           gateway_url: registered.gateway_url,
+           documents: registered.documents
+         }), ended}
+
+      {:ended, changed} ->
+        pick(key, pool, through, now, default, max - 1, staged(run) ++ changed ++ ended, skipped)
+
+      {:error, :unavailable} = error ->
+        error
     end
   end
 
@@ -1010,16 +1137,36 @@ defmodule Apiary.Dispatches do
     do: if(Apiary.Stages.on?(), do: [{:stage_run, id}], else: [])
 
   # What the run is for: its work item, with the image `pool` keeps for its target, or a
-  # prebuild's collection. A run whose image went since `waiting_query/1` read it is
-  # held again (`Apiary.Environments.claim_image/2`): `:held`, and it waits.
+  # prebuild's collection. A run whose image went since `waiting_query/2` read it is
+  # held again (`Apiary.Environments.claim_image/2`): `:held`, and it waits. A run whose
+  # machine type, not the default, has an image (`Apiary.MachineTypes.image/1`) starts in
+  # it: the claim fixes that image and the type's id (`image_type`), so a key or image
+  # changed before the attach changes nothing, and no build of its target holds it. The
+  # type is read again `FOR KEY SHARE SKIP LOCKED` (`Apiary.MachineTypes.shared/1`), so a
+  # delete or a key change of it cannot commit between that read and the insert of the run
+  # that refers to it. Where a change or a delete of the type holds its row, the run stays
+  # waiting and the claim passes it: `:skip`.
   defp for_run(%DispatchRun{step: @prebuild} = run, _pool) do
     with {:ok, collection} <- collection_of(run), do: {:ok, %{collection: collection}}
   end
 
   defp for_run(%DispatchRun{} = run, pool) do
     with {:ok, work_item} <- work_item_of(run),
-         {:ok, image} <- Environments.claim_image(pool, work_item) do
-      {:ok, %{work_item: work_item, image: image}}
+         {:ok, image, type} <- run_image(run, pool, work_item) do
+      {:ok, %{work_item: work_item, image: image, image_type: type}}
+    end
+  end
+
+  defp run_image(%DispatchRun{machine_type: key}, pool, work_item) do
+    case MachineTypes.imaged(key) do
+      nil ->
+        with {:ok, image} <- Environments.claim_image(pool, work_item), do: {:ok, image, nil}
+
+      type ->
+        case MachineTypes.shared(type) do
+          nil -> :skip
+          shared -> {:ok, shared.image, shared.id}
+        end
     end
   end
 
@@ -1107,14 +1254,19 @@ defmodule Apiary.Dispatches do
     end
   end
 
-  defp claim_run(key, pool, run, for, now) do
+  defp claim_run(key, pool, run, for, now, machine) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
         set: [state: :claimed, updated_at: now]
       )
 
     dispatch =
-      %Dispatch{organisation_id: run.organisation_id, workspace_id: run.workspace_id}
+      %Dispatch{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        machine_type: machine && machine.key,
+        machine_spec: machine && machine.spec
+      }
       |> Dispatch.claim_changeset(%{
         dispatch_run_id: run.id,
         pool_id: key.node_id,
@@ -1130,6 +1282,53 @@ defmodule Apiary.Dispatches do
     )
   end
 
+  # fit/2 is the condition, on a run of the queue bound `:run`, that the pool `pool` may
+  # take it by its machine type, given the default type `default`, nil for none: for a pool
+  # with offers, that one of them fits the run's spec, or the default's for a run with no
+  # spec (`Apiary.MachineTypes.fits?/2`); for a pool with none, that the run has no spec,
+  # was queued on the type that was the default then, or is of the default type.
+  defp fit(%Node{offers: offers}, default) when is_list(offers) do
+    spec = default && MachineTypes.spec(default)
+
+    dynamic(
+      [run: r],
+      fragment(
+        """
+        EXISTS (SELECT 1 FROM jsonb_to_recordset(?::jsonb)
+          AS o(vcpus bigint, memory_mib bigint, disk_gib bigint, arch text, virtualization boolean),
+          LATERAL (SELECT COALESCE(?, ?::jsonb) AS s) AS t
+        WHERE o.vcpus >= (t.s->>'vcpus')::bigint AND o.memory_mib >= (t.s->>'memory_mib')::bigint
+          AND o.disk_gib >= (t.s->>'disk_gib')::bigint AND o.arch = t.s->>'arch'
+          AND (o.virtualization OR NOT (t.s->>'virtualization')::boolean))
+        """,
+        ^offers,
+        r.machine_spec,
+        ^spec
+      )
+    )
+  end
+
+  defp fit(%Node{}, nil),
+    do: dynamic([run: r], is_nil(r.machine_spec) or r.machine_type_was_default)
+
+  defp fit(%Node{}, %{key: key}),
+    do:
+      dynamic(
+        [run: r],
+        is_nil(r.machine_spec) or r.machine_type_was_default or r.machine_type == ^key
+      )
+
+  # The machine type and spec of the claim answer: for a pool with offers, the run's, or
+  # the default's for a run with no spec; nil for a pool with none.
+  defp machine(%Node{offers: offers}, %DispatchRun{machine_spec: %{} = spec} = run, _default)
+       when is_list(offers),
+       do: %{key: run.machine_type, spec: spec}
+
+  defp machine(%Node{offers: offers}, %DispatchRun{}, %{} = default) when is_list(offers),
+    do: %{key: default.key, spec: MachineTypes.spec(default)}
+
+  defp machine(%Node{}, %DispatchRun{}, _default), do: nil
+
   # The pool's held slots and its live runs that were not dispatched, against its limit;
   # a pool without one takes any.
   defp below_limit(%Node{instance_limit: nil}, _now), do: :ok
@@ -1138,24 +1337,31 @@ defmodule Apiary.Dispatches do
     if Nodes.instances_in_use(pool, now) < limit, do: :ok, else: :at_limit
   end
 
-  # waiting_query/1 is the query of the oldest waiting run the pool of `key` may take,
-  # locked `FOR UPDATE SKIP LOCKED`. A prebuild goes only to the pool it is held for, only
-  # on an instance with a registry (`prebuild_taken/0`); a run held for the pool's build
-  # of its target
+  # waiting_query/2 is the query of the oldest waiting run the pool of `key` may take,
+  # locked `FOR UPDATE SKIP LOCKED`, of the runs that pass `fit`, a condition on a run
+  # bound `:run`, by its machine type (`fit/2`), any run when not given. A prebuild goes
+  # only to the pool it is held for, only on an instance with a registry
+  # (`prebuild_taken/0`); a run held for the pool's build of its target
   # (`Apiary.Environments.held/1`) is left waiting.
   @doc false
-  @spec waiting_query(AccessKey.t()) :: Ecto.Query.t()
-  def waiting_query(%AccessKey{
-        organisation_id: organisation_id,
-        workspace_id: workspace_id,
-        node_id: pool_id
-      })
+  @spec waiting_query(AccessKey.t(), Ecto.Query.dynamic_expr() | true) :: Ecto.Query.t()
+  def waiting_query(key, fit \\ true)
+
+  def waiting_query(
+        %AccessKey{
+          organisation_id: organisation_id,
+          workspace_id: workspace_id,
+          node_id: pool_id
+        },
+        fit
+      )
       when is_binary(workspace_id) do
     query =
       from r in DispatchRun,
         as: :run,
         where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
         where: fragment("? = 'waiting'", r.state),
+        where: ^fitting(fit),
         where: r.step != ^@prebuild or r.pool_id == ^pool_id,
         where: ^prebuild_taken(),
         where: not exists(walk_unresolved()),
@@ -1175,7 +1381,7 @@ defmodule Apiary.Dispatches do
   # across organisations, and the prebuilds held for it, each in a place in use
   # (`in_use_place/0`). A workspace whose pool never enrolled has a pool in use: its runs
   # wait for that pool.
-  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}) do
+  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}, fit) do
     takes =
       dynamic(
         [run: r],
@@ -1188,6 +1394,7 @@ defmodule Apiary.Dispatches do
       as: :run,
       where: fragment("? = 'waiting'", r.state),
       where: ^takes,
+      where: ^fitting(fit),
       where: ^prebuild_taken(),
       where: ^in_use_place(),
       where: not exists(walk_unresolved()),
@@ -1195,6 +1402,9 @@ defmodule Apiary.Dispatches do
       limit: 1,
       lock: "FOR UPDATE SKIP LOCKED"
   end
+
+  defp fitting(true), do: dynamic([run: _r], true)
+  defp fitting(fit), do: fit
 
   # The condition, on a run of the queue bound `:run`, that a claim may take it: a run
   # that is not a prebuild; a prebuild only on an instance with a registry
@@ -1259,7 +1469,10 @@ defmodule Apiary.Dispatches do
   # dispatched/3 records that the starter started the job for the dispatch `dispatch_id`
   # (`Apiary.Dispatches.Handover.dispatched/3`).
   @doc false
-  @spec dispatched(AccessKey.t(), term, %{external: map | nil}) ::
+  @spec dispatched(AccessKey.t(), term, %{
+          :external => map | nil,
+          optional(:machine_type) => String.t() | nil
+        }) ::
           :ok | {:error, Handover.refusal()}
   def dispatched(%AccessKey{} = access_key, dispatch_id, meta),
     do: Handover.dispatched(access_key, dispatch_id, meta)
@@ -1380,6 +1593,8 @@ defmodule Apiary.Dispatches do
         set: [ended_at: now, end_cause: :run_ended, updated_at: now]
       )
 
+    _ended = Queued.ended([id], now)
+
     case held do
       {:build, %Record{} = record, collections, work_item_ids} ->
         if Environments.newer_build?(record, run) or Environments.built_by?(record, run) do
@@ -1411,7 +1626,8 @@ defmodule Apiary.Dispatches do
     do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id))
 
   # broadcast/1 tells each workspace whose id `told` holds that its queue or its slots
-  # changed, and the instance's topic once when `told` has any workspace id, and each
+  # changed, on its topic and on the topic of its touched runs, and the instance's topic
+  # once when `told` has any workspace id, and each
   # work item `told` names as `{:work_item, workspace_id, public_id}`, whose run settled
   # (`Apiary.Dispatches.Settle`), that it changed, on the topic of the work items of its
   # workspace (`Apiary.WorkItems.topic/1`): `{:work_items_changed, ids}`, public ids
@@ -1430,6 +1646,16 @@ defmodule Apiary.Dispatches do
 
     for workspace_id <- workspace_ids,
         do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(workspace_id), {__MODULE__, :changed})
+
+    # A queued run is a run record too (`Apiary.Dispatches.Queued`): the workspace's count
+    # of alive runs is counted again (`Apiary.Runs.touched_topic/1`).
+    for workspace_id <- workspace_ids,
+        do:
+          Phoenix.PubSub.broadcast(
+            Apiary.PubSub,
+            Apiary.Runs.touched_topic(workspace_id),
+            {:runs_touched, workspace_id}
+          )
 
     if workspace_ids != [],
       do: Phoenix.PubSub.broadcast(Apiary.PubSub, topic(:instance), {__MODULE__, :changed})

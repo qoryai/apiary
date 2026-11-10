@@ -39,11 +39,16 @@ actions:
    asked of;
 2. is given to the roles that may take it, in the action's `roles`, from which the
    module's role table is built;
-3. gets its rows in the access test's rows modules (`Apiary.AccessRows` for the core,
-   which `test/apiary/access_test.exs` asks of the core's actions through
-   `Apiary.AccessCase`, and an edition's rows module, which the edition's access test
-   gives with the core's to ask of every action): yes or no for every kind of actor that
-   matters. The test fails for an action in the list without rows.
+3. gets its row in the access test's rows modules (`Apiary.AccessRows` for the core,
+   an edition's rows module for the edition's actions): the kinds of actor that may take
+   it. `Apiary.AccessCase` fails for an action in the list without a row. The tests
+   test each rule of `can?/3` and `authorize/3` once, not each action of each actor:
+   `test/apiary/access_test.exs`, and for the keys, the dispatch actions and the
+   approvers `test/apiary/pool_key_role_test.exs`,
+   `test/apiary/gateways_instance_test.exs`, `test/apiary/adapters_test.exs`,
+   `test/apiary/adapters/connections_test.exs` and
+   `test/apiary/access_approvers_test.exs`. A change to an action's `roles` shows in the
+   diff of `Apiary.Access`, and no test fails for it.
 
 An action only the instance admins take sets `instance: true` (The instance's admins,
 below). An edition's action follows its `roles`, unless `c:Apiary.Edition.check/3` returns
@@ -445,8 +450,9 @@ another node of the workspace, a gateway's included, is refused, and a revoked k
 verifies under no key. A run through a gateway takes its batches and reloads from the
 gateway that attached it instead. Setting a pool's instance limit, as it is made or after,
 is a separate action (`node.set_limit`), held by owners and admins as `node.edit` is, so
-an edition may keep it from some who change the rest, whose pools are made with a limit
-of 1; its change is recorded in the entry of the node's creation or edit. The limit of the
+an edition may keep it from some who change the rest; its change is recorded in the
+entry of the node's creation or edit. Making a pool needs `node.set_limit` too, with a
+limit or without one, so one who may not set the limit makes no pool. The limit of the
 instance's pool is an instance action (`node.set_instance_limit`), recorded in the same
 entry. Everyone in the
 workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
@@ -554,7 +560,7 @@ its feature is: `run.read_log` belongs to `observability.terminal`, the run's Te
 an edition that hides it hides the run's whole log from that person, the Terminal tab, the
 log's address with every stream and the download, the ⋯ menu's Raw log and Download log,
 the runs list's preview of the last lines and the terminal's size on Details, and the
-sentences on session events name no terminal; the rest of the run is as it is. A part may
+notes on session events leave the terminal out; the rest of the run is as it is. A part may
 belong to no feature, and is then hidden where it is named alone: the `node.*` and
 `access_key.*` actions belong to `nodes`, so an edition that hides it hides from that
 person the nodes, the node pools, their access keys and the gateways: their pages, which
@@ -646,8 +652,9 @@ A read that a role could one day be kept from has an action too.
 loaded, because every page's counts read the list, and returns `[]` when the result is no.
 
 The last step, after the role, is the stage's approvers. It applies to approving a
-stage's gate (`gate.approve`), confirming Explore's proposal (`work_item.confirm`) and
-the review comments on that proposal (`work_item.review_comment`), asked of a work item.
+stage's gate (`gate.approve`), approving Explore's proposal (`work_item.confirm`) and
+the comments on a stage's outputs or round (`work_item.review_comment`), asked of a
+work item.
 `Apiary.Stages.check_workflows/3` takes `gate.approve` before it reads the harness, so a
 person the stage does not list reads nothing.
 Every person the role allows may take them with the workflow model off, on a work item
@@ -922,3 +929,13 @@ The races are tested outside the sandbox, on connections that commit
 - A page of Instance settings mounts on `on_mount {ApiaryWeb.Access, :instance}`, and any
   other page or controller calls `ApiaryWeb.Access.instance_can?/2` for an instance action
   (The instance scope, above).
+- A work item's permanent address, `/work-items/wi_…`
+  (`ApiaryWeb.WorkItemRedirectController`), runs the checks of the work item's page before
+  it redirects there: the path scope of the workspace the work item is in at that moment,
+  and `work_item.read` (`Apiary.WorkItems.locate/2`). A person who fails them gets the
+  plain `404` of an unknown or malformed id. Every id takes the same reads in the same
+  order: the person's scope in each workspace they reach, then one read of the work item
+  among those workspaces; `Apiary.Access.can?/3` then checks that scope, with no read.
+  So the response time does not show whether the work item exists either. A suspended member gets that `404`
+  too, where the page sends them to `/users/organisations`, so the address does not show
+  which organisation the work item is in.

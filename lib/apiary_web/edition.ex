@@ -189,7 +189,10 @@ defmodule ApiaryWeb.Edition do
     offers no way to take, such as `:"node.create"`; where a sentence of the core's says
     more than who may, such as which rule a refusal of `:"security_policy.lock"` is of,
     that part stays and the edition's sentence follows it
-    (`ApiaryWeb.Access.who_may_after/4`);
+    (`ApiaryWeb.Access.who_may_after/4`); where it says why after who may, as the refusal
+    of a pool to one who may not set its limit (`:"node.set_limit"`) does, the edition's
+    sentence comes first and the core's tail follows it
+    (`ApiaryWeb.Access.who_may_before/4`);
   - `:workspaces`, the organisation's list of its workspaces, which whoever may rename or
     delete a workspace opens (`Apiary.Organisations.lists_workspaces?/1`);
   - `:people`, the People page's line of what each level does, which in the core names

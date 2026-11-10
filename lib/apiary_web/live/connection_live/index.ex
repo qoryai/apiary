@@ -72,6 +72,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   alias Apiary.Access
   alias Apiary.Policy
+  alias Apiary.Policy.RequiredHosts
   alias Apiary.Runs
   alias Apiary.Runs.Filters
   alias ApiaryWeb.ConnectionLive.Rules
@@ -527,6 +528,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        acts: nil,
        rule_panel: nil,
        own: [],
+       first_hosts: nil,
        policy_flush_scheduled: false,
        security: security
      )}
@@ -830,6 +832,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          open: loaded.open,
          effective: loaded.effective,
          own: loaded.own,
+         first_hosts: loaded.first_hosts,
          stale: false,
          load_error: false
        )
@@ -948,7 +951,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           facets: Runs.destination_facets(scope, filters, [now: now] ++ facets_opts),
           open: open,
           effective: if(security, do: Policy.effective(scope, target)),
-          own: if(security and is_nil(target), do: Rules.own_hosts(scope), else: [])
+          own: if(security and is_nil(target), do: Rules.own_hosts(scope), else: []),
+          first_hosts: if(security, do: RequiredHosts.first_hosts(scope.workspace))
         }
       end)
     else
@@ -1047,7 +1051,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     socket
     |> assign(
       effective: Policy.effective(scope, target),
-      own: if(target, do: [], else: Rules.own_hosts(scope))
+      own: if(target, do: [], else: Rules.own_hosts(scope)),
+      first_hosts: RequiredHosts.first_hosts(scope.workspace)
     )
     |> assign_acts()
   end
@@ -1062,7 +1067,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     page = if target, do: :run, else: :workspace
 
     rule_options =
-      Enum.map(rows, &{&1, Rules.rule_option(&1, effective, page, socket.assigns.own)})
+      Enum.map(rows, fn row ->
+        option = Rules.rule_option(row, effective, page, socket.assigns.own)
+        {row, Rules.required_option(option, row, effective, socket.assigns.first_hosts)}
+      end)
 
     changes = Rules.changes(scope, target, Enum.map(rule_options, &elem(&1, 1)))
 

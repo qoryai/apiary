@@ -42,7 +42,10 @@ defmodule Apiary.Runs.ReadNeeds do
   # database: nil when it has none, and as `of_run/1` otherwise.
   @spec of_dispatch_run(DispatchRun.t()) :: facts | nil
   def of_dispatch_run(%DispatchRun{id: id}) do
-    from(r in Run, where: r.dispatch_run_id == ^id, select: map(r, [:reason, :node_id]))
+    from(r in Run.registered(),
+      where: r.dispatch_run_id == ^id,
+      select: map(r, [:reason, :node_id])
+    )
     |> Repo.one()
     |> of_run()
   end

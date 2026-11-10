@@ -154,6 +154,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           nodes={@onboarding.nodes}
           keys={@onboarding.keys}
           may_add={@onboarding.may_add}
+          may_set_limit={@onboarding.may_set_limit}
           target={@onboarding.target}
           may_key={@onboarding.may_key}
           command={@command}
@@ -589,7 +590,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     own = Enum.filter(targets, &(&1.own_mode != nil))
 
     version =
-      case Common.served_version(scope, nil, summary.managed?) do
+      case Common.served_version(scope, nil) do
         {configuration, _own?} -> configuration
         nil -> nil
       end
@@ -1106,7 +1107,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   def handle_event("rule_open", %{"id" => id, "level" => level}, socket) do
     case find_item(socket, id) do
       %{kind: :denied, resolved: nil, locked: nil, above: nil, elsewhere: nil} = item
-      when item.unchangeable != true ->
+      when item.unchangeable != true and not (is_map_key(item, :required) and item.required) ->
         {:noreply, open_panel(socket, item, level)}
 
       _ ->
@@ -1353,7 +1354,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   # A denied destination that only the level above could allow: a rule can change it, no
   # locked rule and no deny of that level holds it, and the level allows only its own hosts.
   defp elsewhere(%{own_allows: false} = level, %{} = row) do
-    if is_nil(row[:locked]) and is_nil(row[:above]) and row[:unchangeable] != true, do: level
+    if is_nil(row[:locked]) and is_nil(row[:above]) and row[:unchangeable] != true and
+         row[:required] != true,
+       do: level
   end
 
   defp elsewhere(_level, _row), do: nil
@@ -1386,14 +1389,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       for run <- assigns.lost ++ Enum.filter(runs, &(&1.state == "lost")),
           run.lost_at && DateTime.compare(run.lost_at, since_lost) != :lt,
           uniq: true,
-          do: %{id: "att-run-#{run.number}", kind: :lost, run: run, at: run.lost_at}
+          do: %{id: "att-run-#{run.public_id}", kind: :lost, run: run, at: run.lost_at}
 
     alive = assigns.alive_runs || []
 
     quiet =
       for run <- alive, seconds = quiet_for(run, now), is_integer(seconds) do
         %{
-          id: "att-run-#{run.number}",
+          id: "att-run-#{run.public_id}",
           kind: :quiet,
           run: run,
           at: run.last_heartbeat_at || run.inserted_at
@@ -1406,7 +1409,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           DateTime.diff(now, in_force.rendered_at, :second) >
             @thresholds.behind_intervals * beat(run) do
         %{
-          id: "att-run-#{run.number}",
+          id: "att-run-#{run.public_id}",
           kind: :behind,
           run: run,
           at: in_force.rendered_at,
@@ -1456,9 +1459,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       end) or (facts && facts.runs > 0)
 
     cond do
-      not policy.summary.managed? and (facts && facts.runs > 0) ->
-        %{id: "att-policy-unmanaged", kind: :unmanaged, runs: facts.runs}
-
       policy.summary.managed? and policy.summary.mode == "observe" and policy.allow_rules > 0 and
           recent_run? ->
         uncovered =
@@ -1633,7 +1633,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         }
 
       # The policy page, where the reader may read it: the policy items are dealt with there.
-      kind when kind in [:enforce, :unmanaged] ->
+      :enforce ->
         if Common.may?(scope, :"security_policy.read"), do: policy_more(scope, count)
 
       # The nodes page, where the reader is shown it: an edition may hide the nodes.
@@ -1696,9 +1696,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     %{mark: :resolved, what: what, done: nil}
   end
-
-  defp resolution(%{kind: :unmanaged}, _assigns),
-    do: %{mark: :resolved, what: gettext("Qory Apiary serves the policy now."), done: nil}
 
   defp resolution(%{kind: :idle_key, key: key}, %{keys: keys}) do
     what =
@@ -1870,6 +1867,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       nodes: counts.node + counts.pool,
       keys: keys,
       may_add: Common.may?(scope, :"node.create"),
+      may_set_limit: Common.may?(scope, :"node.set_limit"),
       target: target,
       may_key:
         not is_nil(target) and may_key?.(:"access_key.add") and

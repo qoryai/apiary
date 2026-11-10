@@ -175,7 +175,7 @@ defmodule Apiary.Edition do
   @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
 
   @doc """
-  The second sentence of About this step on the workspace set-up's steps Work sources and
+  The second sentence of the context on the workspace set-up's steps Work sources and
   Destinations, on who connects a system for `organisation`; `step` is `:sources` or
   `:destinations`. Nil for the core's sentence, "Owners and admins of <organisation>
   connect it once for the organisation." Where it returns a sentence, the step leaves out
@@ -220,7 +220,7 @@ defmodule Apiary.Edition do
   @callback set_up_steps(Scope.t() | nil, [set_up_step]) :: [set_up_step]
 
   @doc """
-  The line the set-up's column About this step shows for `scope` on the step `step_id`,
+  The line the set-up's context column shows for `scope` on the step `step_id`,
   such as `:workspace`, where the page has no line of the core's. Nil shows no column.
   Translated when it is asked. The core answers nil. No core page asks it: a person who
   may not create the organisation's first workspace reads who does on the organisation's
@@ -240,6 +240,8 @@ defmodule Apiary.Edition do
   # (`ApiaryWeb.WorkspaceSetupLive`) on who acts on a pool of `workspace` that is not ready,
   # or on adding one, for the person of `scope`, who may not act. Translated when it is
   # asked. The core answers "Only owners and admins add a pool and join a machine to it."
+  # An edition that withholds `node.set_limit` from owners or admins supplies this line;
+  # without it, an owner reads the core's line, which names owners.
   @doc false
   @callback machines_who_may(Scope.t(), %Workspace{}) :: String.t()
 
@@ -322,7 +324,9 @@ defmodule Apiary.Edition do
 
   # With the `factory` feature: four rules of the set-up for `workspace`
   # (`Apiary.WorkspaceSetup`), each asked without a lock. The set-up page reads
-  # `machines_ready/1` and `test_run_passed?/1`; no code of the core reads the other two.
+  # `machines_ready/1` and `test_run_passed?/1`, and the work item page reads
+  # `machines_ready/1` while a run waits in the queue (`ApiaryWeb.WorkItemLive.Show`); no
+  # code of the core reads the other two.
   # An edition may count what serves the workspace from another organisation; the core
   # counts the workspace's and its organisation's alone, and the instance's pool and
   # gateway, but for the model key, which it reads on the chain the edition names:
