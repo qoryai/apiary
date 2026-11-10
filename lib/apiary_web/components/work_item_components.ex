@@ -3346,10 +3346,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # `<h4>Background</h4>`, its first paragraph shows, and every block after it, up to the
   # next heading of the same level or a higher one at the top level, is in a closed
   # `<details>` with the summary Read more, which reads Read less while the fold is open
-  # (app.css hides the label that does not apply). A server update keeps the fold open or
-  # closed as the reader left it (`JS.ignore_attributes(["open"])`). A Background with
-  # nothing after its first paragraph, a proposal without the heading, and one shown as
-  # written are as given.
+  # (app.css hides the label that does not apply). A Background with nothing after its
+  # first paragraph, a proposal without the heading, and one shown as written are as
+  # given.
   @spec fold_background(term) :: term
   def fold_background({:html, html}) do
     string = Phoenix.HTML.safe_to_string(html)
@@ -3367,14 +3366,11 @@ defmodule ApiaryWeb.WorkItemComponents do
         for words <- [gettext("Read more"), gettext("Read less")],
             do: words |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
-      mounted =
-        JS.ignore_attributes(["open"]) |> Phoenix.HTML.Safe.to_iodata() |> IO.iodata_to_binary()
-
       {:html,
        {:safe,
         [
           binary_part(string, 0, from),
-          ~s(<details class="q-xp-more" phx-mounted="#{mounted}"><summary class="text-accent">),
+          ~s(<details class="q-xp-more"><summary class="text-accent">),
           ~s(<span class="hero-chevron-down-micro size-3.5"></span>),
           ~s(<span class="q-xp-read-more">),
           more,
