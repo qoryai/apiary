@@ -248,7 +248,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
                  67
                )
              ), "keys"},
-            {report(ctx, [Map.put(item, "observed_at", now_z(600))]), "keys.observed_at"},
+            {report(ctx, [Map.put(item, "observed_at", now_z(600))]), "observed_at"},
             {String.replace(report(ctx, []), ~s("version":1), ~s("version":1,"version":1)),
              "body"}
           ] do
@@ -259,13 +259,33 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
         # The schema refuses each of these too; a run id other than the path's and an
         # observed_at ahead of the server's clock are the server's rules.
-        if name not in ["body", "run_id", "keys.observed_at"] do
+        if name not in ["body", "run_id", "observed_at"] do
           assert {:error, _} = ForagerSchemas.validate("model-keys-report.schema.json", body),
                  body
         end
       end
 
       assert rows() == []
+    end
+
+    test "400 invalid_request, names observed_at, for an observed_at over 300 s ahead",
+         ctx do
+      ahead = state(ctx, observed_at: now_z(400))
+      conn = post_report(ctx, report(ctx, [state(ctx, window: "seven_day"), ahead]))
+
+      assert conn.status == 400
+
+      assert Jason.decode!(conn.resp_body) == %{
+               "error" => "invalid_request",
+               "names" => ["observed_at"]
+             }
+
+      assert signed_answer?(conn)
+      assert rows() == []
+
+      # At most 300 s ahead is taken.
+      conn = post_report(ctx, report(ctx, [state(ctx, observed_at: now_z(200))]))
+      assert conn.status == 200
     end
 
     test "413 for a body over 16 KiB, before the signature", ctx do

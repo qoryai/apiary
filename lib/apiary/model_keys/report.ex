@@ -13,7 +13,7 @@ defmodule Apiary.ModelKeys.Report do
   twice, and a value of the wrong form are
   `{:error, :invalid_request, name}`, where `name` is the member and never a value. An
   `observed_at` more than `max_skew_seconds/0` after the server's clock is refused as
-  `keys.observed_at`: such a row would stay newer than every later report. Whether `time`
+  `observed_at`, as the contract's README has it: such a row would stay newer than every later report. Whether `time`
   is within `max_skew_seconds/0` of the server's clock is the caller's to ask
   (`fresh?/2`).
 
@@ -132,7 +132,7 @@ defmodule Apiary.ModelKeys.Report do
          :ok <-
            check(cooldown_fits?(fields["status"], cooldown_until), "keys.cooldown_until"),
          {:ok, observed_at} <- time(fields["observed_at"], "keys.observed_at"),
-         :ok <- check(not later?(observed_at, now), "keys.observed_at") do
+         :ok <- check(not later?(observed_at, now), "observed_at") do
       {:ok,
        %{
          credential: fields["credential"],
