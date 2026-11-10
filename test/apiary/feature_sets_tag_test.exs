@@ -13,9 +13,8 @@ defmodule Apiary.FeatureSetsTagTest do
   # suite, and put them back.
   @helpers ~w(access_case.ex data_case.ex refusals_rows.ex test_setup.ex)
 
-  # A test that needs one of these runs under one feature set alone: CI's run under the
-  # record alone leaves them off, and its run under `all` has every feature on, as the
-  # suite's registry address (config/test.exs) takes `registry` on with the others.
+  # A test that needs one of these runs under one feature set alone: CI's other runs,
+  # under the record and the security policy and under the record alone, leave them off.
   @once [:secrets, :path_rules, :factory, :registry, :workflow_model]
 
   test "every test file that reads the features is tagged :feature_sets or sets them first" do

@@ -533,8 +533,9 @@ QORY_FEATURES=all-workflow_model
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
 
-An opt-in feature is on only when a list names it: `all`, `all-…`, and a value that is not
-set or empty leave it off, with or without an upgrade.
+Every feature in this list is on by default. An edition may add an opt-in feature, which is
+on only when a list contains it: `all`, `all-…`, and a value that is not set or empty leave
+it off, with or without an upgrade.
 
 The value is read once, at boot. A name that is not a feature, or a feature without one it
 needs, stops the boot:

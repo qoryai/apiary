@@ -67,7 +67,7 @@ defmodule Apiary.FeaturesTest do
       assert reason == "security needs observability, which is left out"
     end
 
-    test "registry is opt-in: on with all where QORY_REGISTRY is set, else where a list names it" do
+    test "registry is opt-in: on with all where QORY_REGISTRY is set, else where a list has it" do
       assert Features.opt_in() -- Enum.map(Apiary.Edition.features(), &elem(&1, 0)) ==
                [:registry]
 
@@ -84,7 +84,7 @@ defmodule Apiary.FeaturesTest do
         end
       end
 
-      # A malformed address takes it on too, so the registry's check at boot stops the boot
+      # A malformed address turns it on too, so the registry's check at boot stops the boot
       # with its fix (`Apiary.Registry.boot!/0`).
       assert Features.parse("all", registry: "https://registry.example.com") ==
                {:ok, Features.all() -- (Features.opt_in() -- [:registry])}

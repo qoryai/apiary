@@ -35,9 +35,9 @@ defmodule Apiary.Features do
   the application starts: an unknown name or a feature without the features it needs
   stops the boot. The list is fixed while the instance runs.
 
-  An **opt-in** feature, marked `default: false` (`opt_in/0`), is on where a list names
+  An **opt-in** feature, marked `default: false` (`opt_in/0`), is on where a list contains
   it: `all`, `all-…`, unset and blank leave it off, as an upgrade that adds one does. The
-  core's `registry` is the one exception: those take it on where `QORY_REGISTRY`, the
+  core's `registry` is the one exception: those turn it on where `QORY_REGISTRY`, the
   registry's address, is set. Only an opt-in feature may need one, and it is never one a
   page shows or hides for an organisation (`built/0`).
 
@@ -91,7 +91,7 @@ defmodule Apiary.Features do
   # process are of this feature.
   #
   # `registry` is the private image registry's tokens and each run's registry credential
-  # (`Apiary.Registry`), opt-in: `all` takes it on only where `QORY_REGISTRY` is set
+  # (`Apiary.Registry`), opt-in: `all` turns it on only where `QORY_REGISTRY` is set
   # (`defaults/1`), as an instance without the registry's address does not boot with it.
   # No feature needs it. The served documentation is the same with it on or off
   # (`docs: false`): no guide describes it, and the docs of its modules are hidden.
@@ -156,7 +156,7 @@ defmodule Apiary.Features do
   @doc """
   opt_in/0 is the features listed with `default: false`, in the order of `all/0`: on only
   where the value of `QORY_FEATURES` lists them by name, but `registry`, which `all` also
-  takes on where `QORY_REGISTRY` is set (`parse/2`), and never offered to show or hide for
+  turns on where `QORY_REGISTRY` is set (`parse/2`), and never offered to show or hide for
   an organisation (`built/0`).
   """
   @spec opt_in() :: [feature]
@@ -376,7 +376,7 @@ defmodule Apiary.Features do
 
   # What `all` names: every feature but the opt-in ones, and `registry` where the
   # registry's address, `QORY_REGISTRY`, is set and not blank, as `config/runtime.exs`
-  # keeps it (`:registry_setting`). A malformed address takes the feature on too, so
+  # keeps it (`:registry_setting`). A malformed address turns the feature on too, so
   # `Apiary.Registry.boot!/0` stops the boot with its fix. `registry:` is a value to read
   # in place of the instance's, for a test.
   defp defaults(opts) do

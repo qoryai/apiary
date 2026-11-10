@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.SecretsFeatureTest do
   @moduledoc """
-  The `secrets` feature: the workspace's stored
-  secrets, variables and integrations. Off, it is absent: its pages answer as paths that
-  do not exist, and the settings' list, New, the palette, the instance's Configuration, a
-  key's card, the integrations' fetch and the guides at `/docs` leave it out. On, each of
-  them has it.
+  The `secrets` feature: the workspace's stored secrets, variables and integrations. Off,
+  it is absent: its pages answer as paths that do not exist; the settings' list, New, the
+  palette, a key's card, the integrations' fetch and the guides at `/docs` leave it out;
+  and the instance's Configuration shows it Off, without its Integrations part. On, each
+  of them has it.
   """
   # Not async: the tests switch the instance's features, which are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -146,7 +146,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     {"nodes.md", "Stored secrets"}
   ]
 
-  describe "off, as QORY_FEATURES unset, all or all-… leaves it" do
+  describe "off, as a list without it leaves it" do
     @describetag with_features: @off
     @describetag needs: :security
 

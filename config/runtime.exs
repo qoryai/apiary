@@ -58,8 +58,8 @@ end
 
 # QORY_FEATURES names the features this instance has: all (the default when unset or
 # blank), all- and the features left out (all-workflow_model), or the features on
-# (observability,security). all takes every feature on but registry, and registry too
-# where QORY_REGISTRY is set. A list takes on only the features it names.
+# (observability,security). all turns on every feature but registry, and registry too
+# where QORY_REGISTRY is set. A list turns on only the features in it.
 # Read in every environment, so the test suite runs under the value CI gives it.
 # `Apiary.Features` checks it at boot and says what each feature covers and needs.
 config :apiary, :features_setting, System.get_env("QORY_FEATURES")
@@ -252,7 +252,7 @@ if config_env() != :test do
 end
 
 # QORY_REGISTRY is the private image registry's address, with the feature registry,
-# which all takes on where QORY_REGISTRY is set: a host and an optional port, with no
+# which all turns on where QORY_REGISTRY is set: a host and an optional port, with no
 # scheme or path, for example registry.qory.example. Its signing key is
 # registry-token.key in APIARY_KEYS_DIR (/var/lib/apiary/keys unset), which bin/keys
 # writes when QORY_REGISTRY is set.
