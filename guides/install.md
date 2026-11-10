@@ -481,11 +481,23 @@ environment variable SMTP_TLS must be always, if_available or never
 - `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.
 <!-- /feature -->
+<!-- feature: secrets -->
+- `secrets`: stored secrets and variables, and the organisation's integrations. Needs
+  `security`.
+<!-- /feature -->
+<!-- feature: security -->
+- `path_rules`: the Paths field of a policy rule's form. Needs `security`.
+<!-- /feature -->
 <!-- feature: factory -->
 - `factory`: the work items of a workspace and what they are taken in from: the adapters'
   steps of the instance's set-up, every step of the workspace set-up but **Name**, the
   test run among them, model providers and model, and workflow. Needs
   `observability`, `security` and `secrets`.
+<!-- /feature -->
+<!-- feature: security -->
+- `registry`: the private image registry's tokens and each run's registry credential. On
+  by default only where `QORY_REGISTRY` is set and not blank; otherwise on only where a
+  list contains it. Needs `security`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `workflow_model`: changes to the process of each workspace, its stages in order, each

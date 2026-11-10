@@ -94,7 +94,7 @@ defmodule Apiary.Features do
   # (`Apiary.Registry`), opt-in: `all` turns it on only where `QORY_REGISTRY` is set
   # (`defaults/1`), as an instance without the registry's address does not boot with it.
   # No feature needs it. The served documentation is the same with it on or off
-  # (`docs: false`): no guide describes it, and the docs of its modules are hidden.
+  # (`docs: false`): the Install guide lists it, and the docs of its modules are hidden.
   @core [
     observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
@@ -407,8 +407,7 @@ defmodule Apiary.Features do
 
       unknown ->
         # The message does not list the features: an instance shows nothing of a feature
-        # it does not have, its boot errors included. The Install guide lists them, but for
-        # one the documentation does not differ by (`docs: false`), which no guide names.
+        # it does not have, its boot errors included. The Install guide lists them.
         {:error,
          "unknown #{plural(unknown, "feature", "features")} #{names(unknown)}; " <>
            "the Install guide at /docs lists the features"}
