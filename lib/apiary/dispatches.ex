@@ -593,7 +593,7 @@ defmodule Apiary.Dispatches do
   # (`Apiary.Environments.build_failed/6`): the workspace and the work items to tell. A
   # run a claim took is no longer waiting and is left as it is, and so is a run whose
   # target's run configuration names an image (`Apiary.Environments.unset_by_policy/1`),
-  # as no build holds it.
+  # or whose machine type has one (`Apiary.MachineTypes.no_image/1`), as no build holds it.
   @doc false
   @spec end_held(
           [Ecto.UUID.t()],
@@ -610,6 +610,7 @@ defmodule Apiary.Dispatches do
     {_count, ended} =
       Repo.update_all(
         from(r in DispatchRun,
+          as: :run,
           join: w in WorkItem,
           as: :work_item,
           on: w.id == r.work_item_id,
@@ -617,6 +618,7 @@ defmodule Apiary.Dispatches do
           where: r.step != ^@prebuild and fragment("? = 'waiting'", r.state),
           where: w.target_system == ^system and w.target_path == ^path,
           where: ^Environments.unset_by_policy(workspace_id),
+          where: ^MachineTypes.no_image(:run),
           select: {r.id, r.work_item_id}
         ),
         set: [state: :ended, end_cause: :build_failed, result_outcome: :error, updated_at: now]
@@ -877,7 +879,7 @@ defmodule Apiary.Dispatches do
   #
   # The pool keeps the claim's offers (`nodes.offers`) once the pool is locked, written
   # only when they differ from the ones it has. A pool with offers takes only a run whose
-  # machine type one of them fits, and the claim answer has the type's name and spec; a
+  # machine type one of them fits, and the claim answer has the type's key and spec; a
   # pool with none takes only a run of the default type, or queued on the type that was
   # the default then, and the answer has neither (`fit/2`). A run queued before machine
   # types, with no spec, is of the default type.
@@ -1048,7 +1050,8 @@ defmodule Apiary.Dispatches do
   # (`Apiary.Dispatches.Handover.register/2`): `max` at most per claim. A run whose
   # harness the claim reads again later (`Apiary.Dispatches.HarnessReads.at_claim/3`),
   # or of which it is not known yet whether it is a run of Explore
-  # (`Apiary.Stages.known_explore/1`), stays waiting, and the claim passes it (`skipped`).
+  # (`Apiary.Stages.known_explore/1`), or whose machine type a change or a delete holds
+  # (`for_run/2`), stays waiting, and the claim passes it (`skipped`).
   defp pick(_key, _pool, _through, _now, _default, 0, ended, _skipped), do: {:none, ended}
 
   defp pick(key, pool, through, now, default, max, ended, skipped) do
@@ -1068,6 +1071,9 @@ defmodule Apiary.Dispatches do
     case for_run(run, pool) do
       :held ->
         pick(key, pool, through, now, default, max - 1, ended, skipped)
+
+      :skip ->
+        pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
 
       {:ok, for} ->
         case HarnessReads.at_claim(run, through.reads, now) do
@@ -1132,15 +1138,35 @@ defmodule Apiary.Dispatches do
 
   # What the run is for: its work item, with the image `pool` keeps for its target, or a
   # prebuild's collection. A run whose image went since `waiting_query/2` read it is
-  # held again (`Apiary.Environments.claim_image/2`): `:held`, and it waits.
+  # held again (`Apiary.Environments.claim_image/2`): `:held`, and it waits. A run whose
+  # machine type, not the default, has an image (`Apiary.MachineTypes.image/1`) starts in
+  # it: the claim fixes that image and the type's id (`image_type`), so a key or image
+  # changed before the attach changes nothing, and no build of its target holds it. The
+  # type is read again `FOR KEY SHARE SKIP LOCKED` (`Apiary.MachineTypes.shared/1`), so a
+  # delete or a key change of it cannot commit between that read and the insert of the run
+  # that refers to it. Where a change or a delete of the type holds its row, the run stays
+  # waiting and the claim passes it: `:skip`.
   defp for_run(%DispatchRun{step: @prebuild} = run, _pool) do
     with {:ok, collection} <- collection_of(run), do: {:ok, %{collection: collection}}
   end
 
   defp for_run(%DispatchRun{} = run, pool) do
     with {:ok, work_item} <- work_item_of(run),
-         {:ok, image} <- Environments.claim_image(pool, work_item) do
-      {:ok, %{work_item: work_item, image: image}}
+         {:ok, image, type} <- run_image(run, pool, work_item) do
+      {:ok, %{work_item: work_item, image: image, image_type: type}}
+    end
+  end
+
+  defp run_image(%DispatchRun{machine_type: key}, pool, work_item) do
+    case MachineTypes.imaged(key) do
+      nil ->
+        with {:ok, image} <- Environments.claim_image(pool, work_item), do: {:ok, image, nil}
+
+      type ->
+        case MachineTypes.shared(type) do
+          nil -> :skip
+          shared -> {:ok, shared.image, shared.id}
+        end
     end
   end
 
@@ -1238,7 +1264,7 @@ defmodule Apiary.Dispatches do
       %Dispatch{
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
-        machine_type: machine && machine.name,
+        machine_type: machine && machine.key,
         machine_spec: machine && machine.spec
       }
       |> Dispatch.claim_changeset(%{
@@ -1285,21 +1311,21 @@ defmodule Apiary.Dispatches do
   defp fit(%Node{}, nil),
     do: dynamic([run: r], is_nil(r.machine_spec) or r.machine_type_was_default)
 
-  defp fit(%Node{}, %{name: name}),
+  defp fit(%Node{}, %{key: key}),
     do:
       dynamic(
         [run: r],
-        is_nil(r.machine_spec) or r.machine_type_was_default or r.machine_type == ^name
+        is_nil(r.machine_spec) or r.machine_type_was_default or r.machine_type == ^key
       )
 
   # The machine type and spec of the claim answer: for a pool with offers, the run's, or
   # the default's for a run with no spec; nil for a pool with none.
   defp machine(%Node{offers: offers}, %DispatchRun{machine_spec: %{} = spec} = run, _default)
        when is_list(offers),
-       do: %{name: run.machine_type, spec: spec}
+       do: %{key: run.machine_type, spec: spec}
 
   defp machine(%Node{offers: offers}, %DispatchRun{}, %{} = default) when is_list(offers),
-    do: %{name: default.name, spec: MachineTypes.spec(default)}
+    do: %{key: default.key, spec: MachineTypes.spec(default)}
 
   defp machine(%Node{}, %DispatchRun{}, _default), do: nil
 

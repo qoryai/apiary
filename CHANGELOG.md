@@ -152,15 +152,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stays registered** in place of **Remove the machine**. A pool's starter reports at
   `POST /v1/dispatches/<dispatch_id>/machine-end`, and the audit log records its first
   report, its first failed removal and the removal.
-- **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as JSON,
-  for owners, admins and members who may read the run's log. The diagnostics contain the
-  run, its queue entry and claim, how its machine was prepared, its latest 5,000 events at
-  most, the output that belongs to no step, its last 1 MiB, the output of each step, and
-  the secrets found printed in the run, at most 8 MiB in all. Only an instance admin's
-  copy contains the machine logs. A copy contains no key, no run code and no variable
-  value, only the variables' names. Text is copied as Qory Apiary stored it, so a secret a
-  run printed is in the copy. When the copy fails, the menu shows the fix first, such as
-  “Sign in again, then copy again. Your session ended.”
+- **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as
+  JSON, for owners, admins and members who may read the run's log. The diagnostics
+  contain the run with its machine type's key and name, its queue entry and claim, how
+  its machine was prepared, its latest 5,000 events at most, the output that belongs to
+  no step, its last 1 MiB, the output of each step, and the secrets found printed in the
+  run, at most 8 MiB in all. Only an instance admin's copy contains the machine logs. A
+  copy contains no key, no run code and no variable value, only the variables' names.
+  Text is copied as Qory Apiary stored it, so a secret a run printed is in the copy.
+  When the copy fails, the menu shows the fix first, such as “Sign in again, then copy
+  again. Your session ended.”
 - Instance settings › **Diagnostics keys**, for instance admins, lists the diagnostics
   keys. With a diagnostics key, a computer lists the runs on this instance, with their
   organisation, workspace and work item title, and reads the diagnostics of any of them,
@@ -912,26 +913,49 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   value.
 <!-- feature: factory -->
 - **Instance settings › Machine types** lists the machines that runs start on: each
-  type's name, vCPUs, memory, disk, architecture and virtualization, the workflows that
-  run on it, and the pools that serve it. A new instance has one type, `standard`, the
-  default: 2 vCPUs, 4 GiB, 30 GiB of disk, amd64. An instance admin adds a type with
-  **Add machine type**, edits its spec, makes it the default and deletes it, each after a
-  recent sign-in and each an `instance.configure` entry in the instance's trail. A name
-  has 1 to 64 lowercase letters, digits and hyphens, starts with a letter, is not
-  `default`, and cannot change. The default type, and a type that a workspace's process
-  or a workspace type uses, cannot be deleted; the page lists the workflows that use it.
+  type's name and key, its spec, its image, the workflows that run on it, and the pools
+  that serve it. A new instance has two types: Standard (`standard`), the default, and
+  Browser tests (`browser`), each 2 vCPUs, 4 GiB, 30 GiB of disk, amd64, with no image;
+  the migration adds `browser` to an instance without one (Migrations, `machine_types`).
+  An instance admin adds a type with **Add machine type**, edits it, makes it the
+  default and deletes it, each after a recent sign-in and each an `instance.configure`
+  entry in the instance's trail. A type has a name of 1 to 100 characters on one line,
+  with no control character, that no other type has, ignoring case, such as Browser
+  tests, and a key, such as `browser`, that process files and stages use: 1 to 64
+  lowercase letters, digits and hyphens, starting with a letter, not `default`. A type
+  may have an image, a reference pinned by digest, such as
+  `ghcr.io/acme/agent@sha256:…`, or none, the default type too. The default type, and a
+  type that a workspace's process or a workspace type uses, cannot be deleted; the page
+  lists the workflows that use it.
+- An instance admin can change a type's key. **Save** first shows a warning: the change
+  breaks every file that uses the key, the counts of the workspaces, workspace types and
+  waiting runs that it updates, and the `process.yaml` files to fix. The files are those
+  that the workspaces' current and trial processes that use the key were read from,
+  where the version read from the file uses the key too, and the Qory harness's file
+  where a workspace type's copy of it uses the key, each with its repository, its path
+  (its module for a file of a harness repository) and its commit. **Change key** saves
+  the key, and saves a version of each workspace's current and trial process and of each
+  workspace type's process that an instance admin saved, where it uses the key, with the
+  key replaced, authored by the admin. A workspace type whose process is a copy of the
+  Qory harness's keeps that copy, with the key of before: its runs start on the default
+  type until the harness changes the key. A trial saved by **Update from harness** keeps
+  the harness commit it was read at in its new version, so **Make current** still copies
+  the template's stack and turns on **Keep the process at the latest**. Earlier
+  versions, runs and dispatches keep the key they had. Afterwards the list shows the
+  files to fix until the admin dismisses the message.
 <!-- /feature -->
 <!-- feature: factory, workflow_model -->
 - A workflow's **Machine type**, and the **Default machine type** of a workspace and of
-  a workspace type, are lists of the instance's machine types. A save with a type the
-  instance does not have fails with “Choose a machine type from the list.” A harness's
-  `process.yaml` may have only `default` as a machine type; a template with any other
-  is not usable. **Export process.yaml** on Stages writes each machine type as
-  `default`.
+  a workspace type, are lists of the instance's machine types by name. A harness's
+  `process.yaml`, and a save, keep a key that no type has. Until a type has the key, the
+  runs of that workflow start on the workspace's default type, else on the instance's,
+  and the workflow's settings show “Pick a machine type for <workflow>.” with the key
+  and the type the runs start on. **Export process.yaml** on Workflows writes each
+  machine type key as the process has it.
 <!-- /feature -->
 <!-- feature: factory -->
 - A run is queued on the type its workflow picks, else on its workspace's default, else
-  on the instance's default, and keeps that type's name and spec, so a later change of
+  on the instance's default, and keeps that type's key and spec, so a later change of
   the type changes no queued run. A prebuild runs on the default type.
 - A node pool's claim may have `offers`, the machines the pool can start, each a
   `machine_spec` of the provisioner contract. A pool with offers takes only the runs
@@ -942,11 +966,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   each pool's offers from its latest claim. While any pool has offers, a save on Machine
   types fails for a type that none of them fits.
 - A work item whose queued run is on a type that no pool of its workspace can start
-  shows “Waiting: no pool can start machine type <name>” in its header.
-- The runs list reads `machine-type:<name>`: the runs queued on that type.
-- On a run's page, **Request a machine** shows the run's type and its spec, such as
-  “large (4 vCPUs, 16 GiB, 60 GiB disk)”, and **Details** show **Machine type** after
-  **Host**.
+  shows “Waiting: no pool can start machine type <name>” in its header, with the type's
+  name, or its key where no type has the key.
+- The runs list reads `machine-type:<key>`: the runs queued on that type.
+- On a run's page, **Request a machine** shows the run's type by name and key, and its
+  spec, such as “Large `large` (4 vCPUs, 16 GiB, 60 GiB disk)”, and **Details** show
+  **Machine type** after **Key**, by name and key, then **Image**.
 - A run that waits in the queue for a machine shows on the runs list and has its page
   from the moment it is queued, with its number. The list shows it first, newest first,
   as **Queued**, and the **State** filter and `state:queued` select it. Its page shows
@@ -954,6 +979,44 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a machine: build-pool runs 3 of its 3 machines.” At the claim, the page becomes the
   page of the running run without a reload. A run that ends while it waits keeps its
   number.
+- A run starts in the image of its machine type. The order is: the policy's image; the
+  image of the run's type, where that type is not the default; the image prebuilt for
+  the run's target, which is built on the default type's image; the default type's
+  image; else the machine's default image. The claim fixes the image of a type that is
+  not the default, so a key or image changed before the attach changes nothing for the
+  run. A run on such a type waits for no build of its target's environment image, and
+  a run on the default type waits for it as before. A pull of a type's image that ends
+  `image_missing` ends the run as any exit does: it queues no build and no run again,
+  whatever the type's image is by then.
+- A prebuild starts from the default type's image, sent in its run configuration as a
+  run's image is, also under a policy that sets an image. Where the default type has no
+  image, a prebuild starts on the machine's default image, as before.
+- When an instance admin changes a type's key, every run that waits in the queue on a
+  version of a workspace's process that the change replaces moves to the new version,
+  and the runs on the key move to the new key. A run that started keeps its key.
+- On a run's page, while **Pull the images** pulls the image of the run's type, the step
+  shows “The machine pulls the image of the machine type Browser tests (`browser`). Each
+  run pulls its image before the agent starts.” and “No action needed.” When that image
+  is not in its registry, the step and “How it ended” show “Pull the images failed: the
+  image of the machine type Browser tests (`browser`) is not in its registry:
+  `ghcr.io/acme/agent@sha256:0123456789ab…`.”, and the step shows an instance admin “An
+  instance admin sets an image that exists in Instance settings › Machine types, then
+  runs the work item again.”, and anyone else “Contact support with run rn_….” in plain
+  text. **Details** show such an image with its digest cut to 12 digits, whole on hover,
+  and without “Prebuilt for this target”.
+- A queued run on a type that no pool offer fits shows **Why it waits** in its header,
+  and under **Queue the run**, as “Waiting for a machine: no pool offers a machine that
+  fits UI tests, large (`ui-tests-large`: 8 vCPUs, 32 GiB, 100 GiB disk).”, then, for an
+  instance admin, “An instance admin makes the type fit an offer in Instance settings ›
+  Machine types, or the admin of build-pool adds an offer that fits.” with the first
+  pool that serves the workspace, and for anyone else, in plain text, “Contact support
+  with run rn_…, or ask the admin of build-pool to add an offer that fits.”, or “Contact
+  support with run rn_….” where the instance's pool serves the workspace. **Queue the
+  run** shows the run's **Machine type** by name and key, and **Details** show the image
+  of a type that is not the default, read when the page loads, with its digest cut to 12
+  digits, whole on hover. A queued run on the default type or on a key no type has, and
+  one on a type with no image, show no **Image** row. Such a run is given its target's
+  prebuilt image first, where one is recorded.
 <!-- /feature -->
 
 ### Changed
@@ -1106,11 +1169,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workflows it lists: a stack that does not list it gets a cross on Stages, and Explore
   waits. A workspace on the Qory harness gets the same cross when its stack does not
   list it: `core` lists no workflows, so Explore waits there.
-- The copies of the run, explore, diagnostics, integration and provisioner contracts are
-  at integrations commit `e33240a`. A workflow name has at most 55 characters: a
-  lower-case letter, then lower-case letters, digits and hyphens. Stages shows “Write a
-  workflow name of lower-case letters, digits and hyphens that starts with a letter, at
-  most 55 characters.”
+- The copies of the run, explore, integration and provisioner contracts are at
+  integrations commit `e33240a`, and the copy of the diagnostics contract at `8178d27`,
+  which adds the run's machine type, `run.machine`. A workflow name has at most 55
+  characters: a lower-case letter, then lower-case letters, digits and hyphens.
+  Workflows shows “Write a workflow name of lower-case letters, digits and hyphens that
+  starts with a letter, at most 55 characters.”
 <!-- /feature -->
 <!-- feature: factory -->
 - A run's requests to the run API show the host of `PUBLIC_URL`, such as
@@ -1569,6 +1633,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `runs` (20261110090000): a column `configured_image_from_type`, false by default,
+  true where the run was given the image of a machine type, and a nullable column
+  `configured_image_machine_type_id`, that type, a foreign key to `machine_types` set to
+  null when the type is deleted, with a partial index and a check:
+  `configured_image_from_type` is true only where `configured_image` is set, and the
+  type's id is set only where it is true. It changes no row: a run given an image before
+  is read as given its target's.
 - `escalations` (20261109100001): the column `gaps` is dropped, and a column `points`, a
   JSON array that is empty by default, takes its place. Each line of an `escalate`
   escalation's gaps becomes one `run_again` point, up to 20. The gaps of other
@@ -1585,6 +1656,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   for that queue fails until the nodes run this release. The migration takes its locks in
   the order a claim does, with a 5-second `lock_timeout`: a migration that cannot take
   them fails, changes nothing, and can be run again.
+- `machine_types` (20261109090000): the column `name` becomes `key`, with its index and
+  its check. A column `name` gets each type's key with its first letter in upper case
+  and its hyphens as spaces, such as Standard for `standard` and Large gpu for
+  `large-gpu`; a nullable column `image` is added. A unique index on the lower case of
+  `name` follows, and a check of 1 to 100 characters with no control character and no
+  line or paragraph separator (U+2028, U+2029). Unless a row has the key `browser`, the
+  migration adds the type `browser`, 2 vCPUs, 4 GiB, 30 GiB of disk, amd64, with no
+  image, named Browser tests, or Browser tests (browser) where another row has the name
+  Browser tests in any case. It changes no other table.
 - `run_configurations` and `audit_entries`: each workspace with no security policy gets
   version 1, observe with no rules, and its entry in the audit log, by Qory Apiary. No
   migration writes these rows. Qory Apiary writes them when it starts, after the

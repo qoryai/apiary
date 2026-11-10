@@ -388,11 +388,12 @@ defmodule Apiary.Harnesses.Reader do
   does not define, is `:invalid_template`. Where the schema refuses an entry of
   `artifact_types` whose `name` is text, whatever else it refuses, it is
   `{:invalid_artifact_type, name}` for the first such entry, with the first
-  #{@max_type_name} characters of the name. A `process` whose document or workflow entry
-  has a `machine` other than `default` is `:invalid_template` too, because the machine
-  types are an instance's. The schema checks `process` loosely; the caller checks it as a
-  process, and checks what `artifact_types` means. Each CRLF and
-  each lone CR in a stage's `description` is LF in `process`
+  #{@max_type_name} characters of the name. A `process` may have any machine type key the
+  schema takes, in its document and in each workflow entry: the instance may have no type
+  of the key, and the runs of an entry with such a key start on the workspace's default
+  type (`Apiary.MachineTypes`). The schema checks `process` loosely; the caller checks it
+  as a process, and checks what `artifact_types` means. Each CRLF and each lone CR in a
+  stage's `description` is LF in `process`
   (`Apiary.Processes.with_description_line_breaks/1`).
   """
   @spec template(binary) ::
@@ -409,32 +410,18 @@ defmodule Apiary.Harnesses.Reader do
     end
   end
 
-  # A public harness cannot depend on the machine types of one instance, so the process
-  # in its file has `default` alone, or no `machine`, in the document and in each
-  # workflow entry.
   defp template_file(file) do
-    if instance_machine?(file["process"]) do
-      {:error, :invalid_template}
-    else
-      {:ok,
-       %{
-         name: file["name"],
-         summary: file["summary"],
-         description: file["description"],
-         type: file["type"],
-         stack: file["stack"],
-         process: Apiary.Processes.with_description_line_breaks(file["process"]),
-         artifact_types: file["artifact_types"]
-       }}
-    end
+    {:ok,
+     %{
+       name: file["name"],
+       summary: file["summary"],
+       description: file["description"],
+       type: file["type"],
+       stack: file["stack"],
+       process: Apiary.Processes.with_description_line_breaks(file["process"]),
+       artifact_types: file["artifact_types"]
+     }}
   end
-
-  defp instance_machine?(%{} = process) do
-    entries = for entry <- Apiary.MachineTypes.entries(process), do: entry["machine"]
-    Enum.any?([process["machine"] | entries], &(&1 not in [nil, "default"]))
-  end
-
-  defp instance_machine?(_process), do: false
 
   # An error's path is in JSV's order, the last key first.
   defp template_refusal(%{"artifact_types" => listed}, errors) when is_list(listed) do

@@ -224,7 +224,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       path: path,
       scope: scope
     } do
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
       {:ok, view, _html} = live(conn, path)
       view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
 
@@ -323,7 +323,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stage-outputs > header #stage-add-outputs")
     end
 
-    test "keeps an entry's machine type default, shown as Default (standard)", %{
+    test "keeps an entry's machine type default, shown as Default (Standard)", %{
       conn: conn,
       path: path,
       scope: scope
@@ -339,26 +339,26 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, view, _html} = live(conn, path)
 
       selected = "select#stage-entry-0-machine option[value=default][selected]"
-      assert has_element?(view, selected, "Default (standard)")
+      assert has_element?(view, selected, "Default (Standard)")
 
       assert has_element?(
                view,
                "select#stage-entry-0-machine option[value='']",
-               "Workspace default (standard)"
+               "Workspace default (Standard)"
              )
 
       view
       |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "default"}}})
       |> render_change()
 
-      assert has_element?(view, selected, "Default (standard)")
+      assert has_element?(view, selected, "Default (Standard)")
     end
 
     test "edits a sequence: a workflow, a loop with its rounds, and a machine type", %{
       conn: conn,
       path: path
     } do
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
       {:ok, view, _html} = live(conn, path)
       select(view, "Build")
 
@@ -1042,50 +1042,62 @@ defmodule ApiaryWeb.StagesLiveTest do
       |> LazyHTML.text()
     end
 
-    # A page that lists `gone` and `gone-too`, both removed after it read the list, so a save
-    # with either is refused.
     setup %{conn: conn, path: path} do
-      machine_type_fixture(name: "gone")
-      machine_type_fixture(name: "gone-too")
       {:ok, view, _html} = live(conn, path)
-      remove_machine_types(~w(gone gone-too))
       %{view: view}
     end
 
+    # A machine type that breaks the schema's pattern, as a stored document or a recovered
+    # form can have it, at `sequence` of the stage: the picker offers no such value, and a
+    # save of it is refused.
+    defp bad_machine(view, stage, sequence) do
+      render_hook(view, "edit_stage", %{
+        "stage" => %{"id" => id_of(stage), "sequence" => sequence}
+      })
+    end
+
     test "a refused machine type: the banner points at the marked field", %{view: view} do
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
-      |> render_change()
+      bad_machine(view, "Explore", %{"0" => %{"machine" => "Gone"}})
 
       assert save(view) =~ "Explore: fix the fields marked below."
       assert has_element?(view, "#stage-entry-0 summary [data-machine-error]")
     end
 
-    test "a refused default machine type: its line above the canvas", %{view: view, path: path} do
+    test "a default machine type removed since the page read the list is saved and kept", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      machine_type_fixture(key: "gone")
+      {:ok, view, _html} = live(conn, path)
+      remove_machine_types(~w(gone))
       details(view, path)
       view |> form("#stages-process-form", process: %{machine: "gone"}) |> render_change()
 
-      assert save(view) == "Choose a machine type from the list."
-      refute has_element?(view, "[data-machine-error]")
+      assert save(view) == ""
+      assert Processes.current(scope.workspace).document["machine"] == "gone"
+
+      assert has_element?(
+               view,
+               "#stages-machine option[value=gone][selected]",
+               "Default (Standard)"
+             )
     end
 
     test "a refused machine type in a loop: the same", %{view: view} do
       view |> element("#stage-add-loop") |> render_click()
 
-      view
-      |> form("#stage-form",
-        stage: %{sequence: %{"1" => %{body: %{"0" => %{machine: "gone"}}}}}
-      )
-      |> render_change()
+      bad_machine(view, "Explore", %{
+        "0" => %{},
+        "1" => %{"body" => %{"0" => %{"machine" => "Gone"}}}
+      })
 
       assert save(view) =~ "Explore: fix the fields marked below."
       assert has_element?(view, "#stage-entry-1-0 summary [data-machine-error]")
     end
 
     test "a corrected machine type takes its stage's line away", %{view: view} do
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
-      |> render_change()
+      bad_machine(view, "Explore", %{"0" => %{"machine" => "Gone"}})
 
       assert save(view) =~ "Explore: fix the fields marked below."
 
@@ -1099,7 +1111,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       # By value, as the row's mark is: the same value in an `edit_stage` event, as one sent
       # before the page's patch arrives, shows both again. The picker no longer offers it.
       render_hook(view, "edit_stage", %{
-        "stage" => %{"id" => id_of("Explore"), "sequence" => %{"0" => %{"machine" => "gone"}}}
+        "stage" => %{"id" => id_of("Explore"), "sequence" => %{"0" => %{"machine" => "Gone"}}}
       })
 
       assert has_element?(view, "[data-machine-error]")
@@ -1107,16 +1119,10 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
 
     test "each stage with a mark has one line, with the stage's name today", %{view: view} do
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
-      |> render_change()
-
+      bad_machine(view, "Explore", %{"0" => %{"machine" => "Gone"}})
       select(view, "Build")
       view |> element("#stage-add-entry") |> render_click()
-
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone-too"}}})
-      |> render_change()
+      bad_machine(view, "Build", %{"0" => %{"machine" => "Gone-too"}})
 
       banner = save(view)
       assert banner =~ "Explore: fix the fields marked below."
@@ -1203,16 +1209,10 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
 
     test "a refusal keeps the selected stage if the refused value is in it", %{view: view} do
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
-      |> render_change()
-
+      bad_machine(view, "Explore", %{"0" => %{"machine" => "Gone"}})
       select(view, "Build")
       view |> element("#stage-add-entry") |> render_click()
-
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone-too"}}})
-      |> render_change()
+      bad_machine(view, "Build", %{"0" => %{"machine" => "Gone-too"}})
 
       assert save(view) =~ "Build: fix the fields marked below."
       assert canvas_view(view)["selected"] == id_of("Build")
@@ -1264,9 +1264,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
 
     test "a refusal that selects another stage drops the errors by place", %{view: view} do
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
-      |> render_change()
+      bad_machine(view, "Explore", %{"0" => %{"machine" => "Gone"}})
 
       view |> element("#stage-add-loop") |> render_click()
 
@@ -1291,7 +1289,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     # A reconnect mounts the page with the first stage selected, then LiveView's form recovery
     # sends the form as it stood. These tests send that event with Explore selected.
     setup %{conn: conn, path: path} do
-      machine_type_fixture(name: "gpu-large")
+      machine_type_fixture(key: "gpu-large")
       {:ok, view, _html} = live(conn, path)
       %{view: view}
     end
@@ -1557,7 +1555,12 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       # Closed, and the fold's id includes the stage's, so an open state stays with its stage.
       assert has_element?(view, details <> ".q-tool.group:not([open])")
-      assert has_element?(view, details <> " > summary", "Machine type: default")
+
+      assert has_element?(
+               view,
+               details <> " > summary",
+               "Machine type: Workspace default (Standard)"
+             )
 
       # The summary is the control: native, so a key and a tap work, with no hover. Each word
       # shows in one state only.
@@ -1596,21 +1599,73 @@ defmodule ApiaryWeb.StagesLiveTest do
       conn: conn,
       path: path
     } do
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
       {:ok, view, _html} = live(conn, path)
       picker = ~s{details[id^="stage-entry-0-settings-"] select#stage-entry-0-machine}
 
-      assert has_element?(view, picker <> " option[value='']", "Workspace default (standard)")
-      assert has_element?(view, picker <> " option[value=standard]", "standard: 2 vCPUs, 4 GiB")
-      assert has_element?(view, picker <> " option[value=large]", "large: 4 vCPUs, 16 GiB")
+      assert has_element?(view, picker <> " option[value='']", "Workspace default (Standard)")
+      assert has_element?(view, picker <> " option[value=standard]", "Standard: 2 vCPUs, 4 GiB")
+      assert has_element?(view, picker <> " option[value=large]", "Large: 4 vCPUs, 16 GiB")
+    end
+
+    test "a key no machine type has: the notice beside the picker, the line when closed", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      # A new instance has the type browser; this one has none.
+      remove_machine_types(["browser"])
+      version = Processes.current(scope.workspace)
+
+      document =
+        put_in(
+          version.document,
+          ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+          "browser"
+        )
+
+      version |> Ecto.Changeset.change(document: document) |> Repo.update!()
+      [%{"workflow" => workflow} | _rest] = hd(document["stages"])["sequence"]
+      {:ok, view, _html} = live(conn, path)
+      summary = ~s{details[id^="stage-entry-0-settings-"] > summary}
+
+      assert has_element?(view, summary, "Machine type: Workspace default (Standard)")
+      assert has_element?(view, summary, "Pick a machine type: no type has the key browser.")
+
+      assert view
+             |> element("#stage-entry-0-missing")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text()
+             |> String.split()
+             |> Enum.join(" ") ==
+               "Pick a machine type for #{workflow}. The process.yaml this workspace was made from sets machine: browser, and this Qory Apiary has no machine type with the key browser. Until you pick one, runs of #{workflow} start on the default type, Standard."
+
+      # The picker keeps the key, with the words of the type the runs start on.
+      assert has_element?(
+               view,
+               "#stage-entry-0-machine option[value=browser][selected]",
+               "Workspace default (Standard)"
+             )
+
+      # A save keeps the key; a type with the key ends the notice.
+      view |> form("#stage-form", stage: %{name: "Explore two"}) |> render_change()
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice")
+      assert has_element?(view, "#stage-entry-0-missing")
+
+      machine_type_fixture(key: "browser", name: "Browser tests")
+      {:ok, view, _html} = live(conn, path)
+      refute has_element?(view, "#stage-entry-0-missing")
+      assert has_element?(view, summary, "Machine type: Browser tests")
     end
 
     test "the closed line shows the row's machine type, else the stage's default", %{
       conn: conn,
       path: path
     } do
-      machine_type_fixture(name: "large")
-      machine_type_fixture(name: "medium")
+      machine_type_fixture(key: "large")
+      machine_type_fixture(key: "medium")
       {:ok, view, _html} = live(conn, path)
 
       view
@@ -1620,7 +1675,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                ~s{details[id^="stage-entry-0-settings-"] > summary},
-               "Machine type: large"
+               "Machine type: Large"
              )
 
       view
@@ -1630,7 +1685,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                ~s{details[id^="stage-entry-0-settings-"] > summary},
-               "Machine type: default"
+               "Machine type: Workspace default (Standard)"
              )
 
       details(view, path)
@@ -1640,7 +1695,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                ~s{details[id^="stage-entry-0-settings-"] > summary},
-               "Machine type: medium"
+               "Machine type: Workspace default (Medium)"
              )
     end
 
@@ -1649,7 +1704,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       path: path
     } do
       long = String.duplicate("a", 64)
-      machine_type_fixture(name: long)
+      machine_type_fixture(key: long)
       {:ok, view, _html} = live(conn, path)
 
       view
@@ -1697,7 +1752,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       path: path,
       scope: scope
     } do
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
 
       document =
         scope.workspace
@@ -1716,11 +1771,11 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stages-machine option[value=large][selected]")
     end
 
-    test "after a refusal the picker offers a removed type only on the row that has it", %{
+    test "after a save the picker keeps a removed type only on the row that has it", %{
       conn: conn,
       path: path
     } do
-      machine_type_fixture(name: "gone")
+      machine_type_fixture(key: "gone")
       {:ok, view, _html} = live(conn, path)
       remove_machine_types(~w(gone))
       view |> element("#stage-add-entry") |> render_click()
@@ -1730,7 +1785,14 @@ defmodule ApiaryWeb.StagesLiveTest do
       |> render_change()
 
       view |> element("#stages-save") |> render_click()
-      assert has_element?(view, "#stage-entry-0-machine option[value=gone][selected]")
+      assert has_element?(view, "#stages-notice")
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-machine option[value=gone][selected]",
+               "Workspace default (Standard)"
+             )
+
       assert has_element?(view, "#stage-entry-1-machine")
       refute has_element?(view, "#stage-entry-1-machine option[value=gone]")
 
@@ -1743,18 +1805,21 @@ defmodule ApiaryWeb.StagesLiveTest do
 
     test "a refused machine type shows on a closed row and at its field, until the value changes",
          %{conn: conn, path: path} do
-      machine_type_fixture(name: "gone")
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
       {:ok, view, _html} = live(conn, path)
-      remove_machine_types(~w(gone))
       build_with_loop(view, ~w(explore-a-ticket explore-a-ticket))
       error = "Choose a machine type from the list."
 
-      view
-      |> form("#stage-form",
-        stage: %{sequence: %{"1" => %{body: %{"1" => %{machine: "gone"}}}}}
-      )
-      |> render_change()
+      # A value that breaks the schema's pattern, as a recovered form can have it.
+      render_hook(view, "edit_stage", %{
+        "stage" => %{
+          "id" => id_of("Build"),
+          "sequence" => %{
+            "0" => %{},
+            "1" => %{"body" => %{"0" => %{}, "1" => %{"machine" => "Gone"}}}
+          }
+        }
+      })
 
       # Before a save, as before: the form takes the value.
       refute has_element?(view, "[data-machine-error]")
@@ -1791,13 +1856,11 @@ defmodule ApiaryWeb.StagesLiveTest do
       conn: conn,
       path: path
     } do
-      machine_type_fixture(name: "gone")
       {:ok, view, _html} = live(conn, path)
-      remove_machine_types(~w(gone))
 
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
-      |> render_change()
+      render_hook(view, "edit_stage", %{
+        "stage" => %{"id" => id_of("Explore"), "sequence" => %{"0" => %{"machine" => "Gone"}}}
+      })
 
       select(view, "Build")
       view |> element("#stage-add-entry") |> render_click()
@@ -1812,7 +1875,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> element("#stages-discard") |> render_click()
 
       render_hook(view, "edit_stage", %{
-        "stage" => %{"id" => id_of("Explore"), "sequence" => %{"0" => %{"machine" => "gone"}}}
+        "stage" => %{"id" => id_of("Explore"), "sequence" => %{"0" => %{"machine" => "Gone"}}}
       })
 
       refute has_element?(view, "[data-machine-error]")
@@ -1847,7 +1910,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       path: path,
       scope: scope
     } do
-      for name <- ~w(small medium large), do: machine_type_fixture(name: name)
+      for name <- ~w(small medium large), do: machine_type_fixture(key: name)
       {:ok, view, _html} = live(conn, path)
       build_with_loop(view, ~w(explore-a-ticket explore-a-ticket))
       view |> element("#stage-add-inputs") |> render_click()
@@ -1931,7 +1994,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       conn: conn,
       path: path
     } do
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
       {:ok, view, _html} = live(conn, path)
       build_with_loop(view, ~w(explore-a-ticket explore-a-ticket explore-a-ticket))
 
@@ -2035,7 +2098,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stage-sequence li",
-               "explore-a-ticket, machine type Workspace default (standard)"
+               "explore-a-ticket, machine type Workspace default (Standard)"
              )
 
       assert has_element?(view, "#stage-gate", "A member approves")
@@ -2069,7 +2132,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stages-machine-read",
-               "Default machine type: Default (standard)"
+               "Default machine type: Default (Standard)"
              )
 
       for selector <- ~w(#stages-process-form #stages-trial #stages-save) do
@@ -2087,7 +2150,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                "#stage-panel",
-               "explore-a-ticket, machine type Workspace default (standard)"
+               "explore-a-ticket, machine type Workspace default (Standard)"
              )
 
       assert has_element?(view, "#stages-version", "Version 1, current.")
@@ -2835,7 +2898,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
 
     test "a change of the default machine type reads Default with no type name, also after the instance default changes" do
-      large = machine_type_fixture(name: "large")
+      large = machine_type_fixture(key: "large")
       none = Processes.default_document("software") |> Map.delete("machine")
       on_large = Map.put(none, "machine", "large")
       on_default = Map.put(none, "machine", "default")

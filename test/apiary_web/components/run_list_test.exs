@@ -339,7 +339,7 @@ defmodule ApiaryWeb.RunListTest do
            ]
   end
 
-  test "Request a machine has the machine type of the claim answer, with its spec" do
+  test "Request a machine has the machine type of the claim answer, its name, key and spec" do
     spec = %{
       "vcpus" => 4,
       "memory_mib" => 16_384,
@@ -348,16 +348,23 @@ defmodule ApiaryWeb.RunListTest do
       "virtualization" => false
     }
 
-    html = list(preparation(%{machine: machine(%{machine_type: %{name: "large", spec: spec}})}))
+    html =
+      list(
+        preparation(%{
+          machine: machine(%{machine_type: %{key: "large", name: "Large", spec: spec}})
+        })
+      )
 
     assert facts(html, "prepare-machine-request") == [
              {"Machine requested", clock(12)},
              {"Pool", "build-pool"},
-             {"Machine type", "large (4 vCPUs, 16 GiB, 60 GiB disk)"}
+             {"Machine type", "Large large (4 vCPUs, 16 GiB, 60 GiB disk)"}
            ]
 
     one = %{spec | "vcpus" => 1, "memory_mib" => 1536, "virtualization" => true}
-    html = list(preparation(%{machine: machine(%{machine_type: %{name: "kvm", spec: one}})}))
+
+    html =
+      list(preparation(%{machine: machine(%{machine_type: %{key: "kvm", name: nil, spec: one}})}))
 
     assert facts(html, "prepare-machine-request") == [
              {"Machine requested", clock(12)},
@@ -1283,7 +1290,7 @@ defmodule ApiaryWeb.RunListTest do
       for {reason, words} <- [
             {:harness, "Waiting until Qory Apiary reads the harness."},
             {:no_pool, "Waiting: no pool can take the run"},
-            {{:no_fit, "large"}, "Waiting: no pool can start machine type large"},
+            {{:no_fit, "large", "build-pool"}, "Waiting: no pool can start machine type large"},
             {{:image, "acme/shop", :queued},
              "Waiting for the environment image: a build of acme/shop is queued."},
             {{:image, "acme/shop", :running},
@@ -1301,6 +1308,145 @@ defmodule ApiaryWeb.RunListTest do
           do: assert(why(reason) == words, inspect(reason))
 
       assert why({:pool, nil}) == ""
+    end
+  end
+
+  describe "a machine type's image" do
+    @image "ghcr.io/qoryai/qory-agent-browser@sha256:" <> String.duplicate("0", 64)
+    @type_ %{key: "browser", name: "Browser tests", image: @image}
+
+    defp pulling(state, changes) do
+      preparation(
+        Map.merge(
+          %{
+            steps: [
+              step(1, "fetch", "Fetch", 56, 4),
+              step(2, "join", "Join session 1", 60, 2),
+              step(3, "image", @image, 63, 1, %{state: state, exit_code: -1})
+            ],
+            after_session: [],
+            outputs: [],
+            session_started_at: nil,
+            session_end: nil,
+            sessions: [],
+            image_type: @type_
+          },
+          changes
+        )
+      )
+    end
+
+    test "Pull the images shows which image the machine pulls while it runs" do
+      html = list(pulling("running", %{stopped: nil}), alive: true)
+
+      assert text(LazyHTML.query(html, "#prepare-machine-step-3 #prepare-machine-pull")) ==
+               "The machine pulls the image of the machine type Browser tests (browser). Each run pulls its image before the agent starts. No action needed."
+
+      assert html
+             |> LazyHTML.query("#prepare-machine-step-3 #prepare-machine-pull .font-mono")
+             |> Enum.count() == 1
+
+      html = list(pulling("succeeded", %{stopped: nil}))
+
+      assert html
+             |> LazyHTML.query("#prepare-machine-step-3 #prepare-machine-pull")
+             |> Enum.count() == 0
+    end
+
+    test "an image that is not in its registry has its cause and who fixes it under the step" do
+      what =
+        "Pull the images failed: the image of the machine type Browser tests (browser) is not in its registry: ghcr.io/qoryai/qory-agent-browser@sha256:000000000000…."
+
+      fix =
+        "An instance admin sets an image that exists in Instance settings › Machine types, then runs the work item again."
+
+      html =
+        list(
+          pulling("failed", %{
+            stopped: %{
+              cause: :step_failed,
+              step: 3,
+              fixer: :instance_admin,
+              text: what <> " " <> fix,
+              what: what,
+              fix: fix,
+              detail: nil,
+              rich: [
+                "Pull the images failed: the image of the machine type Browser tests (",
+                {:m, "browser"},
+                ") is not in its registry: ",
+                {:m, Apiary.Runs.Preparation.short_image(@image)},
+                "."
+              ],
+              fix_shown: true
+            }
+          })
+        )
+
+      assert text(LazyHTML.query(html, "#prepare-machine-step-3 #prepare-machine-cause")) == what
+      assert text(LazyHTML.query(html, "#prepare-machine-step-3 #prepare-machine-fix")) == fix
+
+      # The cause and its fix are one item of the open step, announced together.
+      stopped = "#prepare-machine-step-3 #prepare-machine-stopped[role=status]"
+
+      assert LazyHTML.query(html, stopped <> " > #prepare-machine-cause:not([role])")
+             |> Enum.count() == 1
+
+      assert LazyHTML.query(html, stopped <> " > #prepare-machine-fix") |> Enum.count() == 1
+    end
+
+    test "a waiting run whose type no pool offer fits has the type, the cause and who fixes it" do
+      large = %{
+        key: "ui-tests-large",
+        name: "UI tests, large",
+        spec: %{
+          "vcpus" => 8,
+          "memory_mib" => 32_768,
+          "disk_gib" => 100,
+          "arch" => "amd64",
+          "virtualization" => false
+        }
+      }
+
+      html =
+        {:no_fit, "ui-tests-large", "build-pool"}
+        |> queued()
+        |> put_in([:queued, :machine_type], large)
+        |> put_in([:queued, :instance_admin], true)
+        |> list(alive: true, run_state: "queued")
+
+      assert text(LazyHTML.query(html, "#prepare-machine-why")) ==
+               "Waiting for a machine: no pool offers a machine that fits UI tests, large (ui-tests-large: 8 vCPUs, 32 GiB, 100 GiB disk)."
+
+      assert text(LazyHTML.query(html, "#prepare-machine-why-fix")) ==
+               "An instance admin makes the type fit an offer in Instance settings › Machine types, or the admin of build-pool adds an offer that fits."
+
+      assert text(LazyHTML.query(html, "#prepare-machine-queue")) =~
+               "Machine type UI tests, large ui-tests-large"
+    end
+
+    test "a reader who is not an instance admin reads Contact support with the run, and the pool's admin for a pool that is not the instance's" do
+      large = %{
+        key: "ui-tests-large",
+        name: "UI tests, large",
+        spec: %{"vcpus" => 8, "memory_mib" => 32_768, "disk_gib" => 100, "arch" => "amd64"}
+      }
+
+      fix = fn pool ->
+        {:no_fit, "ui-tests-large", pool}
+        |> queued()
+        |> put_in([:queued, :machine_type], large)
+        |> put_in([:queued, :instance_admin], false)
+        |> put_in([:queued, :run], "rn_0123456789abcdef")
+        |> list(alive: true, run_state: "queued")
+        |> LazyHTML.query("#prepare-machine-why-fix")
+        |> text()
+      end
+
+      assert fix.("build-pool") ==
+               "Contact support with run rn_0123456789abcdef, or ask the admin of build-pool to add an offer that fits."
+
+      assert fix.(:instance) == "Contact support with run rn_0123456789abcdef."
     end
   end
 

@@ -56,7 +56,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
         |> Path.wildcard()
         |> Enum.reject(&String.starts_with?(Path.basename(&1), "runs-"))
 
-      assert length(valid) == 4 and length(invalid) == 17
+      assert length(valid) == 4 and length(invalid) == 22
 
       for file <- valid do
         assert DiagnosticsSchema.validate(schema, file |> File.read!() |> Jason.decode!()) ==
@@ -642,6 +642,37 @@ defmodule Apiary.Runs.DiagnosticsTest do
                          provider_secret_id provider_value_id provider_api) do
         refute redacted in run_fields
       end
+    end
+
+    test "has the machine type: the claim's key, else the queued run's, with the type's name",
+         %{schema: schema, scope: scope, run: run, dispatch: dispatch} = ctx do
+      machine = fn ->
+        valid!(schema, Jason.decode!(Diagnostics.encode(run, scope)))["run"]["machine"]
+      end
+
+      # The type Browser tests (`browser`) is seeded.
+      set = fn schema_module, id, value ->
+        {1, _rows} =
+          Repo.update_all(from(r in schema_module, where: r.id == ^id),
+            set: [machine_type: value]
+          )
+      end
+
+      set.(Apiary.Dispatches.Dispatch, dispatch.id, "browser")
+      set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "standard")
+      assert machine.() == %{"key" => "browser", "name" => "Browser tests"}
+
+      # A dispatch of an answer with no offers has no key; the queued run has one.
+      set.(Apiary.Dispatches.Dispatch, dispatch.id, nil)
+      assert machine.() == %{"key" => "standard", "name" => "Standard"}
+
+      # A key no type has today: the key alone.
+      set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "gone")
+      assert machine.() == %{"key" => "gone"}
+
+      # A run queued before machine types: no record of the type.
+      set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "default")
+      assert machine.() == nil
     end
 
     test "has no machine log for a member, who is no instance admin",

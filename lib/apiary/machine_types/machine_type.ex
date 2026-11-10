@@ -1,21 +1,30 @@
 defmodule Apiary.MachineTypes.MachineType do
   @moduledoc """
-  A machine type of the instance (`Apiary.MachineTypes`): its name and its spec, as the
-  provisioner contract's `$defs/machine_spec` bounds it, and whether it is the default.
-  The name is fixed once the type is made.
+  A machine type of the instance (`Apiary.MachineTypes`): its key, which process
+  documents, stages and runs use; its name, which people see; its spec, as the
+  provisioner contract's `$defs/machine_spec` bounds it; the image a run on it starts in,
+  a reference pinned by digest, or nil for none; and whether it is the default.
   """
   use Ecto.Schema
   import Ecto.Changeset
 
-  @name ~r/\A[a-z][a-z0-9-]{0,63}\z/
+  @key ~r/\A[a-z][a-z0-9-]{0,63}\z/
   @reserved "default"
+  @max_name 100
+  # An image pinned by digest, as the run configuration's `image` takes it (Forager's
+  # `policy.schema.json`, `$defs/image_reference`): a name of at most 255 characters,
+  # then the digest's 72, at most 327 in all, held before the pattern is matched.
+  @image ~r/\A(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*(?::[0-9]{1,5})?\/)?[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*(?:\/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*@sha256:[0-9a-f]{64}\z/
+  @max_image 327
   @arches ~w(amd64 arm64)
 
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "machine_types" do
+    field :key, :string
     field :name, :string
+    field :image, :string
     field :vcpus, :integer
     field :memory_mib, :integer
     field :disk_gib, :integer
@@ -31,27 +40,54 @@ defmodule Apiary.MachineTypes.MachineType do
   def arches, do: @arches
 
   @doc """
-  name?/1 is whether `name` is one a type may have: 1 to 64 lower-case letters, digits and
+  key?/1 is whether `key` is one a type may have: 1 to 64 lower-case letters, digits and
   hyphens that start with a letter, other than `default`.
   """
-  @spec name?(term) :: boolean
-  def name?(name), do: is_binary(name) and name != @reserved and Regex.match?(@name, name)
+  @spec key?(term) :: boolean
+  def key?(key), do: is_binary(key) and key != @reserved and Regex.match?(@key, key)
 
   @doc """
-  create_changeset/2 is the changeset of a new type: its name and its spec. A name that
-  is not one a type may have is an error on `:name` with `validation: :format`, and
-  `default` one with `validation: :reserved`; a name another type has, `constraint:
-  :unique`. A number out of its bounds is an error on its field.
+  readable/1 is the name a type of the key `key` gets where none is given: the key with
+  its hyphens as spaces and its first letter in upper case, `large-gpu` as Large gpu.
+  """
+  @spec readable(String.t()) :: String.t()
+  def readable(<<first::utf8, rest::binary>>),
+    do: String.upcase(<<first::utf8>>) <> String.replace(rest, "-", " ")
+
+  @doc """
+  create_changeset/2 is the changeset of a new type: its key, its name, its image and its
+  spec (`changeset/2`).
   """
   @spec create_changeset(t, map) :: Ecto.Changeset.t()
-  def create_changeset(%__MODULE__{} = type, attrs) do
+  def create_changeset(%__MODULE__{} = type, attrs), do: changeset(type, attrs)
+
+  @doc """
+  changeset/2 is the changeset of a type's key, name, image and spec. A key that is not
+  one a type may have is an error on `:key` with `validation: :format`, and `default` one
+  with `validation: :reserved`; a key another type has, `constraint: :unique`. A name
+  that is blank, longer than 100 code points, or has a control character (U+0000 to
+  U+001F, U+007F) or a line or paragraph separator (U+2028, U+2029) is an error on
+  `:name`: the diagnostics contract takes a name of 1 to 100 code points with no control
+  character. A name another type has, ignoring case, is one with `constraint: :unique`.
+  An image that is not a reference pinned by digest is an error on `:image` with
+  `validation: :format`; a blank image is none. A number out of its bounds is an error on
+  its field.
+  """
+  @spec changeset(t | Ecto.Changeset.t(), map) :: Ecto.Changeset.t()
+  def changeset(type, attrs) do
     type
-    |> cast(attrs, [:name])
-    |> validate_required([:name])
-    |> validate_name()
+    |> cast(attrs, [:key, :name, :image])
+    |> validate_required([:key, :name])
+    |> validate_key()
+    |> validate_length(:name, max: @max_name, count: :codepoints)
+    |> validate_format(:name, ~r/\A[^\x00-\x1f\x7f\x{2028}\x{2029}]+\z/u)
+    |> validate_image()
     |> spec_changeset(attrs)
-    |> unique_constraint(:name, name: :machine_types_name_index)
+    |> unique_constraint(:key, name: :machine_types_key_index)
+    |> unique_constraint(:name, name: :machine_types_name_lower_index)
+    |> check_constraint(:key, name: :machine_types_key_check)
     |> check_constraint(:name, name: :machine_types_name_check)
+    |> check_constraint(:image, name: :machine_types_image_check)
   end
 
   @doc """
@@ -74,11 +110,27 @@ defmodule Apiary.MachineTypes.MachineType do
     |> check_constraint(:vcpus, name: :machine_types_spec_check)
   end
 
-  defp validate_name(changeset) do
-    case get_change(changeset, :name) do
-      @reserved -> add_error(changeset, :name, "is reserved", validation: :reserved)
+  defp validate_key(changeset) do
+    case get_change(changeset, :key) do
+      @reserved -> add_error(changeset, :key, "is reserved", validation: :reserved)
       nil -> changeset
-      _name -> validate_format(changeset, :name, @name)
+      _key -> validate_format(changeset, :key, @key)
+    end
+  end
+
+  defp validate_image(changeset) do
+    case get_change(changeset, :image) do
+      image when is_binary(image) and byte_size(image) <= @max_image ->
+        if Regex.match?(@image, image) and
+             image |> String.split("@") |> hd() |> String.length() <= 255,
+           do: changeset,
+           else: add_error(changeset, :image, "has invalid format", validation: :format)
+
+      image when is_binary(image) ->
+        add_error(changeset, :image, "has invalid format", validation: :format)
+
+      nil ->
+        changeset
     end
   end
 end

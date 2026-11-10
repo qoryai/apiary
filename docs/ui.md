@@ -374,24 +374,41 @@ replaces the navigation it is in.
   `instance-tab-<key>`).
 - **Instance settings › Machine types** (`/instance/machine-types`,
   `ApiaryWeb.InstanceLive.MachineTypes`, with the feature `factory`, after Nodes) lists
-  the instance's machine types (`Apiary.MachineTypes`) for its admins: Name, with the
-  badge Default on the default, vCPUs, Memory, Disk, Architecture, Virtualization, Used
-  by ("3 workflows", the workflow entries that run on it, in each workspace's current and
+  the instance's machine types (`Apiary.MachineTypes`) for its admins: Name, with the key
+  and the badge Default on the default under it; Spec, "2 vCPUs, 4 GiB" over "30 GiB
+  disk, amd64" (", virtualization" after a type that has it); Image, the image's name over
+  its digest cut to 12 digits, the whole reference on hover, "Not set" for none; Used by
+  ("3 workflows", the workflow entries that run on it, in each workspace's current and
   trial process and in each workspace type's newest one, as a deletion counts them; an
   entry set to `default` runs on the default), and Pools, the pools that serve it, "None"
   for none. A pool with offers in its latest claim serves the types that one of them
   fits; a pool without serves the default, and takes the runs of the default type and
   the runs queued on the type that was the default then. The row menu has Edit, Make
-  default (not on the default) and Delete…, confirmed in the row:
-  "Delete large?" and "Workflows can no longer pick this type. You cannot undo this."
-  **Add machine type** (`…/new`) and Edit (`…/:name/edit`) open the form: Name (on Add
-  only; a name cannot change), vCPUs and Memory (GiB), Disk (GiB) and Architecture, Needs
-  virtualization and Default, each with its hint, then the line on how a pool picks a
-  machine, and Add or Save beside Cancel. A field's refusal is under it, such as "Choose
-  another name: default means the default type." or, while a pool has offers, "No pool
-  offers a machine that fits this type." under vCPUs. A deletion that fails leaves a line
-  under the table: the default, or the workflows that use the type, such as "large cannot
-  be deleted: these workflows use it: Main: explore-a-ticket." A change needs a recent
+  default (not on the default) and Delete…, confirmed in the row: "Delete Large?" and
+  "Workflows can no longer pick this type. You cannot undo this." **Add machine type**
+  (`…/new`) and Edit (`…/:key/edit`, "Edit Browser tests" in the breadcrumb) open the
+  form: Name, Key, Image (optional), vCPUs and Memory (GiB), Disk (GiB) and Architecture,
+  Needs virtualization and Default, each with its hint, then the line on how a pool picks
+  a machine, and Add or Save beside Cancel. A field's refusal is under it, such as
+  "Choose another key: default means the default type.", "Write a name of 1 to 100
+  characters on one line, with no tabs.", "Choose another name: Browser tests exists."
+  or, while a pool has offers, "No pool offers a machine that fits this type." under
+  vCPUs. On Edit, a changed key makes Save show a warning in place of the buttons
+  (`#machine-type-key-warning`): "Changing the key breaks every file that uses browser.",
+  the counts Qory Apiary updates, the `process.yaml` files to fix, and **Change key** and
+  **Cancel**. The counts leave out a workspace type whose newest process is a copy of the
+  Qory harness's: the key change keeps that copy, and its runs start on the default type
+  until the harness changes the key. The files are those the current and trial processes
+  that use the key were read from, where the version read from the file uses the key too,
+  and the Qory harness's where a workspace type's copy of it uses the key, each with its
+  repository, its path (its module for a harness repository's file), its commit and its
+  workspaces. After **Change key**, the list shows the name, the key and the files to fix
+  in a message at the bottom right (`#machine-type-key-saved`) until **Dismiss**. Where a
+  workspace type is saved at the same moment, the key change saves nothing, and the form
+  stays with the toast "Change the key again. A workspace type was saved at the same
+  moment, so the key change was not saved." A deletion that fails leaves a line under the
+  table: the default, or the workflows that use the type, such as "Large cannot be
+  deleted: these workflows use it: Main: explore-a-ticket." A change needs a recent
   sign-in, and the page leads to the log-in page otherwise; anyone else gets a page not
   found.
 
@@ -1844,16 +1861,22 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   identifiers, in mono, and the target's label links to the target's page. Run has Peak
   memory and CPU time after Duration, each only once a session reported it: the peak,
   "9.8 GiB", or "9.8 of 16 GiB" with the memory of the run's machine type, both in GiB to
-  a tenth; the CPU time as a duration, "12 s", "41 m 10 s", "5 h 00 m". When
-  sessions of one run overlap, Peak memory shows the highest single peak. Both cover
-  everything behind the session's wall. Run has Machine type after Host, the type the
-  claim answer had, absent for an answer without one. Run has Image after Wall, for a run
-  behind a wall: the image prebuilt for the run's target, with "Prebuilt for this target"
-  under it, else the image the run reported, with "The pool's default image." under it
-  when the run started in its pool's default image. Where the reader is not shown the
-  factory feature, Image is the image the run reported, with no line under it. Run's
-  Policy row and the Policy in force section show only for a run whose policy event
-  arrived.
+  a tenth; the CPU time as a duration, "12 s", "41 m 10 s", "5 h 00 m". When sessions of
+  one run overlap, Peak memory shows the highest single peak. Both cover everything behind
+  the session's wall. Run has Host, Workflow (where the run has one), Wall, Key, Machine
+  type, then Image. Machine type is the type the claim answer had, by the name of the
+  type that has its key, then the key in mono, the key alone where no type has it,
+  absent for an answer without one; for a queued run, the type it is queued on. Image is
+  shown for a run behind a wall: the image of the run's machine type, with its digest
+  cut to 12 digits and an ellipsis, whole on hover; else the image prebuilt for the
+  run's target, with "Prebuilt for this target" under it; else the image the run
+  reported, with "The pool's default image." under it when the run started in its pool's
+  default image. A queued run on a type that is not the default shows the image of its
+  type the same way, read when the page loads; a queued run on the default type, or on a
+  key no type has, and one on a type with no image, show no Image row. Where the reader
+  is not shown the factory feature, Image is the image the run reported, with no line
+  under it. Run's Policy row and the Policy in force section show only for a run whose
+  policy event arrived.
 - **About** is the rail's first section, shown when the run names a kind, a subject or
   details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
   its title muted under it, cut to a line and whole on hover; then the details in mono, by
@@ -1952,11 +1975,23 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   changes:
   1. "Waiting until Qory Apiary reads the harness." while its harness walk is not done.
   2. "Waiting: no pool can take the run" while no pool that serves the workspace is ready.
-  3. "Waiting: no pool can start machine type large" while no such pool takes its type.
+  3. "Waiting for a machine: no pool offers a machine that fits UI tests, large
+     (`ui-tests-large`: 8 vCPUs, 32 GiB, 100 GiB disk)." while no such pool takes its
+     type, in the text's colour inside Queue the run's fold, under its events, then, for
+     an instance admin, "An instance admin makes the type fit an offer in Instance
+     settings › Machine types, or the admin of build-pool adds an offer that fits." with
+     the first such pool, "Qory Pool" for the instance's pool. Anyone else reads, in
+     plain text, "Contact support with run rn_…, or ask the admin of build-pool to add
+     an offer that fits." where the first such pool is a pool of the workspace or of
+     another organisation, and "Contact support with run rn_…." where it is the
+     instance's pool, whose admins are the instance admins. The second line is also what
+     they read under Pull the images when the image of the run's type is not in its
+     registry. The header has the cause too, after "Why it waits". "Waiting: no pool can
+     start machine type large", under the fold, where the run has no spec.
   4. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with
-     no build
-     live, while it is held for its target's build.
+     no build live, while it is held for its target's build. A run whose machine type
+     has an image waits for no build.
   5. "Waiting for a machine: build-pool runs 3 of its 3 machines." while every pool runs
      as many machines as its limit allows; "Waiting for a machine: Qory Pool runs all of
      its machines." on the Qory Pool, whose count covers other organisations' runs.
@@ -1985,8 +2020,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      Queued and its time.
   2. **Request a machine**: from the claim to the starter's `dispatched`, empty without
      one. It opens to Machine requested and its time, the pool, and the machine type with
-     its spec, "large (4 vCPUs, 16 GiB, 60 GiB disk)", or "pool default" while the claim
-     answer has none.
+     its spec, "Large `large` (4 vCPUs, 16 GiB, 60 GiB disk)", or "pool default" while
+     the claim answer has none.
   3. **Start the machine**: from `dispatched` to the redemption of the run's code. It opens
      to Machine started and its time, once the machine started. A step of kind `machine`
      (the parts of the machine's start that `qory run` sends, such as `start Docker  3.2
@@ -2182,22 +2217,31 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   changes to a new one that ends in `-failed`, so the page mounts them again.
 
   A failed step has one cause line under its output that states what happened, with no
-  advice. The cause line starts with the step's label; when the name qory or Forager sent
-  for the step has words beyond its label, the name follows in parentheses, as sent, with
-  a set-up command in code font: "Set up the dev container failed with exit code 1
-  (postCreateCommand: `npm ci`)." A join and a step whose name is one word, such as
-  qory's `prepare`, have no parentheses: "Set up the dev container failed with exit code
-  1." For an image step named by its image reference alone, the parentheses contain that
-  reference: "Pull the images failed (registry.example.com/acme/storefront-dev:1)." Under
-  Start the machine, for a machine that did not start, the line states the machine's
-  cause, such as "Qory Pool did not start a machine within 10 minutes." A run that stopped
+  advice. The cause line starts with the step's label; when the name qory or Forager
+  sent for the step has words beyond its label, the name follows in parentheses, as
+  sent, with a set-up command in code font: "Set up the dev container failed with exit
+  code 1 (postCreateCommand: `npm ci`)." A join and a step whose name is one word, such
+  as qory's `prepare`, have no parentheses: "Set up the dev container failed with exit
+  code 1." For an image step named by its image reference alone, the parentheses contain
+  that reference: "Pull the images failed (registry.example.com/acme/storefront-dev:1)."
+  For a run that ended `image_missing` on the image of its machine type, the line is
+  "Pull the images failed: the image of the machine type Browser tests (`browser`) is
+  not in its registry: `ghcr.io/acme/agent@sha256:0123456789ab…`.", with "An instance
+  admin sets an image that exists in Instance settings › Machine types, then runs the
+  work item again." under it for an instance admin, and "Contact support with run rn_…."
+  in plain text for anyone else, and "How it ended" has the same first line. While Pull
+  the images pulls the image of the run's machine type, the step shows "The machine
+  pulls the image of the machine type Browser tests (`browser`). Each run pulls its
+  image before the agent starts." and "No action needed." above its output. Under Start
+  the machine, for a machine that did not start, the line states the machine's cause,
+  such as "Qory Pool did not start a machine within 10 minutes." A run that stopped
   before its first agent session started has no note above the Timeline: the failed row
   and its cause line state what happened. A run whose preparation stopped after a
   session's start, as at a failed wall, has no note about missing session events when no
   agent session ran its agent. When an earlier agent session ran its agent, that
   session's notes stay in its Run the agent: the note about a wall or missing hook
-  events, or the note about its runtime. The meta line's reason shows a machine's
-  cause, and "How it ended" a step's.
+  events, or the note about its runtime. The meta line's reason shows a machine's cause,
+  and "How it ended" a step's.
 
   The heading's time counts only the rows the list shows. It runs from the first row's
   start, Queue the run's for a run a pool claimed, to the end of the last row: the `gone`
@@ -2412,11 +2456,13 @@ Workflows, Instance settings › Workspace types and a workspace type's page use
   as trial** (Workspace settings only) and **Discard changes** are at the right end of the
   tabs' row on both tabs: one draft has the edits of both, and a switch of tabs keeps it.
   Details' **Default machine type** and a workflow's **Machine type** in the inspector are
-  selects of the instance's machine types ("large: 4 vCPUs, 16 GiB"): the default's first,
-  "Default (standard)", and a workflow's "Workspace default (standard)", with "Default
-  (standard)" also for a workflow set to `default`. A value that no type has stays as one
-  more option. A member who cannot edit reads the default's words and a type's name, such
-  as "large", in Details and in the stage's Sequence. Its hint on Workflows is "Workflows that
+  selects of the instance's machine types by name ("Large: 4 vCPUs, 16 GiB"), each with
+  its key as its value: the default's first, "Default (Standard)", and a workflow's
+  "Workspace default (Standard)", with "Default (Standard)" also for a workflow set to
+  `default`. A key that no type has is the first option's value, with its words, so a
+  save keeps it; a value that breaks the key's pattern stays as one more option. A member
+  who cannot edit reads the default's words and a type's name, such as "Large", in Details
+  and in the stage's Sequence. Its hint on Workflows is "Workflows that
   pick no machine type run on this one. The people who run this Qory Apiary add machine
   types."; on Workspace types, "New workspaces of this type start with this default. Add
   machine types in Instance settings › Machine types.", with a link. The page exists
@@ -2426,15 +2472,19 @@ Workflows, Instance settings › Workspace types and a workspace type's page use
   **Export process.yaml** downloads the current version, with no draft or trial. The text
   beside the button is "Commit this file to a harness repository. Only new workspaces made
   from it use it.", and "Gates that list people export as all members." follows it when a
-  gate of the current version lists people. The file has `default` for each machine type,
-  with no line about it.
+  gate of the current version lists people. The file has each machine type key as the
+  version has it, with no line about it.
 - **The inspector.** A stage's form has fields for the stage's name and description. A
   member's read-only panel has the stage's name and, when the stage has one, its
   description. Both then have four boxes (`sect/1`, `q-sect-side`) in the order a stage
   works: Inputs, Sequence, Outputs and Gate.
   Each workflow is a row with its name, then one line in a native `<details>`: **Machine
-  type: default**, ending in **Change**, or **Close** while open. Its fields stay in the
-  form while closed. A refused machine type shows on that line while the fold is closed.
+  type: Workspace default (Standard)**, ending in **Change**, or **Close** while open. Its
+  fields stay in the form while closed. A refused machine type shows on that line while
+  the fold is closed. A key that no type has shows "Pick a machine type: no type has the
+  key browser." under that line, and in the fold, above the picker, the notice "Pick a
+  machine type for make-mockups." with the `process.yaml` that sets the key and the type
+  the runs start on; on Workspace types the notice is the line.
   The check's words are in the fold, and on the row for a screen reader and as a title;
   the cross keeps its words on the row.
 

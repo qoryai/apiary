@@ -276,22 +276,6 @@ defmodule ApiaryWeb.StagesLive.Draft do
     end
   end
 
-  # The machine type at a place such as `#/stages/1/sequence/0/machine` or
-  # `#/stages/1/sequence/2/loop/body/0/machine`, nil for another place.
-  @doc false
-  def machine_at(doc, path) do
-    case {entry_at(doc, path), Regex.run(~r{/loop/body/(\d+)/machine$}, path)} do
-      {%{"loop" => %{"body" => body}}, [_all, place]} ->
-        (Enum.at(body, String.to_integer(place)) || %{})["machine"]
-
-      {%{"machine" => machine}, nil} ->
-        machine
-
-      _other ->
-        nil
-    end
-  end
-
   # Whether the entry is a loop with more workflows than the process schema takes
   # (`priv/schemas/process/v1.schema.json`, `loop_entry`).
   @doc false

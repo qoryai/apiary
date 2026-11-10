@@ -163,7 +163,7 @@
       "pattern": "^[a-z][a-z0-9-]{0,63}$"
     },
     "machine": {
-      "description": "A machine type of the instance, by its name, or default, the instance's default type.",
+      "description": "A machine type of the instance, by its key, or default, the instance's default type. The key may be one the instance has no type for: the runs then start on the workspace's default type.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,63}$"
     }

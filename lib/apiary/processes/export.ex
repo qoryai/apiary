@@ -22,10 +22,10 @@ defmodule Apiary.Processes.Export do
       (Apiary.Stacks.choice/1), else `Apiary.Organisations.Workspace.qory_stack/1`.
     * `process` is the current version's document. Each gate that lists people is written
       with `approvers: members`, because the list has user ids of this instance. Each
-      `machine` other than `default`, of the document or of a workflow entry, is written
-      as `default`, because it is the name of one of this instance's machine types, and
-      `Apiary.Harnesses.Reader.template/1` returns `:invalid_template` for any name but
-      `default`.
+      `machine`, of the document or of a workflow entry, is written with the key the
+      document has: `Apiary.Harnesses.Reader.template/1` reads any key, and in a workspace
+      made from the file on an instance with no type of that key, the runs of an entry
+      with such a key start on the workspace's default type.
     * `artifact_types` lists each standard type the workspace shows, by name alone, less
       the types no workspace can hide, then each custom type's definition.
 
@@ -84,7 +84,7 @@ defmodule Apiary.Processes.Export do
           {"description", description},
           {"type", workspace.type},
           {"stack", stack(workspace)},
-          {"process", document |> without_people() |> without_machine_types()},
+          {"process", without_people(document)},
           {"artifact_types", artifact_types(workspace)}
         ],
         0,
@@ -170,26 +170,6 @@ defmodule Apiary.Processes.Export do
     do: %{stage | "gate" => %{gate | "approvers" => "members"}}
 
   defp stage_without_people(stage), do: stage
-
-  defp without_machine_types(%{"stages" => stages} = document) do
-    %{default_machine(document) | "stages" => Enum.map(stages, &stage_without_machine_types/1)}
-  end
-
-  defp stage_without_machine_types(%{"sequence" => sequence} = stage) when is_list(sequence),
-    do: %{stage | "sequence" => Enum.map(sequence, &entry_without_machine_type/1)}
-
-  defp stage_without_machine_types(stage), do: stage
-
-  defp entry_without_machine_type(%{"loop" => %{"body" => body} = loop} = entry)
-       when is_list(body),
-       do: %{entry | "loop" => %{loop | "body" => Enum.map(body, &default_machine/1)}}
-
-  defp entry_without_machine_type(entry), do: default_machine(entry)
-
-  defp default_machine(%{"machine" => machine} = map) when machine != "default",
-    do: %{map | "machine" => "default"}
-
-  defp default_machine(map), do: map
 
   defp artifact_types(%Workspace{} = workspace) do
     {standard, custom} = workspace |> Artifacts.all_types() |> Enum.split_with(& &1.standard)

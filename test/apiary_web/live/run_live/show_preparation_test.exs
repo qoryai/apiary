@@ -299,9 +299,10 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert heading.(open(ctx.conn, ctx.scope, run)) == "Run on build-pool · Completed"
     end
 
-    test "a run of a machine type: Request a machine has its spec, Details its name, the peak the type's memory",
+    test "a run of a machine type: Request a machine has its spec, Details its name and key, the peak the type's memory",
          ctx do
       %{run: run, dispatch: dispatch} = claimed_run(ctx.scope)
+      Apiary.MachineTypesFixtures.machine_type_fixture(key: "large", name: "Large builds")
 
       {1, _rows} =
         Apiary.Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
@@ -326,10 +327,26 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       lv = open(ctx.conn, ctx.scope, run)
       requested = lv |> element("#prepare-machine-request") |> render()
-      assert requested =~ "large (4 vCPUs, 16 GiB, 60 GiB disk)"
+
+      assert requested
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text()
+             |> String.split()
+             |> Enum.join(" ") =~
+               "Large builds large (4 vCPUs, 16 GiB, 60 GiB disk)"
+
+      assert has_element?(lv, "#prepare-machine-request dd span.font-mono", "large")
+
       refute requested =~ "pool default"
 
-      assert has_element?(lv, "#rail-machine-type", "large")
+      assert lv
+             |> element("#rail-machine-type")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text()
+             |> String.split() == ["Large", "builds", "large"]
+
+      assert has_element?(lv, "#rail-machine-type .font-mono", "large")
       assert has_element?(lv, "#rail-peak-memory", "9.8 of 16 GiB")
     end
 

@@ -229,7 +229,13 @@ defmodule Apiary.Runs.PreparationTest do
       spec = Apiary.MachineTypesFixtures.spec()
       change_dispatch!(dispatch, machine_type: "large", machine_spec: spec)
 
-      assert %{machine_type: %{name: "large", spec: ^spec}} =
+      assert %{machine_type: %{key: "large", name: nil, spec: ^spec}} =
+               Preparation.read(ctx.scope, run).machine
+
+      # With the name of the type that has the key today.
+      Apiary.MachineTypesFixtures.machine_type_fixture(key: "large", name: "Large builds")
+
+      assert %{machine_type: %{key: "large", name: "Large builds", spec: ^spec}} =
                Preparation.read(ctx.scope, run).machine
     end
 

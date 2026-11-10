@@ -418,6 +418,20 @@ defmodule Apiary.Harnesses.Qory do
   end
 
   @doc false
+  # template_file/1 is the path of the software type's `process.yaml` at `commit`, as the
+  # kept `qory.yaml` resolves it (`Reader.module_file/3`), nil for a commit with no files
+  # kept.
+  @spec template_file(String.t() | nil) :: String.t() | nil
+  def template_file(commit) do
+    decoded(commit, :template_file, fn _files, exports ->
+      case Reader.module_file(exports, @template, "process.yaml") do
+        {:ok, path} -> path
+        {:error, _reason} -> nil
+      end
+    end)
+  end
+
+  @doc false
   # texts/1 is the name, summary and description of the template at `commit`, nil for
   # none (`template/1`).
   @spec texts(String.t() | nil) ::

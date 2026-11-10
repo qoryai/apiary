@@ -351,7 +351,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       before = typed!(work_item_fixture(ctx.scope), nil, nil)
       standard = queued!(ctx.scope)
       assert {standard.machine_type, standard.machine_type_was_default} == {"standard", true}
-      large = machine_type_fixture(name: "large")
+      large = machine_type_fixture(key: "large")
       # Queued on large while standard is the default; taken as the default once large is.
       on_large = typed!(work_item_fixture(ctx.scope), "large", spec())
       make_default!(large)
@@ -380,7 +380,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
     test "a run queued on the default type, and only such a run, has machine_type_was_default",
          ctx do
-      make_default!(machine_type_fixture(name: "large"))
+      make_default!(machine_type_fixture(key: "large"))
       assert %{machine_type: "large", machine_type_was_default: true} = queued!(ctx.scope)
 
       assert Apiary.MachineTypes.queued_on("standard") ==

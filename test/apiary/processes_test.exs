@@ -7,7 +7,6 @@ defmodule Apiary.ProcessesTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
-  import Apiary.MachineTypesFixtures
 
   import Apiary.WorkItemsFixtures,
     only: [work_item_fixture: 1, ticket_connection_fixture: 1, backlog_ticket_fixture: 2]
@@ -754,7 +753,7 @@ defmodule Apiary.ProcessesTest do
       assert %{path: "#/stages/1/description", error: :schema, detail: :maxLength} in errors
     end
 
-    test "a save refuses a machine type the instance does not have, by its place", %{
+    test "a save keeps a machine type key the instance does not have, in every place", %{
       scope: scope
     } do
       document =
@@ -765,17 +764,9 @@ defmodule Apiary.ProcessesTest do
           %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "review", "machine" => "gpu"}]}}
         ])
 
-      assert {:error, errors} = Processes.save(scope, scope.workspace, document)
-
-      assert Enum.map(errors, &{&1.path, &1.error}) == [
-               {"#/machine", :unknown_machine_type},
-               {"#/stages/1/sequence/0/machine", :unknown_machine_type},
-               {"#/stages/1/sequence/1/loop/body/0/machine", :unknown_machine_type}
-             ]
-
-      for name <- ~w(huge large gpu), do: machine_type_fixture(name: name)
       assert {:ok, version} = Processes.save(scope, scope.workspace, document)
       assert version.document["machine"] == "huge"
+      assert Processes.current(scope.workspace).document == version.document
 
       # `default` and an entry with no machine type need no type of that name.
       assert {:ok, _} =

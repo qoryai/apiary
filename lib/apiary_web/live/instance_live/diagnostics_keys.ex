@@ -197,7 +197,6 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
       place={:instance}
       section={:diagnostics_keys}
     >
-      <:crumb patch={~p"/instance/diagnostics-keys"}>{gettext("Diagnostics keys")}</:crumb>
       <:crumb>{gettext("Command")}</:crumb>
 
       <.settings_page section={:diagnostics_keys} title={gettext("Make a diagnostics key")}>

@@ -386,6 +386,37 @@ defmodule ApiaryWeb.StagesLive.Words do
   @doc false
   def machine_refused, do: gettext("Choose a machine type from the list.")
 
+  # A workflow entry whose key no machine type has: the line of its closed row.
+  @doc false
+  def machine_missing_line(key),
+    do: gettext("Pick a machine type: no type has the key %{key}.", key: key)
+
+  # The same, in the notice beside its picker, after the bold "Pick a machine type for
+  # make-mockups.": where the key came from, and the type the runs start on, `fallback`,
+  # by name. `from_update` where the process came from an update from the harness.
+  @doc false
+  def machine_missing(key, workflow, fallback, false),
+    do:
+      rich_gettext(
+        "The %{file} this workspace was made from sets %{setting}, and this Qory Apiary has no machine type with the key %{key}. Until you pick one, runs of %{workflow} start on the default type, %{fallback}.",
+        file: {:m, "process.yaml"},
+        setting: {:m, "machine: " <> key},
+        key: {:m, key},
+        workflow: workflow,
+        fallback: fallback
+      )
+
+  def machine_missing(key, workflow, fallback, true),
+    do:
+      rich_gettext(
+        "The %{file} of the last update from the harness sets %{setting}, and this Qory Apiary has no machine type with the key %{key}. Until you pick one, runs of %{workflow} start on the default type, %{fallback}.",
+        file: {:m, "process.yaml"},
+        setting: {:m, "machine: " <> key},
+        key: {:m, key},
+        workflow: workflow,
+        fallback: fallback
+      )
+
   # A loop's rounds outside 1 to 10, under the field.
   @doc false
   def rounds_refused, do: gettext("Give the loop 1 to 10 rounds.")

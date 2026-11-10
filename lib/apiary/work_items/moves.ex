@@ -25,6 +25,12 @@ defmodule Apiary.WorkItems.Moves do
   #
   # ## What a take in reads
   #
+  # A take in, a take in again and a test's take in hold the table of machine types
+  # (`Apiary.MachineTypes.hold/0`) before they lock a row, as a save of a process does
+  # (`Apiary.Processes.save/4`): a key change takes the table first, so a take in waits for
+  # it and then reads the current version after it, and places its work item and run on
+  # the key after. Neither waits on a row the other holds while it waits.
+  #
   # The ticket is named by the id Qory Apiary gives its record (`tk_…`). It is taken in
   # only while it is in the Backlog of the scope's workspace: its connection connected,
   # its collection live and assigned to that workspace, the record not disconnected; else
@@ -315,7 +321,8 @@ defmodule Apiary.WorkItems.Moves do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, Dispatches, Names, Organisations, PublicId, Repo, WorkItems}
+  alias Apiary.{Access, Audit, Dispatches, MachineTypes, Names, Organisations, PublicId}
+  alias Apiary.{Repo, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection, Feed}
   alias Apiary.Dispatches.DispatchRun
@@ -365,6 +372,7 @@ defmodule Apiary.WorkItems.Moves do
       Repo.transact(fn ->
         with {:ok, workspace} <- workspace(scope),
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
+             :ok <- MachineTypes.hold(),
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
              :ok <- none_yet(scope, ticket),
              :ok <- open(ticket),
@@ -471,6 +479,7 @@ defmodule Apiary.WorkItems.Moves do
       Repo.transact(fn ->
         with {:ok, workspace} <- workspace(scope),
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
+             :ok <- MachineTypes.hold(),
              {:ok, closed} <- close_last_test(scope, workspace),
              {:ok, {work_item, told}} <- make_test(scope, workspace, line) do
           {:ok, {work_item, with_closed(told, closed)}}
@@ -606,6 +615,7 @@ defmodule Apiary.WorkItems.Moves do
       Repo.transact(fn ->
         with {:ok, workspace} <- workspace(scope),
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
+             :ok <- MachineTypes.hold(),
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
              {:ok, ended} <- ended(scope, ticket),
              :ok <- open(ticket),

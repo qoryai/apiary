@@ -558,9 +558,9 @@ defmodule Apiary.Processes do
   default. A stage with no `id` is given a new one (`new_stage_id/0`).
 
   `{:ok, version}`; `{:error, errors}` (`t:error/0`) for a document `validate/1` refuses,
-  one with a machine type the instance does not have (`known_machine_types/1`), or one
-  that is the document of the version the save starts from; or a reason of
-  `Apiary.Access`.
+  or one that is the document of the version the save starts from; or a reason of
+  `Apiary.Access`. A machine type key the instance has no type for is kept: its runs
+  start on the workspace's default type (`Apiary.MachineTypes`).
   """
   @spec save(Scope.t(), %Workspace{}, term, keyword) ::
           {:ok, Version.t()} | {:error, [error] | Access.reason()}
@@ -573,7 +573,6 @@ defmodule Apiary.Processes do
            :ok <- Access.check(scope, :"process.edit", workspace),
            :ok <- validate(document),
            :ok <- Apiary.MachineTypes.hold(),
-           :ok <- known_machine_types(document),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
            {:ok, version} <- insert_version(scope, workspace, base, document, trial?, nil),
@@ -629,7 +628,6 @@ defmodule Apiary.Processes do
            :ok <- harness_access(scope, workspace),
            :ok <- validate(document),
            :ok <- Apiary.MachineTypes.hold(),
-           :ok <- known_machine_types(document),
            {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
            :ok <- still_current(workspace, base),
            :ok <- changed_at(base, document, template),
@@ -680,45 +678,49 @@ defmodule Apiary.Processes do
   def harness_template(%Version{id: id}), do: harness_template(id)
 
   def harness_template(id) when is_binary(id) do
+    case harness_origin(id) do
+      %{template: template} -> template
+      nil -> nil
+    end
+  end
+
+  @doc """
+  harness_origin/1 is the version whose `template` `harness_template/1` returns for
+  `version`, `version` itself or a version it was based on: that `template` and that
+  version's `document`. Nil for none. The document shows whether the harness file at the
+  commit has what a later version has, or whether a person's edit added it after.
+  """
+  @spec harness_origin(Version.t() | Ecto.UUID.t()) :: %{template: map, document: map} | nil
+  def harness_origin(%Version{template: %{"commit" => commit} = template} = version)
+      when is_binary(commit),
+      do: %{template: template, document: version.document}
+
+  def harness_origin(%Version{id: id}), do: harness_origin(id)
+
+  def harness_origin(id) when is_binary(id) do
     {:ok, id} = Ecto.UUID.dump(id)
 
     %{rows: rows} =
       Repo.query!(
         """
-        WITH RECURSIVE chain(based_on_id, template, depth) AS (
-          SELECT based_on_id, template, 0 FROM process_versions WHERE id = $1
+        WITH RECURSIVE chain(id, based_on_id, template, depth) AS (
+          SELECT id, based_on_id, template, 0 FROM process_versions WHERE id = $1
           UNION ALL
-          SELECT v.based_on_id, v.template, chain.depth + 1
+          SELECT v.id, v.based_on_id, v.template, chain.depth + 1
           FROM process_versions v JOIN chain ON v.id = chain.based_on_id
           WHERE chain.template->>'commit' IS NULL AND chain.depth < 10000
         )
-        SELECT template FROM chain
-        WHERE template->>'commit' IS NOT NULL
-        ORDER BY depth LIMIT 1
+        SELECT c.template, v.document FROM chain c
+        JOIN process_versions v ON v.id = c.id
+        WHERE c.template->>'commit' IS NOT NULL
+        ORDER BY c.depth LIMIT 1
         """,
         [id]
       )
 
     case rows do
-      [[template]] -> template
+      [[template, document]] -> %{template: template, document: document}
       [] -> nil
-    end
-  end
-
-  @doc """
-  known_machine_types/1 is `:ok` when every machine type of `document`, its `machine` and
-  each workflow entry's, is absent, `default`, or a type of the instance
-  (`Apiary.MachineTypes`); else `{:error, errors}`, each `:unknown_machine_type` at its
-  place.
-  """
-  @spec known_machine_types(map) :: :ok | {:error, [error]}
-  def known_machine_types(document) do
-    case Apiary.MachineTypes.unknown(document) do
-      [] ->
-        :ok
-
-      paths ->
-        {:error, for(path <- paths, do: %{path: path, error: :unknown_machine_type, detail: nil})}
     end
   end
 
@@ -807,6 +809,7 @@ defmodule Apiary.Processes do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, trial),
            :ok <- Access.check(scope, :"process.edit", trial),
+           :ok <- Apiary.MachineTypes.hold(),
            {:ok, trial} <- held_trial(trial),
            replaced = current_row(workspace, :update),
            _retired = retire_current(workspace),
@@ -849,6 +852,7 @@ defmodule Apiary.Processes do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, trial),
            :ok <- Access.check(scope, :"process.edit", trial),
+           :ok <- Apiary.MachineTypes.hold(),
            {:ok, trial} <- held_trial(trial),
            current = current_row(workspace, :update) || current(workspace),
            items = trial_items(trial),
@@ -905,6 +909,7 @@ defmodule Apiary.Processes do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, work_item),
            :ok <- Access.check(scope, :"process.edit", work_item),
+           :ok <- Apiary.MachineTypes.hold(),
            %WorkItem{} = work_item <- held_item(work_item),
            {:ok, version} <- assignable(version, workspace) do
         before = version_for(work_item)
@@ -992,6 +997,104 @@ defmodule Apiary.Processes do
         )
     })
   end
+
+  ## A machine type's key changed
+
+  @doc """
+  machine_key_versions/1 is each workspace's current and trial version whose document
+  uses the machine type key `key`, in its `machine` or in a workflow entry's
+  (`Apiary.MachineTypes.uses_key?/2`), in a workspace not marked for deletion, by
+  workspace name and number.
+  """
+  @spec machine_key_versions(String.t()) :: [Version.t()]
+  def machine_key_versions(key) when is_binary(key) do
+    Repo.all(
+      from v in Version,
+        join: w in Workspace,
+        on: w.id == v.workspace_id,
+        where: v.status in [:current, :trial] and is_nil(w.deletion_marked_at),
+        order_by: [asc: w.name, asc: v.number],
+        preload: [workspace: w]
+    )
+    |> Enum.filter(&Apiary.MachineTypes.uses_key?(&1.document, key))
+  end
+
+  @doc """
+  rekey_machine/3 saves, for each version of `machine_key_versions/1` for `from`, a new
+  version whose document has the key `to` in each place that had `from`, authored by the
+  scope's person, the instance admin who changed the key: current where the version was
+  current, which becomes past, and a trial where it was a trial, which is dropped. The
+  work items on each such version move to its new version, which has the same stages,
+  and so does every run of the queue on the version that waits, as `assign/3` moves a
+  work item's; `Apiary.MachineTypes.update/3` then changes the key of those on the type
+  of key `from`. Past versions keep their
+  documents. A new version keeps the `template` of a version
+  saved from the harness at a commit (`save_harness/5`), so its trial made current
+  copies the template's stack and turns Keep the process at the latest on, as the trial
+  before it would have. Each new version has an entry `save` or `save_trial` in its
+  workspace's trail, with `machine_key`, the key before and after.
+  Called by `Apiary.MachineTypes.update/3`, in its transaction, which checks the scope.
+  `:ok`.
+  """
+  @spec rekey_machine(Scope.t(), String.t(), String.t()) :: :ok
+  def rekey_machine(%Scope{} = scope, from, to) when is_binary(from) and is_binary(to) do
+    for %Version{} = old <- machine_key_versions(from) do
+      workspace = old.workspace
+      trial? = old.status == :trial
+
+      {1, _rows} =
+        Repo.update_all(from(v in Version, where: v.id == ^old.id),
+          set: [status: if(trial?, do: :dropped, else: :past), updated_at: DateTime.utc_now()]
+        )
+
+      number =
+        Repo.one(from v in Version, where: v.workspace_id == ^workspace.id, select: max(v.number))
+
+      version =
+        Repo.insert!(%Version{
+          organisation_id: workspace.organisation_id,
+          workspace_id: workspace.id,
+          public_id: Apiary.PublicId.generate("pv"),
+          number: number + 1,
+          status: old.status,
+          document: Apiary.MachineTypes.rekey(old.document, from, to),
+          author_id: scope.user && scope.user.id,
+          based_on_id: old.id,
+          template: harness_commit_template(old)
+        })
+
+      Repo.update_all(from(w in WorkItem, where: w.process_version_id == ^old.id),
+        set: [process_version_id: version.id, updated_at: DateTime.utc_now()]
+      )
+
+      Repo.update_all(
+        from(r in DispatchRun,
+          where: r.process_version_id == ^old.id and r.state == :waiting
+        ),
+        set: [process_version_id: version.id, updated_at: DateTime.utc_now()]
+      )
+
+      organisation = Repo.get!(Apiary.Organisations.Organisation, workspace.organisation_id)
+      in_workspace = %{Scope.in_organisation(scope, organisation) | workspace: workspace}
+
+      {:ok, _entry} =
+        record(in_workspace, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
+          based_on: old.number,
+          machine_key: %{from: from, to: to}
+        })
+    end
+
+    :ok
+  end
+
+  # The `template` of a version saved from the harness at a commit, which a rekeyed
+  # version keeps so that Make current of its trial still copies the template's stack and
+  # turns the switch on (`made_current/3`); nil for any other version.
+  defp harness_commit_template(%Version{template: %{"commit" => commit} = template})
+       when is_binary(commit),
+       do: template
+
+  defp harness_commit_template(%Version{}), do: nil
 
   ## The differences
 

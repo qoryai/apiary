@@ -9,7 +9,6 @@ defmodule Apiary.Processes.TypeTemplatesTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
-  import Apiary.MachineTypesFixtures
 
   alias Apiary.{Organisations, Processes, Repo}
   alias Apiary.Audit.Entry
@@ -192,15 +191,12 @@ defmodule Apiary.Processes.TypeTemplatesTest do
                TypeTemplates.save(instance_admin(), "qory.nothing", default())
     end
 
-    test "refuses a machine type the instance does not have" do
+    test "keeps a machine type key the instance does not have" do
       admin = instance_admin()
       document = Map.put(default(), "machine", "large")
 
-      assert {:error, [%{path: "#/machine", error: :unknown_machine_type}]} =
-               TypeTemplates.save(admin, @type_key, document)
-
-      machine_type_fixture(name: "large")
-      assert {:ok, %{number: 2}} = TypeTemplates.save(admin, @type_key, document)
+      assert {:ok, %{number: 2} = version} = TypeTemplates.save(admin, @type_key, document)
+      assert version.document["machine"] == "large"
     end
 
     test "refuses a gate that lists people, and keeps a gate of none" do

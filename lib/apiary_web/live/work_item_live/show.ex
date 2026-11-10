@@ -44,9 +44,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # so do Explore's tab and, where the page has it, the step card for a run of Explore. A
   # later stage's run has no block that shows a queued run, so it has the header's words
   # alone. While pools serve the workspace's runs and none can start the queued run's
-  # machine type (`no_fit/3`), the header has the type's name. The page reads everything
-  # again when a machine enrols a key on a pool that serves the workspace's runs, or on
-  # the gateway such a pool's choice leads to (`listen_to_pools/1`).
+  # machine type (`no_fit/3`), the header has the type's name, or the run's key where no
+  # type has that key. The page reads everything again when a machine enrols a key on a
+  # pool that serves the workspace's runs, or on the gateway such a pool's choice leads to
+  # (`listen_to_pools/1`).
   #
   # **What a reader does.** Undo, Close, Run Explore again, Run another round, Confirm,
   # and a reply to a review comment on its form page (`?reply=<id>`), each
@@ -2289,11 +2290,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp no_pool(_scope, _item), do: nil
 
   # While the work item's latest run waits in the queue, and no pool that serves the
-  # workspace's runs can start its machine type, the type's name
-  # (`Apiary.MachineTypes.unserved/2`).
+  # workspace's runs can start its machine type, the type's name, or the key where no type
+  # has it (`Apiary.MachineTypes.unserved/2`).
   defp no_fit(scope, %{id: id}, %{run: %{place: :queued, state: nil, workspace_id: ws}})
-       when is_binary(ws),
-       do: Apiary.MachineTypes.unserved(scope.workspace, id)
+       when is_binary(ws) do
+    with key when is_binary(key) <- Apiary.MachineTypes.unserved(scope.workspace, id) do
+      case Apiary.MachineTypes.get(key) do
+        %{name: name} -> name
+        nil -> key
+      end
+    end
+  end
 
   defp no_fit(_scope, _row, _item), do: nil
 

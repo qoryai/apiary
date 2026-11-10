@@ -68,12 +68,18 @@ defmodule Apiary.Runs.Preparation do
       found lost or its exit, and `refused` `:lost` or `:cancelled`. `fix` is what the
       reader of `scope` does about an image not saved (`t:built_fix/0`). Nil otherwise,
       and for any other run.
+    * `image_type`: the machine type whose image the run was given
+      (`runs.configured_image`), by the id its claim or attach kept
+      (`runs.configured_image_machine_type_id`, `Apiary.Runs.Attach`), with its key,
+      name and image as they are now; nil for a run given a target's image or none, and
+      for a type deleted since.
 
   Every read is scoped as `Apiary.Runs.Record` scopes it: the scope's organisation and
   workspace, and the run's row id.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
+  import ApiaryWeb.RichText, only: [rich_gettext: 2]
 
   import Ecto.Query, only: [from: 2]
 
@@ -101,7 +107,7 @@ defmodule Apiary.Runs.Preparation do
   @after_kinds ~w(push copy)
 
   @typedoc "Where the cause of a failure lies, by who can fix it."
-  @type fixer :: :support | :operator_admin | :workspace_admin
+  @type fixer :: :support | :operator_admin | :workspace_admin | :instance_admin
 
   @typedoc "Why a preparation failed."
   @type cause ::
@@ -140,8 +146,9 @@ defmodule Apiary.Runs.Preparation do
   the dispatch's run of the queue began to wait for this claim: its `queued_at`, or when
   an earlier dispatch of it that put it back in the queue was released or lapsed;
   nil for a dispatch with no run of the queue. `machine_type` is the machine type the
-  claim answer had, its name and its spec as the provisioner contract writes it; nil for
-  an answer to a claim with no offers, which has none. `requested_ms` is nil while the
+  claim answer had: its key, the name of the type that has the key today (nil where no
+  type has it), and its spec as the provisioner contract writes it; nil for an answer to
+  a claim with no offers, which has none. `requested_ms` is nil while the
   dispatch has no `dispatched`. `started_as` is the vendor's type of the machine the
   starter created, as its first `dispatched` reported it, for a reader who is an instance
   admin (`Apiary.Access.instance_admin?/1`); nil for anyone else, and while the starter
@@ -159,7 +166,7 @@ defmodule Apiary.Runs.Preparation do
           dispatch_id: String.t(),
           pool: pool,
           queued_at: DateTime.t() | nil,
-          machine_type: %{name: String.t(), spec: map} | nil,
+          machine_type: %{key: String.t(), name: String.t() | nil, spec: map} | nil,
           requested_at: DateTime.t(),
           requested_ms: non_neg_integer | nil,
           started_as: String.t() | nil,
@@ -218,16 +225,22 @@ defmodule Apiary.Runs.Preparation do
   (nil for any other cause), who can fix it, and the cause line: `text`, what happened
   and who fixes it, `what`, its first sentence alone, and `fix`, its second. `detail` is
   the part of qory's step name that the step's label leaves out (`step_detail/1`), in
-  parentheses at the end of `what`; nil when there is none.
+  parentheses at the end of `what`; nil when there is none. For a run whose machine
+  type's image is not in its registry, `rich` is `what` as rich text
+  (`ApiaryWeb.RichText`), and `fix_shown` is true where the run page shows `fix` under
+  it; for a reader of `scope` who is not an instance admin, `fix` is "Contact support
+  with run …".
   """
   @type stopped :: %{
-          cause: cause,
-          step: pos_integer | nil,
-          fixer: fixer,
-          text: String.t(),
-          what: String.t(),
-          fix: String.t(),
-          detail: String.t() | nil
+          required(:cause) => cause,
+          required(:step) => pos_integer | nil,
+          required(:fixer) => fixer,
+          required(:text) => String.t(),
+          required(:what) => String.t(),
+          required(:fix) => String.t(),
+          required(:detail) => String.t() | nil,
+          optional(:rich) => term,
+          optional(:fix_shown) => true
         }
 
   @typedoc """
@@ -293,7 +306,8 @@ defmodule Apiary.Runs.Preparation do
           outputs: [output_version],
           stopped: stopped | nil,
           prebuild: boolean,
-          built: built | nil
+          built: built | nil,
+          image_type: %{key: String.t(), name: String.t(), image: String.t()} | nil
         }
 
   @type built :: %{
@@ -386,29 +400,68 @@ defmodule Apiary.Runs.Preparation do
         ),
       prebuild: prebuild,
       built: if(prebuild, do: built(scope, run, session_end, machine)),
-      queued: if(is_nil(machine), do: queued(run))
+      queued: if(is_nil(machine), do: queued(scope, run)),
+      image_type: image_type(run)
     }
+  end
+
+  # The machine type whose image the run was given (`runs.configured_image`), by the id
+  # its claim or attach kept (`runs.configured_image_machine_type_id`,
+  # `Apiary.Runs.Attach`): `%{key: key, name: name, image: image}`, its key and name as
+  # they are now; nil for a run given a target's image or none, and for a type deleted
+  # since, whose run then has the cause line of any failed step.
+  defp image_type(%Run{configured_image: image, configured_image_machine_type_id: id})
+       when is_binary(image) and is_binary(id) do
+    case Repo.get(Apiary.MachineTypes.MachineType, id) do
+      %{key: key, name: name} -> %{key: key, name: name, image: image}
+      nil -> nil
+    end
+  end
+
+  defp image_type(%Run{}), do: nil
+
+  @doc """
+  An image reference as a page shows it: its digest cut to its first 12 hexadecimal
+  digits and an ellipsis, as "ghcr.io/acme/agent@sha256:0123456789ab…"; any other
+  reference as it is.
+  """
+  @spec short_image(String.t()) :: String.t()
+  def short_image(image) do
+    case Regex.run(~r/\A(.+@sha256:[0-9a-f]{12})[0-9a-f]{52}\z/, image) do
+      [_image, short] -> short <> "…"
+      nil -> image
+    end
   end
 
   # A queued run (`Apiary.Runs.Run.queued?/1`): when it began to wait, its record's
   # `inserted_at` (`Apiary.Dispatches.Queued`), the machine type it was queued on, and why
-  # it waits (`Apiary.Runs.Waiting`). Nil for any other run.
-  defp queued(%Run{dispatch_run_id: id, workspace_id: workspace_id} = run) when is_binary(id) do
+  # it waits (`Apiary.Runs.Waiting`); the run's public id, and whether the reader is an
+  # instance admin, for who fixes why it waits. Nil for any other run.
+  defp queued(scope, %Run{dispatch_run_id: id, workspace_id: workspace_id} = run)
+       when is_binary(id) do
     with true <- Run.queued?(run),
          %DispatchRun{state: :waiting} = queued <-
            Repo.one(from d in DispatchRun, where: d.id == ^id and d.workspace_id == ^workspace_id) do
       %{
         queued_at: run.inserted_at,
         machine_type:
-          if(queued.machine_type, do: %{name: queued.machine_type, spec: queued.machine_spec}),
-        reason: Waiting.reason(queued)
+          if(queued.machine_type,
+            do: %{
+              key: queued.machine_type,
+              name: type_name(queued.machine_type),
+              spec: queued.machine_spec
+            }
+          ),
+        reason: Waiting.reason(queued),
+        run: run.public_id,
+        instance_admin: Access.instance_admin?(scope)
       }
     else
       _other -> nil
     end
   end
 
-  defp queued(_run), do: nil
+  defp queued(_scope, _run), do: nil
 
   @doc "The most of a step's output a preparation keeps, in bytes: #{@output_bytes}."
   def output_bytes, do: @output_bytes
@@ -538,7 +591,11 @@ defmodule Apiary.Runs.Preparation do
       queued_at: queued_at,
       machine_type:
         if(dispatch.machine_type,
-          do: %{name: dispatch.machine_type, spec: dispatch.machine_spec}
+          do: %{
+            key: dispatch.machine_type,
+            name: type_name(dispatch.machine_type),
+            spec: dispatch.machine_spec
+          }
         ),
       requested_at: dispatch.claimed_at,
       requested_ms: between(dispatch.claimed_at, started_at),
@@ -570,6 +627,13 @@ defmodule Apiary.Runs.Preparation do
   defp removal_cause(%Run{lost_at: %DateTime{}}), do: :keep_alive_lost
   defp removal_cause(%Run{exited_at: %DateTime{}}), do: :run_ended
   defp removal_cause(%Run{}), do: nil
+
+  defp type_name(key) do
+    case Apiary.MachineTypes.get(key) do
+      %Apiary.MachineTypes.MachineType{name: name} -> name
+      nil -> nil
+    end
+  end
 
   defp machine_end(%Dispatch{machine_end_state: nil}), do: nil
 
@@ -1074,24 +1138,72 @@ defmodule Apiary.Runs.Preparation do
       nil ->
         nil
 
+      %{kind: "image"} = step when run.exit_reason == "image_missing" ->
+        case image_type(run) do
+          nil -> step_stopped(scope, run, machine, step)
+          type -> image_stopped(scope, run, step, type)
+        end
+
       step ->
-        {fixer, who} =
-          if step.kind in @pool_kinds,
-            do: pool_fixer(scope, machine && machine.pool, run),
-            else: workspace_fixer(scope)
-
-        {what, fix} = step_line(step, who, run.log_pruned_at)
-
-        %{
-          cause: :step_failed,
-          step: step.number,
-          fixer: fixer,
-          text: what <> " " <> fix,
-          what: what,
-          fix: fix,
-          detail: step_detail(step)
-        }
+        step_stopped(scope, run, machine, step)
     end
+  end
+
+  defp step_stopped(scope, run, machine, step) do
+    {fixer, who} =
+      if step.kind in @pool_kinds,
+        do: pool_fixer(scope, machine && machine.pool, run),
+        else: workspace_fixer(scope)
+
+    {what, fix} = step_line(step, who, run.log_pruned_at)
+
+    %{
+      cause: :step_failed,
+      step: step.number,
+      fixer: fixer,
+      text: what <> " " <> fix,
+      what: what,
+      fix: fix,
+      detail: step_detail(step)
+    }
+  end
+
+  # The image of the run's machine type is not in its registry: an instance admin sets
+  # another image. `rich` is the first sentence with the key and the image in code font.
+  # An instance admin reads who fixes it; anyone else reads the line of the instance's
+  # pool, "Contact support with run …" (`pool_fixer/3`): an organisation's people never
+  # see the word "instance", and "support" is how they reach the instance admins.
+  defp image_stopped(scope, run, step, type) do
+    rich =
+      rich_gettext(
+        "Pull the images failed: the image of the machine type %{name} (%{key}) is not in its registry: %{image}.",
+        name: type.name,
+        key: {:m, type.key, "font-mono"},
+        image: {:m, short_image(type.image), "font-mono"}
+      )
+
+    what = ApiaryWeb.RichText.plain_text(rich)
+
+    {fixer, fix} =
+      if Access.instance_admin?(scope),
+        do:
+          {:instance_admin,
+           gettext(
+             "An instance admin sets an image that exists in Instance settings › Machine types, then runs the work item again."
+           )},
+        else: {:support, gettext("Contact support with run %{run}.", run: run.public_id)}
+
+    %{
+      cause: :step_failed,
+      step: step.number,
+      fixer: fixer,
+      text: what <> " " <> fix,
+      what: what,
+      fix: fix,
+      detail: nil,
+      rich: rich,
+      fix_shown: true
+    }
   end
 
   # Each cause line is two sentences: what happened, then who fixes it. The first sentence

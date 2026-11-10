@@ -99,8 +99,7 @@ defmodule Apiary.Runs.Registration do
   (`Apiary.Policy.ComposedConfiguration`), and its digest is the SHA-256 of the bytes
   sent. A run whose attach composed its
   configuration (`Apiary.Policy.ComposedConfiguration`: a run given an image, kept in
-  `configured_image`, or one that must build on its pool's default image, of a workspace
-  whose policy names an image) is given
+  `configured_image`, or a prebuild of a workspace whose policy names an image) is given
   the configuration in force now composed the same way, under the composed document's
   digest, so every reload names the image the run started in; a workspace that serves no
   configuration gives `{"version":1,"image":…}` to such a run that was given no policy at
@@ -523,7 +522,7 @@ defmodule Apiary.Runs.Registration do
   The run configuration an attach gives a run of the key's workspace whose registration's
   labels are `labels`, composed for it (`Apiary.Policy.ComposedConfiguration.shape/5`):
   `opts` say the `image` the run is given (a string, nil, or a function that reads it,
-  asked only when the image is used), whether it must build on its pool's default image
+  asked only when the image is used), whether it is a prebuild
   (`prebuild`, a boolean, or a function that reads it), and whether the image is `fixed` for the run, as after its
   attach (false unless given). `{:ok, settings, image}`, with the image the document names at
   its top level, nil for none, which the run keeps; a run given no image, of a workspace

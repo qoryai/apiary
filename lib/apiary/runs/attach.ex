@@ -82,8 +82,8 @@ defmodule Apiary.Runs.Attach do
   A run given an image at the attach (`runs.configured_image`) has its configuration
   composed with that image at the top level, beside the `security_policy`
   (`Apiary.Policy.ComposedConfiguration`), and the digest is the composed document's. A
-  run that must build on its pool's default image, of a workspace whose policy names an
-  image, is given the policy without it. A workspace's policy that names an image gives
+  prebuild of a workspace whose policy names an image is given the policy without it,
+  beside the default machine type's image where that type has one. A workspace's policy that names an image gives
   no run an image. Any other run is given the configuration as stored. Every run keeps
   what it started in, which its reloads carry (`runs.started_image_from`,
   `runs.started_image`): the image it was given at the top level, the image the policy it
@@ -103,20 +103,29 @@ defmodule Apiary.Runs.Attach do
   #
   # - Among the runs that have ended (5. above) is a prebuild whose run of the queue its
   #   starter's `prebuilt` ended, to any attach but a repeat.
-  # - A run a workspace's queue handed over that is not a prebuild is given the image its
-  #   claim read for it, the one the node pool that claimed it recorded for the run's
-  #   target on its environment record (`Apiary.Environments.claim_image/2`), kept from
-  #   the claim (`runs.configured_image`); for such a run its claim gave none, the image
-  #   the pool recorded for the target its registration's labels name, read at the attach.
-  #   Either is fixed at the attach; that is the run given an image at the attach. A prebuild
-  #   whose workspace's policy names an image is given the policy without it. A run with
-  #   no recorded image is given the configuration as stored.
+  # - A run a workspace's queue handed over that is not a prebuild is given the image of
+  #   its machine type, where that type is not the default and has one, as its claim
+  #   fixed it with the type's id (`runs.configured_image_from_type`,
+  #   `runs.configured_image_machine_type_id`, `Apiary.MachineTypes.image/1`); else the
+  #   image its claim read for it, the one the node pool that claimed it recorded for
+  #   the run's target on its environment record (`Apiary.Environments.claim_image/2`),
+  #   kept from the claim (`runs.configured_image`); for such a run its claim gave none,
+  #   the image the pool recorded for the target its registration's labels name, read at
+  #   the attach; with none of these, the image of the default type, whose id it keeps.
+  #   A target's prebuilt image is built on the default type's image, so it comes first.
+  #   Each is fixed at the attach; that is the run given an image at the attach. A
+  #   policy that names an image wins over each.
+  # - A prebuild is given the image of the default type, at the top level, with its id,
+  #   else no image, and builds on the pool's default image; a prebuild whose
+  #   workspace's policy names an image is given the policy without it, beside the
+  #   default type's image where it has one. A run with no recorded image is given the
+  #   configuration as stored.
 
   import Ecto.Query, warn: false
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Dispatches, Environments, Gateways, Repo, Runs}
+  alias Apiary.{Access, AccessKeys, Dispatches, Environments, Gateways, MachineTypes, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
@@ -436,9 +445,11 @@ defmodule Apiary.Runs.Attach do
   defp take(access_key, run, workspace, attach, meta, now) do
     dispatched = dispatched(run)
 
+    {chosen, type} = image(run, workspace, dispatched)
+
     with {:ok, settings, image} <-
            Registration.configuration(Sender.place_key(run, access_key), run.registration_labels,
-             image: fn -> image(run, workspace, dispatched) end,
+             image: chosen,
              prebuild: prebuild?(dispatched),
              run: run
            ) do
@@ -455,6 +466,9 @@ defmodule Apiary.Runs.Attach do
           contract_version: attach.contract_version,
           backstop_at: backstop_at(dispatched, now),
           configured_image: image,
+          configured_image_from_type: is_binary(image) and image == chosen and type != nil,
+          configured_image_machine_type_id:
+            if(is_binary(image) and image == chosen and type != nil, do: elem(type, 1)),
           started_image_from: started_from,
           started_image: started_image,
           updated_at: now
@@ -496,31 +510,73 @@ defmodule Apiary.Runs.Attach do
   defp prebuild?(%{step: step}), do: step == DispatchRun.prebuild()
   defp prebuild?(nil), do: false
 
-  # The image a run starts in: for a run a workspace's queue handed over, not a prebuild,
-  # the image its claim read for it (`runs.configured_image`,
+  # The image a run starts in, where its policy names none, and `{:type, id}` for the
+  # machine type it is the image of, the id nil for a type deleted since the claim; nil
+  # for a target's: `{image, type}`. For a run a workspace's queue handed over, not a
+  # prebuild: the image of its machine type that its claim fixed
+  # (`runs.configured_image_from_type`, `Apiary.MachineTypes.image/1`); else the target's
+  # image: the one its claim read for it (`runs.configured_image`,
   # `Apiary.Environments.claim_image/2`), read again here through the registry's place of
-  # the run's organisation (`Apiary.Environments.own_image/2`): a claim made before that
-  # check could read an image elsewhere, and such a run starts in the pool's default
-  # image; for such a run its claim gave none, the image
-  # the pool that claimed it recorded for the run's target, the one its registration's
-  # labels name (`Apiary.Environments.image_for/3`); nil for any other run, which starts
-  # in the pool's default.
-  defp image(%Run{configured_image: image} = run, _workspace, %{step: step, pool_id: pool_id})
-       when is_binary(image) and is_binary(pool_id) and step != @prebuild,
+  # the run's organisation (`Apiary.Environments.own_image/2`), as a claim made before
+  # that check could read an image elsewhere, or, where its claim gave none, the image the
+  # pool that claimed it recorded for the run's target, the one its registration's labels
+  # name (`Apiary.Environments.image_for/3`); else the image of the default type; else
+  # nil, and the run starts in the pool's default. A prebuild starts in the image of the
+  # default type, else in the pool's default. `{nil, nil}` for any other run.
+  defp image(%Run{}, _workspace, %{step: @prebuild, pool_id: pool_id})
+       when is_binary(pool_id),
+       do: default_image()
+
+  defp image(
+         %Run{configured_image: image, configured_image_from_type: true} = run,
+         _workspace,
+         %{pool_id: pool_id}
+       )
+       when is_binary(pool_id) and is_binary(image),
+       do: {image, {:type, run.configured_image_machine_type_id}}
+
+  defp image(%Run{} = run, workspace, %{pool_id: pool_id}) when is_binary(pool_id) do
+    case target_image(run, workspace, pool_id) do
+      nil -> default_image()
+      image -> {image, nil}
+    end
+  end
+
+  defp image(_run, _workspace, _dispatched), do: {nil, nil}
+
+  # The default type's image, its row read again by id `FOR KEY SHARE`
+  # (`Apiary.MachineTypes.key_shared_default/0`), so the type's id written on the run
+  # refers to a type that stays until the attach commits. While a change of the default
+  # type holds its row, the attach waits for it, then takes the type's image as the change
+  # left it; where the change made another type the default or deleted the type, the
+  # attach reads the new default. Nil, and the run starts in the pool's default image,
+  # where the default has no image, or where each of 3 rounds found the default changed.
+  #
+  # No lock cycle: a change of the types does not write the run, the run's projection or
+  # the gateway. Its only row lock that conflicts with `FOR KEY SHARE` is `FOR UPDATE` on
+  # one type's row, the first row it locks, and changes of the types run one at a time, as
+  # each locks the table first (`transact/1`). So a delete that waits for a row the attach
+  # read in an earlier round holds no row the attach can wait on, and no other change
+  # holds one while it waits.
+  defp default_image do
+    case MachineTypes.key_shared_default() do
+      %{image: image, id: id} when is_binary(image) -> {image, {:type, id}}
+      _none -> {nil, nil}
+    end
+  end
+
+  defp target_image(%Run{configured_image: image} = run, _workspace, _pool_id)
+       when is_binary(image),
        do: Environments.own_image(image, run.workspace_id)
 
-  defp image(%Run{} = run, workspace, %{step: step, pool_id: pool_id})
-       when is_binary(pool_id) do
-    with false <- step == DispatchRun.prebuild(),
-         %Node{kind: :pool} = pool <- Repo.get(Node, pool_id),
+  defp target_image(%Run{} = run, workspace, pool_id) do
+    with %Node{kind: :pool} = pool <- Repo.get(Node, pool_id),
          {:ok, target} <- Domain.target(workspace, run.registration_labels) do
       Environments.image_for(pool, run.workspace_id, target)
     else
       _none -> nil
     end
   end
-
-  defp image(_run, _workspace, _dispatched), do: nil
 
   # A run a workspace's queue handed over is lost should it have no exit by its step's
   # limit after its attach, nor, for a run that is not a prebuild, an outcome stored on it

@@ -43,7 +43,7 @@ defmodule Apiary.Runs.Filters do
   the page does not know is free text; a qualifier it knows with a value it cannot read is
   refused and named. `tokens/2` writes the filters back as those words.
 
-  `machine_type` is the name of a machine type (`machine_type=large`, typed
+  `machine_type` is the key of a machine type (`machine_type=large`, typed
   `machine-type:large`): the runs whose run of the queue was queued on that type
   (`Apiary.MachineTypes`). `machine:` means a node.
 
