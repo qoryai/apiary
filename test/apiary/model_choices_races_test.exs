@@ -1,5 +1,6 @@
 defmodule Apiary.ModelChoicesRacesTest do
-  # A model choice saved while the provider it names is deleted, in each order. Each side runs on a connection apart, outside the SQL sandbox, so each
+  # A model choice saved while the provider it names, as its provider or as a fallback, is
+  # deleted, in each order. Each side runs on a connection apart, outside the SQL sandbox, so each
   # commits and each waits on the other's locks as it would in production. Not async: what
   # these tests commit is visible to every other test while they run, and they delete it
   # again before they end.
@@ -85,6 +86,53 @@ defmodule Apiary.ModelChoicesRacesTest do
         refute provider_there?(ctx.provider)
         assert chosen() == 0
       end
+    end
+  end
+
+  describe "a fallback and its provider's deletion" do
+    setup %{scope: scope} do
+      {:ok, fallback} =
+        Connections.create_provider(scope, %{
+          provider: "deepseek",
+          keys: [%{value_id: "main", value: "y"}]
+        })
+
+      %{fallback: fallback}
+    end
+
+    defp with_fallback(ctx),
+      do: Map.put(choice(ctx.provider), :fallbacks, [%{provider: ctx.fallback.public_id}])
+
+    test "the choice saved first: the deletion waits, and is refused", ctx do
+      {first, first_pid} =
+        hold(fn -> ModelChoices.put_choice(ctx.scope, :workspace, with_fallback(ctx)) end)
+
+      assert {:ok, %ModelChoice{}} = first.result
+
+      second = start(fn -> Connections.delete_provider(ctx.scope, ctx.fallback) end)
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert {:error, {:model_in_use, [%{level: 5}]}} = Task.await(second.task)
+      assert provider_there?(ctx.fallback)
+    end
+
+    test "the provider deleted first: the save waits, and is refused", ctx do
+      {first, first_pid} = hold(fn -> Connections.delete_provider(ctx.scope, ctx.fallback) end)
+      assert {:ok, %Connection{}} = first.result
+
+      second =
+        start(fn -> ModelChoices.put_choice(ctx.scope, :workspace, with_fallback(ctx)) end)
+
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert {:error, %Ecto.Changeset{errors: [fallbacks: {"is invalid", opts}]}} =
+               Task.await(second.task)
+
+      assert {opts[:fallback], opts[:field]} == {0, :provider}
+      refute provider_there?(ctx.fallback)
+      assert chosen() == 0
     end
   end
 

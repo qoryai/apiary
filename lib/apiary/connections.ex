@@ -1055,7 +1055,8 @@ defmodule Apiary.Connections do
   purge_workspace_providers/2 deletes, for the purge of the workspace `workspace_id`
   (`Apiary.Deletion.purge_workspace/1`), the model providers of the organisation
   `organisation_id` whose keys are a secret of that workspace, with the model choices
-  that name them, at any level, in one transaction, before the purge deletes the
+  that name them, at any level, and the fallbacks of other choices that name them, in
+  one transaction, before the purge deletes the
   workspace's secrets: no provider is left linking a secret that is gone. Their
   workspaces' rows go with them (`ON DELETE CASCADE`), and the runs that name them keep
   no link to them (`ON DELETE SET NULL`). It asks nothing of `Apiary.Access` and
@@ -1080,6 +1081,12 @@ defmodule Apiary.Connections do
               select: c.id
           )
 
+        {fallbacks, _} =
+          Repo.delete_all(
+            from f in Apiary.ModelChoices.Fallback,
+              where: f.organisation_id == ^organisation_id and f.connection_id in ^ids
+          )
+
         {choices, _} =
           Repo.delete_all(
             from m in Apiary.ModelChoices.ModelChoice,
@@ -1087,7 +1094,13 @@ defmodule Apiary.Connections do
           )
 
         {providers, _} = Repo.delete_all(from c in Connection, where: c.id in ^ids)
-        {:ok, %{"model_choices" => choices, "organisation_connections" => providers}}
+
+        {:ok,
+         %{
+           "model_choice_fallbacks" => fallbacks,
+           "model_choices" => choices,
+           "organisation_connections" => providers
+         }}
       end)
 
     deleted

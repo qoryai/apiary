@@ -1,5 +1,5 @@
 defmodule Apiary.ModelChoices.MigrationTest do
-  # The migrations of the model choice, run down and up again inside the test's
+  # The migrations of the model choice and its fallbacks, run down and up again inside the test's
   # transaction, which rolls it all back, and the checks it adds, each at its bound and
   # one past it. It changes the table under every other test, so this is not async.
   use Apiary.DataCase, async: false
@@ -14,13 +14,15 @@ defmodule Apiary.ModelChoices.MigrationTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Connections
-  alias Apiary.ModelChoices.ModelChoice
+  alias Apiary.ModelChoices.{Fallback, ModelChoice}
 
   @migrations [
     {20_261_019_070_200, Apiary.Repo.Migrations.KeepTheModelChoiceAtEachLevel,
      "keep_the_model_choice_at_each_level"},
     {20_261_022_171_500, Apiary.Repo.Migrations.KeyAModelChoiceByWorkflow,
-     "key_a_model_choice_by_workflow"}
+     "key_a_model_choice_by_workflow"},
+    {20_261_110_153_000, Apiary.Repo.Migrations.KeepTheFallbacksOfAModelChoice,
+     "keep_the_fallbacks_of_a_model_choice"}
   ]
 
   @options [log: false, migration_lock: false]
@@ -39,7 +41,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
     %{rows: rows} =
       Repo.query!(
         "SELECT table_name FROM information_schema.tables WHERE table_name = ANY($1)",
-        [["model_choices"]]
+        [["model_choices", "model_choice_fallbacks"]]
       )
 
     rows |> List.flatten() |> Enum.sort()
@@ -52,8 +54,8 @@ defmodule Apiary.ModelChoices.MigrationTest do
     count == 1
   end
 
-  test "down takes the table and the tier check away, and up puts them back" do
-    assert tables() == ["model_choices"]
+  test "down takes the tables and the tier check away, and up puts them back" do
+    assert tables() == ["model_choice_fallbacks", "model_choices"]
     assert function?()
 
     for {version, migration, _name} <- Enum.reverse(@migrations),
@@ -65,7 +67,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
     for {version, migration, _name} <- @migrations,
         do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
 
-    assert tables() == ["model_choices"]
+    assert tables() == ["model_choice_fallbacks", "model_choices"]
     assert function?()
   end
 
@@ -102,7 +104,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
       row = Map.merge(%{id: Ecto.UUID.generate(), inserted_at: now}, row)
 
       row =
-        if schema == ModelChoice, do: Map.put_new(row, :updated_at, now), else: row
+        if schema in [ModelChoice, Fallback], do: Map.put_new(row, :updated_at, now), else: row
 
       Repo.transaction(fn -> Repo.insert_all(schema, [row]) end)
       :ok
@@ -278,6 +280,98 @@ defmodule Apiary.ModelChoices.MigrationTest do
       assert Repo.aggregate(ModelChoice, :count) == 1
 
       Repo.delete_all(ModelChoice)
+      assert {_count, _} = Repo.delete_all(Connections.Connection)
+    end
+
+    test "a fallback: its position, model and effort, once per position and provider", ctx do
+      id = Ecto.UUID.generate()
+      assert choice(ctx, %{id: id}) == :ok
+
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "deepseek",
+          keys: [%{value_id: "main", value: "y"}]
+        })
+
+      row = fn attrs ->
+        write(
+          Fallback,
+          Map.merge(
+            %{
+              organisation_id: ctx.organisation_id,
+              model_choice_id: id,
+              position: 0,
+              connection_id: other.id
+            },
+            attrs
+          )
+        )
+      end
+
+      first = %{position: 1, connection_id: ctx.provider.id}
+
+      assert row.(%{model_id: "m", effort: "high"}) == :ok
+      assert row.(%{position: 1}) == "model_choice_fallbacks_model_choice_id_connection_id_index"
+
+      assert row.(%{connection_id: ctx.provider.id}) ==
+               "model_choice_fallbacks_model_choice_id_position_index"
+
+      assert row.(%{first | position: -1}) == "model_choice_fallbacks_position_check"
+
+      assert row.(Map.put(first, :model_id, "a b")) == "model_choice_fallbacks_model_id_format"
+
+      assert row.(Map.merge(first, %{model_id: "m", effort: "High"})) ==
+               "model_choice_fallbacks_effort_format"
+
+      assert row.(Map.put(first, :effort, "high")) == "model_choice_fallbacks_shape_check"
+      assert row.(first) == :ok
+    end
+
+    test "a fallback reaches a provider and a choice of its organisation alone", ctx do
+      id = Ecto.UUID.generate()
+      assert choice(ctx, %{id: id}) == :ok
+
+      %{scope: elsewhere} = sign_up_fixture()
+
+      {:ok, foreign} =
+        Connections.create_provider(elsewhere, %{
+          provider: "deepseek",
+          keys: [%{value_id: "main", value: "y"}]
+        })
+
+      row = %{organisation_id: ctx.organisation_id, model_choice_id: id, position: 0}
+
+      assert write(Fallback, Map.put(row, :connection_id, foreign.id)) ==
+               "model_choice_fallbacks_connection_id_fkey"
+
+      assert write(
+               Fallback,
+               Map.merge(row, %{
+                 organisation_id: elsewhere.organisation.id,
+                 connection_id: foreign.id
+               })
+             ) == "model_choice_fallbacks_model_choice_id_fkey"
+    end
+
+    test "a provider is kept while a fallback uses it, and a choice takes its fallbacks", ctx do
+      id = Ecto.UUID.generate()
+      assert choice(ctx, %{id: id, connection_id: nil, tiers: %{"light" => "m"}}) == :ok
+
+      fallback = %{
+        organisation_id: ctx.organisation_id,
+        model_choice_id: id,
+        position: 0,
+        connection_id: ctx.provider.id
+      }
+
+      assert write(Fallback, fallback) == :ok
+
+      assert_raise Postgrex.Error, ~r/model_choice_fallbacks_connection_id_fkey/, fn ->
+        Repo.transaction(fn -> Repo.delete_all(Connections.Connection) end)
+      end
+
+      Repo.delete_all(ModelChoice)
+      assert Repo.aggregate(Fallback, :count) == 0
       assert {_count, _} = Repo.delete_all(Connections.Connection)
     end
 

@@ -25,6 +25,9 @@ defmodule Apiary.ModelChoices.ModelChoice do
   # A tier map has one to three of the tiers `light`, `fast` and `thinking`, each an object
   # of a `model` id and, when it sets one, an `effort` value.
   #
+  # `fallbacks` are the providers runs use, in order, while every key of the choice's
+  # provider is in cooldown (`Apiary.ModelChoices.Fallback`), read in their order.
+  #
   # Changed only through `Apiary.ModelChoices`.
   @moduledoc false
   use Ecto.Schema
@@ -53,6 +56,8 @@ defmodule Apiary.ModelChoices.ModelChoice do
     belongs_to :connection, Apiary.Connections.Connection
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :updated_by, Apiary.Accounts.User
+
+    has_many :fallbacks, Apiary.ModelChoices.Fallback, preload_order: [asc: :position]
 
     timestamps(type: :utc_datetime_usec)
   end

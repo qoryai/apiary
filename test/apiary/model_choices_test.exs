@@ -771,6 +771,367 @@ defmodule Apiary.ModelChoicesTest do
     end
   end
 
+  describe "fallbacks" do
+    setup %{scope: scope} do
+      {:ok, subscription} =
+        Connections.create_provider(scope, %{
+          provider: "claude-subscription",
+          keys: [%{value_id: "main", value: "sk-ant-oat01-fallback-test"}]
+        })
+
+      {:ok, deepseek} =
+        Connections.create_provider(scope, %{
+          provider: "deepseek",
+          keys: [%{value_id: "main", value: "sk-deepseek-fallback-test"}]
+        })
+
+      %{subscription: subscription, deepseek: deepseek}
+    end
+
+    defp fallback(provider, model \\ nil, effort \\ nil),
+      do: %{provider: provider.public_id, model: model, effort: effort}
+
+    defp stored(choice),
+      do:
+        for(
+          f <- Repo.preload(choice, [fallbacks: :connection], force: true).fallbacks,
+          do: {f.position, f.connection.public_id, f.model_id, f.effort}
+        )
+
+    # Each refusal on `fallbacks`, as `{index, field, text}`, by index.
+    defp fallback_errors(result) do
+      assert {:error, %Ecto.Changeset{} = changeset} = result
+
+      Enum.sort(
+        for {:fallbacks, {message, opts}} <- changeset.errors do
+          text =
+            Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+              opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+            end)
+
+          {opts[:fallback], opts[:field], text}
+        end
+      )
+    end
+
+    test "are stored in their order, each with its provider, model and effort, and the trail has them",
+         ctx do
+      %{scope: scope, provider: provider, subscription: subscription, deepseek: deepseek} = ctx
+
+      assert {:ok, choice} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{
+                   fallbacks: [fallback(subscription, @model, "high"), fallback(deepseek)]
+                 })
+               )
+
+      assert stored(choice) == [
+               {0, subscription.public_id, @model, "high"},
+               {1, deepseek.public_id, nil, nil}
+             ]
+
+      assert [entry] = trail(choice.id)
+
+      assert entry.after["fallbacks"] == [
+               %{"provider" => subscription.public_id, "model" => @model, "effort" => "high"},
+               %{"provider" => deepseek.public_id, "model" => nil, "effort" => nil}
+             ]
+
+      # The list of choices reads them in their order, with their providers.
+      assert {:ok, [listed]} = ModelChoices.list_choices(scope)
+
+      assert Enum.map(listed.fallbacks, &{&1.position, &1.connection.name}) ==
+               [{0, subscription.name}, {1, deepseek.name}]
+    end
+
+    test "a new order, a fallback removed, or none, changes the choice; the same leaves no entry",
+         ctx do
+      %{scope: scope, provider: provider, subscription: subscription, deepseek: deepseek} = ctx
+      both = [fallback(subscription, @model), fallback(deepseek)]
+
+      {:ok, choice} =
+        ModelChoices.put_choice(scope, :workspace, attrs(provider, %{fallbacks: both}))
+
+      assert {:ok, moved} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: Enum.reverse(both)})
+               )
+
+      assert stored(moved) == [
+               {0, deepseek.public_id, nil, nil},
+               {1, subscription.public_id, @model, nil}
+             ]
+
+      assert [_set, entry] = trail(choice.id)
+      assert entry.details["change"] == "choice_changed"
+
+      assert Enum.map(entry.before["fallbacks"], & &1["provider"]) ==
+               Enum.map(both, & &1.provider)
+
+      assert Enum.map(entry.after["fallbacks"], & &1["provider"]) ==
+               Enum.map(Enum.reverse(both), & &1.provider)
+
+      assert {:ok, same} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: Enum.reverse(both)})
+               )
+
+      assert length(trail(same.id)) == 2
+
+      assert {:ok, one} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: [hd(both)]})
+               )
+
+      assert stored(one) == [{0, subscription.public_id, @model, nil}]
+
+      # A save that sends no fallbacks leaves the choice none, as it replaces every field.
+      assert {:ok, none} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      assert stored(none) == []
+      assert List.last(trail(choice.id)).after["fallbacks"] == []
+    end
+
+    test "the organisation's default has fallbacks by the same rules", ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+
+      assert {:ok, default} =
+               ModelChoices.put_choice(
+                 scope,
+                 :organisation,
+                 attrs(provider, %{fallbacks: [fallback(subscription)]})
+               )
+
+      assert stored(default) == [{0, subscription.public_id, nil, nil}]
+
+      {:ok, workspace_only} =
+        Connections.create_provider(
+          scope,
+          %{provider: "openrouter", keys: [%{value_id: "main", value: "x"}]},
+          :workspace
+        )
+
+      assert [{0, :provider, text}] =
+               fallback_errors(
+                 ModelChoices.put_choice(
+                   scope,
+                   :organisation,
+                   attrs(provider, %{fallbacks: [fallback(workspace_only)]})
+                 )
+               )
+
+      assert text =~ "To share this provider, add it again"
+    end
+
+    test "are refused for a provider that does not apply to the workspace", ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+
+      {:ok, elsewhere} =
+        Connections.create_provider(scope, %{
+          provider: "openrouter",
+          applies_to: "selected",
+          workspace_ids: [second_workspace(scope).id],
+          keys: [%{value_id: "main", value: "x"}]
+        })
+
+      assert fallback_errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: [fallback(subscription), fallback(elsewhere)]})
+               )
+             ) == [
+               {1, :provider,
+                "Choose another provider: OpenRouter is not used in this workspace."}
+             ]
+
+      assert Repo.aggregate(ModelChoice, :count) == 0
+    end
+
+    test "are refused for a provider that does not serve the runtime", ctx do
+      %{scope: scope, provider: provider, deepseek: deepseek} = ctx
+      {:ok, runtime} = Runtimes.fetch(@runtime)
+
+      # A later catalogue changed the description it was added from: it serves nothing.
+      Repo.update_all(from(c in Apiary.Connections.Connection, where: c.id == ^deepseek.id),
+        set: [description_sha256: String.duplicate("0", 64)]
+      )
+
+      assert fallback_errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: [fallback(deepseek)]})
+               )
+             ) == [
+               {0, :provider,
+                "Choose another provider for #{runtime.title}. DeepSeek serves no request format that #{runtime.title} sends."}
+             ]
+    end
+
+    test "are refused for the choice's provider, or a provider listed twice", ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+
+      assert fallback_errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{
+                   fallbacks: [fallback(provider), fallback(subscription), fallback(subscription)]
+                 })
+               )
+             ) == [
+               {0, :provider, "Choose another provider: Anthropic API key is chosen already."},
+               {2, :provider,
+                "Choose another provider: Claude subscription token is chosen already."}
+             ]
+    end
+
+    test "are refused for a provider not found, a model or an effort that breaks its rule", ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+
+      assert fallback_errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: [%{provider: "nope"}]})
+               )
+             ) == [{0, :provider, "is invalid"}]
+
+      assert [{0, :effort, "Choose one of claude-sonnet-5-5's effort values: " <> _values}] =
+               fallback_errors(
+                 ModelChoices.put_choice(
+                   scope,
+                   :workspace,
+                   attrs(provider, %{fallbacks: [fallback(subscription, @model, "turbo")]})
+                 )
+               )
+
+      assert [{0, :model, _rule}, {1, :model, "can't be blank"}, {2, :provider, "can't be blank"}] =
+               fallback_errors(
+                 ModelChoices.put_choice(
+                   scope,
+                   :workspace,
+                   attrs(provider, %{
+                     fallbacks: [
+                       fallback(subscription, "has space"),
+                       fallback(subscription, nil, "low"),
+                       %{model: @model}
+                     ]
+                   })
+                 )
+               )
+
+      assert errors(
+               ModelChoices.put_choice(scope, :workspace, attrs(provider, %{fallbacks: "x"}))
+             ) ==
+               %{fallbacks: ["is invalid"]}
+
+      # Fallbacks only with a provider.
+      assert %{provider: ["can't be blank"]} =
+               errors(
+                 ModelChoices.put_choice(scope, :organisation, %{
+                   tiers: %{"fast" => @model},
+                   fallbacks: [fallback(subscription)]
+                 })
+               )
+
+      assert Repo.aggregate(ModelChoice, :count) == 0
+    end
+
+    test "resolve/3 has them in their order, each with its provider, model and effort", ctx do
+      %{scope: scope, provider: provider, subscription: subscription, deepseek: deepseek} = ctx
+
+      {:ok, _} =
+        ModelChoices.put_choice(
+          scope,
+          :workspace,
+          attrs(provider, %{
+            fallbacks: [fallback(deepseek), fallback(subscription, @model, "low")]
+          })
+        )
+
+      assert {:ok, {:ok, %Resolution{} = resolution}} =
+               ModelChoices.resolve(scope, :workspace, "hello")
+
+      assert resolution.connection_id == provider.id
+
+      assert resolution.fallbacks == [
+               %{
+                 connection_id: deepseek.id,
+                 model_id: Connections.default_model(deepseek),
+                 effort: nil
+               },
+               %{connection_id: subscription.id, model_id: @model, effort: "low"}
+             ]
+    end
+
+    test "a workspace's purge takes the fallbacks that name its providers", ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+      other = second_workspace(scope)
+      other_scope = second_scope(scope, other)
+
+      {:ok, workspace_only} =
+        Connections.create_provider(
+          other_scope,
+          %{provider: "openrouter", keys: [%{value_id: "main", value: "x"}]},
+          :workspace
+        )
+
+      {:ok, _} =
+        ModelChoices.put_choice(
+          other_scope,
+          :workspace,
+          attrs(provider, %{fallbacks: [fallback(workspace_only), fallback(subscription)]})
+        )
+
+      {:ok, kept} =
+        ModelChoices.put_choice(
+          scope,
+          :workspace,
+          attrs(provider, %{fallbacks: [fallback(subscription)]})
+        )
+
+      {:ok, _} = Deletion.delete_workspace(scope, other.id, other.slug)
+
+      Repo.update_all(from(w in Workspace, where: w.id == ^other.id),
+        set: [purge_after: DateTime.add(DateTime.utc_now(), -60, :second)]
+      )
+
+      assert {:ok, :purged} =
+               Deletion.purge_workspace(
+                 Apiary.Accounts.Scope.for_instance(
+                   scope.organisation,
+                   Repo.get!(Workspace, other.id)
+                 )
+               )
+
+      assert Repo.aggregate(Apiary.ModelChoices.Fallback, :count) == 1
+      assert stored(kept) == [{0, subscription.public_id, nil, nil}]
+    end
+
+    test "an organisation's purge takes them with the choices and the providers", ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+
+      {:ok, _} =
+        ModelChoices.put_choice(
+          scope,
+          :workspace,
+          attrs(provider, %{fallbacks: [fallback(subscription)]})
+        )
+
+      assert {:ok, :purged} = Deletion.purge_now(scope.organisation, scope.user)
+      assert Repo.aggregate(Apiary.ModelChoices.Fallback, :count) == 0
+    end
+  end
+
   # The scope of the same owner in another workspace of the organisation.
   defp second_scope(scope, %Workspace{} = workspace),
     do: workspace_scope(scope.user, workspace)

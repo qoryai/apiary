@@ -60,7 +60,9 @@ defmodule Apiary.Deletion.Tables do
   # gates and its stages' failed checks; its escalations before the runs of the queue they
   # name; the work items and the runs of the queue before the process versions they run
   # under, and a work item or a run of another workspace that still links to one has that
-  # link set to null (`ON DELETE SET NULL`); a connection's workspaces before the
+  # link set to null (`ON DELETE SET NULL`); a model choice's fallbacks before the choice
+  # and the connections they name, and a workspace's purge deletes them with its choices
+  # (`ON DELETE CASCADE`); a connection's workspaces before the
   # connection, and the connections before the releases, the service definitions and the
   # secrets they name; everything of a workspace before the workspace.
   #
@@ -94,6 +96,7 @@ defmodule Apiary.Deletion.Tables do
     {"work_item_events", :workspace},
     {"work_item_confirmations", :workspace},
     {"work_item_comments", :workspace},
+    {"model_choice_fallbacks", :organisation},
     {"model_choices", :workspace},
     {"time_limits", :workspace},
     {"stacks", :workspace},

@@ -86,6 +86,11 @@ msgstr ""
 
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
+msgid "Choose another provider: %{provider} is chosen already."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
 msgid "Choose another provider: %{provider} is not used in this workspace."
 msgstr ""
 

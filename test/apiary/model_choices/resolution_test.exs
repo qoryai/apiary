@@ -2,7 +2,7 @@ defmodule Apiary.ModelChoices.ResolutionTest do
   # The resolution reads no table: choices and providers go in, one answer comes out.
   use ExUnit.Case, async: true
 
-  alias Apiary.ModelChoices.{ModelChoice, Resolution}
+  alias Apiary.ModelChoices.{Fallback, ModelChoice, Resolution}
 
   @workspace "00000000-0000-0000-0000-0000000000a1"
   @other_workspace "00000000-0000-0000-0000-0000000000a2"
@@ -270,6 +270,46 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     test "leave out a tier whose effort the model does not list" do
       choices = [at(2, tiers: %{"light" => %{"model" => "mid", "effort" => "low"}})]
       assert %{tiers: %{}} = resolved(input(choices))
+    end
+  end
+
+  describe "the fallbacks" do
+    defp fallback(position, connection_id, attrs \\ []),
+      do: struct!(Fallback, [position: position, connection_id: connection_id] ++ attrs)
+
+    test "come from the choice in effect, in their order, each with its model and effort" do
+      choice =
+        at(5,
+          fallbacks: [
+            fallback(1, @gamma, model_id: "custom", effort: "high"),
+            fallback(0, @beta)
+          ]
+        )
+
+      # A level below with other fallbacks is not read.
+      below = at(6, fallbacks: [fallback(0, @gamma)])
+
+      assert resolved(input([choice, below])).fallbacks == [
+               %{connection_id: @beta, model_id: "other", effort: nil},
+               %{connection_id: @gamma, model_id: "custom", effort: "high"}
+             ]
+    end
+
+    test "take the provider's default model, with no effort, for a fallback without a model" do
+      choice = at(5, fallbacks: [fallback(0, @beta), fallback(1, @gamma)])
+
+      assert resolved(input([choice])).fallbacks == [
+               %{connection_id: @beta, model_id: "other", effort: nil},
+               %{connection_id: @gamma, model_id: nil, effort: nil}
+             ]
+    end
+
+    test "leave out a fallback whose provider is gone, and fallbacks that were not read" do
+      gone = "00000000-0000-0000-0000-0000000000c9"
+      choice = at(5, fallbacks: [fallback(0, gone), fallback(1, @beta)])
+
+      assert [%{connection_id: @beta}] = resolved(input([choice])).fallbacks
+      assert resolved(input([at(5)])).fallbacks == []
     end
   end
 
