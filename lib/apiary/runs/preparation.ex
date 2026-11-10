@@ -1258,9 +1258,11 @@ defmodule Apiary.Runs.Preparation do
   end
 
   # `image_access_denied` covers a 401 or 403 from the registry, its token server or the
-  # run's proxy, and on Docker Hub a repository that does not exist.
+  # run's proxy, and on Docker Hub a repository that does not exist. A repository here is
+  # the registry's, of images, in every domain: the context "plain" (docs/lingo.md).
   defp image_fix("image_access_denied", image, _pool) do
-    gettext(
+    pgettext(
+      "plain",
       "An instance admin gives the run's registry credential read access to the image, or sets another image in Instance settings › Machine types. If the workspace's policy blocks the registry, a workspace admin allows it on the workspace's Policy page. The registry returned 401 or 403 for %{image}, or the run's proxy returned 403 because of the policy. On Docker Hub, 401 also means that the repository does not exist.",
       image: image
     )

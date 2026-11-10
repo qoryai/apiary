@@ -5626,6 +5626,7 @@ msgstr ""
 
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
+msgctxt "plain"
 msgid "An instance admin gives the run's registry credential read access to the image, or sets another image in Instance settings › Machine types. If the workspace's policy blocks the registry, a workspace admin allows it on the workspace's Policy page. The registry returned 401 or 403 for %{image}, or the run's proxy returned 403 because of the policy. On Docker Hub, 401 also means that the repository does not exist."
 msgstr ""
 
