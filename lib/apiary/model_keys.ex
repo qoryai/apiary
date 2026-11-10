@@ -139,10 +139,10 @@ defmodule Apiary.ModelKeys do
 
   @doc """
   The model keys of `run`, in the order of its run configuration's `credentials`, each
-  with its credential's name: none unless model keys apply
-  (`Apiary.Runs.ProviderCredential.applies?/0`). A run has one model key: the value of
-  its provider's secret with its stored value id, named by the provider's public id
-  (`Apiary.Runs.ProviderCredential`). A key whose value was renamed or removed since the
+  with its credential's name: none unless model keys apply, with the `factory` and
+  `secrets` features on. A run has one model key: the value of its provider's secret
+  with its stored value id, named by the provider's public id, as the run's run
+  configuration names its model key. A key whose value was renamed or removed since the
   claim, or whose provider's row no longer has the run's secret, is not a key of the run.
   """
   @spec run_keys(Run.t()) :: [run_key]

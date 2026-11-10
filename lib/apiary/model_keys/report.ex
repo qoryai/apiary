@@ -19,14 +19,13 @@ defmodule Apiary.ModelKeys.Report do
 
   `answer/5` takes the report for the run, in order:
 
-    1. `{:error, :not_found}` unless model keys apply
-       (`Apiary.Runs.ProviderCredential.applies?/0`);
-    2. `{:error, :not_found}` for a run the key's gateway does not hold, as a secrets
-       request finds it (`Apiary.Runs.SecretsRequest`): a run through the key's gateway,
-       whose run key lists the key, that the key and the request's instance may reload
-       (`Apiary.Runs.Registration.reload_allowed?/3`), of a workspace the gateway may
-       still serve; then where `Apiary.Access` refuses the key `run.post_events` on the
-       run;
+    1. `{:error, :not_found}` unless model keys apply: the `factory` and `secrets`
+       features on;
+    2. `{:error, :not_found}` for a run the key's gateway does not hold, as a gateway's
+       secrets request finds it: a run through the key's gateway, whose run key lists the
+       key, that the key and the request's instance may reload, of a workspace the
+       gateway may still serve; then where `Apiary.Access` refuses the key
+       `run.post_events` on the run;
     3. `{:error, :gone}` for a run that has ended: not pending or running, or its sending
        ended (`Apiary.Runs.Sender.sending_ended?/1`);
     4. else the states are recorded (`Apiary.ModelKeys.record/3`), through the run's keys
