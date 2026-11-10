@@ -137,7 +137,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     process where the save reads a harness repository, and a refusal shows its reason
   #     under the destination; while it saves, every select is disabled. A person whom
   #     `harness.save` does not allow sees the choices and the selects disabled, and who
-  #     may. About this step has what a harness is, the order of a run's harness (a
+  #     may. About harnesses has what a harness is, the order of a run's harness (a
   #     target's root `harness.yaml` or `qory.yaml` that sets a harness first, then the
   #     stack set for the target, then the workspace's harness, then the Qory harness), and
   #     what each version means (`ApiaryWeb.HarnessComponents.about/1`);
@@ -185,7 +185,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     command that installs qory, with Copy. The step reads
   #     the pools again once the first outstanding code expires, and as a machine enrols
   #     a key on a pool of the workspace or a code of it is cancelled
-  #     (`Apiary.AccessKeys.subscribe/2`, once per pool). About this step has what a node
+  #     (`Apiary.AccessKeys.subscribe/2`, once per pool). About machines has what a node
   #     pool and a node are, whose runs the instance's pool and a pool of the workspace
   #     take, and why runs need a ready pool and a gateway;
   #   * Test run, with the `factory` feature: Say hi to your agent and Run the test
@@ -197,7 +197,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     failed, read again as the workspace's queue and
   #     its runs change (`Apiary.Dispatches.subscribe/1`, `Apiary.Runs.subscribe/1`) and
   #     once a wait for a machine passes. Once it passed, Go to the workspace. A person
-  #     whom `work_item.take_in` does not allow sees who may. About this step has what the
+  #     whom `work_item.take_in` does not allow sees who may. About test runs has what the
   #     test run adds and when it passes, its harness (`Apiary.Harnesses.Builtin`), what it
   #     leaves alone, and that a pass finishes the set-up.
   #
@@ -1947,7 +1947,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     """
   end
 
-  # The second sentence of the step's About this step: the edition's, else the core's.
+  # The heading of the context of Work sources and Destinations, and of their Connect pages.
+  defp about(:sources), do: gettext("About work sources")
+  defp about(:destinations), do: gettext("About destinations")
+
+  # The second sentence of the context of Work sources and Destinations: the edition's,
+  # else the core's.
   defp connects_sentence(nil, organisation),
     do:
       gettext("Owners and admins of %{organisation} connect it once for the organisation.",
@@ -2004,7 +2009,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         <SetUpComponents.back steps={@steps} page={@page_path} up={@up} />
       </div>
 
-      <:context :if={Enum.any?(@unconnected, &(&1.id in @ready))}>
+      <:context :if={Enum.any?(@unconnected, &(&1.id in @ready))} about={about(@step)}>
         <.connect_help unconnected={@unconnected} ready={@ready} />
       </:context>
     </SetUpComponents.frame>
@@ -2119,7 +2124,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context>
+      <:context about={about(@step)}>
         <p :if={@step == :sources} id="set-up-what">
           {pgettext("plain", "Bring tickets in from a system such as an issue tracker.")}
           {connects_sentence(@connects_line, @flow.organisation)}
@@ -2251,7 +2256,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </p>
       <.acts :if={!@may} steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context>
+      <:context about={gettext("About models")}>
         <p id="set-up-what">
           {gettext("A model provider's key lets runs in %{workspace} call a model.",
             workspace: @flow.workspace.name
@@ -2435,7 +2440,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         </.button>
       </div>
 
-      <:context>
+      <:context about={gettext("About test runs")}>
         <p id="set-up-what">
           {gettext(
             "The test run adds a test work item to %{workspace} and queues its run. The test passes once a machine takes the run and the run completes.",
@@ -2560,7 +2565,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       </div>
 
       <.acts :if={!@may} steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
-      <:context>
+      <:context about={gettext("About harnesses")}>
         <HarnessComponents.about process={Features.visible?(@current_scope, :workflow_model)} />
       </:context>
     </SetUpComponents.frame>
@@ -2797,7 +2802,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       <.acts steps={@steps} page_path={@page_path} next_path={@next_path} skip={!@done} />
 
-      <:context>
+      <:context about={gettext("About machines")}>
         <p id="set-up-what">
           {gettext(
             "A pool takes the waiting runs of %{workspace} and starts each run on a machine that joined the pool.",

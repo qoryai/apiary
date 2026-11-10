@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.HarnessLiveTest do
   @moduledoc """
   Workspace settings › Harness (`ApiaryWeb.HarnessLive`) against stub adapters
-  (`Req.Test`): who opens it and where it is in the list; About this step, with the
+  (`Req.Test`): who opens it and where it is in the list; About harnesses, with the
   paragraphs on the harness; the harness choice and its version; the destinations' Stack
   selects under the choice, their saves and refusals; each kind of source, read when
   chosen; a refused address; the save, its document, and the setting shown again. With
@@ -156,11 +156,11 @@ defmodule ApiaryWeb.HarnessLiveTest do
   end
 
   describe "the page" do
-    test "About this step has what the page sets, what a harness is and the order of a run's harness, and no notice on the harness file shows",
+    test "About harnesses has what the page sets, what a harness is and the order of a run's harness, and no notice on the harness file shows",
          %{conn: conn, path: path, scope: scope} do
       view = open(conn, path)
 
-      assert has_element?(view, "aside#page-context h2", "About this step")
+      assert has_element?(view, "aside#page-context > h2#page-context-h", ~r/\AAbout harnesses\z/)
 
       assert has_element?(
                view,
@@ -178,7 +178,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
       refute has_element?(view, "#workflow-help")
       refute render(view) =~ "Press Save."
 
-      # The paragraphs of the Harness step's About this step.
+      # The paragraphs of the Harness step's About harnesses.
       assert words(view, "#page-context #harness-about-what") ==
                "A harness is the skills and workflows the agent runs with."
 

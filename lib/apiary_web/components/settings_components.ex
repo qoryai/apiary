@@ -308,7 +308,11 @@ defmodule ApiaryWeb.SettingsComponents do
 
   slot :context,
     doc:
-      "why the section exists and what it changes, in a column beside it (`ApiaryWeb.PageComponents.context_column/1`)"
+      "why the section exists and what it changes, in a column beside it (`ApiaryWeb.PageComponents.context_column/1`)" do
+    attr :about, :string,
+      required: true,
+      doc: "the column's heading: About and the page's topic, such as \"About harnesses\""
+  end
 
   slot :inner_block, required: true
 
@@ -373,7 +377,9 @@ defmodule ApiaryWeb.SettingsComponents do
         <% else %>
           <.context_column>
             {render_slot(@inner_block)}
-            <:context>{render_slot(@context)}</:context>
+            <:context :for={context <- @context} about={context.about}>
+              {render_slot(context)}
+            </:context>
           </.context_column>
         <% end %>
       </section>

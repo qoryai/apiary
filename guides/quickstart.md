@@ -308,9 +308,10 @@ later.
 
 1. **Work sources.** **Where does work for Main come from?** shows a card for each
    account that Acme's connections reach. With nothing connected, the step lists the
-   adapters that the instance has set up. Select **Connect** beside one, and follow the steps that **About this step** lists under its
-   name: the adapter sends you back to this step, which shows a card such as “GitHub ·
-   acme” with **Choose**. Select **Choose**. On “Choose repositories · GitHub · acme”,
+   adapters that the instance has set up. Select **Connect** beside one, and follow the
+   steps that **About work sources** lists under its name: the adapter sends you back
+   to this step, which shows a card such as “GitHub · acme” with **Choose**. Select
+   **Choose**. On “Choose repositories · GitHub · acme”,
    choose **All repositories, including new ones**, in the adapter's word for its
    collections, or **Only selected** and tick the collections whose tickets Main takes
    in. **Only selected** shows 50 to a page, with **Find a repository** and a count such

@@ -175,7 +175,7 @@ defmodule Apiary.Edition do
   @callback first_workspace_waiting_line(%Organisation{}) :: String.t()
 
   @doc """
-  The second sentence of About this step on the workspace set-up's steps Work sources and
+  The second sentence of the context on the workspace set-up's steps Work sources and
   Destinations, on who connects a system for `organisation`; `step` is `:sources` or
   `:destinations`. Nil for the core's sentence, "Owners and admins of <organisation>
   connect it once for the organisation." Where it returns a sentence, the step leaves out
@@ -220,7 +220,7 @@ defmodule Apiary.Edition do
   @callback set_up_steps(Scope.t() | nil, [set_up_step]) :: [set_up_step]
 
   @doc """
-  The line the set-up's column About this step shows for `scope` on the step `step_id`,
+  The line the set-up's context column shows for `scope` on the step `step_id`,
   such as `:workspace`, where the page has no line of the core's. Nil shows no column.
   Translated when it is asked. The core answers nil. No core page asks it: a person who
   may not create the organisation's first workspace reads who does on the organisation's

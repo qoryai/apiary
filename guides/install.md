@@ -859,8 +859,9 @@ steps, with a check mark on each one done. **Back**, at the foot of a step's for
 the step before it in the same progress, so the first step with a page in each progress
 has no **Back**. A step you open again shows what you saved there, and you can change
 it. The step **Name**, opened again, shows the workspace's name, which an owner or admin
-can change, and its type, which can't be changed. A column headed **About this step**,
-beside the form or under it on a window narrower than 1024 px, shows what the step does.
+can change, and its type, which can't be changed. A column headed “About” and the
+step's topic, such as **About mail**, beside the form or under it on a window narrower
+than 1024 px, shows what the step does.
 Two pages come after the set-up link's page:
 
 1. **Connect Qory Apiary**, at `/instance/set-up`, has a **Mail** step at
@@ -891,7 +892,7 @@ With the `factory` feature, both pages have more steps:
 - **Connect Qory Apiary** has one step for each adapter that **Instance settings ›
   Adapters** lists, at `/instance/set-up?step=<adapter id>`, then **Mail** where the page
   has that step. An adapter's step shows **State:** with **Set up** or **Not set up**.
-  While **Set up** shows, the column **About this step** lists, under **In the new tab**,
+  While **Set up** shows, the column **About adapters** lists, under **In the new tab**,
   the adapter's steps for its set-up, where the adapter has some. Select **Set up**: the
   adapter's set-up page opens in a new tab. Follow those steps there. Back on the set-up
   page, once the state shows **Set up**, select **Continue**. The step of an adapter
@@ -908,9 +909,10 @@ With the `factory` feature, both pages have more steps:
     organisation's connections reach, such as “GitHub · acme”, with **Choose**. To
     connect an adapter, select **Connect** beside it on the step, or, once one is
     connected, on the page that **Connect another source**, or **Connect another
-    destination**, opens, and follow the steps that the column **About this step** lists under its
-    name. **Back** returns to the step. **Choose** opens the account's
-    collections: choose **All repositories, including new ones**, in the adapter's word
+    destination**, opens, and follow the steps that the column **About work sources**, or
+    **About destinations**, lists under its name. **Back** returns to the step.
+    **Choose** opens the account's collections: choose **All repositories, including
+    new ones**, in the adapter's word
     for its collections, or **Only selected** and tick them, then **Save**. All also
     assigns to the workspace each collection that the adapter lists for the account
     later. A new collection joins a workspace only through All or a tick, also in an

@@ -297,9 +297,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `/acme/main/set-up/sources/connect`, with the adapters not connected yet, or “Every
   system is connected.” **Back** on that page, and on the chooser, returns to the step,
   and the breadcrumb shows the step, a link to it, then the page: “Work sources /
-  Connect another source”. **About this step** says “Bring tickets in from a system such
-  as an issue tracker. Owners and admins of Acme connect it once for the organisation.”
-  and “Connect opens the system in this tab. After its steps, it sends you back here.”
+  Connect another source”. **About work sources** shows “Bring tickets in from a system
+  such as an issue tracker. Owners and admins of Acme connect it once for the
+  organisation.” and “Connect opens the system in this tab. After its steps, it sends
+  you back here.”
   Anyone else sees no **Connect** and reads “Only owners and admins of Acme connect work
   sources.”, or “… connect destinations.” A connection to an adapter is the
   organisation's and serves every workspace, so its **Connect** has no setting of where
@@ -364,10 +365,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Available to every workspace in Acme”, two workspaces can reuse one key and choose
   different models. The step is done once the workspace has a model choice whose
   provider reaches the workspace and has a key. Owners and admins fill it in. For a
-  Claude subscription, **About this step** shows `claude setup-token` on a separate
+  Claude subscription, **About models** shows `claude setup-token` on a separate
   line, with **Copy command**.
 - **Harness**, “Which harness do runs in Main use?”, sets the harness of the
-  workspace's runs. **About this step** explains what a harness is, which harness a run
+  workspace's runs. **About harnesses** explains what a harness is, which harness a run
   uses, and the versions. The choices are two: **Qory harness**, with **Version**,
   **Always the latest on** a branch, `main` unless you change it, or **A fixed version**,
   a tag or a commit; or **A harness repository**:
@@ -463,7 +464,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Test run**, “Run a test”, makes a test work item of the line in **Say hi to your
   agent** with **Run the test**, with no work source; owners, admins and members run it
   once a pool that serves the workspace is ready. Before that, the step shows “Runs need
-  a ready pool. See Machines.”, and **See Machines** opens that step. **About this step**
+  a ready pool. See Machines.”, and **See Machines** opens that step. **About test runs**
   explains when the test passes, which harness the test run uses, and that the set-up of
   the workspace is finished once the test passes. The test run uses a
   harness built into Qory Apiary: qory's `examples/hello` at a fixed commit, workflow
@@ -506,10 +507,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   model for Main in Workspace settings › Model.” Its key is a secret of that workspace,
   and it reaches that workspace alone. While the organisation has no workspace, the
   page shows “Set up a workspace first, then add a model provider in its Model step.” in
-  place of the form, and adds nothing. For a Claude subscription, **About this step** shows
-  `claude setup-token` on a separate line, with **Copy command**. **Workspace settings ›
-  Model** sets the model of the workspace's runs. Its field suggests each provider's
-  models from the models.dev list in the release, which the Mix task
+  place of the form, and adds nothing. For a Claude subscription, **About model
+  providers** shows `claude setup-token` on a separate line, with **Copy command**.
+  **Workspace settings › Model** sets the model of the workspace's runs. Its field
+  suggests each provider's models from the models.dev list in the release, which the
+  Mix task
   `apiary.models.update` writes before a release; Qory Apiary downloads nothing while it
   runs. **Another model** takes any model id, and a model provider keeps no list of
   models. A model choice also has a runtime: the **Runtime** field shows only while the
@@ -544,7 +546,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   has no saved choice, the rows show the harness the organisation shares.
   **Change** opens the two choices of the set-up's **Harness** step, with **Save** and
   **Cancel**. Under the harness, **Repositories** shows the same rows as the Harness
-  step, with the same **Stack** field. **About this step** also has the Harness step's
+  step, with the same **Stack** field. **About harnesses** also has the Harness step's
   five paragraphs.
   Under it, the page sets the workflow of the workspace's runs, from a harness
   repository: **Workflow source** lists the repositories connected to the organisation, and the
@@ -1360,11 +1362,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   without an invitation, that sign-up creates no workspace either. Before you load the
   demo, create a workspace and name it Main: `Apiary.Release.demo()` writes nothing while
   Acme has no workspace Main.
-- Where a step of the set-up needs context, its page has a column **About this step**
-  beside the form, or under it below 1024 px, that shows what the step does.
+- Where a step of the set-up needs context, its page has a column headed “About” and the
+  step's topic, such as **About harnesses**, beside the form, or under it below 1024 px,
+  that shows what the step does.
 <!-- feature: factory -->
 - **Organisation settings › Model providers**, **Workspace settings › Model** and
-  **Workspace settings › Harness** have a column **About this step** beside the form.
+  **Workspace settings › Harness** have a column headed “About” and the page's topic,
+  such as **About model providers**, beside the form.
   **Provider**, **Model** and **Workflow source** are choice fields.
 - The `factory` feature needs `secrets` as well as `observability` and `security`: a
   `QORY_FEATURES` list with `factory` and without `secrets` stops the boot. Set
