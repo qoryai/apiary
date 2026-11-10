@@ -13,11 +13,16 @@ defmodule Apiary.FeatureSetsTagTest do
   # suite, and put them back.
   @helpers ~w(access_case.ex data_case.ex refusals_rows.ex test_setup.ex)
 
+  # A test that needs one of these runs under one feature set alone: CI's run under the
+  # record alone leaves them off, and its run under `all` has every feature on, as the
+  # suite's registry address (config/test.exs) takes `registry` on with the others.
+  @once [:secrets, :path_rules, :factory, :registry, :workflow_model]
+
   test "every test file that reads the features is tagged :feature_sets or sets them first" do
     dir = Path.relative_to_cwd(Path.expand("..", __DIR__))
 
     assert Enum.map(
-             FeatureSetsScan.violations([dir], helpers: @helpers),
+             FeatureSetsScan.violations([dir], helpers: @helpers, once: @once),
              &FeatureSetsScan.format/1
            ) ==
              []
@@ -170,10 +175,16 @@ defmodule Apiary.FeatureSetsTagTest do
 
     test "passes a file whose reading tests need a feature that runs under one set",
          %{tmp_dir: dir} do
-      assert scan(dir, %{"a_test.exs" => module("@tag needs: :factory\n  " <> @reads)}) == []
+      assert scan(dir, %{"a_test.exs" => module("@tag needs: :registry\n  " <> @reads)}) == []
 
       assert scan(dir, %{"b_test.exs" => module("@tag needs: :security\n  " <> @reads)}) ==
                [{:untagged, "b_test.exs", "reads"}]
+    end
+
+    test "passes a test that needs a feature of once:, and only one of them", %{tmp_dir: dir} do
+      files = %{"a_test.exs" => module("@tag needs: :factory\n  " <> @reads)}
+      assert scan(dir, files, once: [:factory]) == []
+      assert scan(dir, files, once: [:registry]) == [{:untagged, "a_test.exs", "reads"}]
     end
 
     test "fails for a file tagged :feature_sets that reads nothing", %{tmp_dir: dir} do

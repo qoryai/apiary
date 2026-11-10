@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.SecretsFeatureTest do
   @moduledoc """
-  The `secrets` feature, opt-in (`Apiary.Features.opt_in/0`): the workspace's stored
+  The `secrets` feature: the workspace's stored
   secrets, variables and integrations. Off, it is absent: its pages answer as paths that
   do not exist, and the settings' list, New, the palette, the instance's Configuration, a
   key's card, the integrations' fetch and the guides at `/docs` leave it out. On, each of
@@ -286,30 +286,31 @@ defmodule ApiaryWeb.SecretsFeatureTest do
 
     setup :register_and_log_in_user
 
-    test "lists the feature not, and has no Integrations part", %{conn: conn} do
+    test "lists the feature off, and has no Integrations part", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/instance/configuration")
 
       assert has_element?(view, "#config-feature-security")
-      refute has_element?(view, "#config-feature-secrets")
+      assert has_element?(view, "#config-feature-secrets-value", "Off")
       refute has_element?(view, "#config-integrations")
       refute has_element?(view, "#config-url-sources")
-      refute render(view) =~ "secrets"
     end
   end
 
   describe "off, the guides at /docs" do
-    test "an instance launched with QORY_FEATURES unset or all is served a tree without it" do
-      for value <- [nil, "all"] do
-        {:ok, features} = Apiary.Features.parse(value)
-        refute ApiaryWeb.DocsController.tree_name(features) == "all"
-        refute "secrets" in String.split(ApiaryWeb.DocsController.tree_name(features), "+")
+    test "an instance launched with a list without it is served a tree without it" do
+      for value <- [nil, "all"], registry <- [nil, "registry.example.com"] do
+        {:ok, features} = Apiary.Features.parse(value, registry: registry)
+        assert ApiaryWeb.DocsController.tree_name(features) == "all"
       end
+
+      {:ok, features} = Apiary.Features.parse("observability,security")
+      refute "secrets" in String.split(ApiaryWeb.DocsController.tree_name(features), "+")
     end
 
     # The documentation's configuration, as `mix docs.all` reads it: the release notes
-    # need no feature, the module reference `secrets`, and a default instance is
-    # served a tree without `secrets`.
-    test "a default instance's /docs has the release notes and no module reference" do
+    # need no feature, and the module reference needs `secrets`, which a default instance
+    # has.
+    test "the release notes need no feature, and the module reference needs it" do
       docs = Mix.Project.config()[:docs]
       docs = if is_function(docs, 0), do: docs.(), else: docs
       owned = Keyword.fetch!(docs, :features)
@@ -323,7 +324,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       assert [_ | _] = owned |> Keyword.fetch!(:secrets) |> Keyword.fetch!(:modules)
 
       {:ok, default} = Apiary.Features.parse(nil)
-      refute Apiary.Features.all() -- default == []
+      assert :secrets in default
     end
 
     test "leave out each passage of it" do

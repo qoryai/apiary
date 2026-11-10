@@ -28,8 +28,8 @@ defmodule Apiary.Registry do
   # host. The key's value is never logged and never in an exception.
   #
   # In test, `config :apiary, Apiary.Registry, generate_key: true` makes a key once per
-  # node, in memory: the application boots there before the suite turns the opt-in
-  # features on, so `settings/0` reads the setting and the key when first asked.
+  # node, in memory: the application boots there before the suite sets its features, so
+  # `settings/0` reads the setting and the key when first asked.
 
   alias Apiary.Features
 

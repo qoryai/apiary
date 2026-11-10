@@ -484,14 +484,14 @@ environment variable SMTP_TLS must be always, if_available or never
 <!-- feature: factory -->
 - `factory`: the work items of a workspace and what they are taken in from: the adapters'
   steps of the instance's set-up, every step of the workspace set-up but **Name**, the
-  test run among them, model providers and model, and workflow. Opt-in. Needs
+  test run among them, model providers and model, and workflow. Needs
   `observability`, `security` and `secrets`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `workflow_model`: changes to the process of each workspace, its stages in order, each
   with its workflows and its gate. Owners and admins save numbered versions, and trial
   versions that chosen work items are assigned to. With the switch off, each workspace
-  keeps version 1 of its process, a copy of its type's default. Opt-in. Needs
+  keeps version 1 of its process, a copy of its type's default. Needs
   `observability`, `security`, `secrets` and `factory`.
 <!-- /feature -->
 
@@ -512,12 +512,6 @@ The record and the security policy, and nothing else:
 ```sh
 QORY_FEATURES=observability,security
 ```
-
-Every feature but the security policy:
-
-```sh
-QORY_FEATURES=all-security
-```
 <!-- /feature -->
 <!-- feature: factory -->
 
@@ -525,6 +519,14 @@ The work items and their set-up, with the features they need:
 
 ```sh
 QORY_FEATURES=observability,security,secrets,factory
+```
+<!-- /feature -->
+<!-- feature: workflow_model -->
+
+Every feature but changes to the process:
+
+```sh
+QORY_FEATURES=all-workflow_model
 ```
 <!-- /feature -->
 

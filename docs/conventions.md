@@ -84,12 +84,14 @@ CI runs every test once, with every feature on, and runs only the tests tagged
 `ApiaryWeb.Features.on?/1`, `Apiary.TestSetup.off/0`, or `Application.get_env/2`,
 `fetch_env/2` or `fetch_env!/2` of `:features`. A test tagged `with_features:` runs once,
 in the run with every feature on, under the features it lists, and takes no tag. So does a
-test whose `needs:` lists an opt-in feature (`Apiary.Features.opt_in/0`): only the run
-with every feature on turns that feature on. The guard does not count a `put_env` of the
-features or `without_registry` as setting them, because `without_registry` keeps the set's
-other features: a test that reads them after either takes the tag. The guard
+test whose `needs:` lists a feature of the guard's `@once`: the run under `observability`
+leaves it off, and the run under `all` has every feature on, as the suite's registry
+address (`config/test.exs`) takes `registry` on with the others. The guard does not count
+a `put_env` of the features or `without_registry` as setting them, because
+`without_registry` keeps the set's other features: a test that reads them after either
+takes the tag. The guard
 `test/apiary/feature_sets_tag_test.exs` fails for a test that reads the features with
-neither the tag, `with_features:` nor an opt-in feature in its `needs:`; for a
+neither the tag, `with_features:` nor a feature of `@once` in its `needs:`; for a
 tagged file that reads nothing; for a test with both `with_features:` and the tag; and for
 a helper of `test/support` that reads the features and is not on its list
 (`Apiary.FeatureSetsScan`). The guard follows calls within a file only: a reviewer checks a
