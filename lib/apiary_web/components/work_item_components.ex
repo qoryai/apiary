@@ -3345,8 +3345,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   # `## Background` heading at the top level of the text, which the renderer draws as
   # `<h4>Background</h4>`, its first paragraph shows, and every block after it, up to the
   # next heading of the same level or a higher one at the top level, is in a closed
-  # `<details>` with the summary Read more. A Background with nothing after its first
-  # paragraph, a proposal without the heading, and one shown as written are as given.
+  # `<details>` with the summary Read more, which reads Read less while the fold is open
+  # (app.css hides the label that does not apply). A Background with nothing after its
+  # first paragraph, a proposal without the heading, and one shown as written are as
+  # given.
   @spec fold_background(term) :: term
   def fold_background({:html, html}) do
     string = Phoenix.HTML.safe_to_string(html)
@@ -3360,8 +3362,9 @@ defmodule ApiaryWeb.WorkItemComponents do
            Enum.split_while(section, &(!paragraph?(elem(&1, 2)))) do
       {_at, to, _open} = List.last(folded)
 
-      summary =
-        gettext("Read more") |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+      [more, less] =
+        for words <- [gettext("Read more"), gettext("Read less")],
+            do: words |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
       {:html,
        {:safe,
@@ -3369,8 +3372,11 @@ defmodule ApiaryWeb.WorkItemComponents do
           binary_part(string, 0, from),
           ~s(<details class="q-xp-more"><summary class="text-accent">),
           ~s(<span class="hero-chevron-down-micro size-3.5"></span>),
-          summary,
-          "</summary>\n",
+          ~s(<span class="q-xp-read-more">),
+          more,
+          ~s(</span><span class="q-xp-read-less">),
+          less,
+          "</span></summary>\n",
           binary_part(string, from, to - from),
           "\n</details>",
           binary_part(string, to, byte_size(string) - to)
