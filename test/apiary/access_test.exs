@@ -17,6 +17,7 @@ defmodule Apiary.AccessTest do
 
   alias Apiary.Access
   alias Apiary.Accounts.Scope
+  alias Apiary.Organisations.Organisation
 
   # An edition that sends its process the scope of an invitation's acceptance
   # (`c:Apiary.Edition.accepted/4`).

@@ -494,7 +494,7 @@ defmodule Apiary.MachineTypesTest do
 
       %{scope: member} = member_fixture(scope, :member)
       assert MachineTypes.create(member, @large) == {:error, :forbidden}
-      assert MachineTypes.create(nil, @large) == {:error, :forbidden}
+      assert MachineTypes.create(nil, @large) == {:error, :not_found}
 
       assert names() == [{"standard", true}, {"browser", false}]
     end
