@@ -425,6 +425,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         id: first.public_id,
         number: first.number,
         workspace_id: here,
+        stage_id: nil,
         attempt: 1,
         of: 3
       }
@@ -433,6 +434,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         id: second.public_id,
         number: second.number,
         workspace_id: here,
+        stage_id: nil,
         attempt: 2,
         of: 3
       }
@@ -598,6 +600,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         id: first.public_id,
         number: first.number,
         workspace_id: ctx.scope.workspace.id,
+        stage_id: nil,
         attempt: 1,
         of: 3
       }

@@ -83,16 +83,16 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc """
   The current stage in the rail: its name, its state and round, then what the state
   needs. Waiting for inputs lists each missing required input with Add, and Move back;
-  waiting for answers links to the questions on Explore's tab, and to the block "What
-  the run needs from you" while an escalation waits too; waiting for a workflow names the
-  workflow the harness no longer declares; escalated shows the escalation card; at the
+  waiting for answers links to the questions on the current stage's tab, and to the block
+  "What the run needs from you" while an escalation waits too; waiting for a workflow names
+  the workflow the harness no longer declares; escalated shows the escalation card; at the
   gate shows the gate card.
   """
   attr :id, :string, default: "work-item-stage"
   attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
   attr :number, :integer, required: true, doc: "the work item's number"
   attr :add_path, :any, required: true, doc: "a function of an artifact type: Add's path"
-  attr :answers_path, :string, default: nil, doc: "Explore's tab, where the questions are"
+  attr :answers_path, :string, default: nil, doc: "the current stage's tab, with the questions"
   attr :asking, :atom, default: nil, values: [nil, :changes], doc: "the form showing"
 
   attr :error, :atom,
@@ -594,7 +594,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc """
   The block "What the run needs from you": the points of the stage's open escalation, one
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
-  with "question N" linked to the question as the Explore tab numbers it, or "Run another
+  with "question N" linked to the question on the current stage's tab, or "Run another
   round.", or a stopped run's fix line in its place. While the stage is escalated, a reader who may decide
   finds the note field and Run another round under the points; they belong to the form of
   the escalation card in the rail (`stage_card/1`). While the stage waits for answers, the
@@ -605,11 +605,15 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   attr :questions, :list,
     default: [],
-    doc: "the questions the Explore tab shows, each with its `id` and `number`"
+    doc: "the questions of the take in, each with its `id` and `number` as the tabs number them"
 
   attr :question_path, :string,
     default: "",
-    doc: "the path of the Explore tab, where the questions are; empty on that tab"
+    doc: "the path of the tab where the questions are; empty on that tab"
+
+  attr :questions_id, :string,
+    default: "work-item-explore-questions",
+    doc: "the id of that tab's questions frame, before `-question-N`"
 
   attr :class, :string, default: nil
 
@@ -641,7 +645,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
               point={point}
               href={
                 point.number &&
-                  "#{@question_path}#work-item-explore-questions-question-#{point.number}"
+                  "#{@question_path}##{@questions_id}-question-#{point.number}"
               }
               harness_path={@page.escalation && @page.escalation[:harness_path]}
             />
@@ -800,13 +804,33 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       attempt: WorkItemComponents.attempt_words(run),
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
-      verdict: if(run.shows == :running, do: running_word(%{}), else: shows_words(run.shows))
+      verdict:
+        if(run.shows == :running,
+          do: running_word(%{class: "text-info-soft-content"}),
+          else: shows_words(run.shows)
+        )
     )
+  end
+
+  @doc false
+  # verdict_parts/2 is a stage run's workflow, round and verdict, in the words of its row
+  # in `stage_runs/1`, the word running in the colours `running_class`. A run with no
+  # workflow or no round has no part for it.
+  def verdict_parts(run, running_class) do
+    [
+      run.workflow,
+      run.round && gettext("round %{round}", round: Format.number(run.round)),
+      if(run.shows == :running,
+        do: running_word(%{class: running_class}),
+        else: shows_words(run.shows)
+      )
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
   end
 
   defp running_word(assigns) do
     ~H"""
-    <span class="text-info-soft-content">{shows_words(:running)}</span>
+    <span class={@class}>{shows_words(:running)}</span>
     """
   end
 
@@ -947,6 +971,15 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp version_words(type, number),
     do: gettext("%{type} v%{number}", type: type_words(type), number: Format.number(number))
+
+  @doc false
+  # output_versions/1 is the summary's pieces of the record block at a stage after Explore:
+  # "spec v1" for each of the current stage's outputs that has a version, in the stage's
+  # order. An output with no version has no piece, as Explore's proposal and questions do.
+  def output_versions(%{outputs: outputs}) do
+    for %{type: type, version: number} when is_integer(number) <- outputs,
+        do: version_words(type, number)
+  end
 
   @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
   def outputs_words(types), do: types |> Enum.map(&type_words/1) |> words_list()

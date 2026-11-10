@@ -97,6 +97,19 @@ defmodule ApiaryWeb.WorkItemLive.View do
     }
   end
 
+  @doc false
+  # shown_output/3 is `read`, a stage's output as `Apiary.WorkItems.ExploreView.output/3`
+  # reads it, with its Markdown rendered as a proposal's is (`shown/2`), for work item
+  # `number`; nil for nil.
+  @spec shown_output(Scope.t(), pos_integer, map | nil) :: map | nil
+  def shown_output(%Scope{} = scope, number, read) do
+    shown(read, %{
+      scope: scope,
+      number: number,
+      images?: ApiaryWeb.Features.visible?(scope, :workflow_model)
+    })
+  end
+
   # A proposal as the page shows it: its Markdown rendered with the image files of its
   # version, each a filename and the file's download address
   # (`ApiaryWeb.ArtifactComponents.file_path/4`), for the Markdown's image references.
@@ -415,11 +428,11 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   def liveness_of(_heard), do: nil
 
-  # Whether the run ran at another stage than Explore.
-  # `Apiary.WorkItems.Explore.steps/3` reads every run of the take in, and Explore's tab
-  # shows only Explore's.
+  # Whether the run ran at another stage than Explore: any stage, for a process with no
+  # Explore stage (`explore_stage` nil). `Apiary.WorkItems.Explore.steps/3` reads every run
+  # of the take in, and Explore's tab shows only Explore's.
   defp other_stage?(%{stage_id: stage_id} = run, %{explore_stage: explore_stage}),
-    do: staged?(run) and is_binary(explore_stage) and stage_id != explore_stage
+    do: staged?(run) and stage_id != explore_stage
 
   defp other_stage?(_run, _ctx), do: false
 
@@ -519,6 +532,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
       run: run_ref(entry.run, ctx),
       questions: rendered_questions(entry.questions),
       comment: entry[:comment],
+      artifact: entry[:artifact],
       reply: entry[:reply] == true
     }
 
@@ -531,7 +545,14 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp event_fields(_entry, _row, _names, _ctx), do: %{}
 
   defp run_ref(run, ctx) do
-    %{id: run.id, number: run.number, path: run_path(ctx, run), attempt: run.attempt, of: run.of}
+    %{
+      id: run.id,
+      number: run.number,
+      path: run_path(ctx, run),
+      stage_id: run[:stage_id],
+      attempt: run.attempt,
+      of: run.of
+    }
   end
 
   defp duration(ms) when is_integer(ms), do: RunComponents.format_duration_ms(ms)

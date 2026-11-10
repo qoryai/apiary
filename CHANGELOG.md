@@ -583,14 +583,38 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   One fold at the foot of the tab lists each of Explore's runs in the take in; its first
   line shows how many there are and the versions of the newest proposal and questions.
   An earlier run that wrote a proposal opens to that version. The fold also lists the
-  work item's artifacts under **Artifacts**, where a version a run made reads “Run 14”,
-  without its round; artifact pages keep “Run 14 · round 2”. At the Explore stage, the
-  stage's runs and artifacts no longer show above the tabs; its notes stay there. A wide
-  table on the tab scrolls in a frame with a visible bar, as on the **Document** view,
-  and its words stay whole.
+  work item's artifacts under **Artifacts**, where, at the Explore stage, a version a run
+  made reads “Run 14”, without its round; artifact pages keep “Run 14 · round 2”.
+  At the Explore stage, the stage's runs and artifacts no longer show above the tabs; its
+  notes stay there. At every stage after Explore, the runs and artifacts move to one
+  closed fold at the foot of the **Ticket** tab and the **Thread**: its first line shows
+  how many runs the take in has and the versions of the current stage's outputs, each
+  attempt links to its run, and **Add a version** is inside it. A stage's tab has the
+  same fold for that stage's runs and outputs. Each row of the fold, on every tab, shows
+  the attempt, the workflow, the round, the verdict and the time, for example
+  “Attempt 2 (Run 14) · shape-a-ticket · round 1 · passed · 12 hours ago”. Until a run has
+  its verdict, the row shows “queued” or “running”, or “Failed”, “Lost” or “Cancelled”
+  when the run ended without one. The run's number shows where the reader may open the
+  run, and “Attempt 2 (Run 14)” links to it. The notes stay above the tabs. A wide table
+  on the tab scrolls in a frame with a visible bar, as on the **Document** view, and its
+  words stay whole.
 - An open work item whose current stage is Explore opens on the **Explore** tab from
   every link that names no tab, and the **Ticket** tab has the address
   `/work/<number>/ticket`.
+- A work item has a tab for each stage of its process that runs a workflow, once the
+  stage is the current one or has a run. The tab has the stage's name and the address
+  `/work/<number>/stages/<stage id>`, which stays when the stage is renamed. An open
+  work item opens on its current stage's tab from every link that names no tab, and on
+  the **Ticket** tab at a stage with no workflow. `/work/<number>/explore` goes to the
+  tab of the first stage with a proposal output. A stage's tab shows a frame for each
+  of the stage's outputs that has a version, the first one open, and the questions, runs
+  and artifacts of that stage's runs.
+- On the current stage's tab after Explore, **Run another round** works as on the
+  **Explore** tab. Where the stage waits for answers, it sends your answers; at the
+  stage's gate, the decisions of the stage's runs that you changed. It also sends one
+  comment on the whole round, from the field **Comment on the stage's outputs**, and the
+  open comments of that stage. The stage's next run reads them and updates the outputs.
+  The questions and comments of another stage stay on that stage's tab.
 - On a work item's **Explore** tab, step card and **Details**, a text about one run
   links to that run's page, and the link ends with the run's number in the workspace: a
   line with no attempt number, such as “Explore is running again, with your comments
@@ -605,12 +629,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   ticket…”.
 - The dot of a running Explore run on the line under a work item's title and on its step
   card follows the run's page: it is blue and pulses while the run is alive, and it is
-  amber with no pulse once the heartbeat is late. A queued run's dot stays still. A running
-  run's badge and word on a work item's page are blue too. On its step card and Explore
-  tab, those of a running Explore run are amber once the heartbeat is late. The dot
-  changes with the page open, as on the run's page: on each heartbeat, and within 5
-  seconds once the heartbeat is late. On the Work items list, a running row and the stages strip's “N exploring” have the same blue
-  dot, still.
+  amber with no pulse once the heartbeat is late. A queued run's dot stays still. A
+  running run's badge and word on a work item's page are blue too. On its step card and
+  Explore tab, those of a running Explore run are amber once the heartbeat is late, and
+  so is the word of a later stage's run in the fold at the foot. The dot changes with the
+  page open, as on the run's page: on each heartbeat, and within 5 seconds once the
+  heartbeat is late. On the Work items list, a running row and the stages strip's “N
+  exploring” have the same blue dot, still.
 - The **Document** view of an artifact draws Mermaid diagrams as the **Explore** tab
   does: the same five types in the same looks, each with its source in the fold “Diagram
   source”, and any other diagram as written, under the same lines. On that view, a table
@@ -645,26 +670,28 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   was sent.” While a run runs, and to a person who may not answer, the open questions
   show as text.
 - Each card under **Comments** shows who wrote it and on which version (“You, on version
-  1”), the badge “Open” or “Reopened”, the text, its replies, and **Reply**; the first
-  card is open and the others are folded to their first line; a click on that line opens
-  or folds it. A run's reply closes a comment with its outcome, “Changed in version 2”,
-  “Answered in version 2”, “Declined in version 2” or “Asked as question 4”, and the
-  card turns muted, with a tick. A member's reply opens it again. A reply takes up to
-  2,000 characters and starts no run; so does the comment on the whole proposal, which
-  goes with **Run another round**. While a run reads an open comment, its card shows
-  “Attempt 3 (Run 14) reads this comment.” From 1007 px the cards are in the right
-  column beside the tabs, on every tab, and the column stays in view while the page
-  scrolls; below 1007 px they are at the top of the Proposal frame. Owners, admins and
-  members write comments and replies; with the `workflow_model` feature, only the
-  stage's approvers, where the stage lists them. Any other member has no comment field
-  and no **Reply**, and the address of the Reply page goes back to the tab. A member who
-  stopped being an approver after the Reply page opened sees “Ask one of this stage's
-  approvers to write comments on the proposal. Only approvers of the stage can write
-  them.” under the field when they send, with the text kept. A text that breaks a rule
-  shows the fix under the field: “Write your reply.”, “Shorten the comment to 2,000
-  characters or fewer.”, “Shorten the reply to 2,000 characters or fewer.”, “Remove the
-  invisible or control characters from the comment.” or “Remove the invisible or control
-  characters from the reply.”
+  1”), or, for a comment on the whole round, on which attempt (“You, on the round of
+  attempt 3”). The card also has the badge “Open” or “Reopened”, the text, its replies,
+  and **Reply**; the first card is open and the others are folded to their first line; a
+  click on that line opens or folds it. A run's reply closes a comment with its outcome,
+  “Changed in version 2”, “Answered in version 2”, “Declined in version 2” or “Asked as
+  question 4”, and the card turns muted, with a tick. A member's reply opens it again. A
+  reply takes up to 2,000 characters and starts no run; so does the comment on the whole
+  round, which goes with **Run another round**. While a run reads an open comment, its
+  card shows “Attempt 3 (Run 14) reads this comment.” From 1007 px the cards are in the
+  right column beside the tabs, and the column stays in view while the page scrolls;
+  below 1007 px they are at the top of the Proposal frame. A stage's tab lists the
+  comments of that stage, and the **Ticket** tab and the **Thread** those of the current
+  stage. Owners, admins and members write comments and replies; with the `workflow_model`
+  feature, only the stage's approvers, where the stage lists them. Any other member has
+  no comment field and no **Reply**, and the address of the Reply page goes back to the
+  tab. A member who stopped being an approver after the Reply page opened sees “Ask one
+  of this stage's approvers to write comments on the proposal. Only approvers of the
+  stage can write them.” under the field when they send, with the text kept. A text that
+  breaks a rule shows the fix under the field: “Write your reply.”, “Shorten the comment
+  to 2,000 characters or fewer.”, “Shorten the reply to 2,000 characters or fewer.”,
+  “Remove the invisible or control characters from the comment.” or “Remove the invisible
+  or control characters from the reply.”
 - At the gate, under the proposal, **Approve** approves it, for a member who may
   approve. A member who may write comments sees “Run another round starts the next run.
   That run reads your comment and updates the proposal.”, the field **Comment on the

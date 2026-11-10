@@ -4,8 +4,8 @@ defmodule Apiary.Explore.ReviewComments do
   # comments format qory publishes (`priv/schemas/artifacts/review-comments.schema.json`).
   # One document holds every review comment of the work item, in the order members wrote
   # them, each on one version of an artifact (`on`, such as `{"artifact": "proposal",
-  # "version": 2}`), with its `state` (`open` or `closed`) and its `replies`, oldest
-  # first, by a member or by a run.
+  # "version": 2}`) or on the whole round of a run (`{"run": 3}`), with its `state`
+  # (`open` or `closed`) and its `replies`, oldest first, by a member or by a run.
   #
   # Qory Apiary writes what members write (`comment/5`, `reply/5`, from
   # `Apiary.WorkItems.Moves`): a review comment is a new entry, `open`; a member's reply

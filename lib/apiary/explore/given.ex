@@ -15,8 +15,6 @@ defmodule Apiary.Explore.Given do
   #     the option's title, else the note (`Apiary.Explore.Questions.words/1`), with
   #     `custom` true for the note, and `option` and `note` as the answer has them; nil
   #     otherwise;
-  #   * `on`: for a review comment and a reply, the version of the proposal the review
-  #     comment is on, nil otherwise;
   #   * `by_id` and `at`: the member's account and the move's time, and `event_id`, the
   #     move's event.
   #
@@ -45,7 +43,6 @@ defmodule Apiary.Explore.Given do
           custom: boolean | nil,
           option: String.t() | nil,
           note: String.t() | nil,
-          on: pos_integer | nil,
           by_id: Ecto.UUID.t() | nil,
           at: DateTime.t(),
           event_id: Ecto.UUID.t()
@@ -117,7 +114,7 @@ defmodule Apiary.Explore.Given do
   defp comment(%{data: %{"review_comment" => id} = data} = event, comments) when is_binary(id) do
     with %{} = comment <- Enum.find(ReviewComments.entries(comments), &(&1["id"] == id)),
          {kind, text} when is_binary(text) <- comment_text(comment, data["reply"]) do
-      [Map.merge(base(event, kind, id), %{text: text, on: get_in(comment, ["on", "version"])})]
+      [Map.merge(base(event, kind, id), %{text: text})]
     else
       _none -> []
     end
@@ -152,7 +149,6 @@ defmodule Apiary.Explore.Given do
       custom: nil,
       option: nil,
       note: nil,
-      on: nil,
       by_id: event.actor_id,
       at: event.at,
       event_id: event.id

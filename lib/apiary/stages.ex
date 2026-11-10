@@ -21,7 +21,7 @@ defmodule Apiary.Stages do
   #     the workspace's current version.
   #   * `next_run/2`, from `Apiary.Dispatches.queue_next/3`: answers to a run's questions,
   #     a send of the review comments while those questions wait, Explore again after a
-  #     run that stopped, or a review comment on Explore's proposal at its gate, run the
+  #     run that stopped, or a send of the review comments at a stage's gate, run the
   #     stage's next round.
   #   * `run_ended/1`, from the end of a run (`Apiary.Dispatches.RunEnd.finish/5`) and from
   #     its settle (`Apiary.Dispatches.Settle.settle/1`), in their transaction: the runner
@@ -190,8 +190,8 @@ defmodule Apiary.Stages do
   # next_run/2 runs the next round of the stage of the work item `id`, locked by the
   # caller's transaction: after answers, or a send of the review comments while the
   # questions wait, the same workflow; after an escalation or a run that stopped, another
-  # round; at the gate, after a comment on the proposal, another round from where the
-  # stage's sequence runs again (`Apiary.Stages.Runner.step/4`).
+  # round; at the gate, after a send of the review comments on the stage's outputs, another
+  # round from where the stage's sequence runs again (`Apiary.Stages.Runner.step/4`).
   # `{:ok, run}`; `{:error, :not_waiting}` when the stage
   # waits for a workflow; `:not_placed` for a work item the runner did not place.
   @doc false
@@ -224,8 +224,8 @@ defmodule Apiary.Stages do
     end
   end
 
-  # A comment on the proposal at the gate: at the end of the sequence, another round runs
-  # it again, its last loop for a stage with one, else from its start. A run that stopped
+  # A send of the review comments at the gate: at the end of the sequence, another round
+  # runs it again, its last loop for a stage with one, else from its start. A run that stopped
   # runs another round too.
   defp next_event(%WorkItem{}), do: {{:another_round, :run_stopped}, nil}
 

@@ -1240,22 +1240,20 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
     end
 
     @tag needs: [:factory, :workflow_model]
-    test "of a waiting run: the stage's Runs list has the run undone", %{
+    test "of a waiting run: Explore's fold has the run undone", %{
       conn: conn,
       scope: scope
     } do
       work_item = taken_in(scope)
       {:ok, _undone} = WorkItems.undo(scope, work_item)
 
-      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
 
-      assert has_element?(
-               view,
-               "#work-item-runs-0",
-               "Attempt 1 · explore-a-ticket · round 1 · undone"
-             )
-
-      refute has_element?(view, "#work-item-runs-0", "ended without a verdict")
+      refute has_element?(view, "#work-item-runs")
+      assert has_element?(view, "#work-item-record", "Attempt 1")
+      assert has_element?(view, "#work-item-record", "explore-a-ticket")
+      assert has_element?(view, "#work-item-record", "undone")
+      refute has_element?(view, "#work-item-record", "ended without a verdict")
     end
   end
 
