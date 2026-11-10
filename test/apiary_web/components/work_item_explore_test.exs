@@ -1327,7 +1327,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       refute html =~ "Add review comment"
     end
 
-    test "Background: its first paragraph, the rest in a closed fold behind Read more" do
+    test "Background: its first paragraph, the rest in a closed fold behind Read more, with Read less for the open fold" do
       message = """
       ## Summary
 
@@ -1355,10 +1355,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert count(html, "#{t} details.q-xp-more") == 1
       assert attr(html, "#{t} details.q-xp-more", "open") == []
-      assert text(html, "#{t} details.q-xp-more > summary") == "Read more"
+      # The fold's summary toggles it: Read more opens it, Read less closes it again.
+      assert text(html, "#{t} details.q-xp-more > summary > .q-xp-read-more") == "Read more"
+      assert text(html, "#{t} details.q-xp-more > summary > .q-xp-read-less") == "Read less"
 
       assert attr(html, "#{t} details.q-xp-more > summary > span", "class") == [
-               "hero-chevron-down-micro size-3.5"
+               "hero-chevron-down-micro size-3.5",
+               "q-xp-read-more",
+               "q-xp-read-less"
              ]
 
       # The first paragraph shows, under the heading; the rest of the Background folds,
@@ -1396,11 +1400,20 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         html = tab(invoice_item(), proposal: proposal_v(2, message))
         assert count(html, "details.q-xp-more") == 0
         refute html =~ "Read more"
+        refute html =~ "Read less"
       end
     end
 
-    test "fold_background/1: the CSS hides the toggle once open; other renders stay" do
-      assert app_css() =~ ~r/\.q-xp-more\[open\] > summary \{\s*display: none;/
+    test "fold_background/1: the CSS shows Read more closed and Read less open; other renders stay" do
+      css = app_css()
+      refute css =~ ~r/\.q-xp-more\[open\] > summary \{/
+
+      assert css =~
+               ~r/\.q-xp-more\[open\] > summary > \.q-xp-read-more,\s*\.q-xp-more:not\(\[open\]\) > summary > \.q-xp-read-less \{\s*display: none;/
+
+      assert css =~
+               ~r/\.q-xp-more\[open\] > summary > \.hero-chevron-down-micro \{\s*transform: rotate\(180deg\);/
+
       assert C.fold_background({:as_written, "## Background"}) == {:as_written, "## Background"}
       assert C.fold_background(nil) == nil
     end

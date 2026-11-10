@@ -765,9 +765,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A work item's permanent address, `/work-items/<id>`, opens the work item.
 - Explore's tab has one field, **Comment on the whole proposal**, and one button, **Run
   another round**. The button sends the answers, the comment and the open comments to
-  one run. A proposal's Background shows its first paragraph, and **Read more** shows
-  the rest. The field replaces the **Add review comment** page; its address,
-  `…/explore?review=new`, opens the **Explore** tab.
+  one run. A proposal's Background shows its first paragraph, **Read more** shows the
+  rest, and **Read less** closes it again. The field replaces the **Add review comment**
+  page; its address, `…/explore?review=new`, opens the **Explore** tab.
 - Explore's tab shows the questions a run chose an option for without a member, as
   **Decisions**: one line each, with the question, the option the run chose and its
   reason. Opened, a decision shows the full reason, “Run 2 chose it 25 minutes ago” and

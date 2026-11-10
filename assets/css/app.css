@@ -14924,7 +14924,7 @@
   }
 
   /* The proposal's Background: its first paragraph, the rest folded behind Read more.
-     Open, the fold has no toggle. */
+     Open, the summary reads Read less, with its chevron up, and closes the fold. */
   .q-xp-more > summary {
     display: inline-flex;
     align-items: center;
@@ -14938,8 +14938,12 @@
   .q-xp-more > summary::-webkit-details-marker {
     display: none;
   }
-  .q-xp-more[open] > summary {
+  .q-xp-more[open] > summary > .q-xp-read-more,
+  .q-xp-more:not([open]) > summary > .q-xp-read-less {
     display: none;
+  }
+  .q-xp-more[open] > summary > .hero-chevron-down-micro {
+    transform: rotate(180deg);
   }
   .q-xp-more > :not(summary) + :not(summary) {
     margin-top: 12px;
