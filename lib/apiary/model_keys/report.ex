@@ -30,7 +30,9 @@ defmodule Apiary.ModelKeys.Report do
        ended (`Apiary.Runs.Sender.sending_ended?/1`);
     4. else the states are recorded (`Apiary.ModelKeys.record/3`), through the run's keys
        alone (`Apiary.ModelKeys.run_keys/1`): an item of a credential the run does not
-       have is left out. `{:ok, body}`, the answer `{"version":1,"keys":[…]}` with the
+       have, and an item of a window outside the contract's list
+       (`Apiary.ModelKeys.State.windows/0`), is left out, and the report is taken all the
+       same. `{:ok, body}`, the answer `{"version":1,"keys":[…]}` with the
        newest state of each key of the run and window, under the run's credential names.
 
   No key value is read or written here, and a log line has no part of the body.

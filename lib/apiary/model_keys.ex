@@ -176,7 +176,8 @@ defmodule Apiary.ModelKeys do
   @doc """
   Records the reported states `items` of the keys `keys` (`run_keys/1`), at `now`: each
   item names its key by `credential`, and an item of a credential that is not among
-  `keys` is left out. One statement writes every row, and keeps a row only where the
+  `keys`, or of a window outside `Apiary.ModelKeys.State.windows/0`, is left out. One
+  statement writes every row, and keeps a row only where the
   item's `observed_at` is newer than the row's; of two items of one key and window, the
   newer counts. Returns `:ok`.
   """
@@ -186,6 +187,7 @@ defmodule Apiary.ModelKeys do
 
     rows =
       items
+      |> Enum.filter(&State.known_window?(&1.window))
       |> Enum.flat_map(fn item ->
         case Map.fetch(by_name, item.credential) do
           {:ok, key} -> [row(key, item, now)]
@@ -240,14 +242,19 @@ defmodule Apiary.ModelKeys do
 
   @doc """
   The states of the keys `keys` (`run_keys/1`), at `now` (`current/2`), each with the
-  key's credential name: `[{name, state}]`, in the order of `keys`, then by window.
+  key's credential name: `[{name, state}]`, in the order of `keys`, then by window. Only
+  the windows of `Apiary.ModelKeys.State.windows/0` are read, so a run of at most 6 keys
+  has at most 66 states.
   """
   @spec run_states([run_key], DateTime.t()) :: [{String.t(), State.t()}]
   def run_states(keys, %DateTime{} = now) do
     ids = Enum.map(keys, & &1.secret_value_id)
 
     states =
-      from(s in State, where: s.secret_value_id in ^ids, order_by: [asc: s.window])
+      from(s in State,
+        where: s.secret_value_id in ^ids and s.window in ^State.windows(),
+        order_by: [asc: s.window]
+      )
       |> Repo.all()
       |> Enum.group_by(& &1.secret_value_id)
 

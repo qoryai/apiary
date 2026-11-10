@@ -292,6 +292,54 @@ defmodule Apiary.ModelKeysTest do
       assert Repo.aggregate(State, :count) == 2
     end
 
+    test "are kept for the contract's windows alone: another is left out, the rest kept",
+         ctx do
+      value = ctx.values["main"]
+
+      :ok =
+        ModelKeys.record(
+          [key(value)],
+          [item(window: "five_hour"), item(window: "seven_day_haiku"), item(window: "key")],
+          DateTime.utc_now()
+        )
+
+      assert Enum.map(states(value), & &1.window) == ["five_hour", "key"]
+      assert length(State.windows()) == 11
+    end
+
+    test "of a run are at most 66: 6 keys of 11 windows", ctx do
+      {_provider, values} = provider!(ctx.scope, ~w(k1 k2 k3 k4 k5 k6))
+      keys = for {id, value} <- values, do: key(value, id)
+      now = DateTime.utc_now()
+
+      items =
+        for name <- Map.keys(values),
+            window <- State.windows() ++ ["seven_day_haiku"],
+            do: item(credential: name, window: window)
+
+      :ok = ModelKeys.record(keys, items, now)
+      assert Repo.aggregate(State, :count) == 66
+
+      # A row of another window, written by an earlier release, is not read.
+      value = values["k1"]
+
+      Repo.insert_all(State, [
+        %{
+          secret_value_id: value.id,
+          organisation_id: value.organisation_id,
+          window: "seven_day_haiku",
+          status: "allowed",
+          source: "provider",
+          observed_at: now,
+          updated_at: now
+        }
+      ])
+
+      states = ModelKeys.run_states(keys, now)
+      assert length(states) == 6 * 11
+      assert length(Jason.decode!(Report.body(states))["keys"]) == 66
+    end
+
     test "leave out the utilization of a window whose reset has passed", ctx do
       value = ctx.values["main"]
       now = ~U[2026-11-10 15:00:00.000000Z]

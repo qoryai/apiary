@@ -4,8 +4,9 @@ defmodule Apiary.ModelKeys.State do
   provider's answers (`Apiary.ModelKeys.Report`): one row per key, by the value's row id
   (`secret_values.id`), and window.
 
-    * `window`: the limit's window, an open code such as `five_hour` or `seven_day`,
-      `^[a-z][a-z0-9_]{0,63}$`.
+    * `window`: the limit's window, one of `windows/0`, such as `five_hour` or
+      `seven_day`. A report may have any code of the form `^[a-z][a-z0-9_]{0,63}$`; a
+      window outside `windows/0` is not stored (`Apiary.ModelKeys.record/3`).
     * `status`: `allowed`, `allowed_warning` or `rejected`.
     * `resets_at`: when the window resets, nil when the answer gave no time.
     * `utilization`: the window's use in whole percent, 0 to 100, nil when the answer
@@ -31,6 +32,11 @@ defmodule Apiary.ModelKeys.State do
   @statuses ~w(allowed allowed_warning rejected)
   @sources ~w(provider schedule pause_for)
   @window ~r/\A[a-z][a-z0-9_]{0,63}\z/
+  # The windows a gateway reports, as the Forager contract lists them for `window` in
+  # `model-keys-report.schema.json`: a subscription's, an API key's, and `key` for a limit
+  # refusal with no window in it. Change it with the contract's list.
+  @windows ~w(five_hour seven_day seven_day_opus seven_day_sonnet overage
+              requests tokens input_tokens output_tokens spend_limit key)
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -55,6 +61,14 @@ defmodule Apiary.ModelKeys.State do
   @doc "The sources of a cooldown or a reset: provider, schedule and pause_for."
   @spec sources() :: [String.t()]
   def sources, do: @sources
+
+  @doc "The windows a key's state is kept for, the contract's list: 11 codes."
+  @spec windows() :: [String.t()]
+  def windows, do: @windows
+
+  @doc "Whether `window` is one of `windows/0`."
+  @spec known_window?(term) :: boolean
+  def known_window?(window), do: window in @windows
 
   @doc "Whether `window` is a window's code: `^[a-z][a-z0-9_]{0,63}$`."
   @spec window?(term) :: boolean

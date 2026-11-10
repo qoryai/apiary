@@ -166,6 +166,21 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert [%State{status: "rejected", utilization: 100}] = rows()
     end
 
+    test "leaves out a window outside the contract's list, and takes the rest", ctx do
+      body =
+        report(ctx, [
+          state(ctx),
+          state(ctx, window: "seven_day_haiku"),
+          state(ctx, window: "seven_day", status: "allowed", cooldown_until: nil)
+        ])
+
+      conn = post_report(ctx, body)
+      assert conn.status == 200
+      assert %{"keys" => keys} = Jason.decode!(conn.resp_body)
+      assert Enum.map(keys, & &1["window"]) == ["five_hour", "seven_day"]
+      assert Enum.map(rows(), & &1.window) == ["five_hour", "seven_day"]
+    end
+
     test "leaves out a credential the run does not have", ctx do
       # Another provider of the same organisation, whose key no credential of the run is.
       {:ok, other} =
