@@ -1163,10 +1163,11 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert_ended(handed, :run_ended)
     end
 
-    test "an outcome that gives the reason released or image_missing has it dropped" do
+    test "an outcome that gives the reason released or one of Forager's image codes has it dropped" do
       body = %{"version" => 1, "time" => "2026-10-17T12:00:00Z", "state" => "cancelled"}
 
-      for reason <- ["released", "image_missing"] do
+      for reason <-
+            ~w(released image_missing image_access_denied image_rate_limited image_registry_unreachable) do
         assert {:ok, %Outcome{state: "cancelled", reason: nil}} =
                  Outcome.parse(Map.put(body, "reason", reason))
 

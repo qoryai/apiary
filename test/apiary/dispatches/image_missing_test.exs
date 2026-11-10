@@ -162,6 +162,24 @@ defmodule Apiary.Dispatches.ImageMissingTest do
     assert Dispatches.requeued_for_image?(Repo.get!(Run, run.id))
   end
 
+  # Forager's other image codes: a build or a new run pulls from the same registry, so
+  # the image stays in the pool's record and nothing is built or queued again.
+  for code <- ~w(image_access_denied image_rate_limited image_registry_unreachable) do
+    test "an exit #{code} ends as any failed run: nothing cleared, built or queued again",
+         ctx do
+      %{dispatch_run: dispatch_run, run: run} =
+        handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      exit!(run, %{@missing | "reason" => unquote(code)})
+
+      assert %Run{state: "failed", exit_reason: unquote(code)} = Repo.get!(Run, run.id)
+      assert Environments.image_for(ctx.pool, @target) == image(ctx.scope)
+      assert prebuilds(ctx) == []
+      assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+      refute Dispatches.requeued_for_image?(Repo.get!(Run, run.id))
+    end
+  end
+
   test "the next attempt keeps the machine type, its spec, and whether it was the default",
        ctx do
     %{dispatch_run: dispatch_run, run: run} =

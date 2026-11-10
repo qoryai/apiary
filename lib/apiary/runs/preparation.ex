@@ -102,6 +102,12 @@ defmodule Apiary.Runs.Preparation do
   # contract's list counts as the workspace's.
   @pool_kinds ~w(image join wall machine)
 
+  # The reasons of a run's exit after the pull of its image failed, each a refusal code of
+  # Forager: the image is not in its registry; the registry, its token server or the run's
+  # proxy returned 401 or 403; one of them returned 429; or the connection to the
+  # registry failed or took longer than 30 seconds.
+  @image_reasons ~w(image_missing image_access_denied image_rate_limited image_registry_unreachable)
+
   # The kinds of step that run after the last agent session: the push of the run's work,
   # and the copy of it back from the wall.
   @after_kinds ~w(push copy)
@@ -1138,10 +1144,10 @@ defmodule Apiary.Runs.Preparation do
       nil ->
         nil
 
-      %{kind: "image"} = step when run.exit_reason == "image_missing" ->
+      %{kind: "image"} = step when run.exit_reason in @image_reasons ->
         case image_type(run) do
           nil -> step_stopped(scope, run, machine, step)
-          type -> image_stopped(scope, run, step, type)
+          type -> image_stopped(scope, run, step, type, machine && machine.pool)
         end
 
       step ->
@@ -1168,30 +1174,22 @@ defmodule Apiary.Runs.Preparation do
     }
   end
 
-  # The image of the run's machine type is not in its registry: an instance admin sets
-  # another image. `rich` is the first sentence with the key and the image in code font.
-  # An instance admin reads who fixes it; anyone else reads the line of the instance's
-  # pool, "Contact support with run …" (`pool_fixer/3`): an organisation's people never
-  # see the word "instance", and "support" is how they reach the instance admins.
-  defp image_stopped(scope, run, step, type) do
-    rich =
-      rich_gettext(
-        "Pull the images failed: the image of the machine type %{name} (%{key}) is not in its registry: %{image}.",
-        name: type.name,
-        key: {:m, type.key, "font-mono"},
-        image: {:m, short_image(type.image), "font-mono"}
-      )
-
+  # The pull of the image of the run's machine type failed with one of Forager's image
+  # codes (`@image_reasons`): an instance admin fixes it, as the type's image is set in
+  # Instance settings › Machine types. `rich` is the first sentence, what happened, with
+  # the key in code font; the run's header shows it too. An instance admin then reads the
+  # fix, its cause and the image (`image_fix/3`); anyone else reads the line of the
+  # instance's pool, "Contact support with run …" (`image_support/2`): an organisation's
+  # people never see the word "instance", and "support" is how they reach the instance
+  # admins.
+  defp image_stopped(scope, run, step, type, pool) do
+    rich = image_what(run.exit_reason, type)
     what = ApiaryWeb.RichText.plain_text(rich)
 
     {fixer, fix} =
       if Access.instance_admin?(scope),
-        do:
-          {:instance_admin,
-           gettext(
-             "An instance admin sets an image that exists in Instance settings › Machine types, then runs the work item again."
-           )},
-        else: {:support, gettext("Contact support with run %{run}.", run: run.public_id)}
+        do: {:instance_admin, image_fix(run.exit_reason, short_image(type.image), pool)},
+        else: {:support, image_support(run.exit_reason, run.public_id)}
 
     %{
       cause: :step_failed,
@@ -1204,6 +1202,98 @@ defmodule Apiary.Runs.Preparation do
       rich: rich,
       fix_shown: true
     }
+  end
+
+  # What happened, for every reader: the code's cause in plain words, and the type.
+  defp image_what("image_missing", type) do
+    rich_gettext(
+      "Pull the images failed: the image of the machine type %{name} (%{key}) is not in its registry: %{image}.",
+      name: type.name,
+      key: {:m, type.key, "font-mono"},
+      image: {:m, short_image(type.image), "font-mono"}
+    )
+  end
+
+  defp image_what("image_access_denied", type) do
+    rich_gettext(
+      "Pull the images failed: access to the image of the machine type %{name} (%{key}) was denied.",
+      name: type.name,
+      key: {:m, type.key, "font-mono"}
+    )
+  end
+
+  defp image_what("image_rate_limited", type) do
+    rich_gettext(
+      "Pull the images failed: a rate limit stopped the requests for the image of the machine type %{name} (%{key}).",
+      name: type.name,
+      key: {:m, type.key, "font-mono"}
+    )
+  end
+
+  defp image_what("image_registry_unreachable", type) do
+    rich_gettext(
+      "Pull the images failed: no connection to the image's registry, for the machine type %{name} (%{key}).",
+      name: type.name,
+      key: {:m, type.key, "font-mono"}
+    )
+  end
+
+  # The line of a reader who is not an instance admin. A rate limit resets with time, so
+  # that reader runs the work item again first.
+  defp image_support("image_rate_limited", public_id) do
+    gettext(
+      "Run the work item again later. If it fails again, contact support with run %{run}.",
+      run: public_id
+    )
+  end
+
+  defp image_support(_reason, public_id),
+    do: gettext("Contact support with run %{run}.", run: public_id)
+
+  # The instance admin's line: the fix, then the cause, then the image.
+  defp image_fix("image_missing", _image, _pool) do
+    gettext(
+      "An instance admin sets an image that exists in Instance settings › Machine types, then runs the work item again."
+    )
+  end
+
+  # `image_access_denied` covers a 401 or 403 from the registry, its token server or the
+  # run's proxy, and on Docker Hub a repository that does not exist. A repository here is
+  # the registry's, of images, in every domain: the context "plain" (docs/lingo.md).
+  defp image_fix("image_access_denied", image, _pool) do
+    pgettext(
+      "plain",
+      "An instance admin gives the run's registry credential read access to the image, or sets another image in Instance settings › Machine types. If the workspace's policy blocks the registry, a workspace admin allows it on the workspace's Policy page. The registry returned 401 or 403 for %{image}, or the run's proxy returned 403 because of the policy. On Docker Hub, 401 also means that the repository does not exist.",
+      image: image
+    )
+  end
+
+  # The gateway's run limits are set where the pool's gateway runs: by an admin of the
+  # pool for a pool of the run's workspace or of another organisation, by an instance
+  # admin for the instance's pool, and for a run with no pool known, whose line then has
+  # no pool's name. A pool's name came from a person and is shown as a text an external
+  # system sent, as the run's waiting line shows it.
+  defp image_fix("image_rate_limited", image, %{place: place, name: pool})
+       when place in [:workspace, :operator] do
+    gettext(
+      "An instance admin runs the work item again once the registry's rate limit resets, or the admin of %{pool} raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for %{image}.",
+      image: image,
+      pool: ExternalText.line(pool)
+    )
+  end
+
+  defp image_fix("image_rate_limited", image, _pool) do
+    gettext(
+      "An instance admin runs the work item again once the registry's rate limit resets, or raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for %{image}.",
+      image: image
+    )
+  end
+
+  defp image_fix("image_registry_unreachable", image, _pool) do
+    gettext(
+      "An instance admin checks that the registry's host name resolves, that the registry is running and that its certificate is valid, then runs the work item again. The connection to the registry for %{image} failed or took longer than 30 seconds.",
+      image: image
+    )
   end
 
   # Each cause line is two sentences: what happened, then who fixes it. The first sentence

@@ -791,7 +791,10 @@ machine's `images.allow` must allow. A pull of a type's image that ends `run.exi
 with reason `image_missing` ends the run as any exit does: no build is cleared or
 queued, and nothing is queued again (`Apiary.Dispatches.RunEnd`), read by the mark the
 run kept, whatever the type's image is by then and also once the type is deleted, which
-sets the id to null.
+sets the id to null. A run, of a type's image or of a target's, whose `run.exited` has
+the reason `image_access_denied`, `image_rate_limited` or `image_registry_unreachable`
+ends as any exit does too: a build or a new run pulls from the same registry, so no
+build is cleared or queued, and nothing is queued again.
 
 **A run held for its build.** In a workspace whose domain has prebuilds, a waiting run
 of a work item whose target a live collection names with an `environment_ref` waits for
@@ -1200,7 +1203,8 @@ Every `dev.qory.run.exited` carries `state`, how the run ended: `succeeded`, it 
 code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 (`^[a-z][a-z0-9_]{0,63}$`, matched from `\A` to `\z`). Forager's codes are reserved:
 `timeout`, `interrupted`, `no_session`, `stopped`, `session_lost`, `gateway_lost`,
-`batch_refused`, `run_closed` and `image_missing`, and so are old names Forager no longer writes, which
+`batch_refused`, `run_closed`, `image_missing`, `image_access_denied`, `image_rate_limited` and
+`image_registry_unreachable`, and so are old names Forager no longer writes, which
 records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's
