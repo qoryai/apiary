@@ -90,8 +90,14 @@ defmodule Apiary.HarnessesTest do
     test "refuses anyone but an instance admin, and writes nothing", ctx do
       %{scope: member} = member_fixture(ctx.scope)
 
-      for scope <- [ctx.scope, member, instance_scope(), nil] do
-        assert Harnesses.assign(scope, @root, :every) == {:error, :forbidden}
+      # The instance's scope is at the instance without the role; the rest are not there.
+      for {scope, reason} <- [
+            {ctx.scope, :not_found},
+            {member, :not_found},
+            {instance_scope(), :forbidden},
+            {nil, :not_found}
+          ] do
+        assert Harnesses.assign(scope, @root, :every) == {:error, reason}
       end
 
       refute Repo.exists?(Assignment)
@@ -214,7 +220,7 @@ defmodule Apiary.HarnessesTest do
     end
 
     test "refuses anyone but an instance admin, and deletes nothing", ctx do
-      assert Harnesses.unassign(ctx.scope, ctx.assignment) == {:error, :forbidden}
+      assert Harnesses.unassign(ctx.scope, ctx.assignment) == {:error, :not_found}
       assert Repo.exists?(Assignment)
       assert entries("harness.unassigned") == []
     end

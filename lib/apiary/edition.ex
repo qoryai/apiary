@@ -585,7 +585,7 @@ defmodule Apiary.Edition do
   organisation's gateways serve its workspaces alone.
 
   `Apiary.Gateways` asks it wherever a workspace's gateways are in question: whether a
-  gateway may serve a workspace (`Apiary.Gateways.may_serve?/2`), the gateways a node of
+  gateway may serve a workspace (`Apiary.Access.may_serve?/2`), the gateways a node of
   the workspace may choose (`Apiary.Gateways.gateway_choices/1`) and the default it
   resolves (`Apiary.Gateways.default_gateway_for/1`). So the registration of a run, the
   attach and the batches through a gateway follow it.

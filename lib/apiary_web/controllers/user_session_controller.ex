@@ -125,8 +125,22 @@ defmodule ApiaryWeb.UserSessionController do
 
   def update_password(conn, %{"user" => user_params} = params) do
     user = conn.assigns.current_scope.user
-    true = Accounts.sudo_mode?(user)
 
+    if Accounts.sudo_mode?(user),
+      do: update_password(conn, user, user_params, params),
+      else: reauthenticate(conn)
+  end
+
+  # A password is changed only after a recent sign-in: one grown old since Account
+  # settings opened leads to the log-in page, as those settings' mount does
+  # (`ApiaryWeb.UserAuth`'s sudo mode), and changes nothing.
+  defp reauthenticate(conn) do
+    conn
+    |> put_flash(:error, gettext("You must re-authenticate to access this page."))
+    |> redirect(to: ~p"/users/log-in")
+  end
+
+  defp update_password(conn, user, user_params, params) do
     case Accounts.update_user_password(user, user_params,
            session_token: get_session(conn, :user_token)
          ) do

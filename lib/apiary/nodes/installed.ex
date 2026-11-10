@@ -354,10 +354,10 @@ defmodule Apiary.Nodes.Installed do
 
   @doc false
   # The instance's pool and gateway in use, the pool first, to an instance admin
-  # (`Apiary.Adapters.authorize_instance/2`); none to anyone else.
+  # (`instance.read_factory`); none to anyone else.
   @spec list(Scope.t()) :: [Node.t()]
   def list(%Scope{} = scope) do
-    if Adapters.authorize_instance(scope) == :ok,
+    if ask_instance(scope, :"instance.read_factory") == :ok,
       do: for(kind <- @kinds, node = Repo.one(live_query(kind)), do: node),
       else: []
   end
@@ -367,7 +367,7 @@ defmodule Apiary.Nodes.Installed do
   # (`Apiary.Nodes.topic/1`, `"instance"`): `{:nodes_touched, "instance"}`.
   @spec subscribe(Scope.t()) :: :ok | {:error, term}
   def subscribe(%Scope{} = scope) do
-    with :ok <- Adapters.authorize_instance(scope),
+    with :ok <- ask_instance(scope, :"instance.read_factory"),
          do: Phoenix.PubSub.subscribe(Apiary.PubSub, Nodes.topic("instance"))
   end
 
@@ -386,14 +386,14 @@ defmodule Apiary.Nodes.Installed do
   # to anyone else.
   @spec activity(Scope.t(), [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => map}
   def activity(%Scope{} = scope, nodes, now \\ DateTime.utc_now()) do
-    if Adapters.authorize_instance(scope) == :ok,
+    if ask_instance(scope, :"instance.read_factory") == :ok,
       do: Nodes.activity(:instance, nodes, now),
       else: %{}
   end
 
   @doc false
   # Sets the instance's pool's instance limit from `attrs` (`"instance_limit"`, nil or
-  # blank for none), by an instance admin, in one transaction with the pool's row held
+  # blank for none), by an instance admin (`node.set_instance_limit`), in one transaction with the pool's row held
   # `FOR UPDATE`; the entry `node.set_limit` in the instance's organisation's trail, by
   # the person, when the limit changed. Lowering it stops none of its instances.
   # `{:ok, pool}`, `{:error, changeset}`, `{:error, :forbidden}`, or `{:error,
@@ -403,7 +403,7 @@ defmodule Apiary.Nodes.Installed do
   def set_instance_limit(%Scope{} = scope, %Node{kind: :pool, id: id}, attrs)
       when is_map(attrs) do
     Repo.transact(fn ->
-      with :ok <- Adapters.authorize_instance(scope),
+      with :ok <- ask_instance(scope, :"node.set_instance_limit"),
            {:ok, recorder} <- Adapters.instance_scope(scope),
            %Node{} = current <-
              Repo.one(from n in live_query(:pool), where: n.id == ^id, lock: "FOR UPDATE") ||
@@ -417,6 +417,11 @@ defmodule Apiary.Nodes.Installed do
   end
 
   def set_instance_limit(%Scope{}, %Node{}, _attrs), do: {:error, :not_found}
+
+  # `action`, an instance action, asked of the person of `scope` in the instance's
+  # organisation, as the database has it now (`Apiary.Access.in_instance/1`).
+  defp ask_instance(scope, action),
+    do: Access.authorize(Access.in_instance(scope), action, Access.instance_organisation())
 
   @doc false
   # The changeset of the pool's instance limit, for the form that sets it.

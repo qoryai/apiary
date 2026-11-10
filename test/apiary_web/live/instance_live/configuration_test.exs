@@ -462,13 +462,17 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert text(view, "#flash-info") =~ "Example saved."
 
       # Its save after the sign-in has grown old: the page leads to the log-in page. The
-      # part is given the page's scope when the page renders again.
+      # part is given the page's instance scope (`@scope`) when the page renders again.
       old = DateTime.add(DateTime.utc_now(:second), -21, :minute)
 
       :sys.replace_state(view.pid, fn state ->
-        scope = state.socket.assigns.current_scope
-        scope = put_in(scope.user.authenticated_at, old)
-        %{state | socket: Phoenix.Component.assign(state.socket, :current_scope, scope)}
+        socket =
+          Enum.reduce([:current_scope, :scope], state.socket, fn key, socket ->
+            scope = Map.fetch!(socket.assigns, key)
+            Phoenix.Component.assign(socket, key, put_in(scope.user.authenticated_at, old))
+          end)
+
+        %{state | socket: socket}
       end)
 
       render_hook(view, "save", %{})

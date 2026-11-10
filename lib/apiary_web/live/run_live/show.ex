@@ -4120,7 +4120,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp machine_log(_scope, %{machine: nil}, _read), do: :hidden
 
   defp machine_log(scope, %{machine: %{dispatch_id: dispatch_id} = machine}, _read) do
-    if Access.instance_admin?(scope) do
+    if ApiaryWeb.Access.instance_can?(scope, :"instance.read") do
       case Dispatches.machine_log(scope, dispatch_id) do
         {:ok, %{text: text, truncated: truncated}} -> {:ok, text, truncated}
         {:error, :unreadable} -> :unreadable

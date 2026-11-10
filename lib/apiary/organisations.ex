@@ -168,7 +168,8 @@ defmodule Apiary.Organisations do
         reach: nil,
         workspace: nil,
         edition: %{},
-        hidden: nil
+        hidden: nil,
+        instance_organisation_id: nil
     })
   end
 
@@ -567,7 +568,8 @@ defmodule Apiary.Organisations do
         | organisation: membership.organisation,
           membership: membership,
           reach: nil,
-          edition: %{}
+          edition: %{},
+          instance_organisation_id: nil
       },
       place
     )
@@ -2217,10 +2219,18 @@ defmodule Apiary.Organisations do
   list_members/1 is the memberships of the scope's organisation, each with its user:
   owners first, then admins, then members, each by when they joined. Each carries
   `workspaces`, the workspaces it reaches, by name, of those the scope's membership
-  reaches: a reader is not told of a workspace they do not reach.
+  reaches: a reader is not told of a workspace they do not reach. None for a person who
+  may not read them (`member.read`, asked of the organisation with
+  `Apiary.Access.can?/3`, from the scope as loaded: every page's counts read them).
   """
   @spec list_members(Scope.t()) :: [%Membership{}]
-  def list_members(%Scope{organisation: %Organisation{id: organisation_id}} = scope) do
+  def list_members(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    if Access.can?(scope, :"member.read", organisation),
+      do: read_members(scope, organisation),
+      else: []
+  end
+
+  defp read_members(scope, %Organisation{id: organisation_id}) do
     members =
       Repo.all(
         from m in Membership,
@@ -3915,7 +3925,8 @@ defmodule Apiary.Organisations do
             here = %{
               scope
               | organisation: invitation.organisation,
-                workspace: invitation.workspace
+                workspace: invitation.workspace,
+                instance_organisation_id: nil
             }
 
             # The lock order (docs/access.md): the edition, which may hold the organisation

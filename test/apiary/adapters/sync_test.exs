@@ -734,8 +734,8 @@ defmodule Apiary.Adapters.SyncTest do
 
     test "only to an instance admin, of an adapter in use",
          %{scope: scope, admin: admin, adapter: adapter, key_scope: key_scope} do
-      assert Adapters.sync_settings(scope, adapter) == {:error, :forbidden}
-      assert Adapters.sync_settings(key_scope, adapter) == {:error, :forbidden}
+      assert Adapters.sync_settings(scope, adapter) == {:error, :not_found}
+      assert Adapters.sync_settings(key_scope, adapter) == {:error, :not_found}
 
       {:ok, _} = Adapters.delete_adapter(admin, adapter)
       assert Adapters.sync_settings(admin, adapter) == {:error, :not_found}
@@ -805,7 +805,7 @@ defmodule Apiary.Adapters.SyncTest do
 
       for asker <- [scope, member, key_scope] do
         assert Adapters.update_sync_interval(asker, adapter, %{sync_interval: 3600}) ==
-                 {:error, :forbidden}
+                 {:error, :not_found}
       end
 
       {:ok, _} = Adapters.delete_adapter(admin, adapter)
@@ -852,15 +852,15 @@ defmodule Apiary.Adapters.SyncTest do
 
       # An instance admin reads it; a member of an organisation where adapters are shown
       # does not.
-      assert Adapters.last_seen(scope, adapter) == {:error, :forbidden}
-      assert Adapters.last_seen(scope, [adapter]) == {:error, :forbidden}
-      assert Adapters.last_seen(%Scope{}, adapter) == {:error, :forbidden}
-      assert Adapters.last_seen(%Scope{}, [adapter]) == {:error, :forbidden}
+      assert Adapters.last_seen(scope, adapter) == {:error, :not_found}
+      assert Adapters.last_seen(scope, [adapter]) == {:error, :not_found}
+      assert Adapters.last_seen(%Scope{}, adapter) == {:error, :not_found}
+      assert Adapters.last_seen(%Scope{}, [adapter]) == {:error, :not_found}
     end
 
     test "is refused to an adapter's key", %{adapter: adapter, key_scope: key_scope} do
-      assert Adapters.last_seen(key_scope, adapter) == {:error, :forbidden}
-      assert Adapters.last_seen(key_scope, [adapter]) == {:error, :forbidden}
+      assert Adapters.last_seen(key_scope, adapter) == {:error, :not_found}
+      assert Adapters.last_seen(key_scope, [adapter]) == {:error, :not_found}
     end
   end
 end

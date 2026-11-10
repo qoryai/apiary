@@ -210,6 +210,15 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
     end
   end
 
+  # Deletes the person's membership of the scope's organisation, with no broadcast.
+  defp remove_membership(scope) do
+    {1, _} =
+      Apiary.Repo.delete_all(
+        from m in Apiary.Organisations.Membership,
+          where: m.user_id == ^scope.user.id and m.organisation_id == ^scope.organisation.id
+      )
+  end
+
   describe "for an instance admin" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()
@@ -672,6 +681,32 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
       refute has_element?(view, "#mail-resent")
       refute has_element?(view, "#mail-pending")
+    end
+
+    # The membership's row is deleted with no broadcast: the event arrives before
+    # `:membership_changed`, and the page still has the form.
+    test "one whose membership is gone, on the page, moves to its path, and saves nothing",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      remove_membership(scope)
+
+      assert {:error, {:live_redirect, %{to: "/instance/mail"}}} = save(view)
+      assert no_mail_saved?()
+      refute_received {:email, %{subject: @subject}}
+    end
+
+    test "one whose membership is gone, on the page, moves to its path, and sends no link again",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      _first = sent_path()
+      unthrottle!()
+      remove_membership(scope)
+
+      assert {:error, {:live_redirect, %{to: "/instance/mail"}}} =
+               view |> element("#mail-resend") |> render_click()
+
+      refute_received {:email, %{subject: @subject}}
     end
 
     test "for another instance admin, a failed send's line without the button",

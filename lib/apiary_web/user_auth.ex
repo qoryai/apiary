@@ -808,11 +808,13 @@ defmodule ApiaryWeb.UserAuth do
 
   defp signed_in_path(_conn, nil), do: ~p"/"
 
-  # Whether the person is an instance admin, sent to the instance's connections while the
-  # connections have a step, until an instance admin finishes or skips their last step.
+  # Whether the person is an instance admin who may review the instance's connections
+  # (`instance.review_connections`), sent to them while the connections have a step,
+  # until an instance admin finishes or skips their last step.
   defp connections_to_review?(scope),
     do:
-      not Apiary.Setup.connections_reviewed?() and Apiary.Access.instance_admin?(scope) and
+      not Apiary.Setup.connections_reviewed?() and
+        ApiaryWeb.Access.instance_can?(scope, :"instance.review_connections") and
         ApiaryWeb.SetUpComponents.connect_steps?(scope)
 
   @doc """

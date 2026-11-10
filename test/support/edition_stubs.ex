@@ -1052,8 +1052,9 @@ defmodule Apiary.EditionStubs do
     A part of Instance settings › Configuration after the core's
     (`c:ApiaryWeb.Edition.configuration_parts/1`), built from the core's
     `ApiaryWeb.InstanceLive.ConfigurationComponents`: one row, read only, and a Save that
-    saves nothing. It asks `Apiary.InstanceConfig.authorize_save/1`, as an edition's part
-    would, and says it saved, or sends the page `{:configuration, :sudo}`.
+    saves nothing. It asks `Apiary.Access.authorize/3` for `instance.configure` with the
+    page's instance scope, then for a recent sign-in, as an edition's part would, and says
+    it saved, or sends the page `{:configuration, :sudo}`.
     """
     def configuration_parts(_scope), do: [__MODULE__.Part]
 
@@ -1086,16 +1087,21 @@ defmodule Apiary.EditionStubs do
       end
 
       @impl true
+      # Asked as an edition's part asks: its action in the instance scope the page gives
+      # it, `scope`, then a recent sign-in.
       def handle_event("save", _params, socket) do
-        case Apiary.InstanceConfig.authorize_save(socket.assigns.current_scope) do
-          :ok ->
-            {:noreply, ConfigurationComponents.saved(socket, "Example saved.")}
+        instance = socket.assigns.scope
 
+        with :ok <-
+               Apiary.Access.authorize(instance, :"instance.configure", instance.organisation),
+             true <- Apiary.Accounts.sudo_mode?(instance.user) || {:error, :sudo} do
+          {:noreply, ConfigurationComponents.saved(socket, "Example saved.")}
+        else
           {:error, :sudo} ->
             send(self(), {:configuration, :sudo})
             {:noreply, socket}
 
-          {:error, :forbidden} ->
+          {:error, _refused} ->
             {:noreply, socket}
         end
       end

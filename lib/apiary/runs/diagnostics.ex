@@ -28,7 +28,8 @@ defmodule Apiary.Runs.Diagnostics do
   **Who reads what.** The reader is a person who reads the run and its log (`run.read`
   and `run.read_log`; the caller checks both), or a diagnostics key, which reads as the
   instance (`Apiary.AccessKeys.diagnostics_scope/1`). Either reads the log and the steps'
-  output. `machine_logs` is there for an instance admin (`Apiary.Access.instance_admin?/1`)
+  output. `machine_logs` is there for an instance admin, who may read the instance
+  (`instance.read`, asked in the instance's organisation, `Apiary.Access.in_instance/1`),
   and for a diagnostics key. The events are read as the run page reads them, through the
   edition (its `client_reads` callback, `:run_events`), under the person's scope or
   the instance's; the `dev.qory.run.log` events are left out, as their output is in `log`
@@ -140,7 +141,7 @@ defmodule Apiary.Runs.Diagnostics do
     {scope, machine_logs?} =
       case reader do
         :instance -> {Scope.for_instance(run.organisation, run.workspace), true}
-        %Scope{} = scope -> {scope, Access.instance_admin?(scope)}
+        %Scope{} = scope -> {scope, reads_instance?(scope)}
       end
 
     machine_log = if(machine_logs? and dispatch, do: machine_log(dispatch))
@@ -173,6 +174,13 @@ defmodule Apiary.Runs.Diagnostics do
     else
       base
     end
+  end
+
+  # Whether the person of `scope` may read the instance (`instance.read`), asked in the
+  # instance's organisation, as the database has it now: an instance admin.
+  defp reads_instance?(scope) do
+    Access.authorize(Access.in_instance(scope), :"instance.read", Access.instance_organisation()) ==
+      :ok
   end
 
   ## The members

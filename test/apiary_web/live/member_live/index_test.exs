@@ -83,6 +83,28 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute has_element?(lv, "#members")
     end
 
+    test "a search that finds nobody says what it looked for", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      lv |> form("#people-search", q: "abc") |> render_change()
+      assert has_element?(lv, "#people-none", "No member's email has abc.")
+    end
+
+    test "still lists the members on the next event once the scope's workspace is marked",
+         %{conn: conn, scope: scope} do
+      %{user: other} = member_fixture(scope, :member)
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      assert html =~ other.email
+
+      # Marked behind the page's back: no broadcast reaches it. An event then reads the list
+      # again, with the scope as the page loaded it.
+      scope.workspace |> Apiary.Deletion.mark_changeset(scope) |> Repo.update!()
+      html = render_hook(lv, "set_level", %{})
+
+      assert html =~ other.email
+      assert has_element?(lv, "#member-#{scope.membership.id}")
+    end
+
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
@@ -422,6 +444,34 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       html = lv |> element("#member-#{third.id}-level-owner") |> render_click()
       assert html =~ "Only owners and admins manage members"
       assert Apiary.Repo.get!(Organisations.Membership, third.id).level == :member
+    end
+
+    test "without the announcement, one whose membership is gone reads no member and no invitation",
+         %{conn: conn, scope: scope, founder: founder, membership: membership} do
+      %{invitation: invitation} = invitation_fixture(founder.scope)
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      assert html =~ founder.user.email
+      assert html =~ invitation.email
+
+      # Removed behind the page's back: no broadcast reaches it. An event then reads the
+      # list again, with the scope as the page loaded it.
+      Apiary.Repo.delete!(membership)
+      html = render_hook(lv, "set_level", %{})
+
+      refute html =~ founder.user.email
+      refute html =~ invitation.email
+      assert %{members: [], invitations: []} = :sys.get_state(lv.pid).socket.assigns
+    end
+
+    test "with an empty list and an empty search box, the page says nothing of a search",
+         %{conn: conn, scope: scope, membership: membership} do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      Apiary.Repo.delete!(membership)
+      render_hook(lv, "set_level", %{})
+
+      assert %{shown: [], q: ""} = :sys.get_state(lv.pid).socket.assigns
+      refute has_element?(lv, "#people-none")
     end
 
     test "a removed member's open page is sent to /", %{

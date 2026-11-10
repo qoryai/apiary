@@ -29,8 +29,8 @@ defmodule Apiary.Gateways do
   (`Apiary.Runs.Attach`). A change of choice applies to the registrations after it; a
   run already registered keeps its gateway.
 
-  - `may_serve?/2` says whether a gateway may serve a workspace: a gateway in use at one
-    of the workspace's levels.
+  - `Apiary.Access.may_serve?/2` says whether a gateway may serve a workspace: a gateway in
+    use at one of the workspace's levels.
   - `default_gateway_for/1` is the workspace's default gateway: the default of the most
     specific level that has one, or none.
   - `resolve/1` is where a node's choice leads now: directly, to a gateway, or nowhere,
@@ -110,7 +110,7 @@ defmodule Apiary.Gateways do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{AccessKeys, Edition, Organisations, Repo}
+  alias Apiary.{Access, AccessKeys, Edition, Organisations, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
@@ -273,28 +273,6 @@ defmodule Apiary.Gateways do
   ## What a gateway may serve
 
   @doc """
-  may_serve?/2 says whether `gateway` may serve `workspace`: a gateway in use at one of
-  the workspace's levels (`levels/1`), the instance's gateway for every workspace. Asked
-  when a node's choice is saved, by `resolve/1`, and by a run's registration and attach.
-  """
-  @spec may_serve?(Node.t(), %Workspace{}) :: boolean
-  def may_serve?(%Node{kind: :gateway, deleted_at: nil} = gateway, %Workspace{} = workspace) do
-    case level(gateway) do
-      {:workspace, id} ->
-        id == workspace.id and gateway.organisation_id == workspace.organisation_id
-
-      {:organisation, organisation_id} ->
-        organisation_id == workspace.organisation_id or
-          organisation_id in serving_organisations(workspace.organisation_id)
-
-      :instance ->
-        is_binary(workspace.id) and is_binary(workspace.organisation_id)
-    end
-  end
-
-  def may_serve?(_node, _workspace), do: false
-
-  @doc """
   serves/1 is the workspaces `gateway` may serve, by name: a workspace-level gateway's
   workspace; an organisation-level gateway's every workspace of its organisation and of
   the organisations it serves (`served_organisations/1`); the instance's gateway's every
@@ -328,7 +306,7 @@ defmodule Apiary.Gateways do
 
   @doc """
   gateway_choices/1 is the gateways a node of the scope's workspace may name: every
-  gateway in use that may serve the workspace (`may_serve?/2`), the instance's among them,
+  gateway in use that may serve the workspace (`Apiary.Access.may_serve?/2`), the instance's among them,
   by level, most specific first (`levels/1`), then by name.
   """
   @spec gateway_choices(Scope.t()) :: [Node.t()]
@@ -553,7 +531,7 @@ defmodule Apiary.Gateways do
   def resolve(%Node{gateway_choice: :named, gateway_id: gateway_id} = node) do
     gateway = Repo.get(Node, gateway_id)
 
-    if gateway && may_serve?(gateway, workspace_of(node)),
+    if gateway && Access.may_serve?(gateway, workspace_of(node)),
       do: with_key(gateway),
       else: {:error, :gateway_not_serving}
   end
@@ -590,7 +568,7 @@ defmodule Apiary.Gateways do
 
   def chosen(%Node{gateway_choice: :named, gateway_id: gateway_id} = node) do
     gateway = Repo.get(Node, gateway_id)
-    if gateway && may_serve?(gateway, workspace_of(node)), do: gateway
+    if gateway && Access.may_serve?(gateway, workspace_of(node)), do: gateway
   end
 
   def chosen(%Node{gateway_choice: :default} = node),

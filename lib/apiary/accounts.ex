@@ -480,18 +480,22 @@ defmodule Apiary.Accounts do
 
   **Who makes one.** `by` is the scope of whoever asks:
 
-  - an instance admin (`Apiary.Access.instance_admin?/1`), while no mail is set
+  - an instance admin (`account.password_link`, asked of the account in the instance's
+    organisation, `Apiary.Access.in_instance/1`), while no mail is set
     (`Apiary.Mail.configured?/0`): a link that works for 24 hours, context `"password"`,
     or until mail is set, which ends it (`Apiary.Mail.end_password_links/0`).
-    `{:error, :forbidden}` for anyone else, and `{:error, :mail_set}` once mail is set,
+    `{:error, :not_found}` for anyone outside the instance's organisation and for an
+    account deleted, `{:error, :forbidden}` for anyone else there but an instance admin,
+    and `{:error, :mail_set}` once mail is set,
     when the person asks for a log-in link instead. Never for the asking admin's account,
-    `{:error, :own_account}`: they change their password in Account settings, behind
-    a recent sign-in, which a link would get around. And only after a recent sign-in
+    `{:error, :own_account}` (`Apiary.Access`'s one-person rule): they change their
+    password in Account settings, behind a recent sign-in, which a link would get
+    around. And only after a recent sign-in
     (`sudo_mode?/2`), as Account settings ask: a link takes the account over, so a session
     left open is not enough, `{:error, :sudo}`, and the person signs in again first;
   - the instance (`Apiary.Accounts.Scope.for_instance/2`), a release command run on the
-    instance's machine, which controls it already, mail or not: a link that works for an
-    hour, context `"password:release"`.
+    instance's machine, which controls it already, mail or not (`account.password_link`,
+    in the instance's role): a link that works for an hour, context `"password:release"`.
 
   **The token** is 32 random bytes; only its SHA-256 hash is stored, in `users_tokens`,
   with the account's address (`Apiary.Accounts.UserToken`). It works once. The account
@@ -517,13 +521,12 @@ defmodule Apiary.Accounts do
              | :not_found
              | :no_instance_organisation
              | atom}
-  def build_password_link(%Scope{} = by, %User{id: user_id}, url_fun)
+  def build_password_link(%Scope{} = by, %User{id: user_id} = account, url_fun)
       when is_function(url_fun, 1) do
     context = if by.instance and is_nil(by.user), do: "password:release", else: "password"
 
     Repo.transact(fn ->
-      with :ok <- may_make_password_link(by),
-           :ok <- not_own_account(by, user_id),
+      with :ok <- may_make_password_link(by, account),
            :ok <- signed_in_recently(by),
            {:ok, organisation} <- instance_organisation(),
            {:ok, user} <- lock_account(user_id),
@@ -560,22 +563,18 @@ defmodule Apiary.Accounts do
   end
 
   # The instance, in a release command, may make one, mail or not; a person only as an
-  # instance admin, and only while no mail is set.
-  defp may_make_password_link(%Scope{instance: true, user: nil, access_key: nil}), do: :ok
-
-  defp may_make_password_link(%Scope{user: %User{}} = scope) do
-    cond do
-      not Apiary.Access.instance_admin?(scope) -> {:error, :forbidden}
-      Apiary.Mail.configured?() -> {:error, :mail_set}
-      true -> :ok
+  # instance admin, and only while no mail is set. Both ask `account.password_link` of
+  # the account, a person in the instance's organisation (`Apiary.Access.in_instance/1`).
+  defp may_make_password_link(by, account) do
+    with :ok <-
+           Apiary.Access.authorize(
+             Apiary.Access.in_instance(by),
+             :"account.password_link",
+             account
+           ) do
+      if by.user && Apiary.Mail.configured?(), do: {:error, :mail_set}, else: :ok
     end
   end
-
-  defp may_make_password_link(_scope), do: {:error, :forbidden}
-
-  # A person's own password is changed in Account settings, behind a recent sign-in.
-  defp not_own_account(%Scope{user: %User{id: id}}, id), do: {:error, :own_account}
-  defp not_own_account(_by, _user_id), do: :ok
 
   # A person makes one only after a recent sign-in; the instance, in a release command,
   # signs in to nothing.

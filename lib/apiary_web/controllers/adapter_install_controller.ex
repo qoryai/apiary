@@ -7,8 +7,8 @@ defmodule ApiaryWeb.AdapterInstallController do
   # In order:
   #
   #   1. a person whose membership `Apiary.Access` does not let connect an integration
-  #      (`adapter.connect`, asked of the organisation) is answered `403`, before anything
-  #      is looked up;
+  #      (`adapter.connect`, asked of the organisation) is answered as a path that does not
+  #      exist, `404`, as the pages answer them, before anything is looked up;
   #   2. an adapter the person does not find (`Apiary.Adapters.get_adapter/2`: deleted, of
   #      another kind, or none) is a path that does not exist, `404`;
   #   3. `Apiary.Adapters.connect/2` starts the connection and makes its connect pass. The
@@ -53,12 +53,7 @@ defmodule ApiaryWeb.AdapterInstallController do
       |> ConnectSession.put(session, back(scope, params["back"]))
       |> SendOn.send_on(url)
     else
-      {:error, :forbidden} ->
-        conn
-        |> put_resp_content_type("text/html")
-        |> send_resp(403, ApiaryWeb.ErrorHTML.render("403.html", %{}))
-
-      {:error, :not_found} ->
+      {:error, reason} when reason in [:forbidden, :not_found] ->
         raise ApiaryWeb.NotFound
 
       {:error, :too_soon} ->

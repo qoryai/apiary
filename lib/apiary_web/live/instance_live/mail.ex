@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.Mail do
   @moduledoc """
   Instance settings › Mail, `/instance/mail`: the mail server Qory Apiary sends its email
-  through (`Apiary.Mail`), for the instance's admins (`Apiary.Access.instance_admin?/1`);
-  anyone else is answered as a path that does not exist
+  through (`Apiary.Mail`), for the instance's admins, who may save it (`instance.mail_save`,
+  asked in the instance scope, `ApiaryWeb.Access`'s `:instance`); anyone else is answered as a path that does not exist
   (`ApiaryWeb.NotFound`). It comes after an edition's sections and before Configuration
   (`ApiaryWeb.Layouts.instance_sections/1`).
 
@@ -18,6 +18,7 @@ defmodule ApiaryWeb.InstanceLive.Mail do
   use ApiaryWeb, :live_view
 
   on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
+  on_mount {ApiaryWeb.Access, :instance}
 
   alias Apiary.Access
   alias ApiaryWeb.InstanceLive.MailForm
@@ -45,6 +46,7 @@ defmodule ApiaryWeb.InstanceLive.Mail do
           module={MailForm}
           id="mail"
           current_scope={@current_scope}
+          scope={@scope}
           path={~p"/instance/mail"}
         />
       </.settings_page>
@@ -54,7 +56,9 @@ defmodule ApiaryWeb.InstanceLive.Mail do
 
   @impl true
   def mount(_params, _session, socket) do
-    if Access.instance_admin?(socket.assigns.current_scope) do
+    instance = socket.assigns.scope
+
+    if Access.can?(instance, :"instance.mail_save", instance.organisation) do
       {:ok,
        socket
        |> assign(

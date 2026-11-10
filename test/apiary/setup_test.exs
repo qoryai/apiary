@@ -767,7 +767,7 @@ defmodule Apiary.SetupTest do
 
       # Anyone but an instance admin is refused, and nothing is set.
       person = Apiary.OrganisationsFixtures.scope_fixture()
-      assert {:error, :forbidden} = Setup.review_connections(person)
+      assert {:error, :not_found} = Setup.review_connections(person)
       refute Setup.connections_reviewed?()
 
       admin = Apiary.OrganisationsFixtures.instance_admin_scope()

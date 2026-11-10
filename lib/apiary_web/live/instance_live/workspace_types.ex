@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   @moduledoc """
   Instance settings › Workspace types, with the feature `workflow_model`, for the
-  instance's admins (`Apiary.Processes.TypeTemplates.may_edit?/1`); anyone else is
+  instance's admins, who may save a type's default process (`workspace_type.edit`, asked
+  in the instance scope, `ApiaryWeb.Access`'s `:instance`); anyone else is
   answered as a path that does not exist. A page of the Instance level: its gate asks the
   instance whether the feature is on (`use ApiaryWeb.Features, instance: :workflow_model`).
 
@@ -24,7 +25,9 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :workflow_model
 
-  alias Apiary.Processes
+  on_mount {ApiaryWeb.Access, :instance}
+
+  alias Apiary.{Access, Processes}
   alias Apiary.Processes.{TypeTemplate, TypeTemplates}
   alias ApiaryWeb.{MachineTypeWords, People, SettingsComponents}
   alias ApiaryWeb.StagesLive.{Canvas, Editor, Inspector, Words}
@@ -33,7 +36,9 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
 
   @impl true
   def mount(_params, _session, socket) do
-    if TypeTemplates.may_edit?(socket.assigns.current_scope),
+    instance = socket.assigns.scope
+
+    if Access.can?(instance, :"workspace_type.edit", instance.organisation),
       do: {:ok, socket},
       else: raise(ApiaryWeb.NotFound)
   end

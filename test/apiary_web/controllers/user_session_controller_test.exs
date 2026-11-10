@@ -299,6 +299,32 @@ defmodule ApiaryWeb.UserSessionControllerTest do
     end
   end
 
+  describe "POST /users/update-password" do
+    test "after a sign-in that is not recent, leads to the log-in page and changes nothing",
+         %{user: user} do
+      user = set_password(user)
+      stale = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+
+      conn =
+        build_conn()
+        |> log_in_user(user, token_authenticated_at: stale)
+        |> post(~p"/users/update-password", %{
+          "user" => %{
+            "password" => "a later pass phrase",
+            "password_confirmation" => "a later pass phrase"
+          }
+        })
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "You must re-authenticate to access this page."
+
+      assert Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+      refute Accounts.get_user_by_email_and_password(user.email, "a later pass phrase")
+    end
+  end
+
   describe "DELETE /users/log-out" do
     test "logs the user out", %{conn: conn, user: user} do
       conn = conn |> log_in_user(user) |> delete(~p"/users/log-out")

@@ -1432,6 +1432,21 @@ defmodule Apiary.OrganisationsTest do
                scope |> Organisations.list_members() |> Enum.map(& &1.user.id)
     end
 
+    test "list_members/1 lists none for a person who may not read them (member.read)" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      %{scope: member} = member_fixture(scope, :member)
+
+      assert [_owner, _member] = Organisations.list_members(member)
+
+      # The instance's scope, a person without a membership there, and another
+      # organisation's owner asking of this one.
+      assert Organisations.list_members(Scope.for_instance(organisation)) == []
+      assert Organisations.list_members(%{member | membership: nil}) == []
+
+      %{scope: other} = sign_up_fixture()
+      assert Organisations.list_members(%{other | organisation: organisation}) == []
+    end
+
     test "list_workspace_members/1 is who reaches the scope's workspace and acts in it" do
       %{scope: scope, user: owner} = sign_up_fixture()
       %{user: member} = member_fixture(scope, :member)

@@ -772,14 +772,17 @@ defmodule Apiary.Stages do
   # the workspace's snapshot, and starts the work item's stage when it waits for a
   # workflow the read found: `{:ok, work_item}`; `{:error, :still_missing}` when the
   # stage still waits; `{:error, :not_live}` for a work item that is not `:exploring`, read
-  # under its lock; the read's error otherwise. `read` is the read, given only by tests.
+  # under its lock; the read's error otherwise. It reads nothing for a person who may not
+  # approve the stage's gate (`gate.approve`, asked of the work item): Access's reason.
+  # `read` is the read, given only by tests.
   @doc false
   @spec check_workflows(Scope.t(), WorkItem.t(), (Scope.t(), Workspace.t() -> term)) ::
           {:ok, WorkItem.t()} | {:error, term}
   def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &Sources.chosen_workflows/2) do
     with {:ok, id} <- Ecto.UUID.cast(id),
          {:ok, workspace} <- workspace(scope),
-         %WorkItem{} <- in_workspace(workspace, id) || {:error, :not_found},
+         %WorkItem{} = found <- in_workspace(workspace, id) || {:error, :not_found},
+         :ok <- Access.authorize(scope, @action, found),
          {:ok, names} <- read.(scope, workspace) do
       :ok = Processes.record_declared(workspace, names)
       start_found(id)

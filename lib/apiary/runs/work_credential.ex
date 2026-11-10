@@ -7,7 +7,10 @@ defmodule Apiary.Runs.WorkCredential do
   # The caller makes every check that needs no token first, the model key's read
   # included, so that a credential the adapter issued fails only at a step that needs it.
   #
-  # `issue/4`, in this order, stops at the first refusal:
+  # `issue/4` asks `Apiary.Access` first: `run_credential.issue` on the run, for the
+  # gateway's key. A refusal is `{:error, :not_found}`, with a log line, no call and no
+  # Activity entry, since nothing was attempted. Then, in this order, it stops at the first
+  # refusal:
   #
   #   1. The entry's connection is connected, of the run's organisation and of the
   #      entry's adapter (`:connection_gone`), and the adapter is not deleted and has an
@@ -22,7 +25,8 @@ defmodule Apiary.Runs.WorkCredential do
   #   4. The run, read again, is still live: pending or running, its sending not ended
   #      (`:run_not_live`).
   #
-  # After the seal, `keep/1` keeps the answer's apply items on the entry
+  # `record_issued/3` asks `Apiary.Access` again, as the credential goes out. After the
+  # seal, `keep/1` keeps the answer's apply items on the entry
   # (`issued_apply`) when none are kept, and compares them with those kept otherwise, as
   # JSON values: the items in their order, the members of each in any order. Other items
   # are `:apply_moved`, because the gateway refuses a renewal whose items differ from
@@ -59,7 +63,7 @@ defmodule Apiary.Runs.WorkCredential do
 
   require Logger
 
-  alias Apiary.{AccessKeys, Audit, Gateways, Repo}
+  alias Apiary.{Access, AccessKeys, Audit, Gateways, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallFailure, Calls, Collection, Connection}
@@ -117,11 +121,27 @@ defmodule Apiary.Runs.WorkCredential do
   # `access_key` at `now` (Unix seconds): `{:ok, work}`, with nothing written yet, or
   # `{:error, :unavailable | :gone | :credential_unavailable}`, after the refusal's log
   # line and its attempt at the Activity entry; `{:error, :unavailable}` also where that
-  # entry cannot be written.
+  # entry cannot be written; `{:error, :not_found}` where `Apiary.Access` refuses the key
+  # the action, with no call and no entry.
   @spec issue(Run.t(), RunCredential.t(), AccessKey.t(), integer) ::
-          {:ok, t} | {:error, :unavailable | :gone | :credential_unavailable}
+          {:ok, t} | {:error, :not_found | :unavailable | :gone | :credential_unavailable}
   def issue(%Run{} = run, %RunCredential{purpose: :work} = row, %AccessKey{} = access_key, now)
       when is_integer(now) do
+    case may_issue(access_key, run) do
+      :ok ->
+        attempt(run, row, access_key, now)
+
+      {:error, _reason} ->
+        Logger.warning(
+          "a work credential for the run #{run.node_run_id} was not issued: " <>
+            "Apiary.Access refused run_credential.issue"
+        )
+
+        {:error, :not_found}
+    end
+  end
+
+  defp attempt(run, row, access_key, now) do
     place = place(row)
 
     outcome =
@@ -137,6 +157,9 @@ defmodule Apiary.Runs.WorkCredential do
       {:error, cause, failure} -> refusal(access_key, run, row, place, cause, failure)
     end
   end
+
+  defp may_issue(%AccessKey{} = access_key, %Run{} = run),
+    do: Access.check(Scope.for_access_key(access_key), :"run_credential.issue", run)
 
   @doc false
   # refused/4 writes the refusal of `work`, issued by `issue/4`, for `cause`, a step after
@@ -171,11 +194,13 @@ defmodule Apiary.Runs.WorkCredential do
   @doc false
   # record_issued/3 writes the Activity entry of `work`, issued and sealed, inside the
   # caller's transaction, as its last write before the answer: `:ok`, or
-  # `{:error, :not_recorded}`.
+  # `{:error, :not_recorded}`, also where `Apiary.Access` refuses the key the action.
   @spec record_issued(AccessKey.t(), Run.t(), t) :: :ok | {:error, :not_recorded}
   def record_issued(%AccessKey{} = access_key, %Run{} = run, %{issued: issued} = work) do
-    case record(access_key, run, work.row, work.place, "issued", issued.expires_at) do
-      :ok -> :ok
+    with :ok <- may_issue(access_key, run),
+         :ok <- record(access_key, run, work.row, work.place, "issued", issued.expires_at) do
+      :ok
+    else
       {:error, _reason} -> {:error, :not_recorded}
     end
   end

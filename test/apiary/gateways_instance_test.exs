@@ -35,8 +35,8 @@ defmodule Apiary.GatewaysInstanceTest do
     end
 
     test "its gateway may serve the workspaces of two organisations", ctx do
-      assert Gateways.may_serve?(ctx.gateway, ctx.scope.workspace)
-      assert Gateways.may_serve?(ctx.gateway, ctx.other.workspace)
+      assert Access.may_serve?(ctx.gateway, ctx.scope.workspace)
+      assert Access.may_serve?(ctx.gateway, ctx.other.workspace)
 
       served = ctx.gateway |> Gateways.serves() |> Enum.map(& &1.id)
       assert ctx.scope.workspace.id in served
@@ -45,7 +45,7 @@ defmodule Apiary.GatewaysInstanceTest do
 
     test "a deleted instance gateway serves nothing", ctx do
       deleted = %{ctx.gateway | deleted_at: DateTime.utc_now()}
-      refute Gateways.may_serve?(deleted, ctx.scope.workspace)
+      refute Access.may_serve?(deleted, ctx.scope.workspace)
       assert Gateways.serves(deleted) == []
     end
 

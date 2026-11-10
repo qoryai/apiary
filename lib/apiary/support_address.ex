@@ -22,8 +22,8 @@ defmodule Apiary.SupportAddress do
   without it, as in the tests, `stored/0` reads the row each time. A node whose migration
   of the column has not run yet, with `MIGRATE_ON_BOOT=false`, reads it as none saved.
 
-  **Saving** (`save/2`) is an instance admin's (`Apiary.Access.instance_admin?/1`), with no
-  recent sign-in, as the product's name is. A change is an `instance.support_save` entry
+  **Saving** (`save/2`) is an instance admin's (`instance.support_save`, asked in the
+  instance's organisation, `Apiary.Access.in_instance/1`), with no recent sign-in, as the product's name is. A change is an `instance.support_save` entry
   in the trail of the instance's organisation, by the admin, about the organisation, with
   the address before and after: an https address without its query string or fragment, an
   email address as `"email"`, since the audit entry contains no email address, and nil
@@ -270,16 +270,20 @@ defmodule Apiary.SupportAddress do
   node's cache reads it again.
 
   Returns `{:ok, address}`, nil for none; `{:error, changeset}`; `{:error, :env}` where
-  `SUPPORT_ADDRESS` sets the address, which a save does not change; or
-  `{:error, :forbidden}` for anyone but an instance admin.
+  `SUPPORT_ADDRESS` sets the address, which a save does not change; `{:error, :not_found}` for anyone outside the instance's organisation, or
+  `{:error, :forbidden}` for anyone else there but an instance admin.
   """
   @spec save(Scope.t() | nil, map) ::
-          {:ok, address | nil} | {:error, Ecto.Changeset.t() | :env | :forbidden}
+          {:ok, address | nil}
+          | {:error, Ecto.Changeset.t() | :env | :not_found | :forbidden}
   def save(scope, attrs) when is_map(attrs) do
-    cond do
-      not Access.instance_admin?(scope) -> {:error, :forbidden}
-      env() -> {:error, :env}
-      true -> write(scope, attrs)
+    with :ok <-
+           Access.authorize(
+             Access.in_instance(scope),
+             :"instance.support_save",
+             Access.instance_organisation()
+           ) do
+      if env(), do: {:error, :env}, else: write(scope, attrs)
     end
   end
 

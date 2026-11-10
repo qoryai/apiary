@@ -10,7 +10,7 @@ defmodule ApiaryWeb.Contract.DiagnosticsController do
   signature or a stale timestamp; `400` for an instance id outside its form or a contract
   version not served), records the key's use, and signs the answer.
 
-  The key reads every run of the instance (`Apiary.AccessKeys.diagnostics_scope/1`). The
+  The key reads every run of the instance (`run.read_diagnostics`, `Apiary.Access`). The
   answer is `200`, `application/json`, the run's diagnostics document
   (`Apiary.Runs.Diagnostics`), with its log and its machine logs; a run id outside the
   `rn_` form, a run's number among them, or of no run is `404` `not_found`, and a document
@@ -22,17 +22,17 @@ defmodule ApiaryWeb.Contract.DiagnosticsController do
 
   require Logger
 
-  alias Apiary.{AccessKeys, Repo}
+  alias Apiary.{Access, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Runs.{Diagnostics, Run}
 
   def show(conn, %{"run_id" => run_id}) do
-    key = conn.assigns.access_key
+    scope = Scope.for_access_key(conn.assigns.access_key)
 
-    with :instance <- AccessKeys.diagnostics_scope(key),
-         true <- Run.public_id?(run_id),
-         %Run{} = run <- Repo.get_by(Run, public_id: run_id) do
-      body = Diagnostics.encode(run, Scope.for_access_key(key))
+    with true <- Run.public_id?(run_id),
+         %Run{} = run <- Repo.get_by(Run, public_id: run_id),
+         :ok <- Access.check(scope, :"run.read_diagnostics", run) do
+      body = Diagnostics.encode(run, scope)
 
       conn
       |> put_resp_content_type("application/json")

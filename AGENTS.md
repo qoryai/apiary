@@ -30,14 +30,18 @@ repository; the rules for people are the same, and are written out in
   context function that touches an organisation's data takes an `Apiary.Accounts.Scope`
   first and filters by its organisation and workspace. A page never calls `Apiary.Repo`. A
   test for a new table asserts that a row of another organisation is not reachable.
-- **Access.** Whether someone may do something is asked of `Apiary.Access` and nowhere
-  else; no code compares a membership's level. A new action, or a new feature's actions,
-  go into its action list, each an `Apiary.Access.Action` with its feature and the roles
-  that hold it, and into the rows of the access test (`Apiary.AccessRows`, or the
-  edition's rows module), which fails for an action without rows. Every context
-  function that changes something calls `Access.authorize/3` before acting; a page asks
-  `Access.can?/3` with the same action for what it shows, and asks its read action with
-  `on_mount {ApiaryWeb.Access, action}`. The rules: [docs/access.md](docs/access.md).
+- **Access.** `Apiary.Access` is the one way to check whether someone may do something.
+  Authentication, data rules, the last-owner rule, a page's wording and feature gates stay
+  outside it, as [docs/access.md](docs/access.md) lists them; add no check beside
+  it. A new action, or a new feature's actions, go into its action list, each an
+  `Apiary.Access.Action` with its feature and its roles, and `instance: true` for one only
+  instance admins take, and into the rows of the access test (`Apiary.AccessRows`, or the
+  edition's rows module), which fails for an action without rows. Every context function
+  that changes something calls `Access.authorize/3` before acting, or `Access.check/3` after
+  `Access.reload/2` inside its transaction. A page calls `Access.can?/3` with the same action
+  for what it shows, and mounts on its read action with `on_mount {ApiaryWeb.Access, action}`,
+  or with `on_mount {ApiaryWeb.Access, :instance}` for a page of Instance settings. A recent
+  sign-in stays in the context function, after `Access.authorize/3`.
 - **Migrations.** One per change, via `mix ecto.gen.migration`; until Qory Apiary has
   installations, a change that replaces a column or table backfills and drops the old one
   in the same migration: no expand-then-contract across releases, no dual-writes, no

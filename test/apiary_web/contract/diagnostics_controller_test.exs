@@ -16,7 +16,7 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
   alias Apiary.{AccessKeys, DiagnosticsSchema, Repo, SigningKey}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Audit.Entry
-  alias Apiary.Contract.{Ed25519, SignedMessage}
+  alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Runs.Run
 
@@ -39,28 +39,31 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
   defp enrol(code, opts \\ []) do
     pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
     name = Keyword.get(opts, :name, "laptop")
-    timestamp = System.os_time(:second)
-    message = SignedMessage.enrolment(code, pair.encoded, name, timestamp)
-    proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519]) |> Ed25519.encode()
-
-    body =
-      Jason.encode!(%{
-        version: 1,
-        code: code,
-        name: name,
-        public_key: pair.encoded,
-        timestamp: timestamp,
-        proof: proof
-      })
 
     conn =
       build_conn()
       |> Map.put(:remote_ip, Keyword.get(opts, :remote_ip, {127, 0, 0, 1}))
       |> put_req_header("content-type", "application/json")
       |> put_req_header("x-qory-contract-version", "1")
-      |> post(@enrolment, body)
+      |> post(@enrolment, enrolment_body(code, pair, name))
 
     {conn, pair}
+  end
+
+  # The signed body of an enrolment request.
+  defp enrolment_body(code, pair, name) do
+    timestamp = System.os_time(:second)
+    message = SignedMessage.enrolment(code, pair.encoded, name, timestamp)
+    proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519]) |> Ed25519.encode()
+
+    Jason.encode!(%{
+      version: 1,
+      code: code,
+      name: name,
+      public_key: pair.encoded,
+      timestamp: timestamp,
+      proof: proof
+    })
   end
 
   # A diagnostics key, enrolled: the key as stored, and the seed that signs as it.
@@ -122,13 +125,62 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       %{scope: owner} = sign_up_fixture()
       refute Apiary.Access.instance_admin?(owner)
 
-      assert AccessKeys.create_diagnostics_code(owner) == {:error, :forbidden}
+      assert AccessKeys.create_diagnostics_code(owner) == {:error, :not_found}
       assert AccessKeys.list_diagnostics_keys(owner) == []
       assert AccessKeys.diagnostics_node(owner) == nil
 
       %{key: key} = diagnostics_key!(admin)
-      assert AccessKeys.revoke_diagnostics_key(owner, key) == {:error, :forbidden}
+      assert AccessKeys.revoke_diagnostics_key(owner, key) == {:error, :not_found}
       assert [%AccessKey{}] = AccessKeys.list_diagnostics_keys(admin)
+    end
+
+    test "its code enrols nothing once its maker is no longer an instance admin",
+         %{admin: admin} do
+      {:ok, _row, code} = AccessKeys.create_diagnostics_code(admin)
+      # Another admin first: the instance keeps one.
+      {:ok, _} = Apiary.Organisations.grant_instance_admin(member_fixture(admin).user)
+      {:ok, _} = Apiary.Organisations.revoke_instance_admin(admin.user)
+
+      {conn, _pair} = enrol(code <> "." <> SigningKey.fingerprint())
+
+      assert conn.status == 401
+      refute Repo.get_by(AccessKey, created_by_id: admin.user.id)
+    end
+
+    # The maker's check asks `diagnostics_key.create`, of the feature `observability`, and
+    # not `adapter.setup`: under QORY_FEATURES=observability, `factory` is off.
+    @tag :feature_sets
+    @tag needs: :observability
+    test "its code enrols with observability on, with factory on or off", %{admin: admin} do
+      unless Apiary.Features.on?(:factory) do
+        assert Apiary.Access.authorize(admin, :"adapter.setup", admin.organisation) ==
+                 {:error, :not_found}
+      end
+
+      {:ok, _row, code} = AccessKeys.create_diagnostics_code(admin)
+
+      {conn, _pair} = enrol(code <> "." <> SigningKey.fingerprint())
+
+      assert conn.status == 201, conn.resp_body
+    end
+
+    # The maker's check asks `diagnostics_key.create`, whose feature went after the code was
+    # made, as across a restart.
+    @tag :feature_sets
+    @tag needs: :observability
+    test "its code made with observability on does not enrol with it off", %{admin: admin} do
+      {:ok, _row, code} = AccessKeys.create_diagnostics_code(admin)
+      pair = Apiary.AccessKeysFixtures.ed25519_key_pair()
+
+      {:ok, request} =
+        Enrolment.decode(enrolment_body(code <> "." <> SigningKey.fingerprint(), pair, "laptop"))
+
+      previous = Application.get_env(:apiary, :features)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+      Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:observability])
+
+      assert AccessKeys.enrol(request) == {:error, :unauthorized}
+      refute Repo.get_by(AccessKey, created_by_id: admin.user.id)
     end
 
     test "is revoked by an instance admin, with an entry, and is refused from then on",
@@ -215,6 +267,17 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       conn = diagnose(key.key_id, seed, run.public_id)
       assert conn.status == 200
       assert signed_answer?(conn)
+      assert Jason.decode!(conn.resp_body)["run"]["id"] == run.public_id
+    end
+
+    test "answers a run of a workspace marked for deletion", %{key: key, seed: seed} do
+      %{scope: other} = sign_up_fixture()
+      workspace = workspace_fixture(other.organisation)
+      run = run_fixture(workspace_scope(other.user, workspace), %{public_id: Run.new_public_id()})
+      {:ok, _marked} = Apiary.Deletion.delete_workspace(other, workspace.id, workspace.slug)
+
+      conn = diagnose(key.key_id, seed, run.public_id)
+      assert conn.status == 200, conn.resp_body
       assert Jason.decode!(conn.resp_body)["run"]["id"] == run.public_id
     end
 

@@ -199,7 +199,7 @@ defmodule Apiary.Nodes do
 
   @doc """
   list_serving_gateways/2 is the organisation-level gateways in use that may serve the
-  scope's workspace (`Apiary.Gateways.may_serve?/2`): its organisation's, then those of
+  scope's workspace (`Apiary.Access.may_serve?/2`): its organisation's, then those of
   the organisations that serve it, as `Apiary.Gateways.gateway_choices/1` orders them,
   narrowed by `filters` as `list_nodes/2` narrows the workspace's nodes.
   """

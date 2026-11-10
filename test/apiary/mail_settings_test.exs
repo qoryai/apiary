@@ -621,8 +621,14 @@ defmodule Apiary.MailSettingsTest do
            sign_up_fixture().scope}
         end)
 
-      for other <- [member, admin, stranger, nil] do
-        assert Mail.save_settings(other, @attrs, &url/1) == {:error, :forbidden}
+      # The instance's organisation's member and admin lack the role; the rest are not there.
+      for {other, reason} <- [
+            {member, :forbidden},
+            {admin, :forbidden},
+            {stranger, :not_found},
+            {nil, :not_found}
+          ] do
+        assert Mail.save_settings(other, @attrs, &url/1) == {:error, reason}
       end
 
       assert no_mail_saved?()
@@ -911,14 +917,18 @@ defmodule Apiary.MailSettingsTest do
       before = row()
 
       assert Mail.resend_test_link(other, &url/1) == {:error, :not_saver}
+      # The check of who saved comes first: a sign-in not recent changes nothing for them.
+      assert Mail.resend_test_link(signed_in(other, 21), &url/1) == {:error, :not_saver}
       assert Mail.resend_test_link(signed_in(scope, 21), &url/1) == {:error, :sudo}
-      assert Mail.resend_test_link(nil, &url/1) == {:error, :forbidden}
+      assert Mail.resend_test_link(nil, &url/1) == {:error, :not_found}
 
       member = with_env_mail(fn -> member_fixture(scope).scope end)
       assert Mail.resend_test_link(signed_in(member), &url/1) == {:error, :forbidden}
 
       put_env(Apiary.Mailer, adapter: Swoosh.Adapters.Test)
       assert Mail.resend_test_link(scope, &url/1) == {:error, :env}
+      # Mail from the environment changes nothing for them either.
+      assert Mail.resend_test_link(other, &url/1) == {:error, :not_saver}
       no_env_mail()
 
       assert row() == before
@@ -1089,6 +1099,8 @@ defmodule Apiary.MailSettingsTest do
       assert Apiary.Access.instance_admin?(other)
 
       assert Mail.turn_on(other, token) == :error
+      # The check of who saved comes first: a sign-in not recent changes nothing for them.
+      assert Mail.turn_on(signed_in(other, 21), token) == :error
       assert Mail.state(row()) == :pending
 
       assert {:ok, _settings} = Mail.turn_on(scope, token)

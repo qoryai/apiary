@@ -33,6 +33,17 @@ defmodule ApiaryWeb.TargetLive.EnvironmentWithoutRegistryTest do
     %{path: workspace_path(scope, "/targets/#{shop.public_id}")}
   end
 
+  # The element's words, with the spaces between them as a reader sees them.
+  defp text(view, selector),
+    do:
+      view
+      |> element(selector)
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+
   defp open(conn, path) do
     {:ok, view, _html} = live(conn, path)
     render_async(view, 2_000)
@@ -94,11 +105,12 @@ defmodule ApiaryWeb.TargetLive.EnvironmentWithoutRegistryTest do
         workspace_path(admin, "/targets/#{shop.public_id}")
       )
 
-    assert has_element?(
-             view,
-             "#target-environment-no-registry",
-             "Ask an instance admin to set up a registry"
-           )
+    # In the words of the workspace's domain, software, with the server's setting in code.
+    assert text(view, "#target-environment-no-registry") ==
+             "Set QORY_REGISTRY on the server to build this repository's environment image. " <>
+               "Until then, runs start in the pool's default image."
+
+    assert has_element?(view, "#target-environment-no-registry code", "QORY_REGISTRY")
   end
 
   test "a target that names no environment: the line it had", %{

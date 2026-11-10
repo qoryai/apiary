@@ -5969,11 +5969,6 @@ msgstr ""
 msgid "Ask an approver of %{stage} to act on it."
 msgstr ""
 
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an instance admin to set up a registry to build this target's environment image. Until then, runs start in the pool's default image."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an owner or admin to add the pool. Adding a pool needs the right to set its machine limit."
@@ -18294,6 +18289,11 @@ msgstr ""
 msgid "Session timeline, oldest first"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Set %{variable} on the server to build this target's environment image. Until then, runs start in the pool's default image."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Set Qory Apiary's public key."
@@ -24056,6 +24056,7 @@ msgid "You must log in to access this page."
 msgstr ""
 
 #: lib/apiary_web/controllers/instance_mail_controller.ex
+#: lib/apiary_web/controllers/user_session_controller.ex
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex

@@ -141,8 +141,8 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
       :ok = Apiary.EditionStubs.HidesNamed.put(hides)
 
       for asker <- [admin, scope] do
-        assert Adapters.authorize_instance(asker) == {:error, :not_found}
-        assert Adapters.authorize_instance(asker, sudo: true) == {:error, :not_found}
+        refute ApiaryWeb.Access.instance_can?(asker, :"instance.read_factory")
+        refute ApiaryWeb.Access.instance_can?(asker, :"adapter.create")
         assert AccessKeys.subscribe(asker, adapter) == {:error, :not_found}
         assert AccessKeys.list_for_node(Access.reload(asker), adapter) == []
         assert AccessKeys.list_enrolment_codes(Access.reload(asker), adapter) == []
@@ -224,6 +224,19 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
         ] do
       assert Access.authorize(key_scope, action, adapter) == {:error, :not_found}
       assert Adapters.for_key(key_scope, action) == {:error, :not_found}
+    end
+  end
+
+  test "an adapter's key is forbidden each action its role holds, before any lookup",
+       %{key: key} do
+    key_scope = Scope.for_access_key(key)
+
+    for action <- Map.fetch!(Access.roles(), :adapter_key) do
+      assert Connections.key_rights(key_scope, action) == {:error, :forbidden}, "#{action}"
+
+      assert Connections.connection_for_key(key_scope, "ac_0000000000000000", action) ==
+               {:error, :forbidden},
+             "#{action}"
     end
   end
 

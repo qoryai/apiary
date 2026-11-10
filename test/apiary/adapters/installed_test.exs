@@ -593,6 +593,22 @@ defmodule Apiary.Adapters.InstalledTest do
       assert {:ok, %AccessKey{}} = enrol(code)
     end
 
+    # A code made before a restart without `factory`, where `Installed.boot!/0` allows only
+    # an empty list.
+    test "its code does not enrol with factory off and an empty list", %{name: name} do
+      assert Installer.pass() == {:ok, []}
+      code = code_in_file(name)
+
+      previous = Application.get_env(:apiary, :features)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+      {:ok, features} = Apiary.Features.parse("observability,security")
+      Application.put_env(:apiary, :features, features)
+      list([])
+
+      refute Apiary.Features.on?(:factory)
+      assert {:error, :unauthorized} = enrol(code)
+    end
+
     test "listed again, the adapter in use is found again; once removed, a new one is made",
          %{name: name, admin: admin} do
       assert Installer.pass() == {:ok, []}

@@ -42,8 +42,9 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
   alias Apiary.Mail.Settings
   alias ApiaryWeb.SettingsComponents
 
-  # Given: `id`, `current_scope`, `path`, the page's path, and, for the mail step, `step`
-  # true and the `back` and `actions` slots.
+  # Given: `id`, `current_scope`, `scope`, the reader's instance scope
+  # (`ApiaryWeb.Access`'s `:instance`), `path`, the page's path, and, for the mail step,
+  # `step` true and the `back` and `actions` slots.
   @impl true
   def render(assigns) do
     ~H"""
@@ -347,7 +348,7 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
       {:error, {:throttled, at}} ->
         {:noreply, socket |> load() |> assign(notice: {:wait, at})}
 
-      {:error, reason} when reason in [:sudo, :forbidden] ->
+      {:error, reason} when reason in [:sudo, :forbidden, :not_found] ->
         {:noreply, refused(socket, reason)}
 
       # Mail no longer waits for the link, the settings were saved by another admin since,
@@ -373,7 +374,7 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
         |> redirect(to: ~p"/users/log-in")
 
       # No longer an instance admin: the page itself is not found now.
-      :forbidden ->
+      reason when reason in [:forbidden, :not_found] ->
         push_navigate(socket, to: socket.assigns.path)
     end
   end
@@ -475,7 +476,8 @@ defmodule ApiaryWeb.InstanceLive.MailForm do
       default_sender: Apiary.Mailer.default_address(),
       mail_verified_at: settings && settings.mail_verified_at,
       saver:
-        settings != nil and settings.mail_saved_by_id == socket.assigns.current_scope.user.id,
+        settings != nil and
+          Apiary.Access.can?(socket.assigns.scope, :"instance.mail_resend", settings),
       last: last_test_send(settings),
       state: state,
       link_waiting: Mail.test_link_waiting?(settings),

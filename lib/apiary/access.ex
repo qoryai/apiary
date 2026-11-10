@@ -5,10 +5,12 @@ defmodule Apiary.Access do
   alias Apiary.Access.Action
   alias Apiary.Adapters.Connection
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.{Edition, Features}
+  alias Apiary.{Edition, Features, Gateways}
+  alias Apiary.Mail.Settings
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Repo
+  alias Apiary.Runs.Run
   alias Apiary.Stages.Approvers
   alias Apiary.WorkItems.WorkItem
 
@@ -57,6 +59,13 @@ defmodule Apiary.Access do
            "of it in purged_organisations, which names no one"}
     ),
     # Its people.
+    Action.new(
+      :"member.read",
+      "read the organisation's people: their memberships, levels and accounts, and the workspaces each reaches (Apiary.Organisations.list_members/1)",
+      roles: @members,
+      asked_of: :organisation,
+      audited: {:not, @read}
+    ),
     Action.new(:"member.invite", "invite a member, and see the pending invitations",
       roles: @admins,
       asked_of: :organisation
@@ -102,45 +111,79 @@ defmodule Apiary.Access do
       "make an owner of the instance's organisation a member of it: a release command, which no role takes",
       asked_of: :organisation
     ),
-    # An account's password, without mail.
+    # An account's password, without mail, asked of the account.
     Action.new(
       :"account.password_link",
-      "make a one-time link that sets an account's password: an instance admin while the instance sends no mail, or a release command, which no role takes (Apiary.Accounts.build_password_link/3)",
-      asked_of: :organisation
+      "make a one-time link that sets an account's password: an instance admin while the instance sends no mail, or a release command, in the instance's role (Apiary.Accounts.build_password_link/3)",
+      roles: @owners ++ [:instance],
+      asked_of: :account,
+      instance: true
+    ),
+    # The instance, in Instance settings and the pages only its admins open: the instance
+    # organisation's owners, asked of that organisation.
+    Action.new(
+      :"instance.read",
+      "read what only the instance's admins read: Instance settings, the documentation for instance admins, and the machine logs of a run's dispatch",
+      roles: @owners,
+      asked_of: :organisation,
+      audited: {:not, @read},
+      instance: true
+    ),
+    Action.new(
+      :"instance.review_connections",
+      "finish or skip the review of the instance's connections, in Instance settings › Set up (Apiary.Setup.review_connections/1)",
+      roles: @owners,
+      asked_of: :organisation,
+      audited:
+        {:not,
+         "the review is kept on the instance's set-up, connections_reviewed_at, not in the audit trail"},
+      instance: true
     ),
     # The instance's mail, in Instance settings › Mail.
     Action.new(
       :"instance.mail_save",
-      "save the mail settings, which sends a test link to the admin who saved them: an instance admin after a recent sign-in, which no role takes (Apiary.Mail.save_settings/3)",
-      asked_of: :organisation
+      "save the mail settings, which sends a test link to the admin who saved them, after a recent sign-in (Apiary.Mail.save_settings/3)",
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
     Action.new(
       :"instance.mail_resend",
-      "send the test link of the saved mail settings again: the instance admin who saved them, after a recent sign-in, while mail waits for that link, which no role takes (Apiary.Mail.resend_test_link/2)",
-      asked_of: :organisation
+      "send the test link of the saved mail settings again: the instance admin who saved them, after a recent sign-in, while mail waits for that link (Apiary.Mail.resend_test_link/2)",
+      roles: @owners,
+      asked_of: :mail_settings,
+      instance: true
     ),
     Action.new(
       :"instance.mail_on",
-      "turn the saved mail settings on by the test link their save sent: the instance admin who saved them, after a recent sign-in, which no role takes (Apiary.Mail.turn_on/2)",
-      asked_of: :organisation
+      "turn the saved mail settings on by the test link their save sent: the instance admin who saved them, after a recent sign-in (Apiary.Mail.turn_on/2)",
+      roles: @owners,
+      asked_of: :mail_settings,
+      instance: true
     ),
     # The product's name on the instance, in Instance settings › General.
     Action.new(
       :"instance.rename",
-      "set the product's name on the instance: an instance admin, which no role takes (Apiary.ProductName.rename/2)",
-      asked_of: :organisation
+      "set the product's name on the instance (Apiary.ProductName.rename/2)",
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
     # The instance's settings, in Instance settings › Configuration.
     Action.new(
       :"instance.configure",
-      "change the instance's settings in Instance settings › Configuration: an instance admin after a recent sign-in, which no role takes (Apiary.InstanceConfig.save/3)",
-      asked_of: :organisation
+      "change the instance's settings in Instance settings › Configuration and its machine types in Instance settings › Machine types, after a recent sign-in (Apiary.InstanceConfig.save/3, Apiary.MachineTypes)",
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
     # The support address, in Instance settings › General.
     Action.new(
       :"instance.support_save",
-      "save the support address, where Contact support leads: an instance admin, which no role takes (Apiary.SupportAddress.save/2)",
-      asked_of: :organisation
+      "save the support address, where Contact support leads (Apiary.SupportAddress.save/2)",
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
     # The audit trail.
     Action.new(:"audit.read", "read the organisation's audit trail, its Activity page",
@@ -199,6 +242,36 @@ defmodule Apiary.Access do
     Action.new(:"access_key.revoke", "revoke an access key of a machine, pool or gateway",
       part: :nodes,
       roles: @admins
+    ),
+    # The instance's diagnostics keys, which read the diagnostics of every run, in Instance
+    # settings › Diagnostics keys (`Apiary.AccessKeys`): instance actions.
+    Action.new(
+      :"instance.read_observability",
+      "read the instance's diagnostics keys and the person who made each one's code",
+      feature: :observability,
+      roles: @owners,
+      asked_of: :organisation,
+      audited: {:not, @read},
+      instance: true
+    ),
+    Action.new(
+      :"diagnostics_key.create",
+      "make an enrolment code for a diagnostics key, after a recent sign-in (Apiary.AccessKeys.create_diagnostics_code/2)",
+      feature: :observability,
+      roles: @owners,
+      asked_of: :organisation,
+      audited: {:not, "the code is recorded as access_key.create_code, the entry of every code"},
+      instance: true
+    ),
+    Action.new(
+      :"diagnostics_key.revoke",
+      "revoke a diagnostics key (Apiary.AccessKeys.revoke_diagnostics_key/2)",
+      feature: :observability,
+      roles: @owners,
+      asked_of: :organisation,
+      audited:
+        {:not, "the revocation is recorded as access_key.revoke, the entry of every key's"},
+      instance: true
     ),
     # The workspace's nodes and node pools, the places its runs run.
     Action.new(:"node.read", "read the workspace's machines and pools, and each one's page",
@@ -358,17 +431,26 @@ defmodule Apiary.Access do
       roles: [:access_key, :pool_key],
       audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     ),
+    # A diagnostics key's one action, asked of a run of any organisation
+    # (`ApiaryWeb.Contract.DiagnosticsController`, `key_subject/4`).
+    Action.new(:"run.read_diagnostics", "read the diagnostics of a run with a diagnostics key",
+      feature: :observability,
+      roles: [:diagnostics_key],
+      audited: {:not, @read}
+    ),
     # A gateway's secrets request: a run's model key, sealed to the gateway's access key
-    # (`Apiary.Runs.SecretsRequest`). No other rule applies here: the secrets request
-    # checks the run and the key it verified under.
+    # (`Apiary.Runs.SecretsRequest`), which asks this of the run for a request that names
+    # the key. The key is held to what its gateway may serve (`key_subject/4`). The run key,
+    # the sender and `allow_secrets` are the secrets request's to check: data of the run and
+    # of the key it verified under.
     Action.new(:"secret.seal", "seal a run's model key to the gateway's access key",
       feature: :factory,
       roles: [:access_key]
     ),
     # A gateway's secrets request for a run's work entry: a credential the entry's adapter
-    # issues for the run, sealed to the gateway's access key (`Apiary.Runs.WorkCredential`).
-    # Each attempt is recorded, issued or refused. No other rule applies here, as for
-    # `secret.seal`.
+    # issues for the run, sealed to the gateway's access key (`Apiary.Runs.WorkCredential`),
+    # which asks this of the run before the call and again as it records the credential.
+    # Each attempt is recorded, issued or refused. The key is held as for `secret.seal`.
     Action.new(
       :"run_credential.issue",
       "issue a run's work credential from its adapter and seal it to the gateway's access key",
@@ -376,11 +458,12 @@ defmodule Apiary.Access do
       roles: [:access_key]
     ),
     # The instance's adapters: an organisation's people read them and connect them; an
-    # instance admin makes, renames and deletes them and sets how often they pull, which no
-    # role takes: the context function asks `instance_admin?/1` (`Apiary.Adapters`). The
-    # instance alone installs the adapters its setting lists, and gives them their codes.
-    # An instance admin starts an adapter's set-up at the system it reads from, which no
-    # role takes either.
+    # instance admin reads every one, with its access keys and codes, and the instance's
+    # pool and gateway, makes, renames and deletes them and sets how often they pull, as
+    # instance actions (`Apiary.Adapters`). The instance alone installs the adapters its
+    # setting lists, and gives them their codes. An instance admin starts an adapter's
+    # set-up at the system it reads from, and changes its access keys and codes, as
+    # `adapter.setup` (`Apiary.AccessKeys`).
     Action.new(:"adapter.read", "read the instance's adapters",
       feature: :factory,
       roles: @members,
@@ -388,26 +471,37 @@ defmodule Apiary.Access do
       audited: {:not, @read}
     ),
     Action.new(
-      :"adapter.create",
-      "make an adapter of the instance: an instance admin after a recent sign-in, which no role takes",
+      :"instance.read_factory",
+      "read the instance's adapters, its pool and its gateway, with their access keys and codes, how often each adapter pulls, and its machine types",
       feature: :factory,
-      asked_of: :organisation
+      roles: @owners,
+      asked_of: :organisation,
+      audited: {:not, @read},
+      instance: true
     ),
-    Action.new(:"adapter.edit", "rename an adapter: an instance admin, which no role takes",
+    Action.new(:"adapter.create", "make an adapter of the instance, after a recent sign-in",
       feature: :factory,
-      asked_of: :organisation
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
-    Action.new(
-      :"adapter.set_interval",
-      "set how often an adapter pulls: an instance admin, which no role takes",
+    Action.new(:"adapter.edit", "rename an adapter",
       feature: :factory,
-      asked_of: :organisation
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
-    Action.new(
-      :"adapter.delete",
-      "delete an adapter, which revokes its access keys: an instance admin, which no role takes",
+    Action.new(:"adapter.set_interval", "set how often an adapter pulls",
       feature: :factory,
-      asked_of: :organisation
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
+    ),
+    Action.new(:"adapter.delete", "delete an adapter, which revokes its access keys",
+      feature: :factory,
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
     Action.new(
       :"adapter.install",
@@ -425,9 +519,20 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"adapter.setup",
-      "start setting an adapter up at the system it reads from, with a new setup pass: an instance admin, which no role takes",
+      "start setting an adapter up at the system it reads from, with a new setup pass, and change its access keys and codes",
       feature: :factory,
-      asked_of: :organisation
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
+    ),
+    Action.new(
+      :"node.set_instance_limit",
+      "set the machine limit of the instance's pool (Apiary.Nodes.Installed.set_instance_limit/3)",
+      feature: :factory,
+      roles: @owners,
+      asked_of: :organisation,
+      audited: {:not, "the change is recorded as node.set_limit, the entry of a pool's limit"},
+      instance: true
     ),
     Action.new(:"adapter.connect", "connect an adapter to the system it reaches",
       feature: :factory,
@@ -529,9 +634,11 @@ defmodule Apiary.Access do
     # › Workspace types (`Apiary.Processes.TypeTemplates`).
     Action.new(
       :"workspace_type.edit",
-      "save a version of a workspace type's default process, which new workspaces copy: an instance admin, which no role takes (Apiary.Processes.TypeTemplates.save/4)",
+      "save a version of a workspace type's default process, which new workspaces copy (Apiary.Processes.TypeTemplates.save/4)",
       feature: :workflow_model,
-      asked_of: :organisation
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
     # An adapter's key at the server contract, asked of the adapter itself.
     Action.new(
@@ -596,8 +703,8 @@ defmodule Apiary.Access do
     ),
     # The harness a run uses: the harness documents of an organisation's levels
     # (`Apiary.Stacks`), and the instance's assignments of harness sources
-    # (`Apiary.Harnesses`), which an instance admin creates and deletes, which no role
-    # takes: the context function asks `instance_admin?/1`.
+    # (`Apiary.Harnesses`), which an instance admin creates and deletes, as instance
+    # actions.
     Action.new(
       :"harness.save",
       "save a harness document at a level of the organisation: its default, a workspace or a target, with or without a workflow",
@@ -610,15 +717,19 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"harness.assigned",
-      "let the runs of one organisation, or of every organisation, use the instance's links for a harness source: an instance admin after a recent sign-in, which no role takes (Apiary.Harnesses.assign/3)",
+      "let the runs of one organisation, or of every organisation, use the instance's links for a harness source, after a recent sign-in (Apiary.Harnesses.assign/3)",
       feature: :factory,
-      asked_of: :organisation
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
     Action.new(
       :"harness.unassigned",
-      "delete an instance assignment of a harness source: an instance admin after a recent sign-in, which no role takes (Apiary.Harnesses.unassign/2)",
+      "delete an instance assignment of a harness source, after a recent sign-in (Apiary.Harnesses.unassign/2)",
       feature: :factory,
-      asked_of: :organisation
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
     ),
     # A node pool's key at the server contract, on the runs dispatched to its workspace:
     # one queue per workspace, which any pool of the workspace claims from. Asked of the
@@ -691,6 +802,7 @@ defmodule Apiary.Access do
     owner: "a person at owner, in every workspace",
     access_key: "a node or a gateway, with a key of the workspace",
     pool_key: "a node pool, with a key of the workspace",
+    diagnostics_key: "a diagnostics key of the instance, on any run of it",
     adapter_key: "an adapter of the instance, with a key enrolled on it, on that adapter",
     instance: "the instance itself, in a job no person enqueued"
   ]
@@ -717,6 +829,19 @@ defmodule Apiary.Access do
   # The level of the instance organisation's people who are the instance admins.
   @instance_admin_level :owner
 
+  # The instance actions asked of an account, which is no organisation's, and of the mail
+  # settings, which are the instance's: the others are asked of the instance organisation.
+  @instance_on_accounts [:"account.password_link"]
+  @instance_on_mail_settings [:"instance.mail_resend", :"instance.mail_on"]
+
+  # The instance actions that only the instance admin who saved the mail settings takes
+  # on them (`one_person/3`): sending their test link again, and turning mail on by it.
+  @saver_only [:"instance.mail_resend", :"instance.mail_on"]
+
+  # The instance actions that nobody takes on the account they are signed in with: a
+  # password link, which would get around the recent sign-in of Account settings.
+  @not_own_account [:"account.password_link"]
+
   # What nobody takes on their own membership: an owner does not suspend themselves, and
   # nobody activates their own.
   @not_own [:"member.suspend", :"member.activate"]
@@ -733,6 +858,15 @@ defmodule Apiary.Access do
   # lists them (`check_approver/3`): approving its gate, confirming Explore's proposal,
   # which approves Explore's gate, and the comments on a stage's outputs or round.
   @approver_actions [:"gate.approve", :"work_item.confirm", :"work_item.review_comment"]
+
+  # What a gateway's key takes at the server contract. Asked of a run, it is held to what
+  # the gateway may serve (`key_subject/4`).
+  @gateway_actions [
+    :"run.post_events",
+    :"run_configuration.fetch",
+    :"secret.seal",
+    :"run_credential.issue"
+  ]
 
   # What may still be done to an organisation or a workspace marked for deletion: cancel
   # the deletion, and purge it once its grace period is over. Nothing else is.
@@ -779,7 +913,10 @@ defmodule Apiary.Access do
      leaves every answer to them.
   3. **Where the subject is** (`check_place/3`). A subject of another organisation, or of
      another workspace than the scope's, is `{:error, :not_found}`, so the answer does not
-     tell that it exists.
+     tell that it exists. Two keys answer for a run in another way: a gateway's key, on
+     what it takes at the server contract, for a run of a workspace it may serve
+     (`may_serve?/2`), and a diagnostics key, on `run.read_diagnostics`, for a run of any
+     organisation.
   4. **Whether the person reaches the workspace.** A membership is the organisation's; the
      levels of `c:Apiary.Edition.every_workspace_levels/0` reach every workspace of it, in
      the core's edition all three, and the edition says which workspaces another level
@@ -828,10 +965,13 @@ defmodule Apiary.Access do
   check that counts. It reads the person's membership again from the database, with what
   the edition put on the scope, because what a scope carries may be as old as the
   LiveView that holds it. A page asks `can?/3`, with the same action, for what it shows:
-  a button for an action the reader may not take is not rendered. `can?/3` answers from
-  the scope as it was loaded, without a read, so a page may ask it on every render; the
-  one read is step 9's, of a work item's process version when the work item does not
-  have it loaded. A
+  a button for an action the reader may not take is not rendered. `can?/3` uses the scope
+  as it was loaded, so a page may call it on every render. It reads the database in two
+  cases, beyond whatever the edition's check (`c:Apiary.Edition.check/3`) reads: step 9
+  reads a work item's process version when the work item does not have it loaded, and an
+  instance action reads the instance organisation's id at most once per call, in a scope
+  without the id, and not when the action's feature is off. A scope from `reload/2` has no
+  such id, so `authorize/3` compares with the id as the database has it now. A
   context function that asks several questions in one change reads once with `reload/2`
   and asks each with `check/3`.
 
@@ -848,9 +988,11 @@ defmodule Apiary.Access do
 
   ## Roles
 
+  The instance actions are left out here: the instance's admins take them, below.
+
   | Role | Who | Actions |
   |---|---|---|
-  #{@roles |> Enum.map(fn {role, who} -> {role, who, Enum.filter(@actions, &(role in &1.roles and &1.feature not in @undocumented))} end) |> Enum.reject(fn {_role, _who, actions} -> actions == [] end) |> Enum.map_join("\n", fn {role, who, actions} -> "| `#{role}` | #{who} | #{Enum.map_join(actions, ", ", &"`#{&1.name}`")} |" end)}
+  #{@roles |> Enum.map(fn {role, who} -> {role, who, Enum.filter(@actions, &(role in &1.roles and not &1.instance and &1.feature not in @undocumented))} end) |> Enum.reject(fn {_role, _who, actions} -> actions == [] end) |> Enum.map_join("\n", fn {role, who, actions} -> "| `#{role}` | #{who} | #{Enum.map_join(actions, ", ", &"`#{&1.name}`")} |" end)}
 
   Anyone with a membership, at any level, may also remove their membership: #{Enum.map_join(@own, ", ", &"`#{&1}`")}.
   Nobody suspends or activates their membership (#{Enum.map_join(@not_own, ", ", &"`#{&1}`")}).
@@ -891,21 +1033,48 @@ defmodule Apiary.Access do
 
   ## The instance's admins
 
-  The owners of the instance's organisation (`c:Apiary.Edition.instance_organisation_id/0`)
-  run the instance: `instance_admin?/1` says whether a scope's person is one, and is the
-  one place that says so. A release command makes an account one or ends it
-  (`instance_admin.grant`, `instance_admin.revoke`), which no role takes. Inside the
-  organisation they act at their level as anyone there. Beyond it, while the instance sends
-  no mail, an instance admin makes a one-time link that sets an account's password
-  (`account.password_link`, `Apiary.Accounts.build_password_link/3`), which no role takes
-  either: the context function asks `instance_admin?/1`. So do saving the mail settings,
-  sending their test link again and turning them on (`instance.mail_save`,
-  `Apiary.Mail.save_settings/3`; `instance.mail_resend`, `Apiary.Mail.resend_test_link/2`;
-  `instance.mail_on`, `Apiary.Mail.turn_on/2`) and changing the instance's settings
-  (`instance.configure`, `Apiary.InstanceConfig.save/3`), which also ask for a recent
-  sign-in, and setting the product's name (`instance.rename`,
-  `Apiary.ProductName.rename/2`) and saving the support address (`instance.support_save`,
-  `Apiary.SupportAddress.save/2`), which ask for none.
+  The owners of the instance's organisation (`c:Apiary.Edition.instance_organisation_id/0`,
+  `instance_organisation/0`) run the instance. Inside the organisation they act at their
+  level as anyone there. Beyond it they take the instance actions, those of
+  `Apiary.Access.Action` with `instance: true`, below. A release command makes an account
+  an instance admin or ends it (`instance_admin.grant`, `instance_admin.revoke`), which no
+  role takes.
+
+  An instance action is answered in this order, in place of steps 1 to 9:
+
+  1. **The feature**, asked of the instance (`Apiary.Features.visible?/2` with no scope),
+     never what the edition hides from the person: off, `{:error, :not_found}`.
+  2. **The instance step.** The instance's scope (`:instance`) passes. Any other scope
+     passes only in the instance's organisation, while it is not marked for deletion;
+     anywhere else, `{:error, :not_found}`.
+  3. **The edition** (`c:Apiary.Edition.check/3`), asked once, as in step 2 above.
+  4. **The place.** `account.password_link` is asked of an account in use;
+     #{Enum.map_join(@instance_on_mail_settings, " and ", &"`#{&1}`")} of the mail
+     settings (`Apiary.Mail.Settings`); every other instance action of the instance's
+     organisation, the scope's. Anything else is `{:error, :not_found}`.
+  5. **The role** (`role/1`): one the action's roles do not hold is
+     `{:error, :forbidden}`.
+  6. **One person.** Only the instance admin who saved the mail settings takes
+     #{Enum.map_join(@saver_only, " and ", &"`#{&1}`")} on them; anyone else is
+     `{:error, :not_saver}`. Nobody takes
+     #{Enum.map_join(@not_own_account, ", ", &"`#{&1}`")} on the account they are signed
+     in with, `{:error, :own_account}`: they change their password in Account settings.
+     The instance's scope has no account, and is not refused.
+
+  A page of the instance admins and a context function ask in the person's scope in the
+  instance's organisation, whichever organisation the page's path is in: `in_instance/1`
+  for a context function, which then asks `authorize/3`; `instance_scope/1` for a page,
+  which asks `can?/3` (`ApiaryWeb.Access`'s `:instance`). `instance_admin?/1` says
+  whether a scope's person is one, for what asks no action: a page's wording,
+  an edition's harness owner and an edition's commands. Core's release commands
+  read the membership, with `instance_admin_membership?/1`.
+
+  A recent sign-in is no part of the answer: where an action needs one, the context
+  function asks it after `authorize/3` (`Apiary.Accounts.sudo_mode?/1`).
+
+  | Instance action | Feature | Roles |
+  |---|---|---|
+  #{@actions |> Enum.filter(& &1.instance) |> Enum.reject(&(&1.feature in @undocumented)) |> Enum.map_join("\n", fn action -> "| `#{action.name}` | #{if action.feature, do: "`#{action.feature}`", else: "every instance"} | #{Enum.map_join(action.roles, ", ", &"`#{&1}`")} |" end)}
 
   ## Features
 
@@ -933,8 +1102,8 @@ defmodule Apiary.Access do
   @type action :: atom
 
   @typedoc """
-  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key`, `:pool_key`
-  and `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
+  A role: one of the core's, `:owner`, `:admin`, `:member`, `:access_key`, `:pool_key`,
+  `:adapter_key`, `:diagnostics_key` and `:instance`, or one the edition adds (`c:Apiary.Edition.roles/0`).
   """
   @type role :: atom
 
@@ -946,9 +1115,11 @@ defmodule Apiary.Access do
 
   @typedoc """
   Why the answer is no: a feature that is off or hidden, or a subject out of reach, the
-  role, or a person who is not among the approvers of the work item's stage.
+  role, a person who is not among the approvers of the work item's stage, and, of an
+  instance action, an instance admin who did not save the mail settings or who asks of
+  the account they are signed in with.
   """
-  @type reason :: :not_found | :forbidden | :not_approver
+  @type reason :: :not_found | :forbidden | :not_approver | :not_saver | :own_account
 
   ## The registry
 
@@ -1072,34 +1243,92 @@ defmodule Apiary.Access do
   def reaches_every_workspace?(level), do: level in Edition.every_workspace_levels()
 
   @doc """
-  instance_admin?/1 says whether the scope's person is an instance admin: an owner of the
-  instance's organisation (`c:Apiary.Edition.instance_organisation_id/0`), whose membership
-  is not suspended and whose account is in use (not deleted, and active as the edition
-  says, `c:Apiary.Edition.active_accounts/2`), as the database has it now. False for a
-  scope without a person, and for nil. Whoever asks with a person's scope, whatever
-  organisation the scope is in, gets the same answer.
+  instance_admin?/1 says whether the scope's person is an instance admin, as the database
+  has it now: whether they may read the instance (`instance.read`), asked with
+  `authorize/3` of the instance organisation in their instance scope (`in_instance/1`).
+  That is an owner of the instance's organisation
+  (`c:Apiary.Edition.instance_organisation_id/0`), not marked for deletion, whose
+  membership is not suspended and whose account is in use (not deleted, and active as the
+  edition says, `c:Apiary.Edition.active_accounts/2`). False for a scope without a person,
+  and for nil. Whoever asks with a person's scope, whatever organisation the scope is in,
+  gets the same answer. For what asks no action: a page's wording,
+  an edition's harness owner and an edition's commands; anything that acts asks
+  its action.
   """
   @spec instance_admin?(Scope.t() | nil) :: boolean
-  def instance_admin?(%Scope{user: %User{id: user_id}}) do
-    case Edition.instance_organisation_id() do
-      nil ->
-        false
-
-      organisation_id ->
-        from(m in Membership,
-          join: u in User,
-          as: :account,
-          on: u.id == m.user_id,
-          where: m.organisation_id == ^organisation_id and m.user_id == ^user_id,
-          where: m.level == ^@instance_admin_level and is_nil(m.suspended_at),
-          where: is_nil(u.deleted_at)
-        )
-        |> Edition.active_accounts(:account)
-        |> Repo.exists?()
-    end
+  def instance_admin?(%Scope{user: %User{}, access_key: nil} = scope) do
+    instance = in_instance(scope)
+    authorize(instance, :"instance.read", instance.organisation) == :ok
   end
 
   def instance_admin?(_scope), do: false
+
+  @doc """
+  instance_organisation/0 is the instance's organisation
+  (`c:Apiary.Edition.instance_organisation_id/0`), whose owners are the instance admins,
+  as the database has it now: what an instance action is asked of, but
+  `account.password_link`, asked of an account. Nil before the instance's first sign-up.
+  """
+  @spec instance_organisation() :: %Organisation{} | nil
+  def instance_organisation do
+    case Edition.instance_organisation_id() do
+      nil -> nil
+      id -> Repo.get(Organisation, id)
+    end
+  end
+
+  @doc """
+  in_instance/1 is the scope's person in the instance's organisation
+  (`instance_organisation/0`), as `Apiary.Organisations.put_reach/2` puts them there, with
+  their membership there as the database has it now and no workspace: the scope a context
+  function asks an instance action in, whatever organisation the page's scope is in. For a
+  person who does not reach that organisation, and before the first sign-up, their scope
+  with no place, which may no instance action. Any other scope, the instance's, an access
+  key's or nil, as it is.
+
+  The scope it puts in that organisation has the organisation's id in
+  `instance_organisation_id`, so `can?/3` reads no row for an instance action, beyond
+  whatever the edition's check (`c:Apiary.Edition.check/3`) reads.
+  """
+  @spec in_instance(Scope.t() | nil) :: Scope.t() | nil
+  def in_instance(%Scope{user: %User{}, access_key: nil} = scope) do
+    with %Organisation{} = organisation <- instance_organisation(),
+         {:ok, instance} <- Apiary.Organisations.put_reach(scope, organisation) do
+      %{instance | instance_organisation_id: organisation.id}
+    else
+      _unreached ->
+        %{
+          scope
+          | organisation: nil,
+            workspace: nil,
+            membership: nil,
+            reach: nil,
+            edition: %{},
+            instance_organisation_id: nil
+        }
+    end
+  end
+
+  def in_instance(scope), do: scope
+
+  @doc """
+  instance_scope/1 is the scope of an instance admin in the instance's organisation, as
+  the pages only they open ask in (`ApiaryWeb.Access`'s `:instance`): `{:ok, scope}`, the
+  scope of `in_instance/1`, where its person may read the instance (`instance.read`);
+  `:error` for anyone else, for a scope without a person, and before the instance's first
+  sign-up. A page asks the instance actions with `can?/3` of this scope and the
+  instance organisation, its `organisation`.
+  """
+  @spec instance_scope(Scope.t() | nil) :: {:ok, Scope.t()} | :error
+  def instance_scope(%Scope{user: %User{}, access_key: nil} = scope) do
+    instance = in_instance(scope)
+
+    if can?(instance, :"instance.read", instance.organisation),
+      do: {:ok, instance},
+      else: :error
+  end
+
+  def instance_scope(_scope), do: :error
 
   @doc """
   level/1 is the level the scope's person acts at in the scope's organisation: their
@@ -1205,7 +1434,8 @@ defmodule Apiary.Access do
   instance_admin_membership?/1 says whether a membership makes its person an instance
   admin: it is a membership of the instance's organisation
   (`c:Apiary.Edition.instance_organisation_id/0`), at `instance_admin_level/0`. False for a
-  membership of any other organisation, and nil. `instance_admin?/1` asks it of a scope.
+  membership of any other organisation, and nil. Core's release commands that grant and
+  revoke an instance admin read it.
   """
   @spec instance_admin_membership?(%Membership{} | nil) :: boolean
   def instance_admin_membership?(%Membership{organisation_id: id, level: @instance_admin_level})
@@ -1285,7 +1515,9 @@ defmodule Apiary.Access do
   `{:error, :forbidden}` where the role does not allow it, a membership that is gone
   included, or allows it over other people than the subject's;
   `{:error, :not_approver}` where the role allows it and the work item's stage lists
-  approvers the person is not among (step 9 of the moduledoc).
+  approvers the person is not among (step 9 of the moduledoc);
+  `{:error, :not_saver}` or `{:error, :own_account}` where the role allows an instance
+  action and a one-person rule refuses it (step 6 of "The instance's admins").
   `check(reload(scope), action, subject)`.
   """
   @spec authorize(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
@@ -1297,11 +1529,21 @@ defmodule Apiary.Access do
   @doc """
   The answer of `authorize/3`, with its reason, from the scope as it is, without a read of
   the scope. Step 9 of the moduledoc reads a work item's process version when the work
-  item does not have it loaded. For a context function that asks more than one question in one change: it reads once
-  with `reload/2` and asks each question of that scope.
+  item does not have it loaded, and an instance action reads the instance organisation's
+  id at most once, in a scope without the id, and not when the action's feature is off;
+  the edition's check (`c:Apiary.Edition.check/3`) may read too. For a context function
+  that asks more than one question in one change: it reads once with `reload/2` and asks
+  each question of that scope.
   """
   @spec check(Scope.t() | nil, action, subject | nil) :: :ok | {:error, reason}
   def check(scope, action, subject) do
+    case action(action) do
+      %Action{instance: true} -> check_instance(scope, action, subject)
+      %Action{} -> check_person(scope, action, subject)
+    end
+  end
+
+  defp check_person(scope, action, subject) do
     shown_as = shown_as(action)
 
     # A part of a feature is shown only where its feature is too
@@ -1310,6 +1552,88 @@ defmodule Apiary.Access do
       do: {:error, :not_found},
       else: role_and_place(scope, action, subject)
   end
+
+  # An instance action, in the order of the moduledoc's "The instance's admins": its
+  # feature, asked of the instance; the instance step; the edition; the place; the role.
+  # The instance organisation's id is the scope's from `in_instance/1`, or else read once
+  # here, and passed to each step that needs it.
+  defp check_instance(scope, action, subject) do
+    shown_as = shown_as(action)
+
+    if not is_nil(shown_as) and not Features.visible?(nil, shown_as) do
+      {:error, :not_found}
+    else
+      instance_id = instance_id_of(scope)
+
+      if at_instance?(scope, instance_id) do
+        case Edition.check(scope, action, subject) do
+          :continue -> instance_place_and_role(scope, action, subject, instance_id)
+          answer -> answer
+        end
+      else
+        {:error, :not_found}
+      end
+    end
+  end
+
+  defp instance_id_of(%Scope{instance_organisation_id: id}) when is_binary(id), do: id
+  defp instance_id_of(_scope), do: Edition.instance_organisation_id()
+
+  # The instance step: the instance's scope, or a scope in the instance organisation while
+  # it is not marked for deletion, as the scope carries it.
+  defp at_instance?(scope, instance_id) do
+    case {role(scope), scope} do
+      {:instance, _scope} ->
+        true
+
+      {_role, %Scope{organisation: %Organisation{id: id} = organisation}} when is_binary(id) ->
+        not marked?(organisation) and id == instance_id
+
+      _elsewhere ->
+        false
+    end
+  end
+
+  # The place, then the role, then the one-person rules: an account's action is asked of an
+  # account in use, an action of the mail settings of them, any other of the instance
+  # organisation, the scope's.
+  defp instance_place_and_role(scope, action, subject, instance_id) do
+    cond do
+      not instance_subject?(scope, action, subject, instance_id) -> {:error, :not_found}
+      role(scope) not in action(action).roles -> {:error, :forbidden}
+      true -> one_person(scope, action, subject)
+    end
+  end
+
+  defp instance_subject?(_scope, action, subject, _instance_id)
+       when action in @instance_on_accounts,
+       do: match?(%User{deleted_at: nil}, subject)
+
+  defp instance_subject?(_scope, action, subject, _instance_id)
+       when action in @instance_on_mail_settings,
+       do: match?(%Settings{}, subject)
+
+  defp instance_subject?(scope, _action, %Organisation{id: id} = subject, instance_id)
+       when is_binary(id),
+       do: id == instance_id and within?(scope, subject)
+
+  defp instance_subject?(_scope, _action, _subject, _instance_id), do: false
+
+  # Of the mail settings, the admin who saved them alone; of an account, anyone but its
+  # person. The instance's scope has no account.
+  defp one_person(scope, action, %Settings{mail_saved_by_id: saved_by})
+       when action in @saver_only do
+    case scope do
+      %Scope{user: %User{id: id}} when is_binary(id) and id == saved_by -> :ok
+      _other -> {:error, :not_saver}
+    end
+  end
+
+  defp one_person(%Scope{user: %User{id: id}}, action, %User{id: id})
+       when action in @not_own_account and is_binary(id),
+       do: {:error, :own_account}
+
+  defp one_person(_scope, _action, _subject), do: :ok
 
   @doc """
   check_code_maker/2 is whether the maker of an enrolment code, `scope`, the person who
@@ -1328,6 +1652,46 @@ defmodule Apiary.Access do
     if not is_nil(shown_as) and not Features.visible?(nil, shown_as),
       do: {:error, :not_found},
       else: role_and_place(scope, action, code)
+  end
+
+  @doc """
+  may_serve?/2 says whether `gateway` may serve `place`, a workspace or a run of one: the
+  answer of `check/3` for a key of the gateway, of `run.post_events` on a run there, the
+  rule `key_subject/4` holds a gateway's key to. For a caller that holds the gateway's row
+  and no key of it: a node's choice, a claim, a registration, an attach. The key and the
+  run it asks of are never stored. A gateway in use may serve a workspace at one of the
+  workspace's levels (`Apiary.Gateways.levels/1`), and the instance's gateway every
+  workspace. `place` nil is a claim of the instance's pool, whose workspace is not known
+  yet: only the instance's gateway in use may serve it, asked of its node. It reads the
+  ids of the place alone: a place marked for deletion is held to its use apart
+  (`Apiary.AccessKeys.place_in_use?/2`). False for nil and for a node that is no gateway.
+  """
+  @spec may_serve?(Node.t() | nil, %Workspace{} | Run.t() | nil) :: boolean
+  def may_serve?(
+        %Node{kind: :gateway} = gateway,
+        %Workspace{id: id, organisation_id: organisation_id}
+      ),
+      do: can_serve?(gateway, %Run{organisation_id: organisation_id, workspace_id: id})
+
+  def may_serve?(%Node{kind: :gateway} = gateway, %Run{} = run), do: can_serve?(gateway, run)
+
+  def may_serve?(
+        %Node{kind: :gateway, deleted_at: nil, organisation_id: nil, workspace_id: nil} = gateway,
+        nil
+      ),
+      do: can_serve?(gateway, gateway)
+
+  def may_serve?(_gateway, _place), do: false
+
+  defp can_serve?(%Node{} = gateway, subject) do
+    key = %AccessKey{
+      node_id: gateway.id,
+      node: gateway,
+      organisation_id: gateway.organisation_id,
+      workspace_id: gateway.workspace_id
+    }
+
+    can?(%Scope{access_key: key}, :"run.post_events", subject)
   end
 
   defp role_and_place(scope, action, subject) do
@@ -1428,6 +1792,21 @@ defmodule Apiary.Access do
     end
   end
 
+  # A gateway's key acts for a run of what the gateway may serve: at a workspace, that
+  # workspace; at an organisation, every workspace of it and of the organisations whose
+  # gateways the edition lets serve them; at the instance, every workspace. Any other run
+  # is not found to it. Asked of anything but a run, the place alone answers, as for a
+  # node's key, and the clause below holds the key of the instance's gateway.
+  defp key_subject(
+         :access_key,
+         %Scope{access_key: %AccessKey{node: %Node{kind: :gateway} = gateway}},
+         action,
+         %Run{} = run
+       )
+       when action in @gateway_actions do
+    if serves?(gateway, place(run)), do: :ok, else: {:error, :not_found}
+  end
+
   # The key of the instance's gateway is at the instance, where it acts on its gateway
   # alone: on no adapter and not on the instance's pool.
   defp key_subject(
@@ -1442,7 +1821,31 @@ defmodule Apiary.Access do
     end
   end
 
+  # A diagnostics key reads the diagnostics of a run, wherever it is (`subject_place/3`),
+  # and takes nothing else, on nothing else.
+  defp key_subject(:diagnostics_key, _scope, :"run.read_diagnostics", %Run{}), do: :ok
+  defp key_subject(:diagnostics_key, _scope, _action, _subject), do: {:error, :not_found}
+
   defp key_subject(_role, _scope, _action, _subject), do: :ok
+
+  # Whether `gateway`, not deleted, may serve the workspace at this place: one of the
+  # workspace's levels (`Apiary.Gateways.levels/1`). It reads no deletion mark: a run's
+  # place is held to its use apart, with a separate refusal
+  # (`Apiary.AccessKeys.place_in_use?/2`).
+  defp serves?(%Node{deleted_at: nil} = gateway, {organisation_id, workspace_id}) do
+    case Gateways.level(gateway) do
+      {:workspace, id} ->
+        id == workspace_id and gateway.organisation_id == organisation_id
+
+      {:organisation, id} ->
+        id == organisation_id or id in Gateways.serving_organisations(organisation_id)
+
+      :instance ->
+        is_binary(workspace_id) and is_binary(organisation_id)
+    end
+  end
+
+  defp serves?(%Node{}, _place), do: false
 
   # What a dispatch action of a node pool's key is asked of: its workspace, the queue, of
   # which a waiting run is claimed; or a dispatch of that workspace that its pool claimed,
@@ -1532,13 +1935,38 @@ defmodule Apiary.Access do
               is_binary(organisation_id) and is_binary(workspace_id),
        do: {nil, nil}
 
+  # A run asked of a gateway's key is asked of where the key is, whichever organisation and
+  # workspace the run is in: `key_subject/4` holds the key to what its gateway may serve.
+  defp subject_place(
+         %Scope{access_key: %AccessKey{node: %Node{kind: :gateway}}} = scope,
+         action,
+         %Run{}
+       )
+       when action in @gateway_actions,
+       do: place(scope)
+
+  # A run asked of a diagnostics key is asked of at the instance, where the key is, whatever
+  # organisation and workspace the run is in. `key_subject/4` holds the key to that action.
+  defp subject_place(
+         %Scope{
+           access_key: %AccessKey{
+             organisation_id: nil,
+             workspace_id: nil,
+             node: %Node{kind: :diagnostics, organisation_id: nil, workspace_id: nil}
+           }
+         },
+         :"run.read_diagnostics",
+         %Run{}
+       ),
+       do: {nil, nil}
+
   defp subject_place(_scope, _action, subject), do: place(subject)
 
-  # The key of an adapter, or of the instance's pool or gateway, has no organisation and no
-  # workspace: it is where its node is, and where nothing else of an organisation is: the
-  # instance, which no other scope is at. It reaches nothing else there: `key_subject/4`
-  # holds an adapter's key to its adapter, and a pool's key to its pool and the dispatches
-  # its pool claimed.
+  # The key of an adapter, of the instance's pool or gateway, or a diagnostics key has no
+  # organisation and no workspace: it is where its node is, and where nothing else of an
+  # organisation is: the instance, which no other scope is at. It reaches nothing else
+  # there: `key_subject/4` holds an adapter's key to its adapter, a pool's key to its pool
+  # and the dispatches its pool claimed, and a diagnostics key to the diagnostics of a run.
   defp same_place?(
          %Scope{
            access_key: %AccessKey{
@@ -1549,7 +1977,7 @@ defmodule Apiary.Access do
          },
          {nil, nil}
        )
-       when kind in [:adapter, :pool, :gateway],
+       when kind in [:adapter, :pool, :gateway, :diagnostics],
        do: true
 
   defp same_place?(scope, place), do: in_place?(place(scope), place)
@@ -1566,7 +1994,8 @@ defmodule Apiary.Access do
 
   @doc """
   role/1 is the role the scope acts in, as it carries it: `:access_key` for the key of a
-  node or a gateway, `:pool_key` for a node pool's, `:instance` for the instance, the
+  node or a gateway, `:pool_key` for a node pool's, `:adapter_key` for an adapter's,
+  `:diagnostics_key` for a diagnostics key, `:instance` for the instance, the
   level of the person's membership there, else the role the edition gives them
   (`c:Apiary.Edition.role/1`); nil for anyone else. A key whose node the scope does not
   carry loaded, or whose node is of a kind it does not know, gets no role.
@@ -1580,10 +2009,12 @@ defmodule Apiary.Access do
   # A key's role follows its node's kind, as the key carries it
   # (`Apiary.Accounts.Scope.for_access_key/1` loads it): `adapter_key` for an adapter's,
   # asked before any other kind; `pool_key` for a node pool's, which holds what a node's
-  # key holds and the dispatch actions besides; `access_key` for a node's or a gateway's;
-  # none for a key whose node is not loaded or of a kind not known here, which may nothing.
+  # key holds and the dispatch actions besides; `diagnostics_key` for one of the instance's
+  # diagnostics node; `access_key` for a node's or a gateway's; none for a key whose node
+  # is not loaded or of a kind not known here, which may nothing.
   defp key_role(%AccessKey{node: %Node{kind: :adapter}}), do: :adapter_key
   defp key_role(%AccessKey{node: %Node{kind: :pool}}), do: :pool_key
+  defp key_role(%AccessKey{node: %Node{kind: :diagnostics}}), do: :diagnostics_key
 
   defp key_role(%AccessKey{node: %Node{kind: kind}}) when kind in [:node, :gateway],
     do: :access_key
@@ -1600,6 +2031,9 @@ defmodule Apiary.Access do
   scope is returned as it is: the key was verified on the request that carries it; the
   instance's has only its marks to read again. Any other scope, one without a user or an
   organisation, comes back without a membership, so it may nothing a role would allow.
+
+  Every scope it returns has `instance_organisation_id` set to nil, so a check of that
+  scope reads the instance organisation's id as the database has it now.
 
   With the membership it reads the deletion marks of the organisation and the workspace,
   so an organisation or a workspace marked since the scope was loaded answers not found
@@ -1618,7 +2052,8 @@ defmodule Apiary.Access do
   @spec reload(Scope.t() | nil, keyword) :: Scope.t() | nil
   def reload(scope, opts \\ [])
 
-  def reload(%Scope{access_key: %AccessKey{}} = scope, _opts), do: scope
+  def reload(%Scope{access_key: %AccessKey{}} = scope, _opts),
+    do: %{scope | instance_organisation_id: nil}
 
   def reload(%Scope{user: %User{id: user_id}, organisation: %Organisation{}} = scope, opts) do
     lock? = opts[:lock] == :share
@@ -1627,6 +2062,7 @@ defmodule Apiary.Access do
     # edition's own (`lock_places/1`), first, then the membership, then the account.
     if lock?, do: lock_places(scope)
 
+    scope = %{scope | instance_organisation_id: nil}
     scope = scope |> reload_membership(lock?) |> Edition.reload(opts)
 
     # What the person is not shown, asked once the edition's reach is read again: with
@@ -1645,11 +2081,13 @@ defmodule Apiary.Access do
     %{
       scope
       | organisation: reload_marks(scope.organisation),
-        workspace: reload_marks(scope.workspace)
+        workspace: reload_marks(scope.workspace),
+        instance_organisation_id: nil
     }
   end
 
-  def reload(%Scope{} = scope, _opts), do: %{scope | membership: nil, reach: nil}
+  def reload(%Scope{} = scope, _opts),
+    do: %{scope | membership: nil, reach: nil, instance_organisation_id: nil}
 
   def reload(nil, _opts), do: nil
 

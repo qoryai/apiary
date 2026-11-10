@@ -623,10 +623,12 @@ defmodule Apiary.MachineTypes do
   create/2 adds a type with `attrs`: `key`, `name`, `image`, `vcpus`, `memory_mib`,
   `disk_gib`, `arch`, `virtualization` and `is_default`, the default from then on when
   true. `{:ok, type}`; `{:error, changeset}`, with `:no_pool` on `:vcpus` for a spec no
-  pool fits (`fitted?/2`); `{:error, :sudo}`; or `{:error, :forbidden}`.
+  pool fits (`fitted?/2`); `{:error, :sudo}`; `{:error, :not_found}` for anyone outside the
+  instance's organisation; or `{:error, :forbidden}` for anyone else there but an instance
+  admin.
   """
   @spec create(Scope.t() | nil, map) ::
-          {:ok, MachineType.t()} | {:error, Ecto.Changeset.t() | :sudo | :forbidden}
+          {:ok, MachineType.t()} | {:error, Ecto.Changeset.t() | :sudo | :not_found | :forbidden}
   def create(scope, attrs) do
     with :ok <- InstanceConfig.authorize_save(scope) do
       changeset =

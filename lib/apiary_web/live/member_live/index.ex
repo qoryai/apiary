@@ -255,7 +255,7 @@ defmodule ApiaryWeb.MemberLive.Index do
           </p>
         </div>
 
-        <p :if={@shown == []} id="people-none" class="text-[13px] text-muted">
+        <p :if={@shown == [] and @q != ""} id="people-none" class="text-[13px] text-muted">
           {gettext("No member's email has %{text}.", text: @q)}
         </p>
         <.table
@@ -312,7 +312,7 @@ defmodule ApiaryWeb.MemberLive.Index do
               <% end %>
               <ApiaryWeb.Extension.slot name={:member_actions} scope={@current_scope} member={m} />
               <.menu_item
-                :if={@password_links? and m.user_id != @current_scope.user.id}
+                :if={m.id in @password_link_rows}
                 id={"member-#{m.id}-password-link"}
                 phx-click="password_link"
                 phx-value-membership_id={m.id}
@@ -924,7 +924,7 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   # A password link for a member's account, made by an instance admin while no mail is set,
   # shown once above the list: the context asks who may (`Accounts.build_password_link/3`).
-  # Only where the page offers them (`password_links?/1`): the context makes one for any
+  # Only where the page offers them (`password_scope/1`): the context makes one for any
   # account, so an event sent anywhere else is refused here, as the context would refuse
   # it on the instance's organisation's page.
   def handle_event("password_link", %{"membership_id" => id}, socket) do
@@ -1122,26 +1122,41 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp load(socket) do
     scope = socket.assigns.current_scope
 
-    members = Organisations.list_members(scope)
-
-    # Asked of the organisation where there is no workspace: an invitation sent while it
-    # had none is pending there.
-    invitations =
-      if Access.can?(scope, :"member.invite", scope.workspace || scope.organisation),
-        do: Organisations.list_invitations(scope),
-        else: []
+    {members, invitations} = people(scope)
 
     grantable = Access.grantable_levels(scope)
 
+    password_scope = password_scope(scope)
+
     socket
     |> assign(members: members, invitations: invitations, grantable: grantable)
-    |> assign(:password_links?, password_links?(scope))
+    |> assign(:password_scope, password_scope)
+    |> assign(:password_link_rows, password_link_rows(password_scope, members))
     |> find(socket.assigns[:q])
     |> assign(:sections, SettingsComponents.sections(scope, :organisation))
     |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
   end
 
-  defp password_link(%{assigns: %{password_links?: true}} = socket, member) do
+  # The members and the invitations, for a person who may read them as the database has it
+  # now (`member.read`, with `Apiary.Access.authorize/3`): the page's scope is stale until
+  # the broadcast of a change to the membership moves the page. Asked with no workspace: the
+  # organisation's members stay readable while the scope's workspace is marked for deletion.
+  defp people(scope) do
+    case Access.authorize(%{scope | workspace: nil}, :"member.read", scope.organisation) do
+      :ok -> {Organisations.list_members(scope), invitations(scope)}
+      {:error, _refused} -> {[], []}
+    end
+  end
+
+  # Asked of the organisation where there is no workspace: an invitation sent while it
+  # had none is pending there.
+  defp invitations(scope) do
+    if Access.can?(scope, :"member.invite", scope.workspace || scope.organisation),
+      do: Organisations.list_invitations(scope),
+      else: []
+  end
+
+  defp password_link(%{assigns: %{password_scope: %Apiary.Accounts.Scope{}}} = socket, member) do
     Accounts.build_password_link(
       socket.assigns.current_scope,
       member.user,
@@ -1152,11 +1167,30 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp password_link(_socket, _member),
     do: {:error, if(Mail.configured?(), do: :mail_set, else: :forbidden)}
 
-  # Whether the page offers password links: on the instance's organisation, to an instance
-  # admin, while no mail is set. The context asks again when one is made.
-  defp password_links?(scope) do
-    scope.organisation.id == Apiary.Edition.instance_organisation_id() and
-      not Apiary.Mail.configured?() and Access.instance_admin?(scope)
+  # The scope the page asks password links in: on the instance's organisation, while no
+  # mail is set, the reader's instance scope (`Apiary.Access.instance_scope/1`); else nil,
+  # and the page offers none. The context asks again when one is made.
+  defp password_scope(scope) do
+    with true <-
+           scope.organisation.id == Apiary.Edition.instance_organisation_id() and
+             not Apiary.Mail.configured?(),
+         {:ok, instance} <- Access.instance_scope(scope) do
+      instance
+    else
+      _none -> nil
+    end
+  end
+
+  # The memberships the page offers a password link for: `account.password_link`, asked of
+  # each account in the instance scope, which refuses the reader's account. Computed in
+  # `load/1`, not in the template, so a render does not run this check per row.
+  defp password_link_rows(nil, _members), do: MapSet.new()
+
+  defp password_link_rows(instance, members) do
+    for member <- members,
+        Access.can?(instance, :"account.password_link", member.user),
+        into: MapSet.new(),
+        do: member.id
   end
 
   # Whether the reader invites here: an invitation's person joins as a member, a level the

@@ -376,7 +376,12 @@ defmodule ApiaryWeb.Layouts do
   instance_sections/1 is the Instance level's sections the scope's person may open, as
   `ApiaryWeb.Nav.Entry` values with `place: :instance`: the core's General, first, the
   edition's (`c:ApiaryWeb.Edition.instance_sections/1`) after it, and the core's Mail and
-  Configuration last; the core's for an instance admin (`Apiary.Access.instance_admin?/1`). It
+  Configuration last; the core's each for an instance admin who may take its page's
+  action, asked in their instance scope (`Apiary.Access.instance_scope/1`): General
+  `instance.rename` or `instance.support_save`, Workspace types `workspace_type.edit`,
+  Adapters, Pool and gateway, and Machine types `instance.read_factory`, Diagnostics keys
+  `instance.read_observability`, Mail `instance.mail_save`, Configuration
+  `instance.configure`. It
   reads the database, so it is read once with the navigation's counts
   (`ApiaryWeb.UserAuth.nav_counts/1`, as `:instance`), not on every render: the Qory
   Apiary menu's Instance settings leads to the first, and with two or more the Instance's
@@ -384,10 +389,14 @@ defmodule ApiaryWeb.Layouts do
   """
   @spec instance_sections(Apiary.Accounts.Scope.t() | nil) :: [Entry.t()]
   def instance_sections(%{user: %{}} = scope) do
-    admin? = Access.instance_admin?(scope)
+    may? =
+      case Access.instance_scope(scope) do
+        {:ok, instance} -> &Access.can?(instance, &1, instance.organisation)
+        :error -> fn _action -> false end
+      end
 
     general =
-      admin? &&
+      (may?.(:"instance.rename") or may?.(:"instance.support_save")) &&
         %Entry{
           section: :instance,
           key: :general,
@@ -398,7 +407,7 @@ defmodule ApiaryWeb.Layouts do
         }
 
     mail =
-      admin? &&
+      may?.(:"instance.mail_save") &&
         %Entry{
           section: :instance,
           key: :mail,
@@ -410,9 +419,10 @@ defmodule ApiaryWeb.Layouts do
 
     # The instance's adapters, with the `factory` feature, which the instance has or not:
     # an Instance page has no organisation whose people it could be hidden from (`use
-    # ApiaryWeb.Features, instance: :factory`). After the edition's, before Nodes and Mail.
+    # ApiaryWeb.Features, instance: :factory`), and an instance action asks the instance.
+    # After the edition's, before Nodes and Mail.
     adapters =
-      admin? && Apiary.Features.on?(:factory) &&
+      may?.(:"instance.read_factory") &&
         %Entry{
           section: :instance,
           key: :adapters,
@@ -424,7 +434,7 @@ defmodule ApiaryWeb.Layouts do
 
     # The instance's node pool and gateway, with the `factory` feature, as the adapters.
     nodes =
-      admin? && Apiary.Features.on?(:factory) &&
+      may?.(:"instance.read_factory") &&
         %Entry{
           section: :instance,
           key: :nodes,
@@ -437,7 +447,7 @@ defmodule ApiaryWeb.Layouts do
     # The machine types runs start on, with the `factory` feature, as the pool and gateway.
     # After them, before Diagnostics keys.
     machine_types =
-      admin? && Apiary.Features.on?(:factory) &&
+      may?.(:"instance.read_factory") &&
         %Entry{
           section: :instance,
           key: :machine_types,
@@ -450,7 +460,7 @@ defmodule ApiaryWeb.Layouts do
     # The keys that read any run's diagnostics, with the `observability` feature, which the
     # instance has or not, as the adapters. After Nodes, before Mail.
     diagnostics_keys =
-      admin? && Apiary.Features.on?(:observability) &&
+      may?.(:"instance.read_observability") &&
         %Entry{
           section: :instance,
           key: :diagnostics_keys,
@@ -464,7 +474,7 @@ defmodule ApiaryWeb.Layouts do
     # feature, which the instance has or not, as the adapters. After the edition's, before
     # Adapters.
     workspace_types =
-      admin? && Apiary.Features.on?(:workflow_model) &&
+      may?.(:"workspace_type.edit") &&
         %Entry{
           section: :instance,
           key: :workspace_types,
@@ -475,7 +485,7 @@ defmodule ApiaryWeb.Layouts do
         }
 
     configuration =
-      admin? &&
+      may?.(:"instance.configure") &&
         %Entry{
           section: :instance,
           key: :configuration,

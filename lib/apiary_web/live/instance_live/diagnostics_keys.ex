@@ -3,7 +3,8 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
   Instance settings › Diagnostics keys, `/instance/diagnostics-keys`: the keys that read
   any run's diagnostics (`Apiary.AccessKeys.create_diagnostics_code/2`), for the
   instance's admins on an instance with the feature `observability`
-  (`Apiary.AccessKeys.authorize_diagnostics/2`); anyone else is answered as a path that
+  (`instance.read_observability`, asked in the instance scope, `ApiaryWeb.Access`'s
+  `:instance`); anyone else is answered as a path that
   does not exist. A page of the Instance level: its gate asks the instance whether the
   feature is on (`use ApiaryWeb.Features, instance: :observability`).
 
@@ -21,7 +22,9 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :observability
 
-  alias Apiary.AccessKeys
+  on_mount {ApiaryWeb.Access, :instance}
+
+  alias Apiary.{Access, AccessKeys}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.Enrolment
   alias ApiaryWeb.{NodeComponents, SettingsComponents}
@@ -31,17 +34,15 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
 
   @impl true
   def mount(_params, _session, socket) do
-    scope = socket.assigns.current_scope
+    instance = socket.assigns.scope
 
-    case AccessKeys.authorize_diagnostics(scope) do
-      :ok ->
-        {:ok,
-         socket
-         |> assign(issued: nil, carry: false, key: nil, subscribed: nil)
-         |> load()}
-
-      {:error, _not_theirs} ->
-        raise ApiaryWeb.NotFound
+    if Access.can?(instance, :"instance.read_observability", instance.organisation) do
+      {:ok,
+       socket
+       |> assign(issued: nil, carry: false, key: nil, subscribed: nil)
+       |> load()}
+    else
+      raise ApiaryWeb.NotFound
     end
   end
 
@@ -152,7 +153,9 @@ defmodule ApiaryWeb.InstanceLive.DiagnosticsKeys do
       {:ok, key} ->
         {:noreply, to_index(socket, :info, gettext("%{label} is revoked.", label: key.label))}
 
-      {:error, :forbidden} ->
+      # No longer an instance admin, or the key is gone: the mount answers with the path as
+      # it is now, not found or the current list.
+      {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, push_navigate(socket, to: @index)}
 
       {:error, _not_saved} ->

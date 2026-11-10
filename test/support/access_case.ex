@@ -33,9 +33,9 @@ defmodule Apiary.AccessCase do
 
   - `actors/0`, its actors;
   - `rows/0`, `[{action, keyword}]`: `yes:`, the actors that may, and `on:`, what the
-    action is asked of when it is not what `Apiary.Access.Action` says (`asked_of`), or
+    action is asked of when it is not what `Apiary.Access.Action` says (`asked_of`),
     `:adapter`, the adapter beside the place, a node of kind `:adapter` of the instance
-    (the place's `adapter`). A
+    (the place's `adapter`), or `:run`, a run of the place's workspace. A
     row of an action another module has too adds its `yes:` to the other's: an edition's
     row of a core action names the edition's actors that may;
   - `setup/1`, given what the modules before it made (`%{places: %{}, scopes: %{}}`),
@@ -175,21 +175,26 @@ defmodule Apiary.AccessCase do
   end
 
   # The scope that asks and what it asks about. `feature_off` and `hidden` ask as whoever
-  # the action is for, an owner, an adapter's key, an access key, a pool's key or the
-  # instance; everyone else as themselves, in the place their module says, of what the
-  # action is asked of there: the organisation, the workspace, a new organisation, or the
-  # member's account, another than the asker's.
+  # the action is for, an instance admin for an instance action, else an owner, an
+  # adapter's key, a diagnostics key, an access key, a pool's key or the instance, in that
+  # one's place;
+  # everyone else as themselves, in the place their module says, of what the action is
+  # asked of there: the organisation, the workspace, a new organisation, the member's
+  # account, another than the asker's, the mail settings, which the instance admin saved, or
+  # a run of the place's workspace, which is never stored.
   defp asked(ctx, modules, action, actor) when actor in [:feature_off, :hidden] do
     actor =
       cond do
+        Access.action(action).instance -> :instance_admin
         :adapter_key in Access.action(action).roles -> :adapter_key
+        :diagnostics_key in Access.action(action).roles -> :diagnostics_key
         :access_key in Access.action(action).roles -> :access_key
         :pool_key in Access.action(action).roles -> :pool_key
         :instance in Access.action(action).roles -> :instance
         true -> :owner
       end
 
-    {ctx.scopes[actor], subject(ctx, modules, action, ctx.places.home)}
+    asked(ctx, modules, action, actor)
   end
 
   defp asked(ctx, modules, action, actor) do
@@ -206,11 +211,26 @@ defmodule Apiary.AccessCase do
       |> Keyword.get(:on, Access.action(action).asked_of)
 
     case on do
-      :organisation -> place.organisation
-      :workspace -> place.workspace
-      :new_organisation -> %Organisation{}
-      :account -> ctx.scopes.member.user
-      :adapter -> place.adapter
+      :organisation ->
+        place.organisation
+
+      :workspace ->
+        place.workspace
+
+      :new_organisation ->
+        %Organisation{}
+
+      :account ->
+        ctx.scopes.member.user
+
+      :mail_settings ->
+        %Apiary.Mail.Settings{mail_saved_by_id: ctx.scopes.instance_admin.user.id}
+
+      :adapter ->
+        place.adapter
+
+      :run ->
+        %Apiary.Runs.Run{organisation_id: place.organisation.id, workspace_id: place.workspace.id}
     end
   end
 

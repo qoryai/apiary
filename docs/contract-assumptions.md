@@ -104,7 +104,7 @@ public id of the key's node, node pool or gateway (`ng_`). For a node or a node 
 gateway's document, whether the gateway is a workspace's or an organisation's, lists no
 workspaces: which workspaces a gateway serves follows from the nodes that use it, and
 Qory Apiary decides at each registration and attach whether it may serve the run's
-workspace (`Apiary.Gateways.may_serve?/2`). Discovery has no
+workspace (`Apiary.Access.may_serve?/2`). Discovery has no
 member naming the kind: the prefix of `node_id` says it. The `events` URL is the events endpoint below,
 and the `run` URL the run endpoint after it, with no trailing slash, no query and no
 fragment: a reload appends `/` and the run's id. `apiary_public_key` lists the
@@ -158,12 +158,12 @@ first refusal that applies is the answer:
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is absent or not `run`, or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
-| `409` | the subject is the `run_id` of a run of a workspace's queue, on the whole instance, in any state, and the key reaches no run under it: before the claim no key does; after it, a key reaches the run when it is a key of the run's workspace, or a gateway's that may serve the run's workspace (`Apiary.Gateways.may_serve?/2`), and keeps the answer it had. Such a run is opened only by its claim (A run of the queue, under The run endpoint); refused whole, and nothing of it, the delivery included, is stored | `{"error":"run_id_used"}` |
+| `409` | the subject is the `run_id` of a run of a workspace's queue, on the whole instance, in any state, and the key reaches no run under it: before the claim no key does; after it, a key reaches the run when it is a key of the run's workspace, or a gateway's that may serve the run's workspace (`Apiary.Access.may_serve?/2`), and keeps the answer it had. Such a run is opened only by its claim (A run of the queue, under The run endpoint); refused whole, and nothing of it, the delivery included, is stored | `{"error":"run_id_used"}` |
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
 | `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and the run's workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and `Apiary.Access` does not let the run's workspace post (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
-| `410` | the run goes through a gateway and the gateway that attached it may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`, `Apiary.Gateways.may_serve?/2`), decided as at the attach; before deduplication, so a delivery already recorded is refused too; no digest header, nothing of the batch, the delivery included, is stored, and the run goes lost by liveness | `{"error":"workspace_not_served"}` |
+| `410` | the run goes through a gateway and the gateway that attached it may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`, `Apiary.Access.may_serve?/2`), decided as at the attach; before deduplication, so a delivery already recorded is refused too; no digest header, nothing of the batch, the delivery included, is stored, and the run goes lost by liveness | `{"error":"workspace_not_served"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's `end` (below) |
@@ -335,7 +335,7 @@ the body, the `time`), the first of these that applies is the answer:
 | `409` | the shape through a gateway, from a node whose choice is direct | `{"error":"node_is_direct"}` |
 | `409` | the direct shape, from a node whose choice is not direct | `{"error":"node_uses_gateway"}` |
 | `409` | the node's choice is its workspace's default, and no default resolves | `{"error":"no_default_gateway"}` |
-| `409` | the node names a gateway that may no longer serve its workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"gateway_not_serving"}` |
+| `409` | the node names a gateway that may no longer serve its workspace (`Apiary.Access.may_serve?/2`) | `{"error":"gateway_not_serving"}` |
 | `409` | the gateway the choice resolves to has no active access key | `{"error":"gateway_without_key"}` |
 | `409` | a new instance beyond its node's instance limit (`Apiary.Nodes.admit/4`); the refusal is counted on the node | `{"error":"instance_limit"}` |
 | `409` | any other run of this id: registered with other bytes, or by another node even with the same bytes, or created by events that came without a registration | `{"error":"run_id_used"}` |
@@ -390,7 +390,7 @@ from a key that does not reach a run under that id, is `409` `run_id_used`, befo
 after the claim, decided inside the batch's transaction after the `404` of a key that
 may not post and before anything of the batch is stored. A key reaches the run when it is
 a key of the run's workspace, or a gateway's that may serve the run's workspace
-(`Apiary.Gateways.may_serve?/2`), at the workspace's level or the organisation's. Before
+(`Apiary.Access.may_serve?/2`), at the workspace's level or the organisation's. Before
 the claim (the run waiting, or ended before a claim) there is no run, so no key reaches
 one, and every key is refused. After it the run is registered, and a key that
 reaches it keeps the answer it had: the gateway that attached it is taken, another key of
@@ -799,7 +799,7 @@ build is cleared or queued, and nothing is queued again.
 **A run held for its build.** In a workspace whose domain has prebuilds, a waiting run
 of a work item whose target a live collection names with an `environment_ref` waits for
 the pool's build of that `environment_ref`: a pool's claim does not take it while the
-pool has no such image (`Apiary.Environments.held/2`), and gives it that image once the
+pool has no such image (`Apiary.Environments.held/1`), and gives it that image once the
 build is recorded. A pool's claim queues a prebuild of the collection's
 `environment_ref` whenever it holds such a run and no prebuild of that ref for the pool
 waits, is claimed or is handed over, so a key change while runs wait is built by the
@@ -901,12 +901,12 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `400` | the run key does not verify under the instance's signing key, its `run_id` is not the path's, or it is not, byte for byte, the run key the run was given | `{"error":"run_key_invalid"}` |
 | `401` | the run's workspace or organisation is out of use (`Apiary.AccessKeys.place_in_use?/2`); unsigned | `{"error":"unauthorized"}` |
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
-| `409` | a repeat, as below, while the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
+| `409` | a repeat, as below, while the gateway may no longer serve the run's workspace (`Apiary.Access.may_serve?/2`) | `{"error":"workspace_not_served"}` |
 | `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
 | `410` | the run has ended: an exit, an outcome, a release after its handover for a run of a workspace's queue before such a release was refused (A run of the queue, under The run endpoint), lost after its attach, or its events pruned; or its record is gone; or it is a prebuild whose run of the queue ended `prebuilt`, as a report of the image it built ended one before that report left the provisioner contract | empty |
 | `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
-| `409` | the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
+| `409` | the gateway may no longer serve the run's workspace (`Apiary.Access.may_serve?/2`) | `{"error":"workspace_not_served"}` |
 | `409` | another gateway node attached the run, or another instance of this one, while the run is live | `{"error":"run_attached"}` |
 | `503` | the run configuration cannot be read, or the attach cannot be stored | `{"error":"unavailable"}` |
 | `200` | attached | the run configuration, with `labels` and `about` |

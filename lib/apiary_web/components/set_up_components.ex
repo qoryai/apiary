@@ -147,9 +147,14 @@ defmodule ApiaryWeb.SetUpComponents do
     if first or admin? do
       adapters =
         cond do
-          first -> Adapters.list_for_set_up()
-          Adapters.authorize_instance(scope) == :ok -> Adapters.list_adapters(scope)
-          true -> []
+          first ->
+            Adapters.list_for_set_up()
+
+          ApiaryWeb.Access.instance_can?(scope, :"instance.read_factory") ->
+            Adapters.list_adapters(scope)
+
+          true ->
+            []
         end
 
       adapter_steps = for entry <- Adapters.set_up_list(adapters), do: adapter_step(entry, admin?)

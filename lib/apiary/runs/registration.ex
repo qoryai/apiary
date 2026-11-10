@@ -780,11 +780,15 @@ defmodule Apiary.Runs.Registration do
 
   # The gateway a run through a gateway is stored with, read `FOR SHARE` in the store's
   # transaction, as a deletion holds it `FOR UPDATE`: it still serves the workspace, or the
-  # run is refused as a choice that leads to it would be now.
+  # run is refused as a choice that leads to it would be now. A key with no workspace, an
+  # instance pool's, serves no workspace here: `Apiary.Access.may_serve?/2` takes a nil
+  # place only for a claim of that pool.
+  defp serving(%{through: %{}}, %AccessKey{workspace: nil}), do: {:error, :gateway_not_serving}
+
   defp serving(%{through: %{gateway_id: gateway_id}}, %AccessKey{workspace: workspace}) do
     gateway = Repo.one(from n in Nodes.Node, where: n.id == ^gateway_id, lock: "FOR SHARE")
 
-    if gateway && Gateways.may_serve?(gateway, workspace),
+    if gateway && Access.may_serve?(gateway, workspace),
       do: :ok,
       else: {:error, :gateway_not_serving}
   end

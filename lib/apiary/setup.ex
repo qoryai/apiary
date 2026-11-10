@@ -217,13 +217,21 @@ defmodule Apiary.Setup do
 
   @doc """
   review_connections/1 marks the instance's connections reviewed, for the instance admin
-  of `scope` (`Apiary.Access.instance_admin?/1`): it sets `connections_reviewed_at` of the
-  instance's row, made where there is none, once; a later call keeps the first time.
-  `:ok`, or `{:error, :forbidden}` for anyone but an instance admin.
+  of `scope` (`instance.review_connections`, asked in the instance's organisation,
+  `Apiary.Access.in_instance/1`): it sets `connections_reviewed_at` of the instance's row,
+  made where there is none, once; a later call keeps the first time. `:ok`;
+  `{:error, :not_found}` for anyone outside the instance's organisation;
+  `{:error, :forbidden}` for anyone else there but an instance admin.
   """
-  @spec review_connections(Apiary.Accounts.Scope.t()) :: :ok | {:error, :forbidden}
+  @spec review_connections(Apiary.Accounts.Scope.t()) ::
+          :ok | {:error, :not_found | :forbidden}
   def review_connections(scope) do
-    if Apiary.Access.instance_admin?(scope) do
+    with :ok <-
+           Apiary.Access.authorize(
+             Apiary.Access.in_instance(scope),
+             :"instance.review_connections",
+             Apiary.Access.instance_organisation()
+           ) do
       now = DateTime.utc_now()
       Repo.query!(@ensure_row, [now])
 
@@ -234,8 +242,6 @@ defmodule Apiary.Setup do
       )
 
       :ok
-    else
-      {:error, :forbidden}
     end
   end
 

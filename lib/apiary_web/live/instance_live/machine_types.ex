@@ -24,6 +24,8 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :factory
 
+  on_mount {ApiaryWeb.Access, :instance}
+
   alias Apiary.{Access, MachineTypes}
   alias Apiary.MachineTypes.MachineType
   alias ApiaryWeb.{MachineTypeWords, SettingsComponents}
@@ -35,7 +37,9 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
 
   @impl true
   def mount(_params, _session, socket) do
-    if Access.instance_admin?(socket.assigns.current_scope) do
+    %{scope: instance} = socket.assigns
+
+    if Access.can?(instance, :"instance.read_factory", instance.organisation) do
       {:ok,
        socket
        |> assign(

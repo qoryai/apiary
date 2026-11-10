@@ -441,11 +441,9 @@ defmodule Apiary.InstanceConfigTest do
   describe "save/3, who may" do
     test "an instance admin who signed in recently; one who did not signs in again first",
          %{scope: scope} do
-      assert InstanceConfig.authorize_save(scope) == :ok
+      assert ApiaryWeb.Access.instance_can?(scope, :"instance.configure")
 
       for stale <- [signed_in(scope, 21), put_in(scope.user.authenticated_at, nil)] do
-        assert InstanceConfig.authorize_save(stale) == {:error, :sudo}
-
         assert InstanceConfig.save(stale, :invitations, %{"invitations_per_day" => "50"}) ==
                  {:error, :sudo}
       end
@@ -458,11 +456,16 @@ defmodule Apiary.InstanceConfigTest do
       member = member_fixture(scope)
       %{scope: other} = sign_up_fixture()
 
-      for refused <- [signed_in(member.scope), signed_in(other), nil] do
-        assert InstanceConfig.authorize_save(refused) == {:error, :forbidden}
+      # A member of the instance's organisation lacks the role; anyone else is not there.
+      for {refused, reason} <- [
+            {signed_in(member.scope), :forbidden},
+            {signed_in(other), :not_found},
+            {nil, :not_found}
+          ] do
+        refute ApiaryWeb.Access.instance_can?(refused, :"instance.configure")
 
         assert InstanceConfig.save(refused, :invitations, %{"invitations_per_day" => "50"}) ==
-                 {:error, :forbidden}
+                 {:error, reason}
       end
 
       assert InstanceConfig.load().invitations_per_day == nil

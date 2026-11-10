@@ -10,6 +10,7 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
   # Not async: hiding the instance's organisation acts on the row every test shares.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures, only: [member_fixture: 1]
 
@@ -44,6 +45,15 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
     flash = assert_redirect(view, "/instance/general")
     {:ok, view, html} = live(conn, ~p"/instance/general")
     {flash["info"], view, html}
+  end
+
+  # Deletes the person's membership of the scope's organisation, with no broadcast.
+  defp remove_membership(scope) do
+    {1, _} =
+      Apiary.Repo.delete_all(
+        from m in Apiary.Organisations.Membership,
+          where: m.user_id == ^scope.user.id and m.organisation_id == ^scope.organisation.id
+      )
   end
 
   describe "for an instance admin" do
@@ -312,7 +322,10 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       assert text(view, "#instance-support-address-source") == "Set by SUPPORT_ADDRESS"
     end
 
-    test "one who is no longer an instance admin, on the page, is answered not found",
+    # The page computes its instance scope again on the membership's change
+    # (`ApiaryWeb.Access`'s `:instance`), and leaves; the context refuses a save all the
+    # same.
+    test "one who is no longer an instance admin, on the page, leaves it, and saves nothing",
          %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/instance/general")
       # Another admin first: the instance keeps one.
@@ -320,8 +333,33 @@ defmodule ApiaryWeb.InstanceLive.GeneralTest do
       {:ok, _} = Apiary.Organisations.revoke_instance_admin(scope.user)
       refute Apiary.Access.instance_admin?(Apiary.Accounts.Scope.for_user(scope.user))
 
+      assert_redirect(view, "/")
+      assert {:error, :forbidden} = ProductName.rename(scope, %{"product_name" => "Acme Agents"})
+      assert ProductName.get() == nil
+    end
+
+    # The membership's row is deleted with no broadcast: the event arrives before
+    # `:membership_changed`, and the page still has the form.
+    test "one whose membership is gone, on the page, moves to its path, and saves nothing",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/general")
+      remove_membership(scope)
+
       assert {:error, {:live_redirect, %{to: "/instance/general"}}} = save(view, "Acme Agents")
       assert ProductName.get() == nil
+    end
+
+    test "one whose membership is gone, on the page, moves to its path, and saves no address",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/general")
+      remove_membership(scope)
+
+      assert {:error, {:live_redirect, %{to: "/instance/general"}}} =
+               view
+               |> form("#instance-support-form", support: %{support_address: "help@example.com"})
+               |> render_submit()
+
+      assert Apiary.SupportAddress.get() == nil
     end
   end
 

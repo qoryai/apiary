@@ -383,23 +383,29 @@ defmodule Apiary.Mail do
   #{@test_send_seconds} seconds of the last test send, which saves nothing, with `at` the
   time a test send is allowed again; `{:error, :env}` while the environment sets mail,
   which wins whole; `{:error, :sudo}` for an instance admin who did not sign in recently
-  (`Apiary.Accounts.sudo_mode?/2`), who signs in again first; or `{:error, :forbidden}`
-  for anyone but an instance admin.
+  (`Apiary.Accounts.sudo_mode?/2`), who signs in again first; `{:error, :not_found}` for
+  anyone outside the instance's organisation; or `{:error, :forbidden}` for anyone else
+  there but an instance admin (`instance.mail_save`, asked in the instance's organisation,
+  `Apiary.Access.in_instance/1`).
   """
   @spec save_settings(Scope.t(), map, (String.t() -> String.t())) ::
           {:ok, Settings.t(), test_send}
-          | {:error, Ecto.Changeset.t() | {:throttled, DateTime.t()} | :env | :sudo | :forbidden}
+          | {:error,
+             Ecto.Changeset.t()
+             | {:throttled, DateTime.t()}
+             | :env
+             | :sudo
+             | :not_found
+             | :forbidden}
   def save_settings(%Scope{user: %User{} = user} = scope, attrs, url_fun)
       when is_map(attrs) and is_function(url_fun, 1) do
-    cond do
-      not Access.instance_admin?(scope) -> {:error, :forbidden}
-      not Accounts.sudo_mode?(user) -> {:error, :sudo}
-      source() == :env -> {:error, :env}
-      true -> save(scope, attrs, url_fun)
-    end
+    with :ok <- ask_instance(scope, :"instance.mail_save"),
+         :ok <- signed_in_recently(user),
+         :ok <- not_from_env(),
+         do: save(scope, attrs, url_fun)
   end
 
-  def save_settings(_scope, _attrs, _url_fun), do: {:error, :forbidden}
+  def save_settings(_scope, _attrs, _url_fun), do: {:error, :not_found}
 
   defp save(%Scope{user: user} = scope, attrs, url_fun) do
     Repo.transact(fn ->
@@ -466,10 +472,13 @@ defmodule Apiary.Mail do
   Returns `{:ok, test_send}`, sent or not (`t:test_send/0`); `{:error, {:throttled, at}}`
   within #{@test_send_seconds} seconds of the last test send, with `at` the time a test
   send is allowed again; `{:error, :not_pending}` where the state is not `:pending`;
-  `{:error, :not_saver}` for an instance admin who did not save the settings;
   `{:error, :env}` while the environment sets mail; `{:error, :sudo}` for an instance admin
-  who did not sign in recently; or `{:error, :forbidden}` for anyone but an instance
-  admin. Each error sends nothing and changes nothing.
+  who did not sign in recently; `{:error, :not_found}` for anyone outside the instance's
+  organisation; `{:error, :forbidden}` for anyone else there but an instance admin; or
+  `{:error, :not_saver}` for an instance admin who did not save the settings
+  (`instance.mail_resend`, asked of the settings with the row locked, in the instance's
+  organisation, `Apiary.Access.in_instance/1`). Each error sends nothing and changes
+  nothing.
   """
   @spec resend_test_link(Scope.t() | nil, (String.t() -> String.t())) ::
           {:ok, test_send}
@@ -479,25 +488,22 @@ defmodule Apiary.Mail do
              | :not_saver
              | :env
              | :sudo
+             | :not_found
              | :forbidden}
-  def resend_test_link(%Scope{user: %User{} = user} = scope, url_fun)
-      when is_function(url_fun, 1) do
-    cond do
-      not Access.instance_admin?(scope) -> {:error, :forbidden}
-      not Accounts.sudo_mode?(user) -> {:error, :sudo}
-      source() == :env -> {:error, :env}
-      true -> resend(scope, url_fun)
-    end
-  end
+  def resend_test_link(%Scope{user: %User{}} = scope, url_fun) when is_function(url_fun, 1),
+    do: resend(scope, url_fun)
 
-  def resend_test_link(_scope, _url_fun), do: {:error, :forbidden}
+  def resend_test_link(_scope, _url_fun), do: {:error, :not_found}
 
   defp resend(%Scope{user: user} = scope, url_fun) do
     Repo.transact(fn ->
       settings = Repo.one(from s in Settings, where: s.id == true, lock: "FOR UPDATE")
       now = DateTime.utc_now()
 
-      with :ok <- resendable(settings, user),
+      with :ok <- ask_instance(scope, :"instance.mail_resend", settings || %Settings{}),
+           :ok <- signed_in_recently(user),
+           :ok <- not_from_env(),
+           :ok <- pending(settings),
            :ok <- throttle(settings, now),
            {:ok, organisation} <- instance_organisation() do
         settings = settings |> start_test_send(now) |> Repo.update!()
@@ -529,17 +535,16 @@ defmodule Apiary.Mail do
     end
   end
 
-  # Whether `user` may send the test link of `settings` again: they saved them, and the
-  # settings wait for the test link.
-  defp resendable(%Settings{mail_saved_by_id: saved_by} = settings, %User{id: user_id}) do
-    cond do
-      state(settings) != :pending -> {:error, :not_pending}
-      saved_by != user_id -> {:error, :not_saver}
-      true -> :ok
-    end
-  end
+  # Whether `settings` wait for the test link, which may then be sent again.
+  defp pending(settings),
+    do: if(state(settings) == :pending, do: :ok, else: {:error, :not_pending})
 
-  defp resendable(nil, _user), do: {:error, :not_pending}
+  # A change of the settings needs a recent sign-in (`Apiary.Accounts.sudo_mode?/2`).
+  defp signed_in_recently(user),
+    do: if(Accounts.sudo_mode?(user), do: :ok, else: {:error, :sudo})
+
+  # The environment's mail wins whole: nothing of the saved settings is sent or turned on.
+  defp not_from_env, do: if(source() == :env, do: {:error, :env}, else: :ok)
 
   @doc "test_send_seconds/0 is the time between two test sends, at least: #{@test_send_seconds} seconds."
   @spec test_send_seconds() :: pos_integer
@@ -837,22 +842,22 @@ defmodule Apiary.Mail do
 
   @doc """
   turn_on/2 follows the test link whose token is `token` for the person of `scope`: where
-  they are an instance admin, saved the settings that are waiting, and the link is the one
+  they are the instance admin who saved the settings that are waiting (`instance.mail_on`,
+  asked of the settings with the row locked, in the instance's organisation,
+  `Apiary.Access.in_instance/1`), and the link is the one
   sent to them, to their current address, within #{@test_link_minutes} minutes, it turns
   mail on, confirms their address where it was not yet, ends the link and every password
   link an instance admin made while no mail was set (`end_password_links/0`), and is an
   `instance.mail_on` entry in the trail of the instance's organisation, by the admin, in
   one transaction, then broadcasts the change to every node's cache. It signs no one in
-  and changes no password. `{:ok, settings}`; `{:error, :sudo}` for an instance admin who
+  and changes no password. `{:ok, settings}`; `{:error, :sudo}` for that admin where they
   did not sign in recently (`Apiary.Accounts.sudo_mode?/2`), which changes nothing, so the
   link still works once they sign in again; or `:error` for any other link or person,
   which changes nothing: the link still works for the admin it was sent to.
   """
   @spec turn_on(Scope.t() | nil, String.t()) :: {:ok, Settings.t()} | {:error, :sudo} | :error
-  def turn_on(%Scope{user: %User{} = user} = scope, token) when is_binary(token) do
+  def turn_on(%Scope{user: %User{}} = scope, token) when is_binary(token) do
     with {:ok, decoded} <- Base.url_decode64(token, padding: false),
-         true <- Access.instance_admin?(scope),
-         true <- Accounts.sudo_mode?(user) || {:error, :sudo},
          {:ok, settings} <- turn_on_now(scope, :crypto.hash(:sha256, decoded)) do
       Cache.changed()
       {:ok, settings}
@@ -864,23 +869,16 @@ defmodule Apiary.Mail do
 
   def turn_on(_scope, _token), do: :error
 
-  defp turn_on_now(%Scope{user: %User{id: user_id}} = scope, hashed) do
+  # Asks `instance.mail_on` of the settings with the row locked, so that it answers for the
+  # settings it turns on: only the admin who saved them takes it.
+  defp turn_on_now(%Scope{user: %User{id: user_id} = person} = scope, hashed) do
     Repo.transact(fn ->
       settings = Repo.one(from s in Settings, where: s.id == true, lock: "FOR UPDATE")
 
-      user_token =
-        Repo.one(
-          from t in UserToken,
-            join: u in assoc(t, :user),
-            where: t.token == ^hashed and t.context == @token_context,
-            where: t.user_id == ^user_id and t.sent_to == u.email and is_nil(u.deleted_at),
-            where: t.inserted_at > ago(^@test_link_minutes, "minute"),
-            preload: [user: u]
-        )
-
-      with {%Settings{smtp_relay: relay, mail_verified_at: nil, mail_saved_by_id: ^user_id},
-            %UserToken{user: user}}
-           when is_binary(relay) <- {settings, user_token},
+      with :ok <- ask_instance(scope, :"instance.mail_on", settings || %Settings{}),
+           :ok <- signed_in_recently(person),
+           %UserToken{user: user} = user_token <- test_link_token(user_id, hashed),
+           %Settings{smtp_relay: relay, mail_verified_at: nil} when is_binary(relay) <- settings,
            {:ok, organisation} <- instance_organisation() do
         Repo.delete!(user_token)
         if is_nil(user.confirmed_at), do: user |> User.confirm_changeset() |> Repo.update!()
@@ -930,4 +928,23 @@ defmodule Apiary.Mail do
       _unset_or_gone -> nil
     end
   end
+
+  # The test link whose hash is `hashed`, sent to the person `user_id` at their current
+  # address within the minutes a test link works, with the person; nil for any other.
+  defp test_link_token(user_id, hashed) do
+    Repo.one(
+      from t in UserToken,
+        join: u in assoc(t, :user),
+        where: t.token == ^hashed and t.context == @token_context,
+        where: t.user_id == ^user_id and t.sent_to == u.email and is_nil(u.deleted_at),
+        where: t.inserted_at > ago(^@test_link_minutes, "minute"),
+        preload: [user: u]
+    )
+  end
+
+  # `action`, an instance action, asked of `subject`, the instance organisation unless
+  # given, by the person of `scope` in the instance's organisation, as the database has it
+  # now (`Apiary.Access.in_instance/1`).
+  defp ask_instance(scope, action, subject \\ Access.instance_organisation()),
+    do: Access.authorize(Access.in_instance(scope), action, subject)
 end

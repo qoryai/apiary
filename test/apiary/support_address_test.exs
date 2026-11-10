@@ -177,8 +177,8 @@ defmodule Apiary.SupportAddressTest do
       %{scope: other} = sign_up_fixture()
       refute Apiary.Access.instance_admin?(other)
 
-      assert save(other, "support@example.com") == {:error, :forbidden}
-      assert save(nil, "support@example.com") == {:error, :forbidden}
+      assert save(other, "support@example.com") == {:error, :not_found}
+      assert save(nil, "support@example.com") == {:error, :not_found}
       assert SupportAddress.get() == nil
       assert entries() == []
     end

@@ -30,8 +30,9 @@ defmodule Apiary.InstanceConfig do
   without it, as in the tests, `stored/0` reads the row each time. A node whose migration
   of these columns has not run yet, with `MIGRATE_ON_BOOT=false`, reads them as none saved.
 
-  **Saving** (`save/3`) is an instance admin's, after a recent sign-in
-  (`authorize_save/1`), one part of the page at a time (`fields/1`): `:retention`,
+  **Saving** (`save/3`) is an instance admin's (`instance.configure`, asked in the
+  instance's organisation, `Apiary.Access.in_instance/1`), after a recent sign-in
+  (`Apiary.Accounts.sudo_mode?/2`), one part of the page at a time (`fields/1`): `:retention`,
   `:deletion` or `:invitations`. It saves only the settings of the part that the
   environment does not set. A change of a value is an `instance.configure` entry in the
   trail of the instance's organisation, by the admin, with the values before and after.
@@ -42,7 +43,7 @@ defmodule Apiary.InstanceConfig do
   import Ecto.Query
 
   alias Apiary.{Access, Accounts, Audit, Deletion, Instance, Repo}
-  alias Apiary.Accounts.{Scope, User}
+  alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.MachineLogs
   alias Apiary.InstanceConfig.{Cache, Row}
   alias Apiary.Organisations.Organisation
@@ -325,25 +326,10 @@ defmodule Apiary.InstanceConfig do
   ## Saving
 
   @doc """
-  authorize_save/1 is whether the person of `scope` may save: `:ok` for an instance admin
-  (`Apiary.Access.instance_admin?/1`) who signed in recently
-  (`Apiary.Accounts.sudo_mode?/2`); `{:error, :sudo}` for one who did not, who signs in
-  again first; `{:error, :forbidden}` for anyone else.
-  """
-  @spec authorize_save(Scope.t() | nil) :: :ok | {:error, :forbidden | :sudo}
-  def authorize_save(%Scope{user: %User{} = user} = scope) do
-    cond do
-      not Access.instance_admin?(scope) -> {:error, :forbidden}
-      not Accounts.sudo_mode?(user) -> {:error, :sudo}
-      true -> :ok
-    end
-  end
-
-  def authorize_save(_scope), do: {:error, :forbidden}
-
-  @doc """
   save/3 saves the settings of `part` (`fields/1`) that `attrs` gives, by their names, for
-  the person of `scope`, once `authorize_save/1` lets them. A setting the environment sets
+  the person of `scope`, once they may (`instance.configure`, asked in the instance's
+  organisation, `Apiary.Access.in_instance/1`) and signed in recently
+  (`Apiary.Accounts.sudo_mode?/2`). A setting the environment sets
   is left as it is, whatever `attrs` says. Each value is trimmed; an empty one is none
   saved, so the default applies. The bounds:
 
@@ -365,12 +351,33 @@ defmodule Apiary.InstanceConfig do
   committed, every node's cache reads the settings again.
 
   Returns `{:ok, values}`, the value of each key after the save (`values/1`);
-  `{:error, changeset}`; `{:error, :sudo}`; or `{:error, :forbidden}`.
+  `{:error, changeset}`; `{:error, :sudo}` for an instance admin who did not sign in
+  recently, who signs in again first; `{:error, :not_found}` for anyone outside the
+  instance's organisation; or `{:error, :forbidden}` for anyone else there but an
+  instance admin.
   """
   @spec save(Scope.t() | nil, part, map) ::
-          {:ok, %{key => pos_integer}} | {:error, Ecto.Changeset.t() | :sudo | :forbidden}
+          {:ok, %{key => pos_integer}}
+          | {:error, Ecto.Changeset.t() | :sudo | :not_found | :forbidden}
   def save(scope, part, attrs) when is_map_key(@parts, part) and is_map(attrs) do
     with :ok <- authorize_save(scope), do: write(scope, part, attrs)
+  end
+
+  @doc """
+  authorize_save/1 is whether the person of `scope` may change the instance's settings:
+  `:ok` where they may (`instance.configure`, asked in the instance's organisation,
+  `Apiary.Access.in_instance/1`) and signed in recently (`Apiary.Accounts.sudo_mode?/2`);
+  else the refusals of `save/3`. `Apiary.MachineTypes` asks it for each change of a type.
+  """
+  @spec authorize_save(Scope.t() | nil) :: :ok | {:error, :sudo | :not_found | :forbidden}
+  def authorize_save(scope) do
+    with :ok <-
+           Access.authorize(
+             Access.in_instance(scope),
+             :"instance.configure",
+             Access.instance_organisation()
+           ),
+         do: if(Accounts.sudo_mode?(scope.user), do: :ok, else: {:error, :sudo})
   end
 
   defp write(scope, part, attrs) do

@@ -26,7 +26,8 @@ defmodule ApiaryWeb.DocsController do
   and search never list them, and the tree for instance admins with every guide, under
   `admin/` of the same root (`admin_dir/1`). The endpoint serves only the public tree, so
   an admin guide's address under `/docs` is not found there. `admin/2` serves the admins'
-  tree at `/docs/admin`, to a signed-in instance admin (`Apiary.Access.instance_admin?/1`)
+  tree at `/docs/admin`, to a signed-in instance admin, who may read the instance
+  (`instance.read`, asked in their instance scope, `Apiary.Access.instance_scope/1`)
   only, and answers anyone else 404, signed in or not; `/docs` itself leads an instance
   admin there. Whoever runs the server without signing in reads the guides in the
   repository's `guides` directory.
@@ -83,7 +84,8 @@ defmodule ApiaryWeb.DocsController do
     end
   end
 
-  defp admin?(conn), do: Apiary.Access.instance_admin?(conn.assigns[:current_scope])
+  defp admin?(conn),
+    do: ApiaryWeb.Access.instance_can?(conn.assigns[:current_scope], :"instance.read")
 
   defp not_found(conn) do
     conn

@@ -1,10 +1,28 @@
 # Who may do what
 
-Whether someone may do something is answered by `Apiary.Access` and nowhere else. No code
-outside it compares a membership's level. Roles grow, and an edition may add actions,
-roles and ways into an organisation (An edition's part, below); a rule written in one
-place grows there, where a comparison repeated across the contexts and pages would be
-changed in some places and missed in others.
+`Apiary.Access` is the one way to check whether someone may do something. A page calls
+`Apiary.Access.can?/3`. A context function calls `Apiary.Access.authorize/3`, or
+`Apiary.Access.check/3` after `Apiary.Access.reload/2` inside its transaction (The context
+function asks before it acts, and The page asks the same question, below). Roles grow, and
+an edition may add actions, roles and ways into an organisation (An edition's part,
+below). A rule written in one place grows there; a comparison repeated across the contexts
+and pages would be changed in some places and missed in others.
+
+These stay outside `Apiary.Access`:
+
+- **Authentication**, which establishes who the caller is: signatures, run keys, enrolment
+  codes, tokens, nonces, sessions and a recent sign-in.
+- **Data rules**, which apply whoever the caller is: a run pushes only the artifacts of the
+  run's work item (`Apiary.Artifacts`), quotas, and queries that narrow rows to what the
+  caller already reaches.
+- **The last-owner rule** (The last owner, below). `Apiary.Organisations` compares levels
+  to count the owners who may act (`Apiary.Organisations.other_active_owner?/1`).
+- **Wording and lists on a page.** A page may read a level, or
+  `Apiary.Access.instance_admin?/1`, to choose a sentence or to list the owners. This stops
+  no action.
+- **Feature gates** on a route or a part of a page (`ApiaryWeb.Features`). A gate depends on
+  what the instance has, not on the person.
+- **The callbacks of `Apiary.Edition` listed under Callbacks beside `Apiary.Access`**, below.
 
 ## A new action goes into the module
 
@@ -31,6 +49,21 @@ actions:
    `test/apiary/adapters/connections_test.exs` and
    `test/apiary/access_approvers_test.exs`. A change to an action's `roles` shows in the
    diff of `Apiary.Access`, and no test fails for it.
+
+An action only the instance admins take sets `instance: true` (The instance's admins,
+below). An edition's action follows its `roles`, unless `c:Apiary.Edition.check/3` returns
+something other than `:continue` for it (An edition's part, below).
+
+## A new role goes there too
+
+A role of the core goes into the role list in `Apiary.Access` (`@roles`), and
+`Apiary.Access.role/1` returns it for the scopes that act in it. Each action the role may
+take lists it in `roles`. The access test's rows module gets an actor in that role
+(`actors/0`, `setup/1`, `Apiary.AccessCase`).
+
+An edition adds a role with `c:Apiary.Edition.roles/0`, and assigns it to a person with
+`c:Apiary.Edition.role/1`. The boot stops for an edition's role that has the name of a role
+of the core, and for an action whose `roles` list a role nobody defines.
 
 ## Levels, and the workspaces a person reaches
 
@@ -131,7 +164,9 @@ may:
   the answer to the core;
   an answer that must come after the place's asks `Apiary.Access.check_place/3` first.
   Asked with no scope, as `Apiary.Access.refused_on?/2` asks, `forbidden` says the subject
-  refuses the action whoever asks, which a page asks to say why a control is not there;
+  refuses the action whoever asks, which a page asks to say why a control is not there.
+  An instance action reaches this callback after its feature and the instance step (The
+  instance's admins, below);
 - let a person into an organisation without a membership, with a role there, and read
   what it gave again under the write's locks (Reach, above);
 - narrow the levels that reach every workspace, and say which workspaces another level
@@ -174,56 +209,174 @@ may:
   overview's hint on the mode and the Lock confirm's "Only an owner can unlock." keep the
   core's words.
 
+### Callbacks beside `Apiary.Access`
+
+These callbacks of `Apiary.Edition` decide something about access outside `Apiary.Access`:
+
+- `c:Apiary.Edition.organisation_secrets/2` decides whether the scope's person reads,
+  changes or links an organisation's stored secrets (`:read`, `:write`, `:use`), and, with
+  a nil scope, whether such secrets may be sealed (`:seal`), where no person is involved.
+  The core keeps no secret at an organisation and has no action for them: it returns
+  `{:error, :not_found}` for every verb. An edition's implementation may call
+  `Apiary.Access` with actions it adds.
+- `c:Apiary.Edition.operator_chain_writer?/1` decides whether the person writes the chain
+  of model providers and choices an operator keeps for its clients. `Apiary.Connections`
+  and `Apiary.ModelChoices` call it beside `provider.write`. The core has no operator and
+  returns false.
+- `c:Apiary.Edition.harness_owner/1` returns the organisation that owns a harness document
+  the person saves (`Apiary.Stacks.put_stack/4`): an id, not a yes or no. With nil, the save
+  stops, `{:error, :forbidden}`.
+- `c:Apiary.Edition.scope_setting?/1` decides whether a form shows the setting
+  `Available to every workspace in %{organisation}`. It stops no action. The core returns
+  false.
+
+`c:Apiary.Edition.client_reads/4` is a data rule. It narrows the query or the row of a read
+to what the scope's person reads of a run, and the core returns it unchanged.
+
 ## The instance's admins
 
 The instance's organisation is the one its first sign-up creates
 (`c:Apiary.Edition.instance_organisation_id/0`, [architecture.md](architecture.md), The
 instance's organisation), and its owners are the **instance admins**, who run the
-instance. Inside it they act at their level, as anyone there does.
-`Apiary.Access.instance_admin?/1` answers whether a scope's person is one, by their
-membership as the database has it now, neither it suspended nor their account out of
-use, and is the one place that says so; an edition asks it for what it gives the instance
-admins. The level that makes one is `Apiary.Access.instance_admin_level/0`, and whether a
-membership of the instance's organisation is at it is
-`Apiary.Access.instance_admin_membership?/1`, which the release commands ask: nothing
-else compares a level for it.
+instance. Inside it they act at their level, as anyone there does. No role of that name
+exists: an instance admin is a person with the role `owner` in the instance's organisation,
+whose membership is not suspended and whose account is in use. The level is
+`Apiary.Access.instance_admin_level/0`.
+
+### Instance actions
+
+An **instance action** is an `Apiary.Access.Action` with `instance: true`. Each of the
+core's has `owner` in its `roles`. `account.password_link` also has `instance`, for a
+release command. The last column shows which actions also need a recent sign-in.
+
+| Action | Function or page | Feature | Recent sign-in |
+|---|---|---|---|
+| `instance.read` | Instance settings, the documentation for instance admins, and the machine logs of a run's dispatch | none | no |
+| `instance.review_connections` | `Apiary.Setup.review_connections/1` | none | no |
+| `instance.mail_save` | `Apiary.Mail.save_settings/3` | none | yes |
+| `instance.mail_resend` | `Apiary.Mail.resend_test_link/2` | none | yes |
+| `instance.mail_on` | `Apiary.Mail.turn_on/2` | none | yes |
+| `instance.rename` | `Apiary.ProductName.rename/2` | none | no |
+| `instance.configure` | `Apiary.InstanceConfig.save/3`, and `Apiary.MachineTypes.create/2`, `update/3`, `make_default/2` and `delete/2` | none | yes |
+| `instance.support_save` | `Apiary.SupportAddress.save/2` | none | no |
+| `account.password_link` | `Apiary.Accounts.build_password_link/3` | none | yes, for a person |
+| `instance.read_factory` | the reads of the instance's adapters, pool and gateway, with their keys and codes, and Instance settings › Machine types | `factory` | no |
+| `adapter.create` | `Apiary.Adapters.create_adapter/2` | `factory` | yes |
+| `adapter.edit` | `Apiary.Adapters.rename_adapter/3` | `factory` | no |
+| `adapter.set_interval` | `Apiary.Adapters.update_sync_interval/3` | `factory` | no |
+| `adapter.delete` | `Apiary.Adapters.delete_adapter/2` | `factory` | no |
+| `adapter.setup` | `Apiary.Adapters.setup/2`, and the changes to an adapter's keys and codes in `Apiary.AccessKeys` | `factory` | only to make an enrolment code |
+| `node.set_instance_limit` | `Apiary.Nodes.Installed.set_instance_limit/3` | `factory` | no |
+| `harness.assigned` | `Apiary.Harnesses.assign/3` | `factory` | yes |
+| `harness.unassigned` | `Apiary.Harnesses.unassign/2` | `factory` | yes |
+| `instance.read_observability` | the reads of the instance's diagnostics keys | `observability` | no |
+| `diagnostics_key.create` | `Apiary.AccessKeys.create_diagnostics_code/2` | `observability` | yes |
+| `diagnostics_key.revoke` | `Apiary.AccessKeys.revoke_diagnostics_key/2` | `observability` | no |
+| `workspace_type.edit` | `Apiary.Processes.TypeTemplates.save/4` | `workflow_model` | no |
+
+The three read actions differ only by feature, so an instance without a feature has none
+of that feature's pages for its instance admins. `adapter.read` is a different action: every
+member has it, for the adapters an organisation connects. `node.set_limit` also stays
+outside this table: it is the organisation admins' action on an organisation's pool.
+
+`Apiary.Access.check/3` takes these steps for an instance action, in place of the steps
+for any other action, and returns at the first that fails:
+
+1. **The feature**, read from the instance (`Apiary.Features.visible?/2` with no scope),
+   whatever an edition hides from the person: off, `{:error, :not_found}`.
+2. **The instance step.** The instance's scope (role `instance`) passes. Any other scope
+   passes only in the instance's organisation, while it is not marked for deletion;
+   elsewhere, `{:error, :not_found}`.
+3. **The edition** (`c:Apiary.Edition.check/3`): anything but `:continue` is the result.
+4. **The subject.** `account.password_link` needs an account in use, and
+   `instance.mail_resend` and `instance.mail_on` need the mail settings
+   (`Apiary.Mail.Settings`). Every other instance action needs the instance's organisation.
+   Anything else is `{:error, :not_found}`.
+5. **The role** (`Apiary.Access.role/1`): one not in the action's `roles` is
+   `{:error, :forbidden}`.
+6. **The one-person rules**, below.
+
+So a person outside the instance's organisation gets `{:error, :not_found}`, and an admin
+or a member inside it `{:error, :forbidden}`. A page shows not found for both.
+
+### The instance scope
+
+A person's page may be in any organisation. An instance action takes the person's scope in
+the instance's organisation:
+
+- A context function calls `Apiary.Access.authorize/3` with `Apiary.Access.in_instance/1` of
+  the scope, and with `Apiary.Access.instance_organisation/0` as the subject, or the account
+  or the mail settings for the actions on those.
+- A page of Instance settings mounts on `on_mount {ApiaryWeb.Access, :instance}`, which puts
+  `Apiary.Access.instance_scope/1` into `@scope`, and shows not found to anyone else. The
+  page calls `Apiary.Access.can?/3` with `@scope` and `@scope.organisation`.
+- Any other page or controller calls `ApiaryWeb.Access.instance_can?/2`, or
+  `Apiary.Access.can?/3` with the scope from `Apiary.Access.instance_scope/1`.
+
+A page on `:instance` computes `@scope` again when the reader's memberships change. A reader
+who is no longer an instance admin moves to `/`. A page that sets
+`ApiaryWeb.UserAuth.on_membership_change/2` itself computes `@scope` again itself. A write
+fails as soon as the membership changes, because `Apiary.Access.authorize/3` reads the
+membership again.
+
+The scope `Apiary.Access.in_instance/1` puts in the instance organisation contains that
+organisation's id, so `Apiary.Access.can?/3` reads no row for an instance action, beyond
+whatever the edition's check (`c:Apiary.Edition.check/3`) reads. `Apiary.Access.reload/2`, and
+so `Apiary.Access.authorize/3`, clears the id, and the check compares with the id read then. A
+page on `:instance` keeps this id in `@scope` until it mounts again, or computes `@scope`
+again when the reader's memberships change. These moves to another organisation clear the
+id too: `Apiary.Organisations.put_reach/2`, and so `Apiary.Organisations.resolve_scope/4`;
+`Apiary.Organisations.load_scope/2`; `Apiary.Organisations.load_home_scope/2`;
+`Apiary.Organisations.accept_invitation/2`, on the scope in the invitation's organisation; and
+`Apiary.Accounts.Scope.in_organisation/2`.
+
+`Apiary.Access.instance_admin?/1` is true where `instance.read` passes in that scope, by the
+membership as the database has it now. It is for what takes no action: a page's wording, the
+set-up steps a page lists, and the core's `c:Apiary.Edition.harness_owner/1`. An edition may
+call it too. The release commands call `Apiary.Access.instance_admin_membership?/1`.
+
+### The one-person rules
+
+These rules depend on who the person is, after the role passes:
+
+- Only the instance admin who saved the mail settings (`mail_saved_by_id`) sends their test
+  link again or turns mail on by that link. For anyone else, and where no settings row
+  exists, `instance.mail_resend` and `instance.mail_on` return `{:error, :not_saver}`.
+  `Apiary.Mail` makes the check with the settings row locked, and `Apiary.Mail.turn_on/2`
+  returns `:error` for that result.
+- Nobody makes a password link for the account they are signed in with:
+  `account.password_link` returns `{:error, :own_account}`. They change their password in
+  Account settings. The instance's scope has no account, so this rule does not apply to it.
+
+The mail form and People call `Apiary.Access.can?/3` for the same rules. The audit entries
+keep their actions. Other actions have rules about one person too: `member.suspend` and
+`member.activate` (What an admin may not, above), `member.remove` (Leaving, below), and
+`work_item.comment_delete`, which the comment's author may take while their role still has
+`work_item.comment`.
+
+### A recent sign-in
+
+A recent sign-in is authentication, so `can?/3` and `authorize/3` do not read it. The context
+function calls `Apiary.Accounts.sudo_mode?/2` after `authorize/3`, and returns
+`{:error, :sudo}` when the sign-in is not recent. A page already open stays open, and a save
+there leads the person to sign in again.
+
+### Release commands and the set-up
 
 Granting and revoking an instance admin (`instance_admin.grant`, `instance_admin.revoke`,
 `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1`) are release
-commands, taken on the strength of a shell on the release, which no role has. A password
-link (`account.password_link`, `Apiary.Accounts.build_password_link/3`), a one-time link
-that sets an account's password, is no role's either: an instance admin makes one while
-the instance sends no mail, after a recent sign-in (`Apiary.Accounts.sudo_mode?/2`), asked
-by `Apiary.Access.instance_admin?/1` in the context function, and a release command makes
-one mail or not (`Apiary.Release.password_link/1`).
-Saving the instance's mail settings, sending their test link again, and turning them on by
-the test link (`instance.mail_save`, `Apiary.Mail.save_settings/3`;
-`instance.mail_resend`, `Apiary.Mail.resend_test_link/2`; `instance.mail_on`,
-`Apiary.Mail.turn_on/2`) are no role's either: an instance admin, asked by
-`Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in. Only the
-admin who saved the settings sends their test link again and turns them on. Setting
-the product's name in Instance settings › General (`instance.rename`,
-`Apiary.ProductName.rename/2`) is an instance admin's too, asked by
-`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
-Changing the instance's settings in Instance settings › Configuration
-(`instance.configure`, `Apiary.InstanceConfig.save/3`) is an instance admin's too, asked
-by `Apiary.Access.instance_admin?/1` in the context function, after a recent sign-in.
-Saving the support address in Instance settings › General (`instance.support_save`,
-`Apiary.SupportAddress.save/2`) is an instance admin's too, asked by
-`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
-Starting an adapter's set-up at the system it reads from (`adapter.setup`,
-`Apiary.Adapters.setup/2`) is an instance admin's too, asked by
-`Apiary.Access.instance_admin?/1` in the context function, with no recent sign-in.
-Saving a version of a workspace type's default process, which new workspaces copy, in
-Instance settings › Workspace types (`workspace_type.edit`,
-`Apiary.Processes.TypeTemplates.save/4`), with the `workflow_model` feature, is an
-instance admin's too, asked by `Apiary.Access.instance_admin?/1` in the context function,
+commands, taken on the strength of a shell on the release, which no role has.
+A password link is a one-time link that sets an account's password. An instance admin makes
+one only while the instance sends no mail: `{:error, :mail_set}` once it does. A release
+command makes one mail or not (`Apiary.Release.password_link/1`), in the instance's scope,
 with no recent sign-in.
 Revoking the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a
 new instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only the
 instance's log shows, or, with `QORY_SETUP_CODE_SHA256` set, only the install that made the
 code, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
 instance that has its organisation.
+
+### The instance's organisation stays
 
 The instance's organisation is never deleted nor purged: an instance without it is
 one that is not set up, where nobody signs up, and its next start would log a new set-up
@@ -278,11 +431,15 @@ owners' and admins' alone, and a member adds or revokes none: making and cancell
 enrolment code (`access_key.create_code`, `access_key.cancel_code`), adding one made in
 their browser (`access_key.add`, `arrived_by` `browser`) and
 revoking one (`access_key.revoke`). Each is asked of the node, the
-code or the key, and leaves its audit entry. A key is active from the moment it is made. A
+code or the key, and leaves its audit entry. An adapter has no organisation: a change to its
+keys and codes takes `adapter.setup` (The instance's admins, above), and its audit entry
+keeps the `access_key.*` action. A key is active from the moment it is made. A
 machine that enrols a key with a code asks no one: the code is the authority and the
 approval, as long as the person who made it may still make it, an owner or an admin of its
 workspace, neither suspended nor removed, their account in use (`access_key.create_code`,
-asked again of their membership as it is at the enrolment); the key's arrival is an entry
+asked again of their membership as it is at the enrolment; `adapter.setup` for an adapter's
+code and `diagnostics_key.create` for a diagnostics key's, in the instance's organisation);
+the key's arrival is an entry
 of `access_key.add` by the key itself, `arrived_by` `code`. Deleting a
 node (`node.delete`, owners and admins) revokes its keys in the same transaction, each with
 its entry of `access_key.revoke`. Which runs a key posts for is
@@ -295,18 +452,43 @@ gateway that attached it instead. Setting a pool's instance limit, as it is made
 is a separate action (`node.set_limit`), held by owners and admins as `node.edit` is, so
 an edition may keep it from some who change the rest; its change is recorded in the
 entry of the node's creation or edit. Making a pool needs `node.set_limit` too, with a
-limit or without one, so one who may not set the limit makes no pool. Everyone in the
+limit or without one, so one who may not set the limit makes no pool. The limit of the
+instance's pool is an instance action (`node.set_instance_limit`), recorded in the same
+entry. Everyone in the
 workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
 
 A key acts in the role its node's kind gives it (`Apiary.Access.role/1`): a node's key and
-a gateway's in `access_key`, a node pool's in `pool_key`, an adapter's in `adapter_key`.
+a gateway's in `access_key`, a node pool's in `pool_key`, an adapter's in `adapter_key`, and
+a key of the instance's diagnostics node in `diagnostics_key`.
 `pool_key` holds `run.post_events` and `run_configuration.fetch`, as `access_key` does,
 so a pool registers its runs, posts their events and their outcome and is served the run
-configuration as a node is; `access_key` alone holds `secret.seal`, a gateway's secrets
-request for a run's model key, of the feature `factory`; reading the configuration document asks no role, only the
-signed request (`ApiaryWeb.Contract.SignedRequest`). Beside them it holds the dispatch
-actions, `dispatch.claim`, `dispatch.dispatched`
-and `dispatch.release`, of the feature `factory`. A
+configuration as a node is; reading the configuration document needs no role, only the
+signed request (`ApiaryWeb.Contract.SignedRequest`). `pool_key` also has the
+dispatch actions, `dispatch.claim`, `dispatch.dispatched`
+and `dispatch.release`, of the feature `factory`.
+
+`access_key` alone has `secret.seal` and `run_credential.issue`, both of `factory`, for a
+gateway's secrets request:
+
+- `Apiary.Runs.SecretsRequest` calls `Apiary.Access.check/3` with `secret.seal` and the run,
+  for a request for the run's model key. A key that fails gets `404`. A request for the
+  registry alone takes no action.
+- `Apiary.Runs.WorkCredential` calls it with `run_credential.issue` and the run, before the
+  call to the adapter and again as it records the credential. A key that fails the first
+  check gets `404`, with no call to the adapter and no Activity entry.
+
+While `factory` is off and `registry` is on, a request for the registry alone gets `200`.
+A request for the work entry gets that `404`, even for a run made while `factory` was on.
+A request for the model key gets `409` `credentials_differ`, because no model key exists
+without `factory`. The run key, the sender and `allow_secrets` stay checks of the
+secrets request: they are data of the run and of the key it verified under.
+
+`diagnostics_key` has one action, `run.read_diagnostics`, of the feature `observability`.
+`ApiaryWeb.Contract.DiagnosticsController` calls `Apiary.Access.check/3` with it and the run.
+The key is at the instance and reads the diagnostics of a run of any organisation and
+workspace. Any other action, or any other subject, is `{:error, :not_found}`.
+
+A
 pool's key acts on its workspace and, there, on its pool: another node and the
 organisation are not found to it. A dispatch action is asked of the workspace, the one
 queue every pool of it claims a waiting run from, or of a dispatch of that workspace its
@@ -328,9 +510,15 @@ serves (`Apiary.AccessKeys.fetch_for_verification/1`), and enrols no new one: an
 enrolment code of an organisation out of use is found by none. A workspace's gateway is
 held to its organisation's use as any node is.
 
-A gateway acts for a run only while it may serve the run's workspace
-(`Apiary.Gateways.may_serve?/2`, asked at the registration, at each attach, batch,
-heartbeat and reload, `Apiary.Runs.Sender.serves?/2`). Once it may not, it is refused
+A gateway acts for a run only while it may serve the run's workspace. This is the place
+rule of a gateway's key in `Apiary.Access`: with a run as the subject, `run.post_events`,
+`run_configuration.fetch`, `secret.seal` and `run_credential.issue` pass only for a workspace
+at one of the gateway's levels, and otherwise return `{:error, :not_found}`. A caller that has the
+gateway's row and no key calls `Apiary.Access.may_serve?/2`, which applies the same rule: a
+node's choice of gateway, a claim, the registration, and each attach, batch, heartbeat and
+reload (`Apiary.Runs.Sender.serves?/2`). The rule reads the ids of the place alone; a place
+marked for deletion has a separate check (`Apiary.AccessKeys.place_in_use?/2`). Once a
+gateway may not serve the workspace, it is refused
 with nothing of the run told: no policy, no event, no outcome, no digest. Two things
 stay known to such a gateway, and are accepted:
 
@@ -393,7 +581,8 @@ Features): in the core, nothing. A person's scope carries it (`hidden`):
 and `reload/2` asks it again after the edition's reload, under the edition's locks, so
 what an edition changes of it under the organisation's lock is waited for, or seen. An
 access key, and its scope, and the instance answer as the instance: `run.post_events` and
-`run_configuration.fetch` follow the instance's features alone.
+`run_configuration.fetch` follow the instance's features alone. An instance action reads its
+feature from the instance for every scope (The instance's admins, above).
 
 ## Who asks
 
@@ -407,7 +596,8 @@ an organisation whose deletion's grace period is over, and making the adapters i
 setting lists and giving them their one-time codes (`adapter.install`,
 `Apiary.Adapters.install/2`, `Apiary.AccessKeys.issue_installed_code/2`), and the same
 for the node pool and the gateway its settings declare (`node.install`,
-`Apiary.Nodes.Installed.install/2`), in the instance's organisation. Any other scope
+`Apiary.Nodes.Installed.install/2`), in the instance's organisation. A release command
+that makes a password link acts in that role too (`account.password_link`). Any other scope
 without a person may nothing, whatever it carries.
 
 An action taken on the strength of something other than a role, signing up, accepting an
@@ -443,7 +633,9 @@ marking, cancelling and purge inside the transaction that makes it
 ## The context function asks before it acts
 
 Every context function that changes something calls `Apiary.Access.authorize/3` with its
-action and the subject first, and returns what it answers:
+action and the subject first, and returns the result. A function that makes more than one
+check in one change, or that reads under locks, calls `Apiary.Access.reload/2` once and then
+`Apiary.Access.check/3` for each check, inside its transaction. The result is `:ok` or one of:
 
 - `{:error, :not_found}` for a feature that is off or hidden, a subject of another
   organisation or workspace, a subject of a workspace the person does not reach, and what
@@ -451,12 +643,20 @@ action and the subject first, and returns what it answers:
 - `{:error, :forbidden}` for a role that does not allow the action, or allows it over
   other people than the subject's, and what the edition refuses so;
 - `{:error, :not_approver}` where the role allows the action and the stage the work item
-  is in lists approvers the person is not among.
+  is in lists approvers the person is not among;
+- `{:error, :not_saver}` and `{:error, :own_account}` for an instance action (The
+  one-person rules, above).
+
+A read that a role could one day be kept from has an action too.
+`Apiary.Organisations.list_members/1` calls `can?/3` with `member.read`, from the scope as
+loaded, because every page's counts read the list, and returns `[]` when the result is no.
 
 The last step, after the role, is the stage's approvers. It applies to approving a
 stage's gate (`gate.approve`), approving Explore's proposal (`work_item.confirm`) and
 the comments on a stage's outputs or round (`work_item.review_comment`), asked of a
 work item.
+`Apiary.Stages.check_workflows/3` takes `gate.approve` before it reads the harness, so a
+person the stage does not list reads nothing.
 Every person the role allows may take them with the workflow model off, on a work item
 the runner did not place, and at a stage that lists no approvers; an answer to the
 questions (`work_item.answer`) stays every member's. Asked of a workspace, as a page asks
@@ -645,7 +845,8 @@ The modes keep a row that only names another out of it:
 - A write of an organisation's stored secrets, those without a workspace
   (`Apiary.Secrets`), holds the organisation `FOR SHARE` (`Apiary.Access.lock_places/1`),
   reads the membership again under `FOR SHARE` (`reload/2` with `lock: :share`), asks
-  the edition (`c:Apiary.Edition.organisation_secrets/2`), then takes the organisation's
+  the edition (`c:Apiary.Edition.organisation_secrets/2`, Callbacks beside
+  `Apiary.Access`, above), then takes the organisation's
   advisory transaction lock for its secrets (`pg_advisory_xact_lock`), which locks no row
   and which only these writes take, after every row lock above; then a change to a
   secret locks the secret's row `FOR UPDATE`. The writes of one organisation's secrets
@@ -716,12 +917,18 @@ The races are tested outside the sandbox, on connections that commit
 ## The page asks the same question
 
 - A page shows a button, a link or a tab by `Apiary.Access.can?/3` with the same action as
-  the function behind it, so the two cannot disagree. `can?/3` answers from the scope as
-  loaded, with no database read of the scope, and is cheap on every render. The one read
-  is of a work item's process version, for the stage's approvers, when the work item does
-  not have it loaded.
+  the function behind it, so the two cannot disagree. `can?/3` uses the scope as loaded, so
+  a page may call it on every render. It reads the database in two cases, beyond whatever the
+  edition's check (`c:Apiary.Edition.check/3`) reads: for the stage's approvers, a work item's
+  process version when the work item does not have it loaded; for an instance action in a
+  scope without the id (`instance_organisation_id`, which `Apiary.Access.in_instance/1` sets
+  on a scope it puts in the instance organisation), the instance organisation's id, at most
+  once per call, and not when the action's feature is off.
 - A page that reads asks its read action on mount, `on_mount {ApiaryWeb.Access, action}`,
   after the path scope and the feature gate, and answers not found when refused.
+- A page of Instance settings mounts on `on_mount {ApiaryWeb.Access, :instance}`, and any
+  other page or controller calls `ApiaryWeb.Access.instance_can?/2` for an instance action
+  (The instance scope, above).
 - A work item's permanent address, `/work-items/wi_…`
   (`ApiaryWeb.WorkItemRedirectController`), runs the checks of the work item's page before
   it redirects there: the path scope of the workspace the work item is in at that moment,

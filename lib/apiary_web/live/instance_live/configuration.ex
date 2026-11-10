@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.Configuration do
   @moduledoc """
   Instance settings › Configuration, `/instance/configuration`: the settings of the whole
-  instance, for the instance's admins (`Apiary.Access.instance_admin?/1`), who reach it
+  instance, for the instance's admins, who may change it (`instance.configure`, asked in
+  the instance scope, `ApiaryWeb.Access`'s `:instance`), who reach it
   from the Qory Apiary menu's Instance settings; anyone else is answered as a path that
   does not exist (`ApiaryWeb.NotFound`). It is the Instance level's last page, after the
   core's General, an edition's sections and the core's Mail, and the second column lists
@@ -35,6 +36,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   use ApiaryWeb, :live_view
 
   on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
+  on_mount {ApiaryWeb.Access, :instance}
 
   alias Apiary.{Access, Features, InstanceConfig}
   alias Apiary.Integrations.Source
@@ -223,6 +225,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
           module={module}
           id={"config-part-#{i}"}
           current_scope={@current_scope}
+          scope={@scope}
         />
 
         <p id="config-note" class="q-foot-note">
@@ -356,9 +359,9 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
 
   @impl true
   def mount(_params, _session, socket) do
-    scope = socket.assigns.current_scope
+    %{current_scope: scope, scope: instance} = socket.assigns
 
-    if Access.instance_admin?(scope) do
+    if Access.can?(instance, :"instance.configure", instance.organisation) do
       {:ok,
        socket
        |> assign(
@@ -405,7 +408,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
         {:noreply, sudo(socket)}
 
       # No longer an instance admin: the page itself is not found now.
-      {:error, :forbidden} ->
+      {:error, refused} when refused in [:not_found, :forbidden] ->
         {:noreply, push_navigate(socket, to: ~p"/instance/configuration")}
     end
   end

@@ -18,7 +18,7 @@ defmodule ApiaryWeb.InstanceMailController do
   """
   use ApiaryWeb, :controller
 
-  alias Apiary.{Access, Mail}
+  alias Apiary.Mail
 
   def turn_on(conn, %{"token" => token}) do
     scope = conn.assigns.current_scope
@@ -35,8 +35,10 @@ defmodule ApiaryWeb.InstanceMailController do
         |> put_session(:user_return_to, current_path(conn))
         |> redirect(to: ~p"/users/log-in")
 
+      # Not the saver's link, or one that no longer works: an instance admin who opens
+      # Instance settings › Mail (`instance.mail_save`) is told so there.
       :error ->
-        if Access.instance_admin?(scope) do
+        if ApiaryWeb.Access.instance_can?(scope, :"instance.mail_save") do
           conn
           |> put_flash(:error, gettext("This link no longer turns mail on."))
           |> redirect(to: ~p"/instance/mail")
