@@ -247,9 +247,8 @@ defmodule Apiary.Processes.TypeTemplates do
 
   The document passes `Apiary.Processes.validate/1`, and one rule of a type's process: a
   gate's `approvers` is `"members"`, since a type has no people to list; a list of people
-  is the error `:named_approvers`, at `#/stages/<index>/gate/approvers`. Each machine type
-  is absent, `default` or a type of the instance
-  (`Apiary.Processes.known_machine_types/1`).
+  is the error `:named_approvers`, at `#/stages/<index>/gate/approvers`. A machine type
+  key the instance has no type for is kept, as a workspace's save keeps it.
 
   `{:ok, version}`, its author preloaded, or `{:error, reason}` (`t:reason/0`).
   """
@@ -261,20 +260,71 @@ defmodule Apiary.Processes.TypeTemplates do
     texts = Keyword.get(opts, :texts)
 
     Repo.transact(fn ->
+      # The table of machine types before the type, in the order of a key change
+      # (`rekey_machine/3`), so that the two never wait on each other.
       with :ok <- authorize(scope),
            {:ok, _domain} <- known(type),
+           :ok <- Apiary.MachineTypes.hold(),
            :ok <- lock(type),
            %TypeTemplate{} = newest <- ensure(type, Qory.current()) || {:error, :unknown_type},
            :ok <- fresh(newest, based_on),
            {:ok, texts} <- texts(texts, type, newest),
            :ok <- validate(document),
-           :ok <- Apiary.MachineTypes.hold(),
-           :ok <- Processes.known_machine_types(document),
            :ok <- changed(newest, document, texts),
            {:ok, instance_scope, organisation} <- instance_scope(scope),
            {:ok, version} <- insert(scope, type, newest, document, texts),
            {:ok, _entry} <- record(instance_scope, organisation, version) do
         {:ok, Repo.preload(version, :author)}
+      end
+    end)
+  end
+
+  @doc """
+  machine_key_types/1 is the newest version of each workspace type whose document uses
+  the machine type key `key` (`Apiary.MachineTypes.uses_key?/2`), by type.
+  """
+  @spec machine_key_types(String.t()) :: [TypeTemplate.t()]
+  def machine_key_types(key) when is_binary(key) do
+    Repo.all(
+      from t in TypeTemplate,
+        distinct: t.type,
+        order_by: [asc: t.type, desc: t.number]
+    )
+    |> Enum.filter(&Apiary.MachineTypes.uses_key?(&1.document, key))
+  end
+
+  @doc """
+  rekey_machine/3 saves, for each version of `machine_key_types/1` for `from` that an
+  instance admin saved, a newer version of its type whose document has the key `to` in
+  each place that had `from`, with the same texts, authored by the scope's person, the
+  instance admin who changed the key, with an entry `workspace_type.edit` each that has
+  `machine_key`, the key before and after. A copy of the Qory harness's process
+  (`release` set) stays as it is: its runs start on the default type until the harness
+  changes the key. Called by `Apiary.MachineTypes.update/3`, in its transaction, which
+  checks the scope and holds the table of machine types. Each type is locked as a save
+  locks it, and its newest version read again under the lock. `:ok`; `{:error,
+  :forbidden}` on an instance with no instance organisation; or `{:error, :stale}` where
+  a version of the type with the next number exists.
+  """
+  @spec rekey_machine(Scope.t(), String.t(), String.t()) ::
+          :ok | {:error, :forbidden | :stale}
+  def rekey_machine(%Scope{} = scope, from, to) when is_binary(from) and is_binary(to) do
+    Enum.reduce_while(machine_key_types(from), :ok, fn %TypeTemplate{type: type}, :ok ->
+      :ok = lock(type)
+      newest = newest_row(type)
+      document = Apiary.MachineTypes.rekey(newest.document, from, to)
+      texts = Map.take(newest, @texts)
+
+      with true <- is_nil(newest.release) || :unchanged,
+           true <- Apiary.MachineTypes.uses_key?(newest.document, from) || :unchanged,
+           {:ok, instance_scope, organisation} <- instance_scope(scope),
+           {:ok, version} <- insert(scope, type, newest, document, texts),
+           {:ok, _entry} <-
+             record(instance_scope, organisation, version, %{machine_key: %{from: from, to: to}}) do
+        {:cont, :ok}
+      else
+        :unchanged -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
@@ -398,15 +448,19 @@ defmodule Apiary.Processes.TypeTemplates do
     end
   end
 
-  defp record(scope, organisation, version) do
+  defp record(scope, organisation, version, details \\ %{}) do
     Audit.record(Repo, scope, :"workspace_type.edit", organisation, %{
       after: %{type: version.type, version: version.number},
-      details: %{
-        change: "save",
-        type: version.type,
-        number: version.number,
-        based_on: version.based_on
-      }
+      details:
+        Map.merge(
+          %{
+            change: "save",
+            type: version.type,
+            number: version.number,
+            based_on: version.based_on
+          },
+          details
+        )
     })
   end
 

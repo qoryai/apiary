@@ -57,6 +57,7 @@ defmodule ApiaryWeb.RunLive.Show do
   alias Apiary.Runs.Record.{Overview, Timeline}
   alias ApiaryWeb.ConnectionLive.Rules
   alias ApiaryWeb.RunLive.Concealed
+  alias ApiaryWeb.MachineTypeWords
   alias ApiaryWeb.PreparationComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.TranscriptComponents
@@ -229,7 +230,7 @@ defmodule ApiaryWeb.RunLive.Show do
                   :if={@ending.text}
                   class={["q-run-why-t", is_nil(@ending.seq) && "q-run-why-whole"]}
                   title={@ending.seq && @ending.text}
-                >{@ending.text}</span>
+                ><.rich text={@ending[:rich] || @ending.text} /></span>
                 <.link
                   :if={@ending.seq}
                   id="run-why-jump"
@@ -245,6 +246,12 @@ defmodule ApiaryWeb.RunLive.Show do
                 >
                   {gettext("Jump to it")}
                 </.link>
+              </p>
+              <p :if={why_it_waits(@preparation)} id="run-waits" class="q-run-why">
+                <span class="q-run-why-k">{gettext("Why it waits")}</span>
+                <span class="q-run-why-t q-run-why-whole">
+                  <.rich text={why_it_waits(@preparation)} />
+                </span>
               </p>
             </div>
             <div class="q-run-actions">
@@ -354,6 +361,7 @@ defmodule ApiaryWeb.RunLive.Show do
           security={@security}
           instance={@instance}
           machine_type={machine_type(@preparation)}
+          queued_image={queued_image(@preparation)}
         />
 
         <%!-- A thing's tabs (`page_tabs/1`), each `run-tab-<key>`. --%>
@@ -1063,6 +1071,10 @@ defmodule ApiaryWeb.RunLive.Show do
     default: nil,
     doc: "the machine type the claim answer had, its name and spec (`Apiary.Runs.Preparation`)"
 
+  attr :queued_image, :string,
+    default: nil,
+    doc: "for a queued run, the image of its machine type, nil for none"
+
   defp details_rail(assigns) do
     assigns =
       assign(assigns,
@@ -1134,8 +1146,6 @@ defmodule ApiaryWeb.RunLive.Show do
             <% nil -> %>
               <dd id="rail-host" class="font-mono">{na()}</dd>
           <% end %>
-          <dt :if={@machine_type}>{gettext("Machine type")}</dt>
-          <dd :if={@machine_type} id="rail-machine-type">{@machine_type.name}</dd>
           <dt :if={@workflow}>{gettext("Workflow")}</dt>
           <dd :if={@workflow} id="rail-workflow"><.external_text text={@workflow} /></dd>
           <dt>
@@ -1153,14 +1163,43 @@ defmodule ApiaryWeb.RunLive.Show do
                 </span>
             <% end %>
           </dd>
+          <%!-- The run's access key, where the reader is shown the nodes: their keys are the
+          part `nodes` an edition may hide (`Apiary.Features.visible?/2`). --%>
+          <dt :if={@key_shown}>{gettext("Key")}</dt>
+          <dd :if={@key_shown}>
+            <%= if Ecto.assoc_loaded?(@run.access_key) && @run.access_key do %>
+              <span class="font-mono">{@run.access_key.label}</span>
+              <span class="q-rail-sub font-mono">{@run.access_key.key_id}</span>
+            <% else %>
+              {na()}
+            <% end %>
+          </dd>
+          <dt :if={@machine_type}>{gettext("Machine type")}</dt>
+          <dd :if={@machine_type} id="rail-machine-type">
+            <.rich text={MachineTypeWords.type_words(@machine_type)} />
+          </dd>
+          <%!-- A queued run shows its machine type's image, read when the page renders. --%>
+          <dt :if={@queued_image}>{gettext("Image")}</dt>
+          <dd :if={@queued_image} id="run-image-row">
+            <span id="run-image" class="font-mono" title={@queued_image}>
+              {Preparation.short_image(@queued_image)}
+            </span>
+          </dd>
           <dt :if={image_shown?(@image_source, @run)}>{gettext("Image")}</dt>
           <dd :if={image_shown?(@image_source, @run)} id="run-image-row">
             <%= case @image_source do %>
               <% :configured -> %>
+                <%!-- A machine type's image shows its digest cut, the whole on hover. --%>
                 <span id="run-image" class="font-mono" title={@run.configured_image}>
-                  {@run.configured_image}
+                  {if @run.configured_image_from_type,
+                    do: Preparation.short_image(@run.configured_image),
+                    else: @run.configured_image}
                 </span>
-                <span id="run-image-source" class="q-rail-sub">
+                <span
+                  :if={!@run.configured_image_from_type}
+                  id="run-image-source"
+                  class="q-rail-sub"
+                >
                   {gettext("Prebuilt for this target")}
                 </span>
               <% source -> %>
@@ -1174,17 +1213,6 @@ defmodule ApiaryWeb.RunLive.Show do
                 <span :if={source == :pool_default} id="run-image-source" class="q-rail-sub">
                   {gettext("The pool's default image.")}
                 </span>
-            <% end %>
-          </dd>
-          <%!-- The run's access key, where the reader is shown the nodes: their keys are the
-          part `nodes` an edition may hide (`Apiary.Features.visible?/2`). --%>
-          <dt :if={@key_shown}>{gettext("Key")}</dt>
-          <dd :if={@key_shown}>
-            <%= if Ecto.assoc_loaded?(@run.access_key) && @run.access_key do %>
-              <span class="font-mono">{@run.access_key.label}</span>
-              <span class="q-rail-sub font-mono">{@run.access_key.key_id}</span>
-            <% else %>
-              {na()}
             <% end %>
           </dd>
           <dt :if={@run.node_id}>{gettext("Machine or pool")}</dt>
@@ -1389,6 +1417,15 @@ defmodule ApiaryWeb.RunLive.Show do
     </aside>
     """
   end
+
+  # The image of a queued run's machine type, where that type is not the default, as the
+  # claim gives it (`Apiary.MachineTypes.image/1`). A queued run on the default type or on
+  # a key no type has, and one on a type with no image, show no Image row: nil, as for
+  # any other run. Such a run is given its target's prebuilt image first.
+  defp queued_image(%{machine: nil, queued: %{machine_type: %{key: key}}}),
+    do: Apiary.MachineTypes.image(key)
+
+  defp queued_image(_preparation), do: nil
 
   # The machine type of the claim answer, else the one a queued run was queued on.
   defp machine_type(%{machine: %{machine_type: type}}), do: type
@@ -2514,7 +2551,7 @@ defmodule ApiaryWeb.RunLive.Show do
             step_ending(Preparation.push_line(preparation)) ||
             unsaved_ending(run, preparation)
 
-        assign(socket, ending: ending)
+        assign(socket, ending: ending && rich_ending(ending, preparation))
 
       not alive?(run) ->
         ending =
@@ -2538,6 +2575,22 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp step_ending(nil), do: nil
   defp step_ending(line), do: %{seq: nil, text: line}
+
+  # The header's line of a step's ending in rich text, where the preparation has one
+  # (`Apiary.Runs.Preparation`, `stopped`'s `rich`).
+  defp rich_ending(%{seq: nil, text: text} = ending, %{stopped: %{what: text, rich: rich}}),
+    do: Map.put(ending, :rich, rich)
+
+  defp rich_ending(ending, _preparation), do: ending
+
+  # Why a queued run waits, in the header, where a person fixes it: no pool offers a
+  # machine that fits its type (`ApiaryWeb.PreparationComponents.waiting_words/2`); nil
+  # for any other run.
+  defp why_it_waits(%{queued: %{reason: {:no_fit, _key, _pool} = reason, machine_type: type}})
+       when is_map(type),
+       do: PreparationComponents.waiting_words(reason, type)
+
+  defp why_it_waits(_preparation), do: nil
 
   defp item_ending(scope, run, index, preparation) do
     candidates = ending_candidates(index, preparation)

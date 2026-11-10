@@ -7,8 +7,10 @@ defmodule Apiary.Runs.Waiting do
   #   * `:harness`, its harness walk is not resolved yet (`Apiary.Harnesses.WalkJob`);
   #   * `:no_pool`, no pool that serves the workspace's runs is ready
   #     (`c:Apiary.Edition.machines_ready/1`);
-  #   * `{:no_fit, name}`, no such pool can start its machine type `name`
-  #     (`Apiary.MachineTypes.unserved/2`);
+  #   * `{:no_fit, key, pool}`, no such pool can start its machine type of key `key`
+  #     (`Apiary.MachineTypes.unserved/2`): `pool` is the name of the first of them, or
+  #     `:instance` for the instance's pool, a pool of no organisation and no workspace,
+  #     whose admins are the instance's;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
   #     while a prebuild of the target waits, `:running` while one is claimed or handed
@@ -35,7 +37,7 @@ defmodule Apiary.Runs.Waiting do
   @type reason ::
           :harness
           | :no_pool
-          | {:no_fit, String.t()}
+          | {:no_fit, String.t(), String.t() | :instance}
           | {:image, String.t(), :queued | :running | nil}
           | {:busy, String.t(), non_neg_integer, pos_integer}
           | {:busy, :instance}
@@ -61,8 +63,8 @@ defmodule Apiary.Runs.Waiting do
       is_nil(Apiary.Edition.machines_ready(workspace)) ->
         :no_pool
 
-      name = queued.work_item_id && Apiary.MachineTypes.unserved(workspace, queued.work_item_id) ->
-        {:no_fit, name}
+      key = queued.work_item_id && Apiary.MachineTypes.unserved(workspace, queued.work_item_id) ->
+        {:no_fit, key, pools |> List.first() |> pool_place()}
 
       image = image(queued, pools) ->
         image
@@ -152,6 +154,11 @@ defmodule Apiary.Runs.Waiting do
       :count
     )
   end
+
+  # The first serving pool of a run that no pool fits: `:instance` for the instance's
+  # pool, by its place, not its name, which a workspace's pool can have too.
+  defp pool_place(%Node{organisation_id: nil, workspace_id: nil}), do: :instance
+  defp pool_place(pool), do: pool_name(pool)
 
   defp pool_name(nil), do: nil
   defp pool_name(%Node{organisation_id: nil, workspace_id: nil}), do: @instance_pool

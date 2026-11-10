@@ -10,6 +10,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
 
   import Phoenix.LiveViewTest
   import Apiary.MachineTypesFixtures
+  import Ecto.Query, only: [from: 2]
   import Apiary.NodesFixtures
 
   alias Apiary.{MachineTypes, Processes}
@@ -33,14 +34,42 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       |> String.split()
       |> Enum.join(" ")
 
-  defp names, do: Enum.map(MachineTypes.list(), &{&1.name, &1.is_default})
+  # A git address as the page shows it: no scheme, no trailing slash, no `.git`.
+  defp repository(git),
+    do:
+      git
+      |> String.replace(~r{\A[a-z][a-z0-9+.-]*://}, "")
+      |> String.trim_trailing("/")
+      |> String.replace_suffix(".git", "")
+
+  # The text of `selector` with a space between elements: LazyHTML.text/1 leaves out a
+  # text node of whitespace alone, such as the one between a name and its key.
+  defp spaced(view, selector),
+    do:
+      view
+      |> element(selector)
+      |> render()
+      |> String.replace(~r/>\s*</, "> <")
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+
+  defp names, do: Enum.map(MachineTypes.list(), &{&1.key, &1.is_default})
 
   defp add(view, params) do
     view
     |> form("#machine-type-form",
       type:
         Map.merge(
-          %{name: "large", vcpus: "4", memory_gib: "16", disk_gib: "60", arch: "amd64"},
+          %{
+            name: "Large",
+            key: "large",
+            vcpus: "4",
+            memory_gib: "16",
+            disk_gib: "60",
+            arch: "amd64"
+          },
           params
         )
     )
@@ -66,7 +95,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
                )
     end
 
-    test "lists the seeded default with its mark, its spec, its workflows and its pools", %{
+    test "lists the seeded default with its key, mark, spec, image, workflows and pools", %{
       conn: conn,
       scope: scope
     } do
@@ -75,8 +104,26 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
 
       assert html =~ ~r{<title[^>]*>\s*Machine types · Instance settings · Qory Apiary\s*</title>}
 
-      assert text(view, "#machine-type-standard") =~
-               "standard Default 2 4 GiB 30 GiB amd64 No"
+      assert spaced(view, "#machine-type-standard") =~
+               "Standard standard Default 2 vCPUs, 4 GiB 30 GiB disk, amd64 Not set"
+
+      assert has_element?(view, "th", "Spec")
+      assert has_element?(view, "th", "Image")
+      refute has_element?(view, "th", "vCPUs")
+
+      image = "ghcr.io/qoryai/qory-agent-browser@sha256:" <> String.duplicate("0", 64)
+
+      browser_type()
+      |> Ecto.Changeset.change(virtualization: true, image: image)
+      |> Apiary.Repo.update!()
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types")
+
+      assert spaced(view, "#machine-type-browser") =~
+               "Browser tests browser 2 vCPUs, 4 GiB 30 GiB disk, amd64, virtualization " <>
+                 "qory-agent-browser sha256:000000000000"
+
+      assert has_element?(view, ~s(#machine-type-browser-image[title="#{image}"]))
 
       assert text(view, "#machine-type-standard-pools") == pool.name
 
@@ -91,32 +138,62 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       view |> element("#machine-type-add") |> render_click()
       assert_patch(view, ~p"/instance/machine-types/new")
 
-      add(view, %{name: "default"})
+      form = text(view, "#machine-type-form")
+
+      assert form =~
+               "Name What people see when they pick a type, such as Browser tests. You can change it at any time."
+
+      assert form =~
+               "Key Process files and stages use the key, such as browser. Lowercase letters, digits and hyphens, starting with a letter, at most 64."
+
+      assert form =~
+               "Image (optional) The image a run on this type starts in, pinned by digest, such as ghcr.io/qoryai/qory-agent-prerelease@sha256:… Leave it empty to start runs in the repository's prebuilt image, else in the default type's image, else in the run machine's image."
+
+      assert has_element?(view, ~s(#type_image[placeholder="registry/name@sha256:…"]))
+
+      add(view, %{key: "default"})
 
       assert text(view, "#machine-type-form") =~
-               "Choose another name: default means the default type."
+               "Choose another key: default means the default type."
 
-      add(view, %{name: "Large"})
+      add(view, %{key: "Large"})
 
       assert text(view, "#machine-type-form") =~
                "Use lowercase letters, digits and hyphens, starting with a letter, at most 64."
 
+      add(view, %{key: "standard"})
+      assert text(view, "#machine-type-form") =~ "Choose another key: standard exists."
+
       add(view, %{name: "standard"})
       assert text(view, "#machine-type-form") =~ "Choose another name: standard exists."
 
-      add(view, %{vcpus: "four", memory_gib: "0.3", disk_gib: "0"})
+      for name <- ["", "Tab\there"] do
+        add(view, %{name: name})
+
+        assert text(view, "#machine-type-form") =~
+                 "Write a name of 1 to 100 characters on one line, with no tabs."
+      end
+
+      add(view, %{image: "ghcr.io/qoryai/agent:latest"})
+
+      assert text(view, "#machine-type-form") =~
+               "Write a reference pinned by digest, such as ghcr.io/qoryai/qory-agent-prerelease@sha256: and 64 hexadecimal digits."
+
+      add(view, %{image: "", vcpus: "four", memory_gib: "0.3", disk_gib: "0"})
       form = text(view, "#machine-type-form")
       assert form =~ "Write a whole number from 1 to 1024."
       assert form =~ "Write a number from 0.5 to 8192, in steps of 1 MiB."
 
       add(view, %{disk_gib: "0"})
       assert text(view, "#machine-type-form") =~ "Write a whole number from 1 to 65536."
-      assert names() == [{"standard", true}]
+      assert names() == [{"standard", true}, {"browser", false}]
 
       add(view, %{memory_gib: "1.5", virtualization: "true"})
       assert_patch(view, ~p"/instance/machine-types")
-      assert text(view, "#flash-info") =~ "large added."
-      assert text(view, "#machine-type-large") =~ "large 4 1.5 GiB 60 GiB amd64 Yes 0 workflows"
+      assert text(view, "#flash-info") =~ "Large added."
+
+      assert spaced(view, "#machine-type-large") =~
+               "Large large 4 vCPUs, 1.5 GiB 60 GiB disk, amd64, virtualization Not set 0 workflows"
 
       assert %MachineType{memory_mib: 1536, virtualization: true, is_default: false} =
                MachineTypes.get("large")
@@ -128,45 +205,196 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
 
       add(view, %{})
       assert text(view, "#machine-type-form") =~ "No pool offers a machine that fits this type."
-      assert names() == [{"standard", true}]
+      assert names() == [{"standard", true}, {"browser", false}]
     end
 
-    test "edits a type's spec, without its name, and makes it the default", %{conn: conn} do
-      machine_type_fixture(name: "large")
+    test "edits a type's name, image and spec, and makes it the default", %{conn: conn} do
+      machine_type_fixture(key: "large")
+      image = "ghcr.io/qoryai/qory-agent-prerelease@sha256:" <> String.duplicate("c", 64)
       {:ok, view, _html} = live(conn, ~p"/instance/machine-types/large/edit")
 
-      refute has_element?(view, ~s(#machine-type-form input[name="type[name]"]))
+      # Instance settings / Machine types / Edit Large, the section once.
+      assert text(view, "#breadcrumb") == "Instance settings/Machine types/Edit Large"
+      assert has_element?(view, "#breadcrumb a[href='/instance/machine-types']", "Machine types")
+
+      assert has_element?(view, ~s(#machine-type-form input[name="type[name]"][value="Large"]))
       assert has_element?(view, ~s(#machine-type-form input[name="type[memory_gib]"][value="16"]))
 
       view
-      |> form("#machine-type-form", type: %{vcpus: "8", is_default: "true"})
+      |> form("#machine-type-form",
+        type: %{name: "Large builds", image: image, vcpus: "8", is_default: "true"}
+      )
       |> render_submit()
 
       assert_patch(view, ~p"/instance/machine-types")
-      assert text(view, "#flash-info") =~ "large saved."
-      assert names() == [{"standard", false}, {"large", true}]
-      assert MachineTypes.get("large").vcpus == 8
+      assert text(view, "#flash-info") =~ "Large builds saved."
+      assert names() == [{"standard", false}, {"browser", false}, {"large", true}]
 
+      assert %MachineType{name: "Large builds", image: ^image, vcpus: 8} =
+               MachineTypes.get("large")
+
+      # A type with no image, as Standard is, becomes the default too.
       view
       |> element(~s(#machine-type-standard-menu [phx-click="make_default"]))
       |> render_click()
 
-      assert text(view, "#flash-info") =~ "standard is the default."
-      assert names() == [{"standard", true}, {"large", false}]
-      refute has_element?(view, ~s(#machine-type-standard-menu [phx-click="make_default"]))
+      assert text(view, "#flash-info") =~ "Standard is the default."
+      assert names() == [{"standard", true}, {"browser", false}, {"large", false}]
+    end
+
+    test "warns before a key change, with the counts and the files, then keeps the files", %{
+      conn: conn,
+      scope: scope
+    } do
+      # The type Browser tests (`browser`) is seeded.
+      %Processes.Version{number: 1} = version = Processes.current(scope.workspace)
+
+      document =
+        put_in(
+          version.document,
+          ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+          "browser"
+        )
+
+      {1, _rows} =
+        Apiary.Repo.update_all(
+          from(v in Processes.Version, where: v.id == ^version.id),
+          set: [
+            document: document,
+            template: %{
+              "source" => "qory",
+              "git" => Apiary.Harnesses.Qory.git(),
+              "commit" => Apiary.QoryHarnessFixture.commit(),
+              "module" => "software-factory"
+            }
+          ]
+        )
+
+      # The Qory harness's file, by the path its kept files resolve.
+      file =
+        "#{repository(Apiary.Harnesses.Qory.git())} modules/software-factory/process.yaml " <>
+          "at #{String.slice(Apiary.QoryHarnessFixture.commit(), 0, 7)} · " <>
+          "workspace #{scope.workspace.name}"
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
+
+      assert text(view, "#machine-type-form") =~
+               "Key Process files and stages use the key. If you change it, Qory Apiary lists the files that use it before it saves."
+
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+
+      assert spaced(view, "#machine-type-key-warning") ==
+               "Changing the key breaks every file that uses browser. Qory Apiary updates 1 workspace, 0 templates and 0 waiting runs. Fix these files yourself: " <>
+                 file <> " Change key Saving Cancel"
+
+      refute has_element?(view, "#machine-type-form button[type=submit]")
+      assert MachineTypes.get("browser")
+
+      # Cancel takes the warning away and saves nothing.
+      view |> element("#machine-type-cancel-key") |> render_click()
+      refute has_element?(view, "#machine-type-key-warning")
+      assert MachineTypes.get("browser")
+
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+      view |> element("#machine-type-change-key") |> render_click()
+      assert_patch(view, ~p"/instance/machine-types")
+
+      assert spaced(view, "#machine-type-key-saved") ==
+               "Browser tests saved. Its key is now ui-tests. Fix the file that still uses browser. " <>
+                 file
+
+      assert text(view, "#machine-type-ui-tests-key") == "ui-tests"
+      assert MachineTypes.get("browser") == nil
+
+      # The message stays through other changes on the page, until it is dismissed.
+      view |> element(~s(#machine-type-standard-menu a[href$="/delete"])) |> render_click()
+      assert has_element?(view, "#machine-type-key-saved")
+
+      view
+      |> element(~s(#machine-type-key-saved button[phx-click="dismiss_key_saved"]))
+      |> render_click()
+
+      refute has_element?(view, "#machine-type-key-saved")
+    end
+
+    test "a key change that no file uses saves after the warning, with a toast", %{conn: conn} do
+      # The type Browser tests (`browser`) is seeded.
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
+
+      view |> form("#machine-type-form", type: %{key: "Bad key"}) |> render_submit()
+      refute has_element?(view, "#machine-type-key-warning")
+
+      assert text(view, "#machine-type-form") =~
+               "Use lowercase letters, digits and hyphens, starting with a letter, at most 64."
+
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+
+      assert text(view, "#machine-type-key-warning") ==
+               "Changing the key breaks every file that uses browser. Qory Apiary updates 0 workspaces, 0 templates and 0 waiting runs. Change key Saving Cancel"
+
+      # A change of the key in the form takes the warning away.
+      view |> form("#machine-type-form", type: %{key: "ui-test"}) |> render_change()
+      refute has_element?(view, "#machine-type-key-warning")
+
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+      view |> element("#machine-type-change-key") |> render_click()
+      assert_patch(view, ~p"/instance/machine-types")
+      assert spaced(view, "#flash-info") =~ "Browser tests saved. Its key is now ui-tests."
+      refute has_element?(view, "#machine-type-key-saved")
+    end
+
+    @tag needs: :workflow_model
+    test "a key change that meets a save of a workspace type saves nothing, with a message",
+         %{conn: conn, scope: scope} do
+      newest = Apiary.Processes.TypeTemplates.newest("qory.software")
+
+      typed =
+        put_in(
+          newest.document,
+          ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+          "browser"
+        )
+
+      {:ok, _typed} = Apiary.Processes.TypeTemplates.save(scope, "qory.software", typed)
+
+      # The rekeyed version of the workspace type meets the unique number of a version
+      # saved at the same moment. The trigger is created in the test's transaction and
+      # rolled back with it.
+      Apiary.Repo.query!("""
+      CREATE FUNCTION number_taken_for_test() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE unique_violation USING CONSTRAINT = 'type_template_versions_type_number_index';
+      END $$
+      """)
+
+      Apiary.Repo.query!("""
+      CREATE TRIGGER number_taken BEFORE INSERT ON type_template_versions
+      FOR EACH ROW EXECUTE FUNCTION number_taken_for_test()
+      """)
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+      view |> element("#machine-type-change-key") |> render_click()
+
+      assert spaced(view, "#flash-error") =~
+               "Change the key again. A workspace type was saved at the same moment, so the key change was not saved."
+
+      assert has_element?(view, "#machine-type-form")
+      refute has_element?(view, "#machine-type-key-warning")
+      assert MachineTypes.get("browser")
+      refute MachineTypes.get("ui-tests")
     end
 
     test "deletes a type after the confirmation in its row", %{conn: conn} do
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
       {:ok, view, _html} = live(conn, ~p"/instance/machine-types/large/delete")
 
       assert text(view, "#machine-type-large-confirm") =~
-               "Delete large? Workflows can no longer pick this type. You cannot undo this."
+               "Delete Large? Workflows can no longer pick this type. You cannot undo this."
 
       view |> element("#machine-type-delete") |> render_click()
       assert_patch(view, ~p"/instance/machine-types")
-      assert text(view, "#flash-info") =~ "large deleted."
-      assert names() == [{"standard", true}]
+      assert text(view, "#flash-info") =~ "Large deleted."
+      assert names() == [{"standard", true}, {"browser", false}]
     end
 
     test "keeps the default, and a type a workflow uses, with the reason under the table", %{
@@ -177,9 +405,9 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       view |> element("#machine-type-delete") |> render_click()
 
       assert text(view, "#machine-type-refused") ==
-               "standard cannot be deleted: it is the default. Make another type the default first."
+               "Standard cannot be deleted: it is the default. Make another type the default first."
 
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
 
       if Apiary.Features.on?(:workflow_model) do
         document = Map.put(Processes.default_document("software"), "machine", "large")
@@ -189,7 +417,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
         view |> element("#machine-type-delete") |> render_click()
 
         assert text(view, "#machine-type-refused") ==
-                 "large cannot be deleted: these workflows use it: #{scope.workspace.name}: explore-a-ticket."
+                 "Large cannot be deleted: these workflows use it: #{scope.workspace.name}: explore-a-ticket."
 
         assert MachineTypes.get("large")
       end
@@ -205,7 +433,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
 
       assert {:error, {:redirect, %{to: "/users/log-in"}}} = add(view, %{})
       assert assert_redirect(view, ~p"/users/log-in") == %{"error" => @sudo}
-      assert names() == [{"standard", true}]
+      assert names() == [{"standard", true}, {"browser", false}]
     end
   end
 

@@ -12,7 +12,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Artifacts, Processes, Repo, Stacks}
+  alias Apiary.{Artifacts, MachineTypes, Processes, Repo, Stacks}
   alias Apiary.Audit.Entry
   alias Apiary.Harnesses.{Qory, QoryRefresh}
   alias Apiary.Organisations.Workspace
@@ -886,15 +886,15 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert length(versions(ctx.workspace)) == 1
     end
 
-    test "a machine type the instance does not have saves nothing", ctx do
-      # The read of a harness file returns no template for a process with any machine type
-      # but `default` (Apiary.Harnesses.Reader), before the check of the instance's
-      # machine types.
+    test "a machine type key the instance does not have is saved as the file has it", ctx do
+      # Any key the schema takes reads (Apiary.Harnesses.Reader), and the save keeps it:
+      # the workflows run on the workspace's default type until a type has the key.
       main_at!(files(&String.replace(&1, "  machine: default\n", "  machine: gpu-large\n")))
 
-      assert HarnessUpdate.follow(ctx.workspace) == {:error, :no_template}
-      assert :ok = HarnessUpdate.follow_all()
-      assert length(versions(ctx.workspace)) == 1
+      assert {:ok, %Version{number: 2} = version} = HarnessUpdate.follow(ctx.workspace)
+      assert version.document["machine"] == "gpu-large"
+      assert Apiary.MachineTypes.get("gpu-large") == nil
+      assert length(versions(ctx.workspace)) == 2
     end
 
     test "a template that fails a check saves nothing", ctx do
@@ -966,6 +966,44 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
       assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, :shared}
       assert length(versions(ctx.workspace)) == 1
+    end
+  end
+
+  describe "a machine type key change" do
+    test "lists the file of a trial from the harness, and its new trial keeps the template",
+         ctx do
+      edit!(ctx.scope, ctx.workspace)
+      commit = main_at!(described())
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      {:ok, trial} = HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+
+      {1, _rows} =
+        Repo.update_all(from(v in Version, where: v.id == ^trial.id),
+          set: [document: Map.put(trial.document, "machine", "browser")]
+        )
+
+      assert %{files: [file]} = MachineTypes.key_change(MachineTypes.get("browser"))
+
+      assert file == %{
+               repository:
+                 Qory.git()
+                 |> String.replace(~r{\A[a-z][a-z0-9+.-]*://}, "")
+                 |> String.replace_suffix(".git", ""),
+               module: "software-factory",
+               path: @process,
+               commit: commit,
+               workspaces: [ctx.workspace.name]
+             }
+
+      assert :ok = Processes.rekey_machine(ctx.scope, "browser", "x")
+      [_v1, _v2, _dropped, new_trial] = versions(ctx.workspace)
+      assert new_trial.status == :trial
+      assert new_trial.document["machine"] == "x"
+      assert new_trial.template == trial.template
+
+      # Made current, it copies the stack and turns the switch on, as the trial before it.
+      assert {:ok, %Version{status: :current}} = Processes.make_current(ctx.scope, new_trial)
+      assert keep(ctx.workspace) == true
     end
   end
 end

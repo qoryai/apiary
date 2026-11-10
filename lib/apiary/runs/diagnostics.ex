@@ -10,20 +10,20 @@ defmodule Apiary.Runs.Diagnostics do
 
   **What it contains.** `instance`, the product's name in the edition and the version;
   `run`, the run's id, state, reason, exit, times, organisation, workspace, step,
-  workflow, work item, target, gateway and the names of its variables; `queue`, the
-  state and end cause of the run's row in its workspace's queue; `dispatches`, the
-  dispatch whose claim registered the run, at most one, with the starter's release
-  reason; `preparation`, the run's steps from the machine's start on
+  workflow, work item, target, gateway, machine type and the names of its variables;
+  `queue`, the state and end cause of the run's row in its workspace's queue;
+  `dispatches`, the dispatch whose claim registered the run, at most one, with the
+  starter's release reason; `preparation`, the run's steps from the machine's start on
   (`Apiary.Runs.Preparation`), each with its output, and why it stopped; `events`, the
   run's last events, at most `max_events/0`, with `events_omitted`; `log`, the run's
   output that belongs to no step, its last `max_log_bytes/0` bytes, with `truncated`;
   `machine_logs`; and `leaked_secrets`, the secrets found in the run's text when it was
   stored, with `leaked_secrets_omitted` (`Apiary.Runs.LeakedSecrets`). A secret of a
-  machine log is listed only in a document with `machine_logs`. Each member is written from the run's columns one by one, so a
-  column marked `redact: true` on the run (the run key, the run code's hash, the registry
-  credential's hash, the provider's ids) is never in it, and the variables appear by name
-  alone. A value outside its pattern in the contract is left out, as a member the run has
-  not got is.
+  machine log is listed only in a document with `machine_logs`. Each member is written
+  from the run's columns one by one, so a column marked `redact: true` on the run (the run
+  key, the run code's hash, the registry credential's hash, the provider's ids) is never
+  in it, and the variables appear by name alone. A value outside its pattern in the
+  contract is left out, as a member the run has not got is.
 
   **Who reads what.** The reader is a person who reads the run and its log (`run.read`
   and `run.read_log`; the caller checks both), or a diagnostics key, which reads as the
@@ -80,6 +80,7 @@ defmodule Apiary.Runs.Diagnostics do
   @workflow ~r/\A[a-z][a-z0-9-]{0,54}\z/
   @variable ~r/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
   @place_text ~r/\A[^\x00-\x1f\x7f]{1,256}\z/u
+  @machine_name ~r/\A[^\x00-\x1f\x7f]{1,100}\z/u
   @int32 -2_147_483_648..2_147_483_647
 
   @typedoc "The document: a map with string keys, as JSON has it."
@@ -156,7 +157,7 @@ defmodule Apiary.Runs.Diagnostics do
         "version" => 1,
         "time" => time(now),
         "instance" => instance(),
-        "run" => run_member(run),
+        "run" => run_member(run, dispatch),
         "dispatches" => if(dispatch, do: [dispatch_member(dispatch)], else: []),
         "preparation" => preparation(scope, run),
         "leaked_secrets" => Enum.map(leaked, &leaked_member/1),
@@ -186,7 +187,7 @@ defmodule Apiary.Runs.Diagnostics do
     %{"edition" => text(Apiary.ProductName.edition_name()), "version" => text(version)}
   end
 
-  defp run_member(%Run{} = run) do
+  defp run_member(%Run{} = run, dispatch) do
     %{
       "id" => run.public_id,
       "state" => run.state,
@@ -205,8 +206,25 @@ defmodule Apiary.Runs.Diagnostics do
     |> put("work_item", work_item(run.dispatch_run))
     |> put("target", target(run))
     |> put("gateway", run.gateway && run.gateway.public_id)
+    |> put("machine", machine(dispatch, run.dispatch_run))
     |> put("variables", variables(run.registration_variables))
   end
+
+  # The machine type the run used: the key of its dispatch's claim answer, else the key its
+  # queued run has, with the name of the type that has the key today. Nil where neither
+  # has a key, or the run has the key `default` of a run queued before machine types.
+  defp machine(dispatch, dispatch_run) do
+    keys = [dispatch && dispatch.machine_type, dispatch_run && dispatch_run.machine_type]
+
+    with key when is_binary(key) <- Enum.find(keys, &Apiary.MachineTypes.MachineType.key?/1) do
+      put(%{"key" => key}, "name", Apiary.MachineTypes.get(key) |> type_name())
+    end
+  end
+
+  defp type_name(%Apiary.MachineTypes.MachineType{name: name}),
+    do: name |> text() |> matching(@machine_name)
+
+  defp type_name(nil), do: nil
 
   defp organisation_slug(%Organisation{slug: slug}), do: slug
   defp workspace_id(%Workspace{public_id: public_id}), do: public_id

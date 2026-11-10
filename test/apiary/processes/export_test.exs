@@ -83,8 +83,7 @@ defmodule Apiary.Processes.ExportTest do
     %{scope: admin, user: user} = sign_up_fixture()
     {:ok, _user} = Organisations.grant_instance_admin(user)
     newest = TypeTemplates.newest("qory.software")
-    # A stage description no other save writes, so the document changes. A machine type
-    # of the instance would make a file the harness reader refuses.
+    # A stage description no other save writes, so the document changes.
     described =
       update_in(newest.document, ["stages", Access.at(0)], fn stage ->
         Map.put(stage, "description", "Version #{System.unique_integer([:positive])}.")
@@ -193,18 +192,18 @@ defmodule Apiary.Processes.ExportTest do
       refute Processes.export(workspace) =~ scope.user.id
     end
 
-    test "writes each machine type as default, so the harness reader reads the file", %{
+    test "writes each machine type key as the document has it, which the harness reader reads", %{
       scope: scope,
       workspace: workspace
     } do
-      large = machine_type_fixture(%{name: "large"})
+      large = machine_type_fixture(%{key: "large"})
 
       typed =
         current(workspace)
-        |> Map.put("machine", large.name)
+        |> Map.put("machine", large.key)
         |> update_in(["stages", Access.at(0), "sequence"], fn _sequence ->
           [
-            %{"workflow" => "explore-a-ticket", "machine" => large.name},
+            %{"workflow" => "explore-a-ticket", "machine" => large.key},
             %{"workflow" => "shape", "machine" => "default"},
             %{
               "loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix", "machine" => "large"}]}
@@ -218,21 +217,20 @@ defmodule Apiary.Processes.ExportTest do
 
       template = exported(workspace)
 
-      assert template.process["machine"] == "default"
+      assert template.process["machine"] == "large"
 
       assert hd(template.process["stages"])["sequence"] == [
-               %{"workflow" => "explore-a-ticket", "machine" => "default"},
+               %{"workflow" => "explore-a-ticket", "machine" => "large"},
                %{"workflow" => "shape", "machine" => "default"},
                %{
                  "loop" => %{
                    "rounds" => 2,
-                   "body" => [%{"workflow" => "fix", "machine" => "default"}]
+                   "body" => [%{"workflow" => "fix", "machine" => "large"}]
                  }
                }
              ]
 
       assert tl(template.process["stages"]) == tl(saved["stages"])
-      refute Processes.export(workspace) =~ "large"
     end
   end
 

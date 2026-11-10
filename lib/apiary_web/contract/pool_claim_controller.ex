@@ -232,12 +232,13 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
 
   # The run's machine type and its spec, for a claim with offers alone
   # (`Apiary.Dispatches.claim/4`).
-  defp machine(%{machine_type: name, machine_spec: %{} = spec}) when is_binary(name) do
+  defp machine(%{machine_type: key, machine_spec: %{} = spec}) when is_binary(key) do
     [
-      {"machine", name},
+      {"machine", key},
       {"machine_spec",
        Jason.OrderedObject.new(
-         for key <- ~w(vcpus memory_mib disk_gib arch virtualization), do: {key, spec[key]}
+         for member <- ~w(vcpus memory_mib disk_gib arch virtualization),
+             do: {member, spec[member]}
        )}
     ]
   end

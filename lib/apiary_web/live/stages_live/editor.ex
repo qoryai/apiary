@@ -118,8 +118,7 @@ defmodule ApiaryWeb.StagesLive.Editor do
   # name shows next to the name of the stage it is in (the first such stage is selected),
   # an unchanged document next to Save, and every other error above the canvas. The schema
   # reports a workflow's machine type at its entry (`oneOf`), so `refused_machines` comes
-  # from the values, plus the type at each `:unknown_machine_type` error: each shows on the
-  # rows with that value, where a fold may be closed.
+  # from the values: each shows on the rows with that value, where a fold may be closed.
   # With no such duplicate, the selected stage stays if a refused value is in it, and
   # otherwise the first stage with a refused value is selected, so its marks show. The
   # instance's machine types are read again, so the pickers drop a type removed since mount.
@@ -137,7 +136,7 @@ defmodule ApiaryWeb.StagesLive.Editor do
 
     {unchanged, rest} = Enum.split_with(rest, &(&1.error == :unchanged))
 
-    refused_machines = Enum.uniq(Draft.invalid_machines(draft) ++ unknown_machines(draft, errors))
+    refused_machines = Draft.invalid_machines(draft)
 
     refused_stages = Enum.map(rest, &stage_at(draft, &1.path))
 
@@ -179,12 +178,6 @@ defmodule ApiaryWeb.StagesLive.Editor do
       selected: first
     )
     |> refresh.()
-  end
-
-  defp unknown_machines(draft, errors) do
-    for %{error: :unknown_machine_type, path: path} <- errors,
-        machine = Draft.machine_at(draft, path),
-        do: machine
   end
 
   # The error lines above the canvas: those of the last save, then one for each stage whose

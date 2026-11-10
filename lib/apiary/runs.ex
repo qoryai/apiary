@@ -1032,11 +1032,11 @@ defmodule Apiary.Runs do
     where(query, [r], r.node_id in subquery(nodes))
   end
 
-  # A machine type by its name: the runs whose run of the queue was queued on it.
+  # A machine type by its key: the runs whose run of the queue was queued on it.
   defp where_machine_type(query, nil), do: query
 
-  defp where_machine_type(query, name) do
-    queued = from d in DispatchRun, where: d.machine_type == ^name, select: d.id
+  defp where_machine_type(query, key) do
+    queued = from d in DispatchRun, where: d.machine_type == ^key, select: d.id
     where(query, [r], r.dispatch_run_id in subquery(queued))
   end
 

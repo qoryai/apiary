@@ -414,7 +414,7 @@ defmodule Apiary.StagesTest do
     test "is the type the entry picks, with its spec, kept after the type changes", %{
       scope: scope
     } do
-      large = machine_type_fixture(name: "large", disk_gib: 60)
+      large = machine_type_fixture(key: "large", disk_gib: 60)
 
       save!(scope, [
         stage(@explore, "Explore", [%{"workflow" => "explore-a-ticket", "machine" => "large"}])
@@ -431,7 +431,7 @@ defmodule Apiary.StagesTest do
     end
 
     test "is the document's type for an entry that picks none", %{scope: scope} do
-      machine_type_fixture(name: "large")
+      machine_type_fixture(key: "large")
 
       document = %{
         "schema" => "qory.process/v1",
@@ -448,7 +448,7 @@ defmodule Apiary.StagesTest do
     end
 
     test "is the default type for a type deleted after the save", %{scope: scope} do
-      large = machine_type_fixture(name: "large")
+      large = machine_type_fixture(key: "large")
 
       save!(scope, [
         stage(@explore, "Explore", [%{"workflow" => "explore-a-ticket", "machine" => "large"}])

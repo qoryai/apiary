@@ -165,11 +165,19 @@ defmodule ApiaryWeb.WorkItemLive.NoPoolTest do
 
     {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
+    # No type has the key large: the header has the key.
     assert words(view, "#work-item-head-stage-status") ==
              "Waiting: no pool can start machine type large"
 
     assert has_element?(view, "#work-item-head-stage-status .q-wi-mk-err")
     refute has_element?(view, "#work-item-explore-no-pool")
+
+    # A type of the key large: the header has the type's name.
+    Apiary.MachineTypesFixtures.machine_type_fixture(key: "large", name: "Large builds")
+    {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+    assert words(view, "#work-item-head-stage-status") ==
+             "Waiting: no pool can start machine type Large builds"
 
     # A pool whose offers fit the type: today's words.
     Apiary.MachineTypesFixtures.with_offers(pool, [Apiary.MachineTypesFixtures.spec()])

@@ -5,16 +5,17 @@ defmodule Apiary.Policy.ComposedConfiguration do
   another. Immutable, like the configuration it is composed from.
 
   `shape/5` decides, for the run configuration in force (its bytes, or nil where the
-  workspace serves none), the image a run is given, whether the run must build on its
-  pool's default image, and whether the image is already fixed, as it is for every answer after a run's attach
+  workspace serves none), the image a run is given, whether the run is a prebuild, which
+  builds an environment image, and whether the image is already fixed, as it is for every answer after a run's attach
   (`fixed?`). Before the attach, the image is the one the run is given at the top level
   (`image`, nil for none). Once it is fixed, it is what the run started in
   (`started/1`): the image it was given at the top level, `{:policy, image}` for the
   image its policy named, `:none` for none, or nil for a run whose start was not kept.
 
-    * a document whose `security_policy` names an `image`, for a run that must build on
-      its pool's default image, is composed with that member left out and nothing else
-      changed, so such a run always builds on the pool's default image;
+    * a document whose `security_policy` names an `image`, for a prebuild, is composed
+      with that member left out, beside the image the prebuild is given at the top
+      level where it is given one, and nothing else changed, so a prebuild builds on the
+      image of the default machine type, else on the pool's default image;
     * for a run whose image is fixed (its reloads), the gateway takes a reload only when
       it names the image the start named at the top level, or none as the start did, and
       selects the image the run started in. So a run given an image at the top level is
@@ -47,8 +48,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   goes with its run configuration, and with its workspace.
   """
 
-  # With the `factory` feature, a run that must build
-  # on its pool's default image is a prebuild: a run of a workspace's queue for the step
+  # With the `factory` feature, a run that builds an environment image is a
+  # prebuild: a run of a workspace's queue for the step
   # `prebuild` (`prebuild?/1`). No other run is one. A prebuild of a workspace that
   # serves no run configuration is composed from the workspace's default policy, not
   # from no policy (`serve_default/6`, `Apiary.Policy.default_document/1`): its document
@@ -165,8 +166,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   @doc """
   What a run is given for the run configuration `document` in force (its bytes, or nil
   for none), the `image` it is given, or what it started in once fixed (`t:image/0`, or a
-  function that reads it, asked only when the image is used) and whether the run must
-  build on its pool's default image (a boolean, or a function that reads it, asked only
+  function that reads it, asked only when the image is used) and whether the run is a
+  prebuild (a boolean, or a function that reads it, asked only
   when it matters), and whether the image is fixed for the run, as after its
   attach (`fixed?`, false unless given): `:as_is`, the document as stored, or
   `{:composed, bytes, image}`, with the image the bytes name at the top level, nil for
@@ -203,7 +204,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp imaged(document, image, prebuild?, fixed?) do
     if is_binary(document) and names_image?(document) do
       cond do
-        value(prebuild?) -> {:composed, without_image(document), nil}
+        value(prebuild?) -> prebuild_image(document, value(image))
         fixed? -> kept_image(document, value(image))
         true -> :as_is
       end
@@ -220,6 +221,14 @@ defmodule Apiary.Policy.ComposedConfiguration do
       end
     end
   end
+
+  # A prebuild under a policy that names an image: the policy without it, beside the image
+  # it is given at the top level (the default type's, `Apiary.Runs.Attach`), where it is
+  # given one.
+  defp prebuild_image(document, image) when is_binary(image),
+    do: {:composed, compose(without_image(document), image), image}
+
+  defp prebuild_image(document, _image), do: {:composed, without_image(document), nil}
 
   # A run whose image is fixed, under a policy that names one: an image given at the top
   # level stays there, beside the policy without the policy's; an image the start's policy
@@ -505,9 +514,9 @@ defmodule Apiary.Policy.ComposedConfiguration do
   @doc """
   The digest a run is answered on a reload under the run configuration `configuration`:
   the document composed for it as `shape/5` composes it, with what the run started in
-  (`started/1`), whether it must build on its pool's default image or not, its image
+  (`started/1`), whether it is a prebuild or not, its image
   fixed; the digest `configuration` is stored under where nothing is composed. A run that
-  is nil is one the caller does not know: no image, and no build on the default image.
+  is nil is one the caller does not know: no image, and no prebuild.
   Nil when the run's document cannot be composed, and its reload then returns none. A
   read, nothing stored.
   """

@@ -108,7 +108,7 @@ defmodule Apiary.Stages do
   # The ends one stage sweep reads at most (`sweep/3`).
   @stage_batch 100
 
-  alias Apiary.{Access, Audit, Dispatches, Features, Processes, Repo}
+  alias Apiary.{Access, Audit, Dispatches, Features, MachineTypes, Processes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
@@ -173,7 +173,9 @@ defmodule Apiary.Stages do
 
   # take_in/2 places the work item `id`, locked by the caller's transaction, at take in
   # `take_in` in the first stage of its workspace's current version, and starts it:
-  # `{:ok, run}`, nil when the stage waits.
+  # `{:ok, run}`, nil when the stage waits. The caller holds the table of machine types
+  # from before it locks the work item (`Apiary.MachineTypes.hold/0`), so no key change
+  # commits between the read of the current version and the commit.
   @doc false
   @spec take_in(Ecto.UUID.t(), pos_integer) :: {:ok, DispatchRun.t() | nil}
   def take_in(id, take_in) when is_binary(id) and is_integer(take_in) do
@@ -1591,7 +1593,7 @@ defmodule Apiary.Stages do
         stage_entry: spec.entry,
         loop_entry: spec.loop_entry,
         workflow: spec.workflow,
-        machine_type: spec.machine_type
+        machine_type: MachineTypes.run_key(spec.machine_type, version.document["machine"])
       }
     })
   end

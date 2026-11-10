@@ -65,6 +65,11 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     doc:
       "the harness the alerts name: the workspace's harness repository, the workspace's Qory harness, or the Qory harness of a workspace type"
 
+  attr :from_update, :boolean,
+    default: false,
+    doc:
+      "whether the workspace's process came from an update from its harness, for the words of a missing machine type key"
+
   attr :named, :boolean,
     default: true,
     doc: "whether a gate may name its approvers; false offers any member alone"
@@ -222,6 +227,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                       marks={@marks}
                       errors={List.wrap(@workflow_errors["#{i}-#{j}"])}
                       refused={@refused_machines}
+                      harness={@harness}
+                      from_update={@from_update}
                       remove={length(loop["body"]) > 1 && %{"at" => j, "loop" => i}}
                       rule={j > 0}
                     />
@@ -244,6 +251,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                   marks={@marks}
                   errors={List.wrap(@workflow_errors[to_string(i)])}
                   refused={@refused_machines}
+                  harness={@harness}
+                  from_update={@from_update}
                   remove={%{"at" => i}}
                   rule={i > 0 and not Map.has_key?(Enum.at(@stage["sequence"], i - 1), "loop")}
                 />
@@ -358,6 +367,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :marks, :list, required: true
   attr :errors, :list, required: true
   attr :refused, :list, required: true
+  attr :harness, :atom, required: true
+  attr :from_update, :boolean, required: true
   attr :remove, :any, required: true
   attr :rule, :boolean, required: true, doc: "whether a line separates the row from the one above"
 
@@ -366,13 +377,20 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   # tap opens and closes the fold, and it ends in the word for what that does. The fold's id
   # includes the stage's, so an open fold stays with its stage; a patch leaves `open` as the
   # browser has it. A refused machine type shows on the line while the fold is closed, and at
-  # the field while it is open.
+  # the field while it is open. So does a key no machine type has, which a save keeps: a
+  # warning to pick a type, while the entry's runs start on the workspace's default type.
   defp entry(assigns) do
+    refused? = assigns.entry["machine"] in assigns.refused
+
     assigns =
-      assign(
-        assigns,
-        :machine_errors,
-        if(assigns.entry["machine"] in assigns.refused, do: [Words.machine_refused()], else: [])
+      assign(assigns,
+        machine_errors: if(refused?, do: [Words.machine_refused()], else: []),
+        missing:
+          if(
+            not refused? and
+              MachineTypeWords.missing?(assigns.machine_types, assigns.entry["machine"]),
+            do: assigns.entry["machine"]
+          )
       )
 
     ~H"""
@@ -434,7 +452,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
             <.icon name="hero-chevron-right-micro" class="q-chev size-3.5" />
             <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">
               {gettext("Machine type: %{machine}",
-                machine: @entry["machine"] || @machine || "default"
+                machine: MachineTypeWords.entry_words(@machine_types, @machine, @entry["machine"])
               )}
             </span>
             <span class="shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:hidden">
@@ -452,12 +470,29 @@ defmodule ApiaryWeb.StagesLive.Inspector do
             <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
             {error}
           </span>
+          <span
+            :if={@missing}
+            id={"#{@id}-missing-line"}
+            class="flex items-center gap-1.5 pl-5 text-[12.5px]/[18px] text-warning group-open:hidden"
+          >
+            <.icon name="hero-exclamation-triangle-micro" class="size-4 flex-none" />
+            {Words.machine_missing_line(@missing)}
+          </span>
         </summary>
         <div class="grid gap-3 pt-2 pb-2 pl-5">
           <.workflow_mark
             :if={listed?(@entry, @marks)}
             workflow={@entry["workflow"]}
             marks={@marks}
+          />
+          <.missing_machine
+            :if={@missing}
+            id={"#{@id}-missing"}
+            key={@missing}
+            workflow={@entry["workflow"]}
+            fallback={MachineTypeWords.fallback_name(@machine_types, @machine)}
+            harness={@harness}
+            from_update={@from_update}
           />
           <.input
             id={"#{@id}-machine"}
@@ -471,6 +506,46 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           />
         </div>
       </details>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :key, :string, required: true
+  attr :workflow, :string, required: true
+  attr :fallback, :string, required: true, doc: "the name of the type the runs start on"
+  attr :harness, :atom, required: true
+  attr :from_update, :boolean, required: true
+
+  # The notice of a workflow entry whose key no machine type has. On a workspace type's
+  # process, which no `process.yaml` of a workspace made, the line of the closed row.
+  defp missing_machine(%{harness: :qory} = assigns) do
+    ~H"""
+    <div
+      id={@id}
+      role="note"
+      class="alert alert-soft items-start bg-primary-soft text-primary-soft-content"
+    >
+      <.icon name="hero-exclamation-triangle-micro" class="mt-px size-4" />
+      <p class="min-w-0">{Words.machine_missing_line(@key)}</p>
+    </div>
+    """
+  end
+
+  defp missing_machine(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      role="note"
+      class="alert alert-soft items-start bg-primary-soft text-primary-soft-content"
+    >
+      <.icon name="hero-exclamation-triangle-micro" class="mt-px size-4" />
+      <p class="min-w-0 [overflow-wrap:anywhere]">
+        <strong class="font-semibold">
+          {gettext("Pick a machine type for %{workflow}.", workflow: @workflow)}
+        </strong>
+        <.rich text={Words.machine_missing(@key, @workflow, @fallback, @from_update)} />
+      </p>
     </div>
     """
   end

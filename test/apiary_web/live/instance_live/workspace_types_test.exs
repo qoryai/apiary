@@ -8,7 +8,6 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
   # shares, and each test sets the instance's features.
   use ApiaryWeb.ConnCase, async: false
 
-  import Apiary.MachineTypesFixtures
   import Phoenix.LiveViewTest
 
   alias Apiary.Harnesses.Qory
@@ -257,13 +256,13 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert has_element?(
                view,
                ~s(select#type-machine option[value="default"]),
-               "Default (standard)"
+               "Default (Standard)"
              )
 
       assert has_element?(
                view,
                ~s(select#type-machine option[value="standard"]),
-               "standard: 2 vCPUs, 4 GiB"
+               "Standard: 2 vCPUs, 4 GiB"
              )
 
       assert has_element?(
@@ -341,14 +340,49 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       valid_first_stage.()
     end
 
-    test "a refused machine type shows on its closed row, until Discard", %{conn: conn} do
-      machine_type_fixture(name: "gone")
-      {:ok, view, _html} = live(conn, @edit)
-      remove_machine_types(~w(gone))
+    test "a key no machine type has: the line of the closed row, in the fold too", %{
+      conn: conn,
+      scope: scope
+    } do
+      # A new instance has the type browser; this one has none.
+      Apiary.MachineTypesFixtures.remove_machine_types(["browser"])
+      newest = TypeTemplates.newest(@type_key)
 
-      view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "gone"}}})
-      |> render_change()
+      document =
+        put_in(
+          newest.document,
+          ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+          "browser"
+        )
+
+      {:ok, _version} = TypeTemplates.save(scope, @type_key, document)
+      {:ok, view, _html} = live(conn, @edit)
+      line = "Pick a machine type: no type has the key browser."
+
+      assert has_element?(view, ~s{details[id^="stage-entry-0-settings-"] > summary}, line)
+      assert has_element?(view, "#stage-entry-0-missing", line)
+
+      assert has_element?(
+               view,
+               ~s{details[id^="stage-entry-0-settings-"] > summary},
+               "Machine type: Workspace default (Standard)"
+             )
+    end
+
+    test "a refused machine type shows on its closed row, until Discard", %{conn: conn} do
+      {:ok, view, _html} = live(conn, @edit)
+
+      [stage_id] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#stage-form-id")
+        |> LazyHTML.attribute("value")
+
+      # A value that breaks the schema's pattern, as a recovered form can have it.
+      render_hook(view, "edit_stage", %{
+        "stage" => %{"id" => stage_id, "sequence" => %{"0" => %{"machine" => "Gone"}}}
+      })
 
       view |> element("#type-save") |> render_click()
 
@@ -363,21 +397,13 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert has_element?(view, ~s(#stage-entry-0-machine[aria-invalid="true"]))
 
       # Discard forgets the refused value: the same value in an `edit_stage` event, as one sent
-      # before the page's patch arrives, shows nothing before a save. The picker no longer
-      # offers it.
+      # before the page's patch arrives, shows nothing before a save.
       view |> element("#type-discard") |> render_click()
       refute has_element?(view, "[data-machine-error]")
       refute has_element?(view, "[data-save-error]")
 
-      [stage_id] =
-        view
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query("#stage-form-id")
-        |> LazyHTML.attribute("value")
-
       render_hook(view, "edit_stage", %{
-        "stage" => %{"id" => stage_id, "sequence" => %{"0" => %{"machine" => "gone"}}}
+        "stage" => %{"id" => stage_id, "sequence" => %{"0" => %{"machine" => "Gone"}}}
       })
 
       refute has_element?(view, "[data-machine-error]")

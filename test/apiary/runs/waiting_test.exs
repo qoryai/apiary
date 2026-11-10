@@ -43,6 +43,18 @@ defmodule Apiary.Runs.WaitingTest do
 
   defp reason(%DispatchRun{id: id}), do: Waiting.reason(Repo.get!(DispatchRun, id))
 
+  # A run queued on the type `large`, whose spec no offer of `pool` fits.
+  defp no_fit!(scope, pool) do
+    run = queue!(scope)
+
+    Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+      set: [machine_type: "large", machine_spec: spec(), machine_type_was_default: false]
+    )
+
+    with_offers(pool, [spec(%{arch: "arm64"})])
+    run
+  end
+
   test "with nothing else in its way, the pool that has not taken it yet", %{scope: scope} do
     {pool, _key} = ready_pool!(scope, %{name: "build-pool"})
     run = queue!(scope)
@@ -82,7 +94,8 @@ defmodule Apiary.Runs.WaitingTest do
     assert reason(run) == :no_pool
   end
 
-  test "with no ready pool that starts its machine type, the type's name", %{scope: scope} do
+  test "with no ready pool that starts its machine type, the type's key and the first pool",
+       %{scope: scope} do
     {pool, _key} = ready_pool!(scope)
 
     machine_type_fixture(%{
@@ -100,7 +113,15 @@ defmodule Apiary.Runs.WaitingTest do
     )
 
     with_offers(pool, [spec(%{arch: "arm64"})])
-    assert reason(run) == {:no_fit, "large"}
+    assert reason(run) == {:no_fit, "large", pool.name}
+  end
+
+  test "with no pool that starts its machine type, a workspace's pool named Qory Pool by its name",
+       %{scope: scope} do
+    {pool, _key} = ready_pool!(scope, %{name: "Qory Pool"})
+    machine_type_fixture(%{name: "large"})
+    run = no_fit!(scope, pool)
+    assert reason(run) == {:no_fit, "large", "Qory Pool"}
   end
 
   # An environment image is built and stored through the registry.
@@ -143,7 +164,14 @@ defmodule Apiary.Runs.WaitingTest do
       installed_key_fixture(gateway, allow_secrets: true)
       pool = instance_pool_fixture(%{instance_limit: 1})
       %{access_key: key} = installed_key_fixture(pool)
-      %{key: key}
+      %{key: key, pool: pool}
+    end
+
+    test "with no offer that fits the machine type, the instance's pool by its place",
+         %{scope: scope, pool: pool} do
+      machine_type_fixture(%{name: "large"})
+      run = no_fit!(scope, pool)
+      assert reason(run) == {:no_fit, "large", :instance}
     end
 
     test "is Qory Pool, and at its limit has no numbers", %{scope: scope, key: key} do

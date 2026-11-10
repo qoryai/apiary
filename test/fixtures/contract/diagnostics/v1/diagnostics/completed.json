@@ -27,6 +27,10 @@
       "path": "acme/example"
     },
     "gateway": "ng_0123456789abcdef",
+    "machine": {
+      "key": "standard",
+      "name": "Standard"
+    },
     "variables": [
       "EXAMPLE_API_KEY",
       "LOG_LEVEL"

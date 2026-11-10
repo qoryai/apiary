@@ -586,13 +586,13 @@ defmodule ApiaryWeb.Routes do
 
             # Instance settings › Machine types, with the `factory` feature, for the
             # instance's admins: the machine types runs start on, Add machine type
-            # (`…/new`), a type's Edit (`…/:name/edit`) and its Delete, confirmed in its row
-            # (`…/:name/delete`), by the type's name. The fixed path goes first, so that
-            # `:name` never takes it.
+            # (`…/new`), a type's Edit (`…/:key/edit`) and its Delete, confirmed in its row
+            # (`…/:key/delete`), by the type's key. The fixed path goes first, so that `:key`
+            # never takes it.
             live "/instance/machine-types", InstanceLive.MachineTypes, :index
             live "/instance/machine-types/new", InstanceLive.MachineTypes, :new
-            live "/instance/machine-types/:name/edit", InstanceLive.MachineTypes, :edit
-            live "/instance/machine-types/:name/delete", InstanceLive.MachineTypes, :delete
+            live "/instance/machine-types/:key/edit", InstanceLive.MachineTypes, :edit
+            live "/instance/machine-types/:key/delete", InstanceLive.MachineTypes, :delete
 
             # Instance settings › Diagnostics keys, with the `observability` feature, for
             # the instance's admins: the keys that read any run's diagnostics, the command

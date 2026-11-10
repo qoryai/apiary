@@ -302,19 +302,23 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert {:ok, %{process: %{"machine" => "default"}}} = Reader.template(text)
     end
 
-    test "refuses a machine type other than default, the process's or an entry's" do
+    test "takes any machine type key, the process's and an entry's, as the file has it" do
       text = String.replace(source(@template), "  stages:\n", "  machine: large\n  stages:\n")
-      assert Reader.template(text) == {:error, :invalid_template}
+      assert {:ok, %{process: %{"machine" => "large"}}} = Reader.template(text)
 
       text =
         String.replace(
           source(@template),
           "- workflow: draft-an-answer\n",
-          "- workflow: draft-an-answer\n          machine: large\n"
+          "- workflow: draft-an-answer\n          machine: browser\n"
         )
 
       assert text != source(@template)
-      assert Reader.template(text) == {:error, :invalid_template}
+      assert {:ok, %{process: process}} = Reader.template(text)
+
+      assert %{"workflow" => "draft-an-answer", "machine" => "browser"} in Apiary.MachineTypes.entries(
+               process
+             )
 
       text =
         String.replace(

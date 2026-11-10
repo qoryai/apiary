@@ -278,6 +278,12 @@ defmodule ApiaryWeb.PreparationComponents do
         <li :for={node <- @nodes}>
           <.flow id={"#{@id}-#{node.key}"} node={node} alive={@alive}>
             <.events :if={node.kind != :build} lines={node.events} />
+            <%!-- Why a queued run waits where a person fixes it, and who: in the fold,
+                  under its events. --%>
+            <div :if={node[:why] && node[:fix]}>
+              <p id={"#{@id}-why"} class="q-prep-wait-cause"><.rich text={node.why} /></p>
+              <p id={"#{@id}-why-fix"} class="q-prep-fix">{node.fix}</p>
+            </div>
             <%= if node.kind == :start do %>
               <.output
                 :if={@start_output}
@@ -335,8 +341,11 @@ defmodule ApiaryWeb.PreparationComponents do
               text={node.cause}
             />
           </.flow>
-          <%!-- Why a queued run waits, under Queue the run, open or closed. --%>
-          <p :if={node[:why]} id={"#{@id}-why"} class="q-prep-why">{node.why}</p>
+          <%!-- Why a queued run waits, under Queue the run, open or closed, where nobody
+                fixes it. --%>
+          <p :if={node[:why] && !node[:fix]} id={"#{@id}-why"} class="q-prep-why">
+            <.rich text={node.why} />
+          </p>
         </li>
       </ol>
     </section>
@@ -365,11 +374,32 @@ defmodule ApiaryWeb.PreparationComponents do
       label={step_label(@step)}
       times={false}
     >
-      <.cause
+      <:before>
+        <.pulling
+          :if={@step.kind == "image" and @step.state == "running" and pulled_type(@preparation)}
+          id={"#{@id}-pull"}
+          type={pulled_type(@preparation)}
+        />
+      </:before>
+      <%!-- The cause and who fixes it, one item of the open step, so no gap parts them. --%>
+      <div
         :if={@preparation.stopped && @preparation.stopped.step == @step.number}
-        id={"#{@id}-cause"}
-        text={cause_what(@preparation.stopped)}
-      />
+        id={"#{@id}-stopped"}
+        role="status"
+      >
+        <.cause
+          id={"#{@id}-cause"}
+          text={Map.get(@preparation.stopped, :rich) || cause_what(@preparation.stopped)}
+          status={false}
+        />
+        <p
+          :if={Map.get(@preparation.stopped, :fix_shown)}
+          id={"#{@id}-fix"}
+          class="q-prep-cause-fix"
+        >
+          {@preparation.stopped.fix}
+        </p>
+      </div>
     </.step_row>
     """
   end
@@ -386,6 +416,32 @@ defmodule ApiaryWeb.PreparationComponents do
       {if @node.kind == :agent and @node.session != nil,
         do: render_slot(@session, @node.session.sequence)}
     </.flow>
+    """
+  end
+
+  # The machine type whose image the run was given (`Apiary.Runs.Preparation`), nil for
+  # none.
+  defp pulled_type(preparation), do: Map.get(preparation, :image_type)
+
+  attr :id, :string, required: true
+  attr :type, :map, required: true, doc: "`%{key: key, name: name}`"
+
+  # Under Pull the images while it runs, for a run given its machine type's image: which
+  # image the machine pulls, and that it is no fault.
+  defp pulling(assigns) do
+    ~H"""
+    <div id={@id} class="q-prep-note">
+      <p>
+        <.rich text={
+          rich_gettext(
+            "The machine pulls the image of the machine type %{name} (%{key}). Each run pulls its image before the agent starts.",
+            name: @type.name,
+            key: {:m, @type.key, "font-mono"}
+          )
+        } />
+      </p>
+      <p class="q-prep-fix">{gettext("No action needed.")}</p>
+    </div>
     """
   end
 
@@ -534,6 +590,8 @@ defmodule ApiaryWeb.PreparationComponents do
               <.external_text text={text} />
             <% {:mono, text} -> %>
               <span class="font-mono text-[12.5px]"><.external_text text={text} /></span>
+            <% {:rich, text} -> %>
+              <.rich text={text} />
             <% {:duration, ms} -> %>
               <.duration ms={ms} />
             <% text -> %>
@@ -1116,6 +1174,9 @@ defmodule ApiaryWeb.PreparationComponents do
   # A queued run's list: Queue the run, running since the run of the queue began
   # to wait, then each step after it, not run yet.
   defp queued_nodes(%{queued_at: at} = queued) do
+    reason = Map.get(queued, :reason)
+    type = Map.get(queued, :machine_type)
+
     queue =
       entry(
         key: "queue",
@@ -1123,8 +1184,14 @@ defmodule ApiaryWeb.PreparationComponents do
         name: gettext("Queue the run"),
         state: "running",
         at: at,
-        events: [{gettext("Queued"), {:at, at}}],
-        why: waiting_words(Map.get(queued, :reason))
+        events:
+          [{gettext("Queued"), {:at, at}}] ++
+            if(type,
+              do: [{gettext("Machine type"), {:rich, MachineTypeWords.fact_words(type)}}],
+              else: []
+            ),
+        why: waiting_words(reason, type),
+        fix: waiting_fix(reason, queued)
       )
 
     later =
@@ -1140,6 +1207,55 @@ defmodule ApiaryWeb.PreparationComponents do
     [queue | later]
   end
 
+  @doc """
+  Why a queued run waits (Apiary.Runs.Waiting), as rich text: its first words are the
+  reason. `type` is the run's machine type, `%{key: key, name: name, spec: spec}`, nil
+  for none.
+  """
+  @spec waiting_words(term, map | nil) :: term
+  def waiting_words({:no_fit, key, _pool}, %{spec: %{} = spec} = type) do
+    name = type[:name] || key
+
+    rich_gettext("Waiting for a machine: no pool offers a machine that fits %{type}.",
+      type: MachineTypeWords.fitted(name, key, spec)
+    )
+  end
+
+  def waiting_words({:no_fit, key, _pool}, _type),
+    do: gettext("Waiting: no pool can start machine type %{name}", name: key)
+
+  def waiting_words(reason, _type), do: waiting_words(reason)
+
+  # Who fixes why a queued run waits; nil where nobody does. An instance admin reads that
+  # an instance admin fixes the type, or the pool's admin adds an offer: "Qory Pool" for
+  # the instance's pool. Anyone else reads "Contact support with run …" in place of the
+  # instance admin, as the run page's other lines for the instance's pool do: an
+  # organisation's people never see the word "instance", and "support" is how they reach
+  # the instance admins. For a pool that is not the instance's, they also read that they
+  # can ask the pool's admin for an offer.
+  defp waiting_fix({:no_fit, _key, pool}, %{instance_admin: true}) when not is_nil(pool),
+    do:
+      gettext(
+        "An instance admin makes the type fit an offer in Instance settings › Machine types, or the admin of %{pool} adds an offer that fits.",
+        pool: pool_words(pool)
+      )
+
+  defp waiting_fix({:no_fit, _key, :instance}, %{run: run}),
+    do: gettext("Contact support with run %{run}.", run: run)
+
+  defp waiting_fix({:no_fit, _key, pool}, %{run: run}) when is_binary(pool),
+    do:
+      gettext(
+        "Contact support with run %{run}, or ask the admin of %{pool} to add an offer that fits.",
+        run: run,
+        pool: pool_words(pool)
+      )
+
+  defp waiting_fix(_reason, _queued), do: nil
+
+  defp pool_words(:instance), do: gettext("Qory Pool")
+  defp pool_words(pool), do: ExternalText.line(pool)
+
   # Why a queued run waits (`Apiary.Runs.Waiting`), in one sentence whose first words are
   # the reason. A pool's name came from a person and is shown as a text an external
   # system sent. The instance's pool has no numbers: its count covers the runs of other
@@ -1147,9 +1263,6 @@ defmodule ApiaryWeb.PreparationComponents do
   defp waiting_words(:harness), do: gettext("Waiting until Qory Apiary reads the harness.")
 
   defp waiting_words(:no_pool), do: gettext("Waiting: no pool can take the run")
-
-  defp waiting_words({:no_fit, name}),
-    do: gettext("Waiting: no pool can start machine type %{name}", name: name)
 
   defp waiting_words({:image, target, :queued}),
     do:
@@ -1199,7 +1312,7 @@ defmodule ApiaryWeb.PreparationComponents do
   defp request_node(machine) do
     type =
       if machine.machine_type,
-        do: MachineTypeWords.requested(machine.machine_type.name, machine.machine_type.spec),
+        do: {:rich, MachineTypeWords.requested(machine.machine_type, machine.machine_type.spec)},
         else: gettext("pool default")
 
     entry(
@@ -1806,6 +1919,7 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :open, :boolean, default: nil, doc: "whether the row is open when it appears"
   attr :label, :string, default: nil, doc: "the row's name in place of the step's"
   attr :times, :boolean, default: true, doc: "whether the row shows its start and duration"
+  slot :before, doc: "what comes before the step's output"
   slot :inner_block, doc: "what follows the step's output"
 
   # A step's row: its name came from the run, unless it has a label, and its output is
@@ -1824,6 +1938,7 @@ defmodule ApiaryWeb.PreparationComponents do
       open={@open}
       times={@times}
     >
+      {render_slot(@before)}
       <.output
         :if={@step.output}
         id={"#{@id}-output"}
@@ -2059,9 +2174,13 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :id, :string, required: true
   attr :text, :any, required: true, doc: "rich text (`ApiaryWeb.RichText`)"
 
+  attr :status, :boolean,
+    default: true,
+    doc: "false where an element around the cause has `role=\"status\"`"
+
   defp cause(assigns) do
     ~H"""
-    <p id={@id} class="q-prep-cause" role="status"><.rich text={@text} /></p>
+    <p id={@id} class="q-prep-cause" role={@status && "status"}><.rich text={@text} /></p>
     """
   end
 

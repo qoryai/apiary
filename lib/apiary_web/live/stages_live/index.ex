@@ -76,7 +76,6 @@ defmodule ApiaryWeb.StagesLive.Index do
         harness_source: nil,
         declared_error: nil,
         types: Apiary.Artifacts.types(workspace),
-        machine_types: Apiary.MachineTypes.list(),
         members: members,
         people: Map.new(members, &{&1.user.id, People.short(People.email(&1.user))}),
         work_items: [],
@@ -175,6 +174,7 @@ defmodule ApiaryWeb.StagesLive.Index do
       base: version,
       draft: version.document,
       selected: Editor.first_id(version.document),
+      machine_types: Apiary.MachineTypes.list(),
       stage_errors: %{},
       refused_machines: [],
       rounds_errors: %{},
@@ -184,6 +184,11 @@ defmodule ApiaryWeb.StagesLive.Index do
     |> authors()
     |> refresh()
   end
+
+  # Whether the version came from an update from the harness, which records the version
+  # of the harness it read (`ref_kind`), for the words of a missing machine type key.
+  defp from_update?(version),
+    do: match?(%{"ref_kind" => _}, Processes.harness_template(version))
 
   # The harness of the workspace's runs, in the words the Harness page shows.
   defp harness_name(%{choice: :qory} = chosen), do: ApiaryWeb.HarnessComponents.qory_line(chosen)
@@ -672,6 +677,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 harness={@cross}
                 machine={@draft["machine"]}
                 machine_types={@machine_types}
+                from_update={from_update?(@base)}
                 marks={marks(assigns)}
               />
             </div>
