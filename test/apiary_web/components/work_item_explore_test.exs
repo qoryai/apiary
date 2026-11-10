@@ -1327,7 +1327,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       refute html =~ "Add review comment"
     end
 
-    test "Background: its first paragraph, the rest in a closed fold behind Read more, closed again by Read less" do
+    test "Background: its first paragraph, the rest in a closed fold behind Read more, with Read less for the open fold" do
       message = """
       ## Summary
 
