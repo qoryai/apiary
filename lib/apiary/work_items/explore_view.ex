@@ -8,7 +8,7 @@ defmodule Apiary.WorkItems.ExploreView do
   #
   # Where Explore stands, at `now`:
   #
-  #   * `status`: for a live work item, `Apiary.WorkItems.Explore.status/2` of its current
+  #   * `status`: for a live work item, `Apiary.WorkItems.Explore.status/3` of its current
   #     take in; for an ended one, its state (`:closed` or `:undone`);
   #   * `stage`: nil for a live work item; for an ended one, the stage its close
   #     recorded (`:explore`, `:confirm` or `:shape`), `:explore` for an undo, and for an
@@ -39,8 +39,9 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `questions`: the questions of the work item's newest questions that a run of the
   #     current take in wrote (`asked.run`) or reopened last (the `reopened.run` of the
   #     last entry of its `history` that has one), in their order, each `%{id:, number:,
-  #     text:, context:, options:, state:, asked_run:, answer:, history:, follows:,
-  #     decision:}`: `number` its row's place on the Explore tab, from 1, top to bottom
+  #     text:, context:, options:, state:, asked_run:, stage_id:, answer:, history:,
+  #     follows:, decision:}`: `stage_id` the stage of the run that wrote or reopened it
+  #     last, `number` its row's place on the Explore tab, from 1, top to bottom
   #     (`shown_numbers/1`), `state` `:open`,
   #     `:answered`, `:decided` or `:withdrawn`, `decision` nil or the run's choice,
   #     `%{option:, reason:, run:, at:}`, kept after a member answered, `answer` nil or
@@ -49,14 +50,19 @@ defmodule Apiary.WorkItems.ExploreView do
   #     earlier answers in the same form, and `follows` the
   #     numbers of the questions it follows, among these questions; and
   #     `questions_version`, the number of that version, nil for none;
-  #   * `review_comments`: the review comments on the current take in's proposals, oldest
-  #     first, each `%{id:, text:, by_id:, at:, version:, state:, reopened:, replies:}`:
+  #   * `review_comments`: the review comments of the current take in, oldest first, each
+  #     `%{id:, artifact:, text:, by_id:, at:, version:, run:, attempt:, stage_id:,
+  #     state:, reopened:, replies:}`: `artifact` the type it is on and `version` that
+  #     type's version, both nil for a review comment on the whole round of a run, whose
+  #     `run` is that run's number, `attempt` its attempt and `stage_id` the stage it ran
+  #     at (all three nil for an output's),
   #     `state` `:open` or `:closed`, `reopened` true for an open one a run replied to,
   #     and each reply `%{run:, by_id:, text:, at:, outcome:, question:,
   #     question_number:, version:}`: a run's with its number, its `outcome`
   #     (`:changed`, `:answered`, `:declined` or `:asked`, with the question's id and
-  #     number) and the proposal's version that run stood at; a member's with `by_id`
-  #     and the proposal's version the take in's latest run stood at when it was written.
+  #     number) and the version of the comment's type that run stood at; a member's with
+  #     `by_id` and that type's version the take in's latest run stood at when it was
+  #     written.
   #
   # A run map: `id` and `number` (its registered run's public id and number, both nil for
   # a run with none: one waiting, or one that ended before its handover), `workspace_id`, the workspace it was queued in, where it stays
@@ -115,8 +121,9 @@ defmodule Apiary.WorkItems.ExploreView do
   #     `owner_id`, who owned the work item in that take in, and `first_instruction` for
   #     the current take in, nil for an earlier one),
   #     `:answered` (`actor_id`, `run`, `questions` with their answers, `comment`, the
-  #     text of a review comment or a reply, nil for answers, and `reply`, true for a
-  #     reply; a send of the review comments has no entry), `:explore_again`
+  #     text of a review comment or a reply, nil for answers, `artifact`, the type it is
+  #     on, and `reply`, true for a reply; a send of the review comments has no entry),
+  #     `:explore_again`
   #     (`actor_id`, `run`, the run it started), `:confirmed` (`actor_id`, `changed`),
   #     `:closed` (`actor_id`, nil for the instance, `stage`, nil where none was recorded,
   #     and the instance's `reason`, nil for a person),
@@ -135,8 +142,12 @@ defmodule Apiary.WorkItems.ExploreView do
   #     wrote none but at least one such reply, else as `:no_result` with `outcome`
   #     `:none`.
   #
-  # `run` is `%{id, workspace_id, attempt, of}`. A run that has not ended, or reads as
-  # running, has no entry at its end.
+  # A run at a stage after Explore's starts with `start` nil where the run before it ran at
+  # another stage. Where it gave no result, it ends as `:asked` where it wrote questions,
+  # and with no entry where it pushed a version of an output: its outputs are its result.
+  #
+  # `run` is `%{id, workspace_id, stage_id, attempt, of}`, `stage_id` the stage it ran at,
+  # nil for none. A run that has not ended, or reads as running, has no entry at its end.
   #
   # Who owned the work item in a take in is its owner for the current take in; for an
   # earlier one, the owner the next take in found (its `:taken_in` event's `before`). A
@@ -170,7 +181,7 @@ defmodule Apiary.WorkItems.ExploreView do
     confirmation = confirmations[take_in]
     events = Explore.events(id)
     live? = State.live?(work_item.state)
-    status = Explore.status(current, not is_nil(confirmation))
+    status = Explore.status(current, not is_nil(confirmation), work_item)
 
     ctx =
       context(work_item, steps, events, (live? and status == :questions) && List.last(current))
@@ -202,6 +213,27 @@ defmodule Apiary.WorkItems.ExploreView do
       review_comments: review_comments(ctx, take_in)
     }
   end
+
+  # newest_outputs/3 is the newest version of each of `types` that a run of `work_item`'s
+  # current take in pushed at the stage `stage_id`, a stage after Explore's, by type, of the
+  # artifact named `main`. A type with none has no entry.
+  @doc false
+  @spec newest_outputs(WorkItem.t(), String.t(), [String.t()]) :: %{String.t() => pos_integer}
+  def newest_outputs(%WorkItem{id: id, take_in: take_in}, stage_id, types)
+      when is_binary(stage_id) and is_list(types) do
+    for {type, number} <- Explore.versions(id, take_in, {stage_id, false}),
+        type in types,
+        reduce: %{} do
+      newest -> Map.update(newest, type, number, &max(&1, number))
+    end
+  end
+
+  # output/3 is version `number` of `work_item`'s artifact of `type` named `main` as the
+  # page shows it (`message`, its Markdown; `version_id`; `images`), nil for none.
+  @doc false
+  @spec output(WorkItem.t(), String.t(), pos_integer) :: map | nil
+  def output(%WorkItem{id: id}, type, number) when is_binary(type) and is_integer(number),
+    do: id |> Explore.document(type, number) |> shown_document()
 
   # The text of the newest proposal of the current take in, the one version of the
   # proposal that `explore/2` reads from the store: by its number, as the page shows it
@@ -309,15 +341,12 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # Version `version` of the work item `id`'s proposal as the page shows it (`message`,
   # its Markdown; `version_id`; `images`, its image files' filenames), nil for none.
-  defp shown_proposal(id, version) do
-    case Explore.proposal(id, version) do
-      %{text: text, version_id: version_id, images: images} ->
-        %{message: text, version_id: version_id, images: images}
+  defp shown_proposal(id, version), do: id |> Explore.proposal(version) |> shown_document()
 
-      nil ->
-        nil
-    end
-  end
+  defp shown_document(%{text: text, version_id: version_id, images: images}),
+    do: %{message: text, version_id: version_id, images: images}
+
+  defp shown_document(nil), do: nil
 
   # The questions of the newest questions that a run of the current take in wrote or
   # reopened last, in their order, each numbered by its row's place on the Explore tab
@@ -340,6 +369,7 @@ defmodule Apiary.WorkItems.ExploreView do
         options: options,
         state: question_state(question["state"]),
         asked_run: get_in(question, ["asked", "run"]),
+        stage_id: question_stage(question, ctx),
         answer: given_answer(question["answer"], Enum.at(moves, length(history)), options),
         history:
           for(
@@ -392,6 +422,22 @@ defmodule Apiary.WorkItems.ExploreView do
       MapSet.member?(ctx.current_runs, reopened_run(question))
   end
 
+  # The stage of the run of the current take in that reopened the question last, else of
+  # the run that wrote it; nil for a run with no stage.
+  defp question_stage(question, ctx) do
+    reopened = reopened_run(question)
+
+    run =
+      if MapSet.member?(ctx.current_runs, reopened),
+        do: reopened,
+        else: get_in(question, ["asked", "run"])
+
+    case Map.get(ctx.by_number, run) do
+      %{dispatch_run: %{stage_id: stage_id}} -> stage_id
+      _none -> nil
+    end
+  end
+
   # The `reopened.run` of the last entry of the question's `history` that has one; nil
   # for none.
   defp reopened_run(question) do
@@ -437,31 +483,35 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp time(_at), do: nil
 
-  # The review comments on the proposals of take in `take_in`, oldest first, each with
-  # its replies (the moduledoc).
+  # The review comments of take in `take_in`, oldest first, each with its replies (the
+  # moduledoc).
   defp review_comments(ctx, take_in) do
     written = for %{kind: :comment, id: id} = given <- ctx.given, into: %{}, do: {id, given}
     replies = for %{kind: :reply} = given <- ctx.given, do: given
     numbers = shown_numbers(ctx)
 
-    for %{"on" => %{"artifact" => "proposal", "version" => version}} = comment <-
-          ReviewComments.entries(ctx.review_comments),
+    for %{"on" => on} = comment <- ReviewComments.entries(ctx.review_comments),
+        {type, version, run} <- [on_parts(on)],
         %{take_in: ^take_in} = given <- [Map.get(written, comment["id"])] do
       shown =
         (comment["replies"] || [])
         |> Enum.with_index(1)
         |> Enum.map(fn {reply, position} ->
-          reply_view(reply, {comment["id"], position}, replies, ctx)
+          reply_view(reply, {type, comment["id"], position}, replies, ctx)
         end)
 
       open? = comment["state"] != "closed"
 
       %{
         id: comment["id"],
+        artifact: type,
         text: comment["text"],
         by_id: given.by_id,
         at: given.at,
         version: version,
+        run: run,
+        attempt: run_attempt(ctx, run),
+        stage_id: run_stage(ctx, run),
         state: if(open?, do: :open, else: :closed),
         reopened: open? and Enum.any?(shown, &is_integer(&1.run)),
         replies: Enum.map(shown, &Map.put(&1, :question_number, numbers[&1.question]))
@@ -469,12 +519,33 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
+  # The stage the run `number` ran at, nil for none.
+  defp run_stage(ctx, number) do
+    case number && Map.get(ctx.by_number, number) do
+      %{dispatch_run: %{stage_id: stage_id}} -> stage_id
+      _none -> nil
+    end
+  end
+
+  # The attempt of the run `number` in its take in, nil for none.
+  defp run_attempt(ctx, number) do
+    case number && Map.get(ctx.by_number, number) do
+      %{attempt: attempt} -> attempt
+      _none -> nil
+    end
+  end
+
+  # What a review comment is on: `{type, version, nil}` for one output, `{nil, nil, run}`
+  # for the round of the run `run`.
+  defp on_parts(%{"artifact" => type, "version" => version}), do: {type, version, nil}
+  defp on_parts(%{"run" => run}), do: {nil, nil, run}
+
   # A reply to a review comment: a run's, with its outcome and the version of the
-  # proposal that run stood at; a member's, with who wrote it and the version of the
-  # proposal the take in's latest run stood at then, by the move that wrote that reply
-  # of that review comment (`at`, the review comment's id and the reply's position from
-  # 1), with its text and time.
-  defp reply_view(%{"by" => %{"run" => number}} = reply, _at, _replies, ctx) do
+  # comment's type that run stood at; a member's, with who wrote it and the version of
+  # that type the take in's latest run stood at then, by the move that wrote that reply
+  # of that review comment (`at`, the type, the review comment's id and the reply's
+  # position from 1), with its text and time.
+  defp reply_view(%{"by" => %{"run" => number}} = reply, {type, _id, _position}, _replies, ctx) do
     %{
       run: number,
       by_id: nil,
@@ -482,11 +553,11 @@ defmodule Apiary.WorkItems.ExploreView do
       at: time(reply["at"]),
       outcome: outcome(reply["outcome"]),
       question: reply["question"],
-      version: (step = Map.get(ctx.by_number, number)) && version(step, ctx)
+      version: (step = Map.get(ctx.by_number, number)) && version(step, ctx, type)
     }
   end
 
-  defp reply_view(reply, {id, position}, replies, ctx) do
+  defp reply_view(reply, {type, id, position}, replies, ctx) do
     move =
       Enum.find(
         replies,
@@ -503,7 +574,7 @@ defmodule Apiary.WorkItems.ExploreView do
       at: (move && move.at) || time(reply["at"]),
       outcome: nil,
       question: nil,
-      version: step && version(step, ctx)
+      version: step && version(step, ctx, type)
     }
   end
 
@@ -704,21 +775,23 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp confirmed_result(_step, _confirmation), do: nil
 
-  # The version of the proposal the run `step` stands at; nil for none.
-  defp version(step, ctx), do: version_at(step.take_in, step.attempt, ctx)
+  # The version of `type` the run `step` stands at; nil for none.
+  defp version(step, ctx, type \\ "proposal"),
+    do: version_at(step.take_in, step.attempt, ctx, type)
 
-  # The version of the proposal the run `attempt` of take in `take_in` stands at, as
-  # `Apiary.WorkItems.Explore.proposal_version/3` reads it: the newest version a run of
-  # the take in up to it pushed, from `ctx.pushed` (`pushed/1`); nil for none.
-  defp version_at(take_in, attempt, ctx) do
+  # The version of `type` the run `attempt` of take in `take_in` stands at, as
+  # `Apiary.WorkItems.Explore.version/4` reads it: the newest version a run of the take in
+  # up to it pushed, from `ctx.pushed` (`pushed/1`); nil for none.
+  defp version_at(take_in, attempt, ctx, type \\ "proposal") do
     ctx.pushed
-    |> Enum.filter(fn {{t, a}, _number} -> t == take_in and a <= attempt end)
+    |> Enum.filter(fn {{y, t, a}, _number} -> y == type and t == take_in and a <= attempt end)
     |> Enum.map(fn {_run, number} -> number end)
     |> Enum.max(fn -> nil end)
   end
 
-  # The newest version of the proposal named `main` each run of the work item `id`
-  # pushed, by `{take_in, attempt}`, read in one query for the page.
+  # The newest version of each artifact named `main` each run of the work item `id` pushed,
+  # by `{type, take_in, attempt}`, and whether each proposal version has Markdown, read in
+  # one query for the page.
   defp pushed(id) do
     rows =
       Repo.all(
@@ -728,10 +801,10 @@ defmodule Apiary.WorkItems.ExploreView do
           on: a.id == v.artifact_id,
           join: d in DispatchRun,
           on: d.id == v.run_id,
-          where: a.work_item_id == ^id and a.type == "proposal" and a.name == "main",
+          where: a.work_item_id == ^id and a.name == "main",
           where: d.work_item_id == ^id,
           select:
-            {d.take_in, d.attempt, v.number,
+            {a.type, d.take_in, d.attempt, v.number,
              exists(
                from f in ArtifactFile,
                  where:
@@ -741,11 +814,12 @@ defmodule Apiary.WorkItems.ExploreView do
       )
 
     newest =
-      Enum.reduce(rows, %{}, fn {take_in, attempt, number, _markdown}, newest ->
-        Map.update(newest, {take_in, attempt}, number, &max(&1, number))
+      Enum.reduce(rows, %{}, fn {type, take_in, attempt, number, _markdown}, newest ->
+        Map.update(newest, {type, take_in, attempt}, number, &max(&1, number))
       end)
 
-    {newest, Map.new(rows, fn {_take_in, _attempt, number, markdown} -> {number, markdown} end)}
+    {newest,
+     for({"proposal", _take_in, _attempt, n, markdown} <- rows, into: %{}, do: {n, markdown})}
   end
 
   # Every confirmation of the work item `id`, by take in, read in one query for the page.
@@ -1079,7 +1153,11 @@ defmodule Apiary.WorkItems.ExploreView do
       (State.live?(work_item.state) and Explore.status(current, confirmed?) == :questions) &&
         List.last(current)
 
-    ctx = context(work_item, steps, events, waiting)
+    ctx =
+      work_item
+      |> context(steps, events, waiting)
+      |> Map.put(:explore_id, Apiary.Stages.explore_stage_id(work_item))
+
     owners = owners(work_item, events)
 
     (event_entries(work_item, events, by_run, ctx, owners) ++
@@ -1142,6 +1220,7 @@ defmodule Apiary.WorkItems.ExploreView do
           }
         end,
       comment: Enum.find_value(given, &if(&1.kind != :answer, do: &1.text)),
+      artifact: commented_type(event, ctx),
       reply: is_integer(event.data["reply"])
     }
   end
@@ -1182,6 +1261,15 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp event_entry(_kind, _event, _by_run, _ctx), do: nil
 
+  # The type the review comment of an `:answered` event is on; nil for an event with none.
+  defp commented_type(%{data: %{"review_comment" => id}}, ctx) do
+    ctx.review_comments
+    |> ReviewComments.entries()
+    |> Enum.find_value(&(&1["id"] == id && get_in(&1, ["on", "artifact"])))
+  end
+
+  defp commented_type(_event, _ctx), do: nil
+
   defp run_entries(step, by_run, ctx, owners) do
     run = run_ref(step, {step.take_in, step.attempt})
 
@@ -1196,12 +1284,21 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # How a run started: after a send of the review comments at the run before it (the
   # event's `"review_comments"`, which `Apiary.Runs.ListFacts` reads too), after the
-  # answers to the questions of the run before it, or again.
+  # answers to the questions of the run before it, or again; at a stage after Explore's,
+  # as a first start where the run before it ran at another stage.
   defp start(%{attempt: 1}, _by_run, _ctx), do: nil
 
   defp start(step, by_run, ctx) do
     before = {step.take_in, step.attempt - 1}
 
+    if later?(step, ctx) and not same_stage?(Map.get(by_run, before), step) do
+      nil
+    else
+      start_after(before, by_run, ctx)
+    end
+  end
+
+  defp start_after(before, by_run, ctx) do
     if Map.has_key?(ctx.sent, before) do
       :review_comments
     else
@@ -1215,43 +1312,96 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
+  # Whether the run `step` ran at a stage after Explore's.
+  defp later?(%{dispatch_run: %{stage_id: stage_id}}, ctx),
+    do: is_binary(stage_id) and stage_id != ctx.explore_id
+
+  defp same_stage?(%{dispatch_run: %{stage_id: stage_id}}, %{dispatch_run: %{stage_id: stage_id}}),
+       do: true
+
+  defp same_stage?(_before, _step), do: false
+
   defp ended(step, run, ctx, owner_id) do
     case Explore.ended_at(step) do
       nil ->
         []
 
       at ->
-        duration = duration_ms(step, at)
+        step
+        |> ended_entries(run, ctx, owner_id, at)
+        |> Enum.flat_map(&later_entry(&1, step, ctx))
+    end
+  end
 
-        case step.place do
-          :questions ->
-            case wrote_questions(step, ctx) do
-              [] ->
-                [without_questions(step, run, at, duration, ctx)]
+  # A run at a stage after Explore's that gave no result: `:asked` where it wrote
+  # questions, no entry where it pushed a version of an output.
+  defp later_entry(%{kind: :no_result, outcome: :none} = entry, step, ctx) do
+    cond do
+      not later?(step, ctx) ->
+        [entry]
 
-              questions ->
-                [%{kind: :asked, at: at, run: run, questions: questions, duration_ms: duration}]
-            end
+      (questions = wrote_questions(step, ctx)) != [] ->
+        [
+          %{
+            kind: :asked,
+            at: entry.at,
+            run: entry.run,
+            questions: questions,
+            duration_ms: duration_ms(step, entry.at)
+          }
+        ]
 
-          :proposal ->
-            [%{kind: :proposed, at: at, run: run, duration_ms: duration, owner_id: owner_id}]
+      outputs?(step, ctx) ->
+        []
 
-          :no_result ->
-            [
-              %{
-                kind: :no_result,
-                at: at,
-                run: run,
-                outcome: step.outcome,
-                end_cause: step.dispatch_run.end_cause,
-                end_detail: step.dispatch_run.end_detail,
-                wrote: (Explore.run_state(step) == :failed && wrote(step, ctx)) || nil
-              }
-            ]
+      true ->
+        [entry]
+    end
+  end
 
-          place when place in [:lost, :cancelled] ->
-            [%{kind: place, at: at, run: run}]
+  defp later_entry(entry, _step, _ctx), do: [entry]
+
+  # Whether the run `step` pushed a version of an output: of a type other than the
+  # proposal, the questions, the verdict and the review comments.
+  defp outputs?(step, ctx) do
+    others = ["proposal", "questions", "verdict", ReviewComments.type_name()]
+
+    Enum.any?(ctx.pushed, fn {{type, take_in, attempt}, _number} ->
+      take_in == step.take_in and attempt == step.attempt and type not in others
+    end)
+  end
+
+  defp ended_entries(step, run, ctx, owner_id, at) do
+    duration = duration_ms(step, at)
+
+    case step.place do
+      :questions ->
+        case wrote_questions(step, ctx) do
+          [] ->
+            [without_questions(step, run, at, duration, ctx)]
+
+          questions ->
+            [%{kind: :asked, at: at, run: run, questions: questions, duration_ms: duration}]
         end
+
+      :proposal ->
+        [%{kind: :proposed, at: at, run: run, duration_ms: duration, owner_id: owner_id}]
+
+      :no_result ->
+        [
+          %{
+            kind: :no_result,
+            at: at,
+            run: run,
+            outcome: step.outcome,
+            end_cause: step.dispatch_run.end_cause,
+            end_detail: step.dispatch_run.end_detail,
+            wrote: (Explore.run_state(step) == :failed && wrote(step, ctx)) || nil
+          }
+        ]
+
+      place when place in [:lost, :cancelled] ->
+        [%{kind: place, at: at, run: run}]
     end
   end
 
@@ -1268,10 +1418,11 @@ defmodule Apiary.WorkItems.ExploreView do
       id: run && run.public_id,
       number: run && run.number,
       workspace_id: dispatch_run.workspace_id,
+      stage_id: dispatch_run.stage_id,
       attempt: attempt,
       of: of
     }
 
   defp run_ref(nil, {_take_in, attempt}),
-    do: %{id: nil, number: nil, workspace_id: nil, attempt: attempt, of: nil}
+    do: %{id: nil, number: nil, workspace_id: nil, stage_id: nil, attempt: attempt, of: nil}
 end

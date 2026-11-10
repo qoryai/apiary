@@ -176,6 +176,36 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{attempt} reads the %{item} and the stage's inputs, then writes %{outputs}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} reads the %{item} and the stage's inputs."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} reads the %{item}, the newest outputs and the comments, then writes the next versions."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} reads the %{item}, the newest outputs and the questions with their answers, then writes the next versions."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} reads the %{item}, the newest outputs and the questions with your answers, then writes the next versions."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} reads the %{item}, the newest outputs and your comments, then writes the next versions."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{attempt} reads the %{item}, the newest proposal and the comments, then writes the next proposal and questions."
 msgstr ""
 
@@ -207,6 +237,36 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{attempt} returned a result that did not pass Qory Apiary's check, so Explore has no result."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} starts when the workspace's pool takes it. It reads the %{item} and the stage's inputs, then writes %{outputs}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} starts when the workspace's pool takes it. It reads the %{item} and the stage's inputs."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest outputs and the comments."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest outputs and the questions with their answers."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest outputs and the questions with your answers."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest outputs and your comments."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -1651,6 +1711,11 @@ msgstr ""
 msgid "%{name} wrote a comment on the proposal"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} wrote a comment on the round of attempt %{attempt}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "%{name}'s default model choice"
@@ -1707,6 +1772,16 @@ msgstr ""
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "%{name}, %{kind} runs"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}, on %{target} version %{version}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}, on the round of attempt %{attempt}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -3109,6 +3184,52 @@ msgstr ""
 msgid "%{stack} · %{harness} · %{version}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is queued again, with the answers."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is queued again, with the comments."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is queued again, with your answers."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is queued again, with your comments."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is queued."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is running again, with the answers."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is running again, with the comments."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is running again, with your answers."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} is running again, with your comments."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} is running."
@@ -3124,6 +3245,26 @@ msgstr ""
 msgid "%{stage} needs %{type} as an input, and no stage before %{stage} lists it as an output."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} started again in attempt %{attempt}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} started again, with the answers, in attempt %{attempt}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} started again, with the comments, in attempt %{attempt}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} started in attempt %{attempt}"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} uses the type %{type}, which this workspace does not have."
@@ -3133,6 +3274,20 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{stage} waits for answers to the agent's questions."
 msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} wrote 1 question, after %{duration}"
+msgid_plural "%{stage} wrote %{number} questions, after %{duration}"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} wrote a reply to 1 comment, after %{duration}"
+msgid_plural "%{stage} wrote replies to %{number} comments, after %{duration}"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -5833,6 +5988,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} ended with an error, so %{stage} has no result"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} ended with an error, so Explore has no result"
 msgstr ""
 
@@ -5858,7 +6018,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} was cancelled before it ended, so %{stage} has no result"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} was cancelled before it ended, so Explore has no result"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} was lost before it ended, so %{stage} has no result"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -7137,6 +7307,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Comment deleted by you"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Comment on the stage's outputs"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -16968,7 +17143,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your answers and updates the outputs."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Run another round starts the next run. That run reads your answers and updates the proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your answers and your changed decisions, and updates the outputs."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -16978,7 +17163,17 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your answers and your comment, and updates the outputs."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Run another round starts the next run. That run reads your answers and your comment, and updates the proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your answers, your changed decisions and your comment, and updates the outputs."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -16988,12 +17183,27 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your changed decisions and updates the outputs."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Run another round starts the next run. That run reads your changed decisions and updates the proposal."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the outputs."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the proposal."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round starts the next run. That run reads your comment and updates the outputs."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -23704,6 +23914,21 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "You wrote a comment on the round of attempt %{attempt}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You, on %{target} version %{version}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You, on the round of attempt %{attempt}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "You, on version %{version}"
 msgstr ""
 
@@ -25060,6 +25285,11 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "retention prune keep"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "round %{round}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

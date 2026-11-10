@@ -3168,6 +3168,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert texts(html, "#work-item-explore-take-ins-1 summary .q-xp-it") ==
                ["Taken in 16 Oct by you", "Closed by you 4 minutes ago", "3 runs"]
 
+      # The pieces are in one strip (`.q-xp-parts`), so no wrapped line starts with "·".
+      assert count(html, "#work-item-explore-take-ins-1 > summary > .q-xp-parts > .q-xp-it") ==
+               3
+
       assert text(html, "#work-item-explore-take-ins-1 .q-xp-inner > p:first-child") ==
                "These runs do not count toward the run limit of this take in."
 

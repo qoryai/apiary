@@ -473,6 +473,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("version_id", _path, p), do: p.version_id
   defp value_of("type_id", "/:org/:workspace/settings/artifact-types/" <> _, p), do: p.type_id
   defp value_of("number", _path, p), do: p.work_item_number
+  # The stage of the default process that runs Explore's workflow.
+  defp value_of("stage_id", _path, _p), do: "st_r79kph11eg"
   defp value_of("n", _path, _p), do: 1
   defp value_of("adapter_id", _path, p), do: p.adapter_id
   defp value_of("provider_id", _path, p), do: p.provider_id

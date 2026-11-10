@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.WorkItemComponents do
   # The parts of a work item's page (`/:org/:workspace/work/:number`, which shows the tab
-  # it opens on, `…/ticket`, its Ticket tab, `…/explore`, its Explore tab, and `…/thread`,
-  # its Thread), and the status words and
+  # it opens on, `…/ticket`, its Ticket tab, `…/stages/:stage_id`, a stage's tab, `…/explore`,
+  # Explore's tab with no stage card, and `…/thread`, its Thread), and the status words and
   # marks the Work items list shares (`ApiaryWeb.WorkItemListComponents`).
   #
   # Every component takes plain assigns: strings, numbers, times and maps with the keys
@@ -93,6 +93,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias ApiaryWeb.HarnessComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
+  alias ApiaryWeb.WorkItemLive.StageComponents
 
   @stages [:explore, :confirm, :shape]
   @ended [:closed, :undone]
@@ -2052,21 +2053,26 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   @doc """
   A work item's tabs: Ticket (`ticket_path`), named with its source's word for its items,
-  "Bug" for a source that calls them bugs (`item_noun`), Explore (`explore_path`) and
-  Thread (`thread_path`), with the count of people's comments where there are any; named
-  "Work item #%{number}". A test work item has no ticket (`ticket` false), so no Ticket
-  tab.
+  "Bug" for a source that calls them bugs (`item_noun`), Explore (`explore_path`) or one tab
+  for each of `stages`, and Thread (`thread_path`), with the count of people's comments
+  where there are any; named "Work item #%{number}". A test work item has no ticket
+  (`ticket` false), so no Ticket tab.
   """
   attr :id, :string, default: "work-item-tabs"
   attr :number, :integer, required: true, doc: "the work item's number"
 
-  attr :current, :atom,
+  attr :current, :any,
     required: true,
-    values: [:ticket, :explore, :thread],
-    doc: "the page's tab"
+    doc: "the page's tab: `:ticket`, `:explore`, `:thread` or a stage tab's key"
 
   attr :ticket_path, :string, required: true, doc: "the Ticket tab, `/work/:number/ticket`"
-  attr :explore_path, :string, required: true, doc: "Explore's tab, `/work/:number/explore`"
+  attr :explore_path, :string, default: nil, doc: "Explore's tab, with no `stages`"
+
+  attr :stages, :list,
+    default: nil,
+    doc:
+      "the stage tabs in their order, `%{key:, name:, path:}`, under the stage's name; nil for Explore's tab alone"
+
   attr :thread_path, :string, required: true, doc: "the Thread, `/work/:number/thread`"
   attr :comment_count, :integer, default: 0, doc: "people's comments in the Thread"
   attr :ticket, :boolean, default: true, doc: "whether it has a Ticket tab"
@@ -2086,7 +2092,17 @@ defmodule ApiaryWeb.WorkItemComponents do
       <:tab :if={@ticket} key={:ticket} patch={@ticket_path} icon="hero-document-text">
         {SourceComponents.item_label(@item_noun)}
       </:tab>
-      <:tab key={:explore} patch={@explore_path} icon="hero-light-bulb">{stage_name(:explore)}</:tab>
+      <:tab :if={is_nil(@stages)} key={:explore} patch={@explore_path} icon="hero-light-bulb">
+        {stage_name(:explore)}
+      </:tab>
+      <:tab
+        :for={stage <- @stages || []}
+        key={stage.key}
+        patch={stage.path}
+        icon={if stage.key == :explore, do: "hero-light-bulb", else: "hero-clipboard-document-list"}
+      >
+        {stage.name}
+      </:tab>
       <:tab
         key={:thread}
         patch={@thread_path}
@@ -2102,7 +2118,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   ## Explore's tab
 
   @doc """
-  Explore's tab (`/work/:number/explore`), top to bottom:
+  Explore's tab, top to bottom:
 
     * while a run is queued or runs: the run line, which run of the take in it is (linked
       to its page), its state and its time, and what the run does next, with whose
@@ -2151,7 +2167,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       comment the reader may send; under the form, the page's line (`move_error`) where
       it is given. While a run runs, the open questions show as text;
     * one fold of the take in's runs, oldest first, with what each wrote, and the
-      `artifacts` slot; then the earlier take ins (`earlier_take_ins`), each folded with
+      `artifacts` slot; at a stage after Explore, the fold of `foot` in its place
+      (`foot_record/1`); then the earlier take ins (`earlier_take_ins`), each folded with
       its runs, which counted apart.
 
   A run is a map: `:id` (its `rn_` public id) and `:path`, `:attempt` and `:of`, `:state`
@@ -2245,6 +2262,15 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "what its ticket's source calls its items, `%{one:, other:}` (`Apiary.Adapters.item_noun/1`); nil for ticket and tickets"
 
+  attr :foot, :map,
+    default: nil,
+    doc: "at a stage after Explore, the fold's runs and summary (`foot_record/1`); else nil"
+
+  attr :verdicts, :list,
+    default: [],
+    doc:
+      "the stage runs of the take in (`ApiaryWeb.WorkItemLive.Workflow.page/2`'s `runs`): a fold row shows the workflow, the round and the verdict of the one with its attempt"
+
   attr :no_pool, :map,
     default: nil,
     doc:
@@ -2260,7 +2286,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     work_item = at_limit(assigns.work_item)
     status = explore_status(work_item.status, work_item[:run])
     {run, earlier_runs} = explore_runs(work_item[:run], assigns.earlier_runs)
-    view = explore_view(status, run)
+    view = tab_view(assigns.foot, status, run)
     running = view == :wait
     open = Enum.count(assigns.review_comments, &(&1.state == :open))
     {decisions, questions} = Enum.split_with(assigns.questions, &decision?/1)
@@ -2286,8 +2312,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         earlier: not is_nil(assigns.proposal) and run[:wrote] != assigns.proposal.version,
         running: running,
         groups: Enum.filter(earlier_runs, &answered?/1),
+        # A stage after Explore can wait for answers once the proposal is confirmed.
         confirmed:
-          status == :shape &&
+          (status == :shape or (status == :questions and work_item[:confirmed_at] != nil)) &&
             %{by: work_item.confirmed_by, at: work_item.confirmed_at},
         mode: if(status == :questions and assigns.can_act, do: :form, else: :read),
         # The gate shows its controls by the reader's rights; with neither, only the line
@@ -2398,13 +2425,15 @@ defmodule ApiaryWeb.WorkItemComponents do
         open_comments={if @can_send, do: @open_comments, else: 0}
       />
       <.record
-        :if={@earlier_runs != [] or @latest != nil or @artifacts != []}
+        :if={@foot != nil or @earlier_runs != [] or @latest != nil or @artifacts != []}
         id="work-item-record"
         number={@work_item.number}
-        runs={@earlier_runs ++ List.wrap(@latest)}
-        latest={@latest}
+        runs={if @foot, do: @foot.runs, else: @earlier_runs ++ List.wrap(@latest)}
+        latest={if @foot, do: @foot.latest, else: @latest}
+        pieces={@foot && @foot.pieces}
         proposal={@proposal}
         questions_version={@questions_version}
+        verdicts={@verdicts}
         item={@item}
         now={@now}
       >
@@ -2420,6 +2449,450 @@ defmodule ApiaryWeb.WorkItemComponents do
       />
     </div>
     """
+  end
+
+  ## A stage's tab
+
+  @doc """
+  The tab of a stage that runs a workflow, other than Explore's (`explore_tab/1`), top to
+  bottom: while a run is queued or runs, its line and what it does next; the review comments
+  below 1007 px; the open questions, as text, or on the current stage's tab where the stage
+  waits for answers, with the form of Explore's tab for a reader who may answer them
+  (`can_act`), with the comment on the stage's outputs for a reader who may send it
+  (`can_send`), and Run another round; one frame for each of `outputs`; on the current
+  stage's tab at its gate (`round_gate`), the run's decisions and the gate's Run another
+  round, with the comment, for a reader who may change them (`can_change`) or send it;
+  Confirm where the stage has a `proposal` output and its proposal waits; the closed
+  questions where none is open; the record block (`record`); the earlier take ins.
+
+  An output is `%{type:, version:, open:, read:}`: `read` is `%{message:, rendered:}` once its
+  text is read, nil for a version with no Markdown, which has the `row` slot in its place, and
+  `:unread` for a folded frame that was not opened (`"open_frame"`).
+  """
+  attr :id, :string, default: "work-item-tab"
+  attr :stage, :map, required: true, doc: "the stage: `:name` and `:outputs`, its types"
+  attr :work_item, :map, required: true, doc: "the work item, with its latest run as `:run`"
+  attr :runs, :list, default: [], doc: "the stage's runs of the take in, oldest first"
+  attr :take_ins, :list, default: [], doc: "the earlier take ins with the stage's runs"
+  attr :outputs, :list, default: []
+  attr :questions, :list, default: []
+  attr :review_comments, :list, default: []
+  attr :current, :boolean, default: false, doc: "whether it is the current stage's tab"
+
+  attr :can_act, :boolean,
+    default: false,
+    doc: "whether the reader may answer the questions, or confirm"
+
+  attr :can_change, :boolean,
+    default: false,
+    doc: "whether the reader may change the run's decisions (`work_item.answer`)"
+
+  attr :can_send, :boolean,
+    default: false,
+    doc: "whether the reader may send the open review comments (`work_item.review_comment`)"
+
+  attr :round_gate, :boolean,
+    default: false,
+    doc: "whether the stage waits at its gate"
+
+  attr :answers, :map, default: %{}, doc: "the questions form's draft, by question id"
+  attr :comment, :string, default: "", doc: "the draft of the comment on the stage's outputs"
+  attr :errors, :map, default: %{}, doc: "the questions form's errors, by question id"
+  attr :form_error, :atom, default: nil
+  attr :submits, :integer, default: 0
+
+  attr :reply_path, :any,
+    default: nil,
+    doc: "a function of a review comment's id, or nil or false"
+
+  attr :move_error, :any, default: nil
+  attr :record, :boolean, default: true, doc: "whether it has the record block"
+
+  attr :verdicts, :list,
+    default: [],
+    doc:
+      "the stage runs of the take in (`ApiaryWeb.WorkItemLive.Workflow.page/2`'s `runs`): a fold row shows the workflow, the round and the verdict of the one with its attempt"
+
+  attr :now, :any, default: nil
+  attr :item_noun, :map, default: nil
+  slot :artifacts, doc: "the stage's artifacts, in the record block"
+
+  slot :row, doc: "an output's artifact row, for a version with no Markdown; takes its type"
+
+  def stage_tab(assigns) do
+    run = List.last(assigns.runs)
+    running = match?(%{place: place} when place in [:queued, :running], run)
+    {open, closed} = Enum.split_with(assigns.review_comments, &(&1.state == :open))
+    open_questions? = Enum.any?(assigns.questions, &(&1.state == :open))
+    types = assigns.stage.outputs
+    {decisions, others} = Enum.split_with(assigns.questions, &decision?/1)
+    form? = assigns.current and assigns.work_item.status == :questions and assigns.can_act
+    round_gate = assigns.current and assigns.round_gate and not running and not open_questions?
+
+    # Sent decisions are text: only a decision still `:decided` takes a change.
+    change =
+      assigns.can_change and Enum.any?(decisions, &(&1.state == :decided)) and
+        (round_gate or form?)
+
+    # At the gate the decisions sit in the Decisions frame, above the gate, as on Explore's
+    # tab; elsewhere in the questions frame.
+    decisions_frame = if round_gate and change, do: decisions, else: []
+
+    assigns =
+      assign(assigns,
+        now: now(assigns),
+        mode: if(form?, do: :form, else: :read),
+        change: change,
+        changed: change and Enum.any?(decisions, &decision_changed?(&1, assigns.answers[&1.id])),
+        decisions_frame: decisions_frame,
+        closed_questions: if(decisions_frame == [], do: assigns.questions, else: others),
+        round:
+          round_gate and
+            (decisions_frame != [] or assigns.can_send or not is_nil(assigns.move_error)),
+        sendable: if(assigns.can_send, do: length(open), else: 0),
+        item: SourceComponents.item(assigns.item_noun),
+        run: run,
+        running: running,
+        open_comments: open,
+        closed_comments: closed,
+        open_questions?: open_questions?,
+        groups: Enum.filter(assigns.runs, &(&1[:answered_by] != nil)),
+        # The stage with a proposal output has Confirm: a proposal waits for it.
+        confirm: assigns.current and assigns.work_item.status == :confirm and "proposal" in types,
+        pieces:
+          StageComponents.output_versions(%{
+            outputs: Enum.map(assigns.outputs, &Map.take(&1, [:type, :version]))
+          })
+      )
+
+    ~H"""
+    <div id={@id} class="q-xp">
+      <.run_line :if={@running} id={"#{@id}-run"} run={@run} now={@now} />
+      <.stage_wait
+        :if={@running}
+        id={"#{@id}-wait"}
+        stage={@stage}
+        run={@run}
+        groups={@groups}
+        item={@item}
+      />
+      <div :if={@review_comments != []} class="q-xp-rc-inline">
+        <.review_comments
+          id={"#{@id}-review"}
+          comments={@review_comments}
+          reply_path={!@running && @reply_path}
+          reading={@running && @run}
+          questions_id={"#{@id}-questions"}
+        />
+      </div>
+      <.questions_frame
+        :if={@open_questions?}
+        id={"#{@id}-questions"}
+        number={@work_item.number}
+        questions={@questions}
+        change={@change}
+        mode={@mode}
+        running={@running}
+        answers={@answers}
+        errors={@errors}
+        form_error={@form_error}
+        move_error={@move_error}
+        submits={@submits}
+        now={@now}
+        comment={@comment}
+        commenting={@can_send}
+        open_comments={@sendable}
+        updates={:outputs}
+      />
+      <.output_frame
+        :for={output <- @outputs}
+        id={"#{@id}-output-#{output.type}"}
+        number={@work_item.number}
+        output={output}
+      >
+        {render_slot(@row, output.type)}
+      </.output_frame>
+      <.decisions_frame
+        :if={@decisions_frame != []}
+        id={"#{@id}-decisions"}
+        decisions={@decisions_frame}
+        change={true}
+        form={"#{@id}-gate"}
+        answers={@answers}
+        errors={@errors}
+        submits={@submits}
+        now={@now}
+      />
+      <.gate
+        :if={(@confirm and (@can_act or not is_nil(@move_error))) or @round}
+        id={"#{@id}-gate"}
+        number={@work_item.number}
+        open={if @confirm, do: length(@open_comments), else: @sendable}
+        comment={@comment}
+        can_confirm={@confirm and @can_act}
+        can_send={@round and @can_send}
+        can_change={@decisions_frame != []}
+        changed={@changed}
+        decisions={@decisions_frame != []}
+        error={send_words(@move_error, @form_error)}
+        updates={:outputs}
+      />
+      <.questions_frame
+        :if={@closed_questions != [] and !@open_questions?}
+        id={"#{@id}-questions"}
+        number={@work_item.number}
+        questions={@closed_questions}
+        mode={:read}
+        now={@now}
+      />
+      <.record
+        :if={@record}
+        id="work-item-record"
+        number={@work_item.number}
+        runs={@runs}
+        latest={@run}
+        pieces={@pieces}
+        verdicts={@verdicts}
+        item={@item}
+        now={@now}
+      >
+        {render_slot(@artifacts)}
+      </.record>
+      <.earlier_take_ins
+        :if={@take_ins != []}
+        id={"#{@id}-take-ins"}
+        number={@work_item.number}
+        take_ins={@take_ins}
+        item={@item}
+        now={@now}
+      />
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :stage, :map, required: true
+  attr :run, :map, required: true
+  attr :groups, :list, required: true
+  attr :item, :string, required: true
+
+  # A stage's run, queued or running: what it does next, with whose answers or review
+  # comments. A send of the review comments comes first, as on Explore's tab.
+  defp stage_wait(assigns) do
+    assigns = assign(assigns, stage_wait_words(assigns))
+
+    ~H"""
+    <div id={@id} class="q-xp-wait">
+      <.icon name="hero-arrow-path" class="q-xp-wait-i size-5" />
+      <div>
+        <p id={"#{@id}-h"}><b><.rich text={place_ref(@run, @heading)} /></b></p>
+        <p><.rich text={@line} /></p>
+      </div>
+    </div>
+    """
+  end
+
+  defp stage_wait_words(%{stage: %{name: stage, outputs: types}, run: run, item: item} = assigns) do
+    attempt = run_place(run)
+    queued? = run[:state] in [nil, :pending]
+    whose = answers_of(Enum.map(assigns.groups, & &1.answered_by))
+
+    {heading, line} =
+      cond do
+        run[:sent] == true -> stage_sent_words(stage, you?(run[:sent_by]), attempt, item, queued?)
+        whose != :none -> stage_answers_words(stage, whose == :you, attempt, item, queued?)
+        true -> stage_first_words(stage, types, attempt, item, queued?)
+      end
+
+    %{heading: heading, line: line}
+  end
+
+  # A stage with no outputs writes nothing the line can list.
+  defp stage_first_words(stage, [], attempt, item, true) do
+    {gettext("%{stage} is queued.", stage: stage),
+     rich_gettext(
+       "%{attempt} starts when the workspace's pool takes it. It reads the %{item} and the stage's inputs.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_first_words(stage, [], attempt, item, false) do
+    {gettext("%{stage} is running.", stage: stage),
+     rich_gettext("%{attempt} reads the %{item} and the stage's inputs.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_first_words(stage, types, attempt, item, true) do
+    {gettext("%{stage} is queued.", stage: stage),
+     rich_gettext(
+       "%{attempt} starts when the workspace's pool takes it. It reads the %{item} and the stage's inputs, then writes %{outputs}.",
+       attempt: attempt,
+       item: item,
+       outputs: StageComponents.outputs_words(types)
+     )}
+  end
+
+  defp stage_first_words(stage, types, attempt, item, false) do
+    {gettext("%{stage} is running.", stage: stage),
+     rich_gettext(
+       "%{attempt} reads the %{item} and the stage's inputs, then writes %{outputs}.",
+       attempt: attempt,
+       item: item,
+       outputs: StageComponents.outputs_words(types)
+     )}
+  end
+
+  defp stage_sent_words(stage, true, attempt, item, true) do
+    {gettext("%{stage} is queued again, with your comments.", stage: stage),
+     rich_gettext(
+       "%{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest outputs and your comments.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_sent_words(stage, false, attempt, item, true) do
+    {gettext("%{stage} is queued again, with the comments.", stage: stage),
+     rich_gettext(
+       "%{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest outputs and the comments.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_sent_words(stage, true, attempt, item, false) do
+    {gettext("%{stage} is running again, with your comments.", stage: stage),
+     rich_gettext(
+       "%{attempt} reads the %{item}, the newest outputs and your comments, then writes the next versions.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_sent_words(stage, false, attempt, item, false) do
+    {gettext("%{stage} is running again, with the comments.", stage: stage),
+     rich_gettext(
+       "%{attempt} reads the %{item}, the newest outputs and the comments, then writes the next versions.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_answers_words(stage, true, attempt, item, true) do
+    {gettext("%{stage} is queued again, with your answers.", stage: stage),
+     rich_gettext(
+       "%{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest outputs and the questions with your answers.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_answers_words(stage, false, attempt, item, true) do
+    {gettext("%{stage} is queued again, with the answers.", stage: stage),
+     rich_gettext(
+       "%{attempt} starts when the workspace's pool takes it. It reads the %{item}, the newest outputs and the questions with their answers.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_answers_words(stage, true, attempt, item, false) do
+    {gettext("%{stage} is running again, with your answers.", stage: stage),
+     rich_gettext(
+       "%{attempt} reads the %{item}, the newest outputs and the questions with your answers, then writes the next versions.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  defp stage_answers_words(stage, false, attempt, item, false) do
+    {gettext("%{stage} is running again, with the answers.", stage: stage),
+     rich_gettext(
+       "%{attempt} reads the %{item}, the newest outputs and the questions with their answers, then writes the next versions.",
+       attempt: attempt,
+       item: item
+     )}
+  end
+
+  attr :id, :string, required: true
+  attr :number, :integer, required: true
+  attr :output, :map, required: true
+  slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
+
+  @doc false
+  # output_frame/1 is one output of a stage, in a frame with its version, folded but for the
+  # first (`open`). A folded frame's
+  # text is read when it opens (`"open_frame"`, with its type). The frames keep the state the
+  # reader gave them when the page draws again.
+  def output_frame(assigns) do
+    read = assigns.output.read
+    text? = is_map(read)
+
+    {body, sources, count} =
+      if text?, do: split_sources(rendered(read, :message, nil)), else: {nil, nil, 0}
+
+    assigns =
+      assign(assigns,
+        text?: text?,
+        body: %{rendered: body},
+        sources: sources,
+        count: count,
+        heading: output_heading(assigns.output.type)
+      )
+
+    ~H"""
+    <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
+      <details
+        id={"#{@id}-fold"}
+        class="q-xp-frame-fold"
+        open={@output.open}
+        phx-mounted={JS.ignore_attributes(["open"])}
+      >
+        <summary
+          id={"#{@id}-s"}
+          phx-click={@output.read == :unread && "open_frame"}
+          phx-value-number={@number}
+          phx-value-type={@output.type}
+        >
+          <div class="q-xp-frame-h">
+            <.icon name="hero-chevron-right-micro" class="q-xp-chev q-xp-frame-i size-4" />
+            <h2 id={"#{@id}-h"} class="q-xp-frame-t">{@heading}</h2>
+          </div>
+          <p class="q-xp-cap">
+            <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
+            <span>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
+          </p>
+        </summary>
+        <div
+          :if={@text?}
+          id={"#{@id}-v#{@output.version}"}
+          class="q-xp-body q-xp-prop"
+          phx-hook="Mermaid"
+          phx-update="ignore"
+          data-script={~p"/assets/js/mermaid.js"}
+          data-alt={gettext("Diagram")}
+          data-source={gettext("Diagram source")}
+          data-not-drawn={
+            gettext("Qory Apiary does not draw this diagram, so it is shown as written.")
+          }
+          data-failed={gettext("This diagram has an error, so it is shown as written.")}
+        >
+          <.run_text id={"#{@id}-text"} value={@body} key={:message} />
+        </div>
+        <.sources_fold :if={@sources} id={"#{@id}-sources"} sources={@sources} count={@count} />
+        <div :if={is_nil(@output.read)} class="q-xp-body">{render_slot(@inner_block)}</div>
+      </details>
+    </section>
+    """
+  end
+
+  # A frame's heading: the type's words, with a capital first letter.
+  defp output_heading(type) do
+    {first, rest} = type |> StageComponents.type_words() |> String.split_at(1)
+    String.upcase(first) <> rest
   end
 
   # Questions or a run without a result at the take in's last run is the run limit: no
@@ -2444,6 +2917,13 @@ defmodule ApiaryWeb.WorkItemComponents do
     do: :other_stage
 
   defp explore_status(status, _run), do: status
+
+  # At a stage after Explore (`foot` set), a take in with no run has no wait block. A run
+  # with `workspace_id` nil is the page's placeholder for Explore's first run, and nothing
+  # is queued.
+  defp tab_view(foot, status, run) do
+    if foot && is_nil(run[:workspace_id]), do: nil, else: explore_view(status, run)
+  end
 
   # A work item moved back to Explore has a confirmation, so its status is `:shape`, while
   # the run that the move queued waits or runs. The take in's first run before it exists
@@ -3123,6 +3603,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :decisions, :boolean, default: false, doc: "whether the tab shows decisions"
   attr :error, :any, default: nil, doc: "why the last move on the tab was not made"
 
+  attr :updates, :atom,
+    default: :proposal,
+    values: [:proposal, :outputs],
+    doc: "what the next run updates, as the caption names it"
+
   # The gate under the proposal: for a reader who may send review comments, the comment on
   # the whole proposal; for a reader who may send them or change the decisions above the
   # gate (`can_change`), Run another round (`"answer"`), which starts the next run with
@@ -3146,19 +3631,34 @@ defmodule ApiaryWeb.WorkItemComponents do
       <input type="hidden" name="number" value={@number} />
       <p :if={@sends} class="q-xp-cap q-xp-gate-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-        <span :if={!@can_send}>
+        <span :if={!@can_send and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and updates the proposal."
           )}
         </span>
-        <span :if={@can_send and !@changed}>
+        <span :if={!@can_send and @updates == :outputs}>
+          {gettext(
+            "Run another round starts the next run. That run reads your changed decisions and updates the outputs."
+          )}
+        </span>
+        <span :if={@can_send and !@changed and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your comment and updates the proposal."
           )}
         </span>
-        <span :if={@can_send and @changed}>
+        <span :if={@can_send and !@changed and @updates == :outputs}>
+          {gettext(
+            "Run another round starts the next run. That run reads your comment and updates the outputs."
+          )}
+        </span>
+        <span :if={@can_send and @changed and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the proposal."
+          )}
+        </span>
+        <span :if={@can_send and @changed and @updates == :outputs}>
+          {gettext(
+            "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the outputs."
           )}
         </span>
       </p>
@@ -3167,6 +3667,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         id={"#{@id}-comment"}
         value={@comment}
         decisions={@decisions}
+        updates={@updates}
       />
       <div class="q-xp-form-foot q-xp-gate-go">
         <span class="q-xp-gate-b">
@@ -3220,9 +3721,14 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :value, :string, default: ""
   attr :decisions, :boolean, default: false, doc: "whether the tab shows decisions"
 
-  # The comment on the whole proposal, one field with its label: in the questions form,
-  # and at the gate. Run another round sends it, as a review comment. Where the tab shows
-  # decisions, its placeholder covers them too.
+  attr :updates, :atom,
+    default: :proposal,
+    values: [:proposal, :outputs],
+    doc: "what the next run updates, as the label names it"
+
+  # The comment on the whole proposal, or on a stage's outputs, one field with its label:
+  # in the questions form, and at the gate. Run another round sends it, as a review
+  # comment on the round. Where the tab shows decisions, its placeholder covers them too.
   defp comment_field(assigns) do
     assigns =
       assign(assigns,
@@ -3236,7 +3742,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <div class="q-xp-comment">
-      <label for={@id}>{gettext("Comment on the whole proposal")}</label>
+      <label :if={@updates == :proposal} for={@id}>{gettext("Comment on the whole proposal")}</label>
+      <label :if={@updates == :outputs} for={@id}>{gettext("Comment on the stage's outputs")}</label>
       <textarea
         id={@id}
         name="comment"
@@ -3266,6 +3773,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :commenting, :boolean, default: false, doc: "whether the form has the comment field"
   attr :open_comments, :integer, default: 0, doc: "the open review comments it sends"
   attr :change, :boolean, default: false, doc: "whether the reader may change the decisions"
+
+  attr :updates, :atom,
+    default: :proposal,
+    values: [:proposal, :outputs],
+    doc: "what the next run updates, as the caption names it"
 
   # The questions: the closed ones first, each a fold of one line; then the run's
   # decisions (`decision?/1`), each a fold of one line, and the open ones, with the form
@@ -3321,24 +3833,44 @@ defmodule ApiaryWeb.WorkItemComponents do
       </div>
       <p :if={@form?} id={"#{@id}-cap"} class="q-xp-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-        <span :if={@commenting and @change}>
+        <span :if={@commenting and @change and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your answers, your changed decisions and your comment, and updates the proposal."
           )}
         </span>
-        <span :if={!@commenting and @change}>
+        <span :if={@commenting and @change and @updates == :outputs}>
+          {gettext(
+            "Run another round starts the next run. That run reads your answers, your changed decisions and your comment, and updates the outputs."
+          )}
+        </span>
+        <span :if={!@commenting and @change and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your answers and your changed decisions, and updates the proposal."
           )}
         </span>
-        <span :if={@commenting and !@change}>
+        <span :if={!@commenting and @change and @updates == :outputs}>
+          {gettext(
+            "Run another round starts the next run. That run reads your answers and your changed decisions, and updates the outputs."
+          )}
+        </span>
+        <span :if={@commenting and !@change and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your answers and your comment, and updates the proposal."
           )}
         </span>
-        <span :if={!@commenting and !@change}>
+        <span :if={@commenting and !@change and @updates == :outputs}>
+          {gettext(
+            "Run another round starts the next run. That run reads your answers and your comment, and updates the outputs."
+          )}
+        </span>
+        <span :if={!@commenting and !@change and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your answers and updates the proposal."
+          )}
+        </span>
+        <span :if={!@commenting and !@change and @updates == :outputs}>
+          {gettext(
+            "Run another round starts the next run. That run reads your answers and updates the outputs."
           )}
         </span>
       </p>
@@ -3391,6 +3923,7 @@ defmodule ApiaryWeb.WorkItemComponents do
               id={"#{@id}-comment"}
               value={@comment}
               decisions={@decisions != []}
+              updates={@updates}
             />
             <.error_focus :if={@first_error} id={@id} question={@first_error} submits={@submits} />
             <p :if={@form_words} id={"#{@id}-error"} class="q-xp-err" role="alert">
@@ -4071,6 +4604,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: nil,
     doc: "the Explore tab's address, for Asked as question; nil links to the question here"
 
+  attr :questions_id, :string,
+    default: "work-item-explore-questions",
+    doc: "the DOM id of the questions' frame on the tab at `explore_path`"
+
   attr :level, :string,
     default: "h3",
     values: ~w(h2 h3),
@@ -4100,7 +4637,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         reading={@reading}
         explore_path={@explore_path}
         tip={@tip}
-        expanded={place == 0}
+        questions_id={@questions_id}
+        expanded={place == 0 or (comment.state == :open and is_binary(comment[:target]))}
       />
     </section>
     """
@@ -4111,6 +4649,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :reply_path, :any, default: nil
   attr :reading, :any, default: nil
   attr :explore_path, :string, default: nil
+  attr :questions_id, :string, default: "work-item-explore-questions"
   attr :tip, :string, default: nil
   attr :expanded, :boolean, default: false, doc: "opened; else folded to its first line"
 
@@ -4159,7 +4698,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         <div :if={reply.run} id={"#{@id}-reply-#{i}"} class="q-rc-reply">
           <p class="q-rc-m">
             <.icon name="hero-play-circle" class="q-xp-frame-i size-4" />
-            <span><.reply_outcome reply={reply} explore_path={@explore_path} /></span>
+            <span>
+              <.reply_outcome reply={reply} explore_path={@explore_path} questions_id={@questions_id} />
+            </span>
           </p>
           <p class="q-rc-text" phx-no-format>{reply.text}</p>
         </div>
@@ -4186,14 +4727,15 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :reply, :map, required: true
   attr :explore_path, :string, default: nil
+  attr :questions_id, :string, default: "work-item-explore-questions"
 
-  # A run's reply's outcome; Asked links to the question the run added, on the Explore
-  # tab at `explore_path`, or on this page where it is nil.
+  # A run's reply's outcome; Asked links to the question the run added, on the tab at
+  # `explore_path`, or on this page where it is nil.
   defp reply_outcome(%{reply: %{outcome: :asked, question_number: n}} = assigns)
        when is_integer(n) do
     ~H"""
     <.link
-      href={"#{@explore_path}#work-item-explore-questions-question-#{@reply.question_number}"}
+      href={"#{@explore_path}##{@questions_id}-question-#{@reply.question_number}"}
       class="text-accent"
     >
       {gettext("Asked as question %{number}", number: Format.number(@reply.question_number))}
@@ -4224,6 +4766,33 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
+  # A review comment on the whole round of a run has the run's attempt, as the Thread's
+  # line of that comment has it (`event_line/1`).
+  defp comment_by(%{by: by, run: run} = comment) when is_integer(run) do
+    attempt = shown_number(comment[:attempt])
+
+    if you?(by),
+      do: gettext("You, on the round of attempt %{attempt}", attempt: attempt),
+      else:
+        gettext("%{name}, on the round of attempt %{attempt}", name: by.name, attempt: attempt)
+  end
+
+  # A card on a stage's tab has its target (`:target`), the type's words.
+  defp comment_by(%{by: by, version: version, target: target}) do
+    if you?(by),
+      do:
+        gettext("You, on %{target} version %{version}",
+          target: target,
+          version: Format.number(version)
+        ),
+      else:
+        gettext("%{name}, on %{target} version %{version}",
+          name: by.name,
+          target: target,
+          version: Format.number(version)
+        )
+  end
+
   defp comment_by(%{by: by, version: version}) do
     if you?(by),
       do: gettext("You, on version %{version}", version: Format.number(version)),
@@ -4239,7 +4808,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   @doc """
   The form page of a reply to a review comment (`comment`): its field, its error under it
-  (`error`, as `comment_error/2` words it), the button, and Cancel back to Explore's tab
+  (`error`, as `comment_error/2` words it), the button, and Cancel back to its tab
   (`cancel`). With the line that nothing can be sent (`:changed`), the page has no button.
   It sends `"reply"`, with `number`, `text` and `comment`, the review comment's id; as
   the reader writes, `"page_draft"` with the same fields, so the page keeps the draft
@@ -4372,59 +4941,109 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   def comment_error(_error, _kind), do: nil
 
+  @doc false
+  # foot_record/1 is the record block at the foot of the Ticket tab and the Thread, at a
+  # stage after Explore. `foot` is `%{runs:, latest:, pieces:}`: every run of the current
+  # take in, as Details counts them, oldest first; the latest of them; and the summary's
+  # pieces after the count. It has the id of the Explore tab's block, and each tab draws
+  # one block.
+  attr :foot, :map, required: true
+  attr :number, :integer, required: true, doc: "the work item's number"
+
+  attr :item_noun, :map,
+    default: nil,
+    doc: "what its ticket's source calls its items (`Apiary.Adapters.item_noun/1`)"
+
+  attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
+
+  attr :verdicts, :list,
+    default: [],
+    doc:
+      "the stage runs of the take in (`ApiaryWeb.WorkItemLive.Workflow.page/2`'s `runs`): a fold row shows the workflow, the round and the verdict of the one with its attempt"
+
+  slot :inner_block, doc: "the artifacts"
+
+  def foot_record(assigns) do
+    assigns = assign(assigns, now: now(assigns), item: SourceComponents.item(assigns.item_noun))
+
+    ~H"""
+    <.record
+      id="work-item-record"
+      class="q-xp-earlier q-wi-foot"
+      number={@number}
+      runs={@foot.runs}
+      latest={@foot.latest}
+      pieces={@foot.pieces}
+      verdicts={@verdicts}
+      item={@item}
+      now={@now}
+    >
+      {render_slot(@inner_block)}
+    </.record>
+    """
+  end
+
   attr :id, :string, required: true
+  attr :class, :string, default: "q-xp-earlier"
   attr :number, :integer, default: nil, doc: "the work item's number, for `\"open_fold\"`"
   attr :runs, :list, required: true, doc: "the take in's runs, oldest first"
   attr :latest, :map, default: nil, doc: "its latest run, where it is among `runs`"
+
+  attr :pieces, :list,
+    default: nil,
+    doc: "the summary's pieces after the count; nil for `proposal` and `questions_version`"
+
   attr :proposal, :map, default: nil
   attr :questions_version, :integer, default: nil
+
+  attr :verdicts, :list,
+    default: [],
+    doc:
+      "the stage runs of the take in (`ApiaryWeb.WorkItemLive.Workflow.page/2`'s `runs`): a fold row shows the workflow, the round and the verdict of the one with its attempt"
+
   attr :item, :string, required: true
   attr :now, :any, required: true
   slot :inner_block, doc: "the artifacts"
 
-  # One fold of the take in's runs and its artifacts: how many runs, and the newest
-  # proposal's and questions' versions, each where it has a number; opened, each run with
-  # what it wrote. An earlier run that wrote a proposal is a fold with that version, one
-  # without a result a fold with what happened; the latest run, and a run with nothing to
-  # show, a row. A proposal the page has not read (`:unread`) is read when its fold opens
-  # (`"open_fold"`, with its version). The folds keep the state the reader gave them
-  # when the page draws again.
+  # One fold of the take in's runs and its artifacts: how many runs, and `pieces`, or the
+  # newest proposal's and questions' versions, each where it has a number; opened, each
+  # run's line (`run_parts/4`). An earlier run of Explore that wrote a proposal is a fold with
+  # that version, one without a result a fold with what happened; the latest run, a run
+  # with nothing to show, and a later stage's run, a row. A proposal the page has not read
+  # (`:unread`) is read when its fold opens (`"open_fold"`, with its version). The folds
+  # keep the state the reader gave them when the page draws again.
   defp record(assigns) do
-    proposal_version =
-      case assigns.proposal do
-        %{version: version} when is_integer(version) -> version
-        _none -> nil
-      end
-
     assigns =
       assign(assigns,
         count: length(assigns.runs),
-        proposal_piece:
-          proposal_version &&
-            gettext("proposal v%{version}", version: Format.number(proposal_version)),
-        questions_piece:
-          assigns.questions_version &&
-            gettext("questions v%{version}", version: Format.number(assigns.questions_version))
+        pieces: assigns.pieces || explore_pieces(assigns.proposal, assigns.questions_version),
+        verdicts:
+          for(%{attempt: n} = run <- assigns.verdicts, is_integer(n), into: %{}, do: {n, run})
       )
 
     ~H"""
-    <section id={@id} class="q-xp-earlier" aria-labelledby={"#{@id}-h"}>
+    <section id={@id} class={@class} aria-labelledby={"#{@id}-h"}>
       <h2 id={"#{@id}-h"} class="sr-only">{gettext("Runs and artifacts")}</h2>
       <details id={"#{@id}-fold"} phx-mounted={JS.ignore_attributes(["open"])}>
         <summary>
           <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
-          <span class="q-xp-it"><b>{ngettext("1 run", "%{count} runs", @count)}</b></span>
-          <span :if={@proposal_piece} class="q-xp-it">{@proposal_piece}</span>
-          <span :if={@questions_piece} class="q-xp-it">{@questions_piece}</span>
+          <span class="q-xp-parts">
+            <span class="q-xp-it"><b>{ngettext("1 run", "%{count} runs", @count)}</b></span>
+            <%= for piece <- @pieces do %>
+              <span class="q-xp-it">{piece}</span>
+            <% end %>
+          </span>
         </summary>
         <div class="q-xp-inner">
           <%= for run <- @runs do %>
             <%= case run_shows(run, run == @latest) do %>
               <% :row -> %>
                 <div id={"#{@id}-#{run_dom(run)}"} class="q-xp-runrow">
-                  <%= for part <- run_parts(attempt_words(run), run, @now) do %>
-                    <span class="q-xp-it"><.rich text={part} /></span>
-                  <% end %>
+                  <span class="q-xp-parts">
+                    <%= for part <- run_parts(attempt_words(run), run, @verdicts[run[:attempt]], @now) do %>
+                      <span class="q-xp-it"><.rich text={part} /></span>
+                    <% end %>
+                  </span>
                 </div>
               <% shows -> %>
                 <details
@@ -4438,9 +5057,11 @@ defmodule ApiaryWeb.WorkItemComponents do
                     phx-value-version={run[:wrote]}
                   >
                     <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
-                    <%= for part <- run_parts(attempt_words(run), run, @now) do %>
-                      <span class="q-xp-it"><.rich text={part} /></span>
-                    <% end %>
+                    <span class="q-xp-parts">
+                      <%= for part <- run_parts(attempt_words(run), run, @verdicts[run[:attempt]], @now) do %>
+                        <span class="q-xp-it"><.rich text={part} /></span>
+                      <% end %>
+                    </span>
                   </summary>
                   <div class="q-xp-inner">
                     <.proposal_frame
@@ -4462,22 +5083,73 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  # The summary's pieces at Explore: the newest proposal's and questions' versions, each
+  # where it has a number.
+  defp explore_pieces(proposal, questions_version) do
+    proposal_version =
+      case proposal do
+        %{version: version} when is_integer(version) -> version
+        _none -> nil
+      end
+
+    [
+      proposal_version &&
+        gettext("proposal v%{version}", version: Format.number(proposal_version)),
+      questions_version &&
+        gettext("questions v%{version}", version: Format.number(questions_version))
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
   # Whether a proposal is one the page has not read (`:unread`).
   defp unread?(%{unread: number}) when is_integer(number), do: true
   defp unread?(_proposal), do: false
 
-  # What a run shows in the fold: a row for the latest run and a run with nothing to
-  # show; `:proposal` for an earlier run that wrote one; `:none` for a run without a
-  # result.
+  # What a run shows in the fold: a row for the latest run, a later stage's run and a run
+  # with nothing to show; `:proposal` for an earlier run that wrote one; `:none` for a run
+  # without a result. The words of `:none` are Explore's, so a later stage's run has none.
   defp run_shows(_run, true), do: :row
+  defp run_shows(%{other_stage: true}, _last), do: :row
   defp run_shows(%{wrote_proposal: %{}}, _last), do: :proposal
   defp run_shows(%{state: state}, _last) when state in [:failed, :lost, :cancelled], do: :none
   defp run_shows(_run, _last), do: :row
 
-  # A run's line in the fold: its attempt, what it wrote, and when; while it runs,
-  # Running and when it started. In a fold's summary, a click on `place`'s link opens the
-  # run's page, and a click beside it opens the fold (`open_fold`).
-  defp run_parts(place, run, now) do
+  # A run's line in the fold: its attempt, the workflow, the round and the verdict of its
+  # stage run (`StageComponents.verdict_parts/2`), running blue or amber as its badge, and
+  # when it ended; while it runs, when it started. A stage run handed over whose run has
+  # not started (state nil or pending) reads queued, as the tab's top line (`run_line/1`).
+  # A stage run with no verdict (running, or ended without one) whose run failed, was
+  # lost or was cancelled reads that state, as the top line, in place of the verdict.
+  # A run with no stage run has what it wrote, or its state, in place of the three. In a
+  # fold's summary, a click on `place`'s link opens the run's page, and a click beside it
+  # opens the fold (`open_fold`).
+  defp run_parts(place, run, %{} = stage_run, now) do
+    stage_run =
+      if stage_run.shows == :running and run[:state] in [nil, :pending],
+        do: %{stage_run | shows: :queued},
+        else: stage_run
+
+    parts = StageComponents.verdict_parts(stage_run, running_word_class(run))
+
+    # The verdict is the last of `parts`: `verdict_parts/2` drops only a missing workflow
+    # or round.
+    parts =
+      if stage_run.shows in [:running, :no_verdict] and
+           run[:state] in [:failed, :lost, :cancelled],
+         do: List.replace_at(parts, -1, RunComponents.state_label(run.state)),
+         else: parts
+
+    time =
+      case run[:state] do
+        :running -> run_time(run, now)
+        _other -> run[:ended_at] && ended_ago(run.ended_at, now)
+      end
+
+    # A rich text is a list of pieces, so `time` goes in whole, not through `List.wrap/1`.
+    [{:b, place} | parts] ++ if(time, do: [time], else: [])
+  end
+
+  defp run_parts(place, run, nil, now) do
     attempt = {:b, place}
 
     rest =
@@ -5208,7 +5880,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     <section id={@id} class="q-xp-earlier" aria-labelledby={"#{@id}-h"}>
       <h2 id={"#{@id}-h"} class="q-xp-earlier-t">{gettext("Earlier take ins")}</h2>
       <details
-        :for={{take_in, i} <- Enum.with_index(@take_ins, 1)}
+        :for={{take_in, i} <- Enum.map(Enum.with_index(@take_ins, 1), &take_in_place/1)}
         id={"#{@id}-#{i}"}
         phx-mounted={JS.ignore_attributes(["open"])}
       >
@@ -5219,9 +5891,11 @@ defmodule ApiaryWeb.WorkItemComponents do
           phx-value-take_in={i}
         >
           <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
-          <span class="q-xp-it"><b><.rich text={taken_in_words(take_in, @now)} /></b></span>
-          <span :if={ended_words(take_in, @now)} class="q-xp-it" phx-no-format><.rich text={ended_words(take_in, @now)} /></span>
-          <span class="q-xp-it">{ngettext("%{count} run", "%{count} runs", length(take_in.runs))}</span>
+          <span class="q-xp-parts">
+            <span class="q-xp-it"><b><.rich text={taken_in_words(take_in, @now)} /></b></span>
+            <span :if={ended_words(take_in, @now)} class="q-xp-it" phx-no-format><.rich text={ended_words(take_in, @now)} /></span>
+            <span class="q-xp-it">{ngettext("%{count} run", "%{count} runs", length(take_in.runs))}</span>
+          </span>
         </summary>
         <div class="q-xp-inner">
           <p>{gettext("These runs do not count toward the run limit of this take in.")}</p>
@@ -5239,6 +5913,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     </section>
     """
   end
+
+  # A take in's place among all of the work item's: a tab that lists only some keeps it, so
+  # `"open_fold"` reads the right one.
+  defp take_in_place({take_in, i}), do: {take_in, Map.get(take_in, :place, i)}
 
   defp taken_in_words(%{taken_in_by: by, taken_in_at: at}, now) do
     if you?(by),
@@ -5459,7 +6137,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     * `:asked` - how many questions Qory wrote and after how long (`questions`,
       `duration`), the questions quoted under it;
     * `:answered` - who answered Qory's questions, each question and its answer quoted;
-      or who wrote a review comment on the proposal (`comment`), or a reply to one
+      or who wrote a review comment on the proposal or on another output (`comment`, on
+      the type `artifact`), or a reply to one
       (`comment`, with `reply` true), the text quoted;
     * `:proposed` - Qory wrote a proposal, after how long, and whose turn it is
       (`owner`, set only on the proposal that waits at Confirm), or only after how long
@@ -5524,8 +6203,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc: "`:started`: how"
 
   attr :run, :map, default: nil, doc: "the run, as above"
+
+  attr :stage, :string,
+    default: nil,
+    doc: "the name of the stage after Explore's that `run` ran at; nil for Explore"
+
   attr :questions, :list, default: [], doc: "`:asked`, `:answered`: the questions, as above"
-  attr :comment, :string, default: nil, doc: "`:answered`: a comment on the proposal"
+  attr :comment, :string, default: nil, doc: "`:answered`: a comment on an output"
+  attr :artifact, :string, default: nil, doc: "`:answered`: the type `comment` is on"
   attr :reply, :boolean, default: false, doc: "`:answered`: whether `comment` is a reply"
 
   attr :replies, :integer,
@@ -5621,6 +6306,28 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  # How a run at a stage after Explore's started, with the stage's name.
+  defp stage_started(stage, :review_comments, attempt),
+    do:
+      rich_gettext("%{stage} started again, with the comments, in attempt %{attempt}",
+        stage: stage,
+        attempt: attempt
+      )
+
+  defp stage_started(stage, :answers, attempt),
+    do:
+      rich_gettext("%{stage} started again, with the answers, in attempt %{attempt}",
+        stage: stage,
+        attempt: attempt
+      )
+
+  defp stage_started(stage, :again, attempt),
+    do:
+      rich_gettext("%{stage} started again in attempt %{attempt}", stage: stage, attempt: attempt)
+
+  defp stage_started(stage, nil, attempt),
+    do: rich_gettext("%{stage} started in attempt %{attempt}", stage: stage, attempt: attempt)
+
   defp event_icon(:taken_in), do: "hero-arrow-down-tray-micro"
   defp event_icon(:answered), do: "hero-chat-bubble-left-right-micro"
   defp event_icon(:no_result), do: "hero-exclamation-triangle-micro"
@@ -5697,6 +6404,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
+  defp event_line(%{kind: :started, stage: stage, start: start, run: run})
+       when is_binary(stage),
+       do: stage_started(stage, start, attempt_ref(run))
+
   defp event_line(%{kind: :started, start: :review_comments, run: run}),
     do:
       rich_gettext("Explore started again, with the comments, in attempt %{attempt}",
@@ -5714,6 +6425,20 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp event_line(%{kind: :started, run: run}),
     do: rich_gettext("Explore started in attempt %{attempt}", attempt: attempt_ref(run))
+
+  defp event_line(%{kind: :asked, stage: stage, questions: questions, duration: duration})
+       when is_binary(stage) do
+    n = length(questions)
+
+    ngettext(
+      "%{stage} wrote 1 question, after %{duration}",
+      "%{stage} wrote %{number} questions, after %{duration}",
+      n,
+      stage: stage,
+      number: Format.number(n),
+      duration: duration
+    )
+  end
 
   defp event_line(%{kind: :asked, questions: questions, duration: duration}) do
     n = length(questions)
@@ -5763,6 +6488,28 @@ defmodule ApiaryWeb.WorkItemComponents do
         )
   end
 
+  # A comment on the round of a run at a stage after Explore's.
+  defp event_line(%{
+         kind: :answered,
+         actor: actor,
+         comment: comment,
+         artifact: nil,
+         stage: stage,
+         run: run
+       })
+       when is_binary(comment) and is_binary(stage) do
+    if you?(actor),
+      do:
+        rich_gettext("You wrote a comment on the round of attempt %{attempt}",
+          attempt: attempt_ref(run)
+        ),
+      else:
+        rich_gettext("%{name} wrote a comment on the round of attempt %{attempt}",
+          name: {:b, actor.name},
+          attempt: attempt_ref(run)
+        )
+  end
+
   defp event_line(%{kind: :answered, actor: actor, comment: comment})
        when is_binary(comment) do
     if you?(actor),
@@ -5786,6 +6533,18 @@ defmodule ApiaryWeb.WorkItemComponents do
           number: number
         )
   end
+
+  defp event_line(%{kind: :replied, stage: stage, replies: n, duration: duration})
+       when is_binary(stage),
+       do:
+         ngettext(
+           "%{stage} wrote a reply to 1 comment, after %{duration}",
+           "%{stage} wrote replies to %{number} comments, after %{duration}",
+           n,
+           stage: stage,
+           number: Format.number(n),
+           duration: duration
+         )
 
   defp event_line(%{kind: :replied, replies: n, duration: duration}),
     do:
@@ -5851,10 +6610,32 @@ defmodule ApiaryWeb.WorkItemComponents do
         attempt: attempt_ref(run)
       )
 
+  defp event_line(%{kind: :no_result, stage: stage, run: run}) when is_binary(stage),
+    do:
+      rich_gettext("Attempt %{attempt} ended with an error, so %{stage} has no result",
+        attempt: attempt_ref(run),
+        stage: stage
+      )
+
   defp event_line(%{kind: :no_result, run: run}),
     do:
       rich_gettext("Attempt %{attempt} ended with an error, so Explore has no result",
         attempt: attempt_ref(run)
+      )
+
+  defp event_line(%{kind: :lost, stage: stage, run: run}) when is_binary(stage),
+    do:
+      rich_gettext("Attempt %{attempt} was lost before it ended, so %{stage} has no result",
+        attempt: attempt_ref(run),
+        stage: stage
+      )
+
+  defp event_line(%{kind: :cancelled, stage: stage, run: run}) when is_binary(stage),
+    do:
+      rich_gettext(
+        "Attempt %{attempt} was cancelled before it ended, so %{stage} has no result",
+        attempt: attempt_ref(run),
+        stage: stage
       )
 
   defp event_line(%{kind: :lost, run: run}),

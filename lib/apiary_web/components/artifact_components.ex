@@ -131,8 +131,8 @@ defmodule ApiaryWeb.ArtifactComponents do
       `outputs`). A type with no entry shows no check.
     * `add`: whether the reader may add a version by hand (`artifact.write`); true shows
       Add a version, which needs `scope` and `number`.
-    * `round`: whether a run's writer shows its round (`writer/2`); false on the Explore
-      tab.
+    * `round`: whether a run's writer shows its round (`writer/2`); false in the Explore
+      tab's fold at the Explore stage, true elsewhere.
   """
   attr :id, :string, required: true
   attr :artifacts, :list, required: true

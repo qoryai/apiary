@@ -90,7 +90,7 @@ defmodule ApiaryWeb.PageComponents do
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the bar's name: the kind of thing, as Target"
-  attr :current, :atom, required: true, doc: "the key of the page's tab"
+  attr :current, :any, required: true, doc: "the key of the page's tab, an atom or a stage's id"
 
   attr :place, :string,
     default: "thing",
@@ -99,7 +99,7 @@ defmodule ApiaryWeb.PageComponents do
       "a thing's tabs (sticky, scrolling sideways), or a settings section's (in the flow, wrapping)"
 
   slot :tab, required: true do
-    attr :key, :atom, required: true
+    attr :key, :any, required: true
     attr :patch, :string
     attr :navigate, :string
     attr :icon, :string

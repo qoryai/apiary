@@ -9,7 +9,7 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
   import Phoenix.LiveViewTest
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Edition, EditionStubs, Repo, WorkItems}
+  alias Apiary.{Edition, EditionStubs, Repo, Stages, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.WorkItem
 
@@ -46,11 +46,16 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
 
   defp state(work_item), do: Repo.get!(WorkItem, work_item.id).state
 
-  # No part of the page names a ticket, its label or Take in again in its words.
+  # No part of the page has the word ticket or label, or Take in again. A row of
+  # the runs fold has the run's workflow by the workflow's name, `explore-a-ticket`, as the
+  # Runs list has it, so the check leaves that name out.
   defp no_ticket!(view) do
+    page = view |> render() |> LazyHTML.from_document()
+
     for part <- ~w(#work-item-head #work-item-step #work-item-details #work-item-explore),
         words <- [~r/ticket/i, ~r/label/i, ~r/Take in again/] do
-      refute has_element?(view, part, words)
+      text = page |> LazyHTML.query(part) |> LazyHTML.text()
+      refute String.replace(text, "explore-a-ticket", "") =~ words
     end
   end
 
@@ -95,10 +100,11 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
     } do
       test_item = test_item!(scope)
 
-      assert {:error, {:live_redirect, %{to: to}}} = live(conn, page(scope, test_item.number))
-      assert to == page(scope, test_item.number, "/explore")
+      tab = page(scope, test_item.number, "/stages/#{Stages.explore_stage_id(test_item)}")
 
-      {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
+      assert {:error, {:live_redirect, %{to: ^tab}}} = live(conn, page(scope, test_item.number))
+
+      {:ok, view, _html} = live(conn, tab)
 
       assert has_element?(view, "#work-item-head-title", @line)
       assert has_element?(view, "#work-item-head-title .badge", "Test")

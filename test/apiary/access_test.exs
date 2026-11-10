@@ -29,7 +29,7 @@ defmodule Apiary.AccessTest do
   test "work_item.review_comment is described with comment, the word the pages use" do
     %{what: what, audited: {:not, note}} = Access.action(:"work_item.review_comment")
 
-    assert what =~ "write a comment on the proposal for a work item, reply to one,"
+    assert what =~ "write a comment on a stage's outputs or round for a work item, reply to one,"
     assert note =~ "a comment, a reply and a send each leave the entry of work_item.answer"
     refute what =~ "review comment"
     refute note =~ "review comment"
@@ -38,10 +38,10 @@ defmodule Apiary.AccessTest do
   test "the approvers' step says comments in the moduledoc and in docs/access.md" do
     {:docs_v1, _, _, _, %{"en" => moduledoc}, _, _} = Code.fetch_docs(Access)
 
-    assert moduledoc =~ "proposal and the comments on it (`gate.approve`"
+    assert moduledoc =~ "proposal and the comments on a stage's outputs or round (`gate.approve`"
 
     assert File.read!("docs/access.md") =~
-             "the comments on that proposal (`work_item.review_comment`)"
+             "the comments on a stage's outputs or round (`work_item.review_comment`)"
   end
 
   describe "each actor" do

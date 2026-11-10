@@ -100,7 +100,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
         &(&1.id == current_id)
       )
 
-    runs = with_paths(scope, runs, current_id, Stages.explore_stage_id(row))
+    explore_id = Stages.explore_stage_id(row)
+    runs = with_paths(scope, runs, current_id, explore_id)
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
@@ -130,7 +131,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       missing_outputs: List.wrap(get(status, :missing_outputs)),
       confirm_gate: false,
       explore: false,
-      at_explore: stage.id == Stages.explore_stage_id(row),
+      at_explore: stage.id == explore_id,
+      explore_id: explore_id,
+      tabs: [],
       ended: false,
       can_decide: Access.can?(scope, :"gate.approve", row),
       can_add: Access.can?(scope, :"artifact.write", row)
@@ -166,7 +169,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       id: get(stage, :id),
       name: get(stage, :name),
       gate: get(stage, :gate) || %{},
-      sequence: get(stage, :sequence) || []
+      sequence: get(stage, :sequence) || [],
+      outputs: for(output <- get(stage, :outputs) || [], do: get(output, :type))
     }
   end
 

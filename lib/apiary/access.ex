@@ -479,7 +479,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"work_item.review_comment",
-      "write a comment on the proposal for a work item, reply to one, and send the open ones to Explore's next run. When the work item's stage lists approvers, only those people take it.",
+      "write a comment on a stage's outputs or round for a work item, reply to one, and send the open ones to the stage's next run. When the work item's stage lists approvers, only those people take it.",
       feature: :factory,
       roles: @members,
       audited:
@@ -731,7 +731,7 @@ defmodule Apiary.Access do
 
   # What only the approvers of the stage a work item is in take on it, where the stage
   # lists them (`check_approver/3`): approving its gate, confirming Explore's proposal,
-  # which approves Explore's gate, and the review comments on that proposal.
+  # which approves Explore's gate, and the comments on a stage's outputs or round.
   @approver_actions [:"gate.approve", :"work_item.confirm", :"work_item.review_comment"]
 
   # What may still be done to an organisation or a workspace marked for deletion: cancel
@@ -813,9 +813,10 @@ defmodule Apiary.Access do
      role alone answers. A level other than the role allows is `{:error, :forbidden}`. An
      invitation is the organisation's, whichever workspace it grants.
   9. **The stage's approvers**, for approving a stage's gate, approving Explore's
-     proposal and the comments on it (`gate.approve`, `work_item.confirm`,
-     `work_item.review_comment`), asked of a work item. Where the stage the work item is
-     in lists approvers, a person who is not among them is `{:error, :not_approver}`.
+     proposal and the comments on a stage's outputs or round (`gate.approve`,
+     `work_item.confirm`, `work_item.review_comment`), asked of a work item. Where the
+     stage the work item is in lists approvers, a person who is not among them is
+     `{:error, :not_approver}`.
      Every person the role allows may with the workflow model off, on a work item the
      runner did not place, and at a stage that lists none. An answer to the questions
      (`work_item.answer`) is every member's. Asked of a workspace, as a page asks whether

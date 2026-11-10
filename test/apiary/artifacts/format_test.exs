@@ -501,6 +501,22 @@ defmodule Apiary.Artifacts.FormatTest do
       assert error =~ "earlier review comment"
     end
 
+    test "on one output, or on the round of a run, and no mix of the two", context do
+      assert {:ok, _} = review_comments(context, [review_comment(%{"on" => %{"run" => 3}})])
+
+      assert {:ok, _} =
+               review_comments(context, [
+                 review_comment(%{
+                   "on" => %{"artifact" => "mockup", "version" => 2, "screen" => "checkout"}
+                 })
+               ])
+
+      for on <- [%{"run" => 0}, %{"run" => 1, "artifact" => "proposal"}, %{}] do
+        assert {:error, {:schema, %{path: "#/review_comments/0/on"}}} =
+                 review_comments(context, [review_comment(%{"on" => on})])
+      end
+    end
+
     test "a key twice in one object is refused at the object's place", context do
       bytes =
         ~s({"review_comments": [{"id": "c1", "on": {"artifact": "proposal", "version": 1}, ) <>

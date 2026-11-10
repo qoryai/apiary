@@ -270,6 +270,16 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     |> Enum.join(" ")
   end
 
+  # The Explore tab's HTML before the record block, which has every run of the work item at
+  # a stage after Explore.
+  defp above_record(view) do
+    view
+    |> element("#work-item-explore")
+    |> render()
+    |> String.split(~s(id="work-item-record"), parts: 2)
+    |> hd()
+  end
+
   defp place!(work_item, version, stage_id, state, fields \\ []) do
     {1, _} =
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
@@ -619,6 +629,23 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
   end
 
+  # The rows of the runs fold at the foot of the tab, oldest first, each with its parts
+  # joined by " · ", as the page shows them.
+  defp fold_rows(view) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query(
+      "#work-item-record-fold > .q-xp-inner > .q-xp-runrow, " <>
+        "#work-item-record-fold > .q-xp-inner > details > summary"
+    )
+    |> Enum.map(fn row ->
+      row
+      |> LazyHTML.query(".q-xp-it")
+      |> Enum.map_join(" · ", &(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+    end)
+  end
+
   defp as(conn, _scope, :owner), do: conn
 
   defp as(_conn, scope, level),
@@ -672,6 +699,21 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-head-stages-explore")
       refute has_element?(view, "#work-item-stage")
       refute has_element?(view, "#work-item-flow")
+    end
+
+    test "/explore draws Explore's tab, and a stage's address goes to the work item's page", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = backfilled!(scope, @explore, :running)
+      to = page(scope, work_item.number)
+
+      {:ok, view, _html} = live(conn, to <> "/explore")
+
+      assert page_assigns(view).live_action == :explore
+      assert has_element?(view, "#work-item-tabs-explore[aria-current=page]")
+
+      assert {:error, {:live_redirect, %{to: ^to}}} = live(conn, to <> "/stages/#{@explore}")
     end
 
     test "a second take in: Details counts only that take in's runs", %{
@@ -949,17 +991,32 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute html =~ "explore-a-ticket · round"
     end
 
-    test "a run handed over to a machine reads running", %{conn: conn, scope: scope} do
+    test "a run whose row is running reads Running on the stage card, running in the block", %{
+      conn: conn,
+      scope: scope
+    } do
       # Past Explore, where the stage card stands alone.
+      work_item = running_at_build!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-state", "Running")
+      assert has_element?(view, "#work-item-stage-line", "Build is running.")
+      assert has_element?(view, "#work-item-head-stage-status", "Build · Running")
+      assert has_element?(view, "#work-item-record .q-xp-runrow", "Attempt 1")
+      assert has_element?(view, "#work-item-record .q-xp-runrow", "running")
+    end
+
+    test "a run handed over with its row still pending: Running on the stage card, queued in the block",
+         %{conn: conn, scope: scope} do
       work_item =
         scope
         |> taken_in_fixture()
         |> place!(Processes.current(scope.workspace), @build, :running)
 
-      work_item
-      |> newest_run()
-      |> Ecto.Changeset.change(state: :handed_over)
-      |> Repo.update!()
+      {run, dispatch_run} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+      run |> Ecto.Changeset.change(state: "pending", started_at: nil) |> Repo.update!()
+      assert dispatch_run.stage_id == @build
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -967,11 +1024,85 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-line", "Build is running.")
       assert has_element?(view, "#work-item-head-stage-status", "Build · Running")
 
-      assert has_element?(
-               view,
-               "#work-item-runs li",
-               "Attempt 1 · explore-a-ticket · round 1 · running"
-             )
+      # The run has not started: the row reads queued, as the top line of the tab.
+      assert texts(view, "div#work-item-record-#{run.number}.q-xp-runrow .q-xp-it") ==
+               ["Attempt 2 (Run #{run.number})", "capture-demo", "round 1", "queued"]
+    end
+
+    test "a stage tab's run handed over with its row still pending: queued on the top line and in the fold",
+         %{conn: conn, scope: scope} do
+      work_item = at_workflow_stage(scope)
+      {run, _dispatch_run} = registered!(work_item, newest_run(work_item), :handed_over)
+      run |> Ecto.Changeset.change(state: "pending", started_at: nil) |> Repo.update!()
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/stages/#{@shape}")
+      assert line(view, "#work-item-tab-run") == "Attempt 2 (Run #{run.number})Queued"
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+
+      assert fold_rows(view) |> List.last() ==
+               "Attempt 2 (Run #{run.number}) · shape-a-ticket · round 1 · queued"
+    end
+
+    test "a stage tab's run handed over with its row lost: Lost on the top line and in the fold",
+         %{conn: conn, scope: scope} do
+      work_item = at_workflow_stage(scope)
+      {run, _dispatch_run} = registered!(work_item, newest_run(work_item), :handed_over)
+      run |> Ecto.Changeset.change(state: "lost", lost_at: DateTime.utc_now()) |> Repo.update!()
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/stages/#{@shape}")
+      assert line(view, "#work-item-tab-run") =~ ~r/^Attempt 2 \(Run #{run.number}\)Lost/
+
+      # The stage run reads running; the row has the run's state, as the top line.
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+
+      assert fold_rows(view) |> List.last() ==
+               "Attempt 2 (Run #{run.number}) · shape-a-ticket · round 1 · Lost"
+    end
+
+    for {state, word} <- [{"failed", "Failed"}, {"cancelled", "Cancelled"}] do
+      @tag run_state: state, word: word
+      test "a stage tab's run that ended without a verdict, its row #{state}: #{word} in the fold",
+           %{conn: conn, scope: scope, run_state: state, word: word} do
+        work_item = at_workflow_stage(scope)
+        {run, _dispatch_run} = settled_run!(work_item, newest_run(work_item), state)
+
+        assert [:no_verdict, :passed] = shows(scope, work_item)
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+
+        assert fold_rows(view) |> List.last() ==
+                 "Attempt 2 (Run #{run.number}) · shape-a-ticket · round 1 · #{word} · 4 minutes ago"
+      end
+    end
+
+    test "a stage tab's run that wrote passed and whose row was lost: passed in the fold",
+         %{conn: conn, scope: scope} do
+      work_item = at_workflow_stage(scope)
+      {run, dispatch_run} = registered!(work_item, newest_run(work_item), :handed_over)
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, dispatch_run},
+          work_item,
+          "verdict",
+          %{"verdict" => "passed"},
+          stage_id: dispatch_run.stage_id
+        )
+
+      run |> Ecto.Changeset.change(state: "lost", lost_at: DateTime.utc_now()) |> Repo.update!()
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+          set: [state: :ended, end_cause: :lost]
+        )
+
+      # The verdict comes before the run's state.
+      assert [:passed, :passed] = shows(scope, work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+      row = fold_rows(view) |> List.last()
+
+      assert row =~ ~r/^Attempt 2 \(Run #{run.number}\) · shape-a-ticket · round 1 · passed · \S/
+      refute row =~ "Lost"
     end
 
     test "an address with no tab: Explore's tab after a move back from Build", %{
@@ -1337,7 +1468,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, ".q-wi-mk-run")
       assert has_element?(view, "#work-item-stage-state .q-wi-badge.bg-info-soft", "Running")
       refute has_element?(view, ".bg-success-soft")
-      assert has_element?(view, "#work-item-runs .text-info-soft-content", "running")
+      assert has_element?(view, "#work-item-record .text-info-soft-content", "running")
       # The stage that is done has the green mark.
       assert has_element?(view, ".q-wi-stage-done .q-wi-stage-n")
     end
@@ -1442,7 +1573,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert %{status: ^status} = WorkItems.explore(scope, work_item, DateTime.utc_now())
 
         {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
-        tab = view |> element("#work-item-explore") |> render()
+        tab = above_record(view)
 
         refute tab =~ "is running"
         refute tab =~ "is queued"
@@ -1516,15 +1647,20 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert %{status: :running} = WorkItems.explore(scope, work_item, DateTime.utc_now())
       href = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{build.number}"
 
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
-      tab = view |> element("#work-item-explore") |> render()
+      # With no Explore run and the stage at Build, Explore has no tab, and the address goes
+      # to the work item's page.
+      to = page(scope, work_item.number)
 
-      refute tab =~ "is running"
-      refute tab =~ "n/a"
-      refute tab =~ href
+      assert {:error, {:live_redirect, %{to: ^to}}} =
+               live(conn, page(scope, work_item.number) <> "/explore")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+
+      refute has_element?(view, "#work-item-tabs-explore")
       refute has_element?(view, "#work-item-explore-wait")
       refute has_element?(view, "#work-item-explore-none")
-      refute has_element?(view, "#work-item-explore p")
+      # The record block has every run of the work item, Build's with its link.
+      assert has_element?(view, ~s(#work-item-record .q-xp-runrow a[href="#{href}"]))
     end
 
     test "at a later stage, Explore's tab does not count that stage's live run as Explore's", %{
@@ -1544,11 +1680,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute html =~ "ended with an error"
       refute has_element?(view, "#work-item-explore-none")
       refute has_element?(view, "#work-item-explore-wait")
-      refute has_element?(view, ~s(#work-item-explore a[href="#{href}"]))
+      refute has_element?(view, "#work-item-explore-run")
+      refute has_element?(view, ~s(#work-item-explore-proposal a[href="#{href}"]))
       assert has_element?(view, "#work-item-explore-proposal")
+      # Explore's tab lists only Explore's runs.
+      refute has_element?(view, ~s(#work-item-record .q-xp-runrow a[href="#{href}"]))
     end
 
-    test "after a move back, the stage card's line and the Runs line link the running run", %{
+    test "after a move back, the stage card's line and the fold's row link the running run", %{
       conn: conn,
       scope: scope
     } do
@@ -1566,13 +1705,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert line(view, "#work-item-stage-line") == "Explore is running."
       refute has_element?(view, "#work-item-stage-line a")
 
+      # Each of the take in's runs is Explore's, so Explore's fold lists them, and the
+      # Runs list is not above the tabs.
+      refute has_element?(view, "#work-item-runs")
+
       assert has_element?(
                view,
-               ~s(#work-item-runs-0 a[href="#{href}"]),
+               ~s(#work-item-record .q-xp-runrow a[href="#{href}"]),
                "Attempt #{dispatch_run.attempt} (Run #{run.number})"
              )
 
-      assert has_element?(view, "#work-item-runs-0", "· round")
+      assert List.last(fold_rows(view)) =~ "· round 1 ·"
     end
 
     test "after a move back, the header's status links the running run as a whole", %{
@@ -1629,20 +1772,29 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       view = running_where_runs_are_unreadable!(conn, scope)
 
       assert has_element?(view, "#work-item-stage-line", "Explore is running.")
-      assert has_element?(view, "#work-item-runs-0", "Attempt")
+      assert has_element?(view, "#work-item-record .q-xp-runrow", "Attempt")
       refute has_element?(view, ~s(a[href*="/runs/"]))
     end
 
-    test "a later stage's line and Runs lines have no link", %{conn: conn, scope: scope} do
+    test "a later stage's line has no link, and the record block's row links the run", %{
+      conn: conn,
+      scope: scope
+    } do
       work_item = running_at_build!(scope)
+      number = Repo.one(from r in Run, order_by: [desc: r.number], limit: 1, select: r.number)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-line", "Build is running.")
-      assert has_element?(view, "#work-item-runs-0", "Attempt 1")
       refute has_element?(view, "#work-item-stage-line a")
       refute has_element?(view, "#work-item-stage-run-link")
-      refute has_element?(view, "#work-item-runs a")
+      refute has_element?(view, "#work-item-runs")
+
+      assert has_element?(
+               view,
+               ~s(#work-item-record .q-xp-runrow a[href$="/runs/#{number}"]),
+               "Attempt 1 (Run #{number})"
+             )
     end
 
     test "an address with no tab: Explore's tab at Explore's gate, the Ticket tab at Shape", %{
@@ -1672,7 +1824,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute html =~ "Explore waits for answers to the agent's questions."
       refute has_element?(view, "#work-item-stage-answers")
       assert length(String.split(html, "Answer the questions")) == 2
-      assert has_element?(view, ~s|#work-item-step a[href$="/explore"]|, "Answer the questions")
+
+      assert has_element?(
+               view,
+               ~s|#work-item-step a[href$="/stages/#{@explore}"]|,
+               "Answer the questions"
+             )
+
       refute html =~ "explore-a-ticket · round"
     end
 
@@ -1687,9 +1845,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
+      # Build runs no workflow here, so it has no tab, and the link goes to Explore's.
       assert has_element?(
                view,
-               ~s|#work-item-stage-answers[href="#{page(scope, work_item.number)}/explore"]|
+               ~s|#work-item-stage-answers[href="#{page(scope, work_item.number)}/stages/#{@explore}"]|
              )
     end
 
@@ -2476,7 +2635,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       listed = explore_gate_listing(scope)
       work_item = explore_gate_fixture(scope)
       {:ok, _} = WorkItems.review_comment(listed, work_item, 1, "Offer a refund first.")
-      explore = page(scope, work_item.number) <> "/explore"
+      explore = page(scope, work_item.number) <> "/stages/#{@explore}"
 
       {:ok, view, _html} = live(conn, explore)
       refute has_element?(view, "#work-item-explore-proposal-review-add")
@@ -3907,13 +4066,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-item-stage-escalation-another")
 
-      assert has_element?(
-               view,
-               "#work-item-runs-0",
-               "Attempt 2 · shape-a-ticket · round 1 · ended without a verdict"
-             )
+      assert has_element?(view, "#work-item-tabs-#{@shape}[aria-current=page]")
+      assert [row] = fold_rows(view)
 
-      refute has_element?(view, "#work-item-runs-0", "passed")
+      assert row =~
+               ~r/^Attempt 2 \(Run \d+\) · shape-a-ticket · round 1 · ended without a verdict · \S/
+
+      refute row =~ "passed"
     end
 
     test "a Shape-style stage: passed reaches the gate and its row reads passed", %{
@@ -3925,11 +4084,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert work_item.stage_state == :at_gate
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(
-               view,
-               "#work-item-runs-0",
-               "Attempt 2 · shape-a-ticket · round 1 · passed"
-             )
+      assert has_element?(view, "#work-item-tabs-#{@shape}[aria-current=page]")
+      assert [row] = fold_rows(view)
+      assert row =~ ~r/^Attempt 2 \(Run \d+\) · shape-a-ticket · round 1 · passed · \S/
     end
 
     test "a test work item's run with no verdict shows no stopped card", %{
@@ -3950,7 +4107,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = Repo.get!(WorkItem, work_item.id) |> end_run!(nil)
 
       assert work_item.stage_state == :at_gate
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      # With no `proposal` output, Explore's stage has a stage's tab, and the work item's
+      # address leads to it.
+      {:ok, view, _html} = conn |> live(page(scope, work_item.number)) |> follow_redirect(conn)
       refute has_element?(view, "#work-item-needs")
     end
 
@@ -3984,13 +4143,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert line(view, "#work-item-needs-point-1") ==
                "The run stopped: Qory Apiary got no report from it and marked it lost. Run another round."
 
-      assert has_element?(
-               view,
-               "#work-item-runs-0",
-               "Attempt 2 · shape-a-ticket · round 1 · ended without a verdict"
-             )
+      assert has_element?(view, "#work-item-tabs-#{@shape}[aria-current=page]")
+      assert [row] = fold_rows(view)
 
-      refute has_element?(view, "#work-item-runs-0", "passed")
+      assert row =~
+               ~r/^Attempt 2 \(Run \d+\) · shape-a-ticket · round 1 · ended without a verdict · \S/
+
+      refute row =~ "passed"
     end
 
     test "an escalation beside a proposal: no Confirm for any reader, until Accept as it is", %{
@@ -4199,7 +4358,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert no_verdict["text"] == "The run stopped before its verdict."
 
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      # Explore's stage has no stage's tab: the runs have no stage, so the work item's
+      # address opens on the Explore tab.
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-tabs-explore[aria-current=page]")
       assert has_element?(view, "#work-item-needs")
 
       assert line(view, "#work-item-needs-point-1") ==
@@ -5180,6 +5342,720 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, _work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
       assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
+    end
+  end
+
+  describe "the record block at a stage after Explore" do
+    @tabs ["/ticket", "/explore", "/thread"]
+    @foot_tabs ["/ticket", "/thread"]
+
+    # A work item at Shape's gate, on a version whose Shape has the outputs `outputs`, with
+    # Explore's run and one ended run of Shape.
+    defp shape_with_run!(scope, outputs \\ ["acceptance-criteria", "explainer"]) do
+      work_item = shape_gate_on!(scope, outputs)
+      {run, _dispatch_run} = ended_run!(work_item, @shape, "completed")
+      {work_item, run}
+    end
+
+    defp shape_gate_on!(scope, outputs) do
+      default = Processes.default_document("software")
+
+      stages =
+        for stage <- default["stages"] do
+          if stage["id"] == @shape do
+            %{stage | "outputs" => Enum.map(outputs, &%{"type" => &1, "required" => false})}
+          else
+            stage
+          end
+        end
+
+      version = save!(scope, %{default | "stages" => stages})
+
+      scope
+      |> shape_gate_fixture()
+      |> place!(version, @shape, :at_gate, stage_round: 1, stage_entry: 1)
+    end
+
+    # A run of `stage_id`, after the work item's newest, ended in `state` 4 minutes ago.
+    defp ended_run!(work_item, stage_id, state),
+      do: settled_run!(work_item, stage_run!(work_item, stage_id), state)
+
+    # `dispatch_run` registered and ended in `state` 4 minutes ago, settled with the outcome
+    # `none` (`Apiary.Dispatches.Settle`).
+    defp settled_run!(work_item, dispatch_run, state) do
+      {run, dispatch_run} = registered!(work_item, dispatch_run, :handed_over)
+
+      dispatch_run =
+        dispatch_run
+        |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended, result_outcome: :none)
+        |> Repo.update!()
+
+      run =
+        run
+        |> Ecto.Changeset.change(
+          state: state,
+          exited_at: DateTime.add(DateTime.utc_now(), -240, :second)
+        )
+        |> Repo.update!()
+
+      {run, dispatch_run}
+    end
+
+    defp found(view, selector) do
+      view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query(selector) |> Enum.count()
+    end
+
+    defp summary(view), do: texts(view, "#work-item-record-fold > summary .q-xp-it")
+
+    test "each later stage, on each tab: one block at the foot, closed, no list above the tabs, notes above the tabs",
+         %{conn: conn, scope: scope} do
+      later =
+        for %{"id" => id} <- Processes.default_document("software")["stages"],
+            id != @explore,
+            do: id
+
+      assert length(later) >= 3
+
+      for stage_id <- later do
+        work_item =
+          scope
+          |> shape_gate_fixture()
+          |> place!(Processes.current(scope.workspace), stage_id, :at_gate, stage_round: 1)
+
+        Repo.insert!(%GateDecision{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          work_item_id: work_item.id,
+          process_version_id: work_item.process_version_id,
+          stage_id: stage_id,
+          kind: :move,
+          user_id: scope.user.id,
+          note: "Back for the refund rule.",
+          inserted_at: DateTime.utc_now()
+        })
+
+        for tab <- @tabs do
+          {:ok, view, html} = live(conn, page(scope, work_item.number) <> tab)
+
+          assert found(view, "#work-item-record") == 1
+          assert found(view, "#work-item-record-fold") == 1
+          assert found(view, "#work-item-record-fold[open]") == 0
+          assert found(view, "#work-item-record-fold[phx-mounted]") == 1
+          assert found(view, "#work-item-artifact-list") == 1
+          refute has_element?(view, "#work-item-runs")
+
+          if tab == "/explore",
+            do: assert(found(view, "#work-item-explore > #work-item-record:last-child") == 1),
+            else: assert(found(view, ".q-wi-b > #work-item-record.q-wi-foot:last-child") == 1)
+
+          [before_tabs, after_tabs] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
+          assert before_tabs =~ ~s(id="work-item-notes")
+          assert before_tabs =~ "Back for the refund rule."
+          refute before_tabs =~ ~s(id="work-item-record")
+          refute before_tabs =~ ~s(id="work-item-artifacts")
+          assert after_tabs =~ ~s(id="work-item-artifacts")
+          refute after_tabs =~ ~s(id="work-item-notes")
+        end
+      end
+    end
+
+    test "a stage with no note has no block above the tabs", %{conn: conn, scope: scope} do
+      {work_item, _run} = shape_with_run!(scope)
+
+      for tab <- @tabs do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+        refute has_element?(view, "#work-item-flow")
+      end
+    end
+
+    test "every tab has every run and all artifacts, and the count agrees with Details", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run} = shape_with_run!(scope)
+      push!({:person, scope}, work_item, "acceptance-criteria", @shape)
+      href = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
+
+      for tab <- @foot_tabs do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+
+        assert has_element?(view, "#work-item-record-fold summary b", "2 runs")
+        assert line(view, "#work-item-details-runs") =~ "2 runs, ended"
+
+        # Shape's run is the latest, in the words of the row.
+        row = "div#work-item-record-#{run.number}.q-xp-runrow"
+        assert has_element?(view, ~s(#{row} a[href="#{href}"]), "Attempt 2 (Run #{run.number})")
+
+        assert texts(view, "#{row} .q-xp-it") == [
+                 "Attempt 2 (Run #{run.number})",
+                 "capture-demo",
+                 "round 1",
+                 "ended without a verdict",
+                 "4 minutes ago"
+               ]
+
+        refute has_element?(view, row, "passed")
+
+        # Explore's run, no longer the latest, has its fold, and its workflow, round and
+        # verdict on its line.
+        assert has_element?(
+                 view,
+                 "#work-item-record-fold .q-xp-inner > details summary a",
+                 "Attempt 1"
+               )
+
+        assert [explore, _shape] = fold_rows(view)
+        assert explore =~ ~r/^Attempt 1 \(Run \d+\) · explore-a-ticket · round 1 · passed · \S/
+
+        # All artifacts, with a run's round as the list above the tabs had it.
+        assert has_element?(view, "#work-item-record #work-item-artifact-list", "proposal v1")
+
+        assert has_element?(
+                 view,
+                 "#work-item-record #work-item-artifact-list",
+                 "acceptance-criteria v1"
+               )
+
+        assert has_element?(view, "#work-item-record #work-item-artifacts-h", "Artifacts")
+      end
+
+      # Explore's tab lists Explore's run and artifact, and Details still counts both runs.
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/stages/#{@explore}")
+
+      assert has_element?(view, "#work-item-record-fold summary b", "1 run")
+      assert line(view, "#work-item-details-runs") =~ "2 runs, ended"
+      assert has_element?(view, "#work-item-record #work-item-artifact-list", "proposal v1")
+
+      refute has_element?(
+               view,
+               "#work-item-record #work-item-artifact-list",
+               "acceptance-criteria v1"
+             )
+    end
+
+    test "Explore's tab at Shape: Explore's frames stay, and Shape's run is not listed", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run} = shape_with_run!(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      assert has_element?(view, "#work-item-explore-proposal")
+      refute has_element?(view, "#work-item-explore-wait")
+      refute has_element?(view, "#work-item-explore-none")
+      assert found(view, ~s(#work-item-explore a[href$="/runs/#{run.number}"])) == 0
+    end
+
+    test "the summary has the current stage's output versions; one with no version has no piece",
+         %{conn: conn, scope: scope} do
+      {work_item, _run} = shape_with_run!(scope)
+
+      for tab <- @foot_tabs do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+        assert summary(view) == ["2 runs"]
+      end
+
+      push!({:person, scope}, work_item, "explainer", @shape)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert summary(view) == ["2 runs", "explainer v1"]
+
+      push!({:person, scope}, work_item, "acceptance-criteria", @shape)
+      push!({:person, scope}, work_item, "explainer", @shape)
+
+      for tab <- @foot_tabs do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+        assert summary(view) == ["2 runs", "acceptance criteria v1", "explainer v2"]
+      end
+    end
+
+    test "a stage with no outputs: the count alone, and the fold has all artifacts", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = shape_with_run!(scope, [])
+
+      for tab <- @foot_tabs do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+        assert summary(view) == ["2 runs"]
+        assert has_element?(view, "#work-item-artifact-list", "proposal v1")
+      end
+    end
+
+    test "a later stage's row: running is blue, quiet is amber, a pending row reads queued", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> place!(Processes.current(scope.workspace), @build, :running)
+
+      {run, _dispatch_run} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+      row = "div#work-item-record-#{run.number}.q-xp-runrow"
+      blue = "#{row} .text-info-soft-content"
+      amber = "#{row} .text-primary-soft-content"
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, blue, "running")
+      refute has_element?(view, amber)
+
+      late = DateTime.add(DateTime.utc_now(), -3600, :second)
+      run = run |> Ecto.Changeset.change(last_heartbeat_at: late) |> Repo.update!()
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, amber, "running")
+      refute has_element?(view, blue)
+
+      run |> Ecto.Changeset.change(state: "pending", started_at: nil) |> Repo.update!()
+
+      # A row still pending reads queued, in neither colour.
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, row, "queued")
+      refute has_element?(view, blue)
+      refute has_element?(view, amber)
+    end
+
+    test "no runs and no artifacts: the block shows, with Add a version", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_shape_gate(scope, ["acceptance-criteria"])
+      add = ~s(#work-item-record #work-item-artifact-list-add[href*="/artifacts/new"])
+
+      for tab <- @foot_tabs do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+
+        assert summary(view) == ["0 runs"]
+        assert found(view, "#work-item-record-fold[open]") == 0
+        assert found(view, "#work-item-record .q-xp-runrow") == 0
+        assert has_element?(view, "#work-item-artifact-list-empty", "No artifacts yet.")
+        assert has_element?(view, add, "Add a version")
+        refute has_element?(view, "#work-item-explore-wait")
+        refute has_element?(view, "#work-item-explore-run")
+      end
+    end
+
+    test "a reader with no run.read reads a plain attempt", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.MembersReachNamed)
+      {work_item, _run} = shape_with_run!(scope)
+      there = workspace_fixture(scope.organisation, "There")
+
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [workspace_id: there.id]
+      )
+
+      %{user: member} = member_fixture(scope, :member)
+      Apiary.EditionStubs.MembersReachNamed.put([there.id])
+
+      {:ok, view, _html} =
+        conn
+        |> log_in_user(member)
+        |> live(~p"/#{scope.organisation}/#{there}/work/#{work_item.number}")
+
+      assert has_element?(
+               view,
+               "#work-item-record-fold .q-xp-inner > details > summary",
+               "Attempt 1"
+             )
+
+      refute has_element?(view, "#work-item-record-fold .q-xp-inner > details > summary", "(Run")
+
+      assert has_element?(view, "#work-item-record .q-xp-runrow", "Attempt 2")
+      refute has_element?(view, "#work-item-record .q-xp-runrow", "(Run")
+
+      refute has_element?(
+               view,
+               ~s(#work-item-record .q-xp-inner > .q-xp-runrow a[href*="/runs/"])
+             )
+
+      refute has_element?(
+               view,
+               ~s(#work-item-record .q-xp-inner > details > summary a[href*="/runs/"])
+             )
+    end
+
+    test "a later stage's run that has no row yet reads queued, with no link", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = shape_gate_on!(scope, [])
+      stage_run!(work_item, @shape)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-record-run-2 .q-xp-it") ==
+               ["Attempt 2", "capture-demo", "round 1", "queued"]
+
+      refute has_element?(view, "#work-item-record-run-2 a")
+    end
+
+    test "a fold row's pieces are in one strip whose first separator on each line is clipped",
+         %{conn: conn, scope: scope} do
+      work_item = shape_gate_on!(scope, [])
+      {earlier, _dispatch_run} = ended_run!(work_item, @shape, "completed")
+      {_latest, _dispatch_run} = ended_run!(work_item, @shape, "completed")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # Every piece of the summary and of a row is in the strip, which no other element
+      # shares.
+      assert texts(view, "#work-item-record-fold > summary > .q-xp-parts > .q-xp-it") ==
+               summary(view)
+
+      row = "div#work-item-record-#{earlier.number}.q-xp-runrow"
+      assert length(texts(view, "#{row} > .q-xp-parts > .q-xp-it")) == 5
+      assert texts(view, "#{row} > .q-xp-parts > .q-xp-it") == texts(view, "#{row} .q-xp-it")
+      assert found(view, "#{row} > :not(.q-xp-parts)") == 0
+
+      css =
+        File.read!(Path.expand("../../../../assets/css/app.css", __DIR__))
+        |> String.replace(~r{/\*.*?\*/}s, "")
+
+      # The strip starts one separator left of the row, and the clip hides the separator of
+      # each line's first piece, but not a focus ring 4px around a piece.
+      assert [_, strip] = Regex.run(~r/\n  \.q-xp-parts \{([^}]*)\}/, css)
+      assert strip =~ "\n    flex-wrap: wrap;\n"
+      assert strip =~ "\n    margin-left: calc(-16px - 0.202em);\n"
+      assert strip =~ "\n    clip-path: inset(-6px -6px -6px calc(10px + 0.202em));\n"
+
+      # Every piece in the strip opens with the separator, the first one too.
+      assert [_, separator] = Regex.run(~r/\n  \.q-xp-parts > \.q-xp-it::before \{([^}]*)\}/, css)
+      assert separator =~ ~s(\n    content: "·" / "";\n)
+      assert separator =~ "\n    margin: 0 8px;\n"
+    end
+
+    test "a later stage's run with no verdict in each state: its state once it failed, was cancelled or lost, in a row with no fold",
+         %{conn: conn, scope: scope} do
+      for {state, word, unshown} <- [
+            {"completed", "ended without a verdict", "Completed"},
+            {"failed", "Failed", "ended without a verdict"},
+            {"cancelled", "Cancelled", "ended without a verdict"},
+            {"lost", "Lost", "ended without a verdict"}
+          ] do
+        work_item = shape_gate_on!(scope, [])
+        {earlier, _dispatch_run} = ended_run!(work_item, @shape, state)
+        {_latest, _dispatch_run} = ended_run!(work_item, @shape, "completed")
+
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+        row = "div#work-item-record-#{earlier.number}.q-xp-runrow"
+
+        assert texts(view, "#{row} .q-xp-it") == [
+                 "Attempt 2 (Run #{earlier.number})",
+                 "capture-demo",
+                 "round 1",
+                 word,
+                 "4 minutes ago"
+               ]
+
+        refute has_element?(view, row, unshown)
+        refute has_element?(view, "#work-item-record-#{earlier.number}-none")
+      end
+
+      work_item = shape_gate_on!(scope, [])
+
+      {running, _dispatch_run} =
+        registered!(work_item, stage_run!(work_item, @shape), :handed_over)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert [
+               "Attempt 2 (Run " <> _rest,
+               "capture-demo",
+               "round 1",
+               "running",
+               "started " <> _ago
+             ] =
+               texts(view, "#work-item-record-#{running.number} .q-xp-it")
+    end
+
+    test "an unread proposal's fold reads it from the Ticket tab", %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+      explore_run_fixture(work_item, result: understood_result(%{"message" => "The first take."}))
+
+      explore_run_fixture(work_item,
+        result: understood_result(%{"message" => "The second take."})
+      )
+
+      {:ok, _work_item} = WorkItems.confirm(scope, Repo.get!(WorkItem, work_item.id), 2)
+
+      work_item =
+        WorkItem
+        |> Repo.get!(work_item.id)
+        |> place!(Processes.current(scope.workspace), @shape, :at_gate, stage_round: 1)
+
+      ended_run!(work_item, @shape, "completed")
+
+      number =
+        Repo.one(
+          from r in Run,
+            join: d in DispatchRun,
+            on: r.dispatch_run_id == d.id,
+            where: d.work_item_id == ^work_item.id and d.attempt == 1,
+            select: r.number
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+      fold = "#work-item-record-#{number}"
+      refute has_element?(view, fold, "The first take.")
+
+      view |> element("#{fold}-s") |> render_click()
+      assert has_element?(view, "#{fold}-proposal-text", "The first take.")
+    end
+
+    test "the page's live updates refresh the block with no reload", %{conn: conn, scope: scope} do
+      {work_item, _run} = shape_with_run!(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+
+      assert summary(view) == ["2 runs"]
+      refute has_element?(view, "#work-item-artifact-list", "explainer v1")
+
+      # `{:artifact_pushed, …}`
+      push!({:person, scope}, work_item, "explainer", @shape)
+      assert summary(view) == ["2 runs", "explainer v1"]
+      assert has_element?(view, "#work-item-artifact-list", "explainer v1")
+
+      # `{:work_items_changed, ids}`
+      stage_run!(work_item, @shape)
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+      assert summary(view) == ["3 runs", "explainer v1"]
+      assert line(view, "#work-item-details-runs") =~ "3 runs"
+
+      # `{:stage_changed, id}`: Build's outputs, none of which has a version.
+      {1, _} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_id: @build, stage_state: :running]
+        )
+
+      Phoenix.PubSub.broadcast(
+        Apiary.PubSub,
+        Stages.topic(work_item),
+        {:stage_changed, work_item.public_id}
+      )
+
+      assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
+      assert summary(view) == ["3 runs"]
+      # The same element, whose `open` the page leaves as the reader set it.
+      assert found(view, "#work-item-record-fold[phx-mounted]") == 1
+    end
+
+    test "a page at Explore's stage is as before: no block on the Ticket tab or the Thread", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = explore_gate_fixture(scope)
+
+      for tab <- ["/ticket", "/thread"] do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+        refute has_element?(view, "#work-item-record")
+        refute has_element?(view, "#work-item-artifact-list")
+        refute has_element?(view, "#work-item-flow")
+      end
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      refute has_element?(view, "#work-item-record.q-wi-foot")
+      assert summary(view) == ["1 run", "proposal v1"]
+      assert has_element?(view, "#work-item-record #work-item-artifact-list", "proposal v1")
+      refute has_element?(view, "#work-item-artifact-list", "round")
+    end
+
+    test "a work item moved back to Explore has the artifacts above the tabs, its runs in Explore's fold",
+         %{conn: conn, scope: scope} do
+      work_item = moved_back!(scope)
+
+      for tab <- @tabs do
+        {:ok, view, html} = live(conn, page(scope, work_item.number) <> tab)
+        [before_tabs, _after] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
+
+        refute has_element?(view, "#work-item-runs")
+        assert before_tabs =~ ~s(id="work-item-artifacts")
+        refute has_element?(view, "#work-item-record.q-wi-foot")
+        assert found(view, "#work-item-artifact-list") == 1
+      end
+    end
+
+    test "a work item moved back to Explore from Shape's gate lists each run once, in its tab's fold",
+         %{conn: conn, scope: scope} do
+      work_item = scope |> at_workflow_stage() |> end_run!(passed())
+      assert work_item.stage_state == :at_gate
+      {:ok, _work_item} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
+      shape = page(scope, work_item.number) <> "/stages/#{@shape}"
+
+      for path <- Enum.map(@tabs, &(page(scope, work_item.number) <> &1)) ++ [shape] do
+        {:ok, view, html} = live(conn, path)
+        [before_tabs, _after] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
+
+        refute has_element?(view, "#work-item-runs")
+        assert before_tabs =~ ~s(id="work-item-artifacts")
+      end
+
+      # Explore's runs, attempts 1 and 3, in Explore's fold; Shape's run in Shape's.
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      assert [first, third] = fold_rows(view)
+      assert first =~ ~r/^Attempt 1( \(Run \d+\))? · explore-a-ticket · round 1 · passed/
+      assert third =~ ~r/^Attempt 3 · explore-a-ticket · round 1 · queued/
+
+      {:ok, view, _html} = live(conn, shape)
+      assert [row] = fold_rows(view)
+      assert row =~ ~r/^Attempt 2( \(Run \d+\))? · shape-a-ticket · round 1 · passed/
+    end
+
+    test "a work item moved back while a later stage's only run waits keeps the list above the tabs",
+         %{conn: conn, scope: scope} do
+      # Shape's run, queued, is Shape's only run, and Shape has no version of an output:
+      # Shape's tab has no runs fold, so the Runs list is the one list of that run.
+      work_item = at_workflow_stage(scope)
+      {:ok, _work_item} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/stages/#{@shape}")
+      refute has_element?(view, "#work-item-record")
+      assert has_element?(view, "#work-item-runs-1", "Attempt 2 · shape-a-ticket")
+      assert has_element?(view, "#work-item-runs-1", "queued")
+    end
+
+    test "a work item moved back while a later stage's only run runs: its word is blue in the list",
+         %{conn: conn, scope: scope} do
+      work_item = at_workflow_stage(scope)
+      {_run, _dispatch_run} = registered!(work_item, newest_run(work_item), :handed_over)
+      {:ok, _work_item} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-runs .text-info-soft-content", "running")
+    end
+
+    test "a work item closed at Explore has the artifacts above the tabs and no block at the foot",
+         %{conn: conn, scope: scope} do
+      work_item = explore_gate_fixture(scope)
+      {:ok, _work_item} = WorkItems.close(scope, work_item)
+
+      for tab <- @tabs do
+        {:ok, view, html} = live(conn, page(scope, work_item.number) <> tab)
+        [before_tabs, _after] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
+
+        # Its one run is Explore's, in Explore's fold.
+        refute has_element?(view, "#work-item-runs")
+        assert before_tabs =~ ~s(id="work-item-artifacts")
+        assert found(view, ".q-wi-foot") == 0
+        assert found(view, "#work-item-artifact-list") == 1
+      end
+    end
+
+    test "a work item closed at Shape has one block on each tab and no list above the tabs", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, _run} = shape_with_run!(scope)
+      {:ok, _work_item} = WorkItems.close(scope, work_item)
+
+      for tab <- @tabs do
+        {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
+
+        assert found(view, "#work-item-record") == 1
+        assert found(view, "#work-item-record-fold[open]") == 0
+        assert found(view, "#work-item-artifact-list") == 1
+        count = if tab == "/explore", do: "1 run", else: "2 runs"
+        assert has_element?(view, "#work-item-record-fold summary b", count)
+        refute has_element?(view, "#work-item-runs")
+        refute has_element?(view, "#work-item-flow #work-item-artifacts")
+
+        if tab == "/explore",
+          do: assert(found(view, "#work-item-explore > #work-item-record:last-child") == 1),
+          else: assert(found(view, ".q-wi-b > #work-item-record.q-wi-foot:last-child") == 1)
+      end
+    end
+
+    # A process of two stages, Plan and Build, neither of which runs Explore's workflow.
+    defp no_explore_document do
+      stage = fn id, name, workflow ->
+        %{
+          "id" => id,
+          "name" => name,
+          "inputs" => [],
+          "sequence" => [%{"workflow" => workflow}],
+          "outputs" => [],
+          "gate" => %{"kind" => "person", "approvers" => "members"}
+        }
+      end
+
+      %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => [stage.(@shape, "Plan", "implement"), stage.(@build, "Build", "capture-demo")]
+      }
+    end
+
+    # At Build of that process: attempt 1 ended with no result, and attempt 2 runs.
+    defp no_explore_at_build!(scope) do
+      taken_in = taken_in_fixture(scope)
+      version = save!(scope, no_explore_document())
+      work_item = place!(taken_in, version, @build, :running, stage_round: 1, stage_entry: 1)
+      assert Stages.explore_stage_id(work_item) == nil
+
+      first =
+        work_item
+        |> newest_run()
+        |> Ecto.Changeset.change(stage_id: @build, workflow: "capture-demo")
+        |> Repo.update!()
+
+      {failed, _dispatch_run} = settled_run!(work_item, first, "failed")
+
+      {running, _dispatch_run} =
+        registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      {work_item, failed, running}
+    end
+
+    test "a process with no Explore stage: each staged run has a row, with no fold", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, failed, running} = no_explore_at_build!(scope)
+
+      for tab <- @foot_tabs do
+        {:ok, view, html} = live(conn, page(scope, work_item.number) <> tab)
+
+        assert has_element?(view, "#work-item-record-fold summary b", "2 runs")
+
+        assert texts(view, "div#work-item-record-#{failed.number}.q-xp-runrow .q-xp-it") == [
+                 "Attempt 1 (Run #{failed.number})",
+                 "capture-demo",
+                 "round 1",
+                 "Failed",
+                 "4 minutes ago"
+               ]
+
+        refute html =~ "The run ended without a result."
+
+        assert ["Attempt 2 (Run " <> _rest, "capture-demo", "round 1", "running" | _time] =
+                 texts(view, "div#work-item-record-#{running.number}.q-xp-runrow .q-xp-it")
+      end
+    end
+
+    test "a process with no Explore stage: a live run is not Explore's on the tab or the page",
+         %{conn: conn, scope: scope} do
+      {work_item, _failed, _running} = no_explore_at_build!(scope)
+      to = page(scope, work_item.number)
+
+      assert {:error, {:live_redirect, %{to: ^to}}} = live(conn, to <> "/explore")
+
+      for tab <- @foot_tabs do
+        {:ok, view, html} = live(conn, page(scope, work_item.number) <> tab)
+
+        # `explore_status/2`: no wait block of Explore.
+        refute has_element?(view, "#work-item-explore-wait")
+        refute has_element?(view, "#work-item-explore-run")
+        refute html =~ "Explore is"
+        assert has_element?(view, "#work-item-head-stage-status", "Build · Running")
+      end
+
+      # `live_heard/1`: the page does not follow the run, as at a later stage of a process
+      # with Explore.
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert page_assigns(view).followed_run == nil
     end
   end
 
