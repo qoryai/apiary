@@ -257,10 +257,10 @@ release command. The last column shows which actions also need a recent sign-in.
 | `instance.mail_resend` | `Apiary.Mail.resend_test_link/2` | none | yes |
 | `instance.mail_on` | `Apiary.Mail.turn_on/2` | none | yes |
 | `instance.rename` | `Apiary.ProductName.rename/2` | none | no |
-| `instance.configure` | `Apiary.InstanceConfig.save/3` | none | yes |
+| `instance.configure` | `Apiary.InstanceConfig.save/3`, and `Apiary.MachineTypes.create/2`, `update/3`, `make_default/2` and `delete/2` | none | yes |
 | `instance.support_save` | `Apiary.SupportAddress.save/2` | none | no |
 | `account.password_link` | `Apiary.Accounts.build_password_link/3` | none | yes, for a person |
-| `instance.read_factory` | the reads of the instance's adapters, pool and gateway, with their keys and codes | `factory` | no |
+| `instance.read_factory` | the reads of the instance's adapters, pool and gateway, with their keys and codes, and Instance settings › Machine types | `factory` | no |
 | `adapter.create` | `Apiary.Adapters.create_adapter/2` | `factory` | yes |
 | `adapter.edit` | `Apiary.Adapters.rename_adapter/3` | `factory` | no |
 | `adapter.set_interval` | `Apiary.Adapters.update_sync_interval/3` | `factory` | no |
@@ -465,7 +465,7 @@ so a pool registers its runs, posts their events and their outcome and is served
 configuration as a node is; reading the configuration document needs no role, only the
 signed request (`ApiaryWeb.Contract.SignedRequest`). `pool_key` also has the
 dispatch actions, `dispatch.claim`, `dispatch.dispatched`
-and `dispatch.release`, of the opt-in feature `factory`.
+and `dispatch.release`, of the feature `factory`.
 
 `access_key` alone has `secret.seal` and `run_credential.issue`, both of `factory`, for a
 gateway's secrets request:

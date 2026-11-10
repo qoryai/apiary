@@ -172,7 +172,7 @@ defmodule Apiary.Access do
     # The instance's settings, in Instance settings › Configuration.
     Action.new(
       :"instance.configure",
-      "change the instance's settings in Instance settings › Configuration, after a recent sign-in (Apiary.InstanceConfig.save/3)",
+      "change the instance's settings in Instance settings › Configuration and its machine types in Instance settings › Machine types, after a recent sign-in (Apiary.InstanceConfig.save/3, Apiary.MachineTypes)",
       roles: @owners,
       asked_of: :organisation,
       instance: true
@@ -472,7 +472,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"instance.read_factory",
-      "read the instance's adapters, its pool and its gateway, with their access keys and codes, and how often each adapter pulls",
+      "read the instance's adapters, its pool and its gateway, with their access keys and codes, how often each adapter pulls, and its machine types",
       feature: :factory,
       roles: @owners,
       asked_of: :organisation,
