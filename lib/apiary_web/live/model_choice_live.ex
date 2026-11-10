@@ -695,7 +695,8 @@ defmodule ApiaryWeb.ModelChoiceLive do
   attr :last, :boolean, required: true
 
   # One fallback: Provider, Model, Another model and Effort, as the choice's, then Move up,
-  # Move down and Remove; a group named by its place ("Fallback 2"), for whoever hears it.
+  # Move down and Remove; a group named by its place ("Fallback 2"), for whoever hears it,
+  # with a rule above it from the second row on.
   defp fallback_row(assigns) do
     %{page: page, row: row, index: index} = assigns
     model = row_model(page, row)
@@ -718,7 +719,10 @@ defmodule ApiaryWeb.ModelChoiceLive do
       )
 
     ~H"""
-    <li id={"model-fallback-#{@index}"}>
+    <li
+      id={"model-fallback-#{@index}"}
+      class="border-t border-line pt-4 first:border-t-0 first:pt-0"
+    >
       <fieldset class="grid gap-3 sm:grid-cols-2 sm:items-start">
         <legend class="sr-only">{gettext("Fallback %{number}", number: @number)}</legend>
         <.input
