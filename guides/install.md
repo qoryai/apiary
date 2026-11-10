@@ -496,8 +496,8 @@ environment variable SMTP_TLS must be always, if_available or never
 <!-- /feature -->
 <!-- feature: security -->
 - `registry`: the private image registry's tokens and each run's registry credential. On
-  by default only where `QORY_REGISTRY` is set and not blank; otherwise on only where a
-  list contains it. Needs `security`.
+  where `QORY_REGISTRY` is set, unless `all-…` or a list leaves it out. If it is on and
+  `QORY_REGISTRY` is not set, the boot stops. Needs `security`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `workflow_model`: changes to the process of each workspace, its stages in order, each
@@ -545,8 +545,8 @@ QORY_FEATURES=all-workflow_model
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
 
-Every feature in this list is on by default. An edition may add an opt-in feature, which is
-on only when a list contains it: `all`, `all-…`, and a value that is not set or empty leave
+Every feature in this list is on by default, unless its entry has a condition. An edition
+may add an opt-in feature, which is on only when a list contains it: `all`, `all-…`, and a value that is not set or empty leave
 it off, with or without an upgrade.
 
 The value is read once, at boot. A name that is not a feature, or a feature without one it
