@@ -59,6 +59,12 @@ defmodule ApiaryWeb.SetupLiveTest do
 
       assert has_element?(
                lv,
+               "aside#set-up-context > h2#set-up-context-h",
+               ~r/\AAbout accounts\z/
+             )
+
+      assert has_element?(
+               lv,
                "#set-up-context #setup-admin",
                "You create the first account of Qory Apiary and its organisation. As the " <>
                  "instance admin, you connect Qory Apiary to mail and to the systems that " <>

@@ -59,6 +59,12 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       assert has_element?(lv, "#registration_form input[name='user[email]'][value='#{email}']")
       refute has_element?(lv, "#registration_form input[name='user[organisation_name]']")
       assert html =~ scope.organisation.name
+
+      assert has_element?(
+               lv,
+               "aside#set-up-context > h2#set-up-context-h",
+               ~r/\AAbout accounts\z/
+             )
     end
 
     test "redirects if already logged in", %{conn: conn} do

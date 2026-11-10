@@ -10,7 +10,7 @@ defmodule ApiaryWeb.HarnessLive do
   # owners and admins), and is not found for anyone else, as the section is absent from
   # their list.
   #
-  # Beside the form, About this step has what the page sets, which sources Workflow
+  # Beside the form, About harnesses has what the page sets, which sources Workflow
   # source lists, and the paragraphs on the harness of the set-up's Harness step
   # (`ApiaryWeb.HarnessComponents.about/1`): what a harness is, the order of a run's
   # harness, a target's root harness file first, and what each version means. Under the
@@ -1126,7 +1126,7 @@ defmodule ApiaryWeb.HarnessLive do
             </.button>
           </SettingsComponents.save>
         </.form>
-        <:context>
+        <:context about={gettext("About harnesses")}>
           <p :if={!@stages?} id="workflow-what">
             {pgettext(
               "plain",

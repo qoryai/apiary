@@ -574,7 +574,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
             ~H"""
             <SetUpComponents.frame steps={@steps}>
               Form
-              <:context>Why</:context>
+              <:context about="About accounts">Why</:context>
             </SetUpComponents.frame>
             """
           end,
@@ -582,7 +582,9 @@ defmodule ApiaryWeb.SetUpComponentsTest do
         )
 
       assert html =~ ~s(id="set-up-steps")
-      assert html =~ "About this step"
+
+      assert text(LazyHTML.from_fragment(html), "aside#set-up-context > h2#set-up-context-h") ==
+               "About accounts"
     end
 
     test "Back leads to the step before the current one in its progress, where it has a page" do

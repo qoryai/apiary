@@ -116,7 +116,7 @@ defmodule ApiaryWeb.SetupLive do
           </.button>
         </.form>
 
-        <:context>
+        <:context about={gettext("About accounts")}>
           <p id="setup-admin">
             {pgettext(
               "plain",

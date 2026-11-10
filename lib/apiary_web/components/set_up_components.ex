@@ -6,9 +6,9 @@ defmodule ApiaryWeb.SetUpComponents do
   - `steps_for/3` is the list of the set-up's steps for a person and this instance, each
     with its state, as the edition answers it (`c:Apiary.Edition.set_up_steps/2`).
   - `frame/1` is the frame of every page of the set-up: the progress indicator
-    (`steps/1`), the step's form, and its context, "About this step", in three columns
-    from 1280 px. Below 1280 px the indicator is a bar on top; below 1024 px the context
-    stacks under the form.
+    (`steps/1`), the step's form, and its context, headed "About" and the page's topic,
+    in three columns from 1280 px. Below 1280 px the indicator is a bar on top; below
+    1024 px the context stacks under the form.
   - `heading/1` is a step's title, and `back/1` the Back button at the form's foot.
   - `kind_cards/1` is the empty organisation overview's choice of what the first workspace
     does, and New workspace's without the feature `factory`. `template_cards/1` is New
@@ -579,12 +579,17 @@ defmodule ApiaryWeb.SetUpComponents do
   attr :title, :string, default: nil, doc: "the line above the indicator's count"
   attr :page, :string, default: nil, doc: "the page's path, where a step's link patches"
   slot :inner_block, required: true, doc: "the step: its title, form and foot"
-  slot :context, doc: "why the step exists and what it changes, under About this step"
+
+  slot :context, doc: "why the step exists and what it changes, in an aside beside the form" do
+    attr :about, :string,
+      required: true,
+      doc: "the aside's heading: About and the page's topic, such as \"About harnesses\""
+  end
 
   @doc """
   frame/1 is the frame of a page of the set-up: the progress indicator (`steps/1`), the
-  step's form, and its context under "About this step", an `<aside>` that follows the
-  form in reading order.
+  step's form, and its context under the context's `about` heading, such as "About
+  harnesses", an `<aside>` that follows the form in reading order.
 
   From 1280 px the three are columns: 220 px, 480 px and 320 px. From 1024 px the
   indicator is a bar on top, with the form and its context side by side under it.
@@ -612,7 +617,7 @@ defmodule ApiaryWeb.SetUpComponents do
         class="q-context"
         aria-labelledby="set-up-context-h"
       >
-        <h2 id="set-up-context-h" class="q-context-h">{gettext("About this step")}</h2>
+        <h2 id="set-up-context-h" class="q-context-h">{hd(@context).about}</h2>
         {render_slot(@context)}
       </aside>
     </div>

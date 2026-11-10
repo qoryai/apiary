@@ -88,6 +88,12 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
 
     assert has_element?(
              lv,
+             "aside#set-up-context > h2#set-up-context-h",
+             ~r/\AAbout invitations\z/
+           )
+
+    assert has_element?(
+             lv,
              "#set-up-context #invitation-context",
              "The invitation adds you to Acme Studio. Acme Studio has no workspace " <>
                "yet: its first one is set up after your account."

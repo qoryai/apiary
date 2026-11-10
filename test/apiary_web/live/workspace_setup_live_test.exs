@@ -808,6 +808,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Work sources."
 
+      assert words(lv, "#set-up-context-h") == "About work sources"
+
       assert words(lv, "#set-up-context #set-up-what") ==
                "Bring tickets in from a system such as an issue tracker. Owners and admins " <>
                  "of #{organisation.name} connect it once for the organisation."
@@ -835,6 +837,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert href(lv, "#set-up-back") == step_path
       refute has_element?(lv, "#set-up-skip")
       refute has_element?(lv, "#set-up-continue")
+
+      assert words(lv, "#set-up-context-h") == "About work sources"
 
       assert words(lv, "#set-up-context #set-up-connect-help") ==
                "Connect opens the system in this tab. After its steps, it sends you back here."
@@ -1148,6 +1152,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, "#set-up-adapters #set-up-adapter-#{forge.public_id}", forge.name)
       refute has_element?(lv, "#set-up-adapter-#{tracker.public_id}")
 
+      assert words(lv, "#set-up-context-h") == "About destinations"
+
       assert words(lv, "#set-up-context #set-up-what") ==
                "Runs change repositories in a system such as a forge. Owners and admins " <>
                  "of #{organisation.name} connect it once for the organisation."
@@ -1168,6 +1174,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert has_element?(lv, ~s{#breadcrumb a[href="#{step_path}"]}, "Destinations")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Connect a destination")
       assert href(lv, "#set-up-back") == step_path
+      assert words(lv, "#set-up-context-h") == "About destinations"
     end
   end
 
@@ -1464,7 +1471,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         "modules:\n  - name: core\n    source: {path: modules/core}\n"
     }
 
-    # The paragraphs of About this step, with the workflow model on, as in every run of
+    # The paragraphs of About harnesses, with the workflow model on, as in every run of
     # these tests (`needs: :factory`), and the texts the step no longer shows.
     @about [
       "A harness is the skills and workflows the agent runs with.",
@@ -1617,8 +1624,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words(lv, "#set-up-later") ==
                "You can change this later in Workspace settings › Harness."
 
-      # About this step has the five paragraphs, and no text the step dropped shows.
-      assert words(lv, "#set-up-context-h") == "About this step"
+      # About harnesses has the five paragraphs, and no text the step dropped shows.
+      assert words(lv, "#set-up-context-h") == "About harnesses"
 
       assert for(id <- ids(lv, "#set-up-context p"), do: words(lv, "##{id}")) == @about
 
@@ -3539,12 +3546,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       refute has_element?(lv, "#set-up-test-run")
     end
 
-    test "About this step shows what the test run adds, its harness, and what a pass finishes",
+    test "About test runs shows what the test run adds, its harness, and what a pass finishes",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, test_path(scope))
       workspace = scope.workspace.name
 
-      assert words(lv, "#set-up-context-h") == "About this step"
+      assert words(lv, "#set-up-context-h") == "About test runs"
 
       assert ids(lv, "#set-up-context p") ==
                ["set-up-what", "set-up-test-harness", "set-up-test-after"]
@@ -4506,6 +4513,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert {"Add a key", true} in key_options(lv)
     assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert has_element?(lv, "#set-up-context #set-up-get-key")
+    assert words(lv, "#set-up-context-h") == "About models"
     assert words(lv, "#set-up-model-later") == @workspace_later
 
     lv |> form("#set-up-model-form", model: %{source: provider.public_id}) |> render_change()
@@ -4968,13 +4976,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert words(lv, "#set-up-continue") == "Continue"
   end
 
-  test "About this step shows what a pool does, which pool takes which runs, and when it is ready",
+  test "About machines shows what a pool does, which pool takes which runs, and when it is ready",
        ctx do
     _instance_pool = ready_instance!()
     lv = open(ctx)
     workspace = ctx.scope.workspace.name
 
-    assert words(lv, "#set-up-context-h") == "About this step"
+    assert words(lv, "#set-up-context-h") == "About machines"
 
     assert lv
            |> render()
@@ -5134,7 +5142,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     assert read_only?(lv)
   end
 
-  test "About this step explains the Qory Pool only while it is ready, for an instance admin too",
+  test "About machines explains the Qory Pool only while it is ready, for an instance admin too",
        ctx do
     lv = open_admin(ctx)
     refute has_element?(lv, "#set-up-machines-pools")
@@ -5860,7 +5868,7 @@ end
 defmodule ApiaryWeb.WorkspaceSetupLive.HarnessLaterTest do
   # The Harness step's last line shows where the harness changes later: the settings'
   # Harness, with the `workflow_model` feature or without it, and the settings list that
-  # page; and About this step's paragraph on versions, as the settings' Harness has it.
+  # page; and About harnesses' paragraph on versions, as the settings' Harness has it.
   # Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 

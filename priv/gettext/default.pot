@@ -4460,20 +4460,72 @@ msgstr ""
 msgid "About"
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "About accounts"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "About adapters"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "About destinations"
+msgstr ""
+
+#: lib/apiary_web/live/harness_live.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "About harnesses"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "About invitations"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "About machines"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/set_up.ex
+#, elixir-autogen, elixir-format
+msgid "About mail"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "About model providers"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "About models"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "About test runs"
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "About the organisation"
 msgstr ""
 
-#: lib/apiary_web/components/page_components.ex
-#: lib/apiary_web/components/set_up_components.ex
-#, elixir-autogen, elixir-format
-msgid "About this step"
-msgstr ""
-
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "About this target"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "About work sources"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex

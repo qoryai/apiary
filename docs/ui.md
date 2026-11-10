@@ -1401,8 +1401,9 @@ mark and the theme menu.
   place, and any key but `qory.software` without the feature `factory`, is a page that
   does not exist.
 - **The frame** (`SetUpComponents.frame/1`) has three parts: the steps indicator, the
-  form, and an `<aside>` headed **About this step** with what the step does, styled as a
-  settings page's column **About this step** (`.q-context`): the muted colour, no box.
+  form, and an `<aside>` with what the step does, headed "About" and the page's topic,
+  such as **About harnesses**, styled as a settings page's column (`.q-context`): the
+  muted colour, no box.
   From 1280 px they stand side by side, 220 · 480 · 320 px with 48 px gaps, from the
   page's left edge. From 1024 px the indicator is a bar on top, and
   the form and the aside stand side by side, 480 · 320 px. Below 1024 px the aside goes
@@ -1489,8 +1490,9 @@ needs becomes a component, or an attribute of one, not a copy.
   `page_form_foot/1`, a form as a separate page, its title, one line and the form, with
   no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
   link at a page's foot that names where it leads stays
-  where a page has one); `context_column/1`, a form with **About this step** beside it,
-  an `<aside>` named by that heading, in the muted text with no box (A form is a page,
+  where a page has one); `context_column/1`, a form with an `<aside>` beside it, headed
+  "About" and the page's topic, such as **About models**, and labelled by that heading,
+  in the muted text with no box (A form is a page,
   under No modals); and
   `not_on_runs/1`, the one plain line a page over data no run receives says, in the
   page's sentence (`inner_block`, required): the component adds no words.

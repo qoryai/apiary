@@ -5,7 +5,7 @@ defmodule ApiaryWeb.HarnessComponents do
   # destinations (`Apiary.Stacks.Sources.choose_target/3`), as both pages show them; both
   # handle the destinations' events with `ApiaryWeb.HarnessTargets`.
   #
-  # `about/1` is the five paragraphs of the side note, About this step: what a harness
+  # `about/1` is the five paragraphs of the side note, About harnesses: what a harness
   # is; the order of a run's harness, the target's root harness file first, then the stack
   # set for the target, then the workspace's harness, then the Qory harness; the Qory
   # harness's versions; the stacks a harness source exports; and the two kinds of version.
@@ -65,7 +65,7 @@ defmodule ApiaryWeb.HarnessComponents do
         "`workflow_model` feature on Workspace settings › Harness"
 
   @doc false
-  # about/1 is the side note of the Harness step, the paragraphs under About this step.
+  # about/1 is the side note of the Harness step, the paragraphs under About harnesses.
   # With `process`, the last paragraph is on the version of the harness a process
   # version came from (`Apiary.Processes.harness_template/1`).
   def about(assigns) do

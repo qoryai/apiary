@@ -13,8 +13,8 @@ defmodule ApiaryWeb.ProviderLive.Index do
   # reaching every workspace, its key a secret of the organisation. With no workspace in
   # the scope, in every edition, the page shows no form: a line says to set up a
   # workspace first, with a link to the set-up, and a submit adds nothing. Beside the
-  # form, About this step says what a key is for and where to get the chosen provider's
-  # key.
+  # form, About model providers has what a key is for and where to get the chosen
+  # provider's key.
   #
   # Every member reads the list (`connection.read`); owners and admins add one
   # (`provider.write`), and anyone else sees the list without New model provider and one
@@ -309,7 +309,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
             </.button>
           </.page_form_foot>
         </.form>
-        <:context>
+        <:context about={gettext("About model providers")}>
           <.context
             organisation={@current_scope.organisation}
             workspace={@current_scope.workspace}
@@ -471,7 +471,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   @doc false
   # provider_options/0 is each provider of the catalogue, its description's text under its
   # title. A subtitle is plain text: the description's backticks and the address that ends
-  # it, which About this step links to (`terms_url/1`), are left out.
+  # it, which About model providers links to (`terms_url/1`), are left out.
   def provider_options do
     for provider <- Providers.list() do
       %{value: provider.name, title: provider.title, subtitle: subtitle(provider)}

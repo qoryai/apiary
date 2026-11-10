@@ -145,7 +145,7 @@ defmodule ApiaryWeb.UserLive.Registration do
 
         <.dev_mailbox_note />
 
-        <:context :if={@form_shown and @mail?}>
+        <:context :if={@form_shown and @mail?} about={gettext("About accounts")}>
           <p id="sign-up-context">
             {gettext("We will email you a link to confirm; no password needed.")}
           </p>

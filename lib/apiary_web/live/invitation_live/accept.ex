@@ -100,7 +100,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
                 {gettext("Log in")}
               </.button>
             </div>
-            <:context :if={workspace_to_come?(@steps)}>
+            <:context :if={workspace_to_come?(@steps)} about={gettext("About invitations")}>
               <p id="invitation-context">
                 {gettext(
                   "The invitation adds you to %{organisation}. %{organisation} has no workspace yet: its first one is set up after your account.",
