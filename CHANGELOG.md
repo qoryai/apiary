@@ -1021,6 +1021,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- The column beside a set-up step or a settings form is headed “About” and the page's
+  topic in place of “About this step”: **About harnesses** on the Harness step and in
+  **Workspace settings › Harness**, **About models** on the Model step and in
+  **Workspace settings › Model**, and **About work sources**, **About destinations**,
+  **About machines**, **About test runs**, **About model providers**, **About
+  adapters**, **About mail**, **About invitations** and **About accounts** on the other
+  pages that have the column.
 - When a run escalates, the work item page shows the block “What the run needs from
   you”, with one numbered item for each point: the run's sentence on what is wrong or
   missing, then what you can do, “Answer question 4.”, with “question 4” linked to the
