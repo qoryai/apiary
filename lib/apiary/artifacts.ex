@@ -104,7 +104,14 @@ defmodule Apiary.Artifacts do
   #      (`Apiary.Artifacts.SchemaError`);
   #   7. a version of a video type has an MP4 or WebM file beside its WebVTT captions,
   #      else `{:invalid, :no_video}`; a version of `proposal` has exactly one Markdown
-  #      file, else `{:invalid, :one_markdown}`.
+  #      file, else `{:invalid, :one_markdown}`; a run's version of `mockup` with a
+  #      `screens.json` is a mockup of pages, which passes the checks of
+  #      `Apiary.Artifacts.Mockup`, else `{:invalid, {{:mockup, message}, index}}`,
+  #      `index` the file's position or nil for the version, or
+  #      `{:invalid, {:schema, index, detail}}` for its `screens.json`. Its files are
+  #      `screens.json`, `application/json`, and pages, `text/html; charset=utf-8`; a
+  #      file of another name is `{:invalid, {{:mockup, message}, index}}` at check 6.
+  #      Every other version of `mockup` is pictures, an image type's.
   #
   # In the transaction, under the work item's lock, a version a run pushes of the
   # questions or the review comments keeps what members wrote in the artifact's newest
@@ -184,7 +191,8 @@ defmodule Apiary.Artifacts do
 
   alias Apiary.{Access, Audit, PublicId, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Filename, Format, Store, Type}
+  alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Filename, Format, Mockup, Store}
+  alias Apiary.Artifacts.Type
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Explore.{Questions, ReviewComments}
@@ -598,8 +606,9 @@ defmodule Apiary.Artifacts do
          {:ok, fields} <- fields(opts),
          :ok <- member_name(type, fields),
          {:ok, files} <- files(type, files),
-         {:ok, staged} <- stage_all(type, files),
-         :ok <- complete(type, staged) do
+         checked = checked_type(writer, type, files),
+         {:ok, staged} <- stage_all(checked, files),
+         :ok <- complete(checked, staged) do
       writer |> write(work_item, type, fields, staged) |> broadcast()
     end
   end
@@ -863,8 +872,20 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  # A version of a video type has a video, not captions alone, and a version of
-  # `proposal` exactly one Markdown file; else every staged copy is dropped.
+  # The type a version's files are checked as: a run's version of `mockup` with a
+  # `screens.json` as a mockup of pages, the base view `:mockup`; any other version as
+  # its type. A person adds pictures to a mockup, as to any image type.
+  defp checked_type(%{actor: :run}, %Type{standard: true, name: "mockup"} = type, files) do
+    if Enum.any?(files, fn {_index, filename, _source} -> filename == Mockup.index_name() end),
+      do: %Type{type | base_view: :mockup},
+      else: type
+  end
+
+  defp checked_type(_writer, type, _files), do: type
+
+  # A version of a video type has a video, not captions alone, a version of `proposal`
+  # exactly one Markdown file, and a mockup of pages passes the mockup checks
+  # (`Apiary.Artifacts.Mockup.check_version/1`); else every staged copy is dropped.
   defp complete(%Type{base_view: :video}, staged) do
     if Format.video?(Enum.map(staged, & &1.content_type)),
       do: :ok,
@@ -875,6 +896,13 @@ defmodule Apiary.Artifacts do
     if Format.stored?(type, Enum.map(staged, & &1.content_type)),
       do: :ok,
       else: incomplete(staged, :one_markdown)
+  end
+
+  defp complete(%Type{base_view: :mockup}, staged) do
+    case Mockup.check_version(Enum.map(staged, &{&1.filename, &1.staged.path})) do
+      :ok -> :ok
+      {:error, refusal} -> incomplete(staged, refusal)
+    end
   end
 
   defp complete(_type, _staged), do: :ok

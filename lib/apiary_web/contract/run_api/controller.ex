@@ -390,6 +390,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "the file."}}
   end
 
+  # A run's mockup of pages that fails a check of `Apiary.Artifacts.Mockup`: its message,
+  # at the file, or at the files for the version.
+  defp refused({:invalid, {{:mockup, message}, index}}, _push)
+       when is_binary(message) and (is_integer(index) or is_nil(index)) do
+    member = if index, do: "files[#{index}]", else: "files"
+    {:error, {:invalid_artifact, member, message}}
+  end
+
   # A failed schema check, with the JSON pointer of the first failing value and JSV's message
   # for it, as `Apiary.Artifacts.SchemaError` returns them: text, written as it is.
   defp refused({:invalid, {:schema, index, %{path: path, error: error}}}, push)

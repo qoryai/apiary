@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/harness/v1/mockup.schema.json",
+  "title": "The mockup format, version 1",
+  "description": "screens.json, the index of a version of the artifact type mockup: its screens and the links between them. Each screen is one HTML page of the version, named in file. start is the id of a screen in screens; ids are unique; file is the screen's id and .html; each to is the id of a screen; every screen is reachable from start through links; and the to values of a screen are the screens its page links to. A JSON Schema cannot check these, so Qory Apiary checks them beside it. No object has a member this schema does not define.",
+  "type": "object",
+  "required": ["start", "screens"],
+  "additionalProperties": false,
+  "properties": {
+    "start": {"description": "The id of the screen shown first.", "$ref": "#/$defs/id"},
+    "screens": {
+      "description": "The screens, 1 to 9, in the order a list shows them.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 9,
+      "items": {"$ref": "#/$defs/screen"}
+    }
+  },
+  "$defs": {
+    "id": {
+      "description": "A screen's id: 1 to 32 lower-case letters, digits and hyphens, starting with a letter or a digit.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+    },
+    "text": {
+      "description": "Text of 1 to 200 characters with no control character, so none of U+0000 to U+001F, U+007F and U+0080 to U+009F, and no tab or line feed.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[^\u0000-\u001f\u007f-\u009f]*$"
+    },
+    "screen": {
+      "description": "One screen: its page and where its links lead.",
+      "type": "object",
+      "required": ["id", "title", "file", "criteria", "links"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "title": {"description": "The screen's title, which the page's <title> has too.", "$ref": "#/$defs/text"},
+        "file": {"description": "The page: the screen's id and .html, such as home.html.", "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}\\.html$"},
+        "criteria": {
+          "description": "The acceptance criteria the screen shows, 0 to 50, each once, such as ac-1.",
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^ac-[1-9][0-9]{0,3}$"}
+        },
+        "links": {
+          "description": "The links of the screen, 0 to 100: the screen each leads to and its words.",
+          "type": "array",
+          "maxItems": 100,
+          "items": {"$ref": "#/$defs/link"}
+        }
+      }
+    },
+    "link": {
+      "description": "One link: to is the id of the screen it leads to, label its words.",
+      "type": "object",
+      "required": ["to", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "to": {"$ref": "#/$defs/id"},
+        "label": {"$ref": "#/$defs/text"}
+      }
+    }
+  }
+}

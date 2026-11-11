@@ -1140,6 +1140,65 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [_one] = RunApiStubs.pushed()
     end
 
+    test "a mockup with screens.json is checked as pages, and each refusal says why", ctx do
+      page = fn title, body ->
+        ~s(<!doctype html><html><head><meta charset="utf-8"><title>#{title}</title></head>) <>
+          "<body>#{body}</body></html>"
+      end
+
+      index =
+        Jason.encode!(%{
+          "start" => "home",
+          "screens" => [
+            %{
+              "id" => "home",
+              "title" => "Home",
+              "file" => "home.html",
+              "criteria" => ["ac-1"],
+              "links" => []
+            }
+          ]
+        })
+
+      screens = {"screens.json", "application/json", index}
+      home = {"home.html", "text/html", page.("Home", "<p>Hello</p>")}
+
+      conn = write(ctx, "/artifacts", push_body("mockup", [screens, home]))
+      assert %{"artifact" => %{"type" => "mockup"}} = json_response(conn, 201)
+
+      # Pictures, with no screens.json, are a mockup of images as before.
+      conn = write(ctx, "/artifacts", push_body("mockup", [{"form.png", "image/png", @png}]))
+      assert %{"artifact" => %{"type" => "mockup"}} = json_response(conn, 201)
+
+      cases = [
+        {[screens, {"home.html", "text/html", page.("Home", "<script>x()</script>")}],
+         ["files[1]"],
+         "Remove the `<script>` element from `home.html` (screen `home`): a mockup page " <>
+           "runs no script."},
+        {[screens], ["files"],
+         "Add `home.html` to the version: it is the page of screen `home` in `screens.json`."},
+        {[screens, home, {"form.png", "image/png", @png}], ["files[2]"],
+         "Remove `form.png` from the version: a mockup version has `screens.json` and one " <>
+           "page per screen, and no other file."},
+        {[{"screens.json", "application/json", ~s({"start": "home"})}, home], ["files[0]"],
+         "Fix screens.json to match the format of mockup: " <>
+           "at #, property 'screens' is required."}
+      ]
+
+      for {files, names, message} <- cases do
+        conn = write(ctx, "/artifacts", push_body("mockup", files))
+
+        assert json_response(conn, 422) == %{
+                 "error" => "invalid_artifact",
+                 "names" => names,
+                 "message" => message
+               },
+               message
+      end
+
+      assert [_pages, _images] = RunApiStubs.pushed()
+    end
+
     test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
       md = {"proposal.md", "text/markdown", "# Gift cards"}
       images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}

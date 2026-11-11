@@ -29,6 +29,13 @@ defmodule Apiary.Artifacts.Format do
   #     that comes twice is refused at its object's place, before the schema reads the
   #     document.
   #
+  # A version of the standard type `mockup` that a run pushes with a `screens.json` is a
+  # mockup of pages, checked as the base view `:mockup`: `screens.json` is
+  # `application/json` and each page, a filename that ends in `.html`,
+  # `text/html; charset=utf-8`; any other file is `{:mockup, message}`. The bytes of the
+  # whole version are checked once every file is staged (`Apiary.Artifacts.Mockup`).
+  # Every other version of `mockup`, a person's included, is pictures, an image type's.
+  #
   # A version of the standard type `proposal` is one Markdown document with images
   # beside it, and the sources the run used. Each file is checked by its filename:
   #
@@ -90,13 +97,13 @@ defmodule Apiary.Artifacts.Format do
   # none of the extensions it takes), `{:schema, detail}` for a structured document the
   # schema refuses, `detail` its first failing place (`Apiary.Artifacts.SchemaError`),
   # `:document_size`, `:image_type`, `:svg_format`, `:svg_root` and
-  # `{:svg_content, part}` for a file of a proposal, and `:unreadable` for a file that
-  # cannot be read.
+  # `{:svg_content, part}` for a file of a proposal, `{:mockup, message}` for a file of a
+  # mockup of pages, and `:unreadable` for a file that cannot be read.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
 
-  alias Apiary.Artifacts.{CustomSchema, SchemaError, Type}
+  alias Apiary.Artifacts.{CustomSchema, Mockup, SchemaError, Type}
   alias Apiary.Kinds.{Bounds, Budget, Schema}
 
   @head 64
@@ -231,6 +238,7 @@ defmodule Apiary.Artifacts.Format do
           | :svg_root
           | {:svg_content, String.t()}
           | {:schema, SchemaError.t()}
+          | {:mockup, String.t()}
           | :unreadable
 
   # check/3 is `{:ok, content_type}` for the file at `path`, named `filename`, that the
@@ -238,6 +246,11 @@ defmodule Apiary.Artifacts.Format do
   @doc false
   @spec check(Type.t(), String.t(), Path.t()) :: {:ok, String.t()} | {:error, refusal}
   def check(%Type{base_view: :file}, _filename, _path), do: {:ok, "application/octet-stream"}
+
+  # A mockup of pages, from a run with a `screens.json`: the content type by the
+  # filename; the version's bytes are checked together once every file is staged
+  # (`Apiary.Artifacts.Mockup.check_version/1`).
+  def check(%Type{base_view: :mockup}, filename, _path), do: Mockup.content_type(filename)
 
   def check(%Type{standard: true, name: "proposal"}, filename, path) do
     extension = String.downcase(Path.extname(filename))
@@ -345,7 +358,15 @@ defmodule Apiary.Artifacts.Format do
       Enum.all?(content_types, &(&1 in [@markdown, @json | images]))
   end
 
+  # A version of `mockup` is pictures, as an image type, or a mockup of pages.
+  def stored?(%Type{standard: true, name: "mockup"}, content_types) when is_list(content_types),
+    do: stored?(:image, content_types) or Mockup.stored?(content_types)
+
   def stored?(%Type{base_view: base_view}, content_types), do: stored?(base_view, content_types)
+
+  def stored?(:mockup, content_types) when is_list(content_types),
+    do: Mockup.stored?(content_types)
+
   def stored?(_base_view, []), do: false
   def stored?(:file, _content_types), do: true
   def stored?(:structured, [content_type]), do: content_type == @json
