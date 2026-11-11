@@ -543,19 +543,23 @@ defmodule Apiary.Dispatches do
   # queue in `place`, `{:workspace, id}`, `{:organisation, id}` or `:all`, from the model
   # choices as they are now (`model_providers/1`): called right after each change of a
   # model choice, of its fallbacks or of a model provider has committed, so that no run
-  # waits for a provider that its choice no longer has. Each run is written in a
-  # statement of its own, and only while it waits: a run that a claim holds is written
-  # once that claim has committed, if it waits again. A claim in between reads the choice
-  # as it is (`Apiary.Dispatches.Handover.register/2`). Inside a caller's transaction,
-  # each run written stays locked until it commits, and a claim passes it by until then.
-  # `:ok`.
+  # waits for a provider that its choice no longer has. Each run is read and written
+  # under its row's lock, one run at a time, and only while it waits (`refresh_run/1`): a
+  # run that a claim holds is written once that claim has committed, if it waits again. A
+  # claim in between reads the choice as it is (`Apiary.Dispatches.Handover.register/2`).
+  # Inside a caller's transaction, each run written stays locked until it commits, and a
+  # claim passes it by until then. `:ok`.
   @spec refresh_model_providers(
           {:workspace, Ecto.UUID.t()}
           | {:organisation, Ecto.UUID.t()}
           | :all
         ) :: :ok
   def refresh_model_providers(place) do
-    query = from r in DispatchRun, where: r.state == :waiting and r.step == @step, order_by: r.id
+    query =
+      from r in DispatchRun,
+        where: r.state == :waiting and r.step == @step,
+        order_by: r.id,
+        select: r.id
 
     query =
       case place do
@@ -564,13 +568,40 @@ defmodule Apiary.Dispatches do
         :all -> query
       end
 
-    for run <- Repo.all(query),
-        ids = model_providers(run),
-        ids != run.model_provider_ids do
-      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id and r.state == :waiting),
-        set: [model_provider_ids: ids]
-      )
-    end
+    Enum.each(Repo.all(query), &refresh_run/1)
+  end
+
+  # The model providers of the run of the queue `id` set again, in one transaction, while
+  # it waits: its row is taken `FOR UPDATE` before its choice is read, so of two writes
+  # after two changes, the one that writes last read the choice after both had committed.
+  # The lock is taken after a savepoint, and a run left as it is rolls back to it, which
+  # lets the row go at once, inside a caller's transaction too.
+  defp refresh_run(id) do
+    {:ok, :ok} =
+      Repo.transact(fn ->
+        Repo.query!("SAVEPOINT refresh_run")
+
+        locked =
+          Repo.one(
+            from r in DispatchRun,
+              where: r.id == ^id and r.state == :waiting and r.step == @step,
+              lock: "FOR UPDATE"
+          )
+
+        with %DispatchRun{} = run <- locked,
+             ids = model_providers(run),
+             true <- ids != run.model_provider_ids do
+          {1, _rows} =
+            Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
+              set: [model_provider_ids: ids]
+            )
+        else
+          _unchanged -> Repo.query!("ROLLBACK TO SAVEPOINT refresh_run")
+        end
+
+        Repo.query!("RELEASE SAVEPOINT refresh_run")
+        {:ok, :ok}
+      end)
 
     :ok
   end

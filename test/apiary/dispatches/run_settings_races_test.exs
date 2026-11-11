@@ -11,7 +11,15 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
   # of the provider takes its row `FOR UPDATE`. So the two take turns, whoever comes
   # second sees what the first wrote, and neither deadlocks: a deletion that comes second
   # reads the run the claim registered, and is refused.
+  #
+  # And two writes of a waiting run's model providers after changes of its model choice
+  # (`Apiary.Dispatches.refresh_model_providers/1`): each takes the run's row
+  # `FOR UPDATE` before it reads the choice, so the write that comes last read the choice
+  # last.
   use ExUnit.Case, async: false
+
+  # A list in `needs:` is read by this hook (`Apiary.TestSetup`).
+  @before_compile Apiary.TestSetup
 
   import Ecto.Query
   import Apiary.DispatchedRunsFixtures
@@ -23,6 +31,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
   alias Apiary.Adapters.Connection, as: AdapterConnection
   alias Apiary.Audit.Entry
   alias Apiary.Connections.Connection
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
   alias Apiary.Runs.Run
@@ -216,6 +225,50 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
                run!(handed)
 
       assert settings == %{"runtime" => @runtime}
+    end
+  end
+
+  describe "two writes of a waiting run's model providers" do
+    @describetag needs: [:factory, :secrets]
+
+    test "the write that waits for the run's row reads the choice after the change", ctx do
+      {:ok, queued} = queued!(ctx)
+
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Spare keys",
+          keys: [%{value_id: "main", value: "sk-ant-races-spare-0123456789"}]
+        })
+
+      # The run with no model providers, so that the write below has a change to write.
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [model_provider_ids: []]
+        )
+
+      lock = fn ->
+        Repo.one!(from r in DispatchRun, where: r.id == ^queued.id, lock: "FOR UPDATE")
+      end
+
+      # The run's row is held while the write starts; the choice changes to the other
+      # provider, under that hold, once the write waits for the row.
+      {held, holder} = hold(lock)
+
+      write =
+        start(fn -> Dispatches.refresh_model_providers({:workspace, queued.workspace_id}) end)
+
+      await_blocked(write.backend, holder)
+
+      assert {:ok, _choice} =
+               continue(held, fn ->
+                 ModelChoices.put_choice(ctx.scope, :workspace, %{provider: other.public_id})
+               end)
+
+      commit(held)
+
+      assert Task.await(write.task) == :ok
+      assert Repo.get!(DispatchRun, queued.id).model_provider_ids == [other.id]
     end
   end
 end

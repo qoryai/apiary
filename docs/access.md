@@ -804,11 +804,12 @@ for each other and never on each other at once:
    It reads the keys' settings and states without a lock. A change to a provider or to its
    keys locks nothing of the queue while it runs; once it has committed, a change of a
    model provider or of a model choice writes the model providers of the queue's waiting
-   runs again, each row in a statement of its own, and only a row that still waits
-   (`Apiary.Dispatches.refresh_model_providers/1`). A change that came first is seen by
-   the claim; one that comes after waits for the claim to commit. A deletion of the
-   provider then reads the run the claim registered, and refuses while that run is pending
-   or running.
+   runs again, one run at a time: it takes the run's row `FOR UPDATE`, then reads the
+   run's model choice, writes only a row that still waits, and lets a row it leaves as it
+   is go at once (`Apiary.Dispatches.refresh_model_providers/1`). A change that came first
+   is seen by the claim; one that comes after waits for the claim to commit. A deletion of
+   the provider then reads the run the claim registered, and refuses while that run is
+   pending or running.
    A gateway's secrets request for a run's model keys takes no lock: it reads the run, the
    provider's row and the row of its keys' secret without one, checks the provider's
    integrity code, decrypts each key in the request, whose row is bound to its secret, and
