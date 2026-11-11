@@ -39,6 +39,14 @@ the restart, for example to watch a long migration.
   `compose.yaml` keeps in the volume `keys`, are the other three things to keep: without
   `APIARY_ENCRYPTION_SECRET` no access key is trusted, and without `APIARY_SIGNING_SECRET`
   every machine has to be pinned again. [Backup and restore](backup.md) has the commands.
+<!-- feature: factory, secrets -->
+- Upgrade every Qory Gateway first, to a gateway built with qoryai/forager#53 or later,
+  then upgrade Qory Apiary to a release with several model keys per run. That release
+  adds `pause_for_s` to each model key in a run configuration, a member that the run
+  configuration schema of an earlier gateway does not define. A run registered before
+  the upgrade keeps its one key and its run configuration, and goes on across the
+  deploy.
+<!-- /feature -->
 
 ## How migrations are written
 
