@@ -22,9 +22,16 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   @version 20_261_019_070_400
   @migration Apiary.Repo.Migrations.KeepARunSModelSettings
   @name "keep_a_run_s_model_settings"
+  # The later migration that keeps a run's model keys in place of `provider_value_id`:
+  # run down first and up last, around this one.
+  @keys_version 20_261_111_090_000
+  @keys_migration Apiary.Repo.Migrations.KeepARunSModelKeys
+  @keys_name "keep_a_run_s_model_keys"
   @options [log: false, migration_lock: false]
   @columns ~w(provider_api provider_chain provider_connection_id provider_secret_id
-              provider_value_id run_settings)
+              model_keys provider_value_id run_settings)
+  @now ~w(provider_api provider_chain provider_connection_id provider_secret_id
+          model_keys run_settings)
   @api %{
     "format" => "anthropic-messages",
     "endpoint" => "https://api.anthropic.com",
@@ -32,13 +39,27 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   }
 
   setup_all do
-    if not Code.ensure_loaded?(@migration) do
+    for {migration, file} <- [
+          {@migration, "#{@version}_#{@name}.exs"},
+          {@keys_migration, "#{@keys_version}_#{@keys_name}.exs"}
+        ],
+        not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
-      |> Path.join("#{@version}_#{@name}.exs")
+      |> Path.join(file)
       |> Code.require_file()
     end
 
     :ok
+  end
+
+  defp down! do
+    :ok = Ecto.Migrator.down(Repo, @keys_version, @keys_migration, @options)
+    Ecto.Migrator.down(Repo, @version, @migration, @options)
+  end
+
+  defp up! do
+    :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
+    Ecto.Migrator.up(Repo, @keys_version, @keys_migration, @options)
   end
 
   setup do
@@ -87,7 +108,7 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
       Keyword.merge(
         [
           run_settings: %{"runtime" => "claude"},
-          provider_value_id: "main",
+          model_keys: [%{"id" => Ecto.UUID.generate(), "name" => "model-1"}],
           provider_chain: "organisation",
           provider_api: api
         ],
@@ -101,11 +122,11 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   end
 
   test "down takes the columns away, and up puts them back", %{queued: queued} do
-    assert columns() == Enum.sort(@columns)
-    assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
+    assert columns() == Enum.sort(@now)
+    assert :ok = down!()
     assert columns() == []
-    assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
-    assert columns() == Enum.sort(@columns)
+    assert :ok = up!()
+    assert columns() == Enum.sort(@now)
 
     # Each cause of a run's model choice is taken, with the outcome error.
     for cause <- ~w(provider_gone runtime_unserved key_gone model_gone) do
@@ -132,11 +153,8 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
         ]
       )
 
-    assert_raise Postgrex.Error, ~r/check_violation|violated/, fn ->
-      Ecto.Migrator.down(Repo, @version, @migration, @options)
-    end
-
-    assert columns() == Enum.sort(@columns)
+    assert_raise Postgrex.Error, ~r/check_violation|violated/, fn -> down!() end
+    assert columns() == Enum.sort(@columns -- ["model_keys"])
   end
 
   describe "the checks" do
@@ -162,7 +180,9 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
 
       assert set(run_id, provider(@api, run_settings: nil)) == "runs_provider_check"
       assert set(run_id, provider(@api, provider_chain: "client")) == "runs_provider_check"
-      assert set(run_id, provider(@api, provider_value_id: "Main")) == "runs_provider_check"
+
+      assert set(run_id, provider(@api, model_keys: [%{"id" => "x", "name" => "m"}])) ==
+               "runs_model_keys_check"
     end
 
     test "the API has a format, an endpoint and an auth, at most 8 KiB", %{run_id: run_id} do

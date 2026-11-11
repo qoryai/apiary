@@ -12,6 +12,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures, only: [walked_claim: 2, workspace_gateway!: 1]
+  import Apiary.ModelKeysFixtures, only: [cooling!: 2]
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
   import Apiary.WorkItemsFixtures
@@ -313,6 +314,30 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
       assert eventually(fn ->
                text(view, "#prepare-machine-why") == "Waiting for build-pool to run it."
              end)
+    end
+
+    @tag needs: [:factory, :secrets]
+    test "says a run waits for a model key while every key of its provider is in cooldown",
+         %{conn: conn, scope: scope} do
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "anthropic",
+          name: "Team keys",
+          keys: [%{value_id: "main", value: "sk-ant-queued-page-main"}]
+        })
+
+      {:ok, _choice} =
+        Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+      {_work_item, queued} = queue!(scope)
+      until = DateTime.add(DateTime.utc_now(), 2, :day)
+      cooling!(provider, until)
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: every key of Team keys is in cooldown until " <>
+                 "#{ApiaryWeb.Format.datetime(until, year: false)}."
     end
 
     test "becomes the page of a registered run at the claim, with no reload",

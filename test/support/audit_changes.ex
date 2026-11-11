@@ -1378,7 +1378,7 @@ defmodule Apiary.AuditChanges do
   # nothing, and records nothing.
   def refuse(:"run_credential.issue", %{scope: scope}) do
     {ctx, key, now} = work_run(scope)
-    names = ["work-1", ctx.provider.public_id]
+    names = ["work-1", "#{ctx.provider.public_id}-1"]
     body = secrets_request(ctx.run, ctx.attached.digest, names, now)
     before = entries()
 

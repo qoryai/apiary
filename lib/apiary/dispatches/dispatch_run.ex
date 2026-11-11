@@ -172,6 +172,11 @@ defmodule Apiary.Dispatches.DispatchRun do
     # claim or the stage runner first read it (`Apiary.Stages.known_explore/1`); nil while
     # that is not known: the run is not claimed, and its end waits.
     field :explore, :boolean
+    # The model providers of the run's model choice when the run was queued: the choice's
+    # provider, then its fallbacks in their order; empty for a run with none. A claim
+    # passes the run while every key of each of them is in cooldown
+    # (`Apiary.ModelKeys.claimable/1`). No changeset casts them.
+    field :model_provider_ids, {:array, :binary_id}, default: []
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

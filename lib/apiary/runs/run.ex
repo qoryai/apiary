@@ -164,19 +164,24 @@ defmodule Apiary.Runs.Run do
 
     # The run settings Qory wrote for a run of a workspace's queue when it registered it
     # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and
-    # the model provider the run uses: its row, its keys' secret's row, the value id of
-    # its chosen key, its chain, and the API of the provider the run uses
-    # (`provider_api`: `format`, `endpoint`, `auth` and, when the description lists them,
-    # `key_prefixes`). Written once with the registration and never changed; nil for every
-    # other run, and for an explore run with `factory` or `secrets` off. The provider
-    # fields are nil where no provider was chosen, and the two rows become nil should they
-    # be deleted. Not folded: a rebuild keeps them. The secret's row id, the key's value
-    # id and the API are left out of the struct's inspection.
+    # the model provider the run uses: its row, its keys' secret's row, its keys, its
+    # chain, and the API of the provider the run uses (`provider_api`: `format`,
+    # `endpoint`, `auth` and, when the description lists them, `key_prefixes`). The keys
+    # (`model_keys`) are in the order of the run configuration's `credentials`, at most 6,
+    # each a map of `"id"`, the key's row id (`secret_values.id`), `"name"`, its
+    # credential's name, and what the claim wrote for the run configuration:
+    # `"pause_for_s"`, and where the claim had them, `"resets_at"`,
+    # `"schedule_resets_at"`, `"chosen"` and `"cooldown_until"`; never a key value.
+    # Written once with the registration and never changed; nil for every other run, and
+    # for an explore run with `factory` or `secrets` off. The provider fields are nil
+    # where no provider was chosen, and the two rows become nil should they be deleted.
+    # Not folded: a rebuild keeps them. The secret's row id, the keys and the API are left
+    # out of the struct's inspection.
     field :run_settings, :map
     belongs_to :provider_connection, Apiary.Connections.Connection
     field :provider_secret_id, :binary_id, redact: true
     belongs_to :provider_secret, Apiary.Secrets.Secret, define_field: false
-    field :provider_value_id, :string, redact: true
+    field :model_keys, {:array, :map}, redact: true
     field :provider_chain, :string
     field :provider_api, :map, redact: true
 

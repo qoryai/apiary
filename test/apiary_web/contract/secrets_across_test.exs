@@ -138,7 +138,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
         set: [
           provider_connection_id: provider.id,
           provider_secret_id: provider.secret_id,
-          provider_value_id: "main",
+          model_keys: [%{"id" => main_key(provider).id, "name" => "#{provider.public_id}-1"}],
           provider_chain: chain,
           provider_api: @api
         ]
@@ -146,6 +146,13 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
 
     Repo.get!(Run, id)
   end
+
+  defp main_key(provider),
+    do:
+      Repo.one!(
+        from v in Apiary.Secrets.Value,
+          where: v.secret_id == ^provider.secret_id and v.value_id == "main"
+      )
 
   # A provider of the operator's chain, made in the operator's organisation, with the
   # operator's choice of that chain for its clients (unless `choose?` is false); the edition
@@ -181,7 +188,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   end
 
   defp post_secrets({key, seed}, run, digest, provider) do
-    body = secrets_request(run, digest, [provider.public_id], SignedRequest.now())
+    body = secrets_request(run, digest, ["#{provider.public_id}-1"], SignedRequest.now())
 
     signed_post(build_conn(), key.key_id, seed, body,
       target: "/v1/secrets",

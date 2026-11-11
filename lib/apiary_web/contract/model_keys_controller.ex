@@ -5,7 +5,7 @@ defmodule ApiaryWeb.Contract.ModelKeysController do
   under a key of the gateway that attached the run. Reached only through
   `ApiaryWeb.Contract.SignedRequest`, as the outcome is, under the run endpoint's bucket of
   the key's rate limit, which verifies the request, refuses what the contract refuses
-  before the endpoint does, and signs the answer. The body is read raw, up to 16 KiB
+  before the endpoint does, and signs the answer. The body is read raw, up to 32 KiB
   (`ApiaryWeb.Contract.RawBody`); a longer one is `413`.
 
   Then, in order: a body the contract refuses is `400` `invalid_request`, with the member

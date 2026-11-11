@@ -12,8 +12,8 @@ defmodule Apiary.Secrets do
 
   ## Write-only
 
-  No function of this module returns a value, but `reveal_for_sealing/3` and the reveal
-  of a model provider's key, which the secrets endpoint calls to seal a value to the
+  No function of this module returns a value, but `reveal_for_sealing/3` and the reveals
+  of a model provider's key, by its value id or its row id, which the secrets endpoint calls to seal a value to the
   gateway, and only that. A listing loads the
   values without their ciphertext. Nothing logs a value, and an audit entry names a
   secret and a value id, never a value.
@@ -1067,63 +1067,85 @@ defmodule Apiary.Secrets do
     end
   end
 
-  # With the `factory` feature: reveal_for_sealing/2
-  # is the plaintext of the key `value_id` of the model provider `provider`, a row of
-  # `Apiary.Connections` the caller has read and checked (`Apiary.Connections.intact?/1`),
-  # for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The key is a value of
-  # the secret that the provider's row links (`secret_id`), read at the level that secret
-  # is at, as `reveal_for_sealing/3` reads it, with the same results: for the
-  # organisation's secret, under the organisation's data key; for a workspace's, under
-  # that workspace's data key. The caller checks that the run is of that workspace
+  # With the `factory` feature: reveal_key_for_sealing/2 is the plaintext of the key of the
+  # model provider `provider`, a row of `Apiary.Connections` the caller has read and
+  # checked (`Apiary.Connections.intact?/1`), whose row id (`secret_values.id`) is
+  # `secret_value_id`, for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The
+  # key is a value of the secret that the provider's row links (`secret_id`), read at the
+  # level that secret is at, as `reveal_for_sealing/3` reads it, with the same results:
+  # for the organisation's secret, under the organisation's data key; for a workspace's,
+  # under that workspace's data key. The caller checks that the run is of that workspace
   # (`provider_keys_workspace/1`). The edition is not called: the core keeps the
-  # provider's keys whatever the edition returns for the organisation's other secrets.
-  # `{:error, :not_found}` for a provider that links no secret.
+  # provider's keys whatever the edition returns for the organisation's other secrets. The
+  # key is decrypted under the value id it has now, which its associated data binds, so a
+  # key renamed since a run's claim is revealed. `{:error, :not_found}` for a provider that
+  # links no secret, and for a key that is not a value of that secret, or is gone.
   @doc false
-  @spec reveal_for_sealing(Connection.t(), String.t()) ::
+  @spec reveal_key_for_sealing(Connection.t(), Ecto.UUID.t()) ::
           {:ok, binary} | {:error, :not_found | :unavailable}
-  def reveal_for_sealing(
+  def reveal_key_for_sealing(
         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
-        value_id
+        secret_value_id
       )
-      when is_binary(organisation_id) and is_binary(secret_row_id) and is_binary(value_id) and
-             not is_nil(provider.provider_kind) do
+      when is_binary(organisation_id) and is_binary(secret_row_id) and
+             is_binary(secret_value_id) and not is_nil(provider.provider_kind) do
+    with {:ok, row_id} <- Ecto.UUID.cast(secret_value_id),
+         {query, secret_id, workspace_id} <- provider_values(provider),
+         {%Value{value_id: value_id} = row, data_key} when is_binary(value_id) <-
+           Repo.one(where(query, [v], v.id == ^row_id)) do
+      decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id)
+    else
+      _gone -> {:error, :not_found}
+    end
+  end
+
+  def reveal_key_for_sealing(_provider, _secret_value_id), do: {:error, :not_found}
+
+  # The query of the values of the secret the provider's row links, at that secret's
+  # level, each with its data key, `{query, secret's public id, workspace id or nil}`;
+  # nil for a provider that links no secret of its organisation.
+  defp provider_values(
+         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = _provider
+       ) do
     case Repo.one(
            from s in Secret,
              where: s.id == ^secret_row_id and s.organisation_id == ^organisation_id,
              select: {s.public_id, s.workspace_id}
          ) do
       {secret_id, nil} ->
-        from(v in Value,
-          join: s in Secret,
-          on: s.id == v.secret_id and s.organisation_id == v.organisation_id,
-          join: k in OrganisationDataKey,
-          on: k.id == v.organisation_data_key_id and k.organisation_id == v.organisation_id,
-          where:
-            s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
-              is_nil(s.workspace_id) and is_nil(v.workspace_id),
-          select: {v, k}
-        )
-        |> reveal(organisation_id, nil, secret_id, value_id)
+        query =
+          from(v in Value,
+            join: s in Secret,
+            on: s.id == v.secret_id and s.organisation_id == v.organisation_id,
+            join: k in OrganisationDataKey,
+            on: k.id == v.organisation_data_key_id and k.organisation_id == v.organisation_id,
+            where:
+              s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
+                is_nil(s.workspace_id) and is_nil(v.workspace_id),
+            select: {v, k}
+          )
+
+        {query, secret_id, nil}
 
       {secret_id, workspace_id} ->
-        from(v in Value,
-          join: s in Secret,
-          on: s.id == v.secret_id and s.workspace_id == v.workspace_id,
-          join: k in DataKey,
-          on: k.id == v.data_key_id and k.workspace_id == v.workspace_id,
-          where:
-            s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
-              s.workspace_id == ^workspace_id and v.workspace_id == ^workspace_id,
-          select: {v, k}
-        )
-        |> reveal(organisation_id, workspace_id, secret_id, value_id)
+        query =
+          from(v in Value,
+            join: s in Secret,
+            on: s.id == v.secret_id and s.workspace_id == v.workspace_id,
+            join: k in DataKey,
+            on: k.id == v.data_key_id and k.workspace_id == v.workspace_id,
+            where:
+              s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
+                s.workspace_id == ^workspace_id and v.workspace_id == ^workspace_id,
+            select: {v, k}
+          )
+
+        {query, secret_id, workspace_id}
 
       nil ->
-        {:error, :not_found}
+        nil
     end
   end
-
-  def reveal_for_sealing(_provider, _value_id), do: {:error, :not_found}
 
   @doc false
   # provider_keys_workspace/1 is the workspace whose secret the model provider
@@ -1159,19 +1181,24 @@ defmodule Apiary.Secrets do
 
     case Repo.one(query) do
       {%Value{} = row, data_key} ->
-        aad = value_aad(organisation_id, workspace_id, secret_id, value_id)
-
-        # An unwrap that fails has said so in the log already.
-        with {:ok, key} <- unwrap(data_key),
-             {:ok, plaintext} <- Cipher.decrypt(key, aad, row.nonce, row.ciphertext) do
-          {:ok, plaintext}
-        else
-          {:error, :key_unavailable} -> {:error, :unavailable}
-          :error -> unavailable(organisation_id, workspace_id, secret_id, value_id)
-        end
+        decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id)
 
       nil ->
         {:error, :not_found}
+    end
+  end
+
+  # The plaintext of `row`, under the associated data of its value id as the row has it.
+  defp decrypt_for_sealing(%Value{} = row, data_key, organisation_id, workspace_id, secret_id) do
+    aad = value_aad(organisation_id, workspace_id, secret_id, row.value_id)
+
+    # An unwrap that fails has said so in the log already.
+    with {:ok, key} <- unwrap(data_key),
+         {:ok, plaintext} <- Cipher.decrypt(key, aad, row.nonce, row.ciphertext) do
+      {:ok, plaintext}
+    else
+      {:error, :key_unavailable} -> {:error, :unavailable}
+      :error -> unavailable(organisation_id, workspace_id, secret_id, row.value_id)
     end
   end
 

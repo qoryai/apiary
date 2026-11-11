@@ -292,7 +292,13 @@ defmodule Apiary.Kinds.ServicesTest do
                                   invalid/model-keys-report-unknown-source.json
                                   invalid/model-keys-report-unknown-status.json
                                   invalid/model-keys-report-utilization-over-100.json
-                                  invalid/model-keys-report-window-upper-case.json),
+                                  invalid/model-keys-report-window-upper-case.json
+                                  run-configuration/model-keys-cooling.json
+                                  invalid/run-configuration-beyond-schema-model-keys-start-cooling.json
+                                  invalid/run-configuration-beyond-schema-model-keys-two-chosen.json
+                                  invalid/run-configuration-credentials-api-chosen-false.json
+                                  invalid/run-configuration-credentials-api-cooldown-until-not-a-time.json
+                                  invalid/run-configuration-credentials-host-chosen.json),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )

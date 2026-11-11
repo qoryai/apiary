@@ -62,7 +62,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # - `variables`, the run variables Qory set for the run (`runs.registration_variables`,
   #   `Apiary.Runs.RunVariables.document/1`);
   # - with the `secrets` feature too, for a run its claim set a model provider for:
-  #   `credentials`, the provider's API credential, and `model_credential`, its name
+  #   `credentials`, an API credential for each of the run's model keys, in their order,
+  #   and `model_credential`, the first one's name, the start key's
   #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
   #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after
   #   the entries there, and each exact one (`Apiary.Policy.Grammar.exact_host?/1`) in its
@@ -73,7 +74,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #   when its provider cannot be read.
   #
   # With the `registry` feature, for a run through a gateway, whatever the other features:
-  # the run's registry credential, after the model key in `credentials`; the instance's
+  # the run's registry credential, after the model keys in `credentials`; the instance's
   # host and the registry's in `egress.allow` and `egress.allow_first`, as the provider's
   # hosts are; the registry host's path rules in `egress.paths`, in place of any the
   # document has for that host (`Apiary.Registry.RunAccess`); and for the instance's
@@ -663,7 +664,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
       if(credential, do: credential.hosts, else: []) ++ if(registry, do: registry.hosts, else: [])
 
     entries =
-      if(credential, do: [credential.entry], else: []) ++
+      if(credential, do: Enum.map(credential.keys, & &1.entry), else: []) ++
         if(registry, do: [registry.entry], else: []) ++
         if work, do: [work.entry], else: []
 

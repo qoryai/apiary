@@ -149,6 +149,7 @@ defmodule Apiary.Policy.Serving do
             :registration_variables,
             :provider_connection_id,
             :provider_api,
+            :model_keys,
             :id,
             :public_id,
             :organisation_id,

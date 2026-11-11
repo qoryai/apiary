@@ -22,6 +22,11 @@ defmodule Apiary.ModelKeys do
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
   credential in the run's run configuration. A report and its answer reach a key only
   through this function.
+
+  **At a claim** (`claim_keys/3`): the keys of a provider with their resets, cooldowns
+  and Pause for, which `Apiary.ModelKeys.Order` orders. A claim passes a run of the queue
+  while every key of each of its providers is in cooldown (`claimable/1`), and the run
+  waits until `cooling_until/2`.
   """
 
   import Ecto.Query, warn: false
@@ -141,10 +146,10 @@ defmodule Apiary.ModelKeys do
   @doc """
   The model keys of `run`, in the order of its run configuration's `credentials`, each
   with its credential's name: none unless model keys apply, with the `factory` and
-  `secrets` features on. A run has one model key: the value of its provider's secret
-  with its stored value id, named by the provider's public id, as the run's run
-  configuration names its model key. A key whose value was renamed or removed since the
-  claim, or whose provider's row no longer has the run's secret, is not a key of the run.
+  `secrets` features on. They are the keys the run's claim stored (`runs.model_keys`),
+  each by its row id, so a key renamed since the claim stays a key of the run. A key
+  removed since the claim, or no longer a value of the run's secret, and every key of a
+  run whose provider's row no longer has that secret, is not a key of the run.
   """
   @spec run_keys(Run.t()) :: [run_key]
   def run_keys(
@@ -152,25 +157,185 @@ defmodule Apiary.ModelKeys do
           provider_api: %{},
           provider_connection_id: connection_id,
           provider_secret_id: secret_id,
-          provider_value_id: value_id
+          model_keys: [_ | _] = keys
         } = _run
       )
-      when is_binary(connection_id) and is_binary(secret_id) and is_binary(value_id) do
+      when is_binary(connection_id) and is_binary(secret_id) do
     if ProviderCredential.applies?() do
-      Repo.all(
-        from v in Value,
-          join: c in Connection,
-          on: c.id == ^connection_id and c.secret_id == v.secret_id,
-          where: v.secret_id == ^secret_id and v.value_id == ^value_id,
-          where: not is_nil(c.provider_kind),
-          select: %{name: c.public_id, secret_value_id: v.id, organisation_id: v.organisation_id}
-      )
+      ids = for %{"id" => id} <- keys, do: id
+
+      found =
+        Repo.all(
+          from v in Value,
+            join: c in Connection,
+            on: c.id == ^connection_id and c.secret_id == v.secret_id,
+            where: v.secret_id == ^secret_id and v.id in ^ids,
+            where: not is_nil(c.provider_kind),
+            select: {v.id, v.organisation_id}
+        )
+        |> Map.new()
+
+      for %{"id" => id, "name" => name} <- keys,
+          organisation_id = found[id],
+          organisation_id != nil,
+          do: %{name: name, secret_value_id: id, organisation_id: organisation_id}
     else
       []
     end
   end
 
   def run_keys(%Run{}), do: []
+
+  ## Keys at a claim
+
+  @typedoc """
+  A key of a provider at a claim (`claim_keys/3`), as `Apiary.ModelKeys.Order` reads it,
+  with what a run configuration writes of it.
+  """
+  @type claim_key :: %{
+          id: Ecto.UUID.t(),
+          value_id: String.t(),
+          inserted_at: DateTime.t(),
+          named: boolean,
+          default: boolean,
+          resets_at: DateTime.t() | nil,
+          schedule_resets_at: DateTime.t() | nil,
+          known_reset: DateTime.t() | nil,
+          cooldown_until: DateTime.t() | nil,
+          pause_seconds: pos_integer
+        }
+
+  @doc """
+  The keys of `provider`, the values of its secret, at `now`, for a claim: each with its
+  row id and value id; whether it is the key `named_value_id`, which a model choice
+  names (nil for none), and whether it is the provider's default key; `resets_at`, the
+  earliest reset after `now` across its windows, from the providers' answers;
+  `schedule_resets_at`, the next reset of its weekly schedule (`next_reset/2`);
+  `known_reset`, the first of those two that it has (`known_reset/2`); `cooldown_until`
+  (`cooldown_until/1`); and its Pause for (`pause_seconds/2`). In no order: the order is
+  `Apiary.ModelKeys.Order.order/2`. Three reads, none locked.
+  """
+  @spec claim_keys(Connection.t(), String.t() | nil, DateTime.t()) :: [claim_key]
+  def claim_keys(%Connection{secret_id: secret_id} = provider, named_value_id, %DateTime{} = now)
+      when is_binary(secret_id) do
+    values =
+      Repo.all(
+        from v in Value,
+          where: v.secret_id == ^secret_id,
+          select: %{id: v.id, value_id: v.value_id, inserted_at: v.inserted_at}
+      )
+
+    ids = Enum.map(values, & &1.id)
+
+    states =
+      from(s in State,
+        where: s.secret_value_id in ^ids,
+        group_by: s.secret_value_id,
+        select:
+          {s.secret_value_id,
+           type(
+             fragment("min(?) FILTER (WHERE ? > ?)", s.resets_at, s.resets_at, ^usec(now)),
+             :utc_datetime_usec
+           ), max(s.cooldown_until)}
+      )
+      |> Repo.all()
+      |> Map.new(fn {id, resets_at, until} -> {id, {resets_at, until}} end)
+
+    settings =
+      from(st in Setting, where: st.secret_value_id in ^ids)
+      |> Repo.all()
+      |> Map.new(&{&1.secret_value_id, &1})
+
+    for value <- values do
+      {resets_at, until} = Map.get(states, value.id, {nil, nil})
+      setting = Map.get(settings, value.id)
+      schedule = next_reset(setting, now)
+
+      Map.merge(value, %{
+        named: is_binary(named_value_id) and value.value_id == named_value_id,
+        default: is_binary(value.value_id) and value.value_id == provider.default_value_id,
+        resets_at: resets_at,
+        schedule_resets_at: schedule,
+        known_reset: resets_at || schedule,
+        cooldown_until: until,
+        pause_seconds: pause_seconds(provider, setting)
+      })
+    end
+  end
+
+  def claim_keys(%Connection{}, _named_value_id, _now), do: []
+
+  ## The claim's filter
+
+  @doc """
+  The condition, on a run of the queue bound `:run`, that a claim at `now` may take it by
+  its model providers (`dispatch_runs.model_provider_ids`): it has none, or one of them is
+  not cooling. A provider is cooling at `now` while it has keys and every one of them is
+  in cooldown: a state of the key has a `cooldown_until` after `now`. A provider that is
+  gone, or has no keys, is not cooling, so the claim takes the run and ends it as it
+  would without a cooldown. The condition reads every key of every provider of the run.
+  """
+  @spec claimable(DateTime.t()) :: Ecto.Query.dynamic_expr()
+  def claimable(%DateTime{} = now) do
+    # `= '{}'`, not `cardinality(…) = 0`: Postgres reads the column's statistics for the
+    # first and none for the second, and with a low guess of the runs it passes it plans
+    # the claim's other joins as nested loops over the whole queue.
+    dynamic(
+      [run: r],
+      fragment("? = '{}'::uuid[]", r.model_provider_ids) or
+        fragment(
+          """
+          EXISTS (SELECT 1 FROM unnest(?) AS p(id) WHERE NOT EXISTS (
+            SELECT 1 FROM organisation_connections c
+            WHERE c.id = p.id AND c.provider_kind IS NOT NULL
+              AND EXISTS (SELECT 1 FROM secret_values v WHERE v.secret_id = c.secret_id)
+              AND NOT EXISTS (
+                SELECT 1 FROM secret_values v WHERE v.secret_id = c.secret_id
+                  AND NOT EXISTS (SELECT 1 FROM model_key_states s
+                    WHERE s.secret_value_id = v.id AND s.cooldown_until > ?))))
+          """,
+          r.model_provider_ids,
+          type(^usec(now), :utc_datetime_usec)
+        )
+    )
+  end
+
+  @doc """
+  When the first key of the providers `provider_ids` leaves its cooldown, while every one
+  of them is cooling at `now`, as `claimable/1` reads it: the earliest end of a key's
+  cooldown (`cooldown_until/1`) across their keys. Nil when one of them is not cooling,
+  and for no providers.
+  """
+  @spec cooling_until([Ecto.UUID.t()], DateTime.t()) :: DateTime.t() | nil
+  def cooling_until([], _now), do: nil
+
+  def cooling_until(provider_ids, %DateTime{} = now) when is_list(provider_ids) do
+    ends =
+      from(c in Connection,
+        join: v in Value,
+        on: v.secret_id == c.secret_id,
+        left_join: s in State,
+        on: s.secret_value_id == v.id,
+        where: c.id in ^provider_ids and not is_nil(c.provider_kind),
+        group_by: [c.id, v.id],
+        select: {c.id, max(s.cooldown_until)}
+      )
+      |> Repo.all()
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+    cooling? =
+      Enum.all?(Enum.uniq(provider_ids), fn id ->
+        case Map.get(ends, id) do
+          [_ | _] = untils ->
+            Enum.all?(untils, &(is_struct(&1, DateTime) and DateTime.compare(&1, now) == :gt))
+
+          nil ->
+            false
+        end
+      end)
+
+    if cooling?, do: ends |> Map.values() |> List.flatten() |> Enum.min(DateTime)
+  end
 
   ## States
 

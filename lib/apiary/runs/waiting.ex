@@ -11,6 +11,11 @@ defmodule Apiary.Runs.Waiting do
   #     (`Apiary.MachineTypes.unserved/2`): `pool` is the name of the first of them, or
   #     `:instance` for the instance's pool, a pool of no organisation and no workspace,
   #     whose admins are the instance's;
+  #   * `{:cooldown, provider, until}`, every key of each of its model providers
+  #     (`dispatch_runs.model_provider_ids`) is in cooldown, while runs are given model
+  #     keys (`Apiary.ModelKeys.cooling_until/2`): `provider` is the name of the first of
+  #     them, its model choice's provider, and `until` when the first key of any of them
+  #     leaves its cooldown;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
   #     while a prebuild of the target waits, `:running` while one is claimed or handed
@@ -25,12 +30,14 @@ defmodule Apiary.Runs.Waiting do
 
   import Ecto.Query
 
-  alias Apiary.{Environments, Repo}
+  alias Apiary.{Environments, ModelKeys, Repo}
   alias Apiary.Adapters.Collection
+  alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.ProviderCredential
   alias Apiary.WorkItems.WorkItem
 
   @typedoc "Why a queued run waits (the moduledoc)."
@@ -38,6 +45,7 @@ defmodule Apiary.Runs.Waiting do
           :harness
           | :no_pool
           | {:no_fit, String.t(), String.t() | :instance}
+          | {:cooldown, String.t(), DateTime.t()}
           | {:image, String.t(), :queued | :running | nil}
           | {:busy, String.t(), non_neg_integer, pos_integer}
           | {:busy, :instance}
@@ -66,6 +74,9 @@ defmodule Apiary.Runs.Waiting do
       key = queued.work_item_id && Apiary.MachineTypes.unserved(workspace, queued.work_item_id) ->
         {:no_fit, key, pools |> List.first() |> pool_place()}
 
+      cooling = cooldown(queued, now) ->
+        cooling
+
       image = image(queued, pools) ->
         image
 
@@ -79,6 +90,20 @@ defmodule Apiary.Runs.Waiting do
         {:pool, pools |> List.first() |> pool_name()}
     end
   end
+
+  # Every key of each of the run's model providers in cooldown at `now`: the first
+  # provider's name and when the first key leaves its cooldown.
+  defp cooldown(%DispatchRun{model_provider_ids: [first | _] = ids}, now) do
+    with true <- ProviderCredential.applies?(),
+         %DateTime{} = until <- ModelKeys.cooling_until(ids, now),
+         %Connection{name: name} <- Repo.get(Connection, first) do
+      {:cooldown, name, until}
+    else
+      _not_cooling -> nil
+    end
+  end
+
+  defp cooldown(_queued, _now), do: nil
 
   # Held for the build of its target's environment image on every serving pool, with the
   # state of the newest live prebuild of that target on one of them.

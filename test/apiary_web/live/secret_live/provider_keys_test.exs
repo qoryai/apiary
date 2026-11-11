@@ -34,8 +34,19 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
   defp secrets_path(scope, rest \\ ""),
     do: "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/secrets#{rest}"
 
-  defp reveal(provider, value_id),
-    do: Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), value_id)
+  # The key `value_id` of `provider`, as the secrets endpoint reveals it, by its row id;
+  # `{:error, :not_found}` once no key has that value id.
+  defp reveal(provider, value_id) do
+    provider = Repo.get!(Connection, provider.id)
+
+    case Repo.one(
+           from v in Apiary.Secrets.Value,
+             where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
+         ) do
+      nil -> {:error, :not_found}
+      value -> Secrets.reveal_key_for_sealing(provider, value.id)
+    end
+  end
 
   defp refute_key(html) do
     refute html =~ @key

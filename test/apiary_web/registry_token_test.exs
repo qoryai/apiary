@@ -186,7 +186,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
       host = RunAccess.instance_host()
 
       assert [%{"name" => model}, registry] = document["credentials"]
-      assert model == ctx.provider.public_id
+      assert model == "#{ctx.provider.public_id}-1"
 
       assert registry == %{
                "name" => "registry",
@@ -215,7 +215,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
     test "is sealed the registry credential after its model key, and a new seal replaces it",
          ctx do
-      credentials = [ctx.provider.public_id, "registry"]
+      credentials = ["#{ctx.provider.public_id}-1", "registry"]
       conn = seal(ctx, credentials)
       assert conn.status == 200, conn.resp_body
       plaintext = open(ctx, conn)
@@ -239,12 +239,12 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
     test "is sealed the model key alone for a request that names it alone, its secret kept",
          ctx do
-      conn = seal(ctx, [ctx.provider.public_id])
+      conn = seal(ctx, ["#{ctx.provider.public_id}-1"])
       assert conn.status == 200, conn.resp_body
       plaintext = open(ctx, conn)
-      assert plaintext["credentials"] == [ctx.provider.public_id]
+      assert plaintext["credentials"] == ["#{ctx.provider.public_id}-1"]
       assert [%{"credential" => model}] = plaintext["values"]
-      assert model == ctx.provider.public_id
+      assert model == "#{ctx.provider.public_id}-1"
       # The credential stored before stays the one that matches.
       assert {:ok, _run} = Credential.verify(ctx.run.public_id, ctx.secret)
     end
@@ -272,7 +272,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
     end
 
     test "is refused a request out of the run configuration's order", ctx do
-      conn = seal(ctx, ["registry", ctx.provider.public_id])
+      conn = seal(ctx, ["registry", "#{ctx.provider.public_id}-1"])
       assert conn.status == 409
       assert Jason.decode!(conn.resp_body)["error"] == "credentials_differ"
       assert {:ok, _run} = Credential.verify(ctx.run.public_id, ctx.secret)
@@ -285,7 +285,9 @@ defmodule ApiaryWeb.RegistryTokenTest do
       %{access_key: plain, secret: seed} =
         Apiary.ContractFixtures.contract_key_fixture(ctx.scope, node: ctx.gateway)
 
-      conn = seal(%{ctx | secrets_key: {plain, seed}}, [ctx.provider.public_id, "registry"])
+      conn =
+        seal(%{ctx | secrets_key: {plain, seed}}, ["#{ctx.provider.public_id}-1", "registry"])
+
       assert {conn.status, Jason.decode!(conn.resp_body)["error"]} == {404, "not_found"}
       assert Credential.verify(ctx.run.public_id, ctx.secret) |> elem(0) == :ok
     end
@@ -309,7 +311,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
 
       ctx = %{ctx | secrets_key: {plain, seed}}
 
-      conn = seal(ctx, [ctx.provider.public_id, "registry"])
+      conn = seal(ctx, ["#{ctx.provider.public_id}-1", "registry"])
       assert {conn.status, Jason.decode!(conn.resp_body)["error"]} == {409, "secrets_not_allowed"}
 
       conn = seal(ctx, ["registry"])
@@ -855,7 +857,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
     test "keeps its registry secret at a renewal of work-1 alone", ctx do
       credential = &Apiary.WorkCredentialStub.credential(&1, @entry_apply)
       Apiary.WorkCredentialStub.issue(ctx.adapter_seed, credential.("fixture-work-token-start"))
-      credentials = [ctx.provider.public_id, "registry", "work-1"]
+      credentials = ["#{ctx.provider.public_id}-1", "registry", "work-1"]
       conn = seal(ctx, credentials)
       assert conn.status == 200, conn.resp_body
       assert Enum.map(open(ctx, conn)["values"], & &1["credential"]) == Enum.sort(credentials)

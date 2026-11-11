@@ -42,7 +42,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
   defp state(ctx, attrs \\ %{}) do
     %{
-      "credential" => ctx.provider.public_id,
+      "credential" => "#{ctx.provider.public_id}-1",
       "window" => "five_hour",
       "status" => "rejected",
       "resets_at" => now_z(3600),
@@ -133,7 +133,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert five["window"] == "five_hour"
 
       assert seven == %{
-               "credential" => ctx.provider.public_id,
+               "credential" => "#{ctx.provider.public_id}-1",
                "window" => "seven_day",
                "status" => "allowed_warning",
                "resets_at" => "2099-01-05T09:00:00Z",
@@ -288,10 +288,14 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert conn.status == 200
     end
 
-    test "413 for a body over 16 KiB, before the signature", ctx do
-      conn = post_report(ctx, String.duplicate(" ", RawBody.max_bytes(:model_keys) + 1))
+    test "413 for a body over 32 KiB, before the signature; 32 KiB is read", ctx do
+      assert RawBody.max_bytes(:model_keys) == 32 * 1024
+
+      conn = post_report(ctx, String.duplicate(" ", 32 * 1024 + 1))
       assert conn.status == 413
-      assert RawBody.max_bytes(:model_keys) == 16 * 1024
+
+      conn = post_report(ctx, String.duplicate(" ", 32 * 1024))
+      assert conn.status == 400
     end
 
     test "401, unsigned, for a time outside the window", ctx do
@@ -308,7 +312,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
       # This gateway's key, for the other organisation's run.
       body =
-        report(ctx, [state(ctx, credential: other.provider.public_id)],
+        report(ctx, [state(ctx, credential: "#{other.provider.public_id}-1")],
           run_id: other.run.node_run_id
         )
 
