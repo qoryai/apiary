@@ -65,18 +65,6 @@ defmodule Apiary.ModelKeys do
   def change_setting(%Value{} = value, attrs \\ %{}),
     do: value |> setting_of() |> Setting.changeset(attrs)
 
-  @doc """
-  Saves the settings of the key `value` (`Apiary.ModelKeys.Setting.changeset/2`), at the
-  value's organisation. `{:ok, setting}` or `{:error, changeset}`. The caller checks that
-  the person may change the key.
-  """
-  @spec put_setting(Value.t(), map) :: {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
-  def put_setting(%Value{} = value, attrs) do
-    value
-    |> change_setting(attrs)
-    |> Repo.insert_or_update()
-  end
-
   defp setting_of(%Value{id: id, organisation_id: organisation_id}) do
     Repo.get(Setting, id) || %Setting{secret_value_id: id, organisation_id: organisation_id}
   end

@@ -39,6 +39,20 @@ defmodule Apiary.ModelKeysFixtures do
     )
   end
 
+  @doc """
+  Saves `settings` as the settings of the model key `value` under `scope`, as Edit key
+  saves them (`Apiary.Connections.update_provider_key/4`): `{:ok, setting}`, the key's
+  settings as stored, nil for none, or `{:error, refusal}`.
+  """
+  def put_key_setting(scope, %Value{} = value, settings) do
+    provider = Repo.one!(from c in Connection, where: c.secret_id == ^value.secret_id)
+    attrs = %{"value_id" => value.value_id, "settings" => settings}
+
+    with {:ok, _provider} <-
+           Apiary.Connections.update_provider_key(scope, provider, value.value_id, attrs),
+         do: {:ok, Apiary.ModelKeys.setting(value.id)}
+  end
+
   @doc "Puts every key of `provider` in cooldown until `until`."
   def cooling!(%Connection{} = provider, until) do
     for %Value{value_id: value_id} <-

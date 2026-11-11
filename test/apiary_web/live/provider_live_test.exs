@@ -8,6 +8,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Connections, ModelKeys, Repo}
@@ -619,7 +620,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
         })
       end
 
-      {:ok, _setting} = ModelKeys.put_setting(values["delta"], %{"pause_seconds" => 600})
+      {:ok, _setting} = put_key_setting(scope, values["delta"], %{"pause_seconds" => 600})
 
       {:ok, lv, html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
 
@@ -967,7 +968,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       now = DateTime.utc_now()
 
       {:ok, _setting} =
-        ModelKeys.put_setting(value, %{
+        put_key_setting(scope, value, %{
           "reset_weekday" => 5,
           "reset_time" => "14:00",
           "reset_time_zone" => "Europe/Berlin",

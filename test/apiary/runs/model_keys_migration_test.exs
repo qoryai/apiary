@@ -14,6 +14,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -113,7 +114,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
       )
 
     # The key's setting, written before the upgrade.
-    {:ok, _setting} = ModelKeys.put_setting(value(ctx, "spare"), %{pause_seconds: 900})
+    {:ok, _setting} = put_key_setting(ctx.scope, value(ctx, "spare"), %{pause_seconds: 900})
 
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
 
@@ -144,7 +145,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     assert main_id == value(ctx, "main").id
 
     # The run configuration has the Pause for, and a later change of the setting leaves it.
-    {:ok, _setting} = ModelKeys.put_setting(value(ctx, "spare"), %{pause_seconds: 120})
+    {:ok, _setting} = put_key_setting(ctx.scope, value(ctx, "spare"), %{pause_seconds: 120})
     {:ok, %{keys: [%{entry: entry}]}} = ProviderCredential.for_run(Repo.get!(Run, run.id))
     assert entry["pause_for_s"] == 900
 

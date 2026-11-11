@@ -383,7 +383,8 @@ defmodule Apiary.DeletionTest do
         value =
           Repo.one!(from v in Apiary.Secrets.Value, where: v.secret_id == ^provider.secret_id)
 
-        {:ok, _} = Apiary.ModelKeys.put_setting(value, %{pause_seconds: 120})
+        owner = if provider == gone, do: inside, else: scope
+        {:ok, _} = Apiary.ModelKeysFixtures.put_key_setting(owner, value, %{pause_seconds: 120})
 
         :ok =
           Apiary.ModelKeys.record(

@@ -317,7 +317,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       state!(ctx.provider, "main", resets_at: reset)
 
       {:ok, _setting} =
-        ModelKeys.put_setting(value!(ctx.provider, "spare"), %{pause_seconds: 300})
+        put_key_setting(ctx.scope, value!(ctx.provider, "spare"), %{pause_seconds: 300})
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
       run = Repo.get!(Run, handed.run.id)

@@ -6,6 +6,7 @@ defmodule Apiary.ModelKeysTest do
   # the whole node's.
   use Apiary.DataCase, async: false
 
+  import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Connections, ModelKeys}
@@ -63,7 +64,7 @@ defmodule Apiary.ModelKeysTest do
       value = ctx.values["main"]
 
       assert {:ok, setting} =
-               ModelKeys.put_setting(value, %{
+               put_key_setting(ctx.scope, value, %{
                  "reset_weekday" => 1,
                  "reset_time" => "09:00:00",
                  "reset_time_zone" => "Europe/Berlin",
@@ -76,7 +77,7 @@ defmodule Apiary.ModelKeysTest do
       assert ModelKeys.setting(value.id).pause_seconds == 600
 
       # A second save changes the row; an empty field clears its setting.
-      assert {:ok, _} = ModelKeys.put_setting(value, %{"pause_seconds" => ""})
+      assert {:ok, _} = put_key_setting(ctx.scope, value, %{"pause_seconds" => ""})
       assert %Setting{pause_seconds: nil, reset_weekday: 1} = ModelKeys.setting(value.id)
       assert Repo.aggregate(Setting, :count) == 1
       assert ModelKeys.setting(ctx.values["spare"].id) == nil
@@ -290,7 +291,7 @@ defmodule Apiary.ModelKeysTest do
       )
 
       {:ok, _setting} =
-        ModelKeys.put_setting(spare, %{
+        put_key_setting(ctx.scope, spare, %{
           reset_weekday: 1,
           reset_time: ~T[09:00:00],
           reset_time_zone: "Etc/UTC",
@@ -540,7 +541,7 @@ defmodule Apiary.ModelKeysTest do
       assert known_reset.(now) == nil
 
       {:ok, _} =
-        ModelKeys.put_setting(value, %{
+        put_key_setting(ctx.scope, value, %{
           reset_weekday: 1,
           reset_time: ~T[09:00:00],
           reset_time_zone: "Europe/Berlin"
@@ -651,7 +652,7 @@ defmodule Apiary.ModelKeysTest do
 
     test "and the settings go with their key", ctx do
       value = ctx.values["main"]
-      {:ok, _} = ModelKeys.put_setting(value, %{pause_seconds: 90})
+      {:ok, _} = put_key_setting(ctx.scope, value, %{pause_seconds: 90})
       :ok = ModelKeys.record([key(value)], [item([])], DateTime.utc_now())
 
       Repo.delete!(value)

@@ -10,7 +10,7 @@ defmodule Apiary.ModelKeys.Setting do
       604800 seconds (7 days). Without it, the provider's default applies
       (`Apiary.ModelKeys.pause_seconds/2`).
 
-  The row is of the key's organisation, which `Apiary.ModelKeys.put_setting/2` takes from
+  The row is of the key's organisation, which `Apiary.ModelKeys.change_setting/2` takes from
   the value, never from the attributes.
   """
 
