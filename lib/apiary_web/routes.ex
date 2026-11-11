@@ -269,6 +269,8 @@ defmodule ApiaryWeb.Routes do
         get "/artifacts/:version_id/files/:filename", Controller, :file
         post "/artifacts", Controller, :push
         post "/verdict", Controller, :verdict
+        # The transcript of the paused run the run continues, for its session's resume.
+        get "/resume/transcript", Controller, :transcript
       end
 
       scope "/v1", ApiaryWeb.Contract do

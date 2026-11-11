@@ -36,7 +36,7 @@ defmodule Apiary.Runs.Run do
   # docs show its name alone.
   @typep run :: %__MODULE__{}
 
-  @states ~w(pending running completed failed cancelled lost)
+  @states ~w(pending running completed failed cancelled lost paused)
 
   # The most a `bigint` holds: the highest number a run can have.
   @max_number 9_223_372_036_854_775_807
@@ -306,8 +306,8 @@ defmodule Apiary.Runs.Run do
   end
 
   @doc """
-  Every state a run can be in: pending, running, completed, failed, cancelled and lost. The
-  `CHECK` on the column allows these six and no other.
+  Every state a run can be in: pending, running, completed, failed, cancelled, lost and
+  paused. The `CHECK` on the column allows these seven and no other.
   """
   def states, do: @states
 
@@ -366,7 +366,7 @@ defmodule Apiary.Runs.Run do
   @spec shown_state(t() | map()) :: String.t()
   def shown_state(run), do: if(queued?(run), do: "queued", else: run.state)
 
-  @doc "Every state the pages show: `queued`, then the six stored states (`states/0`)."
+  @doc "Every state the pages show: `queued`, then the seven stored states (`states/0`)."
   def shown_states, do: ["queued" | @states]
 
   @doc "The states of a run that ended well: completed, its outcome a success."
@@ -379,10 +379,23 @@ defmodule Apiary.Runs.Run do
   def cancelled_states, do: ~w(cancelled)
 
   @doc """
-  The states of a run that ended badly: failed and lost. The four families, alive, ended
-  well, cancelled and ended badly, are `Apiary.Runs.Filters.families/0`.
+  The states of a run that ended badly: failed and lost. The five families, alive, ended
+  well, cancelled, paused and ended badly, are `Apiary.Runs.Filters.families/0`.
   """
   def ended_badly_states, do: ~w(failed lost)
+
+  @doc """
+  The states of a run that paused: its gateway ended it with the reason
+  `model_key_limit`, as every model key it had was at its limit, and its work goes on in
+  the run that continues it, which the end of the paused run queues. Not a failure, and
+  never a person's cancel.
+  """
+  def paused_states, do: ~w(paused)
+
+  @doc "Whether the run paused (`paused_states/0`)."
+  @spec paused?(t() | map()) :: boolean()
+  def paused?(%{state: "paused"}), do: true
+  def paused?(_run), do: false
 
   @doc """
   The days a lost run counts as lost recently, from its `lost_at`: the Overview lists it

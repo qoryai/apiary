@@ -35,7 +35,7 @@ defmodule Apiary.Runs.SchemaTest do
     run = run_fixture(scope)
 
     assert_raise Postgrex.Error, ~r/runs_state_check/, fn ->
-      Repo.query!("UPDATE runs SET state = 'paused' WHERE id = $1", [Ecto.UUID.dump!(run.id)])
+      Repo.query!("UPDATE runs SET state = 'resting' WHERE id = $1", [Ecto.UUID.dump!(run.id)])
     end
   end
 

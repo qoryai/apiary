@@ -402,6 +402,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   defp run(run, ctx) do
     Map.merge(run, %{
       path: run_path(ctx, run),
+      paused_path: run[:paused] && run_path(ctx, run.paused),
       other_stage: other_stage?(run, ctx),
       liveness: liveness_of(run[:heard]),
       duration: run.duration_ms && RunComponents.format_duration_ms(run.duration_ms),

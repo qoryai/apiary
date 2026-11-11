@@ -177,6 +177,12 @@ defmodule Apiary.Dispatches.DispatchRun do
     # passes the run while every key of each of them is in cooldown
     # (`Apiary.ModelKeys.claimable/1`). No changeset casts them.
     field :model_provider_ids, {:array, :binary_id}, default: []
+    # A run that continues a paused run (`Apiary.Dispatches.Pause`): the paused run of the
+    # queue, nil for every other run; at most one run continues a paused run. And, on a
+    # paused run whose provider had every key in cooldown when it ended, the earliest end
+    # of those cooldowns, nil for every other run. No changeset casts them.
+    belongs_to :continues, __MODULE__
+    field :paused_until, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

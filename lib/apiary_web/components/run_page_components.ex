@@ -784,12 +784,16 @@ defmodule ApiaryWeb.RunPageComponents do
     do: %{glyph: "hero-shield-check-micro", shape: :square, tone: nil}
 
   # The run's end is marked as its state is: a check for Completed, a neutral stop for
-  # Cancelled, an amber signal-slash for Lost, a red x-mark for Failed.
+  # Cancelled, a neutral pause for Paused, an amber signal-slash for Lost, a red x-mark for
+  # Failed.
   defp node_look(%{kind: :run_exited, state: "completed"}),
     do: %{glyph: "hero-check-micro", shape: :square, tone: nil}
 
   defp node_look(%{kind: :run_exited, state: "cancelled"}),
     do: %{glyph: "hero-stop-micro", shape: :square, tone: nil}
+
+  defp node_look(%{kind: :run_exited, state: "paused"}),
+    do: %{glyph: "hero-pause-micro", shape: :square, tone: nil}
 
   defp node_look(%{kind: :run_exited, state: "lost"}),
     do: %{glyph: "hero-signal-slash-micro", shape: :square, tone: :warn}

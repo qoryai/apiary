@@ -59,6 +59,18 @@ defmodule Apiary.Dispatches do
   # exit found its image missing and the next run of its take in was written so: its
   # page says so (`ApiaryWeb.RunLive.Show`).
   #
+  # `requeue_for_pause(dispatch_run, paused_until)` writes, inside the caller's
+  # transaction, in which the work item is locked `FOR UPDATE`, the run that continues a
+  # run whose exit paused it at its model keys' limit (`Apiary.Dispatches.RunEnd`):
+  # waiting, at the paused run's place in its work item's process, with its `attempt` and
+  # its `of` one more each, so the take in loses no attempt, its `queued_at` the paused
+  # run's, so it keeps the paused run's place in the queue, and `continues_id` the paused
+  # run. The paused run keeps `paused_until`. A continuation that pauses is continued
+  # again. It writes none for a prebuild, for a work item no longer in Explore, in another
+  # workspace or at another take in, for a work item placed at another stage or whose
+  # stage does not run, or while another run of the take in has not ended: `{:error,
+  # :not_requeued}`.
+  #
   # `end_held(work_item_ids, workspace_id, target, now)` ends, inside the caller's
   # transaction, the waiting runs of those work items with `target` that are not
   # prebuilds, `build_failed`, with the outcome `error`, when the build they were held
@@ -443,14 +455,25 @@ defmodule Apiary.Dispatches do
   # runner did not start. The run is queued on the machine type of its place, or on the
   # default type, with that type's spec (`machine_type/1`); a run requeued for its image
   # keeps the type and spec of the run before it.
-  defp insert_run(work_item, take_in, attempt, of, image_requeue \\ false, stage \\ %{}) do
+  # A continuation (`requeue_for_pause/2`) passes `continues`, the paused run: the new
+  # run's `continues_id` is set to it, and its `queued_at` to the paused run's.
+  defp insert_run(
+         work_item,
+         take_in,
+         attempt,
+         of,
+         image_requeue \\ false,
+         stage \\ %{},
+         continues \\ nil
+       ) do
     %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
     result =
       %DispatchRun{
         organisation_id: organisation_id,
         workspace_id: workspace_id,
-        image_requeue: image_requeue
+        image_requeue: image_requeue,
+        continues_id: continues && continues.id
       }
       |> struct!(stage)
       |> struct!(machine_type(stage))
@@ -461,7 +484,7 @@ defmodule Apiary.Dispatches do
         take_in: take_in,
         attempt: attempt,
         of: of,
-        queued_at: now()
+        queued_at: (continues && continues.queued_at) || now()
       })
       |> with_model_providers()
       |> Repo.insert()
@@ -735,6 +758,89 @@ defmodule Apiary.Dispatches do
   end
 
   def requeue_for_image(%DispatchRun{}), do: {:error, :not_requeued}
+
+  # requeue_for_pause/2 writes the run that continues `dispatch_run`, which its end by an
+  # exit at its model keys' limit ended in the caller's transaction, in which its work
+  # item is locked `FOR UPDATE` (`Apiary.Dispatches.RunEnd`), and keeps `paused_until` on
+  # `dispatch_run` (the moduledoc); else `{:error, :not_requeued}`.
+  @doc false
+  @spec requeue_for_pause(DispatchRun.t(), DateTime.t() | nil) ::
+          {:ok, DispatchRun.t()} | {:error, :not_requeued | Ecto.Changeset.t()}
+  def requeue_for_pause(
+        %DispatchRun{
+          id: paused_id,
+          step: step,
+          work_item_id: id,
+          workspace_id: workspace_id,
+          take_in: take_in,
+          attempt: attempt,
+          of: of
+        } = dispatch_run,
+        paused_until
+      )
+      when is_binary(id) and is_integer(take_in) and step != @prebuild do
+    in_transaction!("requeue_for_pause/2")
+
+    work_item =
+      Repo.one!(
+        from w in WorkItem,
+          where: w.id == ^id,
+          select: %{
+            id: w.id,
+            organisation_id: w.organisation_id,
+            workspace_id: w.workspace_id,
+            target_system: w.target_system,
+            target_path: w.target_path,
+            test: w.test,
+            connection_id: w.connection_id,
+            state: w.state,
+            take_in: w.take_in,
+            stage_id: w.stage_id,
+            stage_state: w.stage_state
+          }
+      )
+
+    runs =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id == ^id and r.take_in == ^take_in,
+          select: {r.state, r.attempt}
+      )
+
+    if work_item.state == :exploring and work_item.workspace_id == workspace_id and
+         work_item.take_in == take_in and staged?(work_item, dispatch_run) and
+         Enum.all?(runs, &(elem(&1, 0) == :ended)) and
+         Enum.max(Enum.map(runs, &elem(&1, 1))) == attempt do
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^paused_id),
+          set: [paused_until: paused_until]
+        )
+
+      insert_run(
+        work_item,
+        take_in,
+        attempt + 1,
+        of + 1,
+        false,
+        stage_place(dispatch_run),
+        dispatch_run
+      )
+    else
+      {:error, :not_requeued}
+    end
+  end
+
+  def requeue_for_pause(%DispatchRun{}, _paused_until), do: {:error, :not_requeued}
+
+  # With the workflow model, a run continues only at the stage its work item is placed
+  # in, while that stage runs: a work item moved on, or whose stage waits for a person,
+  # gets no continuation. A run with no stage counts for the stage the work item is in. A
+  # work item the process has not placed (no `stage_state`) continues as with the model
+  # off.
+  defp staged?(work_item, %DispatchRun{stage_id: stage_id}) do
+    not Apiary.Stages.on?() or is_nil(work_item.stage_state) or
+      (work_item.stage_state == :running and stage_id in [nil, work_item.stage_id])
+  end
 
   # The place in the work item's process of a run requeued for its image: the same as the
   # run's, so the stage runner reads the requeued run as the same round.

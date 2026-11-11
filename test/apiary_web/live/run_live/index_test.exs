@@ -284,7 +284,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
 
       assert text(view, "#filter-state-form") =~
-               "Ended well Completed Cancelled Cancelled 1 Ended badly Failed 1"
+               "Ended well Completed Cancelled Cancelled 1 Paused Paused Ended badly Failed 1"
 
       view = open(conn, runs(scope, "?state=cancelled"))
       assert has_element?(view, row(ended))
@@ -1239,7 +1239,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, row(running))
     end
 
-    test "the State section reads as four families, each heading a checkbox over its states",
+    test "the State section reads as five families, each heading a checkbox over its states",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
       form = "#filter-state-form"
@@ -1248,6 +1248,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
             {"alive", "Every alive state"},
             {"ended_well", "Every state that ended well"},
             {"cancelled", "Every cancelled state"},
+            {"paused", "Every paused state"},
             {"ended_badly", "Every state that ended badly"}
           ] do
         assert has_element?(
@@ -1258,7 +1259,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # Every state shows under its family, counted when a run has it.
       assert text(view, form) =~
-               "Alive Queued Pending Running 1 Ended well Completed Cancelled Cancelled Ended badly Failed 1 Lost"
+               "Alive Queued Pending Running 1 Ended well Completed Cancelled Cancelled Paused Paused Ended badly Failed 1 Lost"
 
       refute has_element?(view, "#{form} input[name='state[]'][value=closed]")
 
@@ -1271,7 +1272,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       # Beside the setup's running and failed runs.
       at = DateTime.add(DateTime.utc_now(), -60, :second)
 
-      for state <- ~w(pending running completed failed cancelled lost),
+      for state <- ~w(pending running completed failed cancelled lost paused),
           do: run_fixture(scope, %{state: state, started_at: at})
 
       view = open(conn, scope)
@@ -1283,15 +1284,15 @@ defmodule ApiaryWeb.RunLive.IndexTest do
         |> LazyHTML.query("#{form} .q-filter-family")
         |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
 
-      assert headings == ["Alive", "Ended well", "Cancelled", "Ended badly"]
+      assert headings == ["Alive", "Ended well", "Cancelled", "Paused", "Ended badly"]
 
       assert text(view, form) =~
-               "Alive Queued Pending 1 Running 2 Ended well Completed 1 Cancelled Cancelled 1 Ended badly Failed 2 Lost 1"
+               "Alive Queued Pending 1 Running 2 Ended well Completed 1 Cancelled Cancelled 1 Paused Paused 1 Ended badly Failed 2 Lost 1"
 
-      for state <- ~w(pending running completed failed cancelled lost),
+      for state <- ~w(pending running completed failed cancelled lost paused),
           do: assert(has_element?(view, "#{form} input[name='state[]'][value=#{state}]"))
 
-      assert text(view, "#runs-view-all") == "All 8"
+      assert text(view, "#runs-view-all") == "All 9"
       assert text(view, "#runs-view-alive") == "Alive 3"
       assert text(view, "#runs-view-ended-badly") == "Ended badly 3"
     end

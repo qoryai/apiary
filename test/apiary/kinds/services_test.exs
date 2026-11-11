@@ -263,7 +263,8 @@ defmodule Apiary.Kinds.ServicesTest do
                     secrets-answer.schema.json sealed-plaintext.schema.json
                     model-keys-report.schema.json model-keys-answer.schema.json
                     events/runtime.text.schema.json events/runtime.tool_result.schema.json
-                    events/runtime.tool_denied.schema.json)
+                    events/runtime.tool_denied.schema.json
+                    events/session.transcript.schema.json)
                  |> Enum.map(&("priv/contract/" <> &1))
                  |> Enum.concat(
                    for file <- ~w(sealed/invalid/bad-signature.json sealed/invalid/expired.json
@@ -298,7 +299,18 @@ defmodule Apiary.Kinds.ServicesTest do
                                   invalid/run-configuration-beyond-schema-model-keys-two-chosen.json
                                   invalid/run-configuration-credentials-api-chosen-false.json
                                   invalid/run-configuration-credentials-api-cooldown-until-not-a-time.json
-                                  invalid/run-configuration-credentials-host-chosen.json),
+                                  invalid/run-configuration-credentials-host-chosen.json
+                                  link/link-batch-exited-model-key-limit.json
+                                  link/link-batch-session-exited-model-key-limit.json
+                                  link/link-batch-session-transcript.json
+                                  link/link-run-answer-resume.json
+                                  run-configuration/resume.json
+                                  invalid/run-configuration-resume-no-session-id.json
+                                  invalid/run-configuration-resume-run-id-upper-case.json
+                                  invalid/event-session-transcript-no-session-id.json
+                                  invalid/event-session-transcript-offset-negative.json
+                                  invalid/event-session-transcript-over-32-kib.json
+                                  invalid/event-session-transcript-session-zero.json),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )

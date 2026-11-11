@@ -1,7 +1,10 @@
 defmodule Apiary.Runs.Projector do
   @moduledoc """
   Folds a run's events into what the console reads: the `runs` row, its `connections`,
-  its `run_steps`, its `log_chunks` and the workspace's `targets`.
+  its `run_steps`, its `log_chunks`, its `session_chunks` and the workspace's `targets`.
+  A rebuild deletes and folds again all but the `session_chunks`, which it adds to: the
+  transcript of a paused run outlives the events the retention deletes
+  (`Apiary.Runs.Transcript`).
 
   The receiver stores events and answers; it calls `project_async/1` after its
   transaction has committed. `project/1` is the same work done synchronously: the tests
@@ -51,7 +54,8 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, Step, Target}
+  alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, SessionChunk}
+  alias Apiary.Runs.{Step, Target}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -356,6 +360,7 @@ defmodule Apiary.Runs.Projector do
         |> Repo.update!(log: false)
 
       insert_log_chunks(run, fold.log_chunks)
+      insert_session_chunks(run, fold.transcript_chunks)
       LeakedSecrets.record_run(run, fold.log_chunks, events)
       upsert_connections(run, fold.connections)
       upsert_steps(run, fold.steps)
@@ -370,6 +375,13 @@ defmodule Apiary.Runs.Projector do
       if fold.skipped_log_chunks > 0 do
         Logger.warning(
           "log chunks skipped run=#{run.id} count=#{fold.skipped_log_chunks} reason=not_base64"
+        )
+      end
+
+      if fold.skipped_transcript_chunks > 0 do
+        Logger.warning(
+          "transcript chunks skipped run=#{run.id} count=#{fold.skipped_transcript_chunks} " <>
+            "reason=invalid_data"
         )
       end
 
@@ -669,6 +681,33 @@ defmodule Apiary.Runs.Projector do
       conflict_target: [:run_id, :sequence],
       log: false
     )
+  end
+
+  # A transcript's chunks are kept by sequence: a pass that folds an event again, as a
+  # rebuild does, adds none, and a reset leaves them (`reset/1`), so a transcript
+  # outlives the events the retention deletes (`Apiary.Runs.Transcript`).
+  defp insert_session_chunks(_run, []), do: :ok
+
+  defp insert_session_chunks(run, chunks) do
+    rows =
+      for chunk <- chunks do
+        Map.merge(chunk, %{
+          id: Ecto.UUID.generate(),
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          run_id: run.id
+        })
+      end
+
+    rows
+    |> Enum.chunk_every(500)
+    |> Enum.each(fn batch ->
+      Repo.insert_all(SessionChunk, batch,
+        on_conflict: :nothing,
+        conflict_target: [:run_id, :sequence],
+        log: false
+      )
+    end)
   end
 
   defp upsert_connections(_run, connections) when map_size(connections) == 0, do: :ok

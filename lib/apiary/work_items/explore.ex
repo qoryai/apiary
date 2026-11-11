@@ -74,7 +74,8 @@ defmodule Apiary.WorkItems.Explore do
     "completed" => :completed,
     "failed" => :failed,
     "cancelled" => :cancelled,
-    "lost" => :lost
+    "lost" => :lost,
+    "paused" => :paused
   }
 
   @typedoc "Where one run of a take in stands."

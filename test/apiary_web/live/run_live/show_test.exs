@@ -4886,6 +4886,96 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-why-jump[href="#{path}?seq=2"]), "Jump to it")
     end
 
+    @tag needs: [:factory, :secrets]
+    test "a paused run says why it paused and links the run that continues it",
+         %{conn: conn, scope: scope} do
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-ant-fixture-main-0123456789"}]
+        })
+
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      # The run that continues it, queued as the end of the paused run queues it.
+      ended = Repo.get!(DispatchRun, queued.id)
+      {:ok, next} = Repo.transact(fn -> Dispatches.requeue_for_pause(ended, nil) end)
+      number = Repo.one!(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^next.id).number
+
+      run =
+        projected(
+          scope,
+          [
+            {1, "run.started", started_data()},
+            {2, "run.exited",
+             %{"state" => "cancelled", "reason" => "model_key_limit", "exit_code" => -1}}
+          ],
+          %{
+            dispatch_run_id: queued.id,
+            provider_connection_id: provider.id,
+            provider_secret_id: provider.secret_id,
+            provider_chain: "organisation",
+            provider_api: %{
+              "format" => "anthropic-messages",
+              "endpoint" => "https://api.model.example/anthropic",
+              "auth" => %{"scheme" => "x-api-key"}
+            },
+            model_keys: [],
+            run_settings: %{}
+          }
+        )
+
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(
+               lv,
+               "#run-why",
+               "Paused: a key of #{provider.name} reached its limit. It continues in run #{number}."
+             )
+
+      next_path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{number}"
+      assert has_element?(lv, ~s(#run-why a[href="#{next_path}"]), "#{number}")
+      refute has_element?(lv, "#run-why-jump")
+
+      until = DateTime.add(DateTime.utc_now(), 3_600, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+          set: [paused_until: until]
+        )
+
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(
+               lv,
+               "#run-why",
+               "Paused: every key of #{provider.name} is in cooldown until "
+             )
+
+      assert has_element?(lv, "#run-why", ". It continues in run #{number}.")
+
+      # A paused run that no run continues has its state alone.
+      alone =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "cancelled", "reason" => "model_key_limit"}}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{alone.number}")
+
+      assert has_element?(lv, "#run-state", "Paused")
+      refute has_element?(lv, "#run-why")
+    end
+
     test "a run that ended well says nothing more", %{conn: conn, scope: scope} do
       run =
         projected(scope, [

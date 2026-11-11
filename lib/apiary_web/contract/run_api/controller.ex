@@ -42,6 +42,13 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # The content type is the stored one, read from the file's bytes at the push
   # (`Apiary.Artifacts.Format`), with `charset=utf-8` for a text type.
   #
+  # The transcript of a paused run (`GET /resume/transcript`) is the file of the run that
+  # the request's run continues (`Apiary.Runs.Transcript`): sent in chunks, signed over
+  # its SHA-256, as `application/x-ndjson`. A run that ended, a run that continues no
+  # paused run, a paused run that is no longer the one it continues, and a transcript that
+  # is gone, has a gap in its offsets or is over 64 MiB are each `404` `not_found`, as a
+  # run the key may not read is. No transcript byte is logged or put in an error.
+  #
   # Errors are short JSON; nothing logs the body, the signature or the headers. An
   # exception is `503` `unavailable`, logged by its module's name alone.
 
@@ -51,6 +58,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   alias Apiary.Artifacts.Format
   alias Apiary.PublicId
+  alias Apiary.Runs.Transcript
   alias ApiaryWeb.Contract.Configuration
   alias ApiaryWeb.Contract.RunApi.{Body, Boundary, Run, Wire}
 
@@ -104,6 +112,24 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     else
       {:error, :not_found} -> error(conn, 404, "not_found")
       {:error, :unreadable} -> error(conn, 503, "unavailable")
+    end
+  rescue
+    exception -> unavailable(conn, exception)
+  end
+
+  def transcript(conn, %{"run_id" => run_id}) do
+    with {:ok, run} <- run(conn, run_id),
+         :ok <- live(run),
+         %Apiary.Runs.Run{} = paused <- Transcript.paused_run(run.dispatch_run),
+         %{path: path} <- Transcript.last(paused.id),
+         {:ok, file} <- Transcript.file(paused.id, path) do
+      conn
+      |> put_resp_header("x-content-type-options", "nosniff")
+      |> put_resp_content_type("application/x-ndjson", nil)
+      |> put_private(:qory_body_sha256, file.sha256)
+      |> send_stored({:stream, Transcript.stream(paused.id, path)})
+    else
+      _none -> error(conn, 404, "not_found")
     end
   rescue
     exception -> unavailable(conn, exception)

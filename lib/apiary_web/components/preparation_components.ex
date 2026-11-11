@@ -1315,9 +1315,11 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp waiting_words(_reason), do: nil
 
-  # The end of a cooldown in the reader's time zone, as the page shows a time: the time
-  # of day alone on the reader's day, else with its date, "16 Nov, 14:00".
-  defp cooldown_time(until) do
+  @doc false
+  # cooldown_time/1 is the end of a cooldown in the reader's time zone, as the page shows a
+  # time: the time of day alone on the reader's day, else with its date, "16 Nov, 14:00".
+  @spec cooldown_time(DateTime.t()) :: String.t()
+  def cooldown_time(until) do
     if Format.short_date(until) == Format.short_date(DateTime.utc_now()),
       do: Format.time(until),
       else: Format.datetime(until, year: false)

@@ -28,8 +28,12 @@ defmodule Apiary.ForagerSchemas do
 
   @impl JSV.Resolver
   def resolve(@base <> file, _opts) do
-    path = Application.app_dir(:apiary, ["priv", "contract", Path.basename(file)])
-    with {:ok, body} <- File.read(path), do: Jason.decode(body)
+    root = Application.app_dir(:apiary, ["priv", "contract"])
+    path = Path.expand(file, root)
+
+    with true <- String.starts_with?(path, root <> "/") || {:error, {:not_vendored, file}},
+         {:ok, body} <- File.read(path),
+         do: Jason.decode(body)
   end
 
   def resolve(url, _opts), do: {:error, {:not_vendored, url}}

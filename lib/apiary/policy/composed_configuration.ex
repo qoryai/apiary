@@ -108,8 +108,14 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # (`Apiary.Harnesses.RunHarness`, `harness_hidden`): `harness_hidden`, `true`. A run with
   # no walk, or whose walk did not hide its harness, gains no such member.
   #
+  # For a run of a workspace's queue that continues a paused run, whose transcript can be
+  # restored (`Apiary.Runs.Transcript.resume/1`): `resume`, the paused run's id and the
+  # session id and the path of its transcript's last chunk. Any other run gains no such
+  # member, and starts a new session.
+  #
   # The members come after the document's last member, in the schema's order:
-  # `variables`, `credentials`, `model_credential`, `stack_hosts`, `harness_hidden`. A
+  # `variables`, `credentials`, `model_credential`, `stack_hosts`, `resume`,
+  # `harness_hidden`. A
   # document composed with them is composed for the run and kept as any other
   # (`serve/7`), so its digest is the SHA-256 of the bytes the run is sent, and a
   # document composed from no policy gains them too.
@@ -124,7 +130,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   alias Apiary.Policy.{Grammar, Render, RunConfiguration}
   alias Apiary.Repo
   alias Apiary.Registry.RunAccess
-  alias Apiary.Runs.{ProviderCredential, Run, RunCredentials, RunVariables}
+  alias Apiary.Runs.{ProviderCredential, Run, RunCredentials, RunVariables, Transcript}
 
   @type t :: %__MODULE__{}
 
@@ -558,6 +564,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         registry: RunAccess.member(run),
         work: RunCredentials.work(run),
         stack_hosts: stack_hosts(pins),
+        resume: Transcript.resume(run),
         harness_hidden: hidden?
       }
 
@@ -569,7 +576,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
     do:
       (is_map(variables) and map_size(variables) > 0) or not is_nil(credential) or
         not is_nil(Map.get(members, :registry)) or not is_nil(Map.get(members, :work)) or
-        Map.get(members, :stack_hosts, []) != [] or Map.get(members, :harness_hidden) == true
+        Map.get(members, :stack_hosts, []) != [] or not is_nil(Map.get(members, :resume)) or
+        Map.get(members, :harness_hidden) == true
 
   defp members?(nil), do: false
 
@@ -676,6 +684,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         if(entries != [], do: [{"credentials", entries}], else: []) ++
         if(credential, do: [{"model_credential", credential.name}], else: []) ++
         if(stack_hosts != [], do: [{"stack_hosts", stack_hosts}], else: []) ++
+        resume_member(Map.get(run_members, :resume)) ++
         if Map.get(run_members, :harness_hidden) == true,
           do: [{"harness_hidden", true}],
           else: []
@@ -694,6 +703,20 @@ defmodule Apiary.Policy.ComposedConfiguration do
          {:ok, members} <- policy_with_hosts(members, hosts, if(work, do: work.hosts, else: [])),
          do: {:ok, encode(policy_with_paths(members, registry, open?) ++ added)}
   end
+
+  # The `resume` member, its members in the schema's order.
+  defp resume_member(%{"run_id" => run_id, "session_id" => session_id, "path" => path}) do
+    [
+      {"resume",
+       Jason.OrderedObject.new([
+         {"run_id", run_id},
+         {"session_id", session_id},
+         {"path", path}
+       ])}
+    ]
+  end
+
+  defp resume_member(nil), do: []
 
   defp credentials_fit(entries) when length(entries) > @credentials_max,
     do: {:error, {:credentials_too_many, length(entries)}}

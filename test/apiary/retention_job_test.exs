@@ -7,6 +7,7 @@ defmodule Apiary.RetentionJobTest do
   use Apiary.DataCase, async: false
 
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
@@ -14,7 +15,8 @@ defmodule Apiary.RetentionJobTest do
 
   alias Apiary.Retention
   alias Apiary.Retention.RetentionRun
-  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run}
+  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk}
+  alias Apiary.WorkItems.WorkItem
 
   @now ~U[2026-12-01 03:00:00.000000Z]
 
@@ -68,6 +70,80 @@ defmodule Apiary.RetentionJobTest do
       assert {:ok, []} = Retention.prune_all(now: @now)
       assert count(Event, run) == 15
       assert Repo.aggregate(RetentionRun, :count) == 0
+    end
+  end
+
+  describe "a session's transcript" do
+    @describetag needs: [:factory]
+
+    defp chunk!(run) do
+      Repo.insert!(%SessionChunk{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: run.id,
+        sequence: 1,
+        session: 1,
+        session_id: "5f2c9a1e",
+        path: "~/.claude/projects/-workspace/5f2c9a1e.jsonl",
+        offset: 0,
+        bytes: "{}\n"
+      })
+    end
+
+    defp chunks(run),
+      do: Repo.aggregate(from(c in SessionChunk, where: c.run_id == ^run.id), :count)
+
+    defp handed_over_run(scope) do
+      pool = pool_fixture(scope)
+      %{access_key: key} = enrolled_key_fixture(scope, pool)
+      handed_over_fixture(scope, key)
+    end
+
+    test "goes once its work item is closed, or its run of no work item ended", %{
+      scope: scope
+    } do
+      %{run: exploring} = handed_over_run(scope)
+      %{run: closed, dispatch_run: dispatch_run} = handed_over_run(scope)
+      ended = run_fixture(scope, %{state: "completed"})
+      alive = run_fixture(scope)
+      Enum.each([exploring, closed, ended, alive], &chunk!/1)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^dispatch_run.work_item_id),
+          set: [state: :closed, closed_at: @now]
+        )
+
+      assert {:ok, _results} = Retention.prune_all(now: @now, dry_run: true)
+      assert Enum.map([exploring, closed, ended, alive], &chunks/1) == [1, 1, 1, 1]
+
+      level = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: level) end)
+      log = capture_log([level: :info], fn -> Retention.prune_all(now: @now) end)
+
+      assert Enum.map([exploring, closed, ended, alive], &chunks/1) == [1, 0, 0, 1]
+      assert log =~ "retention pruned transcripts=2"
+      refute log =~ "{}"
+    end
+
+    test "stays while its work item explores, when a phase deletes the run's events", %{
+      scope: scope
+    } do
+      %{run: run} = handed_over_run(scope)
+      events_fixture(run, record())
+      {:ok, _run} = Projector.project(run)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [state: "paused", last_event_at: days_ago(4000), event_count: 15]
+        )
+
+      chunk!(run)
+      retain(scope, events_retention_days: 10)
+
+      assert {:ok, [_]} = Retention.prune_all(now: @now)
+      assert count(Event, run) == 0
+      assert chunks(run) == 1
     end
   end
 

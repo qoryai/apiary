@@ -304,6 +304,38 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert Enum.any?(definitions, &(&1 =~ ~r/\(workspace_id\)\z/))
   end
 
+  test "finds a secret in the decoded bytes of a chunk of a session's transcript", ctx do
+    transcript = %{
+      "session" => 1,
+      "session_id" => "5f2c9a1e",
+      "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl",
+      "offset" => 0,
+      "bytes" => Base.encode64(~s({"content":"key #{@github}"}\n))
+    }
+
+    events_fixture(ctx.run, [{1, "session.transcript", transcript}])
+    project!(ctx.run)
+
+    assert [%LeakedSecret{place: "event", kind: "github_token", source_sequence: 1}] =
+             rows(ctx.run)
+
+    {[entry], 0} = read(ctx.run)
+    assert %{place: "event", sequence: 1, value: @github} = entry
+  end
+
+  test "event_text/2 decodes a transcript chunk's bytes, and leaves any other event's" do
+    bytes = Base.encode64("line")
+    data = %{"bytes" => bytes, "path" => "p"}
+
+    assert LeakedSecrets.event_text("dev.qory.session.transcript", data) == "bytes\nline\npath\np"
+
+    assert LeakedSecrets.event_text("dev.qory.run.started", data) ==
+             LeakedSecrets.event_text(data)
+
+    assert LeakedSecrets.event_text("dev.qory.session.transcript", %{"bytes" => "%%"}) ==
+             "bytes\n%%"
+  end
+
   test "event_text/1 is each key and string, keys sorted, one per line" do
     assert LeakedSecrets.event_text(%{"b" => ["x", 1, %{"d" => "y", "c" => nil}], "a" => "z"}) ==
              "a\nz\nb\nx\nc\nd\ny"

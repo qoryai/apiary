@@ -50,6 +50,16 @@ defmodule Apiary.Retention do
   `runs_retention_log_index`, which a pruned run leaves. Each daily job prunes at most
   `:max_runs` runs of a workspace (10,000), and the next daily job goes on.
 
+  **A session's transcript.** A run's `session_chunks` (`Apiary.Runs.Transcript`) are in
+  neither phase: a run that continues a paused run reads them, whenever it starts, and a
+  cooldown can last 7 days. A phase that deletes the run's events deletes the
+  `dev.qory.session.transcript` events with them, and the chunks stay. Under the same
+  lock, on every workspace whatever its settings, the job deletes the chunks of a run
+  whose work item is closed or undone, and of an ended run of no work item, which no run
+  continues, at most `:max_runs` runs a job (10,000), each a batch at a time under the
+  run's projection lock, with one log line, `retention pruned transcripts=…`, when it
+  deleted any.
+
   **A node's instances.** Under the same lock, on every workspace whatever its settings,
   the job deletes the rows of nodes' instances that the pages no longer show
   (`Apiary.Nodes.prune_instances/1`): a pool's instances not seen for a day, and a node's
@@ -73,7 +83,7 @@ defmodule Apiary.Retention do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
-  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, Step}
+  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk, Step}
   alias Apiary.WorkItems.{Confirmation, WorkItem}
 
   @log_type "dev.qory.run.log"
@@ -207,6 +217,7 @@ defmodule Apiary.Retention do
             results = opts |> workspaces() |> Enum.map(&prune_workspace(&1, opts))
             prune_instances(opts)
             prune_machine_logs(opts)
+            prune_transcripts(opts)
             {:ok, results}
           after
             unlock()
@@ -709,6 +720,48 @@ defmodule Apiary.Retention do
     end
 
     :ok
+  end
+
+  # Under the job's lock, after the workspaces, the transcripts no run continues any more
+  # (the moduledoc); a dry run deletes none.
+  defp prune_transcripts(opts) do
+    unless Keyword.get(opts, :dry_run, false) do
+      batch = opts |> Keyword.get(:batch, @default_batch) |> max(1) |> min(10_000)
+      max_runs = Keyword.get(opts, :max_runs, @default_max_runs)
+
+      deleted =
+        max_runs
+        |> transcripts_done()
+        |> Enum.reduce(0, fn run, deleted ->
+          query = from c in SessionChunk, where: c.run_id == ^run.id
+          deleted + delete_batches(run, query, batch, 0)
+        end)
+
+      if deleted > 0, do: Logger.info("retention pruned transcripts=#{deleted}")
+    end
+
+    :ok
+  end
+
+  # The runs with chunks of a transcript whose work item is closed or undone, or that
+  # ended with no work item, at most `limit`.
+  defp transcripts_done(limit) do
+    ended = Apiary.WorkItems.State.ended_states()
+
+    Repo.all(
+      from r in Run,
+        left_join: d in DispatchRun,
+        on: d.id == r.dispatch_run_id,
+        left_join: w in WorkItem,
+        on: w.id == d.work_item_id,
+        where: r.id in subquery(from(c in SessionChunk, distinct: true, select: c.run_id)),
+        where:
+          (not is_nil(w.id) and w.state in ^ended) or
+            (is_nil(w.id) and r.state not in ^Run.alive_states()),
+        order_by: r.id,
+        limit: ^limit,
+        select: %{id: r.id}
+    )
   end
 
   ## The workspaces and the lock

@@ -67,7 +67,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # A run map: `id` and `number` (its registered run's public id and number, both nil for
   # a run with none: one waiting, or one that ended before its handover), `workspace_id`, the workspace it was queued in, where it stays
   # when its work item moves, `stage_id`, the stage it ran at, `attempt`, `of`, `state`
-  # (`Apiary.WorkItems.Explore.run_state/1`), `place` (`Apiary.WorkItems.Explore.step/4`),
+  # (`Apiary.WorkItems.Explore.run_state/1`), `paused`, for a paused run that a run
+  # continues, why it paused and the run that continues it (`Apiary.Dispatches.Pause`),
+  # else nil, `place` (`Apiary.WorkItems.Explore.step/4`),
   # `started_at`, `ended_at`, `duration_ms`, how long it took once it ended, `outcome`,
   # `end_cause`, the end cause of its run of the queue (nil while it has not ended),
   # `end_detail`, the code that end kept, nil for none (a gateway's refusal code, such as
@@ -161,7 +163,7 @@ defmodule Apiary.WorkItems.ExploreView do
 
   alias Apiary.Repo
   alias Apiary.Artifacts.{Artifact, ArtifactFile, Version}
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{DispatchRun, Pause}
   alias Apiary.Harnesses.{RunHarness, WorkflowGap}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.ReadNeeds
@@ -718,6 +720,7 @@ defmodule Apiary.WorkItems.ExploreView do
       attempt: step.attempt,
       of: step.of,
       state: Explore.run_state(step),
+      paused: Pause.of_run(step.run),
       place: step.place,
       started_at: Explore.started_at(step),
       ended_at: ended_at,

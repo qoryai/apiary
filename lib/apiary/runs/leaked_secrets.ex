@@ -17,7 +17,10 @@ defmodule Apiary.Runs.LeakedSecrets do
       still missing. Otherwise the second chunk starts a new text, so no two pieces that
       were not printed together are read as one secret, and the secret is not found;
     * the data of each event other than `dev.qory.run.log`, whose output is in the log
-      chunks, as `event_text/1` writes it, in the same pass;
+      chunks, as `event_text/2` writes it, in the same pass: the bytes of a chunk of a
+      session's transcript, `dev.qory.session.transcript`, decoded, as a continuation
+      reads them (`Apiary.Runs.Transcript`). A secret that the cut between two of its
+      chunks splits is not found;
     * a dispatch's machine log, when Qory Apiary stores it;
     * a dispatch's release reason, when the release is stored.
 
@@ -41,6 +44,7 @@ defmodule Apiary.Runs.LeakedSecrets do
 
   @cap 1_000
   @log_event "dev.qory.run.log"
+  @transcript_event "dev.qory.session.transcript"
   # The chunks before a pass's first chunk of a step read for the end a secret may start
   # in, and the chunks read at once for a secret's value.
   @carry_chunks 8
@@ -254,7 +258,7 @@ defmodule Apiary.Runs.LeakedSecrets do
   defp event_rows(events) do
     for %Event{type: type} = event <- events,
         type != @log_event,
-        text = event_text(event.data),
+        text = event_text(type, event.data),
         finding <- SecretScan.scan(text) do
       %{
         kind: finding.kind,
@@ -276,6 +280,20 @@ defmodule Apiary.Runs.LeakedSecrets do
   """
   @spec event_text(term) :: binary
   def event_text(data), do: data |> strings() |> Enum.join("\n")
+
+  @doc """
+  event_text/2 is `event_text/1` for an event of `type`: for a chunk of a session's
+  transcript, with its `bytes` decoded from base64, where they decode.
+  """
+  @spec event_text(String.t() | nil, term) :: binary
+  def event_text(@transcript_event, %{"bytes" => encoded} = data) when is_binary(encoded) do
+    case Base.decode64(encoded) do
+      {:ok, bytes} -> event_text(Map.put(data, "bytes", bytes))
+      :error -> event_text(data)
+    end
+  end
+
+  def event_text(_type, data), do: event_text(data)
 
   defp strings(map) when is_map(map) do
     map
@@ -481,10 +499,13 @@ defmodule Apiary.Runs.LeakedSecrets do
       %{}
     else
       Repo.all(
-        from(e in events, where: e.sequence in ^sequences, select: {e.sequence, e.data}),
+        from(e in events,
+          where: e.sequence in ^sequences,
+          select: {e.sequence, e.type, e.data}
+        ),
         log: false
       )
-      |> Map.new(fn {sequence, data} -> {sequence, event_text(data)} end)
+      |> Map.new(fn {sequence, type, data} -> {sequence, event_text(type, data)} end)
     end
   end
 

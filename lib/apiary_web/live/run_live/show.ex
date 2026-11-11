@@ -46,7 +46,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   alias Apiary.Access
   alias Apiary.Dispatches
-  alias Apiary.Dispatches.{DispatchRun, MachineLogs}
+  alias Apiary.Dispatches.{DispatchRun, MachineLogs, Pause}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
@@ -58,6 +58,7 @@ defmodule ApiaryWeb.RunLive.Show do
   alias ApiaryWeb.ConnectionLive.Rules
   alias ApiaryWeb.RunLive.Concealed
   alias ApiaryWeb.MachineTypeWords
+  alias ApiaryWeb.PauseWords
   alias ApiaryWeb.PreparationComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.TranscriptComponents
@@ -2534,7 +2535,9 @@ defmodule ApiaryWeb.RunLive.Show do
   # (`Preparation.stop_line/1`), or with the image a prebuild did not save
   # (`PreparationComponents.built_line/1`); else with the item the candidates find; else
   # with its failed push or copy (`Preparation.push_line/1`); else, for a prebuild lost
-  # before its image arrived, that (`unsaved_ending/2`). A prebuild that ended in another
+  # before its image arrived, that (`unsaved_ending/2`). A paused run that a run
+  # continues ends with why it paused and the run that continues it
+  # (`ApiaryWeb.PauseWords`). A prebuild that ended in another
   # state ends with the image it did not save, as one that completed whose report failed
   # its check, or one cancelled before its image arrived. A step's ending has no `seq`.
   defp assign_ending(socket, state, run, index) do
@@ -2552,6 +2555,11 @@ defmodule ApiaryWeb.RunLive.Show do
             unsaved_ending(run, preparation)
 
         assign(socket, ending: ending && rich_ending(ending, preparation))
+
+      pause = Pause.of_run(run) ->
+        path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{pause.number}"
+        rich = PauseWords.line(pause, path)
+        assign(socket, ending: %{seq: nil, text: plain_text(rich), rich: rich})
 
       not alive?(run) ->
         ending =

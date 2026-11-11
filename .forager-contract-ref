@@ -79,12 +79,16 @@
 # per key and limit window, and its answer, the newest state of each key and window from
 # every gateway, under the run's credential names; and `chosen` and `cooldown_until` on an
 # API credential, the key the model choice names and the end of a key's cooldown at the
-# claim, which the start key never has in the future.
+# claim, which the start key never has in the future; and a run that pauses at its
+# model keys' limit, `model_key_limit` on `dev.qory.session.exited` and `dev.qory.run.exited`
+# with the state `cancelled`, the chunks of a runtime session's transcript,
+# `dev.qory.session.transcript`, and a continuation's `resume` in its run configuration,
+# the paused run whose transcript it reads.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-4be06fda1993623381ba5b6c17c7bfd7f63ef5e7
+b17d6f56861e76d9d6aa822f6a078de2b795628e
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
@@ -139,3 +143,15 @@ test/fixtures/forager-contract/invalid/run-configuration-beyond-schema-model-key
 test/fixtures/forager-contract/invalid/run-configuration-credentials-api-chosen-false.json
 test/fixtures/forager-contract/invalid/run-configuration-credentials-api-cooldown-until-not-a-time.json
 test/fixtures/forager-contract/invalid/run-configuration-credentials-host-chosen.json
+priv/contract/events/session.transcript.schema.json
+test/fixtures/forager-contract/link/link-batch-exited-model-key-limit.json
+test/fixtures/forager-contract/link/link-batch-session-exited-model-key-limit.json
+test/fixtures/forager-contract/link/link-batch-session-transcript.json
+test/fixtures/forager-contract/link/link-run-answer-resume.json
+test/fixtures/forager-contract/run-configuration/resume.json
+test/fixtures/forager-contract/invalid/run-configuration-resume-no-session-id.json
+test/fixtures/forager-contract/invalid/run-configuration-resume-run-id-upper-case.json
+test/fixtures/forager-contract/invalid/event-session-transcript-no-session-id.json
+test/fixtures/forager-contract/invalid/event-session-transcript-offset-negative.json
+test/fixtures/forager-contract/invalid/event-session-transcript-over-32-kib.json
+test/fixtures/forager-contract/invalid/event-session-transcript-session-zero.json

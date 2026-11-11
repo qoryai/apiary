@@ -688,6 +688,47 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
     end
 
+    test "has resume after stack_hosts, before harness_hidden, as the contract orders it" do
+      resume = %{
+        "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+        "session_id" => "5f2c9a1e",
+        "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl"
+      }
+
+      members = stack_members(["git.example"], %{resume: resume, harness_hidden: true})
+
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(@document, nil, false, false, members)
+
+      decoded = Jason.decode!(bytes, objects: :ordered_objects)
+
+      assert Enum.map(decoded.values, &elem(&1, 0)) ==
+               ~w(version security_policy stack_hosts resume harness_hidden)
+
+      assert Enum.map(decoded["resume"].values, &elem(&1, 0)) == ~w(run_id session_id path)
+      assert Jason.decode!(bytes)["resume"] == resume
+      assert Schema.validate(bytes) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
+
+      # A resume alone composes a document; none leaves the document as it is.
+      assert {:composed, _bytes, nil} =
+               ComposedConfiguration.shape(
+                 @document,
+                 nil,
+                 false,
+                 false,
+                 stack_members([], %{resume: resume})
+               )
+
+      assert ComposedConfiguration.shape(
+               @document,
+               nil,
+               false,
+               false,
+               stack_members([], %{resume: nil})
+             ) == :as_is
+    end
+
     test "with no host has no stack_hosts" do
       assert ComposedConfiguration.shape(@document, nil, false, false, stack_members([])) ==
                :as_is

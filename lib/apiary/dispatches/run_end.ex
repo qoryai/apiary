@@ -80,6 +80,17 @@ defmodule Apiary.Dispatches.RunEnd do
   # any exit ends it: a build or a new run pulls from the same registry, so nothing is
   # cleared or queued again.
   #
+  # **A pause.** A run that is not a prebuild, whose folded exit paused it at its model
+  # keys' limit (`Apiary.Runs.Run.paused?/1`, the reason `model_key_limit`), ends
+  # `run_ended` as any exit ends it, and then, in the same transaction, the run that
+  # continues it is queued (`Apiary.Dispatches.requeue_for_pause/2`), with the earliest
+  # end of a cooldown of its provider's keys kept on it when every one of them is in
+  # cooldown then (`Apiary.ModelKeys.cooling_until/2`). The stage runner then reads the
+  # continuation as the stage's newest run, so the paused run's end moves no stage. Its
+  # work item is held `FOR UPDATE` (`hold/1`), as for a missing image; an end that finds
+  # such an exit with its work item not held so, as `hold/1` read the run before its exit
+  # was folded, ends nothing, and the next check ends it with the work item held.
+  #
   # The run of the queue ends once: `ended`, with its end cause. Its live dispatch, the one
   # handed over, ends with it with the same cause; a stale dispatch of it not yet ended ends
   # with it, `run_ended`; `ended_at` and `end_cause` are set together. The slot the dispatch
@@ -153,7 +164,7 @@ defmodule Apiary.Dispatches.RunEnd do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Dispatches, Environments, Repo}
+  alias Apiary.{Dispatches, Environments, ModelKeys, Repo}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Settle, Slots}
   alias Apiary.Environments.Record
   alias Apiary.Lingo.Domain
@@ -226,10 +237,11 @@ defmodule Apiary.Dispatches.RunEnd do
   # (`Apiary.Environments.hold_missing/3`), then its work item `FOR UPDATE`, then
   # those records `FOR UPDATE` (`Apiary.Environments.lock_missing/3`), returned as
   # `{:image_missing, records, collections}`; both empty when the run's pool or target is
-  # not found. A prebuild has no work item (`dispatch_runs_step_shape_check`). nil for no
-  # run.
+  # not found. For such a run whose registered run paused (`paused?/1`), its work item
+  # `FOR UPDATE`, returned as `:paused`. A prebuild has no work item
+  # (`dispatch_runs_step_shape_check`). nil for no run.
   @doc false
-  @spec hold(Ecto.UUID.t() | nil) :: held_build | held_missing | nil
+  @spec hold(Ecto.UUID.t() | nil) :: held_build | held_missing | :paused | nil
   def hold(nil), do: nil
 
   def hold(dispatch_run_id) when is_binary(dispatch_run_id) do
@@ -248,14 +260,12 @@ defmodule Apiary.Dispatches.RunEnd do
       {_step, _pool_id, _collection_id, work_item_id} when is_binary(work_item_id) ->
         case missing(dispatch_run_id) do
           nil ->
-            # Hand-over: with the workflow model, the end writes the work item's place in
-            # its stage (`Apiary.Stages.run_ended/1`), so it is locked `FOR UPDATE` here.
-            :ok =
-              if Apiary.Stages.on?(),
-                do: lock_work_item(work_item_id),
-                else: share_work_item(work_item_id)
-
-            nil
+            if paused?(dispatch_run_id) do
+              :ok = lock_work_item(work_item_id)
+              :paused
+            else
+              hold_work_item(work_item_id)
+            end
 
           :unknown ->
             :ok = lock_work_item(work_item_id)
@@ -270,6 +280,25 @@ defmodule Apiary.Dispatches.RunEnd do
       _other ->
         nil
     end
+  end
+
+  # Hand-over: with the workflow model, the end writes the work item's place in its
+  # stage (`Apiary.Stages.run_ended/1`), so it is locked `FOR UPDATE` here.
+  defp hold_work_item(work_item_id) do
+    :ok =
+      if Apiary.Stages.on?(),
+        do: lock_work_item(work_item_id),
+        else: share_work_item(work_item_id)
+
+    nil
+  end
+
+  # Whether the registered run of the run of the queue `dispatch_run_id`, read without a
+  # lock, paused (`Apiary.Runs.Run.paused?/1`).
+  defp paused?(dispatch_run_id) do
+    Repo.exists?(
+      from r in Run, where: r.dispatch_run_id == ^dispatch_run_id and r.state == "paused"
+    )
   end
 
   defp share_work_item(work_item_id) do
@@ -310,7 +339,7 @@ defmodule Apiary.Dispatches.RunEnd do
           Run.t(),
           atom,
           DateTime.t(),
-          held_build | held_missing | nil
+          held_build | held_missing | :paused | nil
         ) ::
           [Ecto.UUID.t() | Settle.told()]
   def finish(
@@ -322,14 +351,15 @@ defmodule Apiary.Dispatches.RunEnd do
       ) do
     in_transaction!()
 
-    if missing_unheld?(dispatch_run, run, held) do
+    if missing_unheld?(dispatch_run, run, held) or paused_unheld?(dispatch_run, run, held) do
       []
     else
       changed = end_locked(dispatch_run, cause, now, detail(cause, run))
       built = build_ended(held, dispatch_run, cause, run, now)
       settled = settled(dispatch_run, run, cause, now)
       requeued = image_missing(held, dispatch_run, run, cause, now)
-      told = changed ++ built ++ settled ++ requeued
+      continued = paused(held, dispatch_run, run, cause, now)
+      told = changed ++ built ++ settled ++ requeued ++ continued
       told ++ Enum.reject(staged(dispatch_run), &(&1 in told))
     end
   end
@@ -399,6 +429,35 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   defp image_missing(_held, _dispatch_run, _run, _cause, _now), do: []
+
+  # A run that is not a prebuild whose locked registered run paused, while its work item
+  # is not held `FOR UPDATE`: `hold/1` read the run before its exit was folded, with the
+  # workflow model off.
+  defp paused_unheld?(%DispatchRun{step: @prebuild}, _run, _held), do: false
+  defp paused_unheld?(_dispatch_run, _run, :paused), do: false
+
+  defp paused_unheld?(_dispatch_run, %Run{} = run, _held),
+    do: Run.paused?(run) and not Apiary.Stages.on?()
+
+  # A run that is not a prebuild ended by its exit at its model keys' limit: the run that
+  # continues it queued (the moduledoc). The workspaces whose queue changed, and the work
+  # item to tell.
+  defp paused(_held, %DispatchRun{step: @prebuild}, _run, _cause, _now), do: []
+
+  defp paused(_held, %DispatchRun{} = dispatch_run, %Run{} = run, :run_ended, now) do
+    if Run.paused?(run) do
+      providers = if run.provider_connection_id, do: [run.provider_connection_id], else: []
+
+      case Dispatches.requeue_for_pause(dispatch_run, ModelKeys.cooling_until(providers, now)) do
+        {:ok, next} -> [next.workspace_id | Settle.told(next.work_item_id)]
+        {:error, _not_requeued} -> []
+      end
+    else
+      []
+    end
+  end
+
+  defp paused(_held, _dispatch_run, _run, _cause, _now), do: []
 
   # For the run of the queue `dispatch_run_id`, read without a lock, when its registered
   # run's folded exit is `failed` with the reason `image_missing` and it started in the

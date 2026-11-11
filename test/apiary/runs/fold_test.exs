@@ -1876,6 +1876,19 @@ defmodule Apiary.Runs.FoldTest do
       assert Fold.exit_state("failed", "no_session") == "failed"
     end
 
+    test "model_key_limit: a run its keys' limit ended is paused, whatever the state given" do
+      for state <- ~w(cancelled failed succeeded) do
+        data = %{"state" => state, "reason" => "model_key_limit", "exit_code" => -1}
+        %{run: run} = Fold.fold(@run, [started(2), exited(9, data)])
+
+        assert {run.state, run.exit_state, run.exit_reason} ==
+                 {"paused", "paused", "model_key_limit"}
+
+        assert {run.exited_at, run.lost_at} == {at(9), nil}
+        assert Fold.exit_state(state, "model_key_limit") == "paused"
+      end
+    end
+
     test "a state other than the three, and a reason that is not a code, read as absent" do
       long = "a" <> String.duplicate("b", 63)
 

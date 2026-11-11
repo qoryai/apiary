@@ -61,13 +61,14 @@ defmodule Apiary.Runs.Filters do
   alias Apiary.PublicId
   alias Apiary.Runs.Run
 
-  # The four families the states read as, in the order they are shown. Only their states
+  # The five families the states read as, in the order they are shown. Only their states
   # go in a URL: `state=failed,lost`. The families runs are counted in (`Apiary.Runs.Run`):
   # one definition.
   @families [
     %{key: "alive", label: gettext_noop("Alive"), states: ["queued" | Run.alive_states()]},
     %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
     %{key: "cancelled", label: gettext_noop("Cancelled"), states: Run.cancelled_states()},
+    %{key: "paused", label: gettext_noop("Paused"), states: Run.paused_states()},
     %{key: "ended_badly", label: gettext_noop("Ended badly"), states: Run.ended_badly_states()}
   ]
   @family_keys Enum.map(@families, & &1.key)
@@ -187,9 +188,9 @@ defmodule Apiary.Runs.Filters do
   @type family :: %{key: String.t(), label: String.t(), states: [String.t()]}
 
   @doc """
-  The four families the states read as, in the order they are shown: alive (`pending`,
-  `running`), ended well (`completed`), cancelled (`cancelled`) and ended badly (`failed`,
-  `lost`). Every state is in exactly one.
+  The five families the states read as, in the order they are shown: alive (`pending`,
+  `running`), ended well (`completed`), cancelled (`cancelled`), paused (`paused`) and
+  ended badly (`failed`, `lost`). Every state is in exactly one.
   The labels are in the domain's words: translated here, at call time, because the list is
   made at compile time.
   """
