@@ -545,20 +545,20 @@ The `200` has the header `X-Qory-Configuration`. Its `keys` are the newest state
 of the run's keys in each window, from every gateway, under the run's credential names,
 without the utilization of a window whose `resets_at` has passed. A gateway reads them to skip a
 key that a run on another machine found at its limit.
+<!-- /feature -->
 
 ### A paused run's transcript: `GET /v1/runs/<run_id>/resume/transcript`
 
 A signed GET, under a key of the gateway to which the run is attached: the session of a
-run that
-continues a paused run reads the paused run's transcript with it before its runtime
-starts, to resume the agent's session. `<run_id>` is the continuing run's id. A run that
+run that continues a paused run reads the paused run's transcript with it before its
+runtime starts, to resume the agent's session. `<run_id>` is the continuing run's id. A run that
 continues a paused run has `resume` in its run configuration: the paused run's id, its
 session id and the path of the transcript. The route needs the feature `observability`,
 the run endpoint's.
 
 | Status | When | Body |
 |---|---|---|
-| `404` | the run is not attached to the gateway that sends the request, or it ended, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has 100,000 chunks or more | `{"error":"not_found"}` |
+| `404` | the run is not attached to the gateway that sends the request, or the key may not post its events (`run.post_events`), or it ended, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has 100,000 chunks or more | `{"error":"not_found"}` |
 | `503` | the transcript could not be read | `{"error":"unavailable"}` |
 | `200` | found | the transcript, `application/x-ndjson` |
 
@@ -566,7 +566,6 @@ The `200` is sent in chunks, the paused run's chunks of the transcript in sequen
 order, and signed over their SHA-256. A failure while the chunks are sent ends the
 answer there, short of its signed length. No byte of a transcript is logged.
 
-<!-- /feature -->
 ### Events: `POST /v1/events`
 
 A signed POST: one batch of one run's events, a non-empty JSON array. A request is refused in

@@ -450,7 +450,7 @@ replaces the navigation it is in.
   that is empty after every save, with "Qory Apiary stores the key encrypted, and nobody
   can view it again."; then Resets and Pause for
   (`ApiaryWeb.ModelKeyComponents.settings_fields/1`). Resets is a group of Day, Time and
-  Time zone, the zone the reader's where the key has no reset, with the hint "The
+  Time zone, whose zone is the reader's for a key with no reset, with the hint "The
   weekly time when this key's allowance resets. Set it if the provider's answers have no
   reset time." Pause for is a number and a unit, minutes, hours or days, with the hint
   "How long runs skip this key after the provider returns a limit error, when no reset

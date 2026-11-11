@@ -768,50 +768,55 @@ for each other and never on each other at once:
    one workspace takes the integrations lock, then that workspace's row
    `FOR NO KEY UPDATE`, before it writes the workspace's secret of the provider's keys
    (`Apiary.Secrets.create_provider_keys/3`). Those two writes are the changes that take
-   workspace rows after the integrations lock. No change that holds a
-   workspace row takes the integrations lock or locks the row of an integration other
-   than a model provider, so the two never wait on each other. A save of a deny rule
-   reads the integrations' hosts while it holds its workspace's row, with no lock of
-   theirs (`Apiary.Policy.check_deny/3`): a write to an integration holds every workspace
-   row before it writes, so the save reads that write whole or not at all. It reads the
-   hosts of the model providers' API endpoints the same way. A change to an existing
-   model provider takes no workspace row, so a save at the same moment may read the
-   provider as it was
-   before the change; the document composed for a run has the provider's hosts in
-   `allow_first` either way (`Apiary.Policy.ComposedConfiguration`). A write of a model choice
-   at levels 2 to 5 holds the workspace row and then takes a provider's row `FOR SHARE`. A change to a model provider takes the integrations lock, then the
+   workspace rows after the integrations lock. No change that holds a workspace row takes
+   the integrations lock or locks the row of an integration other than a model provider,
+   so the two never wait on each other. A save of a deny rule reads the integrations'
+   hosts while it holds its workspace's row, with no lock of theirs
+   (`Apiary.Policy.check_deny/3`): a write to an integration holds every workspace row
+   before it writes, so the save reads that write whole or not at all. It reads the hosts
+   of the model providers' API endpoints the same way. A change to an existing model
+   provider takes no workspace row, so a save at the same moment may read the provider as
+   it was before the change; the document composed for a run has the provider's hosts in
+   `allow_first` either way (`Apiary.Policy.ComposedConfiguration`). A write of a model
+   choice at levels 2 to 5 holds the workspace row and then takes a provider's row
+   `FOR SHARE`. A change to a model provider takes the integrations lock, then the
    provider's row `FOR UPDATE`. To change or delete the provider's keys, it then takes,
    for keys kept as the organisation's secret, the organisation's advisory lock for its
    secrets, and the row of the keys' secret `FOR UPDATE`, of the organisation or of a
-   workspace, with no workspace row; to choose the default key, that row `FOR SHARE`. It reads what uses the
-   keys without a lock (`Apiary.Secrets.Usage`).
+   workspace, with no workspace row; to choose the default key, that row `FOR SHARE`. It
+   reads what uses the keys without a lock (`Apiary.Secrets.Usage`).
    A write of a model choice (`Apiary.ModelChoices`) at levels 2 to 5 takes the security
    policy's order, then the provider's row `FOR SHARE`, then the rows of the fallbacks'
    providers `FOR SHARE`, then the choice's row `FOR UPDATE`. A write of the
-   organisation's default takes the organisation's rows and the membership, then the integrations lock, then the provider's row `FOR SHARE` and
-   the choice's row. A change to a provider takes the provider's row `FOR UPDATE`, so it
-   waits for a save of a choice of that provider, or is seen by it: the change reads the
-   choices that use the provider without a lock, and refuses while one does. No change to
-   a provider takes a lock on an adapter's connection.
+   organisation's default takes the organisation's rows and the membership, then the
+   integrations lock, then the provider's row `FOR SHARE` and the choice's row. A change
+   to a provider takes the provider's row `FOR UPDATE`, so it waits for a save of a choice
+   of that provider, or is seen by it: the change reads the choices that use the provider
+   without a lock, and refuses while one does. No change to a provider takes a lock on an
+   adapter's connection.
    A write of a time limit (`Apiary.TimeLimits`) takes the security policy's order, then
    the limit's row `FOR UPDATE`.
-   The claim of an explore run (`Apiary.Dispatches.RunSettings`) holds the pool's row,
-   the gateway's row, the environment records, the run of the queue and its dispatch
-   (`Apiary.Dispatches.Slots`), then reads the choices and their fallbacks without a
-   lock, then takes the rows of the providers they name, as a provider or a fallback,
-   `FOR SHARE`, by id, then the rows of those providers' keys' secrets `FOR SHARE`, by
-   id. It reads the keys' settings and states without a lock. A change to a provider or
-   to its keys locks nothing of the queue. A change that came first is seen by the claim; one that comes after
-   waits for the claim to commit. A deletion of the provider then reads the run the claim
-   registered, and refuses while that run is pending or running.
-   A gateway's secrets request for a run's model keys takes no lock: it reads the run,
-   the provider's row and the row of its keys' secret without one, checks the
-   provider's integrity code, decrypts each key in the request, whose row is bound to
-   its secret, and writes the audit entry `secret.seal` alone. A model keys report takes the
-   locks of its keys' state rows in one order, so two reports of the same keys at once
-   cannot deadlock. A provider's deletion is refused while a
-   pending or running run uses it, so the run's provider columns are empty only on a run
-   that ended, and the request for such a run is refused.
+   The claim of an explore run (`Apiary.Dispatches.RunSettings`) holds the pool's row, the
+   gateway's row, the environment records, the run of the queue and its dispatch
+   (`Apiary.Dispatches.Slots`), then reads the choices and their fallbacks without a lock,
+   then takes the rows of the providers they name, as a provider or a fallback,
+   `FOR SHARE`, by id, then the rows of those providers' keys' secrets `FOR SHARE`, by id.
+   It reads the keys' settings and states without a lock. A change to a provider or to its
+   keys locks nothing of the queue while it runs; once it has committed, a change of a
+   model provider or of a model choice writes the model providers of the queue's waiting
+   runs again, each row in a statement of its own, and only a row that still waits
+   (`Apiary.Dispatches.refresh_model_providers/1`). A change that came first is seen by
+   the claim; one that comes after waits for the claim to commit. A deletion of the
+   provider then reads the run the claim registered, and refuses while that run is pending
+   or running.
+   A gateway's secrets request for a run's model keys takes no lock: it reads the run, the
+   provider's row and the row of its keys' secret without one, checks the provider's
+   integrity code, decrypts each key in the request, whose row is bound to its secret, and
+   writes the audit entry `secret.seal` alone. A model keys report takes the locks of its
+   keys' state rows in one order, so two reports of the same keys at once cannot deadlock.
+   A provider's deletion is refused while a pending or running run uses it, so the run's
+   provider columns are empty only on a run that ended, and the request for such a run is
+   refused.
 
 An edition takes all its rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
 before the change's first write, in its fixed order and in the strongest mode the
