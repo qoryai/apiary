@@ -537,7 +537,7 @@ contract version); the first that applies is the answer:
 | `400` | the body is not a report, has a member twice, or has an `observed_at` more than 300 seconds after the server's clock | `{"error":"invalid_request","names":["<member>"]}` |
 | `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
 | `404` | the instance does not have the features `factory` and `secrets`; or the run is not attached to the gateway that sends the report: through this gateway, its run key listing the key, reloadable by this key and instance, of a workspace the gateway may still serve, whose events the key may post (`run.post_events`) | `{"error":"not_found"}` |
-| `410` | the run has ended; a report that arrives at most 60 seconds after the run ended by the server's clock, when its `dev.qory.run.exited` or `dev.qory.run.refused` arrived or when Qory Apiary ended it, is recorded first | empty |
+| `410` | the run has ended; a report that arrives at most 60 seconds after the run ended is recorded first: by the server's clock, the first of when its first `dev.qory.run.exited` or `dev.qory.run.refused` arrived and when Qory Apiary ended it | empty |
 | `503` | the report could not be stored | `{"error":"unavailable"}` |
 | `200` | recorded | `{"version":1,"keys":[…]}` |
 

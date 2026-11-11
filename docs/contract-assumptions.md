@@ -1053,10 +1053,11 @@ the key's gateway, whose run key lists the key, that the key and the request's i
 may reload, of a workspace the gateway may still serve, and whose events `Apiary.Access`
 lets the key post, `404 {"error":"not_found"}`. A run that
 has ended is `410`, empty, but a report that arrives at most 60 seconds after the run
-ended is recorded first, by this server's clock: after this server took the run's
-`dev.qory.run.exited` or `dev.qory.run.refused`, or after it ended the run by another
-path, such as the lost-run check, before that event came. The times the gateway gives
-those events are not read. A report that cannot be stored is
+ended is recorded first. The run ended, by this server's clock, at the first of: when
+this server received the run's first `dev.qory.run.exited` or `dev.qory.run.refused`,
+and when it ended the run by another path, such as the lost-run check. The times the
+gateway gives those events are not read, and an event that arrives later does not move
+the end. A report that cannot be stored is
 `503 {"error":"unavailable"}`. Else Qory Apiary records each item of a credential the run
 has, by the key's row and not its name, for a window of the contract's list:
 `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, `overage`, `requests`,
@@ -1806,9 +1807,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   read as a person's cancel or a failure.
 - Model keys: the contract has the gateway send its last report within 10 seconds of the
   run's end. Qory Apiary records a report that arrives at most 60 seconds after the run
-  ended by the server's clock, by the arrival of its `dev.qory.run.exited` or
-  `dev.qory.run.refused` or by another path of the server, then returns
-  `410`, so a report that a gateway sent as the run ended is not lost.
+  ended, by the server's clock, at the first arrival of its `dev.qory.run.exited` or
+  `dev.qory.run.refused` or by another path of the server, then returns `410`, so a
+  report that a gateway sent as the run ended is not lost.
 - The transcript of a paused run: the contract lists `GET /resume/transcript` among the
   run API's requests. Qory Apiary serves it with the feature `observability`, the run
   endpoint's, not `workflow_model`, the other run API requests' feature: a run

@@ -518,6 +518,47 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert [%State{window: "five_hour"}] = rows()
     end
 
+    test "410 that a refusal sent after the exit leaves closed", ctx do
+      Repo.delete_all(from(e in Apiary.Runs.Event, where: e.run_id == ^ctx.run.id))
+
+      # The run exited 2 h ago; its gateway posts a refusal now.
+      Apiary.RunEventsFixtures.event_fixture(ctx.run, 1, "run.exited", %{},
+        received_at: DateTime.add(DateTime.utc_now(), -7200, :second)
+      )
+
+      Apiary.RunEventsFixtures.event_fixture(ctx.run, 2, "run.refused", %{},
+        received_at: DateTime.utc_now()
+      )
+
+      {1, _} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert rows() == []
+    end
+
+    test "410 that a lost exit dated by the gateway in 2099 leaves closed", ctx do
+      future = ~U[2099-01-01 00:00:00.000000Z]
+      Repo.delete_all(from(e in Apiary.Runs.Event, where: e.run_id == ^ctx.run.id))
+
+      # The exit has the state lost and the gateway's time 2099, so the fold sets both
+      # `exited_at` and `lost_at` to that time; the server received it 61 s ago.
+      Apiary.RunEventsFixtures.event_fixture(ctx.run, 1, "run.exited", %{"state" => "lost"},
+        time: future,
+        received_at: DateTime.add(DateTime.utc_now(), -61, :second)
+      )
+
+      {1, _} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [state: "lost", exited_at: future, lost_at: future]
+        )
+
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert rows() == []
+    end
+
     test "a report before the run's exit is stored and answered, and one after is 410", ctx do
       conn = post_report(ctx, report(ctx, [state(ctx)]))
       assert conn.status == 200
