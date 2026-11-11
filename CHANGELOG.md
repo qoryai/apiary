@@ -1101,8 +1101,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   time has passed, or with no time known, the line is “Paused: a key of Northwind Claude
   reached its limit. It continues in run 15.” A paused run that no run continues shows
   “Paused: a key of Northwind Claude reached its limit.” Where the provider was deleted
-  since, the line starts “Paused: a model key reached its limit.” A provider of an
-  operator's chain is not named: the line is “Paused: every model key is in cooldown
+  since, the line starts “Paused: a model key reached its limit.” A provider that the
+  instance admin set up is not named: the line is “Paused: every model key is in cooldown
   until Fri 14:00. It continues in run 15.” while that time is to come, else it starts
   “Paused: a model key reached its limit.”, and a waiting run shows “Waiting for a model
   key: every model key is in cooldown until 14:00.” The runs list's Filter menu has the
