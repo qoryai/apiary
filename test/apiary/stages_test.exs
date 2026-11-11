@@ -2941,6 +2941,35 @@ defmodule Apiary.StagesTest do
                )
     end
 
+    test "Explore again on an escalated stage with no escalation stored needs a listed approver",
+         %{scope: scope} do
+      member = member_fixture(scope)
+
+      save!(scope, [
+        explore_stage(%{
+          "gate" => %{"kind" => "person", "approvers" => %{"members" => [scope.user.id]}}
+        })
+      ])
+
+      work_item =
+        take_in!(scope) |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
+      # As the migration placed it: escalated, with no escalation stored.
+      Repo.delete_all(from e in Escalation, where: e.work_item_id == ^work_item.id)
+      assert reload(work_item).stage_state == :escalated
+
+      assert WorkItems.explore_again(member.scope, work_item, 1) == {:error, :not_approver}
+      assert %{stage_state: :escalated} = reload(work_item)
+      assert Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id) == []
+
+      assert {:ok, _} = WorkItems.explore_again(scope, work_item, 1)
+      assert %{stage_state: :running} = reload(work_item)
+      user_id = scope.user.id
+
+      assert %Escalation{resolution: :another_round, resolved_by_id: ^user_id} =
+               Repo.get_by(Escalation, work_item_id: work_item.id)
+    end
+
     test "an answer to the last run a placed work item may have runs again", %{
       scope: scope
     } do

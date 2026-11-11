@@ -995,7 +995,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                commit: commit
              }
 
-      assert :ok = Processes.rekey_machine(ctx.scope, "browser", "x")
+      assert {:ok, _count} = Processes.rekey_machine(ctx.scope, "browser", "x")
       [_v1, _v2, _dropped, new_trial] = versions(ctx.workspace)
       assert new_trial.status == :trial
       assert new_trial.document["machine"] == "x"

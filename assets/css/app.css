@@ -7311,16 +7311,6 @@
     color: var(--q-muted);
     font-size: 0.875rem;
   }
-  /* Who fixes the cause of a failed step, right under the cause in the text's colour. */
-  .q-prep-cause-fix {
-    font-size: 0.875rem;
-  }
-  /* What a step that runs does, as Pull the images says which image it pulls. */
-  .q-prep-note {
-    margin: 8px 0 0;
-    font-size: 0.8125rem;
-    line-height: 20px;
-  }
   .q-io {
     display: grid;
     gap: 12px;

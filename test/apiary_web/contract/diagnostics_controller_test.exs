@@ -645,6 +645,14 @@ defmodule ApiaryWeb.Contract.DiagnosticsControllerTest do
       assert_unauthorized(list(key, pair.secret, "limit=1"))
     end
 
+    test "checks run.list_instance through Apiary.Access before it lists the runs",
+         %{key: key, seed: seed} do
+      assert page!(list(key, seed, "limit=1"))
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ListsNoRuns)
+      assert_unauthorized(list(key, seed, "limit=1"))
+    end
+
     # Under the contract, a query that is not valid UTF-8 after percent-decoding gets 400
     # with a body the contract does not define. Plug's query decoding raises a 400 error
     # (`Plug.Conn.InvalidQueryError`) before the router, so no parameter is refused.

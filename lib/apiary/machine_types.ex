@@ -1,10 +1,10 @@
 defmodule Apiary.MachineTypes do
   @moduledoc """
   The instance's machine types, which an instance admin keeps in Instance settings ›
-  Machine types: each a key, a name, a spec and an optional image
-  (`Apiary.MachineTypes.MachineType`), one of them the default. Process documents, stages
-  and runs use a type by its key; the key `default` means the default type, wherever a
-  process document has a machine type. Any type may have no image, the default too.
+  Machine types: each a key, a name and a spec (`Apiary.MachineTypes.MachineType`), one of
+  them the default. Process documents, stages and runs use a type by its key; the key
+  `default` means the default type, wherever a process document has a machine type. A
+  type sets the size of the machine a run starts on, and no image.
 
   **Which type a run is on.** A workflow entry of a process document picks a type
   (`machine`), else the document's `machine`, the workspace's default, applies, else the
@@ -25,24 +25,31 @@ defmodule Apiary.MachineTypes do
   before and after. A type that a process document uses is kept, and so is the default.
 
   **A key change** (`update/3`) breaks every file that uses the key. In its transaction,
-  each workspace's current and trial process that uses the key gets a new version with the
-  key changed (`Apiary.Processes.rekey_machine/3`), and so does the newest process of each
-  workspace type that an instance admin saved
-  (`Apiary.Processes.TypeTemplates.rekey_machine/3`). A workspace type whose newest
-  process is a copy of the Qory harness's keeps that copy, with the key of before: its
-  runs start on the default type until the harness changes the key. Each run that waits
-  in the queue on the key gets the key of after, and the new version where its version
-  got one, so a pool claims it as before. Past versions, the runs that started or ended,
-  and their dispatches keep the key of before. `key_change/1` counts what the change
-  updates, the runs that wait on the key among them, lists the Qory harness's
-  `process.yaml` files that the instance admin fixes, and counts the files that each
-  organisation fixes in its harness repositories, with no workspace, workflow or
-  repository of an organisation.
+  under the instance action `machine_type.rekey` (`Apiary.Access`), each workspace's
+  current and trial process that uses the key gets a new version with the key changed
+  (`Apiary.Processes.rekey_machine/3`), and so does the newest process of each workspace
+  type that an instance admin saved (`Apiary.Processes.TypeTemplates.rekey_machine/3`).
+  A change that rewrites at least one version leaves a `machine_type.rekey` entry in the
+  trail of the instance's organisation, with the key before and after. With the feature
+  `workflow_model` off, no process and no workspace type gets a version, and the trail
+  gets no entry for either: only a work item's stages read a process's key, and only
+  with that feature on. With `workflow_model` off, processes and workspace types keep the
+  old key; once the feature is on again, their runs start on the default machine type
+  until the key is fixed. A
+  workspace type whose newest process is a copy of the Qory harness's keeps that copy,
+  with the key of before: its runs start on the default type until the harness changes
+  the key. Each run that waits in the queue on the key gets the key of after, and the new
+  version where its version got one, so a pool claims it as before. Past versions, the
+  runs that started or ended, and their dispatches keep the key of before.
+  `key_change/1` counts what the change updates, the runs that wait on the key among
+  them, lists the Qory harness's `process.yaml` files that the instance admin fixes, and
+  counts the files that each organisation fixes in its harness repositories, with no
+  workspace, workflow or repository of an organisation.
   """
   import Ecto.Query
 
   alias Apiary.Accounts.Scope
-  alias Apiary.{Audit, InstanceConfig, Processes, Repo}
+  alias Apiary.{Access, Audit, Features, InstanceConfig, Processes, Repo}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.MachineTypes.MachineType
   alias Apiary.Nodes.Node
@@ -50,10 +57,6 @@ defmodule Apiary.MachineTypes do
   alias Apiary.Processes.{TypeTemplate, TypeTemplates, Version}
 
   @reserved "default"
-
-  # The rounds of `key_shared_default/0`: an unlocked read of the default, then a locked
-  # read of its row.
-  @default_reads 3
 
   @typedoc """
   A spec as the provisioner contract writes it, with string keys: `vcpus`, `memory_mib`,
@@ -136,116 +139,6 @@ defmodule Apiary.MachineTypes do
       nil ->
         %{machine_type: @reserved, machine_spec: nil, machine_type_was_default: true}
     end
-  end
-
-  @doc """
-  image/1 is the image of the type with the key `key` that is not the default, nil where
-  it has none, for the default type and for a key that no type has: the first in a run's
-  order of images after its policy's (`Apiary.Runs.Attach`), which the claim fixes. A
-  run on the default type, or on a key that no type has, is given its target's prebuilt
-  image first, which is built on the default type's image, then `default_image/0`.
-  """
-  @spec image(String.t() | nil) :: String.t() | nil
-  def image(key) do
-    case imaged(key) do
-      %MachineType{image: image} -> image
-      nil -> nil
-    end
-  end
-
-  @doc "The type whose image `image/1` returns for the key `key`, nil for none."
-  @spec imaged(String.t() | nil) :: MachineType.t() | nil
-  def imaged(key) when is_binary(key) do
-    Repo.one(
-      from t in MachineType, where: t.key == ^key and not t.is_default and not is_nil(t.image)
-    )
-  end
-
-  def imaged(_key), do: nil
-
-  @doc """
-  shared/1 reads `type` again, in a transaction, `FOR KEY SHARE SKIP LOCKED`, as a claim
-  reads it before it inserts a run that refers to it
-  (`runs.configured_image_machine_type_id`): the type as it is now, while it has the same
-  key and an image and is not the default; else nil. It is also nil while a change or a
-  delete of the type holds the row (`update/3`, `delete/2`). The claim then passes the
-  run and does not wait on the row: a key change holds the row and then waits on the
-  runs that wait on the key, the one the claim holds among them.
-  """
-  @spec shared(MachineType.t()) :: MachineType.t() | nil
-  def shared(%MachineType{id: id, key: key}) do
-    Repo.one(
-      from t in MachineType,
-        where: t.id == ^id and t.key == ^key and not t.is_default and not is_nil(t.image),
-        lock: "FOR KEY SHARE SKIP LOCKED"
-    )
-  end
-
-  @doc """
-  key_shared_default/0 is the default type, read again by its id, in a transaction,
-  `FOR KEY SHARE`, as an attach reads it before it writes the type's id on the run
-  (`runs.configured_image_machine_type_id`), so the type stays until the transaction
-  ends.
-
-  The locked read waits only for a change that holds the type's row `FOR UPDATE`: an
-  `update/3` or a `make_default/2` of this type, or a `delete/2` of it. It then returns
-  the row as the change left it. A `make_default/2` of another type does not make it
-  wait: that change clears this row's `is_default` with an `UPDATE` (`defaulted/2`). As
-  the unique index on `is_default` is partial, the column is no key, so the `UPDATE`
-  takes `FOR NO KEY UPDATE`, which does not conflict with `FOR KEY SHARE`.
-
-  Where the locked row is gone or is no longer the default, a change of the types
-  committed between the two reads, and the function starts another round of two reads,
-  #{@default_reads} rounds at most. A round fails only where another change of the
-  types commits inside its gap, and changes of the types run one at a time, as each
-  locks the table first (`transact/1`). After the last round, the function returns nil:
-  the attach then writes no type's id and starts the run in the pool's default image, as
-  for a default type with no image. Nil also where there is no default type.
-  """
-  @spec key_shared_default() :: MachineType.t() | nil
-  def key_shared_default, do: key_shared_default(@default_reads)
-
-  defp key_shared_default(0), do: nil
-
-  defp key_shared_default(reads) do
-    case default_type() do
-      %MachineType{id: id} ->
-        case Repo.one(from t in MachineType, where: t.id == ^id, lock: "FOR KEY SHARE") do
-          %MachineType{is_default: true} = type -> type
-          _gone_or_not_default -> key_shared_default(reads - 1)
-        end
-
-      nil ->
-        nil
-    end
-  end
-
-  @doc "The image of the default type, nil where it has none or there is none."
-  @spec default_image() :: String.t() | nil
-  def default_image do
-    case default_type() do
-      %MachineType{image: image} -> image
-      nil -> nil
-    end
-  end
-
-  @doc """
-  no_image/1 is the condition, on a run of the queue bound `binding`, that `image/1` of
-  its key is nil: no type that is not the default has its key and an image. Such a run
-  is held for its target's build as before (Apiary.Environments.held/1).
-  """
-  @spec no_image(atom) :: Ecto.Query.dynamic_expr()
-  def no_image(binding) when is_atom(binding) do
-    dynamic(
-      [{^binding, r}],
-      fragment(
-        """
-        NOT EXISTS (SELECT 1 FROM machine_types t WHERE t.image IS NOT NULL
-          AND NOT t.is_default AND t.key = ?)
-        """,
-        r.machine_type
-      )
-    )
   end
 
   defp resolved(key) when is_binary(key) and key != @reserved do
@@ -505,7 +398,8 @@ defmodule Apiary.MachineTypes do
   save, uses it and is rewritten; `waiting`, the number of runs that wait in the queue
   on it; `files`, the Qory harness's files that the instance admin fixes; and
   `organisations`, by organisation name, the number of files in the organisation's
-  harness repositories that the organisation fixes.
+  harness repositories that the organisation fixes. With the feature `workflow_model`
+  off, `workspaces` and `templates` are 0: the change rewrites no process.
 
   The files are each `process.yaml` that a current or trial process that uses the key
   was read from (`Apiary.Processes.harness_origin/1`: `git`, `module` and `commit`),
@@ -526,10 +420,20 @@ defmodule Apiary.MachineTypes do
   def key_change(%MachineType{key: key}) do
     {qory, others} = key |> sources() |> Enum.split_with(&qory_source?/1)
 
+    rewrites? = Features.on?(:workflow_model)
+
     %{
       workspaces:
-        key |> Processes.machine_key_versions() |> Enum.uniq_by(& &1.workspace_id) |> length(),
-      templates: key |> TypeTemplates.machine_key_types() |> Enum.count(&is_nil(&1.release)),
+        if(rewrites?,
+          do:
+            key |> Processes.machine_key_versions() |> Enum.uniq_by(& &1.workspace_id) |> length(),
+          else: 0
+        ),
+      templates:
+        if(rewrites?,
+          do: key |> TypeTemplates.machine_key_types() |> Enum.count(&is_nil(&1.release)),
+          else: 0
+        ),
       waiting: Repo.aggregate(waiting(key), :count),
       files: qory_files(qory),
       organisations: organisation_files(others)
@@ -655,12 +559,12 @@ defmodule Apiary.MachineTypes do
   ## Changes
 
   @doc """
-  create/2 adds a type with `attrs`: `key`, `name`, `image`, `vcpus`, `memory_mib`,
-  `disk_gib`, `arch`, `virtualization` and `is_default`, the default from then on when
-  true. `{:ok, type}`; `{:error, changeset}`, with `:no_pool` on `:vcpus` for a spec no
-  pool fits (`fitted?/2`); `{:error, :sudo}`; `{:error, :not_found}` for anyone outside the
-  instance's organisation; or `{:error, :forbidden}` for anyone else there but an instance
-  admin.
+  create/2 adds a type with `attrs`: `key`, `name`, `vcpus`, `memory_mib`, `disk_gib`,
+  `arch`, `virtualization` and `is_default`, the default from then on when true. `{:ok,
+  type}`; `{:error, changeset}`, with `:no_pool` on `:vcpus` for a spec no pool fits
+  (`fitted?/2`); `{:error, :sudo}`; `{:error, :not_found}` for anyone outside the
+  instance's organisation; or `{:error, :forbidden}` for anyone else there but an
+  instance admin.
   """
   @spec create(Scope.t() | nil, map) ::
           {:ok, MachineType.t()} | {:error, Ecto.Changeset.t() | :sudo | :not_found | :forbidden}
@@ -681,7 +585,7 @@ defmodule Apiary.MachineTypes do
   end
 
   @doc """
-  update/3 changes the key, the name, the image and the spec of `type` to `attrs`, and
+  update/3 changes the key, the name and the spec of `type` to `attrs`, and
   makes it the default when `is_default` is true. A key change updates the processes that
   use the key, in the same transaction (the moduledoc). The results of `create/2`;
   `{:error, :not_found}` for a type deleted since; and `{:error, :stale}` where a
@@ -780,17 +684,48 @@ defmodule Apiary.MachineTypes do
     end
   end
 
-  # The processes that use the key of before, with the key of after.
+  # The processes that use the key of before, with the key of after, under
+  # `machine_type.rekey`; with the workflow model off, none, then the runs that wait.
   defp rekeyed(_scope, %MachineType{key: key}, %MachineType{key: key}), do: :ok
 
   defp rekeyed(scope, %MachineType{key: from}, %MachineType{key: to}) do
-    with :ok <- Processes.rekey_machine(scope, from, to),
-         :ok <- TypeTemplates.rekey_machine(scope, from, to) do
+    with :ok <- rewritten(scope, from, to) do
       # The runs that wait in the queue on the key, which `key_change/1` counts: a claim
       # matches a run's type by its key.
       Repo.update_all(waiting(from), set: [machine_type: to, updated_at: DateTime.utc_now()])
       :ok
     end
+  end
+
+  defp rewritten(scope, from, to) do
+    instance = Access.in_instance(scope)
+
+    case Access.authorize(instance, :"machine_type.rekey", Access.instance_organisation()) do
+      :ok ->
+        with {:ok, processes} <- Processes.rekey_machine(scope, from, to),
+             {:ok, types} <- TypeTemplates.rekey_machine(scope, from, to) do
+          rekeyed_entry(instance, processes + types, from, to)
+        end
+
+      # The action's feature off: the key changes in the type alone.
+      {:error, :not_found} = refused ->
+        if Features.on?(:workflow_model), do: refused, else: :ok
+
+      refused ->
+        refused
+    end
+  end
+
+  # The entry of a key change that rewrote at least one version; none for one that
+  # rewrote none.
+  defp rekeyed_entry(_instance, 0, _from, _to), do: :ok
+
+  defp rekeyed_entry(instance, _rewritten, from, to) do
+    with {:ok, _entry} <-
+           Audit.record(Repo, instance, :"machine_type.rekey", instance.organisation, %{
+             details: %{from: from, to: to}
+           }),
+         do: :ok
   end
 
   # The runs of the queue that wait on the type of key `key`.
@@ -830,7 +765,7 @@ defmodule Apiary.MachineTypes do
     end
   end
 
-  # The trail's entry of a change of a type: its key, name, image and spec before and
+  # The trail's entry of a change of a type: its key, name and spec before and
   # after, nil for none.
   defp record(scope, before, after_) do
     with {:ok, organisation} <- instance_organisation(),
@@ -854,7 +789,6 @@ defmodule Apiary.MachineTypes do
       |> Map.merge(%{
         "key" => type.key,
         "name" => type.name,
-        "image" => type.image,
         "default" => type.is_default
       })
 

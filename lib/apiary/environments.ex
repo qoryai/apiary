@@ -27,12 +27,7 @@ defmodule Apiary.Environments do
   # `environment_ref`, built for the target (`held/1`, a subquery on the run as
   # `:run`). A claim of the pool takes no held run (`Apiary.Dispatches.claim/4`); a run
   # whose target no collection names, or of a workspace whose domain has no prebuilds, is
-  # never held and starts in the pool's default image. On an instance with the feature
-  # `security`, a run whose target's run configuration in force names an image in its
-  # `security_policy` is never held either (`unset_by_policy/1`): it starts in that
-  # image, so it needs no build, queues none and ends with no build's failure. Nor is a
-  # run whose machine type has an image (`Apiary.MachineTypes.no_image/1`): it starts in
-  # that image (`Apiary.Runs.Attach`).
+  # never held and starts in the pool's default image.
   #
   # Whenever a run is held and no prebuild of its collection's `environment_ref` for the
   # pool waits, is claimed or is handed over, the pool's next claim queues one: before it
@@ -210,43 +205,31 @@ defmodule Apiary.Environments do
   # `section(scope, target)` is the environment of a target of the scope's workspace, to a
   # person who may read the workspace's work items (`work_item.read`, the feature
   # `factory`'s), in a workspace whose domain has prebuilds, nil for anyone else and in
-  # any other workspace: `state`, `:no_pool` where the workspace has no live
-  # node pool, `:no_environment` where no live collection assigned to the workspace with the
-  # target names an `environment_ref`, no pool's record of one keeps an image, and no prebuild
-  # of one waits, is claimed or is handed over, `:no_registry` where one of those
-  # collections names an `environment_ref` on an instance without a registry
+  # any other workspace: `state`, `:no_pool` where the workspace has no live node pool,
+  # `:no_environment` where no live collection assigned to the workspace with the target
+  # names an `environment_ref`, no pool's record of one keeps an image, and no prebuild of
+  # one waits, is claimed or is handed over, `:no_registry` where one of those collections
+  # names an `environment_ref` on an instance without a registry
   # (`Apiary.Registry.configured?/0`), with no pool lines: no build runs there and the
-  # target's runs start in the pool's default image; else `:pools`; `named`, whether one of those
-  # collections names an `environment_ref`; and `pools`, one line for each live pool of the
-  # workspace, by id. Where the run configuration in force for the target names an image in
-  # its `security_policy` (`Apiary.Policy.ComposedConfiguration.names_image?/1`), on an
-  # instance with the feature `security`, every pool's `serves` is `:policy`, with no image.
-  # Else, where the target names an environment, a pool's line gives the image a run of the
-  # target on the pool is given (`image_for/2`): the newest record of those collections for
-  # the pool built for the target whose `built_ref` is its collection's `environment_ref`,
-  # with its image, `built_at` and `commit`, and `serves` `:image`; where that record's
-  # image is outside the organisation's place in the registry (`own?/2`), `serves`
-  # `:default`, with no image, as the run starts in the pool's default; where there is none,
-  # `serves` is `:held`, as the target's runs wait for that build (`held/1`), with no image,
-  # whatever older image a record keeps. Where the target names none, `serves` is `:retired`
-  # where a record of the pool keeps an image, else `:default`. `failure` is the cause of the
-  # last failure those records keep, where it failed after the newest build any of them keeps,
-  # nil for none; `running` and `waiting` are whether a prebuild of those collections, held
-  # for the pool, is claimed or handed over, and waits unclaimed.
+  # target's runs start in the pool's default image; else `:pools`; `named`, whether one
+  # of those collections names an `environment_ref`; and `pools`, one line for each live
+  # pool of the workspace, by id. Where the target names an environment, a pool's line
+  # gives the image a run of the target on the pool is given (`image_for/2`): the newest
+  # record of those collections for the pool built for the target whose `built_ref` is its
+  # collection's `environment_ref`, with its image, `built_at` and `commit`, and `serves`
+  # `:image`; where that record's image is outside the organisation's place in the
+  # registry (`own?/2`), `serves` `:default`, with no image, as the run starts in the
+  # pool's default; where there is none, `serves` is `:held`, as the target's runs wait
+  # for that build (`held/1`), with no image, whatever older image a record keeps. Where
+  # the target names none, `serves` is `:retired` where a record of the pool keeps an
+  # image, else `:default`. `failure` is the cause of the last failure those records keep,
+  # where it failed after the newest build any of them keeps, nil for none; `running` and
+  # `waiting` are whether a prebuild of those collections, held for the pool, is claimed
+  # or handed over, and waits unclaimed.
 
   import Ecto.Query, only: [dynamic: 2, from: 2]
 
-  alias Apiary.{
-    Access,
-    Audit,
-    Dispatches,
-    Features,
-    InstanceConfig,
-    MachineTypes,
-    Policy,
-    Registry,
-    Repo
-  }
+  alias Apiary.{Access, Audit, Dispatches, InstanceConfig, Registry, Repo}
 
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{Collection, Connection}
@@ -255,7 +238,6 @@ defmodule Apiary.Environments do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Policy.{ComposedConfiguration, RunConfiguration}
   alias Apiary.Registry.Names
   alias Apiary.Runs.Target
   alias Apiary.WorkItems.WorkItem
@@ -535,8 +517,7 @@ defmodule Apiary.Environments do
   @spec claim_image(Node.t(), WorkItem.t()) :: {:ok, String.t() | nil} | :held
   def claim_image(
         %Node{kind: :pool} = pool,
-        %WorkItem{workspace_id: workspace_id, target_system: system, target_path: path} =
-          work_item
+        %WorkItem{workspace_id: workspace_id, target_system: system, target_path: path}
       )
       when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
     target = %{system: system, path: path}
@@ -544,7 +525,7 @@ defmodule Apiary.Environments do
     cond do
       not prebuilt?(workspace_id) -> {:ok, nil}
       image = stored_image(pool, workspace_id, target) -> {:ok, own_image(image, workspace_id)}
-      named?(workspace_id, target) and unset_by_policy?(workspace_id, work_item) -> :held
+      named?(workspace_id, target) -> :held
       true -> {:ok, nil}
     end
   end
@@ -560,16 +541,28 @@ defmodule Apiary.Environments do
   def own_image(image, workspace_id) when is_binary(workspace_id),
     do: if(placed?(image, workspace_id), do: image)
 
-  # Whether the run configuration in force for the target of `work_item`, of the
-  # workspace `workspace_id`, names no image (`unset_by_policy/1`).
-  defp unset_by_policy?(workspace_id, %WorkItem{id: id}) do
-    Repo.exists?(
-      from w in WorkItem,
-        as: :work_item,
-        where: w.id == ^id,
-        where: ^unset_by_policy(workspace_id)
-    )
+  # built_for_target?/3 is whether `image`, pinned by its digest, is at the place where a
+  # build for the target `target_id` of the organisation `organisation_id` pushes its
+  # image (`Apiary.Registry.RunAccess.destinations/1`): the one place a build's image is
+  # recorded from (`Apiary.Dispatches.Built`). False without a registry name or target.
+  @doc false
+  @spec built_for_target?(String.t() | nil, Ecto.UUID.t(), Ecto.UUID.t() | nil) :: boolean
+  def built_for_target?(image, organisation_id, target_id)
+      when is_binary(image) and is_binary(organisation_id) and is_binary(target_id) do
+    with [place, digest] <- String.split(image, "@sha256:"),
+         true <- Regex.match?(~r/\A[0-9a-f]{64}\z/, digest),
+         {:ok, %{service: service}} <-
+           Registry.parse(Application.get_env(:apiary, :registry_setting)),
+         instance when is_binary(instance) <- InstanceConfig.read_registry_instance(),
+         public_id when is_binary(public_id) <-
+           Repo.one(from t in Target, where: t.id == ^target_id, select: t.public_id) do
+      place == "#{service}/#{Names.target_name(instance, organisation_id, public_id)}"
+    else
+      _none -> false
+    end
   end
+
+  def built_for_target?(_image, _organisation_id, _target_id), do: false
 
   # Whether a live collection assigned to the workspace `workspace_id` with the target
   # has an `environment_ref`.
@@ -892,7 +885,7 @@ defmodule Apiary.Environments do
   @type pool_line :: %{
           id: Ecto.UUID.t(),
           name: String.t(),
-          serves: :image | :held | :default | :retired | :policy,
+          serves: :image | :held | :default | :retired,
           image: String.t() | nil,
           built_at: DateTime.t() | nil,
           commit: String.t() | nil,
@@ -959,8 +952,6 @@ defmodule Apiary.Environments do
       )
       |> Map.new(&{&1.pool_id, &1})
 
-    policy? = policy_image?(target)
-
     lines =
       for pool <- pools do
         pool_line(
@@ -968,7 +959,7 @@ defmodule Apiary.Environments do
           named,
           Map.get(records, pool.id, []),
           Map.get(runs, pool.id, []),
-          if(policy?, do: :policy, else: given(Map.get(served, pool.id), target.workspace_id))
+          given(Map.get(served, pool.id), target.workspace_id)
         )
       end
 
@@ -1001,27 +992,11 @@ defmodule Apiary.Environments do
 
   defp section_state(_pools, _named, _lines), do: :pools
 
-  # Whether the run configuration in force for `target` names an image in its
-  # `security_policy`, which a run of the target then starts in; never on an instance
-  # without the feature `security`, where no run configuration is served.
-  defp policy_image?(
-         %Target{organisation_id: organisation_id, workspace_id: workspace_id} = target
-       ) do
-    Features.on?(:security) and
-      case Policy.in_force(organisation_id, workspace_id, target.id) do
-        {:ok, %RunConfiguration{document: document}} ->
-          ComposedConfiguration.names_image?(document)
-
-        {:error, _reason} ->
-          false
-      end
-  end
-
   # A pool's line: of the records and prebuilds of the collections that name an
   # `environment_ref`, where one does; of every collection of the target, where none does.
-  # `served` is `:policy` where the policy names the image, else the record `image_for/2`
-  # reads for the pool, whose `built_ref` is its collection's `environment_ref`, nil for
-  # none.
+  # `served` is the record `image_for/2` reads for the pool, whose `built_ref` is its
+  # collection's `environment_ref`, `:foreign` for one outside the organisation's place
+  # in the registry, nil for none.
   defp pool_line(%Node{} = pool, named, records, runs, served) do
     {records, runs} =
       if named == [],
@@ -1044,8 +1019,6 @@ defmodule Apiary.Environments do
       waiting: Enum.any?(runs, &(elem(&1, 2) == :waiting))
     }
   end
-
-  defp serves(:policy, _named, _records), do: :policy
 
   defp serves(_served, [], records) do
     if Enum.any?(records, &(&1.image != nil)), do: :retired, else: :default
@@ -1079,21 +1052,6 @@ defmodule Apiary.Environments do
 
   ## A run held for its build
 
-  # The condition `unset_by_policy/1` writes: the run configuration in force for the
-  # workspace and the target, given in that order, names no image.
-  @image_in_force """
-  NOT COALESCE((
-    SELECT jsonb_typeof(c.document::jsonb -> 'security_policy') = 'object'
-      AND jsonb_exists(c.document::jsonb -> 'security_policy', 'image')
-    FROM run_configurations AS c
-    LEFT JOIN targets AS t ON t.id = c.target_id
-    WHERE c.workspace_id = ?
-      AND (c.target_id IS NULL OR (t.system = ? AND t.path = ?))
-    ORDER BY c.target_id IS NULL, c.version DESC
-    LIMIT 1
-  ), false)
-  """
-
   # holds?/1 is whether the runs of the workspace `workspace_id` wait for their target's
   # build: its domain has prebuilds, on an instance with a registry (the moduledoc).
   @doc false
@@ -1104,20 +1062,14 @@ defmodule Apiary.Environments do
   # `exists/1`, when the run is held for the node pool `pool_id`: the run's workspace has
   # a domain with prebuilds, its work item's target has a live collection assigned to the
   # run's workspace with an `environment_ref`, no such collection has a record for the
-  # pool whose image was built for the target from that `environment_ref`, the run
-  # configuration in force for the target names no image (`unset_by_policy/1`; the
-  # moduledoc), and the run's machine type has no image (`Apiary.MachineTypes.no_image/1`),
-  # as a run starts in the policy's image, else in its type's, before the target's. It
-  # reads the run's workspace, so one query serves the instance's pool, whose runs are in
-  # many workspaces.
+  # pool whose image was built for the target from that `environment_ref` (the
+  # moduledoc). It reads the run's workspace, so one query serves the instance's pool,
+  # whose runs are in many workspaces.
   @doc false
   @spec held(Ecto.UUID.t()) :: Ecto.Query.t()
   def held(pool_id) when is_binary(pool_id) do
     from w in WorkItem,
       as: :work_item,
-      join: d in DispatchRun,
-      as: :held_run,
-      on: d.id == parent_as(:run).id,
       join: s in Workspace,
       as: :workspace,
       on: s.id == parent_as(:run).workspace_id,
@@ -1133,8 +1085,6 @@ defmodule Apiary.Environments do
           e.built_target_path == w.target_path,
       where: w.id == parent_as(:run).work_item_id,
       where: ^prebuilt_domain(),
-      where: ^unset_by_policy(:workspace),
-      where: ^MachineTypes.no_image(:held_run),
       group_by: w.id,
       having: count(e.id) == 0,
       select: w.id
@@ -1156,42 +1106,6 @@ defmodule Apiary.Environments do
       )
     else
       dynamic([workspace: _s], false)
-    end
-  end
-
-  # unset_by_policy/1 is the condition, on a work item bound `:work_item` of the
-  # workspace `workspace_id`, or of the workspace bound `:workspace` when given
-  # `:workspace`, that the run configuration in force for its target, the target's newest
-  # version or else the workspace's (`Apiary.Policy.in_force/3`), names no image in its
-  # `security_policy` (`Apiary.Policy.ComposedConfiguration.names_image?/1`): a run of
-  # such a target starts in the policy's image, so it is held for no build. Always true on
-  # an instance without the feature `security`, where no run configuration is served.
-  @doc false
-  @spec unset_by_policy(Ecto.UUID.t() | :workspace) :: Ecto.Query.dynamic_expr()
-  def unset_by_policy(:workspace) do
-    if Features.on?(:security) do
-      dynamic(
-        [work_item: w, workspace: s],
-        fragment(@image_in_force, s.id, w.target_system, w.target_path)
-      )
-    else
-      dynamic([work_item: _w], true)
-    end
-  end
-
-  def unset_by_policy(workspace_id) when is_binary(workspace_id) do
-    if Features.on?(:security) do
-      dynamic(
-        [work_item: w],
-        fragment(
-          @image_in_force,
-          type(^workspace_id, Ecto.UUID),
-          w.target_system,
-          w.target_path
-        )
-      )
-    else
-      dynamic([work_item: _w], true)
     end
   end
 

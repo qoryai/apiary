@@ -2666,7 +2666,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       inside = "A read-only run cannot run its setup inside the agent's container."
 
       docker =
-        "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+        "Choose an image without nested Docker in the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
 
       removed =
         "Start the run again. The setup container was not removed, so a process in it could still write the files."
@@ -2690,7 +2690,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a read-only run's target is a repository only in a software workspace" do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
         assert read_needs_body("read_needs_no_nested_docker", false) ==
-                 "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+                 "Choose an image without nested Docker in the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
       end)
     end
 

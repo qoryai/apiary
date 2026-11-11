@@ -3,8 +3,8 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   # run handed over names the image the pool that claimed it recorded for the run's
   # target, beside the security_policy, under the composed document's digest; its reloads
   # and its batches carry the same image and digest, a policy change moving the digest and
-  # never the image. A prebuild under a policy that names an image is given the policy
-  # without it, and no run is given an image beside a policy that names one; a prebuild
+  # never the image. Every run under a policy that sets an image is given the policy
+  # without it, beside the image recorded for its target where there is one; a prebuild
   # of a workspace that serves no run configuration, the workspace's default policy
   # (`ApiaryWeb.Contract.PrebuildPolicyTest`). Every other run is answered the bytes it
   # was before. A run of the queue is given its run variables
@@ -24,7 +24,6 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
   alias Apiary.{Dispatches, Policy, Repo}
   alias Apiary.Environments.Record
-  alias Apiary.MachineTypes.MachineType
   alias Apiary.Policy.{ComposedConfiguration, Render, RunConfiguration, Schema}
   alias Apiary.Runs.{Answer, Attach, Run, RunVariables}
   alias ApiaryWeb.Contract.SignedRequest
@@ -562,16 +561,6 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
   end
 
   describe "a run of the queue on a machine type" do
-    @type_image "ghcr.io/qoryai/qory-agent-browser@sha256:" <> String.duplicate("7d2c", 16)
-    @default_image "ghcr.io/qoryai/qory-agent@sha256:" <> String.duplicate("c0de", 16)
-
-    defp type_image!(key, image) do
-      {1, _rows} =
-        Repo.update_all(from(t in MachineType, where: t.key == ^key), set: [image: image])
-
-      :ok
-    end
-
     # The waiting run of `work_item` set to the type `key`, as queued while that type was
     # the default: a pool without offers takes it.
     defp on_type!(work_item, key) do
@@ -584,72 +573,8 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       :ok
     end
 
-    defp type_id(key), do: Repo.one!(from t in MachineType, where: t.key == ^key, select: t.id)
-
-    defp attached_image(ctx, {run_id, run_key}) do
-      attached = attach(ctx, run_id, run_key)
-      assert attached.status == 200
-      refute_two_images(attached.resp_body)
-      {run(run_id), Jason.decode!(attached.resp_body)["image"]}
-    end
-
-    test "of a type not the default is given its type's image beside the policy, before the image recorded for its target",
-         ctx do
-      managed!(ctx)
-      recorded!(ctx, @shop)
-      :ok = type_image!("browser", @type_image)
-
-      assert {run, @type_image} = attached_image(ctx, on_browser!(ctx))
-      assert {run.configured_image, run.started_image_from} == {@type_image, "top_level"}
-
-      assert {run.configured_image_from_type, run.configured_image_machine_type_id} ==
-               {true, type_id("browser")}
-    end
-
-    test "of the default type is given the image recorded for its target before the default type's",
-         ctx do
-      managed!(ctx)
-      recorded!(ctx, @shop)
-      :ok = type_image!("standard", @default_image)
-
-      recorded = image(ctx)
-      assert {run, ^recorded} = attached_image(ctx, explore!(ctx))
-
-      assert {run.configured_image_from_type, run.configured_image_machine_type_id} ==
-               {false, nil}
-    end
-
-    test "of the default type with no image recorded for its target is given the default type's",
-         ctx do
-      managed!(ctx)
-      :ok = type_image!("standard", @default_image)
-
-      assert {run, @default_image} = attached_image(ctx, explore!(ctx))
-
-      assert {run.configured_image_from_type, run.configured_image_machine_type_id} ==
-               {true, type_id("standard")}
-    end
-
-    test "keeps the type's image its claim fixed when the type's key changes before the attach",
-         ctx do
-      managed!(ctx)
-      :ok = type_image!("browser", @type_image)
-      browser = type_id("browser")
-      claimed = on_browser!(ctx)
-
-      {1, _rows} =
-        Repo.update_all(from(t in MachineType, where: t.key == "browser"),
-          set: [key: "browser-2", image: @default_image]
-        )
-
-      assert {run, @type_image} = attached_image(ctx, claimed)
-
-      assert {run.configured_image_from_type, run.configured_image_machine_type_id} ==
-               {true, browser}
-    end
-
-    # A run of a fresh work item on the type browser, which has no image, claimed by the
-    # pool and its run code redeemed: its id and run key.
+    # A run of a fresh work item on the type browser, claimed by the pool and its run code
+    # redeemed: its id and run key.
     defp on_browser!(ctx) do
       work_item = work_item_fixture(ctx.scope)
       {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
@@ -659,120 +584,33 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       {claimed.registered.node_run_id, redeemed_run_key!(claimed.run_code)}
     end
 
-    test "of a type with no image is given the image recorded for its target first", ctx do
+    test "of a type not the default is given the image recorded for its target", ctx do
       managed!(ctx)
-      :ok = type_image!("standard", @default_image)
       recorded!(ctx, @shop)
+      {run_id, run_key} = on_browser!(ctx)
 
-      recorded = image(ctx)
-      assert {_run, ^recorded} = attached_image(ctx, on_browser!(ctx))
-    end
-
-    test "of a type with no image and no image recorded for its target is given the default type's",
-         ctx do
-      managed!(ctx)
-      :ok = type_image!("standard", @default_image)
-
-      assert {run, @default_image} = attached_image(ctx, on_browser!(ctx))
-      assert run.configured_image == @default_image
-    end
-
-    test "is given no image where neither its type nor the default type has one", ctx do
-      policy = managed!(ctx)
-      assert_as_before(ctx, explore!(ctx), policy.document)
-    end
-
-    test "is given no image beside a policy that names one, whatever its type's", ctx do
-      managed!(ctx)
-      naming!(ctx)
-      :ok = type_image!("browser", @type_image)
-
-      assert {run, nil} = attached_image(ctx, on_browser!(ctx))
-      assert run.configured_image == nil
-
-      assert {run.configured_image_from_type, run.configured_image_machine_type_id} ==
-               {false, nil}
-
-      assert run.started_image_from == "policy"
-    end
-
-    test "waits for no build of its target when its type has an image", ctx do
-      managed!(ctx)
-      collection_fixture(ctx.scope, target_system: "forge.example.com", target_path: "acme/shop")
-      work_item = work_item_fixture(ctx.scope)
-      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-
-      :ok = on_type!(work_item, "browser")
-
-      # Of a type with no image, it is held: the claim takes the build of its target.
-      assert {:ok, %{run: %{step: "prebuild"}}} = claim(ctx)
-
-      :ok = type_image!("browser", @type_image)
-      assert {:ok, %{run: %{id: id}, registered: registered}} = claim(ctx)
-      assert id == queued.id
-
-      assert {registered.configured_image, registered.configured_image_from_type,
-              registered.configured_image_machine_type_id} ==
-               {@type_image, true, type_id("browser")}
-    end
-
-    test "of the default type waits for the build of its target, whatever the default's image",
-         ctx do
-      managed!(ctx)
-      :ok = type_image!("standard", @default_image)
-      collection_fixture(ctx.scope, target_system: "forge.example.com", target_path: "acme/shop")
-      work_item = work_item_fixture(ctx.scope)
-      {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
-
-      assert {:ok, %{run: %{step: "prebuild"}}} = claim(ctx)
-    end
-
-    # A prebuild's attach and reload have `composed`, with the default type's image at
-    # the top level, which the prebuild keeps.
-    defp assert_prebuild_image(ctx, {run_id, run_key}, composed) do
       attached = attach(ctx, run_id, run_key)
       assert attached.status == 200
       refute_two_images(attached.resp_body)
-      run = run(run_id)
-
-      assert attached.resp_body == attach_bytes(composed, run)
-      assert digest_header(attached) == [digest_of(composed, run_id)]
-      assert Jason.decode!(attached.resp_body)["image"] == @default_image
-      assert {run.configured_image, run.started_image_from} == {@default_image, "top_level"}
-
-      reloaded = reload(ctx, run_id)
-      assert reloaded.status == 200
-      assert reloaded.resp_body == reload_bytes(composed, run)
-      assert digest_header(reloaded) == [digest_of(composed, run_id)]
+      assert Jason.decode!(attached.resp_body)["image"] == image(ctx)
+      assert run(run_id).configured_image == image(ctx)
     end
 
-    test "a prebuild starts from the default type's image, on its attach and its reloads",
-         ctx do
+    test "on browser with no image recorded for its target is given no image", ctx do
       policy = managed!(ctx)
-      :ok = type_image!("standard", @default_image)
-      :ok = type_image!("browser", @type_image)
-
-      assert_prebuild_image(
-        ctx,
-        prebuild!(ctx),
-        ComposedConfiguration.compose(policy.document, @default_image)
-      )
+      {run_id, _run_key} = run = on_browser!(ctx)
+      assert_as_before(ctx, run, policy.document)
+      assert run(run_id).configured_image == nil
     end
 
-    test "a prebuild under a policy that names an image starts from the default type's",
-         ctx do
+    test "of a type not the default waits for the build of its target", ctx do
       managed!(ctx)
-      naming!(ctx)
-      :ok = type_image!("standard", @default_image)
+      collection_fixture(ctx.scope, target_system: "forge.example.com", target_path: "acme/shop")
+      work_item = work_item_fixture(ctx.scope)
+      {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      :ok = on_type!(work_item, "browser")
 
-      assert_prebuild_image(
-        ctx,
-        prebuild!(ctx),
-        ComposedConfiguration.compose(
-          ComposedConfiguration.without_image(@naming),
-          @default_image
-        )
-      )
+      assert {:ok, %{run: %{step: "prebuild"}}} = claim(ctx)
     end
   end
 
@@ -809,7 +647,7 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert attach(ctx, run_id, run_key).resp_body == attached.resp_body
     end
 
-    test "gives a run of the queue no image beside it, even with one recorded", ctx do
+    test "gives a run of the queue the policy without it, beside the image recorded", ctx do
       managed!(ctx)
       naming!(ctx)
       recorded!(ctx, @shop)
@@ -819,17 +657,36 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert attached.status == 200
       run = run(run_id)
 
-      assert attached.resp_body == attach_bytes(@naming, run)
-      assert digest_header(attached) == [digest_of(@naming, run_id)]
-      refute Map.has_key?(Jason.decode!(attached.resp_body), "image")
-      refute_two_images(attached.resp_body)
-      assert run.configured_image == nil
+      composed =
+        ComposedConfiguration.compose(ComposedConfiguration.without_image(@naming), image(ctx))
+
+      assert attached.resp_body == attach_bytes(composed, run)
+      assert digest_header(attached) == [digest_of(composed, run_id)]
+      assert Jason.decode!(attached.resp_body)["image"] == image(ctx)
+      refute Map.has_key?(Jason.decode!(attached.resp_body)["security_policy"], "image")
+      assert run.configured_image == image(ctx)
+      assert run.started_image_from == "top_level"
 
       reloaded = reload(ctx, run_id)
-      assert reloaded.resp_body == reload_bytes(@naming, run)
+      assert reloaded.resp_body == reload_bytes(composed, run)
       refute_two_images(reloaded.resp_body)
-      assert batch_digest(ctx, run_id, 2) == digest_of(@naming, run_id)
-      assert Enum.all?(composed_rows(ctx), &is_nil(&1.image))
+      assert batch_digest(ctx, run_id, 2) == digest_of(composed, run_id)
+    end
+
+    test "gives a run of the queue with no image recorded the policy without it", ctx do
+      managed!(ctx)
+      naming!(ctx)
+      {run_id, run_key} = explore!(ctx)
+
+      attached = attach(ctx, run_id, run_key)
+      assert attached.status == 200
+      run = run(run_id)
+      composed = ComposedConfiguration.without_image(@naming)
+
+      assert attached.resp_body == attach_bytes(composed, run)
+      assert digest_header(attached) == [digest_of(composed, run_id)]
+      refute Map.has_key?(Jason.decode!(attached.resp_body), "image")
+      assert {run.configured_image, run.started_image_from} == {nil, "none"}
     end
 
     test "made mid-run keeps the run's image on its reloads, and applies the rest",
@@ -888,24 +745,20 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert reported == naming.digest
       assert in_force == naming.digest
 
-      # The next run starts in the policy's image: no top-level image.
+      # The next run starts in its target's image too, beside the policy without its own.
       {next_id, next_key} = explore!(ctx)
       attached = attach(ctx, next_id, next_key)
       assert attached.status == 200
-      assert attached.resp_body == attach_bytes(@naming, run(next_id))
-      assert digest_header(attached) == [digest_of(@naming, next_id)]
-      refute Map.has_key?(Jason.decode!(attached.resp_body), "image")
-      assert run(next_id).configured_image == nil
+      assert attached.resp_body == attach_bytes(composed, run(next_id))
+      assert digest_header(attached) == [digest_of(composed, next_id)]
+      assert run(next_id).configured_image == image(ctx)
     end
   end
 
   describe "what a run started in, on its reloads" do
-    # Versions of the baseline after `@naming`: one whose policy names another image, and
-    # one whose policy names none, each allowing one more host, so a reload that applies
-    # shows it.
+    # A version of the baseline after `@naming`, whose policy sets another image and
+    # allows one more host, so a reload that applies shows it.
     @renaming ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-gpu"}})
-    @unnaming ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]}}})
-    @keeping ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-docker"}})
 
     # The next version of the baseline, `document` written as it is.
     defp version!(ctx, document) do
@@ -968,88 +821,23 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       assert in_force == version.digest
     end
 
-    test "a run that started in its policy's image keeps it in the policy when the policy names another",
+    test "a run a node registered itself, under a policy that sets an image, is given it without",
          ctx do
-      managed!(ctx)
-      naming!(ctx)
-      {run_id, run_key} = explore!(ctx)
-      attached = attach(ctx, run_id, run_key)
-      assert attached.status == 200
-      assert attached.resp_body == attach_bytes(@naming, run(run_id))
-      started = run(run_id)
-      assert {started.started_image_from, started.started_image} == {"policy", "with-docker"}
-      assert started.configured_image == nil
-
-      renaming = version!(ctx, @renaming)
-
-      composed =
-        ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-docker"}})
-
-      digest = digest_of(composed, run_id)
-      assert batch_digest(ctx, run_id, 2) == digest
-
-      reloaded = reload(ctx, run_id)
-      assert_gateway_takes(attached, reloaded)
-      assert reloaded.resp_body == reload_bytes(composed, run(run_id))
-      assert digest_header(reloaded) == [digest]
-      assert Schema.validate(reloaded.resp_body) == :ok
-      assert named(reloaded.resp_body) == ""
-      assert selected(reloaded.resp_body) == "with-docker"
-      assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
-      assert run(run_id).started_image == "with-docker"
-
-      assert [%ComposedConfiguration{image: nil} = row] =
-               Enum.filter(composed_rows(ctx), &(&1.digest == digest))
-
-      assert row.run_configuration_id == renaming.id
-      assert_not_behind(ctx, run_id, digest, renaming)
-
-      # The policy no longer served, the run keeps it: not found.
-      without_security(fn ->
-        assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
-      end)
-    end
-
-    test "a run that started in its policy's image keeps it in the policy when the policy names none",
-         ctx do
-      managed!(ctx)
-      naming!(ctx)
-      {run_id, run_key} = explore!(ctx)
-      attached = attach(ctx, run_id, run_key)
-      assert attached.status == 200
-      assert run(run_id).started_image_from == "policy"
-
-      unnaming = version!(ctx, @unnaming)
-
-      composed =
-        ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example","cdn.example","pkg.example"]},"image":"with-docker"}})
-
-      digest = digest_of(composed, run_id)
-
-      reloaded = reload(ctx, run_id)
-      assert_gateway_takes(attached, reloaded)
-      assert reloaded.resp_body == reload_bytes(composed, run(run_id))
-      assert digest_header(reloaded) == [digest]
-      assert named(reloaded.resp_body) == ""
-      assert selected(reloaded.resp_body) == "with-docker"
-      assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
-      assert run(run_id).started_image == "with-docker"
-      assert_not_behind(ctx, run_id, digest, unnaming)
-    end
-
-    test "a run a node registered itself that started in its policy's image keeps it", ctx do
       managed!(ctx)
       naming!(ctx)
       {run_id, run_key} = session!(ctx)
       attached = attach(ctx, run_id, run_key)
       assert attached.status == 200
-      assert attached.resp_body == attach_bytes(@naming, run(run_id))
-      assert run(run_id).started_image_from == "policy"
+
+      assert attached.resp_body ==
+               attach_bytes(ComposedConfiguration.without_image(@naming), run(run_id))
+
+      assert run(run_id).started_image_from == "none"
 
       renaming = version!(ctx, @renaming)
       reloaded = reload(ctx, run_id)
       assert_gateway_takes(attached, reloaded)
-      assert selected(reloaded.resp_body) == "with-docker"
+      assert selected(reloaded.resp_body) == ""
       assert allowed(reloaded.resp_body) == ["api.example", "cdn.example", "pkg.example"]
       assert_not_behind(ctx, run_id, List.first(digest_header(reloaded)), renaming)
     end
@@ -1138,31 +926,6 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
       without_security(fn ->
         assert json_response(reload(ctx, run_id), 404) == %{"error" => "not_found"}
       end)
-    end
-
-    test "a policy whose image is the one the run started in reloads byte for byte", ctx do
-      managed!(ctx)
-      naming!(ctx)
-      {run_id, run_key} = explore!(ctx)
-      attached = attach(ctx, run_id, run_key)
-      assert attached.status == 200
-
-      # Unchanged: the attach's document again.
-      reloaded = reload(ctx, run_id)
-      assert reloaded.resp_body == reload_bytes(@naming, run(run_id))
-      assert digest_header(reloaded) == [digest_of(@naming, run_id)]
-
-      # Changed, its image the same: the version as stored, with the run's variables, and
-      # no image composed.
-      keeping = version!(ctx, @keeping)
-      reloaded = reload(ctx, run_id)
-      assert_gateway_takes(attached, reloaded)
-      assert reloaded.resp_body == reload_bytes(@keeping, run(run_id))
-      digest = digest_of(@keeping, run_id)
-      assert digest_header(reloaded) == [digest]
-      assert batch_digest(ctx, run_id, 2) == digest
-      assert Enum.all?(composed_rows(ctx), &is_nil(&1.image))
-      assert_not_behind(ctx, run_id, digest, keeping)
     end
   end
 end

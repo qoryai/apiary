@@ -1,13 +1,14 @@
 defmodule ApiaryWeb.RunLive.ShowFixerTest do
   @moduledoc """
   Who fixes a cause that lies with a run's machine type, on the run page
-  (`ApiaryWeb.RunLive.Show`), by reader: an image of the type that is not in its
-  registry, or whose registry returned 401 or 403, 429, or could not be reached, under
-  Pull the images, and a type that no pool offer fits, under Queue the run. An instance admin reads the instance admin's line. An organisation member reads
+  (`ApiaryWeb.RunLive.Show`), by reader: a type that no pool offer fits, under Queue the
+  run. An instance admin reads the instance admin's line. An organisation member reads
   "Contact support with run …" in plain text, as the run page's other lines for the
   instance's pool, with the pool's admin for a type no offer of a workspace's pool fits,
   and the page has no word "instance": an organisation's people never see that word, and
-  "support" is how they reach the instance admins.
+  "support" is how they reach the instance admins. A pull of a run's image that failed
+  with one of Forager's image codes is the step's line, with no line of who fixes it: a
+  machine type has no image.
   """
   # Not async: the support address is the node's, and an instance admin's grant acts on
   # the instance's organisation, which every test shares. The address is set, so a test
@@ -35,7 +36,6 @@ defmodule ApiaryWeb.RunLive.ShowFixerTest do
   @image "ghcr.io/acme/agent-fixer@sha256:" <> String.duplicate("6c3e", 16)
   @support "support@example.com"
 
-  @image_admin "An instance admin sets an image that exists in Instance settings › Machine types, then runs the work item again."
   @fit_admin "An instance admin makes the type fit an offer in Instance settings › Machine types, or the admin of build-pool adds an offer that fits."
 
   setup :register_and_log_in_user
@@ -89,55 +89,8 @@ defmodule ApiaryWeb.RunLive.ShowFixerTest do
       |> String.split()
       |> Enum.join(" ")
 
-  # A run started in the image of a type with the key `fixer-ui`, which no other test uses,
-  # whose pull ended `image_missing`, or with the image code `reason`.
-  defp image_missing!(ctx, reason \\ "image_missing")
-
-  defp image_missing!(%{scope: scope, key: key}, reason) do
-    type =
-      Repo.insert!(%MachineType{
-        key: "fixer-ui",
-        name: "Fixer UI",
-        vcpus: 2,
-        memory_mib: 4096,
-        disk_gib: 30,
-        arch: "amd64",
-        image: @image
-      })
-
-    %{run: run} =
-      handed_over_fixture(scope, key, %{
-        wall: "docker",
-        image: @image,
-        configured_image: @image,
-        started_image_from: "top_level",
-        started_image: @image,
-        configured_image_from_type: true,
-        configured_image_machine_type_id: type.id
-      })
-
-    event_fixture(run, 9, "run.step_started", %{"step" => 1, "name" => @image, "kind" => "image"})
-
-    event_fixture(run, 10, "run.step_exited", %{
-      "step" => 1,
-      "state" => "failed",
-      "exit_code" => -1,
-      "duration_ms" => 900
-    })
-
-    event_fixture(run, 11, "run.exited", %{
-      "state" => "failed",
-      "reason" => reason,
-      "exit_code" => -1
-    })
-
-    {:ok, run} = Apiary.Runs.Projector.project(run)
-    run
-  end
-
-  # A run its pool's record gave `@image`, not a machine type, whose pull ended with the
-  # image code `reason`.
-  defp image_not_of_type!(%{scope: scope, key: key}, reason) do
+  # A run its pool's record gave `@image`, whose pull ended with the image code `reason`.
+  defp image_failed!(%{scope: scope, key: key}, reason) do
     %{run: run} =
       handed_over_fixture(scope, key, %{
         wall: "docker",
@@ -194,106 +147,18 @@ defmodule ApiaryWeb.RunLive.ShowFixerTest do
     Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
   end
 
-  describe "an image of the run's type that is not in its registry" do
-    test "an instance admin reads the instance admin's line", ctx do
-      run = image_missing!(ctx)
-      view = :instance_admin |> reader(ctx) |> open(ctx.scope, run)
-
-      assert text(view, "#prepare-machine-fix") == @image_admin
-      refute has_element?(view, "#prepare-machine-fix a")
-    end
-
-    test "an organisation member reads Contact support with the run, as plain text", ctx do
-      run = image_missing!(ctx)
-      view = :member |> reader(ctx) |> open(ctx.scope, run)
-
-      assert text(view, "#prepare-machine-fix") == "Contact support with run #{run.public_id}."
-      refute has_element?(view, "#prepare-machine-fix a")
-      refute page_text(view) =~ ~r/instance/i
-    end
-  end
-
-  # The image as the instance admin's line shows it: its digest cut to 12 digits.
-  @short String.slice(@image, 0, 44) <> "…"
-
-  # Forager's other image codes, on a pool of the run's workspace: what happened, for every
-  # reader, then the instance admin's fix, its cause and the image, or the member's line
-  # with the run.
-  @image_codes [
-    {"image_access_denied",
-     "Pull the images failed: access to the image of the machine type Fixer UI (fixer-ui) was denied.",
-     "An instance admin gives the run's registry credential read access to the image, or sets another image in Instance settings › Machine types. If the workspace's policy blocks the registry, a workspace admin allows it on the workspace's Policy page. The registry returned 401 or 403 for #{@short}, or the run's proxy returned 403 because of the policy. On Docker Hub, 401 also means that the repository does not exist.",
-     "Contact support with run "},
-    {"image_rate_limited",
-     "Pull the images failed: a rate limit stopped the requests for the image of the machine type Fixer UI (fixer-ui).",
-     "An instance admin runs the work item again once the registry's rate limit resets, or the admin of build-pool raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for #{@short}.",
-     "Run the work item again later. If it fails again, contact support with run "},
-    {"image_registry_unreachable",
-     "Pull the images failed: no connection to the image's registry, for the machine type Fixer UI (fixer-ui).",
-     "An instance admin checks that the registry's host name resolves, that the registry is running and that its certificate is valid, then runs the work item again. The connection to the registry for #{@short} failed or took longer than 30 seconds.",
-     "Contact support with run "}
-  ]
-
-  for {code, what, admin, member} <- @image_codes do
-    describe "an image of the run's type whose pull ended #{code}" do
+  for code <- ~w(image_missing image_access_denied image_rate_limited image_registry_unreachable) do
+    describe "a pull of the run's image that ended #{code}" do
       @code code
-      @what what
-      @admin admin
-      @member member
 
-      test "an instance admin reads what happened, then the fix, its cause and the image", ctx do
-        run = image_missing!(ctx, @code)
+      test "reads the step's line, with no line of who fixes it", ctx do
+        run = image_failed!(ctx, @code)
         view = :instance_admin |> reader(ctx) |> open(ctx.scope, run)
 
-        assert text(view, "#run-why .q-run-why-t") == @what
-        assert text(view, "#prepare-machine-cause") == @what
-        assert has_element?(view, "#prepare-machine-cause .font-mono", "fixer-ui")
-        assert text(view, "#prepare-machine-fix") == @admin
-        refute has_element?(view, "#prepare-machine-fix a")
-      end
-
-      test "an organisation member reads what happened, then the line with the run", ctx do
-        run = image_missing!(ctx, @code)
-        view = :member |> reader(ctx) |> open(ctx.scope, run)
-
-        assert text(view, "#run-why .q-run-why-t") == @what
-        assert text(view, "#prepare-machine-cause") == @what
-        assert text(view, "#prepare-machine-fix") == @member <> "#{run.public_id}."
-        refute has_element?(view, "#prepare-machine-fix a")
-        refute page_text(view) =~ ~r/instance/i
-      end
-
-      test "a run whose image is not its type's reads the step's line, with no fix line",
-           ctx do
-        run = image_not_of_type!(ctx, @code)
-        view = :instance_admin |> reader(ctx) |> open(ctx.scope, run)
-
-        refute page_text(view) =~ @what
+        assert text(view, "#prepare-machine-cause") =~ "Pull the images failed"
+        refute page_text(view) =~ "machine type"
         refute has_element?(view, "#prepare-machine-fix")
       end
-    end
-  end
-
-  describe "an image of the run's type whose pull ended image_rate_limited, on Qory Pool" do
-    @describetag :instance_pool
-
-    test "an instance admin reads that an instance admin raises the gateway's run limits",
-         ctx do
-      run = image_missing!(ctx, "image_rate_limited")
-      view = :instance_admin |> reader(ctx) |> open(ctx.scope, run)
-
-      assert text(view, "#prepare-machine-fix") ==
-               "An instance admin runs the work item again once the registry's rate limit resets, or raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for #{@short}."
-    end
-
-    test "an organisation member reads the line to run it again later, with the run", ctx do
-      run = image_missing!(ctx, "image_rate_limited")
-      view = :member |> reader(ctx) |> open(ctx.scope, run)
-
-      assert text(view, "#prepare-machine-fix") ==
-               "Run the work item again later. If it fails again, contact support with run #{run.public_id}."
-
-      refute page_text(view) =~ ~r/instance/i
     end
   end
 

@@ -99,17 +99,15 @@ defmodule Apiary.Runs.Registration do
   (`Apiary.Policy.ComposedConfiguration`), and its digest is the SHA-256 of the bytes
   sent. A run whose attach composed its
   configuration (`Apiary.Policy.ComposedConfiguration`: a run given an image, kept in
-  `configured_image`, or a prebuild of a workspace whose policy names an image) is given
-  the configuration in force now composed the same way, under the composed document's
+  `configured_image`, or a run of a workspace whose policy sets an image) is given the
+  configuration in force now composed the same way, under the composed document's
   digest, so every reload names the image the run started in; a workspace that serves no
   configuration gives `{"version":1,"image":…}` to such a run that was given no policy at
   its attach, while the workspace has never stored a run configuration, and not found to
   every other. A run that attached is reloaded with what it started in
-  (`started_image_from`): a policy in force that selects another image than the run
-  started in is composed with the start's image, at the top level for a run given it there,
-  as the policy's `image` for a run that started in the image its policy named, and left
-  out for a run that started in none. The rest of the policy applies at once, and its image
-  from the next attach.
+  (`started_image_from`): the start's image at the top level for a run given it there,
+  and the policy's `image` left out for every run. The rest of the policy applies at
+  once.
 
   The run is projected from sequence 1, which its registration stands for
   (`Apiary.Runs.Run.projected_from/1`).
@@ -652,12 +650,15 @@ defmodule Apiary.Runs.Registration do
     end
   end
 
+  # A direct run's answer: the run configuration in force for the labels, composed as its
+  # reloads are (`composed/7`), so a policy that sets an image is given without it, else
+  # the document of no policy.
   defp settings(access_key, labels) do
-    case Serving.fetch(access_key, labels) do
-      {:ok, %RunConfiguration{document: document, digest: digest}} ->
-        {:ok, settings(document, digest, true)}
+    case composed(access_key, labels, nil, false, false, false, nil) do
+      {:ok, settings, _image} ->
+        {:ok, settings}
 
-      {:error, :unmanaged} ->
+      :unmanaged ->
         document = Render.no_policy_document()
         {:ok, settings(document, Render.digest(document), false)}
 

@@ -813,6 +813,34 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
+  defmodule ReadsNoMachine do
+    @moduledoc """
+    Nobody reads the vendor's type of a dispatch's machine (`instance.read_machine`), an
+    instance admin neither; the rest of the instance is read as before.
+    """
+    def check(_scope, :"instance.read_machine", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule RekeysNoMachine do
+    @moduledoc """
+    Nobody rewrites a machine type key in the processes and workspace types
+    (`machine_type.rekey`), an instance admin neither; the rest of the instance is
+    changed as before.
+    """
+    def check(_scope, :"machine_type.rekey", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule ListsNoRuns do
+    @moduledoc """
+    No diagnostics key lists the runs of the instance (`run.list_instance`); a run's
+    diagnostics are asked as before.
+    """
+    def check(_scope, :"run.list_instance", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoLimit do
     @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}

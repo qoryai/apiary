@@ -9,7 +9,7 @@ defmodule Apiary.MachineTypesFixtures do
 
   @doc """
   A machine type with `attrs` over 4 vCPUs, 16 GiB, 60 GiB of disk, amd64, no
-  virtualization and no image, inserted without a scope or a pool check. The key is
+  virtualization, inserted without a scope or a pool check. The key is
   unique unless `attrs` has one, and the name is the key's readable form
   (`Apiary.MachineTypes.MachineType.readable/1`) unless `attrs` has one; a type made the
   default leaves the seeded default as it is.
@@ -47,7 +47,7 @@ defmodule Apiary.MachineTypesFixtures do
   @doc "The seeded default type, `standard`."
   def standard_type, do: Repo.get_by!(MachineType, key: "standard")
 
-  @doc "The seeded type Browser tests, `browser`, with the spec of `standard` and no image."
+  @doc "The seeded type Browser tests, `browser`, with the spec of `standard`."
   def browser_type, do: Repo.get_by!(MachineType, key: "browser")
 
   @doc "A spec as the provisioner contract writes it, `attrs` over 4 vCPUs, 16 GiB, 60 GiB."
