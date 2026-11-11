@@ -58,16 +58,19 @@ RUN mkdir -p "$RUSTLER_PRECOMPILED_GLOBAL_CACHE_PATH" \
   done
 
 # elixir_make downloads lazy_html's NIF from github.com with httpc too, and its fallback build
-# needs cmake, which the image lacks. curl fetches the NIF into elixir_make's cache instead;
-# elixir_make checks it against deps/lazy_html/checksum.exs before it unpacks it.
+# needs cmake, which the image lacks. curl fetches the NIF into elixir_make's cache instead, and
+# the build stops when its SHA-256 differs from the one in deps/lazy_html/checksum.exs.
 ENV ELIXIR_MAKE_CACHE_DIR=/var/cache/elixir_make
 RUN mkdir -p "$ELIXIR_MAKE_CACHE_DIR" \
   && files="$(grep -oE "lazy_html-nif-[0-9.]+-$(uname -m)-linux-gnu-[0-9.]+\.tar\.gz" \
     deps/lazy_html/checksum.exs)" \
   && for f in $files; do \
     v="${f##*-}"; \
+    sha="$(grep -F "\"$f\"" deps/lazy_html/checksum.exs | sed -nE 's/.*"sha256:([0-9a-f]{64})".*/\1/p')"; \
+    [ -n "$sha" ] || exit 1; \
     curl -fsSL --retry 3 -o "$ELIXIR_MAKE_CACHE_DIR/$f" \
       "https://github.com/dashbitco/lazy_html/releases/download/v${v%.tar.gz}/$f" || exit 1; \
+    echo "$sha  $ELIXIR_MAKE_CACHE_DIR/$f" | sha256sum -c - || exit 1; \
   done
 
 RUN mkdir config

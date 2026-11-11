@@ -17,7 +17,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   frame and the list of screens beside it, each a link that opens its screen in the
   frame. The frame has the sandbox with no permission, and each screen is served with
   a policy that lets it run no script and load nothing but `data:` images and fonts.
-  The frame's address has a token that the page signs for its reader, valid for an
+  The frame's address has a token that Qory Apiary signs for the reader, valid for an
   hour, so the links between screens work inside the sandbox, which sends no session
   cookie. Qory Apiary checks on each request that the reader's session lasts, so
   signing out ends the token, and that the reader may read the work item. The logs
