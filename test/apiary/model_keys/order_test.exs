@@ -22,6 +22,25 @@ defmodule Apiary.ModelKeys.OrderTest do
   defp at(seconds), do: DateTime.add(@now, seconds)
   defp ids(keys), do: Enum.map(keys, & &1.id)
 
+  test "the keys are sent in tie order: the named key while free, then the free, then the cooling" do
+    keys = [
+      key("late", 1, reset: at(7200)),
+      key("cooling-default", 2, default: true, until: at(600)),
+      key("cooling", 0, until: at(60)),
+      key("free", 3),
+      key("named", 4, named: true, reset: at(3600))
+    ]
+
+    picked = Order.order(keys, @now)
+    assert ids(picked) == ~w(named free late cooling cooling-default)
+    assert Order.start(picked, @now).id == "named"
+    assert ids(Order.sent(picked, @now)) == ~w(named late free cooling-default cooling)
+
+    # A named key in cooldown goes with the keys in cooldown, in tie order.
+    named = [key("named", 0, named: true, until: at(60)), key("default", 5, default: true)]
+    assert ids(Order.sent(Order.order(named, @now), @now)) == ~w(default named)
+  end
+
   test "the named key goes first while it is not in cooldown" do
     keys = [
       key("a", 1, default: true),

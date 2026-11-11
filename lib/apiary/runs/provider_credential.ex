@@ -4,7 +4,7 @@ defmodule Apiary.Runs.ProviderCredential do
   # The model keys of a run that its claim set a model provider for
   # (`Apiary.Dispatches.RunSettings`), as its run configuration contains them: one entry
   # of the contract's `credentials` per key, an API credential, in the order the run keeps
-  # its keys (`runs.model_keys`), the start key first; and the hosts the provider needs,
+  # its keys (`runs.model_keys`); and the hosts the provider needs,
   # which the run's `egress.allow` and `egress.allow_first` gain
   # (`Apiary.Policy.ComposedConfiguration`). Both come from the run's stored provider
   # columns and the provider's row, so a choice or a key's state changed after the claim
@@ -14,9 +14,12 @@ defmodule Apiary.Runs.ProviderCredential do
   # keeps it; `format`, `endpoint` and `auth` of the API the run uses
   # (`runs.provider_api`), the same for every key; `key_prefixes` when the API has them;
   # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
-  # `cooldown_until` and `chosen`, each where the run keeps it. It has no key value, no
-  # secret id and no value id: the gateway fetches the values with the secrets request
-  # (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
+  # `cooldown_until` and `chosen`, each where the run keeps it. A key the run keeps
+  # without `pause_for_s`, as a run kept its one key before, gets the key's Pause for when
+  # the document is composed (`Apiary.ModelKeys.pause_seconds/2`). The start key,
+  # `model_credential`, is the key the run keeps with `start`, else its first. An entry
+  # has no key value, no secret id and no value id: the gateway fetches the values with
+  # the secrets request (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
   #
   # The hosts are the description's `egress_hosts`, in its order, each once. An entry
   # `{"setting": name}` is the host of that setting's address: the address in
@@ -210,18 +213,43 @@ defmodule Apiary.Runs.ProviderCredential do
     with {:ok, provider} <- provider(Map.get(run, :provider_connection_id)),
          :ok <- endpoint(provider, api["endpoint"]),
          {:ok, description} <- description(provider) do
+      start = Enum.find(keys, hd(keys), &(&1["start"] == true))["name"]
+
       keys =
-        for %{"id" => id, "name" => name} = key <- keys do
+        for %{"id" => id, "name" => name} = key <- with_pauses(provider, keys) do
           %{name: name, secret_value_id: id, entry: entry(name, api, key)}
         end
 
       {:ok,
        %{
-         name: hd(keys).name,
+         name: start,
          keys: keys,
          hosts: hosts(provider, description, api),
          provider: provider
        }}
+    end
+  end
+
+  # `keys` with `pause_for_s` on each, as the contract requires of every key of the key
+  # group: a key kept without one, by a run whose one key was kept before runs kept
+  # several, gets its Pause for (`Apiary.ModelKeys.pause_seconds/2`), its setting or the
+  # default of the provider's catalogue entry, read in one query for all such keys.
+  defp with_pauses(provider, keys) do
+    case for(key <- keys, not Map.has_key?(key, "pause_for_s"), do: key["id"]) do
+      [] ->
+        keys
+
+      ids ->
+        settings =
+          from(s in Apiary.ModelKeys.Setting, where: s.secret_value_id in ^ids)
+          |> Repo.all()
+          |> Map.new(&{&1.secret_value_id, &1})
+
+        Enum.map(keys, fn key ->
+          Map.put_new_lazy(key, "pause_for_s", fn ->
+            Apiary.ModelKeys.pause_seconds(provider, Map.get(settings, key["id"]))
+          end)
+        end)
     end
   end
 

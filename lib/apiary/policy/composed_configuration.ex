@@ -63,7 +63,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #   `Apiary.Runs.RunVariables.document/1`);
   # - with the `secrets` feature too, for a run its claim set a model provider for:
   #   `credentials`, an API credential for each of the run's model keys, in their order,
-  #   and `model_credential`, the first one's name, the start key's
+  #   and `model_credential`, the start key's name
   #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
   #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after
   #   the entries there, and each exact one (`Apiary.Policy.Grammar.exact_host?/1`) in its

@@ -276,12 +276,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   end
 
   describe "the model keys of a claim" do
-    test "are every key of the provider, ordered, each named by its place, with its resets",
+    test "are every key of the provider, sent in tie order, each named by its place, with its resets",
          ctx do
       pid = ctx.provider.public_id
       choose!(ctx.scope, :workspace, %{provider: pid})
 
-      # The default key has a known reset; the other has none, so it goes first.
+      # The default key has a known reset; the other has none, so it is the start key. The
+      # run configuration sends them in tie order, the default key first.
       reset = in_seconds(7200)
       state!(ctx.provider, "main", resets_at: reset)
 
@@ -293,17 +294,21 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert run.model_keys == [
                %{
-                 "id" => value!(ctx.provider, "spare").id,
-                 "name" => "#{pid}-1",
-                 "pause_for_s" => 300
-               },
-               %{
                  "id" => value!(ctx.provider, "main").id,
-                 "name" => "#{pid}-2",
+                 "name" => "#{pid}-1",
                  "pause_for_s" => 60,
                  "resets_at" => DateTime.to_iso8601(reset)
+               },
+               %{
+                 "id" => value!(ctx.provider, "spare").id,
+                 "name" => "#{pid}-2",
+                 "start" => true,
+                 "pause_for_s" => 300
                }
              ]
+
+      assert {:ok, %{name: start}} = Apiary.Runs.ProviderCredential.for_run(run)
+      assert start == "#{pid}-2"
 
       # No key value, value id or key's row id in the documents' run settings.
       encoded = Jason.encode!(handed.run_settings)
@@ -324,6 +329,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert start == %{
                "id" => value!(ctx.provider, "main").id,
                "name" => "#{pid}-1",
+               "start" => true,
                "pause_for_s" => 60
              }
 

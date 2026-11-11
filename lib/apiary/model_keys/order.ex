@@ -29,6 +29,11 @@ defmodule Apiary.ModelKeys.Order do
   named key in cooldown takes its place among them. Of the result, a run gets the first
   `max_keys/0`; the others serve later runs. The run's start key is its first free key
   (`start/2`): never a key in cooldown.
+
+  **The order sent** (`sent/2`): the run configuration has the keys a run gets in tie
+  order, as the Forager contract has the server send them, and the gateway orders them
+  again at each switch: the named key first while it is free, then the free keys in tie
+  order, then the keys in cooldown in tie order.
   """
 
   # A run's model keys, within the 8 credentials of a run configuration, which also has
@@ -68,6 +73,18 @@ defmodule Apiary.ModelKeys.Order do
     cooling = Enum.sort_by(cooling, &{usec(&1.cooldown_until), tie(&1)})
 
     Enum.take(free ++ cooling, @max_keys)
+  end
+
+  @doc """
+  `keys`, the keys a run gets (`order/2`), in the order its run configuration sends them
+  at `now` (the moduledoc): the named key while free, the free keys in tie order, then the
+  keys in cooldown in tie order.
+  """
+  @spec sent([key], DateTime.t()) :: [key]
+  def sent(keys, %DateTime{} = now) do
+    {cooling, free} = Enum.split_with(keys, &cooling?(&1, now))
+    {named, free} = Enum.split_with(free, & &1.named)
+    named ++ Enum.sort_by(free, &tie/1) ++ Enum.sort_by(cooling, &tie/1)
   end
 
   @doc "The first free key of `keys` at `now`, nil when every key is in cooldown."

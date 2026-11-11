@@ -85,11 +85,12 @@ defmodule Apiary.Dispatches.RunSettings do
   # workflow and the limits are read without a lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
   # has the stored copy. Beside it, the run keeps the provider's row id, its keys'
   # secret's row id, its keys (`runs.model_keys`: each key's row id, its credential name
-  # `<provider's public id>-<place from 1>`, and what its run configuration entry has of
-  # it), the provider's chain and the API the run uses (`provider_api`: its `format`, its `endpoint` with a setting resolved to its
-  # address, its `auth` and, when the description lists them, its `key_prefixes`), for
-  # the reads that follow the claim. The run settings take at most 64 KiB encoded; more
-  # refuses the claim.
+  # `<provider's public id>-<place from 1>`, `start` on the start key, and what its run
+  # configuration entry has of it), the provider's chain and the API the run uses
+  # (`provider_api`: its `format`, its `endpoint` with a setting resolved to its address,
+  # its `auth` and, when the description lists them, its `key_prefixes`), for the reads
+  # that follow the claim. The run settings take at most 64 KiB encoded; more refuses
+  # the claim.
   #
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
@@ -374,31 +375,38 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # The settings `built` with the run's keys of `provider` at `now`, in their order
-  # (`Apiary.ModelKeys.Order`), or nil where every key is in cooldown. Each key is a
-  # credential named by the provider's public id and the key's place in the order, from
-  # 1: `<public id>-1`, the start key, `<public id>-2` and on.
+  # The settings `built` with the run's keys of `provider` at `now`, or nil where every
+  # key is in cooldown: the keys a run gets and its start key by their order
+  # (`Apiary.ModelKeys.Order.order/2`), kept in the order the run configuration sends
+  # them (`Apiary.ModelKeys.Order.sent/2`). Each key is a credential named by the
+  # provider's public id and the key's place in that order, from 1: `<public id>-1`,
+  # `<public id>-2` and on; the start key is marked `start`.
   defp keyed(built, %Connection{} = provider, named, now) do
     keys = provider |> ModelKeys.claim_keys(named, now) |> Order.order(now)
 
-    if Order.start(keys, now) do
+    if start = Order.start(keys, now) do
       stored =
         keys
+        |> Order.sent(now)
         |> Enum.with_index(1)
-        |> Enum.map(fn {key, place} -> stored_key(key, "#{provider.public_id}-#{place}", now) end)
+        |> Enum.map(fn {key, place} ->
+          stored_key(key, "#{provider.public_id}-#{place}", key.id == start.id, now)
+        end)
 
       {:ok, %{built | columns: Map.put(built.columns, :model_keys, stored)}}
     end
   end
 
   # A key as the run keeps it and its run configuration writes it: its row id, its name,
-  # its Pause for, and, where it has them, its known reset from the providers' answers,
-  # the next reset of its schedule, whether the choice names it, and the end of its
-  # cooldown while it is in cooldown at `now`. Times are in whole seconds, rounded up.
-  defp stored_key(key, name, now) do
+  # `start` on the start key, its Pause for, and, where it has them, its known reset from
+  # the providers' answers, the next reset of its schedule, whether the choice names it,
+  # and the end of its cooldown while it is in cooldown at `now`. Times are in whole
+  # seconds, rounded up.
+  defp stored_key(key, name, start?, now) do
     [
       {"id", key.id},
       {"name", name},
+      {"start", if(start?, do: true)},
       {"pause_for_s", key.pause_seconds},
       {"resets_at", time(key.resets_at)},
       {"schedule_resets_at", time(key.schedule_resets_at)},

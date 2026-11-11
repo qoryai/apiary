@@ -169,7 +169,8 @@ defmodule Apiary.Runs.Run do
     # `endpoint`, `auth` and, when the description lists them, `key_prefixes`). The keys
     # (`model_keys`) are in the order of the run configuration's `credentials`, at most 6,
     # each a map of `"id"`, the key's row id (`secret_values.id`), `"name"`, its
-    # credential's name, and what the claim wrote for the run configuration:
+    # credential's name, `"start"`, true on the start key, which a run that kept one key
+    # before has not, and what the claim wrote for the run configuration:
     # `"pause_for_s"`, and where the claim had them, `"resets_at"`,
     # `"schedule_resets_at"`, `"chosen"` and `"cooldown_until"`; never a key value.
     # Written once with the registration and never changed; nil for every other run, and
