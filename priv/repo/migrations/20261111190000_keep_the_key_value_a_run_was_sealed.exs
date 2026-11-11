@@ -22,7 +22,9 @@ defmodule Apiary.Repo.Migrations.KeepTheKeyValueARunWasSealed do
     execute("UPDATE secret_values SET value_set_at = updated_at")
 
     alter table(:secret_values) do
-      modify :value_set_at, :utc_datetime_usec, null: false, default: fragment("now()")
+      modify :value_set_at, :utc_datetime_usec,
+        null: false,
+        default: fragment("timezone('utc', now())")
     end
 
     create table(:model_key_copies, primary_key: false) do
