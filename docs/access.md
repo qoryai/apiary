@@ -813,8 +813,10 @@ for each other and never on each other at once:
    A gateway's secrets request for a run's model keys takes no lock: it reads the run, the
    provider's row and the row of its keys' secret without one, checks the provider's
    integrity code, decrypts each key in the request, whose row is bound to its secret, and
-   writes the audit entry `secret.seal` alone. A model keys report takes the locks of its
-   keys' state rows in one order, so two reports of the same keys at once cannot deadlock.
+   writes the audit entry `secret.seal` alone. A model keys report takes the rows of its
+   keys in `secret_values` `FOR KEY SHARE` first, by id, then the locks of their state
+   rows in one order, so two reports of the same keys at once cannot deadlock, and a key
+   deleted before the report writes is left out of it.
    A provider's deletion is refused while a pending or running run uses it, so the run's
    provider columns are empty only on a run that ended, and the request for such a run is
    refused.
