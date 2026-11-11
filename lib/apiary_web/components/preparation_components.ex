@@ -1687,7 +1687,10 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp succeeded(finished), do: finished
 
-  defp exit_state(%{state: "paused"}), do: "paused"
+  defp exit_state(%{state: "paused", reason: "model_key_limit"}), do: "paused"
+  # A pause for any other reason, or none, is no end the contract has: failed, as the run
+  # reads it (`Apiary.Runs.Fold.exit_state/2`).
+  defp exit_state(%{state: "paused"}), do: "failed"
   # The shape of a pause until every gateway sends `paused`: Qory Apiary is deployed
   # before Forager, so it reads both while gateways of both versions run.
   defp exit_state(%{state: "cancelled", reason: "model_key_limit"}), do: "paused"

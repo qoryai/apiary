@@ -795,6 +795,21 @@ defmodule ApiaryWeb.PreparationStepsTest do
       end
     end
 
+    test "a paused session with another reason or none shows Failed, as its run" do
+      for exit <- [%{state: "paused", reason: "stopped"}, %{state: "paused", reason: nil}] do
+        html = paused_section(exit)
+
+        for id <- ~w(prepare-machine-session-agent prepare-machine-session) do
+          assert html |> LazyHTML.query("##{id}[data-state=failed]") |> Enum.count() == 1,
+                 inspect({id, exit})
+
+          summary = LazyHTML.query(html, "##{id} > summary")
+          assert summary |> LazyHTML.query(".q-st-paused") |> Enum.count() == 0
+          assert summary |> LazyHTML.query(".sr-only") |> text() =~ "Failed"
+        end
+      end
+    end
+
     test "a cancelled session with another reason stays Cancelled" do
       html = paused_section(%{state: "cancelled", reason: "stopped"})
 
