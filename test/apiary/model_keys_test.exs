@@ -630,6 +630,42 @@ defmodule Apiary.ModelKeysTest do
       refute cooling?.("main", ~U[2026-11-14 09:00:00.000000Z])
     end
 
+    test "end at their cooldown_until: a key whose cooldown ends now is free for each reader",
+         ctx do
+      %{provider: provider, values: values} = ctx
+      until = ~U[2026-11-10 14:00:00.000000Z]
+      before = DateTime.add(until, -1, :microsecond)
+
+      for value <- Map.values(values) do
+        :ok =
+          ModelKeys.record(
+            [key(value)],
+            [item(window: "five_hour", status: "rejected", cooldown_until: until)],
+            DateTime.utc_now()
+          )
+      end
+
+      states = fn at ->
+        provider |> ModelKeys.provider_states(at) |> Map.fetch!(values["main"].id)
+      end
+
+      # A microsecond before the end, every reader has the keys in cooldown.
+      assert Order.cooling?(claim_key(ctx, "main", before), before)
+      assert ModelKeys.cooldown_counts([provider], before) == %{provider.id => 2}
+      assert ModelKeys.cooling_until([provider.id], before) == until
+      refute ModelKeys.claim_keys(provider, nil, before) |> Order.start(before)
+
+      assert {:cooldown, _words, _source} =
+               ApiaryWeb.ModelKeyComponents.state(states.(before), before)
+
+      # At the end itself, none has.
+      refute Order.cooling?(claim_key(ctx, "main", until), until)
+      assert ModelKeys.cooldown_counts([provider], until) == %{provider.id => 0}
+      assert ModelKeys.cooling_until([provider.id], until) == nil
+      assert ModelKeys.claim_keys(provider, nil, until) |> Order.start(until)
+      assert {:available, _segments} = ApiaryWeb.ModelKeyComponents.state(states.(until), until)
+    end
+
     test "count the keys in cooldown of each provider, as a claim reads them", ctx do
       %{scope: scope, provider: provider, values: values} = ctx
       {other, other_values} = provider!(scope, ["first", "second"])
