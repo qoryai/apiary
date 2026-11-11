@@ -2615,7 +2615,6 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## After a change, and its refusals
 
-  # Saved: the list read again, back on the view, the page and its field gone.
   # The write of a model provider's key with the settings its form sent
   # (`ApiaryWeb.ModelKeyComponents.read_settings/1`); none is written while they cannot
   # be saved, and their errors come back as `{:settings, errors}`.
@@ -2626,6 +2625,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
+  # Saved: the list read again, back on the view, the page and its field gone.
   defp saved(socket, words, view \\ :secrets) do
     socket
     |> put_flash(:info, words)

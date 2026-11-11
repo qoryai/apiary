@@ -9,9 +9,11 @@ defmodule Apiary.ModelKeys.Order do
     * `named`: true for the key the model choice names, at most one;
     * `default`: true for the provider's default key, at most one;
     * `inserted_at`: when the key was added;
-    * `known_reset`: its known reset (`Apiary.ModelKeys.known_reset/2`), nil for none;
+    * `known_reset`: its known reset, nil for none;
     * `cooldown_until`: the end of its cooldown, the latest across its windows, nil for
       none.
+
+  A claim reads them with `Apiary.ModelKeys.claim_keys/3`.
 
   At `now`, a key is **in cooldown** while its `cooldown_until` is after `now`, and
   **free** otherwise. `order/2` puts the free keys first:

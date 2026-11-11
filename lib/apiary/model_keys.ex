@@ -14,10 +14,9 @@ defmodule Apiary.ModelKeys do
   gateways of runs report them (`Apiary.ModelKeys.Report`). `record/3` keeps the newest
   row by `observed_at`: an older report never overwrites a newer row, whichever gateway
   sent it. A read leaves out the utilization of a window whose `resets_at` has passed
-  (`current/2`). `provider_states/2` is the states of a provider's keys, `known_reset/2`
-  a key's known reset, `cooldown_until/1` the end of a key's cooldown, the latest
-  `cooldown_until` across its windows, `in_cooldown?/2` whether a key is in cooldown, and
-  `cooldown_counts/2` how many keys of each provider are.
+  (`current/2`). `provider_states/2` is the states of a provider's keys, and
+  `cooldown_counts/2` how many keys of each provider are in cooldown. A key is in
+  cooldown while one of its windows has a `cooldown_until` in the future.
 
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
   credential in the run's run configuration. A report and its answer reach a key only
@@ -211,8 +210,11 @@ defmodule Apiary.ModelKeys do
   names (nil for none), and whether it is the provider's default key; `resets_at`, the
   earliest reset after `now` across its windows, from the providers' answers;
   `schedule_resets_at`, the next reset of its weekly schedule (`next_reset/2`);
-  `known_reset`, the first of those two that it has (`known_reset/2`); `cooldown_until`
-  (`cooldown_until/1`); and its Pause for (`pause_seconds/2`). In no order: the order is
+  `known_reset`, its known reset, the first of those two that it has; `cooldown_until`,
+  the end of its cooldown, the latest `cooldown_until` across its windows, which only a
+  rejected window has, so a key whose 5-hour and 7-day windows are both rejected stays
+  in cooldown until the later of the two; and its Pause for (`pause_seconds/2`). In no
+  order: the order is
   `Apiary.ModelKeys.Order.order/2`. Three reads, none locked.
   """
   @spec claim_keys(Connection.t(), String.t() | nil, DateTime.t()) :: [claim_key]
@@ -303,20 +305,36 @@ defmodule Apiary.ModelKeys do
   @doc """
   When the first key of the providers `provider_ids` leaves its cooldown, while every one
   of them is cooling at `now`, as `claimable/1` reads it: the earliest end of a key's
-  cooldown (`cooldown_until/1`) across their keys. Nil when one of them is not cooling,
-  and for no providers.
+  cooldown, the latest `cooldown_until` across its windows, across their keys. Nil when
+  one of them is not cooling, and for no providers.
   """
   @spec cooling_until([Ecto.UUID.t()], DateTime.t()) :: DateTime.t() | nil
-  def cooling_until([], _now), do: nil
+  def cooling_until(provider_ids, %DateTime{} = now) do
+    case first_to_leave(provider_ids, now) do
+      {_provider_id, until} -> until
+      nil -> nil
+    end
+  end
 
-  def cooling_until(provider_ids, %DateTime{} = now) when is_list(provider_ids) do
+  @doc """
+  The provider of `provider_ids` whose key leaves its cooldown first, and when, while
+  every one of them is cooling at `now` (`cooling_until/2`): `{provider_id, until}`. Of two
+  providers whose keys leave at the same time, the earlier in `provider_ids`. Nil when
+  one of them is not cooling, and for no providers.
+  """
+  @spec first_to_leave([Ecto.UUID.t()], DateTime.t()) :: {Ecto.UUID.t(), DateTime.t()} | nil
+  def first_to_leave([], _now), do: nil
+
+  def first_to_leave(provider_ids, %DateTime{} = now) when is_list(provider_ids) do
+    ids = Enum.uniq(provider_ids)
+
     ends =
       from(c in Connection,
         join: v in Value,
         on: v.secret_id == c.secret_id,
         left_join: s in State,
         on: s.secret_value_id == v.id,
-        where: c.id in ^provider_ids and not is_nil(c.provider_kind),
+        where: c.id in ^ids and not is_nil(c.provider_kind),
         group_by: [c.id, v.id],
         select: {c.id, max(s.cooldown_until)}
       )
@@ -324,18 +342,22 @@ defmodule Apiary.ModelKeys do
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
     cooling? =
-      Enum.all?(Enum.uniq(provider_ids), fn id ->
+      Enum.all?(ids, fn id ->
         case Map.get(ends, id) do
-          [_ | _] = untils ->
-            Enum.all?(untils, &(is_struct(&1, DateTime) and DateTime.compare(&1, now) == :gt))
-
-          nil ->
-            false
+          [_ | _] = untils -> Enum.all?(untils, &after?(&1, now))
+          nil -> false
         end
       end)
 
-    if cooling?, do: ends |> Map.values() |> List.flatten() |> Enum.min(DateTime)
+    if cooling? do
+      ids
+      |> Enum.map(&{&1, Enum.min(Map.fetch!(ends, &1), DateTime)})
+      |> Enum.min_by(&elem(&1, 1), DateTime)
+    end
   end
+
+  defp after?(%DateTime{} = time, now), do: DateTime.compare(time, now) == :gt
+  defp after?(nil, _now), do: false
 
   ## States
 
@@ -345,7 +367,8 @@ defmodule Apiary.ModelKeys do
   `keys`, or of a window outside `Apiary.ModelKeys.State.windows/0`, is left out. One
   statement writes every row, and keeps a row only where the
   item's `observed_at` is newer than the row's; of two items of one key and window, the
-  newer counts. Returns `:ok`.
+  newer counts. The rows are written in the order of their key's row id and window.
+  Returns `:ok`.
   """
   @spec record([run_key], [map], DateTime.t()) :: :ok
   def record(keys, items, %DateTime{} = now) do
@@ -362,6 +385,9 @@ defmodule Apiary.ModelKeys do
       end)
       |> Enum.group_by(&{&1.secret_value_id, &1.window})
       |> Enum.map(fn {_key_window, rows} -> Enum.max_by(rows, & &1.observed_at, DateTime) end)
+      # In one order for every report, so two reports of the same keys at once take the
+      # rows' locks in the same order and never wait for each other.
+      |> Enum.sort_by(&{&1.secret_value_id, &1.window})
 
     if rows != [] do
       Repo.insert_all(State, rows,
@@ -451,8 +477,9 @@ defmodule Apiary.ModelKeys do
   def provider_states(%Connection{}, _now), do: %{}
 
   @doc """
-  How many keys of each of `providers` are in cooldown at `now` (`in_cooldown?/2`), in
-  one query: a map from each provider's row id to its count, 0 for a provider with none.
+  How many keys of each of `providers` are in cooldown at `now`, a window of the key
+  with a `cooldown_until` after `now`, in one query: a map from each provider's row id
+  to its count, 0 for a provider with none.
   """
   @spec cooldown_counts([Connection.t()], DateTime.t()) :: %{Ecto.UUID.t() => non_neg_integer}
   def cooldown_counts(providers, %DateTime{} = now) when is_list(providers) do
@@ -482,50 +509,6 @@ defmodule Apiary.ModelKeys do
   end
 
   def current(%State{} = state, _now), do: state
-
-  @doc """
-  The known reset of the key `secret_value_id` at `now`: the earliest `resets_at` after
-  `now` across its windows, else the next reset of its weekly schedule after `now`
-  (`next_reset/2`), else nil.
-  """
-  @spec known_reset(Ecto.UUID.t(), DateTime.t()) :: DateTime.t() | nil
-  def known_reset(secret_value_id, %DateTime{} = now) do
-    earliest =
-      Repo.one(
-        from s in State,
-          where: s.secret_value_id == ^secret_value_id and s.resets_at > ^now,
-          select: min(s.resets_at)
-      )
-
-    earliest || next_reset(setting(secret_value_id), now)
-  end
-
-  @doc """
-  The end of the cooldown of the key `secret_value_id`: the latest `cooldown_until`
-  across its windows, which only a rejected window has; nil when none has one. A key
-  whose 5-hour and 7-day windows are both rejected stays in cooldown until the later of
-  the two resets.
-  """
-  @spec cooldown_until(Ecto.UUID.t()) :: DateTime.t() | nil
-  def cooldown_until(secret_value_id) do
-    Repo.one(
-      from s in State,
-        where: s.secret_value_id == ^secret_value_id,
-        select: max(s.cooldown_until)
-    )
-  end
-
-  @doc """
-  Whether the key `secret_value_id` is in cooldown at `time`: the end of its cooldown
-  (`cooldown_until/1`) is after `time`.
-  """
-  @spec in_cooldown?(Ecto.UUID.t(), DateTime.t()) :: boolean
-  def in_cooldown?(secret_value_id, %DateTime{} = time) do
-    case cooldown_until(secret_value_id) do
-      %DateTime{} = until -> DateTime.compare(until, time) == :gt
-      nil -> false
-    end
-  end
 
   defp usec(nil), do: nil
 

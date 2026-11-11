@@ -10,7 +10,7 @@ defmodule Apiary.ModelKeysTest do
 
   alias Apiary.{Connections, ModelKeys}
   alias Apiary.Connections.Connection
-  alias Apiary.ModelKeys.{Report, Setting, State}
+  alias Apiary.ModelKeys.{Order, Report, Setting, State}
   alias Apiary.Runs.Run
   alias Apiary.Secrets.Value
 
@@ -48,6 +48,11 @@ defmodule Apiary.ModelKeysTest do
       },
       Map.new(attrs)
     )
+  end
+
+  # The key `value_id` of the provider of `ctx` as a claim at `at` reads it.
+  defp claim_key(ctx, value_id, at) do
+    ctx.provider |> ModelKeys.claim_keys(nil, at) |> Enum.find(&(&1.value_id == value_id))
   end
 
   defp states(%Value{id: id}),
@@ -526,11 +531,13 @@ defmodule Apiary.ModelKeysTest do
       assert Map.keys(ModelKeys.provider_states(other, now)) == [elsewhere.id]
     end
 
-    test "give a key's known reset: the earliest future reset, else its schedule", ctx do
+    test "give a key's known reset at a claim: the earliest future reset, else its schedule",
+         ctx do
       value = ctx.values["main"]
       now = ~U[2026-11-10 15:00:00.000000Z]
+      known_reset = fn at -> claim_key(ctx, "main", at).known_reset end
 
-      assert ModelKeys.known_reset(value.id, now) == nil
+      assert known_reset.(now) == nil
 
       {:ok, _} =
         ModelKeys.put_setting(value, %{
@@ -539,7 +546,7 @@ defmodule Apiary.ModelKeysTest do
           reset_time_zone: "Europe/Berlin"
         })
 
-      assert ModelKeys.known_reset(value.id, now) == ~U[2026-11-16 08:00:00.000000Z]
+      assert known_reset.(now) == ~U[2026-11-16 08:00:00.000000Z]
 
       :ok =
         ModelKeys.record(
@@ -553,16 +560,15 @@ defmodule Apiary.ModelKeysTest do
         )
 
       # The five-hour window's reset has passed: the request window's is the earliest.
-      assert ModelKeys.known_reset(value.id, now) == ~U[2026-11-10 15:01:00.000000Z]
-
-      assert ModelKeys.known_reset(value.id, ~U[2026-11-10 15:01:00Z]) ==
-               ~U[2026-11-14 09:00:00.000000Z]
+      assert known_reset.(now) == ~U[2026-11-10 15:01:00.000000Z]
+      assert known_reset.(~U[2026-11-10 15:01:00.000000Z]) == ~U[2026-11-14 09:00:00.000000Z]
     end
 
-    test "say whether a key is in cooldown at a time, until its latest cooldown", ctx do
+    test "give a key's cooldown at a claim, until its latest cooldown", ctx do
       value = ctx.values["main"]
-      refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 13:00:00Z])
-      assert ModelKeys.cooldown_until(value.id) == nil
+      cooling? = fn value_id, at -> Order.cooling?(claim_key(ctx, value_id, at), at) end
+      refute cooling?.("main", ~U[2026-11-10 13:00:00.000000Z])
+      assert claim_key(ctx, "main", ~U[2026-11-10 13:00:00.000000Z]).cooldown_until == nil
 
       :ok =
         ModelKeys.record(
@@ -578,10 +584,12 @@ defmodule Apiary.ModelKeysTest do
           DateTime.utc_now()
         )
 
-      assert ModelKeys.cooldown_until(value.id) == ~U[2026-11-10 14:00:00.000000Z]
-      assert ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 13:59:59Z])
-      refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 14:00:00Z])
-      refute ModelKeys.in_cooldown?(ctx.values["spare"].id, ~U[2026-11-10 13:00:00Z])
+      assert claim_key(ctx, "main", ~U[2026-11-10 13:00:00.000000Z]).cooldown_until ==
+               ~U[2026-11-10 14:00:00.000000Z]
+
+      assert cooling?.("main", ~U[2026-11-10 13:59:59.000000Z])
+      refute cooling?.("main", ~U[2026-11-10 14:00:00.000000Z])
+      refute cooling?.("spare", ~U[2026-11-10 13:00:00.000000Z])
 
       # The 7-day window rejected too, until a later reset: the key stays in cooldown
       # until then, past the 5-hour window's end.
@@ -599,15 +607,17 @@ defmodule Apiary.ModelKeysTest do
           DateTime.utc_now()
         )
 
-      assert ModelKeys.cooldown_until(value.id) == ~U[2026-11-14 09:00:00.000000Z]
-      assert ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 14:00:00Z])
-      refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-14 09:00:00Z])
+      assert claim_key(ctx, "main", ~U[2026-11-10 14:00:00.000000Z]).cooldown_until ==
+               ~U[2026-11-14 09:00:00.000000Z]
+
+      assert cooling?.("main", ~U[2026-11-10 14:00:00.000000Z])
+      refute cooling?.("main", ~U[2026-11-14 09:00:00.000000Z])
     end
 
-    test "count the keys in cooldown of each provider, as in_cooldown?/2 has them", ctx do
+    test "count the keys in cooldown of each provider, as a claim reads them", ctx do
       %{scope: scope, provider: provider, values: values} = ctx
       {other, other_values} = provider!(scope, ["first", "second"])
-      at = ~U[2026-11-10 13:00:00Z]
+      at = ~U[2026-11-10 13:00:00.000000Z]
 
       assert ModelKeys.cooldown_counts([provider, other], at) == %{
                provider.id => 0,
@@ -631,8 +641,9 @@ defmodule Apiary.ModelKeysTest do
       counts = ModelKeys.cooldown_counts([provider, other], at)
       assert counts == %{provider.id => 1, other.id => 1}
 
-      for {p, vs} <- [{provider, values}, {other, other_values}] do
-        assert counts[p.id] == Enum.count(vs, fn {_id, v} -> ModelKeys.in_cooldown?(v.id, at) end)
+      for p <- [provider, other] do
+        cooling = p |> ModelKeys.claim_keys(nil, at) |> Enum.count(&Order.cooling?(&1, at))
+        assert counts[p.id] == cooling
       end
 
       assert ModelKeys.cooldown_counts([], at) == %{}

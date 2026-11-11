@@ -193,9 +193,10 @@ defmodule Apiary.Runs.WaitingTest do
     # The fallback has a free key: the run does not wait for a key.
     assert {:pool, _name} = reason(run)
 
+    # The fallback's key leaves its cooldown first: the reason has its provider and end.
     first = in_seconds(1800)
     cooling!(fallback, first)
-    assert {:cooldown, "Team keys", until} = reason(run)
+    assert {:cooldown, "Spare keys", until} = reason(run)
     assert DateTime.compare(until, first) == :eq
   end
 

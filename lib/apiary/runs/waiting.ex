@@ -13,9 +13,8 @@ defmodule Apiary.Runs.Waiting do
   #     whose admins are the instance's;
   #   * `{:cooldown, provider, until}`, every key of each of its model providers
   #     (`dispatch_runs.model_provider_ids`) is in cooldown, while runs are given model
-  #     keys (`Apiary.ModelKeys.cooling_until/2`): `provider` is the name of the first of
-  #     them, its model choice's provider, and `until` when the first key of any of them
-  #     leaves its cooldown;
+  #     keys (`Apiary.ModelKeys.first_to_leave/2`): `provider` is the name of the one whose
+  #     key leaves its cooldown first, and `until` when that key leaves it;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
   #     while a prebuild of the target waits, `:running` while one is claimed or handed
@@ -91,12 +90,12 @@ defmodule Apiary.Runs.Waiting do
     end
   end
 
-  # Every key of each of the run's model providers in cooldown at `now`: the first
-  # provider's name and when the first key leaves its cooldown.
-  defp cooldown(%DispatchRun{model_provider_ids: [first | _] = ids}, now) do
+  # Every key of each of the run's model providers in cooldown at `now`: the name of the
+  # provider whose key leaves its cooldown first, and when.
+  defp cooldown(%DispatchRun{model_provider_ids: [_ | _] = ids}, now) do
     with true <- ProviderCredential.applies?(),
-         %DateTime{} = until <- ModelKeys.cooling_until(ids, now),
-         %Connection{name: name} <- Repo.get(Connection, first) do
+         {id, until} <- ModelKeys.first_to_leave(ids, now),
+         %Connection{name: name} <- Repo.get(Connection, id) do
       {:cooldown, name, until}
     else
       _not_cooling -> nil
