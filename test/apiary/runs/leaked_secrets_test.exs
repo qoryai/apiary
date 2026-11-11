@@ -395,7 +395,8 @@ defmodule Apiary.Runs.LeakedSecretsTest do
   end
 
   test "keeps a split secret once when the second chunk alone has a secret's form", ctx do
-    # The second chunk starts with a whole key of its own form, the end of the secret.
+    # The second chunk starts with the end of the secret, which alone has the form of a
+    # key.
     secret =
       "sk-ant-api03-" <> String.duplicate("A", 32) <> "sk-ant-api03-" <> String.duplicate("B", 40)
 

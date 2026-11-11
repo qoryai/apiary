@@ -292,10 +292,10 @@ defmodule Apiary.Runs.LeakedSecrets do
          following_findings(event, following)}
       end
 
-    rows = Enum.flat_map(found, fn {own, following} -> own ++ following end)
+    rows = Enum.flat_map(found, fn {in_event, following} -> in_event ++ following end)
 
     covered =
-      for {_own, following} <- found,
+      for {_in_event, following} <- found,
           %{covers: covers} <- following,
           do: covers
 
@@ -351,7 +351,7 @@ defmodule Apiary.Runs.LeakedSecrets do
 
     covered = Enum.map(spanning, &(@bytes_at + &1.through))
 
-    own =
+    in_event =
       for finding <- SecretScan.scan(text),
           not Enum.any?(covered, &(finding.offset >= @bytes_at and finding.offset < &1)) do
         %{
@@ -366,7 +366,7 @@ defmodule Apiary.Runs.LeakedSecrets do
         }
       end
 
-    Enum.map(spanning, &Map.delete(&1, :through)) ++ own
+    Enum.map(spanning, &Map.delete(&1, :through)) ++ in_event
   end
 
   # The secrets that start in the end of the chunk before, `previous`, and end in `bytes`:
