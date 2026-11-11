@@ -541,7 +541,7 @@ defmodule Apiary.Runs.SecretsRequest do
 
   # The value of each credential but the work entry's, the registry credential's secret,
   # nil for none, and the copies of the model keys (`model_value/2`): the model keys',
-  # read for sealing before the work entry's credential is asked for, and the registry
+  # read for sealing before the work entry's credential is requested, and the registry
   # credential's, made now (`Apiary.Registry.Credential.new_secret/0`) and stored only
   # once the seal succeeded.
   defp values(run, %{model: model, registry: registry}) do
@@ -559,9 +559,10 @@ defmodule Apiary.Runs.SecretsRequest do
 
   # Each named key of the run, revealed by its row id, under the value id it has now
   # (`Apiary.Secrets.reveal_key_and_set_at/2`): a key renamed since the claim is
-  # revealed, and one removed since, or no longer a value of the provider's secret,
-  # refuses the request. With the copies, `[{secret_value_id, value_set_at}]`, when each
-  # revealed value was set, read with it (`Apiary.ModelKeys.keep_copies/2`).
+  # revealed, and for one removed since, or no longer a value of the provider's secret,
+  # this returns a refusal, `{:error, :credential_unavailable}`. With the copies,
+  # `[{secret_value_id, value_set_at}]`, when each revealed value was set, read with it
+  # (`Apiary.ModelKeys.keep_copies/2`).
   defp model_value(run, credential) do
     Enum.reduce_while(credential.keys, {:ok, [], []}, fn key, {:ok, values, copies} ->
       case Secrets.reveal_key_and_set_at(credential.provider, key.secret_value_id) do
@@ -606,10 +607,10 @@ defmodule Apiary.Runs.SecretsRequest do
     end
   end
 
-  # The records of the seal, for a request that names the run's model key, in one
+  # The records of the seal, for a request that lists the run's model key, in one
   # transaction: the copies of its keys (`Apiary.ModelKeys.keep_copies/2`), then the
   # audit entry; the answer to such a request goes out only with both. A request that
-  # does not name it, such as one for `registry` alone, gets neither. A key of the
+  # does not list it, such as one for `registry` alone, gets neither. A key of the
   # organisation's chain: in the run's organisation's trail, about the run. A key of an
   # operator's chain: in the operator's organisation's trail
   # (`Apiary.Runs.ProviderCredential.operator_of/1`), about the gateway, with the run's
