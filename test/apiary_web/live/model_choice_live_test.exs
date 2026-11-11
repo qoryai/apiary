@@ -421,14 +421,20 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       end
     end
 
-    test "a refused row shows the refusal under its field, and nothing is saved", ctx do
-      %{conn: conn, scope: scope} = ctx
+    test "a save that chooses a row's provider drops that row and saves the others", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, deepseek} = add_provider(scope, "deepseek")
+
+      {:ok, _} =
+        ModelChoices.put_choice(scope, :workspace, %{
+          provider: provider.public_id,
+          fallbacks: [%{provider: subscription.public_id}, %{provider: deepseek.public_id}]
+        })
+
       {:ok, lv, _html} = live(conn, path(scope))
 
-      lv |> element("#model-fallback-add") |> render_click()
-
-      # The chosen provider becomes the row's.
+      # The chosen provider becomes the first row's.
       lv
       |> form("#model-form",
         model_choice: %{model: option(subscription, "claude-sonnet-5-5")}
@@ -437,14 +443,52 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       lv |> form("#model-form") |> render_submit()
 
+      assert has_element?(lv, "#flash-info", "Model saved.")
+      assert choice(scope).connection_id == subscription.id
+      assert [{0, deepseek_id, _model, _effort}] = fallbacks(scope)
+      assert deepseek_id == deepseek.public_id
+    end
+
+    test "a refused row shows the refusal under its field, and nothing is saved", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, deepseek} = add_provider(scope, "deepseek")
+
+      {:ok, _} =
+        ModelChoices.put_choice(scope, :workspace, %{
+          provider: deepseek.public_id,
+          fallbacks: [%{provider: subscription.public_id}, %{provider: provider.public_id}]
+        })
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      # The first row's provider is chosen, so that row is dropped; the second row's
+      # refusal shows under the second row.
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "model" => option(subscription, "claude-sonnet-5-5"),
+          "fallbacks" => %{
+            "0" => %{
+              "provider" => subscription.public_id,
+              "model" => option(subscription, "claude-sonnet-5-5")
+            },
+            "1" => %{
+              "provider" => provider.public_id,
+              "model" => option(provider, "claude-sonnet-5-5"),
+              "effort" => "turbo"
+            }
+          }
+        }
+      })
+
       assert has_element?(
                lv,
-               "#model_choice_fallbacks_0_provider-error",
-               "Choose another provider: #{subscription.name} is chosen already."
+               "#model_choice_fallbacks_1_effort-error",
+               "Choose one of claude-sonnet-5-5's effort values"
              )
 
-      assert has_element?(lv, ~s{#model_choice_fallbacks_0_provider[aria-invalid="true"]})
-      assert choice(scope) == nil
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider-error")
+      assert choice(scope).connection_id == deepseek.id
     end
 
     test "an admin made a member while the page is open saves no fallback", ctx do

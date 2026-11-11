@@ -464,8 +464,8 @@ replaces the navigation it is in.
   form. Workspace settings › Secrets and variables has the same Resets and Pause for on
   Add value and Change value of a model provider's key. Change value with New value
   empty saves Resets and Pause for and keeps the key's value.
-- **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
-  the part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
+- **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the
+  part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next
   run.", then one row for each fallback, in order, from the second on with a rule above
   it. A row is a group named by its place, "Fallback 2", with Provider, Model, Another
@@ -476,10 +476,11 @@ replaces the navigation it is in.
   its provider changes, is the chosen model where the provider has a model of that id,
   else the provider's first. With no provider left, the part shows "Add another model
   provider that serves Claude Code in Organisation settings › Model providers, then add
-  it here as a fallback.", the place a link. Save writes the rows with the choice, and
-  an error shows under its row's field, such as "Choose another provider: Northwind
-  Claude is chosen already." A save that sends no rows, as the set-up's Model step
-  saves, keeps the rows but one of the chosen provider, which it drops.
+  it here as a fallback.", the place a link. Save writes the rows with the choice, and an
+  error shows under its row's field, such as "Choose another provider: Northwind Claude
+  is chosen already." A save that sends no rows, as the set-up's Model step saves, keeps
+  the rows but one of the chosen provider, which it drops. A save that changes the chosen
+  provider to the provider of a row drops that row.
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one

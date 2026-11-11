@@ -1036,6 +1036,9 @@ defmodule Apiary.ModelChoicesTest do
     test "are refused for the choice's provider, or a provider listed twice", ctx do
       %{scope: scope, provider: provider, subscription: subscription} = ctx
 
+      # The place's provider stays the chosen one, so a fallback of it is refused.
+      {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+
       assert fallback_errors(
                ModelChoices.put_choice(
                  scope,
@@ -1049,6 +1052,56 @@ defmodule Apiary.ModelChoicesTest do
                {2, :provider,
                 "Choose another provider: Claude subscription token is chosen already."}
              ]
+    end
+
+    test "a save that chooses a sent fallback's provider drops that fallback", ctx do
+      %{scope: scope, provider: provider, subscription: subscription, deepseek: deepseek} = ctx
+
+      # No choice yet: the chosen provider among the sent fallbacks is dropped, not refused.
+      assert {:ok, choice} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: [fallback(provider), fallback(subscription)]})
+               )
+
+      assert stored(choice) == [{0, subscription.public_id, nil, nil}]
+
+      # What Workspace settings › Model sends when its choice moves to the provider of a
+      # row: the rows it had. That row is dropped, the others keep their order.
+      assert {:ok, choice} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 %{
+                   provider: subscription.public_id,
+                   fallbacks: [fallback(subscription), fallback(deepseek), fallback(provider)]
+                 }
+               )
+
+      assert choice.connection_id == subscription.id
+
+      assert stored(choice) == [
+               {0, deepseek.public_id, nil, nil},
+               {1, provider.public_id, nil, nil}
+             ]
+
+      # A refusal of a later fallback keeps its index among the sent ones.
+      assert [{2, :effort, "Choose one of claude-sonnet-5-5's effort values: " <> _values}] =
+               fallback_errors(
+                 ModelChoices.put_choice(
+                   scope,
+                   :workspace,
+                   %{
+                     provider: deepseek.public_id,
+                     fallbacks: [
+                       fallback(deepseek),
+                       fallback(provider),
+                       fallback(subscription, @model, "turbo")
+                     ]
+                   }
+                 )
+               )
     end
 
     test "are refused for a provider not found, a model or an effort that breaks its rule", ctx do

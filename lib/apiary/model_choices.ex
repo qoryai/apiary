@@ -55,8 +55,9 @@ defmodule Apiary.ModelChoices do
   #     choice's provider and a provider of an earlier fallback are refused. Each refusal
   #     is on `fallbacks`, with the fallback's index from 0 (`fallback`) and its field
   #     (`field`). A save without `fallbacks` keeps the place's fallbacks, checked again
-  #     as sent ones are; an empty list leaves none. No number bounds them: each is
-  #     another provider of the organisation.
+  #     as sent ones are; an empty list leaves none. Either way, a save that chooses a
+  #     provider other than the place's drops a fallback of that provider, with no error.
+  #     No number bounds them: each is another provider of the organisation.
   #
   # A model's **offered effort values** are the values that both the model's list in the
   # description and the runtime's (`Apiary.Kinds.Runtime`, `effort_values`) contain, in the
@@ -402,13 +403,14 @@ defmodule Apiary.ModelChoices do
   @doc false
   # put_choice/3 sets the choice at `place` (`model_choice.write`; `provider.write` for
   # the organisation's default), replacing what the place had: `attrs` has `runtime`, the
-  # name of a runtime of the catalogue, `provider`, the
-  # public id of a model provider of the organisation, `key`, the value id of one of its
-  # keys, `model`, a model id, `effort`, one of that model's offered effort values,
-  # `tiers`, a map of tiers, `fallbacks`, a list in order of maps of `provider`, `model`
-  # and `effort`, and, at the workspace, `locked`. Each but `provider` and `tiers` may be
-  # left out; one of those two is needed. Left out, `fallbacks` keeps the place's, but a
-  # fallback of the chosen provider, which is dropped. `{:ok, choice}`, or
+  # name of a runtime of the catalogue, `provider`, the public id of a model provider of
+  # the organisation, `key`, the value id of one of its keys, `model`, a model id,
+  # `effort`, one of that model's offered effort values, `tiers`, a map of tiers,
+  # `fallbacks`, a list in order of maps of `provider`, `model` and `effort`, and, at the
+  # workspace, `locked`. Each but `provider` and `tiers` may be left out; one of those two
+  # is needed. Left out, `fallbacks` keeps the place's, but a fallback of the chosen
+  # provider, which is dropped. Sent, a fallback of the chosen provider is dropped too
+  # where the place's choice has another provider, or none. `{:ok, choice}`, or
   # `{:error, refusal}`: a changeset with the reason on its field (the moduledoc). `chain`
   # is "organisation" by default; "operator" sets the operator's choice at `:organisation`
   # alone, for a scope that writes that chain, with a provider of that chain; any other
@@ -1206,19 +1208,27 @@ defmodule Apiary.ModelChoices do
   # Each fallback, checked as the choice is against its provider, read with
   # `hold_fallback_providers/3`: a provider of the chain that applies, serves the runtime,
   # and is neither the choice's provider nor an earlier fallback's, and a model and an
-  # effort that go with it. Each fallback goes on with its provider (`connection`).
+  # effort that go with it. Each fallback goes on with its provider (`connection`). Where
+  # the save chooses a provider other than the place's, a fallback of the chosen provider
+  # is dropped, not refused, as Workspace settings › Model sends the rows it had when the
+  # choice moves to one of them; each other fallback keeps its index for its refusal.
   defp check_fallbacks(changeset, nil, _at, _runtime), do: changeset
 
   defp check_fallbacks(changeset, %Connection{} = provider, at, runtime) do
     case get_field(changeset, :fallbacks) do
       [_ | _] = fallbacks ->
         held = hold_fallback_providers(fallbacks, at.organisation, at.chain)
+        new_choice? = place_provider_id(at) != provider.id
 
         start = {changeset, [], MapSet.new([provider.id])}
 
         {changeset, checked, _taken} =
           fallbacks
           |> Enum.with_index()
+          |> Enum.reject(fn {fallback, _index} ->
+            new_choice? and
+              match?(%Connection{id: id} when id == provider.id, held[fallback.provider])
+          end)
           |> Enum.reduce(start, fn {fallback, index}, acc ->
             check_fallback(acc, fallback, index, held[fallback.provider], at, runtime)
           end)
@@ -1229,6 +1239,9 @@ defmodule Apiary.ModelChoices do
         changeset
     end
   end
+
+  # The row id of the provider of the place's choice, nil for a place with no choice.
+  defp place_provider_id(at), do: Repo.one(from c in at_place(at), select: c.connection_id)
 
   # `{changeset, checked, taken}`: the choice's changeset, the fallbacks checked so far,
   # and the row ids of the providers taken, with `fallback`, at `index`, checked against
