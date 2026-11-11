@@ -579,11 +579,12 @@ defmodule ApiaryWeb.ProviderLiveTest do
     test "are in the provider's order, each with its state, in the reader's time zone", ctx do
       %{conn: conn, scope: scope, user: user} = ctx
       Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
-      now = DateTime.utc_now()
 
       provider = keys!(scope, "anthropic", ~w(zeta beta alpha gamma delta omega))
       {:ok, provider} = Connections.put_default_key(scope, provider, "alpha")
       values = values(provider)
+      # After the keys are written: a report observed before is of an earlier value.
+      now = DateTime.utc_now()
 
       soon = DateTime.add(now, 60)
       in_two_days = DateTime.add(now, 2, :day)

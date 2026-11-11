@@ -711,6 +711,41 @@ defmodule Apiary.ModelKeysTest do
       assert Repo.aggregate(Setting, :count) == 0
     end
 
+    test "of a key whose value changed leave out a report observed before the change", ctx do
+      value = ctx.values["spare"]
+      until = in_seconds(3_600)
+
+      {:ok, _provider} =
+        Connections.set_provider_key(
+          ctx.scope,
+          ctx.provider,
+          "spare",
+          "sk-ant-fixture-new-0123456789",
+          nil
+        )
+
+      changed_at = Repo.reload!(value).updated_at
+
+      late =
+        item(
+          status: "rejected",
+          resets_at: until,
+          cooldown_until: until,
+          observed_at: DateTime.add(changed_at, -1, :millisecond)
+        )
+
+      # A report of the old value, which arrives after the change, brings back no cooldown.
+      :ok = ModelKeys.record([key(value)], [late], DateTime.utc_now())
+      assert states(value) == []
+
+      # One observed after the change is of the new value.
+      after_change = %{late | observed_at: DateTime.add(changed_at, 1, :millisecond)}
+      :ok = ModelKeys.record([key(value)], [after_change], DateTime.utc_now())
+
+      assert [%State{status: "rejected", cooldown_until: cooldown_until}] = states(value)
+      assert DateTime.compare(cooldown_until, until) == :eq
+    end
+
     test "belong to the key's organisation alone", ctx do
       value = ctx.values["main"]
       %{scope: other} = sign_up_fixture()

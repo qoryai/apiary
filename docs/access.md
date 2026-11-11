@@ -814,9 +814,11 @@ for each other and never on each other at once:
    provider's row and the row of its keys' secret without one, checks the provider's
    integrity code, decrypts each key in the request, whose row is bound to its secret, and
    writes the audit entry `secret.seal` alone. A model keys report takes the rows of its
-   keys in `secret_values` `FOR KEY SHARE` first, by id, then the locks of their state
-   rows in one order, so two reports of the same keys at once cannot deadlock, and a key
-   deleted before the report writes is left out of it.
+   keys in `secret_values` `FOR SHARE` first, by id, then the locks of their state
+   rows in one order, so two reports of the same keys at once cannot deadlock, a key
+   deleted before the report writes is left out of it, and a new value of a key, which
+   updates its row and then deletes its state rows, waits for the report or comes before
+   it: the report then leaves out what it observed before the row's `updated_at`.
    A provider's deletion is refused while a pending or running run uses it, so the run's
    provider columns are empty only on a run that ended, and the request for such a run is
    refused.

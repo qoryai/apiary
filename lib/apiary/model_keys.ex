@@ -376,8 +376,12 @@ defmodule Apiary.ModelKeys do
   statement writes every row, and keeps a row only where the
   item's `observed_at` is newer than the row's; of two items of one key and window, the
   newer counts. The rows are written in the order of their key's row id and window. A
-  key deleted before the write is left out: its value's row is locked `FOR KEY SHARE`
-  first, so a deletion waits for the write or comes before it. Returns `:ok`.
+  key deleted before the write is left out: its value's row is locked `FOR SHARE`
+  first, so a deletion waits for the write or comes before it. So does a new value of
+  the key (`clear_states/2`): on a row written after its insert, an item observed before
+  the row was last written (`updated_at`) is of an older value, or of the same value
+  before a rename, and is left out, so a late report brings back no cooldown of an old
+  value. Returns `:ok`.
   """
   @spec record([run_key], [map], DateTime.t()) :: :ok
   def record(keys, items, %DateTime{} = now) do
@@ -405,22 +409,25 @@ defmodule Apiary.ModelKeys do
     :ok
   end
 
-  # The rows of the keys that still exist, written after their values' rows are locked
-  # in the order of their ids, the order of a deletion: the value, then its states.
+  # The rows of the keys that still exist, observed since their values were last written,
+  # written after their values' rows are locked in the order of their ids, the order of a
+  # deletion and of a new value: the value, then its states. `FOR SHARE` waits for a new
+  # value's update of the row, which then reads as written, and the new value's deletion of
+  # the states waits for this write.
   defp write_states(rows) do
     ids = rows |> Enum.map(& &1.secret_value_id) |> Enum.uniq()
 
-    kept =
+    written =
       Repo.all(
         from v in Value,
           where: v.id in ^ids,
           order_by: v.id,
-          lock: "FOR KEY SHARE",
-          select: v.id
+          lock: "FOR SHARE",
+          select: {v.id, {v.inserted_at, v.updated_at}}
       )
-      |> MapSet.new()
+      |> Map.new()
 
-    case Enum.filter(rows, &MapSet.member?(kept, &1.secret_value_id)) do
+    case Enum.filter(rows, &current?(&1, written)) do
       [] ->
         :ok
 
@@ -431,6 +438,15 @@ defmodule Apiary.ModelKeys do
         )
 
         :ok
+    end
+  end
+
+  # A row never written after its insert has had one value, which every item is of.
+  defp current?(row, written) do
+    case Map.fetch(written, row.secret_value_id) do
+      {:ok, {inserted_at, inserted_at}} -> true
+      {:ok, {_inserted_at, written_at}} -> DateTime.compare(row.observed_at, written_at) != :lt
+      :error -> false
     end
   end
 
