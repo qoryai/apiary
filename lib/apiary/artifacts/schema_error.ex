@@ -16,7 +16,7 @@ defmodule Apiary.Artifacts.SchemaError do
   # can quote a member name or a value. Each is cut to at most 1,024 bytes before its
   # control characters are replaced (`Apiary.ExternalText.line/1`), then the path to at
   # most 256 bytes and the error to at most 300 characters, on a character boundary.
-  # A caller that validates within a budget calls `first/1` inside it.
+  # A caller that validates within a budget calls `first/2` inside it.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -31,7 +31,8 @@ defmodule Apiary.Artifacts.SchemaError do
   @typedoc "Where a structured file fails its JSON Schema, and why."
   @type t :: %{path: String.t(), error: String.t()}
 
-  # first/1 is the first failing place of JSV's `error`.
+  # first/2 is the first failing place of JSV's `error`; `opts` is `[]` or
+  # `[unwrap: true]`, which reads the errors inside an `allOf`.
   @doc false
   @spec first(JSV.ValidationError.t(), keyword) :: t
   def first(%JSV.ValidationError{errors: errors}, opts \\ []) do

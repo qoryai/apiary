@@ -380,7 +380,10 @@ defmodule Apiary.Artifacts.MockupTest do
             {screens(screens: [start, next | Enum.map(1..8, screen)]), "#/screens",
              "value should have at most 9 items"},
             {screens(screens: [%{start | "criteria" => ["ac-1", "ac-1"]}, next]),
-             "#/screens/0/criteria", "value must contain unique items"}
+             "#/screens/0/criteria", "value must contain unique items"},
+            # The type `mockup` reads the error inside the `allOf` of the text rule.
+            {screens(screens: [%{start | "title" => 5}, next]), "#/screens/0/title",
+             "value is not of type string"}
           ] do
         assert {:error, {:schema, 0, %{path: ^path, error: message}}} =
                  version(context, [{"screens.json", document} | pages()])
