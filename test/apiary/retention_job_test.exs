@@ -15,7 +15,7 @@ defmodule Apiary.RetentionJobTest do
 
   alias Apiary.Retention
   alias Apiary.Retention.RetentionRun
-  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk}
+  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk, TranscriptPath}
   alias Apiary.WorkItems.WorkItem
 
   @now ~U[2026-12-01 03:00:00.000000Z]
@@ -88,10 +88,25 @@ defmodule Apiary.RetentionJobTest do
         offset: 0,
         bytes: "{}\n"
       })
+
+      Repo.insert!(%TranscriptPath{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: run.id,
+        path: "~/.claude/projects/-workspace/5f2c9a1e.jsonl",
+        chunks: 1,
+        bytes: 3,
+        checked_sequence: 0,
+        next_offset: 0,
+        gap: false
+      })
     end
 
     defp chunks(run),
       do: Repo.aggregate(from(c in SessionChunk, where: c.run_id == ^run.id), :count)
+
+    defp paths(run),
+      do: Repo.aggregate(from(t in TranscriptPath, where: t.run_id == ^run.id), :count)
 
     defp handed_over_run(scope) do
       pool = pool_fixture(scope)
@@ -122,6 +137,8 @@ defmodule Apiary.RetentionJobTest do
       log = capture_log([level: :info], fn -> Retention.prune_all(now: @now) end)
 
       assert Enum.map([exploring, closed, ended, alive], &chunks/1) == [1, 0, 0, 1]
+      # What the run kept of the path goes with the chunks.
+      assert Enum.map([exploring, closed, ended, alive], &paths/1) == [1, 0, 0, 1]
       assert log =~ "retention pruned transcripts=2"
       refute log =~ "{}"
     end

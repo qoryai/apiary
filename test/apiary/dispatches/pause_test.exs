@@ -384,6 +384,28 @@ defmodule Apiary.Dispatches.PauseTest do
                "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n"
     end
 
+    test "a gap paired with an overlap of the same length stops the chunks after it", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      # [0, 8), [4, 12) and [16, 20): 20 bytes, as many as the furthest end, but the second
+      # chunk starts at 4, not 8.
+      event_fixture(run, 2, "session.transcript", chunk(0, "{\"a\":1}\n"))
+      event_fixture(run, 3, "session.transcript", chunk(4, "{\"b\":2}\n"))
+      event_fixture(run, 4, "session.transcript", chunk(16, "c:3\n"))
+      assert {:ok, %Run{}} = Projector.project(run)
+
+      event_fixture(run, 5, "session.transcript", chunk(20, "{\"d\":4}\n"))
+
+      log =
+        capture_log(fn -> assert {:ok, %Run{}} = Projector.project(Repo.get!(Run, run.id)) end)
+
+      assert log =~ "transcript chunks not kept run=#{run.id} count=1 reason=gap"
+
+      assert Repo.all(from(c in SessionChunk, where: c.run_id == ^run.id, select: c.sequence))
+             |> Enum.sort() ==
+               [2, 3, 4]
+    end
+
     test "a resume has its three members, each a string, and no other", ctx do
       %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
 

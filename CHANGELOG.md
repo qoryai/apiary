@@ -1799,12 +1799,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: factory, secrets -->
 - `runs` (20261111170000): a nullable column `resume`, the paused run whose transcript a
-  continuation reads, with a check of its shape that scans `runs` under a lock that
+  continuation reads, with a check that it is an object of exactly `run_id`,
+  `session_id` and `path`, each a string; the check scans `runs` under a lock that
   blocks reads and writes. It changes no row: a continuation registered before it starts
   a new session.
-- `session_chunks` (20261111143100): a new table of the chunks of a run's session
-  transcript. It changes no row: the transcript events of a run stored before it become
-  chunks only if that run is rebuilt from its events.
+- `session_chunks` and `transcript_paths` (20261111143100): two new tables. The first
+  has the chunks of a run's session transcript, with an index on the run, the path and
+  the sequence. The second has a row per run and path: the chunks and bytes kept of the
+  path, the sequence up to which they were checked for a gap, and the offset at which
+  the next chunk has to start. It changes no row: the transcript events of a run stored
+  before it become chunks only if that run is rebuilt from its events.
 - `runs` and `dispatch_runs` (20261111143000): the checks on `runs.state` and
   `runs.exit_state` take `paused`; the first scans `runs` under a lock that blocks reads
   and writes, and the second stays not validated, as it was. Two nullable columns:

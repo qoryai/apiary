@@ -77,6 +77,7 @@ defmodule Apiary.Deletion.Tables do
   @tables [
     {"leaked_secrets", :workspace},
     {"log_chunks", :workspace},
+    {"transcript_paths", :workspace},
     {"session_chunks", :workspace},
     {"events", :workspace},
     {"connections", :workspace},

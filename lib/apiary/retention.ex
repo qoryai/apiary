@@ -52,14 +52,15 @@ defmodule Apiary.Retention do
 
   **A session's transcript.** A run's `session_chunks` (`Apiary.Runs.Transcript`) are in
   neither phase: a run that continues a paused run reads them, whenever it starts, and a
-  cooldown can last 7 days. A phase that deletes the run's events deletes the
+  cooldown can last up to 31 days. A phase that deletes the run's events deletes the
   `dev.qory.session.transcript` events with them, and the chunks stay. Under the same
   lock, on every workspace whatever its settings, but a workspace or an organisation
   marked for deletion, as for the phases, the job deletes the chunks of a run
   whose work item is closed or undone, and of an ended run of no work item, which no run
   continues, at most `:max_runs` runs a job (10,000), each a batch at a time under the
-  run's projection lock, with one log line, `retention pruned transcripts=…`, when it
-  deleted any.
+  run's projection lock, and the run's `transcript_paths` with them
+  (`Apiary.Runs.TranscriptPath`), with one log line, `retention pruned transcripts=…`,
+  when it deleted any.
 
   **A node's instances.** Under the same lock, on every workspace whatever its settings,
   the job deletes the rows of nodes' instances that the pages no longer show
@@ -85,6 +86,7 @@ defmodule Apiary.Retention do
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
   alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk, Step}
+  alias Apiary.Runs.TranscriptPath
   alias Apiary.WorkItems.{Confirmation, WorkItem}
 
   @log_type "dev.qory.run.log"
@@ -735,11 +737,25 @@ defmodule Apiary.Retention do
         |> transcripts_done()
         |> Enum.reduce(0, fn run, deleted ->
           query = from c in SessionChunk, where: c.run_id == ^run.id
-          deleted + delete_batches(run, query, batch, 0)
+          deleted = deleted + delete_batches(run, query, batch, 0)
+          :ok = delete_paths(run)
+          deleted
         end)
 
       if deleted > 0, do: Logger.info("retention pruned transcripts=#{deleted}")
     end
+
+    :ok
+  end
+
+  # The rows of what the run kept of each path of its transcript, which go with its chunks
+  # (`Apiary.Runs.TranscriptPath`).
+  defp delete_paths(run) do
+    {:ok, _deleted} =
+      Repo.transact(fn ->
+        Projector.lock(run.id)
+        {:ok, Repo.delete_all(from t in TranscriptPath, where: t.run_id == ^run.id)}
+      end)
 
     :ok
   end
