@@ -166,6 +166,10 @@ refused head <style>.a{background:url(https://example.com/a.png)}</style>
 refused head <style>.a{background:url(//example.com/a.png)}</style>
 refused head <style>.a{background:url( https://example.com/a.png )}</style>
 refused head <style>.a{background:url('a.png')}</style>
+refused head <style>.a{background:url(" data:image/png;base64,iVBORw0KGgo= ")}</style>
+allowed head <style>.a{background:url( data:image/png;base64,iVBORw0KGgo= )}</style>
+allowed head <style>.a{background:url( "data:image/png;base64,iVBORw0KGgo=" )}</style>
+refused head <style>.a{background:url(data:image/png;base64,A"A)}</style>
 refused head <style>.a{background:u\72l(https://example.com/a.png)}</style>
 refused head <style>.a{background:url(https\3a //example.com/a.png)}</style>
 refused head <style>.a{background:ur/**/l(https://example.com/a.png)}</style>

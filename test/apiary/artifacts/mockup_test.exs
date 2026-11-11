@@ -34,8 +34,8 @@ defmodule Apiary.Artifacts.MockupTest do
   defp assert_verdict(verdict, result), do: flunk("expected #{verdict}, got #{inspect(result)}")
 
   describe "the shared cases" do
-    test "are all read: 157 lines in the cases blocks" do
-      assert length(@cases) == 157
+    test "are all read: 161 lines in the cases blocks" do
+      assert length(@cases) == 161
 
       assert Enum.all?(@cases, fn {verdict, place, _snippet} ->
                verdict in [:allowed, :refused] and place in [:head, :body]
