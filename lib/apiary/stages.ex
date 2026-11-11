@@ -84,6 +84,13 @@ defmodule Apiary.Stages do
   # entry in the audit trail, `gate.approve`, with `details.change` `approve`,
   # `request_changes`, `escalation_<resolution>` or `move`.
   #
+  # A member's move that runs the stage's next round (`member_round/3`: an answer, a send
+  # of the review comments, Run another round and Explore again) asks the same of the work item where the round resolves an open
+  # escalation of the stage, while the stage is escalated or waits for answers beside it,
+  # and where it runs a stage after Explore's again from its gate. The escalation then has
+  # the person as `resolved_by`, and the trail the entry `escalation_another_round`; a run
+  # again from the gate, the entry `another_round`.
+  #
   # `add_version/5` stores a version a person adds on the work item, made in its current
   # stage, then acts on that stage (`version_added/1`): a stage that waits for inputs
   # starts once its last required input exists, and the Exists checks run again. A stage with
@@ -547,38 +554,92 @@ defmodule Apiary.Stages do
     end
   end
 
-  # explore_again/3 runs `again`, today's Explore again (`Apiary.WorkItems.Moves`), inside
-  # one transaction. Where the work item's stage is escalated, Explore again resolves the
-  # escalation as another round, so it is the same act as `resolve_escalation/5`: the
-  # scope's person needs `gate.approve` and a place among the stage's approvers, else
-  # nothing runs; the escalation then has the person as `resolved_by`, and the trail a
-  # `gate.approve` entry. Without an open escalation, `again` runs as it is.
+  # member_round/3 runs `move`, a member's move that queues the next round of the work
+  # item's stage (`Apiary.WorkItems.Moves`: an answer, a send of the review comments, Run
+  # another round, Explore again), inside one transaction, on the work item of the scope's
+  # workspace locked. Where the stage is escalated, or waits for answers with an
+  # escalation kept open beside its questions, that round resolves the escalation as
+  # another round, the same act as `resolve_escalation/5`; where a stage after Explore's
+  # waits at its gate, it runs that stage again. Each asks `gate.approve` and a place
+  # among the stage's approvers, else nothing runs (`:not_approver`). The trail then has
+  # a `gate.approve` entry, `escalation_another_round` with the escalation's
+  # `resolved_by` set to the person, or `another_round` for a run again from the gate.
+  # Where a stage after Explore's waits for anything else than answers or a run, such as
+  # its inputs, while Explore's proposal still waits at Confirm, no round of that stage
+  # starts from Explore's proposal (`:not_waiting`). Elsewhere `move` runs as it is: an
+  # answer to the questions a stage waits for, with no escalation open, is every member's.
   @doc false
-  @spec explore_again(Scope.t(), WorkItem.t(), (-> {:ok, WorkItem.t()} | {:error, term})) ::
+  @spec member_round(Scope.t(), WorkItem.t(), (-> {:ok, WorkItem.t()} | {:error, term})) ::
           {:ok, WorkItem.t()} | {:error, term}
-  def explore_again(%Scope{} = scope, %WorkItem{id: id} = work_item, again) do
+  def member_round(%Scope{} = scope, %WorkItem{id: id} = work_item, move) do
     transact(fn ->
-      case Ecto.UUID.cast(id) do
-        {:ok, uuid} -> explore_again_locked(scope, work_item, lock_open(uuid), again)
-        :error -> again.()
+      case lock_scoped(scope, id) do
+        %WorkItem{} = row -> round_locked(scope, work_item, row, move)
+        nil -> move.()
       end
     end)
   end
 
-  defp lock_open(id) do
-    case Repo.get(WorkItem, id) do
-      %WorkItem{} -> open_escalation(lock!(id))
-      nil -> nil
+  # The work item `id` of the scope's workspace, locked `FOR UPDATE`; nil for none, whose
+  # move then refuses it, holding no row.
+  defp lock_scoped(scope, id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(id),
+         {:ok, workspace} <- workspace(scope),
+         %WorkItem{} <- in_workspace(workspace, uuid) do
+      lock!(uuid)
+    else
+      _none -> nil
     end
   end
 
-  defp explore_again_locked(_scope, _work_item, nil, again), do: again.()
+  # An escalated stage with no open escalation stored, as the migration placed it, has
+  # one stored first (`escalation!/3`), so the round resolves it.
+  defp round_locked(scope, work_item, %WorkItem{stage_state: :escalated} = row, move) do
+    with {:ok, held, version, stage} <- hold(scope, work_item, expect_stage: row.stage_id),
+         %Escalation{} = escalation <- escalation!(held, version, stage),
+         do: resolved_by(scope, work_item, escalation, move)
+  end
 
-  defp explore_again_locked(scope, work_item, %Escalation{} = escalation, again) do
-    expect = [expect_stage: escalation.stage_id]
+  defp round_locked(scope, work_item, %WorkItem{stage_state: :waiting_answers} = row, move) do
+    case open_escalation(row) do
+      %Escalation{} = escalation ->
+        with {:ok, _work_item, _version, _stage} <-
+               hold(scope, work_item, expect_stage: escalation.stage_id),
+             do: resolved_by(scope, work_item, escalation, move)
 
-    with {:ok, _work_item, _version, _stage} <- hold(scope, work_item, expect),
-         {:ok, work_item} <- again.(),
+      nil ->
+        move.()
+    end
+  end
+
+  defp round_locked(scope, work_item, %WorkItem{stage_state: state} = row, move) do
+    explore = explore_stage_id(row)
+
+    cond do
+      is_nil(row.stage_id) or row.stage_id == explore or state == :running ->
+        move.()
+
+      state == :at_gate ->
+        with {:ok, _work_item, _version, _stage} <-
+               hold(scope, work_item, expect_stage: row.stage_id),
+             {:ok, work_item} <- move.(),
+             {:ok, _entry} <-
+               audit(scope, work_item, "another_round", %{"stage_id" => row.stage_id}),
+             do: {:ok, work_item}
+
+      is_binary(explore) ->
+        {:error, :not_waiting}
+
+      true ->
+        move.()
+    end
+  end
+
+  # Runs `move`, whose next round resolves `escalation` as another round (`next_run/2`),
+  # then records the scope's person as the one who resolved it, with the trail's
+  # `gate.approve` entry. A move that resolved it otherwise leaves it as it is.
+  defp resolved_by(scope, work_item, escalation, move) do
+    with {:ok, work_item} <- move.(),
          {1, _rows} <-
            Repo.update_all(
              from(e in Escalation,

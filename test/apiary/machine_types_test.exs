@@ -521,6 +521,23 @@ defmodule Apiary.MachineTypesTest do
       assert MachineTypes.update(scope, large, %{"vcpus" => 8}) == {:error, :not_found}
       assert MachineTypes.make_default(scope, large) == {:error, :not_found}
     end
+
+    test "an owner of another organisation than the instance's finds no type to change" do
+      large = machine_type_fixture(@large)
+      %{scope: other} = sign_up_fixture()
+      other = signed_in(other)
+      refute Apiary.Access.instance_admin?(other)
+
+      assert MachineTypes.update(other, large, %{"vcpus" => 8, "key" => "large-builds"}) ==
+               {:error, :not_found}
+
+      assert MachineTypes.make_default(other, large) == {:error, :not_found}
+      assert MachineTypes.delete(other, large) == {:error, :not_found}
+
+      assert MachineTypes.get("large").vcpus == 4
+      assert names() == [{"standard", true}, {"browser", false}, {"large", false}]
+      assert entries() == []
+    end
   end
 
   describe "run_key/2" do
@@ -565,6 +582,7 @@ defmodule Apiary.MachineTypesTest do
       document
     end
 
+    @tag needs: :workflow_model
     test "key_change/1 counts the processes, the waiting runs and each organisation's files",
          %{scope: scope} do
       browser = browser_type()
@@ -867,9 +885,137 @@ defmodule Apiary.MachineTypesTest do
                    order_by: [asc: e.inserted_at, asc: e.id],
                    select: e.details
                )
+
+      # One machine_type.rekey entry, by the instance admin, in the instance's trail.
+      assert [rekey] = Repo.all(from e in Entry, where: e.action == "machine_type.rekey")
+      assert rekey.organisation_id == Apiary.Edition.instance_organisation_id()
+      assert {rekey.actor_kind, rekey.actor_id} == {:person, scope.user.id}
+      assert {rekey.subject_kind, rekey.subject_id} == {"organisation", scope.organisation.id}
+      assert rekey.details == %{"from" => "browser", "to" => "ui-tests"}
     end
 
-    @tag needs: :factory
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "with the workflow model off, changes the key in the type alone, with no version or entry of a process or workspace type",
+         %{scope: scope} do
+      browser = browser_type()
+      v1 = made_from_harness(scope.workspace, "browser")
+      %{scope: other} = sign_up_fixture()
+      made_from_harness(other.workspace, "browser")
+
+      # A workspace type's version that an instance admin saved while the feature was on.
+      newest = TypeTemplates.newest("qory.software")
+
+      typed =
+        Repo.insert!(%TypeTemplate{
+          type: "qory.software",
+          number: newest.number + 1,
+          based_on: newest.number,
+          author_id: scope.user.id,
+          document:
+            put_in(
+              newest.document,
+              ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+              "browser"
+            )
+        })
+
+      assert {:ok, %MachineType{key: "ui-tests"}} =
+               MachineTypes.update(scope, browser, %{"key" => "ui-tests"})
+
+      assert MachineTypes.get("browser") == nil
+
+      for workspace <- [scope.workspace, other.workspace] do
+        assert [%Processes.Version{number: 1, status: :current}] =
+                 Repo.all(from v in Processes.Version, where: v.workspace_id == ^workspace.id)
+      end
+
+      assert Processes.current(scope.workspace).document == v1
+      assert TypeTemplates.newest("qory.software").id == typed.id
+
+      assert Repo.all(
+               from e in Entry,
+                 where: e.action in ["process.edit", "workspace_type.edit", "machine_type.rekey"]
+             ) == []
+
+      assert [%Entry{}] = entries()
+    end
+
+    @tag needs: :workflow_model
+    test "a refused machine_type.rekey changes neither the key nor a version", %{scope: scope} do
+      browser = browser_type()
+      v1 = made_from_harness(scope.workspace, "browser")
+      newest = TypeTemplates.newest("qory.software")
+
+      typed =
+        put_in(
+          newest.document,
+          ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+          "browser"
+        )
+
+      {:ok, typed} = TypeTemplates.save(scope, "qory.software", typed)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.RekeysNoMachine)
+      before = entries()
+
+      assert MachineTypes.update(scope, browser, %{"key" => "ui-tests"}) == {:error, :forbidden}
+
+      assert MachineTypes.get("browser").id == browser.id
+      assert MachineTypes.get("ui-tests") == nil
+
+      assert [%Processes.Version{number: 1, document: ^v1}] =
+               Repo.all(from v in Processes.Version, where: v.workspace_id == ^scope.workspace.id)
+
+      assert TypeTemplates.newest("qory.software").id == typed.id
+      assert entries() == before
+      assert Repo.all(from e in Entry, where: e.action == "machine_type.rekey") == []
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "key_change/1 counts no workspace or workspace type with the workflow model off",
+         %{scope: scope} do
+      browser = browser_type()
+      made_from_harness(scope.workspace, "browser")
+
+      assert %{workspaces: 0, templates: 0, waiting: 0, organisations: [%{files: 1}]} =
+               MachineTypes.key_change(browser)
+    end
+
+    test "a key change that rewrites no version leaves no machine_type.rekey entry",
+         %{scope: scope} do
+      large = machine_type_fixture(@large)
+      assert {:ok, _type} = MachineTypes.update(scope, large, %{"key" => "large-builds"})
+      assert Repo.all(from e in Entry, where: e.action == "machine_type.rekey") == []
+    end
+
+    @tag needs: :workflow_model
+    test "machine_type.rekey is an owner's of the instance's organisation", %{scope: scope} do
+      instance = Apiary.Access.instance_organisation()
+
+      assert Apiary.Access.authorize(
+               Apiary.Access.in_instance(scope),
+               :"machine_type.rekey",
+               instance
+             ) == :ok
+
+      %{scope: member} = member_fixture(scope, :admin)
+      member = signed_in(member)
+
+      assert Apiary.Access.authorize(
+               Apiary.Access.in_instance(member),
+               :"machine_type.rekey",
+               instance
+             ) == {:error, :forbidden}
+
+      %{scope: other} = sign_up_fixture()
+
+      assert Apiary.Access.authorize(
+               Apiary.Access.in_instance(other),
+               :"machine_type.rekey",
+               instance
+             ) == {:error, :not_found}
+    end
+
+    @tag needs: :workflow_model
     test "moves a run that waits on the key to the key and version of after, which a pool claims, every other waiting run of the version to that version, and leaves a started run",
          %{scope: scope} do
       browser = browser_type()

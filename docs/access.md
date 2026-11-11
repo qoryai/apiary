@@ -252,6 +252,7 @@ release command. The last column shows which actions also need a recent sign-in.
 | Action | Function or page | Feature | Recent sign-in |
 |---|---|---|---|
 | `instance.read` | Instance settings, the documentation for instance admins, and the machine logs of a run's dispatch | none | no |
+| `instance.read_machine` | the vendor's type of the machine that a run's dispatch started, on the run's page (`Apiary.Runs.Preparation`) | none | no |
 | `instance.review_connections` | `Apiary.Setup.review_connections/1` | none | no |
 | `instance.mail_save` | `Apiary.Mail.save_settings/3` | none | yes |
 | `instance.mail_resend` | `Apiary.Mail.resend_test_link/2` | none | yes |
@@ -273,11 +274,22 @@ release command. The last column shows which actions also need a recent sign-in.
 | `diagnostics_key.create` | `Apiary.AccessKeys.create_diagnostics_code/2` | `observability` | yes |
 | `diagnostics_key.revoke` | `Apiary.AccessKeys.revoke_diagnostics_key/2` | `observability` | no |
 | `workspace_type.edit` | `Apiary.Processes.TypeTemplates.save/4` | `workflow_model` | no |
+| `machine_type.rekey` | `Apiary.MachineTypes.update/3`, for a key change, after `instance.configure` | `workflow_model` | yes, through `instance.configure` |
 
-The three read actions differ only by feature, so an instance without a feature has none
-of that feature's pages for its instance admins. `adapter.read` is a different action: every
+`instance.read`, `instance.read_factory` and `instance.read_observability` differ only by
+feature, so an instance without a feature has none of that feature's pages for its
+instance admins. `instance.read_machine` is one value on a run's page, which the run's
+organisation reads too. `adapter.read` is a different action: every
 member has it, for the adapters an organisation connects. `node.set_limit` also stays
 outside this table: it is the organisation admins' action on an organisation's pool.
+
+A machine type's key change checks `machine_type.rekey` once, in its transaction, and then
+writes the new versions of the processes and workspace types that use the key, with a
+`process.edit` entry in each workspace and a `workspace_type.edit` entry for each type.
+With `workflow_model` off, the key changes in the machine type alone: no process or
+workspace type gets a version, and the trail gets no entry for either. With
+`workflow_model` off, processes and workspace types keep the old key; once the feature is
+on again, their runs start on the default machine type until the key is fixed.
 
 `Apiary.Access.check/3` takes these steps for an instance action, in place of the steps
 for any other action, and returns at the first that fails:
@@ -483,10 +495,16 @@ A request for the model key gets `409` `credentials_differ`, because no model ke
 without `factory`. The run key, the sender and `allow_secrets` stay checks of the
 secrets request: they are data of the run and of the key it verified under.
 
-`diagnostics_key` has one action, `run.read_diagnostics`, of the feature `observability`.
-`ApiaryWeb.Contract.DiagnosticsController` calls `Apiary.Access.check/3` with it and the run.
-The key is at the instance and reads the diagnostics of a run of any organisation and
-workspace. Any other action, or any other subject, is `{:error, :not_found}`.
+`diagnostics_key` has two actions, both of the feature `observability`:
+
+- `ApiaryWeb.Contract.DiagnosticsController` calls `Apiary.Access.check/3` with
+  `run.read_diagnostics` and the run. The key is at the instance and reads the
+  diagnostics of a run of any organisation and workspace.
+- `ApiaryWeb.Contract.RunListController` calls it with `run.list_instance` and `%Run{}`, a
+  run with no organisation and no workspace, which stands for every run of the instance,
+  for `GET /v1/runs`. A key that fails gets `401`.
+
+Any other action, or any other subject than a run, is `{:error, :not_found}`.
 
 A
 pool's key acts on its workspace and, there, on its pool: another node and the
@@ -657,9 +675,16 @@ the comments on a stage's outputs or round (`work_item.review_comment`), asked o
 work item.
 `Apiary.Stages.check_workflows/3` takes `gate.approve` before it reads the harness, so a
 person the stage does not list reads nothing.
+An answer, a send of the review comments, Run another round and Explore again take
+`gate.approve` too where the next round they start settles an open escalation, while the
+stage is escalated or waits for answers beside it, or runs a stage after Explore's again
+from its gate (`Apiary.Stages.member_round/3`). The escalation then records the person
+who settled it, with a `gate.approve` audit entry, `escalation_another_round`; a run again
+from the gate has the entry `another_round`.
 Every person the role allows may take them with the workflow model off, on a work item
 the runner did not place, and at a stage that lists no approvers; an answer to the
-questions (`work_item.answer`) stays every member's. Asked of a workspace, as a page asks
+questions (`work_item.answer`) stays every member's, except while the stage's escalation
+is open: then only an approver answers its questions. Asked of a workspace, as a page asks
 whether to show the gates at all, the role alone answers; asked of any other subject,
 they are `{:error, :not_approver}`. To answer, Qory Apiary reads the work item's process
 version, unless the work item has it loaded. An edition that answers the action

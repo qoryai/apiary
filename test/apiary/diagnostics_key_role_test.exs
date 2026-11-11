@@ -1,6 +1,7 @@
 defmodule Apiary.DiagnosticsKeyRoleTest do
   # What a diagnostics key may in `Apiary.Access`: `run.read_diagnostics` on a run of any
-  # organisation, while `observability` is on, and nothing else. The signed route is
+  # organisation, and `run.list_instance` on the runs of the instance, while
+  # `observability` is on, and nothing else. The signed routes are
   # `ApiaryWeb.Contract.DiagnosticsControllerTest`'s. Not async: a test takes a feature away
   # from the whole node.
   use Apiary.DataCase, async: false
@@ -14,8 +15,10 @@ defmodule Apiary.DiagnosticsKeyRoleTest do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
+  alias Apiary.Runs.Run
 
   @action :"run.read_diagnostics"
+  @list :"run.list_instance"
 
   setup do
     %{scope: owner} = sign_up_fixture()
@@ -46,6 +49,21 @@ defmodule Apiary.DiagnosticsKeyRoleTest do
     assert Access.authorize(ctx.key_scope, @action, run_fixture(ctx.other)) == :ok
   end
 
+  test "lists the runs of the instance, asked of a run with no place", ctx do
+    assert Access.check(ctx.key_scope, @list, %Run{}) == :ok
+    assert Access.authorize(ctx.key_scope, @list, %Run{}) == :ok
+
+    for subject <- [ctx.owner.workspace, ctx.owner.organisation, %Node{kind: :diagnostics}, nil] do
+      assert Access.check(ctx.key_scope, @list, subject) == {:error, :not_found},
+             inspect(subject)
+    end
+
+    # No key of another kind lists them, nor does a person.
+    %{access_key: key} = access_key_fixture(ctx.owner, node: gateway_fixture(ctx.owner))
+    assert Access.check(Scope.for_access_key(key), @list, %Run{}) == {:error, :not_found}
+    assert Access.check(ctx.owner, @list, %Run{}) == {:error, :not_found}
+  end
+
   test "is not found on any other subject", ctx do
     subjects = [
       ctx.owner.workspace,
@@ -66,7 +84,7 @@ defmodule Apiary.DiagnosticsKeyRoleTest do
   test "is not found for any other action, on a run or anywhere", ctx do
     run = run_fixture(ctx.owner)
 
-    for action <- Access.actions() -- [@action],
+    for action <- Access.actions() -- [@action, @list],
         subject <- [run, ctx.owner.workspace, ctx.owner.organisation, %Node{kind: :diagnostics}] do
       answer = with_every_feature(fn -> Access.check(ctx.key_scope, action, subject) end)
       assert answer == {:error, :not_found}, "#{action} on #{inspect(subject)}"
@@ -125,5 +143,6 @@ defmodule Apiary.DiagnosticsKeyRoleTest do
     on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
 
     assert Access.check(ctx.key_scope, @action, run) == {:error, :not_found}
+    assert Access.check(ctx.key_scope, @list, %Run{}) == {:error, :not_found}
   end
 end

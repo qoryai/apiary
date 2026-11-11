@@ -6822,6 +6822,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Changed the machine type key from %{from} to %{to} in the processes and workspace types that use it"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Changed the name in the header"
 msgstr ""
 
@@ -10046,6 +10051,11 @@ msgstr ""
 msgid "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "Fix these files yourself:"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Fixed when it was made."
@@ -12486,6 +12496,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Machine type"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Machine type key rewritten"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -16168,6 +16183,16 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary tells the adapter nothing."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary updates %{waiting}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary updates %{waiting}. Fix these files yourself:"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex

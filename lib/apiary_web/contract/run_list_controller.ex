@@ -9,8 +9,8 @@ defmodule ApiaryWeb.Contract.RunListController do
   timestamp; `400` for a signing header sent twice, an instance id outside its form or a
   contract version not served. The query is read only after that check.
 
-  The key reads every run of the instance (`Apiary.AccessKeys.diagnostics_scope/1`). The
-  answer is `200`, `application/json`, the contract's run list
+  The key reads every run of the instance (`run.list_instance`, `Apiary.Access`); a key
+  that may not is `401`. The answer is `200`, `application/json`, the contract's run list
   (`Apiary.Runs.list_instance_runs/2`); a query parameter that breaks its rule is `400`
   `{"error":"invalid_request","parameter":<name>}`; a page that cannot be read is `503`
   `unavailable`. Nothing of the runs, the key or the query is logged, and no read of a run
@@ -21,10 +21,14 @@ defmodule ApiaryWeb.Contract.RunListController do
 
   require Logger
 
-  alias Apiary.{AccessKeys, Runs}
+  alias Apiary.{Access, Runs}
+  alias Apiary.Accounts.Scope
+  alias Apiary.Runs.Run
 
   def index(conn, _params) do
-    with :instance <- AccessKeys.diagnostics_scope(conn.assigns.access_key),
+    scope = Scope.for_access_key(conn.assigns.access_key)
+
+    with {:access, :ok} <- {:access, Access.check(scope, :"run.list_instance", %Run{})},
          {:ok, document} <- Runs.list_instance_runs(conn.query_string) do
       json(conn, document)
     else
@@ -33,7 +37,7 @@ defmodule ApiaryWeb.Contract.RunListController do
         |> put_status(400)
         |> json(%{error: "invalid_request", parameter: parameter})
 
-      nil ->
+      {:access, {:error, _refused}} ->
         conn |> put_status(401) |> json(%{error: "unauthorized"})
     end
   rescue

@@ -300,15 +300,17 @@ defmodule Apiary.Processes.TypeTemplates do
   `machine_key`, the key before and after. A copy of the Qory harness's process
   (`release` set) stays as it is: its runs start on the default type until the harness
   changes the key. Called by `Apiary.MachineTypes.update/3`, in its transaction, which
-  checks the scope and holds the table of machine types. Each type is locked as a save
-  locks it, and its newest version read again under the lock. `:ok`; `{:error,
-  :forbidden}` on an instance with no instance organisation; or `{:error, :stale}` where
-  a version of the type with the next number exists.
+  checks `machine_type.rekey` and holds the table of machine types. Each type is locked
+  as a save locks it, and its newest version read again under the lock. `{:ok, count}`,
+  the number of versions saved; `{:error, :forbidden}` on an instance with no instance
+  organisation; or `{:error, :stale}` where a version of the type with the next number
+  exists.
   """
   @spec rekey_machine(Scope.t(), String.t(), String.t()) ::
-          :ok | {:error, :forbidden | :stale}
+          {:ok, non_neg_integer} | {:error, :forbidden | :stale}
   def rekey_machine(%Scope{} = scope, from, to) when is_binary(from) and is_binary(to) do
-    Enum.reduce_while(machine_key_types(from), :ok, fn %TypeTemplate{type: type}, :ok ->
+    Enum.reduce_while(machine_key_types(from), {:ok, 0}, fn %TypeTemplate{type: type},
+                                                            {:ok, saved} ->
       :ok = lock(type)
       newest = newest_row(type)
       document = Apiary.MachineTypes.rekey(newest.document, from, to)
@@ -320,9 +322,9 @@ defmodule Apiary.Processes.TypeTemplates do
            {:ok, version} <- insert(scope, type, newest, document, texts),
            {:ok, _entry} <-
              record(instance_scope, organisation, version, %{machine_key: %{from: from, to: to}}) do
-        {:cont, :ok}
+        {:cont, {:ok, saved + 1}}
       else
-        :unchanged -> {:cont, :ok}
+        :unchanged -> {:cont, {:ok, saved}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)

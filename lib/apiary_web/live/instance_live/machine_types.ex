@@ -792,7 +792,16 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
   defp crumb(nil), do: gettext("Add machine type")
   defp crumb(type), do: gettext("Edit %{name}", name: type.name)
 
+  # What a key change updates, then the intro of the Qory harness's files. With the
+  # workflow model off, the change rewrites no process or workspace type
+  # (`Apiary.MachineTypes.key_change/1`): the line has the waiting runs alone, and none
+  # where no run waits.
   defp updates_line(%{workspaces: workspaces, templates: templates, waiting: waiting} = warning) do
+    waiting_runs =
+      ngettext("%{count} waiting run", "%{count} waiting runs", waiting,
+        count: Format.number(waiting)
+      )
+
     counts = [
       workspaces:
         ngettext("%{count} workspace", "%{count} workspaces", workspaces,
@@ -802,19 +811,35 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
         ngettext("%{count} workspace type", "%{count} workspace types", templates,
           count: Format.number(templates)
         ),
-      waiting:
-        ngettext("%{count} waiting run", "%{count} waiting runs", waiting,
-          count: Format.number(waiting)
-        )
+      waiting: waiting_runs
     ]
 
-    if warning.files == [],
-      do: gettext("Qory Apiary updates %{workspaces}, %{types}, %{waiting}.", counts),
-      else:
+    files? = warning.files != []
+
+    cond do
+      Apiary.Features.on?(:workflow_model) and not files? ->
+        gettext("Qory Apiary updates %{workspaces}, %{types}, %{waiting}.", counts)
+
+      Apiary.Features.on?(:workflow_model) ->
         gettext(
           "Qory Apiary updates %{workspaces}, %{types}, %{waiting}. Fix these files yourself:",
           counts
         )
+
+      waiting > 0 and not files? ->
+        gettext("Qory Apiary updates %{waiting}.", waiting: waiting_runs)
+
+      waiting > 0 ->
+        gettext("Qory Apiary updates %{waiting}. Fix these files yourself:",
+          waiting: waiting_runs
+        )
+
+      files? ->
+        gettext("Fix these files yourself:")
+
+      true ->
+        nil
+    end
   end
 
   defp subtitle,

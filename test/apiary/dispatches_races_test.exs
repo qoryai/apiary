@@ -459,7 +459,7 @@ defmodule Apiary.DispatchesRacesTest do
     await_blocked(take.backend, held_backend)
 
     # The rest of the key change, as `Apiary.MachineTypes.update/3` writes it.
-    :ok =
+    {:ok, _count} =
       continue(held, fn ->
         {1, _rows} =
           Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^type.id),

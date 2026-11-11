@@ -1033,58 +1033,61 @@ defmodule Apiary.Processes do
   copies the template's stack and turns Keep the process at the latest on, as the trial
   before it would have. Each new version has an entry `save` or `save_trial` in its
   workspace's trail, with `machine_key`, the key before and after.
-  Called by `Apiary.MachineTypes.update/3`, in its transaction, which checks the scope.
-  `:ok`.
+  Called by `Apiary.MachineTypes.update/3`, in its transaction, which checks
+  `machine_type.rekey`. `{:ok, count}`, the number of versions saved.
   """
-  @spec rekey_machine(Scope.t(), String.t(), String.t()) :: :ok
+  @spec rekey_machine(Scope.t(), String.t(), String.t()) :: {:ok, non_neg_integer}
   def rekey_machine(%Scope{} = scope, from, to) when is_binary(from) and is_binary(to) do
-    for %Version{} = old <- machine_key_versions(from) do
-      workspace = old.workspace
-      trial? = old.status == :trial
+    saved =
+      for %Version{} = old <- machine_key_versions(from) do
+        workspace = old.workspace
+        trial? = old.status == :trial
 
-      {1, _rows} =
-        Repo.update_all(from(v in Version, where: v.id == ^old.id),
-          set: [status: if(trial?, do: :dropped, else: :past), updated_at: DateTime.utc_now()]
+        {1, _rows} =
+          Repo.update_all(from(v in Version, where: v.id == ^old.id),
+            set: [status: if(trial?, do: :dropped, else: :past), updated_at: DateTime.utc_now()]
+          )
+
+        number =
+          Repo.one(
+            from v in Version, where: v.workspace_id == ^workspace.id, select: max(v.number)
+          )
+
+        version =
+          Repo.insert!(%Version{
+            organisation_id: workspace.organisation_id,
+            workspace_id: workspace.id,
+            public_id: Apiary.PublicId.generate("pv"),
+            number: number + 1,
+            status: old.status,
+            document: Apiary.MachineTypes.rekey(old.document, from, to),
+            author_id: scope.user && scope.user.id,
+            based_on_id: old.id,
+            template: harness_commit_template(old)
+          })
+
+        Repo.update_all(from(w in WorkItem, where: w.process_version_id == ^old.id),
+          set: [process_version_id: version.id, updated_at: DateTime.utc_now()]
         )
 
-      number =
-        Repo.one(from v in Version, where: v.workspace_id == ^workspace.id, select: max(v.number))
+        Repo.update_all(
+          from(r in DispatchRun,
+            where: r.process_version_id == ^old.id and r.state == :waiting
+          ),
+          set: [process_version_id: version.id, updated_at: DateTime.utc_now()]
+        )
 
-      version =
-        Repo.insert!(%Version{
-          organisation_id: workspace.organisation_id,
-          workspace_id: workspace.id,
-          public_id: Apiary.PublicId.generate("pv"),
-          number: number + 1,
-          status: old.status,
-          document: Apiary.MachineTypes.rekey(old.document, from, to),
-          author_id: scope.user && scope.user.id,
-          based_on_id: old.id,
-          template: harness_commit_template(old)
-        })
+        organisation = Repo.get!(Apiary.Organisations.Organisation, workspace.organisation_id)
+        in_workspace = %{Scope.in_organisation(scope, organisation) | workspace: workspace}
 
-      Repo.update_all(from(w in WorkItem, where: w.process_version_id == ^old.id),
-        set: [process_version_id: version.id, updated_at: DateTime.utc_now()]
-      )
+        {:ok, _entry} =
+          record(in_workspace, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
+            based_on: old.number,
+            machine_key: %{from: from, to: to}
+          })
+      end
 
-      Repo.update_all(
-        from(r in DispatchRun,
-          where: r.process_version_id == ^old.id and r.state == :waiting
-        ),
-        set: [process_version_id: version.id, updated_at: DateTime.utc_now()]
-      )
-
-      organisation = Repo.get!(Apiary.Organisations.Organisation, workspace.organisation_id)
-      in_workspace = %{Scope.in_organisation(scope, organisation) | workspace: workspace}
-
-      {:ok, _entry} =
-        record(in_workspace, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
-          based_on: old.number,
-          machine_key: %{from: from, to: to}
-        })
-    end
-
-    :ok
+    {:ok, length(saved)}
   end
 
   # The `template` of a version saved from the harness at a commit, which a rekeyed
