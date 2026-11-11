@@ -21,9 +21,10 @@ defmodule Apiary.Runs.LeakedSecrets do
       session's transcript, `dev.qory.session.transcript`, decoded, as a continuation
       reads them (`Apiary.Runs.Transcript`). A chunk is scanned after the end of the
       chunk before it in the same file that a secret may start in
-      (`Apiary.SecretScan.carry/1`), read from the transcript's stored chunks, so a
-      secret that the cut between two chunks splits is found, once the chunk before it
-      is stored, and kept where its first byte is;
+      (`Apiary.SecretScan.carry/1`), and its end before the start of the chunk after it,
+      each read from the transcript's stored chunks, so a secret that the cut between
+      two chunks splits is found whichever of the two is stored first, and kept where its
+      first byte is;
     * a dispatch's machine log, when Qory Apiary stores it;
     * a dispatch's release reason, when the release is stored.
 
@@ -265,11 +266,45 @@ defmodule Apiary.Runs.LeakedSecrets do
 
   defp event_rows(run, events) do
     before = transcript_before(run, events)
+    following = transcript_after(run, events)
 
     for %Event{type: type} = event <- events,
         type != @log_event,
-        row <- event_findings(event, event_text(type, event.data), before) do
+        row <-
+          event_findings(event, event_text(type, event.data), before) ++
+            following_findings(event, following) do
       row
+    end
+  end
+
+  # The secrets that start in the end of a transcript chunk and end in the chunk stored
+  # after it in the file, `following`'s, which a pass before may have stored first: each
+  # kept at this chunk, where its first byte is, at its offset in this event's text. A
+  # part of it that this chunk's text has alone, at the same offset, is replaced by the
+  # whole (`longest/1`).
+  defp following_findings(%Event{} = event, following) do
+    with {key, bytes} <- transcript_end(event),
+         %{head: head} <- Map.get(following, key) do
+      tail = SecretScan.carry(bytes)
+      base = byte_size(tail)
+      text = tail <> head
+      start = @bytes_at + byte_size(bytes) - base
+
+      for finding <- SecretScan.scan(text),
+          finding.offset < base and finding.offset + finding.length > base do
+        %{
+          kind: finding.kind,
+          place: "event",
+          step: nil,
+          source_sequence: event.sequence,
+          offset: start + finding.offset,
+          length: finding.length,
+          value: binary_part(text, finding.offset, finding.length),
+          at: event.time
+        }
+      end
+    else
+      _none -> []
     end
   end
 
@@ -348,6 +383,49 @@ defmodule Apiary.Runs.LeakedSecrets do
   end
 
   defp transcript_key(_event), do: nil
+
+  # A transcript chunk's end in its file, `{session, session_id, path, offset + size}`,
+  # where the chunk after it starts, and its decoded bytes; nil as for `transcript_key/1`.
+  defp transcript_end(%Event{type: @transcript_event, data: data}) do
+    with %{"session" => session, "session_id" => id, "path" => path, "offset" => offset} <-
+           data,
+         true <- is_integer(session) and is_binary(id) and is_binary(path),
+         true <- is_integer(offset) and offset >= 0,
+         {:ok, bytes} <- decoded(data),
+         true <- bytes != "" do
+      {{session, id, path, offset + byte_size(bytes)}, bytes}
+    else
+      _other -> nil
+    end
+  end
+
+  defp transcript_end(_event), do: nil
+
+  # The chunk after each transcript chunk of `events` in its file, from the run's stored
+  # chunks, by the chunk's place, its offset: the start of its bytes.
+  defp transcript_after(run, events) do
+    keys = for event <- events, {key, _bytes} <- [transcript_end(event)], do: key
+
+    if keys == [] do
+      %{}
+    else
+      starts = keys |> Enum.map(&elem(&1, 3)) |> Enum.uniq()
+      wanted = MapSet.new(keys)
+
+      Repo.all(
+        from(c in SessionChunk,
+          where: c.run_id == ^run.id and c.offset in ^starts,
+          select: %{
+            key: {c.session, c.session_id, c.path, c.offset},
+            head: fragment("substring(? from 1 for ?)", c.bytes, ^@transcript_tail)
+          }
+        ),
+        log: false
+      )
+      |> Enum.filter(&MapSet.member?(wanted, &1.key))
+      |> Map.new(&{&1.key, &1})
+    end
+  end
 
   defp decoded(%{"bytes" => encoded}) when is_binary(encoded), do: Base.decode64(encoded)
   defp decoded(_data), do: :error
