@@ -22,6 +22,13 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
   @moduletag needs: [:factory, :secrets, :observability]
 
   setup do
+    # The server reads this clock (`SignedRequest.now/0`), and each time a test sends is
+    # set from it, so a second that ends between building a report and checking the
+    # answer changes no value. The module is not async, so no other test reads it.
+    now = System.os_time(:second)
+    Application.put_env(:apiary, :contract_now, fn -> now end)
+    on_exit(fn -> Application.delete_env(:apiary, :contract_now) end)
+
     %{scope: scope} = sign_up_fixture()
     {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
     ctx = scope |> sealed_run_fixture() |> Map.put(:scope, scope)
