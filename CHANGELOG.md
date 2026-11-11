@@ -1088,9 +1088,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   sent it, and the `200` has that state for each key of the run. So a run on another
   machine skips a key that is in cooldown. The route returns `404` without the features
   `factory` and `secrets`, and `410` for a run that ended.
-- A run whose gateway ended it at its keys' limit, with the state `cancelled` and the
-  reason `model_key_limit`, ends **Paused**. With another state, which the contract does
-  not allow, the run ends in that state, without a pause. A paused run counts as no
+- A run whose gateway ended it at its keys' limit, with the state `paused` and the
+  reason `model_key_limit`, ends **Paused**, and so does one with the state `cancelled`
+  and that reason, from a gateway of the earlier contract. With another state, which the
+  contract does not allow, the run ends in that state, without a pause; the state
+  `paused` with another reason, or none, is read as an unknown state. A paused run counts as no
   failure and moves no stage. While its work item is still in Explore, at the same take
   in and stage, that stage runs, and its other runs have ended, a run that continues it
   is queued at once, at the paused run's place in the queue, as the next run of the

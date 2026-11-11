@@ -81,7 +81,8 @@
 # API credential, the key the model choice names and the end of a key's cooldown at the
 # claim, which the start key never has in the future; and a run that pauses at its
 # model keys' limit, `model_key_limit` on `dev.qory.session.exited` and
-# `dev.qory.run.exited` with the state `cancelled` and no other state, the chunks of a
+# `dev.qory.run.exited` with the state `paused` and no other state, and `paused` with
+# `model_key_limit` alone and never on a step's exit, the chunks of a
 # runtime session's transcript, `dev.qory.session.transcript`, and a continuation's `resume` in its run configuration,
 # the paused run whose transcript it reads; and a key of a key group without
 # `pause_for_s`, which the gateway gives a cooldown of 60 seconds for an API key and 3600
@@ -90,7 +91,7 @@
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-ddda67a71031cd3223009f0e7c485f191eee6036
+951b7ff4cc002859beb4d27ae13569b7e82b8507
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json

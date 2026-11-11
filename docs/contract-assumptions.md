@@ -1359,14 +1359,17 @@ A run is in one of seven states, in five families (`Apiary.Runs.Run.states/0`,
 The fold maps an exit to a state by the first rule that applies
 (`Apiary.Runs.Fold.exit_state/2`):
 
-1. `cancelled` with `model_key_limit` is Paused: the run's gateway ended it because
-   every model key of the run was at its limit (A run's model keys, under The run
-   endpoint), and it is never a person's cancel. The state is final, and the end of a
-   paused run of a workspace's queue queues the run that continues it (A run that
-   continues a paused run, under The run endpoint). The contract allows
-   `model_key_limit` with `cancelled` alone: with any other `state`, or none, the reason
-   changes nothing, as an unknown reason does, the rules below apply, and the fold logs
-   one line.
+1. `paused` with `model_key_limit` is Paused: the run's gateway ended it because every
+   model key of the run was at its limit (A run's model keys, under The run endpoint),
+   and it is never a person's cancel. The state is final, and the end of a paused run of
+   a workspace's queue queues the run that continues it (A run that continues a paused
+   run, under The run endpoint). `cancelled` with `model_key_limit`, the shape a gateway
+   sent before the contract had `paused`, is Paused too, while gateways of both versions
+   run: Qory Apiary is deployed before Forager. The contract allows `model_key_limit`
+   with `paused` alone, and `paused` with `model_key_limit` alone: with any other
+   `state`, or none, the reason changes nothing, as an unknown reason does, and `paused`
+   with another reason, or none, is read as an unknown `state`; the rules below apply,
+   and the fold logs one line.
 2. `failed` with `session_lost` or `gateway_lost` is Lost: nobody knows how the run ended.
    An exit came, so the state is final, and `lost_at` is the exit's time: no start or
    heartbeat folded after it revives the run.
@@ -1399,7 +1402,7 @@ Forager's codes, and the words Qory Apiary says for each
 | `batch_refused` | the gateway refused a batch of the session's, and ended the run | Failed | events refused |
 | `run_closed` | nothing: the session's record alone holds it, the gateway's `410` to a run already ended there | by its `state` | none |
 | `no_session` | the run was closed with no session started, after its host work failed, such as a fetch or a compose; `exit_code` is `-1` | Failed | no session: the code, its `_` read as a space |
-| `model_key_limit` | every model key of the run was at its limit, and the session stopped the runtime; written on `dev.qory.session.exited` and on `dev.qory.run.exited`, with `cancelled` | Paused with `cancelled`; by its `state` with another | model key limit |
+| `model_key_limit` | every model key of the run was at its limit, and the session stopped the runtime; written on `dev.qory.session.exited` and on `dev.qory.run.exited`, with `paused` | Paused with `paused`, and with `cancelled` from a gateway of the earlier contract; by its `state` with another | model key limit |
 
 A record written before may hold an old name, read in these words:
 
@@ -1812,10 +1815,15 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   gateway passes back unchanged. Every machine behind one gateway shares that address's limit, 1
   a second and 10 at once, which is not raised for a gateway's address, and the audit
   entry of the key's arrival records the gateway's address as `remote_ip`.
-- Model keys: the contract writes `model_key_limit` with `cancelled` alone; Qory Apiary
-  reads that pair as Paused (How a run ends), so a run that paused is never read as a
-  person's cancel or a failure. With another `state`, or none, Qory Apiary reads the
-  exit by its state, with no pause and no continuation, and logs one line.
+- Model keys: the contract writes `model_key_limit` with `paused` alone, on
+  `dev.qory.session.exited` and on `dev.qory.run.exited`, and `paused` with
+  `model_key_limit` alone; a step never ends `paused`. Qory Apiary reads that pair as
+  Paused (How a run ends), so a run that paused is never read as a person's cancel or a
+  failure, and reads `cancelled` with `model_key_limit`, which a gateway of the earlier
+  contract sends, the same way. With another `state`, or none, Qory Apiary reads the
+  exit by its state, with no pause and no continuation, and logs one line; an exit
+  `paused` with another reason, or none, is read as one of an unknown state, with one
+  line too.
 - Model keys: the contract has the gateway send its last report within 10 seconds of the
   run's end. Qory Apiary records a report that arrives at most 60 seconds after the run
   ended, by the server's clock, at the first arrival of its `dev.qory.run.exited` or

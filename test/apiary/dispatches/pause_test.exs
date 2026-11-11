@@ -1,6 +1,6 @@
 defmodule Apiary.Dispatches.PauseTest do
   # A run of a work item whose exit says every model key of the run was at its limit
-  # (`cancelled`, `model_key_limit`): the run is Paused, its run of the queue ends, and the
+  # (`paused`, `model_key_limit`): the run is Paused, its run of the queue ends, and the
   # run that continues it is queued at its place, with one more attempt and the paused
   # run's place in the queue (`Apiary.Dispatches.RunEnd`,
   # `Apiary.Dispatches.requeue_for_pause/2`). The paused run's transcript is kept, and the
@@ -24,6 +24,12 @@ defmodule Apiary.Dispatches.PauseTest do
   @moduletag needs: [:factory, :secrets]
 
   @paused %{
+    "state" => "paused",
+    "reason" => "model_key_limit",
+    "exit_code" => 143
+  }
+  # The same end from a gateway of the earlier contract.
+  @cancelled_paused %{
     "state" => "cancelled",
     "reason" => "model_key_limit",
     "exit_code" => -1,
@@ -307,12 +313,51 @@ defmodule Apiary.Dispatches.PauseTest do
     assert attempt.(next) == %{"attempt" => 1}
   end
 
+  test "the contract's batch of a run paused at the limit pauses the run", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    path = "test/fixtures/forager-contract/link/link-batch-exited-model-key-limit.json"
+    assert path in Apiary.ContractFixtures.vendored()
+
+    events = path |> File.read!() |> Jason.decode!()
+    [exited] = for %{"type" => "dev.qory.run.exited", "data" => data} <- events, do: data
+    assert {exited["state"], exited["reason"]} == {"paused", "model_key_limit"}
+
+    for {%{"type" => "dev.qory." <> type, "data" => data}, sequence} <-
+          Enum.with_index(events, 5),
+        type != "run.exited",
+        do: event_fixture(run, sequence, type, data)
+
+    log = capture_log(fn -> exit!(run, exited) end)
+
+    assert %Run{state: "paused", exit_reason: "model_key_limit"} = Repo.get!(Run, run.id)
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}, {2, :waiting, nil}]
+    refute log =~ "model_key_limit"
+  end
+
+  test "the earlier contract's cancelled exit at the limit pauses the run too", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    exit!(run, @cancelled_paused)
+
+    assert %Run{state: "paused", exit_reason: "model_key_limit"} = Repo.get!(Run, run.id)
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}, {2, :waiting, nil}]
+    assert run_of(dispatch_run.work_item_id, 2).continues_id == dispatch_run.id
+  end
+
   test "an exit with another reason is no pause", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
-    exit!(run, %{@paused | "reason" => "stopped"})
+    exit!(run, %{@cancelled_paused | "reason" => "stopped"})
 
     assert %Run{state: "cancelled"} = Repo.get!(Run, run.id)
     assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+  end
+
+  test "an exit paused without model_key_limit is no pause, with one log line", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    log = capture_log(fn -> exit!(run, Map.delete(@paused, "reason")) end)
+
+    assert %Run{state: "failed", exit_reason: nil} = Repo.get!(Run, run.id)
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+    assert [_line] = Regex.scan(~r/the state paused without the reason model_key_limit/, log)
   end
 
   # The data of each event of the contract's invalid fixture `file`, vendored.
@@ -329,7 +374,7 @@ defmodule Apiary.Dispatches.PauseTest do
     end
   end
 
-  test "model_key_limit with a state other than cancelled is no pause, with one log line",
+  test "model_key_limit with a state other than paused is no pause, with one log line",
        ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
 
@@ -356,7 +401,7 @@ defmodule Apiary.Dispatches.PauseTest do
     assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
 
     assert [_line] =
-             Regex.scan(~r/the reason model_key_limit with a state other than cancelled/, log)
+             Regex.scan(~r/the reason model_key_limit with a state other than paused/, log)
   end
 
   describe "the transcript" do

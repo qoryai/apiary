@@ -222,8 +222,8 @@ defmodule Apiary.Runs.Fold do
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
-  # The reason of an exit at the run's model keys' limit: with the state `cancelled`, the
-  # run paused.
+  # The reason of an exit at the run's model keys' limit: with the state `paused`, the run
+  # paused (`exit_state/2`).
   @paused_reason "model_key_limit"
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
@@ -495,12 +495,22 @@ defmodule Apiary.Runs.Fold do
       given = string(data, "state")
       state = exit_state(given, reason)
 
-      if reason == @paused_reason and state != "paused",
-        do:
+      cond do
+        reason == @paused_reason and state != "paused" ->
           Logger.warning(
-            "a run's exit has the reason model_key_limit with a state other than cancelled; " <>
+            "a run's exit has the reason model_key_limit with a state other than paused; " <>
               "the run ends #{state}, without a pause"
           )
+
+        given == "paused" and state != "paused" ->
+          Logger.warning(
+            "a run's exit has the state paused without the reason model_key_limit; " <>
+              "the run ends #{state}, without a pause"
+          )
+
+        true ->
+          :ok
+      end
 
       Map.merge(run, %{
         state: state,
@@ -693,19 +703,25 @@ defmodule Apiary.Runs.Fold do
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
   that applies:
 
-    1. `cancelled` with `model_key_limit` is paused: the run's gateway ended it at its
-       model keys' limit, and a continuation goes on with its work. It is never a
-       person's cancel. The contract allows `model_key_limit` with `cancelled` alone, so
-       with another state the reason changes nothing, as an unknown reason does, and the
-       fold logs one line.
+    1. `paused` with `model_key_limit` is paused: the run's gateway ended it at its model
+       keys' limit, and a continuation goes on with its work. So is `cancelled` with
+       `model_key_limit`, the shape a gateway sent before the contract had `paused`. The
+       contract allows `model_key_limit` with `paused` alone, and `paused` with
+       `model_key_limit` alone: with another state the reason changes nothing, as an
+       unknown reason does, and `paused` with another reason, or none, is read as an
+       unknown state; the fold logs one line for each.
     2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
     3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
     4. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
        lost, and any other reason, or none, failed.
 
-  A state other than the three is read as absent.
+  A state other than the three, and `paused` without `model_key_limit`, is read as
+  absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
+  def exit_state("paused", @paused_reason), do: "paused"
+  # The shape of a pause until every gateway sends `paused`: Qory Apiary is deployed
+  # before Forager, so it reads both while gateways of both versions run.
   def exit_state("cancelled", @paused_reason), do: "paused"
   def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
   def exit_state("succeeded", _reason), do: "completed"
