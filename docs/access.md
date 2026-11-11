@@ -471,15 +471,15 @@ and `dispatch.release`, of the feature `factory`.
 gateway's secrets request:
 
 - `Apiary.Runs.SecretsRequest` calls `Apiary.Access.check/3` with `secret.seal` and the run,
-  for a request for the run's model key. A key that fails gets `404`. A request for the
-  registry alone takes no action.
+  for a request for one or more of the run's model keys. A key that fails gets `404`. A
+  request for the registry alone takes no action.
 - `Apiary.Runs.WorkCredential` calls it with `run_credential.issue` and the run, before the
   call to the adapter and again as it records the credential. A key that fails the first
   check gets `404`, with no call to the adapter and no Activity entry.
 
 While `factory` is off and `registry` is on, a request for the registry alone gets `200`.
 A request for the work entry gets that `404`, even for a run made while `factory` was on.
-A request for the model key gets `409` `credentials_differ`, because no model key exists
+A request for a model key gets `409` `credentials_differ`, because no model key exists
 without `factory`. The run key, the sender and `allow_secrets` stay checks of the
 secrets request: they are data of the run and of the key it verified under.
 
@@ -540,6 +540,43 @@ stay known to such a gateway, and are accepted:
   does not let the run's workspace post (`run.post_events`); at the reload, `404` while
   the run's workspace or organisation is out of use. Only then comes the serving check's
   answer.
+
+## Model keys
+
+A model provider's keys are values of its secret (`Apiary.ModelKeys`), and their pages
+need the features `factory` and `secrets`. Every member reads a provider's page with its
+keys and their states (`connection.read`). Adding a key, changing its name, its Resets
+and its Pause for, and changing or deleting it, are `provider.write`, owners' and admins',
+checked at the organisation: **Add key** and **Edit key** on the provider's page
+(`ApiaryWeb.ProviderLive.Key`), and **Add value**, **Change value**, **Rename value** and
+**Delete value** of the provider's key on Workspace settings › Secrets and variables. For
+anyone else Add key and Edit are not on the page, their paths are not found, and
+`Apiary.Connections.add_provider_key/4` and `Apiary.Connections.update_provider_key/4`
+check it again inside their transaction. Each change leaves the provider's
+`provider_keys_changed` entry; a save of Edit key that changes nothing leaves none.
+
+A model choice's fallbacks, on Workspace settings › Model, are saved with the choice,
+under the choice's action: `model_choice.write` of the workspace or the target, owners'
+and admins', of the feature `factory`.
+
+Two requests of the run endpoint are a gateway's for a run, signed by its access key, and
+have no action of their own:
+
+- **The model keys report**, `POST /v1/runs/<run_id>/model-keys`, needs the features
+  `factory` and `secrets`. The run must be, as for the gateway's secrets request, a run
+  through that gateway, whose run key lists the key, that the key and the
+  request's instance may reload, of a workspace the gateway may still serve (the place
+  rule, under Access keys). Then `Apiary.Access.check/3` checks `run.post_events` on the
+  run for the key (`Apiary.ModelKeys.Report`). Any other run, and a key that fails, gets
+  `404`. The answer has the states of the run's keys alone, under the run's credential
+  names.
+- **The transcript of a paused run**, `GET /v1/runs/<run_id>/resume/transcript`, needs the
+  feature `observability`. The run must be one the run API finds for the key, a run of a
+  work item, still live, whose `resume` is set; and the paused run must
+  be the one it continues, of the same organisation, workspace, work item and stage
+  (`ApiaryWeb.Contract.TranscriptController`, `Apiary.Runs.Transcript.paused_run/1`). Any
+  other case gets `404`, so a run configuration with another run's id reads no other
+  run's transcript.
 
 ## Leaving
 
@@ -747,9 +784,9 @@ for each other and never on each other at once:
    workspace, with no workspace row; to choose the default key, that row `FOR SHARE`. It reads what uses the
    keys without a lock (`Apiary.Secrets.Usage`).
    A write of a model choice (`Apiary.ModelChoices`) at levels 2 to 5 takes the security
-   policy's order, then the provider's row `FOR SHARE`, then the choice's row
-   `FOR UPDATE`. A write of the organisation's default takes the organisation's rows and
-   the membership, then the integrations lock, then the provider's row `FOR SHARE` and
+   policy's order, then the provider's row `FOR SHARE`, then the rows of the fallbacks'
+   providers `FOR SHARE`, then the choice's row `FOR UPDATE`. A write of the
+   organisation's default takes the organisation's rows and the membership, then the integrations lock, then the provider's row `FOR SHARE` and
    the choice's row. A change to a provider takes the provider's row `FOR UPDATE`, so it
    waits for a save of a choice of that provider, or is seen by it: the change reads the
    choices that use the provider without a lock, and refuses while one does. No change to
@@ -758,16 +795,19 @@ for each other and never on each other at once:
    the limit's row `FOR UPDATE`.
    The claim of an explore run (`Apiary.Dispatches.RunSettings`) holds the pool's row,
    the gateway's row, the environment records, the run of the queue and its dispatch
-   (`Apiary.Dispatches.Slots`), then reads the choices without a lock, then takes the
-   rows of the providers they name `FOR SHARE`, by id, then the rows of those providers'
-   keys' secrets `FOR SHARE`, by id. A change to a provider or to its keys locks nothing
-   of the queue. A change that came first is seen by the claim; one that comes after
+   (`Apiary.Dispatches.Slots`), then reads the choices and their fallbacks without a
+   lock, then takes the rows of the providers they name, as a provider or a fallback,
+   `FOR SHARE`, by id, then the rows of those providers' keys' secrets `FOR SHARE`, by
+   id. It reads the keys' settings and states without a lock. A change to a provider or
+   to its keys locks nothing of the queue. A change that came first is seen by the claim; one that comes after
    waits for the claim to commit. A deletion of the provider then reads the run the claim
    registered, and refuses while that run is pending or running.
-   A gateway's secrets request for a run's model key takes no lock: it reads the run,
+   A gateway's secrets request for a run's model keys takes no lock: it reads the run,
    the provider's row and the row of its keys' secret without one, checks the
-   provider's integrity code, decrypts the key, whose row is bound to its secret, and
-   writes the audit entry `secret.seal` alone. A provider's deletion is refused while a
+   provider's integrity code, decrypts each key in the request, whose row is bound to
+   its secret, and writes the audit entry `secret.seal` alone. A model keys report takes the
+   locks of its keys' state rows in one order, so two reports of the same keys at once
+   cannot deadlock. A provider's deletion is refused while a
    pending or running run uses it, so the run's provider columns are empty only on a run
    that ended, and the request for such a run is refused.
 

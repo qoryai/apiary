@@ -420,6 +420,65 @@ replaces the navigation it is in.
   needs a recent
   sign-in, and the page leads to the log-in page otherwise; anyone else gets a page not
   found.
+- **Organisation settings › Model providers** (`/:org/settings/model-providers`,
+  `ApiaryWeb.ProviderLive.Index`, with the features `factory` and `secrets`) lists the
+  organisation's model providers. Its Keys column has how many keys each provider has
+  and how many of them are in cooldown, "3 keys, 1 in cooldown", or "3 keys" while none
+  is (`Apiary.ModelKeys.cooldown_counts/2`). A provider's page
+  (`…/model-providers/:provider_id`, `ApiaryWeb.ProviderLive.Show`) lists its keys, the
+  default key first, then in the order they were added. Each row has the key's name in
+  mono and its state on one line (`ApiaryWeb.ModelKeyComponents.state_line/1`), in the
+  reader's time zone: "Available", then, each after a middle dot, one segment for each
+  limit window with a use or a reset still to come, "Available · 5-hour 89%, resets
+  14:00 · 7-day 40%, resets Mon 09:00"; or, while a window of the key has a cooldown
+  that ends later, "In cooldown until Fri 14:00", the latest such end, and after a middle
+  dot where that time comes from: "from the provider's answer", "from this key's
+  schedule", or "no reset time given; paused for 1 hour", the cooldown that applied, from
+  the answer that started it to its end, whatever the key's Pause for is now. A time is
+  the time of day alone on the reader's day, the weekday and the time on one of the six
+  days after it, else the date and the time (`ApiaryWeb.Format.week_time/2`). The windows
+  read 5-hour, 7-day, 7-day Opus, 7-day Sonnet, Extra usage, Requests per minute, Tokens
+  per minute, Input tokens per minute, Output tokens per minute, Spend limit and Limit;
+  a window of another code shows its code. The page shows no key and no part of one.
+  Every member reads it (`connection.read`); owners and admins (`provider.write`) have
+  **Add key** in the section's actions and **Edit** at the right of each row, its label
+  "Edit key main", and anyone else neither.
+- **Add key** (`…/model-providers/:provider_id/keys/new`) and **Edit key**
+  (`…/keys/:value_id/edit`), `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page,
+  below), the breadcrumb ending with the provider's name and the act. The form has Name
+  ("Lowercase letters, digits, ., _ and -."); Key, on Add key alone, a password field
+  that is empty after every save, with "Qory Apiary stores the key encrypted, and nobody
+  can view it again."; then Resets and Pause for
+  (`ApiaryWeb.ModelKeyComponents.settings_fields/1`). Resets is a group of Day, Time and
+  Time zone, the zone the reader's where the key has no reset, with the hint "Optional.
+  The weekly time when this key's allowance resets. Set it if the provider's answers give
+  no reset time." Pause for is a number and a unit, minutes, hours or days, with the hint
+  "Optional. How long runs skip this key after the provider refuses it, when no reset
+  time is known. Empty: 1 hour." for a subscription's key, and "Empty: 1 minute." at its
+  end for an API key. A group's error takes its hint's place: "Set the day, the time and
+  the time zone, or leave all three empty." and "Enter a time from 1 minute to 7 days."
+  The foot has Add key or Save beside Cancel. A save goes back to the provider's page
+  with "main is added." or "main is saved."; a name another key of the provider has
+  shows "Another key of Northwind Claude has this name." under Name, and a key past the
+  32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
+  another." under Key. Add key of a subscription has About model providers beside the
+  form. Workspace settings › Secrets and variables has the same Resets and Pause for on
+  Add value and Change value of a model provider's key.
+- **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
+  the part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
+  every key of Northwind Claude is in cooldown, runs use these, in order, from the next
+  run.", then one row for each fallback, in order, from the second on with a rule above
+  it. A row is a group named by its place, "Fallback 2", with Provider, Model, Another
+  model and Effort as the choice has them, then Move up, Move down and Remove, each
+  labelled with the place ("Move fallback 2 up"). Add fallback adds a row of the first
+  provider left: one that applies to the workspace, serves the chosen runtime, and is
+  neither the chosen provider nor in a row. A new row's model, and a row's model after
+  its provider changes, is the chosen model where the provider has a model of that id,
+  else the provider's first. With no provider left, the part shows "Add another model
+  provider that serves Claude Code in Organisation settings › Model providers, then add
+  it here as a fallback.", the place a link. Save writes the rows with the choice, and
+  an error shows under its row's field, such as "Choose another provider: Northwind
+  Claude is chosen already."
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one
@@ -664,7 +723,7 @@ version in force is exported; another version's path sends on to it.
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
   other is. Ended badly counts the runs that failed or were lost. The Filter menu's State
-  section lists the six states and Queued under their four families, each heading a
+  section lists the seven states and Queued under their five families, each heading a
   checkbox for the whole family: Alive (Queued, Pending, Running), Ended well (Completed),
   Cancelled (Cancelled), Paused (Paused) and Ended badly (Failed, Lost). Queued is a pending run that waits
   in the queue for a machine (`Apiary.Runs.Run.queued?/1`): it has its run record and its
@@ -673,9 +732,10 @@ version in force is exported; another version's path sends on to it.
   first, newest queued first, then the rest. A queued run's row has the badge Queued with
   a hollow dot, its work item, its workflow and who started it, Started its queue time and
   Duration n/a. Alive and the sidebar's count of runs alive count the queued runs, and
-  the list follows a run queued, claimed or ended while it waits, without a reload. A cancelled run counts neither as ended well nor as ended
-  badly. A filter of whole families says their words ("ended badly"), and an empty list
-  of one family says so ("No runs cancelled."). A run stored under a state's older name
+  the list follows a run queued, claimed or ended while it waits, without a reload. A
+  cancelled or paused run counts neither as ended well nor as ended badly. A filter of
+  whole families shows their words ("ended badly"), and an empty list of one family
+  shows that ("No runs cancelled.", "No runs paused."). A run stored under a state's older name
   counts and lists as its new state. A view's filter is not repeated as a token. The
   number that matches is a line over the list, only when the list is narrowed ("87 runs
   match"), in the list's status region (`role="status"`,
@@ -1834,7 +1894,17 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   `rn_0123456789abcdef.log`), and no Close: Qory Apiary records what a run reports and
   never ends a run it did not start; it starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) shows how under the
-  meta line, after "How it ended". For a run that a failed step of its preparation
+  meta line, after "How it ended". A paused run shows its paused line there, whole, with
+  no "Jump to it" (`ApiaryWeb.PauseWords`): "Paused: every key of Northwind Claude is in
+  cooldown until Fri 14:00. It continues in run 15.", the run's number a link to its
+  page, while every key of its provider was in cooldown as it ended and that time is
+  still to come, the time as a key's row on Model providers shows it; else "Paused: a
+  key of Northwind Claude reached its limit. It continues in run 15."; "Paused: a key of
+  Northwind Claude reached its limit." where no run continues it; and "Paused: a model
+  key reached its limit.", with or without the run that continues it, once the provider
+  is deleted. On the work item's page, the run's row on Explore and the stage's round
+  show the same line in place of the run's state, the number a link where the reader may
+  read the workspace of the run that continues it. For a run that a failed step of its preparation
   stopped, the line states what happened at that step, with no advice, such as "Start the
   wall failed with exit code 125.", on every pool. Else the line is the last result of its
   timeline that was no success, else its
@@ -1974,8 +2044,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   workspace's pool, the Qory Pool and another organisation's pool.
 
   The heading is "Run on" and the pool's name, then the run's state in the word of the
-  run's badge: "Run on Qory Pool · Completed", or Pending, Running, Failed, Cancelled or
-  Lost. A run no pool claimed is headed "Run", with its state: "Run · Completed", or
+  run's badge: "Run on Qory Pool · Completed", or Pending, Running, Failed, Cancelled,
+  Paused or Lost. A run no pool claimed is headed "Run", with its state: "Run · Completed", or
   "Run · Queued" for a queued run.
 
   A queued run's list is Queue the run, running with its time counting from when the run
@@ -1999,15 +2069,22 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      they read under Pull the images when the image of the run's type is not in its
      registry. The header has the cause too, after "Why it waits". "Waiting: no pool can
      start machine type large", under the fold, where the run has no spec.
-  4. "Waiting for the environment image: a build of northwind/storefront is queued." (or
+  4. "Waiting for a model key: every key of Northwind Claude is in cooldown until
+     14:00." while every key of each of the run's model providers, its model choice's
+     provider and its fallbacks as they were when the run was queued, is in cooldown
+     (`dispatch_runs.model_provider_ids`, `Apiary.ModelKeys.first_to_leave/2`): the
+     provider whose key leaves its cooldown first, and when, the time as a key's row on
+     Model providers shows it. Nothing runs when the cooldown ends: the first claim after
+     that time takes the run.
+  5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with
      no build live, while it is held for its target's build. A run whose machine type
      has an image waits for no build.
-  5. "Waiting for a machine: build-pool runs 3 of its 3 machines." while every pool runs
+  6. "Waiting for a machine: build-pool runs 3 of its 3 machines." while every pool runs
      as many machines as its limit allows; "Waiting for a machine: Qory Pool runs all of
      its machines." on the Qory Pool, whose count covers other organisations' runs.
-  6. "Waiting for a machine: 2 runs were queued before this one."
-  7. "Waiting for build-pool to run it." otherwise.
+  7. "Waiting for a machine: 2 runs were queued before this one."
+  8. "Waiting for build-pool to run it." otherwise.
 
   The page of a queued run has no duration in its header. Details has a Workflow row,
   for a queued run alone, Arguments and Run id on the machine read n/a, and the empty
@@ -2338,7 +2415,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
 - **The timeline's last item** is one kind for every end: "Run ended", then the end
   reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1` without
   a signal, nor for an exit with no code at all), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
-  Cancelled, an amber signal-slash for Lost and a red x-mark for Failed. A run that did
+  Cancelled, a neutral pause for Paused, an amber signal-slash for Lost and a red x-mark
+  for Failed. A run that did
   not start ends on "Run did not start" and the refusal's code in mono, with the red
   x-mark.
 - **The announcer** (`#run-announcer`) says a change of state at once: "Run started.";
@@ -2346,8 +2424,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   failed with SIGKILL.", or "Run failed." where the header says no exit; "Run did not
   start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason;
   "Run lost: stopped responding." for a run whose exit said it was lost, and "Run lost.
-  No heartbeat for 90 s." for one the lost-run check marked; and "Heartbeats resumed."
-  when a quiet run is heard again. A state stored under an older name is said as its new
+  No heartbeat for 90 s." for one the lost-run check marked; a paused run in the words
+  of its paused line, "Paused: a model key reached its limit."; and "Heartbeats
+  resumed." when a quiet run is heard again. A state stored under an older name is said as its new
   state.
 - **A run through a gateway** looks as any run: its Machine or pool is the machine or pool that registered it,
   and its Host the machine the runtime ran on.

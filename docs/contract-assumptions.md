@@ -856,6 +856,53 @@ from, the one in force when the same bytes came from several; a digest a configu
 stored under always names that configuration. The events endpoint takes a reported digest
 as in force only when it is what the run would be answered now.
 
+**A run's model keys.** An explore run of a workspace's queue whose model choice resolves
+to a model provider gets the provider's keys at its claim (`Apiary.Dispatches.RunSettings`,
+`Apiary.ModelKeys.Order`), at most 6, because the 8 `credentials` of a run configuration
+also include the registry's and the work credentials. Each key is an API credential named
+`<provider's public id>-<n>`, from 1, with the provider's `format`, `endpoint` and `auth`,
+so the keys form one key group with the start key (the Forager contract, Several model
+keys). The claim orders the provider's keys at its clock: the key chosen in the model
+choice, while it is out of cooldown; then the keys with no known reset, or one already passed;
+then the keys by their known reset, the closest minute first; then the keys in cooldown,
+the earliest `cooldown_until` first. Ties go in tie order: the default key first, then the
+other keys by when each was added. A key's known reset is the earliest `resets_at` that a
+gateway reported, else the next reset of its weekly schedule; a key is in cooldown while
+one of its windows has a `cooldown_until` after the claim's clock. The first key of that
+order is the start key, `model_credential`, never a key in cooldown. `credentials` lists
+the keys in the order the contract has the server send them: the chosen key while it is
+out of cooldown, then the other keys out of cooldown in tie order, then the keys in
+cooldown in tie order. Each entry has `pause_for_s`, the key's Pause for, else 60 for an
+API key and 3600 for a subscription, and, where the claim had them, `resets_at`,
+`schedule_resets_at`, `cooldown_until` and `chosen`. The entries are fixed for the run: a
+later state reaches the gateway in the answer to its model keys report (The model keys
+report, below). Where every key of the provider is in cooldown, the claim takes the
+first of the choice's fallbacks, in their order, with a key out of cooldown, and the
+fallback's model and effort. Where every key of the provider and of each fallback is in
+cooldown, the claim registers nothing and the run of the queue waits again, its
+`dispatch_runs.model_provider_ids` set to those providers; no claim takes a run of the
+queue while every key of each of its providers is in cooldown
+(`Apiary.ModelKeys.claimable/1`). A gateway's secrets request reveals each key in the
+request by the key's row id, under the value id the key has at the request: a key renamed since the
+claim is revealed, and a request for a key deleted since fails. A run stored before runs
+kept several keys keeps its one key, under the provider's public id, and its run
+configuration has the key's Pause for.
+
+**A run that continues a paused run.** The end of a run of a workspace's queue whose exit
+paused it (How a run ends) queues, in the same transaction, the run that continues it
+(`Apiary.Dispatches.requeue_for_pause/2`): of the same work item, take in and stage, at
+the paused run's place in the queue, its `continues_id` the paused run. It queues none for
+a prebuild, for a work item no longer in Explore, at another take in or placed at another
+stage, or while another run of the take in has not ended. The paused run keeps
+`paused_until`, the earliest end of a cooldown among its provider's keys, when every one
+of them is in cooldown then. The claim of the continuation stores its `resume`
+(`Apiary.Runs.Transcript.resume_at_claim/1`): the paused run's id, and `session_id` and
+`path` of the paused run's last `dev.qory.session.transcript` by sequence. The
+registration stores it once, so every run configuration of the run has the same
+`resume`. A continuation registered before `resume` was stored, or of a paused run whose
+transcript is absent or cannot be restored, has none, and its session starts a new
+session.
+
 **Through a gateway.** A registration whose node's choice resolves to a gateway is
 answered with no run configuration: a signed `200`, `application/json`,
 `{"version":1,"run_id":"<run_id>","run_key":"qrk_…"}`, with `X-Qory-Configuration` and
@@ -986,6 +1033,52 @@ does, never from the gateway's. The
 outcome is not folded: a rebuild keeps it, and the fold applies it after every pass, so it
 decides the run's state and reason whenever it arrives (How a run ends). An outcome spends
 a token of the run endpoint's bucket of the key's rate, as a registration does.
+
+**The model keys report.** `POST /v1/runs/<run_id>/model-keys`, signed, `application/json`,
+its body read raw up to 32 KiB (`ApiaryWeb.Contract.RawBody`; a longer one is `413`), is
+how a run's gateway reports the state of the run's model keys in each limit window
+(`Apiary.ModelKeys.Report`, `ApiaryWeb.Contract.ModelKeysController`), as the contract's
+`model-keys-report.schema.json` has it: `{"version":1, "run_id", "time", "keys":[…]}`, at
+most 66 items, each `credential`, `window`, `status`, `resets_at`?, `utilization`?,
+`cooldown_until`?, `source` and `observed_at`, with `cooldown_until` when `status` is
+`rejected` and without it otherwise. After the refusals every signed request gets, in
+order: a body the schema does not match, a member twice, or an `observed_at` more than 300
+seconds after the server's clock is `400 invalid_request`, with the member in `names` and
+never a value; a `time` more than 300 seconds from the server's clock is `401`, unsigned;
+without the features `factory` and `secrets`, and for any run but one that goes through
+the key's gateway, whose run key lists the key, that the key and the request's instance
+may reload, of a workspace the gateway may still serve, and whose events `Apiary.Access`
+lets the key post, `404 {"error":"not_found"}`. A run that
+has ended is `410`, empty, but a report that arrives at most 60 seconds after this server
+took the run's `dev.qory.run.exited` is recorded first. A report that cannot be stored is
+`503 {"error":"unavailable"}`. Else Qory Apiary records each item of a credential the run
+has, by the key's row and not its name, for a window of the contract's list:
+`five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, `overage`, `requests`,
+`tokens`, `input_tokens`, `output_tokens`, `spend_limit` and `key`. An item of any other
+credential or window is left out, and the report is taken. A `resets_at` or a
+`cooldown_until` more than 31 days after its `observed_at` is stored as that bound. A row
+is replaced only by an item with a later `observed_at` (`Apiary.ModelKeys.record/3`), so
+an earlier state never overwrites a later one, whichever gateway sent it. The answer is
+`200`, `{"version":1,"keys":[…]}` with `X-Qory-Configuration`: the newest state of each
+of the run's keys in each window, from every gateway, under the run's credential names,
+without the utilization of a window whose `resets_at` has passed. A report spends a token
+of the run endpoint's bucket of the key's rate, as an outcome does.
+
+**The transcript of a paused run.** `GET /v1/runs/<run_id>/resume/transcript`, signed as
+every GET, is how the session of a run that continues a paused run reads the paused run's
+transcript before its runtime starts (`ApiaryWeb.Contract.TranscriptController`,
+`Apiary.Runs.Transcript`). `<run_id>` is the continuation's id. The route is the run
+endpoint's, with its feature `observability`, and finds the run as the run API does
+([contract/run-api.md](contract/run-api.md), Signing and the order of checks, check 3).
+Each of these is `404 {"error":"not_found"}`: a run the run API would not find, a run
+that ended, a run with no `resume`, a paused run that is no longer the one the run
+continues (of the same organisation, workspace, work item and stage, registered, and
+ended with `model_key_limit`), and a transcript that is gone, has a gap in its offsets,
+or is over 64 MiB. Else the answer is `200`, `application/x-ndjson`, the paused run's
+chunks of the path in the run's `resume`, in sequence order, sent in chunks and signed
+over their SHA-256. An exception before the answer starts is
+`503 {"error":"unavailable"}`; one while the chunks are sent ends the answer there. No
+transcript byte is logged or put in an error.
 
 **The rate.** A registration and a reload spend a token of the key's rate for the run
 endpoint, a bucket separate from the events endpoint's, so a gateway flushing a
@@ -1119,6 +1212,22 @@ of such a run, or a download, is never sized. An agent on pipes followed by a he
 on a pseudo-terminal is such a run: the helper's chunks have `stream` `terminal`, and they
 too are fitted to the box, not replayed at the helper's size.
 
+`dev.qory.session.transcript` is stored like any event, and its chunk, decoded, is a row of
+the run's `session_chunks`, keyed by the event's sequence (`Apiary.Runs.Transcript`,
+`Apiary.Runs.SessionChunk`): its `session`, `session_id`, `path`, `offset` and bytes, as
+`events/session.transcript.schema.json` has them. A run's transcript of a path is its
+chunks of that path in sequence order, and it can be restored only when they start at
+offset 0, each starts where the one before it ends, and they are at most 64 MiB
+together. The projection keeps
+no more chunks of a path once the stored ones pass 64 MiB, once 100,000 are stored, or
+once the chunks up to the run's projected sequence have a gap in `offset`, and logs the
+chunks it left out, one line per pass and path. Qory Apiary scans each chunk for keys of
+a known form, a key cut across two chunks of the file included. The diagnostics leave
+the transcript events out. Log retention leaves `session_chunks` in place: when a phase
+deletes the run's events, the chunks stay. The daily retention job deletes a run's chunks
+once its work item is closed or undone, and those of an ended run of no work item, at
+most 10,000 runs a job (`Apiary.Retention`).
+
 ## What opened a run
 
 Every run is opened once, by Forager's open of the run, before any session joins it.
@@ -1215,7 +1324,7 @@ workflow and where the run's harness came from (`ApiaryWeb.RunComponents.reason_
 `Apiary.Harnesses.WorkflowGap`). Events are read as untrusted, so a `state` other than the
 three, or a `reason` that breaks the pattern, is read as absent (`Apiary.Runs.Fold`).
 
-A run is in one of six states, in four families (`Apiary.Runs.Run.states/0`,
+A run is in one of seven states, in five families (`Apiary.Runs.Run.states/0`,
 `Apiary.Runs.Filters.families/0`):
 
 | State | Word | Family | Final |
@@ -1231,11 +1340,16 @@ A run is in one of six states, in four families (`Apiary.Runs.Run.states/0`,
 The fold maps an exit to a state by the first rule that applies
 (`Apiary.Runs.Fold.exit_state/2`):
 
-1. `failed` with `session_lost` or `gateway_lost` is Lost: nobody knows how the run ended.
+1. `model_key_limit` is Paused, whatever the `state`: the run's gateway ended it because
+   every model key of the run was at its limit (A run's model keys, under The run
+   endpoint). Forager writes it with `cancelled`, and it is never a person's cancel. The
+   state is final, and the end of a paused run of a workspace's queue queues the run that
+   continues it (A run that continues a paused run, under The run endpoint).
+2. `failed` with `session_lost` or `gateway_lost` is Lost: nobody knows how the run ended.
    An exit came, so the state is final, and `lost_at` is the exit's time: no start or
    heartbeat folded after it revives the run.
-2. `state` decides: `succeeded` is Completed, `failed` Failed and `cancelled` Cancelled.
-3. Without a `state`, which the contract requires, `session_lost` and `gateway_lost` are
+3. `state` decides: `succeeded` is Completed, `failed` Failed and `cancelled` Cancelled.
+4. Without a `state`, which the contract requires, `session_lost` and `gateway_lost` are
    Lost, and any other reason, or none, Failed.
 
 A run whose `dev.qory.run.refused` reaches Qory Apiary did not start: it is Failed, with the
@@ -1263,6 +1377,7 @@ Forager's codes, and the words Qory Apiary says for each
 | `batch_refused` | the gateway refused a batch of the session's, and ended the run | Failed | events refused |
 | `run_closed` | nothing: the session's record alone holds it, the gateway's `410` to a run already ended there | by its `state` | none |
 | `no_session` | the run was closed with no session started, after its host work failed, such as a fetch or a compose; `exit_code` is `-1` | Failed | no session: the code, its `_` read as a space |
+| `model_key_limit` | every model key of the run was at its limit, and the session stopped the runtime; written on `dev.qory.session.exited` and on `dev.qory.run.exited` | Paused | model key limit |
 
 A record written before may hold an old name, read in these words:
 
@@ -1304,7 +1419,7 @@ row shows the value as recorded, whatever the state: the signal, else the code, 
 recorded" for `-1` without a signal. The state comes from `state` and `reason`, never from
 the exit code: a run its starter judged a failure can show Exit 0.
 
-The check on `runs.state` refuses any value but the six states.
+The check on `runs.state` allows the seven states and no other value.
 
 A run's starter may give its outcome (The run endpoint). It is stored on the run, not
 folded, and it sets the run's state and reason whenever it arrives, before the exit or
@@ -1675,3 +1790,15 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   gateway passes back unchanged. Every machine behind one gateway shares that address's limit, 1
   a second and 10 at once, which is not raised for a gateway's address, and the audit
   entry of the key's arrival records the gateway's address as `remote_ip`.
+- Model keys: the contract writes `model_key_limit` with `cancelled`; Qory Apiary reads
+  it as Paused with any `state`, or none (How a run ends), so a run that paused is never
+  read as a person's cancel or a failure.
+- Model keys: the contract has the gateway send its last report within 10 seconds of the
+  run's end. Qory Apiary records a report that arrives at most 60 seconds after it took
+  the run's `dev.qory.run.exited`, then returns `410`, so a report that a gateway sent
+  as the run ended is not lost.
+- The transcript of a paused run: the contract lists `GET /resume/transcript` among the
+  run API's requests. Qory Apiary serves it with the feature `observability`, the run
+  endpoint's, not `workflow_model`, the other run API requests' feature: a run
+  configuration has `resume` only where a run started, and a run starts only where the
+  run endpoint is served.
