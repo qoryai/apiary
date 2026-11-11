@@ -14,7 +14,7 @@ defmodule ApiaryWeb.Contract.TranscriptController do
 
   The answer is `200`, `application/x-ndjson`, the file of the run that the request's
   run continues (`Apiary.Runs.Transcript`), sent in chunks. A run the key's gateway does
-  not hold (`ApiaryWeb.Contract.RunApi.Run.fetch/3`), a run that ended, a run that
+  not hold, as the run API reads it, a run that ended, a run that
   continues no paused run, a paused run that is no longer the one it continues, and a
   transcript that is gone, has a gap in its offsets or is over 64 MiB are each `404`
   `not_found`. No transcript byte is logged or put in an error; an exception is `503`
