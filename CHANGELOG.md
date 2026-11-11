@@ -1803,6 +1803,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Migrations
 
 <!-- feature: factory, secrets -->
+- `secret_values` and `model_key_copies` (20261111190000): a column
+  `secret_values.value_set_at`, the time a key's value was last set, which a rename leaves
+  as it is, filled from `updated_at`, which rewrites every row of `secret_values`; and a
+  new table `model_key_copies`, with a row per run and model key: the `value_set_at` of
+  the value last sealed for that run, deleted with the run and with the key.
 - `runs` (20261111170000): a nullable column `resume`, the paused run whose transcript a
   continuation reads, with a check that it is an object of exactly `run_id`,
   `session_id` and `path`, each a string; the check scans `runs` under a lock that

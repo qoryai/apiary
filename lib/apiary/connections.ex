@@ -1767,7 +1767,7 @@ defmodule Apiary.Connections do
   has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them, and `settings`
   the key's settings (`Apiary.ModelKeys.Setting.changeset/2`), nil for none. The key and
   its settings are written in one transaction. `{:ok, provider}`, or `{:error, refusal}`
-  as `Apiary.Secrets.add_value/4` answers, or a changeset of the settings, which leaves
+  as `Apiary.Secrets.add_value/4` returns, or a changeset of the settings, which leaves
   no key added.
   """
   @spec add_provider_key(Scope.t(), Connection.t(), map, map | nil) ::
@@ -1821,7 +1821,7 @@ defmodule Apiary.Connections do
   name and the settings are written in one transaction, and a save that changes neither
   leaves no entry.
   `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for a value id the provider's
-  keys do not have, a refusal of the rename as `rename_provider_key/4` answers, or a
+  keys do not have, a refusal of the rename as `rename_provider_key/4` returns, or a
   changeset of the settings, which leaves the name as it was.
   """
   @spec update_provider_key(Scope.t(), Connection.t(), String.t(), map) ::
