@@ -69,7 +69,8 @@ defmodule Apiary.Runs.Transcript do
 
   @doc """
   The most bytes of a transcript that is restored: 64 MiB. A test sets a lower one as
-  `:max_file` in the application's configuration of this module.
+  `:max_file` in the application's configuration of this module; a higher one is not
+  taken.
   """
   @spec max_file() :: pos_integer
   def max_file, do: limit(:max_file, @max_file)
@@ -82,7 +83,7 @@ defmodule Apiary.Runs.Transcript do
   def max_chunks, do: limit(:max_chunks, @max_chunks)
 
   defp limit(name, default),
-    do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), name, default)
+    do: min(Keyword.get(Application.get_env(:apiary, __MODULE__, []), name, default), default)
 
   @doc "The chunk `data` is, an event's data (the moduledoc), or `:error`."
   @spec parse(term) :: {:ok, chunk} | :error

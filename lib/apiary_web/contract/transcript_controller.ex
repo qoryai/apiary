@@ -30,6 +30,11 @@ defmodule ApiaryWeb.Contract.TranscriptController do
   alias Apiary.Runs.{Run, Transcript}
   alias ApiaryWeb.Contract.RunApi.Run, as: HeldRun
 
+  # The module that reads the chunks: `Apiary.Runs.Transcript`, but in tests, where
+  # `config/test.exs` sets one that can fail while the chunks are sent. It is fixed when
+  # this module compiles, so a node cannot change it at runtime.
+  @transcript Application.compile_env(:apiary, [__MODULE__, :transcript], Transcript)
+
   def show(conn, %{"run_id" => run_id}) do
     case file(conn, run_id) do
       {:ok, paused_id, path, file} ->
@@ -37,7 +42,7 @@ defmodule ApiaryWeb.Contract.TranscriptController do
         |> put_resp_header("x-content-type-options", "nosniff")
         |> put_resp_content_type("application/x-ndjson", nil)
         |> put_private(:qory_body_sha256, file.sha256)
-        |> send_chunks(transcript().stream(paused_id, path, file.max_sequence))
+        |> send_chunks(@transcript.stream(paused_id, path, file.max_sequence))
 
       :not_found ->
         conn |> put_status(404) |> json(%{error: "not_found"})
@@ -66,11 +71,6 @@ defmodule ApiaryWeb.Contract.TranscriptController do
       Logger.error("a transcript could not be read: #{inspect(exception.__struct__)}")
       :unavailable
   end
-
-  # The module that reads the chunks, `Apiary.Runs.Transcript`; a test sets another in
-  # the application's configuration to fail while the chunks are sent.
-  defp transcript,
-    do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), :transcript, Transcript)
 
   # Once the answer has started, a failure can no longer change its status: one line in
   # the log, with the exception's module alone, and the answer ends where it is.

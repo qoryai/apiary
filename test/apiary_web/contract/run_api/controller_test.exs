@@ -1675,33 +1675,20 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert Enum.uniq(answers) == [{404, ~s({"error":"not_found"})}]
     end
 
-    defmodule FailingTranscript do
-      # The transcript's first chunk, then an error, as a read that fails while the
-      # chunks are sent.
-      def stream(run_id, path, max_sequence) do
-        Stream.concat(
-          Stream.take(Apiary.Runs.Transcript.stream(run_id, path, max_sequence), 1),
-          Stream.map([:fail], fn _fail -> raise "chunk read failed" end)
-        )
-      end
-    end
-
     test "an error while the chunks are sent ends the answer, with one log line", ctx do
-      paused!(ctx, @lines)
+      paused!(ctx, [{3, 0, ~s({"a":1}\n)}, {5, 8, ~s({"b":2}\n)}, {7, 16, ~s({"c":3}\n)}])
 
-      Application.put_env(:apiary, ApiaryWeb.Contract.TranscriptController,
-        transcript: FailingTranscript
-      )
-
-      on_exit(fn -> Application.delete_env(:apiary, ApiaryWeb.Contract.TranscriptController) end)
+      # The second chunk's read raises (`ApiaryWeb.TranscriptStub`).
+      ApiaryWeb.TranscriptStub.fail_at(1)
 
       {conn, log} = ExUnit.CaptureLog.with_log(fn -> read(ctx, "/resume/transcript") end)
 
-      # The status went with the first chunk; the answer stops there, and no later chunk
-      # is sent.
+      # The status went with the first chunk; the answer stops at the failure, and the
+      # chunk after it is not taken.
       assert conn.status == 200
       assert conn.halted
-      refute conn.resp_body =~ ~s({"b":2})
+      assert_received {:transcript_pulled, ~s({"a":1}\n)}
+      refute_received {:transcript_pulled, _bytes}
       assert log =~ "a transcript stopped while it was sent: RuntimeError"
       refute log =~ ~s({"a":1})
     end

@@ -90,6 +90,11 @@ defmodule Apiary.Runs.TranscriptLimitsTest do
            end) =~ "reason=too_large"
   end
 
+  test "a limit above the default is not taken" do
+    limits!(max_file: 128 * 1024 * 1024, max_chunks: 200_000)
+    assert {Transcript.max_file(), Transcript.max_chunks()} == {64 * 1024 * 1024, 100_000}
+  end
+
   test "under the limits, every chunk is kept and the file passes its check", ctx do
     limits!(max_file: 64, max_chunks: 10)
     four!(ctx.run)
