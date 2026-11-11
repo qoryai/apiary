@@ -247,7 +247,12 @@ defmodule Apiary.WorkItems.Moves do
   #     run reads the answers, the comment and every other open review comment, as it
   #     reads them after an answer. It asks `work_item.answer` where answers are given,
   #     and `work_item.review_comment` for a comment, or where nothing else is given, for
-  #     the open review comments alone (else `:not_approver`). A round with no answer
+  #     the open review comments alone (else `:not_approver`). With the workflow model
+  #     on, an answer, a send of the review comments, Run another round and Explore
+  #     again ask `gate.approve` too where the round resolves an open escalation, or runs
+  #     a stage after Explore's again from its gate, and are `:not_waiting` from
+  #     Explore's proposal while a later stage waits for its inputs or its workflow
+  #     (`Apiary.Stages.member_round/3`, called by `Apiary.WorkItems`). A round with no answer
   #     left, once the answers that repeat a decision's option are dropped, counts as a
   #     round with no answers. With no answer, no comment and no review comment open on a
   #     proposal of the take in, it is `:not_waiting`. An answer to a decided question
@@ -314,7 +319,10 @@ defmodule Apiary.WorkItems.Moves do
   # workspace the work item is in, and the one it moved from, `{:work_items_changed, ids}`
   # on its work items' topic (`Apiary.WorkItems.topic/1`): public ids only. A close also
   # tells the workspaces whose queue changed (`Apiary.Dispatches.broadcast/1`). A comment
-  # and its deletion tell the work items' topic alone: the Backlog shows no comment.
+  # and its deletion tell the work items' topic alone: the Backlog shows no comment. A
+  # move that `Apiary.WorkItems` runs inside the stage runner's transaction
+  # (`Apiary.Stages.member_round/3`) is told again once that transaction commits
+  # (`tell/1`).
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -385,7 +393,7 @@ defmodule Apiary.WorkItems.Moves do
 
     case result do
       {:ok, {work_item, told}} ->
-        tell(told)
+        tell_told(told)
         {:ok, work_item}
 
       {:error, {:raced, ticket}} ->
@@ -629,7 +637,7 @@ defmodule Apiary.WorkItems.Moves do
 
     case result do
       {:ok, {work_item, told}} ->
-        tell(told)
+        tell_told(told)
         {:ok, work_item}
 
       {:error, _refusal} = refused ->
@@ -2000,15 +2008,25 @@ defmodule Apiary.WorkItems.Moves do
     %{work_items: [{work_item.workspace_id, work_item.public_id}], tickets: tickets}
   end
 
+  # tell/1 tells what a move of `work_item` changed (`told/1`) on the work items' and the
+  # Backlog's topics, for a move that ran inside a caller's transaction: the caller calls
+  # it once that transaction commits.
+  @doc false
+  @spec tell(WorkItem.t()) :: :ok
+  def tell(%WorkItem{} = work_item) do
+    work_item |> told() |> tell_told()
+    :ok
+  end
+
   defp finish({:ok, {work_item, told}}) do
-    tell(told)
+    tell_told(told)
     {:ok, work_item}
   end
 
   defp finish({:error, _refusal} = refused), do: refused
 
   # Sent once the change commits: ids only, grouped by workspace.
-  defp tell(told) do
+  defp tell_told(told) do
     for {workspace_id, ids} <- group(told.work_items) do
       Phoenix.PubSub.broadcast(
         Apiary.PubSub,

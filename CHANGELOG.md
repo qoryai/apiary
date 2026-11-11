@@ -952,6 +952,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   files to fix until the admin dismisses the message.
 <!-- /feature -->
 <!-- feature: factory, workflow_model -->
+- A machine type's key change rewrites workspace types and processes only with the
+  workflow model on. It checks the instance action `machine_type.rekey`, which only
+  instance admins take.
 - A workflow's **Machine type**, and the **Default machine type** of a workspace and of
   a workspace type, are lists of the instance's machine types by name. A harness's
   `process.yaml`, and a save, keep a key that no type has. Until a type has the key, the
@@ -1563,6 +1566,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - `workspace_type.edit` is an instance action.
 <!-- /feature -->
+<!-- feature: observability -->
+- Two access actions are added: `run.list_instance`, which a diagnostics key takes to
+  list the instance's runs (`GET /v1/runs`), and the instance action
+  `instance.read_machine`, which shows an instance admin **Started as (instance admins)**
+  on a run's page.
+<!-- /feature -->
 - An instance admin who stops being one while a page of Instance settings is open moves to
   `/`. Before, the page and its buttons stayed until it was reloaded, and each save failed.
 
@@ -1673,6 +1682,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Security
 
+<!-- feature: workflow_model -->
+- Where a stage lists approvers, only an approver settles the stage's escalation, or runs
+  a stage after Explore again from its gate, with **Run another round**. The escalation
+  records the approver who settled it, with a `gate.approve` entry in Activity. Anyone
+  else sees “Ask an approver of <stage> to act on it.” and no run starts. Before, any
+  member who could answer did both by sending answers, and the escalation recorded no
+  one. While a stage's escalation is open, only an approver answers its questions; at
+  any other time, every member answers them.
+- Run another round on Explore's proposal starts no round of a later stage that waits for
+  its inputs or its workflow.
+<!-- /feature -->
 - By default the release starts no Erlang distribution: before, every instance listened for
   other nodes with a cookie that every copy of the image holds, so anything that could reach
   the container's network could connect as a node and run code. With `DNS_CLUSTER_QUERY`,

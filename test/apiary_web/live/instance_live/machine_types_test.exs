@@ -242,6 +242,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       assert names() == [{"standard", true}, {"browser", false}, {"large", false}]
     end
 
+    @tag needs: :workflow_model
     test "warns before a key change, with the counts and the files, then keeps the files", %{
       conn: conn,
       scope: scope
@@ -316,6 +317,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       refute has_element?(view, "#machine-type-key-saved")
     end
 
+    @tag needs: :workflow_model
     test "a key change that no file uses saves after the warning, with a toast", %{conn: conn} do
       # The type Browser tests (`browser`) is seeded.
       {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
@@ -490,6 +492,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
           do: refute(saved =~ hidden, hidden)
     end
 
+    @tag needs: :workflow_model
     test "a key change that only organisations' files use, and the message after it", %{
       conn: conn,
       scope: scope
@@ -511,6 +514,64 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       assert spaced(view, "#machine-type-key-saved") ==
                "Browser tests saved. Its key is now ui-tests. " <>
                  "Organisations fix the files in their harnesses: 1 file in Acme's harness"
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "with the workflow model off, a key change warns of the waiting runs alone", %{
+      conn: conn,
+      scope: scope
+    } do
+      # The type Browser tests (`browser`) is seeded; a run waits on it.
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, run} = Apiary.Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1) end)
+
+      Apiary.Repo.update_all(from(r in Apiary.Dispatches.DispatchRun, where: r.id == ^run.id),
+        set: [machine_type: "browser", machine_spec: spec(), machine_type_was_default: false]
+      )
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+
+      assert spaced(view, "#machine-type-key-warning") ==
+               "Changing the key breaks every file that uses browser. Qory Apiary updates 1 waiting run. Change key Saving Cancel"
+
+      view |> element("#machine-type-cancel-key") |> render_click()
+      harness_version!(scope, :current, qory_template())
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+
+      assert spaced(view, "#machine-type-key-warning") ==
+               "Changing the key breaks every file that uses browser. Qory Apiary updates 1 waiting run. Fix these files yourself: " <>
+                 qory_file() <> " Change key Saving Cancel"
+
+      # The key changes in the type alone: the workspace's process keeps its version.
+      view |> element("#machine-type-change-key") |> render_click()
+      assert_patch(view, ~p"/instance/machine-types")
+      assert MachineTypes.get("ui-tests")
+      assert %Processes.Version{number: 1} = Processes.current(scope.workspace)
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "with the workflow model off and no waiting run, a key change warns of the files alone",
+         %{conn: conn, scope: scope} do
+      # The type Browser tests (`browser`) is seeded; Acme's workspace runs a file of
+      # Acme's harness.
+      named!(scope, "Acme", "Checkout")
+      harness_version!(scope, :current, harness("acme", "web"))
+
+      {:ok, view, _html} = live(conn, ~p"/instance/machine-types/browser/edit")
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+
+      assert spaced(view, "#machine-type-key-warning") ==
+               "Changing the key breaks every file that uses browser. " <>
+                 "Organisations fix the files in their harnesses: 1 file in Acme's harness Change key Saving Cancel"
+
+      view |> element("#machine-type-cancel-key") |> render_click()
+      harness_version!(scope, :current, qory_template())
+      view |> form("#machine-type-form", type: %{key: "ui-tests"}) |> render_submit()
+
+      assert spaced(view, "#machine-type-key-warning") ==
+               "Changing the key breaks every file that uses browser. Fix these files yourself: " <>
+                 qory_file() <> " Change key Saving Cancel"
     end
 
     test "keeps a type that a workspace has as its default machine type", %{
@@ -644,6 +705,20 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
   end
 
   # The template of a version read from the harness repository of `owner` at `module`.
+  # The record of the Qory harness's file, and that file as the page shows it.
+  defp qory_template,
+    do: %{
+      "source" => "qory",
+      "git" => Apiary.Harnesses.Qory.git(),
+      "commit" => Apiary.QoryHarnessFixture.commit(),
+      "module" => "software-factory"
+    }
+
+  defp qory_file,
+    do:
+      "#{repository(Apiary.Harnesses.Qory.git())} modules/software-factory/process.yaml " <>
+        "at #{String.slice(Apiary.QoryHarnessFixture.commit(), 0, 7)}"
+
   defp harness(owner, module),
     do: %{
       "source" => "repository",

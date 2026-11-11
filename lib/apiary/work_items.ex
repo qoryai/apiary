@@ -203,7 +203,8 @@ defmodule Apiary.WorkItems do
   # (`Apiary.WorkItems.Moves`).
   @spec answer(Scope.t(), WorkItem.t(), pos_integer, map | String.t() | [Moves.answer_by_id()]) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  defdelegate answer(scope, work_item, attempt, answers), to: Moves
+  def answer(%Scope{} = scope, %WorkItem{} = work_item, attempt, answers),
+    do: member_round(scope, work_item, fn -> Moves.answer(scope, work_item, attempt, answers) end)
 
   @doc false
   # review_comment/4 writes the scope's member's review comment on the newest proposal of
@@ -226,7 +227,11 @@ defmodule Apiary.WorkItems do
   # open (`Apiary.WorkItems.Moves`).
   @spec send_review_comments(Scope.t(), WorkItem.t(), pos_integer) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  defdelegate send_review_comments(scope, work_item, attempt), to: Moves
+  def send_review_comments(%Scope{} = scope, %WorkItem{} = work_item, attempt),
+    do:
+      member_round(scope, work_item, fn ->
+        Moves.send_review_comments(scope, work_item, attempt)
+      end)
 
   @doc false
   # another_round/4 queues the next run of `work_item`'s take in with the answers and the
@@ -234,7 +239,31 @@ defmodule Apiary.WorkItems do
   # of its latest run, `attempt`, wait (`Apiary.WorkItems.Moves`).
   @spec another_round(Scope.t(), WorkItem.t(), pos_integer, Moves.round()) ::
           {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  defdelegate another_round(scope, work_item, attempt, round), to: Moves
+  def another_round(%Scope{} = scope, %WorkItem{} = work_item, attempt, round),
+    do:
+      member_round(scope, work_item, fn ->
+        Moves.another_round(scope, work_item, attempt, round)
+      end)
+
+  # Hand-over: with the workflow model, a move that runs the stage's next round where it
+  # resolves an escalation, or at the gate of a stage after Explore's, has the same check
+  # as the stage's gate, and records who resolved the escalation
+  # (`Apiary.Stages.member_round/3`). The move runs inside that transaction, so what it
+  # tells before the commit is told again once the commit is done (`Moves.tell/1`).
+  defp member_round(scope, work_item, move) do
+    if Apiary.Stages.on?() do
+      case Apiary.Stages.member_round(scope, work_item, move) do
+        {:ok, %WorkItem{} = done} = ok ->
+          Moves.tell(done)
+          ok
+
+        refused ->
+          refused
+      end
+    else
+      move.()
+    end
+  end
 
   @doc false
   # confirm/3 confirms the proposal of the latest run, `attempt`, of `work_item`'s take
@@ -265,12 +294,9 @@ defmodule Apiary.WorkItems do
   def explore_again(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
     again = fn -> Moves.explore_again(scope, work_item, attempt) end
 
-    # Hand-over: with the workflow model, Explore again on an escalated stage resolves
-    # the escalation, with the same check as the stage's gate
-    # (`Apiary.Stages.explore_again/3`).
-    if Apiary.Stages.on?(),
-      do: Apiary.Stages.explore_again(scope, work_item, again),
-      else: again.()
+    # Hand-over: with the workflow model, Explore again where it resolves an escalation
+    # has the same check as the stage's gate (`Apiary.Stages.member_round/3`).
+    member_round(scope, work_item, again)
   end
 
   @doc false

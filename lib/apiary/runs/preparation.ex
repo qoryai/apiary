@@ -157,7 +157,7 @@ defmodule Apiary.Runs.Preparation do
   a claim with no offers, which has none. `requested_ms` is nil while the
   dispatch has no `dispatched`. `started_as` is the vendor's type of the machine the
   starter created, as its first `dispatched` reported it, for a reader who is an instance
-  admin (`Apiary.Access.instance_admin?/1`); nil for anyone else, and while the starter
+  admin (`instance.read_machine`, `Apiary.Access`); nil for anyone else, and while the starter
   reported none. `release_reason` is the starter's reason of a release, nil for any
   other dispatch. `started.state` is `running`, `succeeded`, `failed` or `cancelled`, as
   a step's. `handed_over_at` is when the dispatch was handed over, so a machine existed
@@ -606,7 +606,7 @@ defmodule Apiary.Runs.Preparation do
       requested_at: dispatch.claimed_at,
       requested_ms: between(dispatch.claimed_at, started_at),
       started_as:
-        if(dispatch.vendor_machine_type && Access.instance_admin?(scope),
+        if(dispatch.vendor_machine_type && reads_machine?(scope),
           do: dispatch.vendor_machine_type
         ),
       release_reason: dispatch.release_reason,
@@ -621,6 +621,16 @@ defmodule Apiary.Runs.Preparation do
         duration_ms: between(started_at, ended_at)
       }
     }
+  end
+
+  # Whether the reader of `scope` reads the vendor's type of a dispatch's machine
+  # (`instance.read_machine`, asked in the instance's organisation).
+  defp reads_machine?(scope) do
+    Access.authorize(
+      Access.in_instance(scope),
+      :"instance.read_machine",
+      Access.instance_organisation()
+    ) == :ok
   end
 
   # When a run that ended did so, for a dispatch that has not ended yet: its exit, its

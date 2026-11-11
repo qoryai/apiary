@@ -217,6 +217,11 @@ defmodule Apiary.Runs.PreparationTest do
       assert Apiary.Access.instance_admin?(ctx.scope)
       assert %{started_as: "example-type"} = Preparation.read(ctx.scope, run).machine
 
+      # The read is the action's (`instance.read_machine`): refused, it shows nothing.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ReadsNoMachine)
+      assert Apiary.Access.instance_admin?(ctx.scope)
+      assert %{started_as: nil} = Preparation.read(ctx.scope, run).machine
+
       change_dispatch!(dispatch, vendor_machine_type: nil)
       assert %{started_as: nil} = Preparation.read(ctx.scope, run).machine
     end

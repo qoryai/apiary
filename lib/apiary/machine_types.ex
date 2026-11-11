@@ -25,24 +25,31 @@ defmodule Apiary.MachineTypes do
   before and after. A type that a process document uses is kept, and so is the default.
 
   **A key change** (`update/3`) breaks every file that uses the key. In its transaction,
-  each workspace's current and trial process that uses the key gets a new version with the
-  key changed (`Apiary.Processes.rekey_machine/3`), and so does the newest process of each
-  workspace type that an instance admin saved
-  (`Apiary.Processes.TypeTemplates.rekey_machine/3`). A workspace type whose newest
-  process is a copy of the Qory harness's keeps that copy, with the key of before: its
-  runs start on the default type until the harness changes the key. Each run that waits
-  in the queue on the key gets the key of after, and the new version where its version
-  got one, so a pool claims it as before. Past versions, the runs that started or ended,
-  and their dispatches keep the key of before. `key_change/1` counts what the change
-  updates, the runs that wait on the key among them, lists the Qory harness's
-  `process.yaml` files that the instance admin fixes, and counts the files that each
-  organisation fixes in its harness repositories, with no workspace, workflow or
-  repository of an organisation.
+  under the instance action `machine_type.rekey` (`Apiary.Access`), each workspace's
+  current and trial process that uses the key gets a new version with the key changed
+  (`Apiary.Processes.rekey_machine/3`), and so does the newest process of each workspace
+  type that an instance admin saved (`Apiary.Processes.TypeTemplates.rekey_machine/3`).
+  A change that rewrites at least one version leaves a `machine_type.rekey` entry in the
+  trail of the instance's organisation, with the key before and after. With the feature
+  `workflow_model` off, no process and no workspace type gets a version, and the trail
+  gets no entry for either: only a work item's stages read a process's key, and only
+  with that feature on. With `workflow_model` off, processes and workspace types keep the
+  old key; once the feature is on again, their runs start on the default machine type
+  until the key is fixed. A
+  workspace type whose newest process is a copy of the Qory harness's keeps that copy,
+  with the key of before: its runs start on the default type until the harness changes
+  the key. Each run that waits in the queue on the key gets the key of after, and the new
+  version where its version got one, so a pool claims it as before. Past versions, the
+  runs that started or ended, and their dispatches keep the key of before.
+  `key_change/1` counts what the change updates, the runs that wait on the key among
+  them, lists the Qory harness's `process.yaml` files that the instance admin fixes, and
+  counts the files that each organisation fixes in its harness repositories, with no
+  workspace, workflow or repository of an organisation.
   """
   import Ecto.Query
 
   alias Apiary.Accounts.Scope
-  alias Apiary.{Audit, InstanceConfig, Processes, Repo}
+  alias Apiary.{Access, Audit, Features, InstanceConfig, Processes, Repo}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.MachineTypes.MachineType
   alias Apiary.Nodes.Node
@@ -505,7 +512,8 @@ defmodule Apiary.MachineTypes do
   save, uses it and is rewritten; `waiting`, the number of runs that wait in the queue
   on it; `files`, the Qory harness's files that the instance admin fixes; and
   `organisations`, by organisation name, the number of files in the organisation's
-  harness repositories that the organisation fixes.
+  harness repositories that the organisation fixes. With the feature `workflow_model`
+  off, `workspaces` and `templates` are 0: the change rewrites no process.
 
   The files are each `process.yaml` that a current or trial process that uses the key
   was read from (`Apiary.Processes.harness_origin/1`: `git`, `module` and `commit`),
@@ -526,10 +534,20 @@ defmodule Apiary.MachineTypes do
   def key_change(%MachineType{key: key}) do
     {qory, others} = key |> sources() |> Enum.split_with(&qory_source?/1)
 
+    rewrites? = Features.on?(:workflow_model)
+
     %{
       workspaces:
-        key |> Processes.machine_key_versions() |> Enum.uniq_by(& &1.workspace_id) |> length(),
-      templates: key |> TypeTemplates.machine_key_types() |> Enum.count(&is_nil(&1.release)),
+        if(rewrites?,
+          do:
+            key |> Processes.machine_key_versions() |> Enum.uniq_by(& &1.workspace_id) |> length(),
+          else: 0
+        ),
+      templates:
+        if(rewrites?,
+          do: key |> TypeTemplates.machine_key_types() |> Enum.count(&is_nil(&1.release)),
+          else: 0
+        ),
       waiting: Repo.aggregate(waiting(key), :count),
       files: qory_files(qory),
       organisations: organisation_files(others)
@@ -780,17 +798,48 @@ defmodule Apiary.MachineTypes do
     end
   end
 
-  # The processes that use the key of before, with the key of after.
+  # The processes that use the key of before, with the key of after, under
+  # `machine_type.rekey`; with the workflow model off, none, then the runs that wait.
   defp rekeyed(_scope, %MachineType{key: key}, %MachineType{key: key}), do: :ok
 
   defp rekeyed(scope, %MachineType{key: from}, %MachineType{key: to}) do
-    with :ok <- Processes.rekey_machine(scope, from, to),
-         :ok <- TypeTemplates.rekey_machine(scope, from, to) do
+    with :ok <- rewritten(scope, from, to) do
       # The runs that wait in the queue on the key, which `key_change/1` counts: a claim
       # matches a run's type by its key.
       Repo.update_all(waiting(from), set: [machine_type: to, updated_at: DateTime.utc_now()])
       :ok
     end
+  end
+
+  defp rewritten(scope, from, to) do
+    instance = Access.in_instance(scope)
+
+    case Access.authorize(instance, :"machine_type.rekey", Access.instance_organisation()) do
+      :ok ->
+        with {:ok, processes} <- Processes.rekey_machine(scope, from, to),
+             {:ok, types} <- TypeTemplates.rekey_machine(scope, from, to) do
+          rekeyed_entry(instance, processes + types, from, to)
+        end
+
+      # The action's feature off: the key changes in the type alone.
+      {:error, :not_found} = refused ->
+        if Features.on?(:workflow_model), do: refused, else: :ok
+
+      refused ->
+        refused
+    end
+  end
+
+  # The entry of a key change that rewrote at least one version; none for one that
+  # rewrote none.
+  defp rekeyed_entry(_instance, 0, _from, _to), do: :ok
+
+  defp rekeyed_entry(instance, _rewritten, from, to) do
+    with {:ok, _entry} <-
+           Audit.record(Repo, instance, :"machine_type.rekey", instance.organisation, %{
+             details: %{from: from, to: to}
+           }),
+         do: :ok
   end
 
   # The runs of the queue that wait on the type of key `key`.
