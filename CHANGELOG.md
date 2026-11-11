@@ -1806,8 +1806,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `session_chunks` and `transcript_paths` (20261111143100): two new tables. The first
   has the chunks of a run's session transcript, with an index on the run, the path and
   the sequence. The second has a row per run and path: the chunks and bytes kept of the
-  path, the sequence up to which they were checked for a gap, and the offset at which
-  the next chunk has to start. It changes no row: the transcript events of a run stored
+  path, the sequence up to which they were checked for a gap, the offset at which the
+  next chunk has to start, and `gap`, whether a checked chunk did not start there. It
+  changes no row: the transcript events of a run stored
   before it become chunks only if that run is rebuilt from its events.
 - `runs` and `dispatch_runs` (20261111143000): the checks on `runs.state` and
   `runs.exit_state` take `paused`; the first scans `runs` under a lock that blocks reads

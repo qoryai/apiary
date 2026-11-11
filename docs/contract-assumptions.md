@@ -1232,9 +1232,9 @@ once the chunks up to the run's projected sequence have a gap in `offset`, and l
 chunks it left out, one line per pass and path. It checks each stored chunk for a gap
 once, when the projected sequence passes it, against a row per run and path
 (`transcript_paths`, `Apiary.Runs.TranscriptPath`): the chunks and bytes kept, the
-sequence checked up to, and the offset at which the next chunk has to start. Qory Apiary
-scans each chunk for keys of
-a known form, a key cut across two chunks of the file included. The diagnostics leave
+sequence checked up to, the offset at which the next chunk has to start, and `gap`,
+whether a checked chunk did not start there. Qory Apiary scans each chunk for keys of a
+known form, a key cut across two chunks of the file included. The diagnostics leave
 the transcript events out. Log retention leaves `session_chunks` in place: when a phase
 deletes the run's events, the chunks stay. The daily retention job deletes a run's chunks
 once its work item is closed or undone, and those of an ended run of no work item, at
