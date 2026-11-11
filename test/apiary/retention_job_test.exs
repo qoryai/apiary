@@ -13,6 +13,7 @@ defmodule Apiary.RetentionJobTest do
   import Apiary.RunEventsFixtures
   import ExUnit.CaptureLog
 
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Retention
   alias Apiary.Retention.RetentionRun
   alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk, TranscriptPath}
@@ -118,28 +119,41 @@ defmodule Apiary.RetentionJobTest do
       handed_over_fixture(scope, key)
     end
 
-    test "goes once its run ended and its work item is closed, or its run of no work item ended",
-         %{scope: scope} do
-      %{run: exploring} = handed_over_run(scope)
-      %{run: closed, dispatch_run: dispatch_run} = handed_over_run(scope)
-      %{run: closed_alive, dispatch_run: alive_dispatch} = handed_over_run(scope)
+    # The run last heard from `days` days ago, in `state`.
+    defp age!(run, days, state) do
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [state: state, last_event_at: days_ago(days)]
+        )
+    end
+
+    test "goes with the run's log output, whatever its work item's state", %{scope: scope} do
+      %{run: open, dispatch_run: open_dispatch} = handed_over_run(scope)
+      %{run: closed, dispatch_run: closed_dispatch} = handed_over_run(scope)
+      %{run: young} = handed_over_run(scope)
+      %{run: alive} = handed_over_run(scope)
       ended = run_fixture(scope, %{state: "completed"})
-      alive = run_fixture(scope)
-      runs = [exploring, closed, closed_alive, ended, alive]
+      runs = [open, closed, young, alive, ended]
       Enum.each(runs, &chunk!/1)
 
-      {2, _rows} =
-        Repo.update_all(
-          from(w in WorkItem,
-            where: w.id in ^[dispatch_run.work_item_id, alive_dispatch.work_item_id]
-          ),
+      age!(open, 40, "completed")
+      age!(closed, 40, "failed")
+      age!(young, 5, "completed")
+      age!(alive, 40, "running")
+      age!(ended, 40, "completed")
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^closed_dispatch.work_item_id),
           set: [state: :closed, closed_at: @now]
         )
 
-      # The run of the second closed work item is still alive: its gateway may still send
-      # chunks.
-      {1, _rows} =
-        Repo.update_all(from(r in Run, where: r.id == ^closed.id), set: [state: "cancelled"])
+      assert Repo.get!(WorkItem, open_dispatch.work_item_id).state == :exploring
+
+      # With no log setting, every transcript stays.
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert Enum.map(runs, &chunks/1) == [1, 1, 1, 1, 1]
+
+      retain(scope, log_retention_days: 30)
 
       assert {:ok, _results} = Retention.prune_all(now: @now, dry_run: true)
       assert Enum.map(runs, &chunks/1) == [1, 1, 1, 1, 1]
@@ -149,17 +163,63 @@ defmodule Apiary.RetentionJobTest do
       on_exit(fn -> Logger.configure(level: level) end)
       log = capture_log([level: :info], fn -> Retention.prune_all(now: @now) end)
 
-      assert Enum.map(runs, &chunks/1) == [1, 0, 1, 0, 1]
+      # A run still alive keeps its transcript: its gateway may still send chunks.
+      assert Enum.map(runs, &chunks/1) == [0, 0, 1, 1, 0]
       # What the run kept of the path goes with the chunks.
-      assert Enum.map(runs, &paths/1) == [1, 0, 1, 0, 1]
-      assert log =~ "retention pruned transcripts=2"
+      assert Enum.map(runs, &paths/1) == [0, 0, 1, 1, 0]
+      assert log =~ "retention pruned transcripts=3"
       refute log =~ "{}"
+    end
+
+    test "of a paused run stays past the cut-off until the run that continues it ends", %{
+      scope: scope
+    } do
+      %{run: paused, dispatch_run: dispatch_run} = handed_over_run(scope)
+      chunk!(paused)
+      age!(paused, 40, "paused")
+      retain(scope, log_retention_days: 30)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      {:ok, %DispatchRun{id: continuation_id}} =
+        Repo.transact(fn ->
+          dispatch_run = Repo.get!(DispatchRun, dispatch_run.id)
+          Apiary.Dispatches.requeue_for_pause(dispatch_run, nil)
+        end)
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert chunks(paused) == 1
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^continuation_id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert {chunks(paused), paths(paused)} == {0, 0}
+    end
+
+    test "of a paused run that no run continues goes at the cut-off", %{scope: scope} do
+      %{run: paused} = handed_over_run(scope)
+      %{run: young} = handed_over_run(scope)
+      Enum.each([paused, young], &chunk!/1)
+      age!(paused, 40, "paused")
+      age!(young, 5, "paused")
+      retain(scope, log_retention_days: 30)
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert Enum.map([paused, young], &chunks/1) == [0, 1]
     end
 
     test "deletes the rows of a run's paths that outlived its chunks", %{scope: scope} do
       # A job that stopped after the last batch of chunks, before the rows.
       ended = run_fixture(scope, %{state: "completed"})
       path!(ended)
+      age!(ended, 40, "completed")
+      retain(scope, log_retention_days: 30)
       assert {chunks(ended), paths(ended)} == {0, 1}
 
       assert {:ok, _results} = Retention.prune_all(now: @now)
@@ -173,6 +233,8 @@ defmodule Apiary.RetentionJobTest do
       in_marked_organisation = run_fixture(other, %{state: "completed"})
       kept_out = run_fixture(third, %{state: "completed"})
       Enum.each([marked, in_marked_organisation, kept_out], &chunk!/1)
+      Enum.each([marked, in_marked_organisation, kept_out], &age!(&1, 40, "completed"))
+      Enum.each([scope, other, third], &retain(&1, log_retention_days: 30))
 
       {1, _rows} =
         Repo.update_all(
@@ -190,7 +252,7 @@ defmodule Apiary.RetentionJobTest do
       assert Enum.map([marked, in_marked_organisation, kept_out], &chunks/1) == [1, 1, 0]
     end
 
-    test "stays while its work item explores, when a phase deletes the run's events", %{
+    test "stays without a log setting, when a phase deletes the run's events", %{
       scope: scope
     } do
       %{run: run} = handed_over_run(scope)

@@ -51,14 +51,15 @@ defmodule Apiary.Retention do
   `:max_runs` runs of a workspace (10,000), and the next daily job goes on.
 
   **A session's transcript.** A run's `session_chunks` (`Apiary.Runs.Transcript`) are in
-  neither phase: a run that continues a paused run reads them, whenever it starts, and a
-  cooldown can last up to 31 days. A phase that deletes the run's events deletes the
+  neither phase. A phase that deletes the run's events deletes the
   `dev.qory.session.transcript` events with them, and the chunks stay. Under the same
-  lock, on every workspace whatever its settings, but a workspace or an organisation
-  marked for deletion, as for the phases, the job deletes the chunks of a run
-  whose work item is closed or undone, and of an ended run of no work item, which no run
-  continues, at most `:max_runs` runs a job (10,000), each a batch at a time under the
-  run's projection lock, and the run's `transcript_paths` with them
+  lock, but in a workspace or an organisation marked for deletion, as for the phases, the
+  job deletes the chunks of a run that is due by the log cut-off and the age test of the
+  `:log` phase, and a workspace with no `log_retention_days` keeps them. A paused run
+  keeps its chunks, past the cut-off too, while the run that continues it has not ended:
+  that run reads them whenever it starts, and a cooldown can last up to 31 days. The job
+  deletes at most `:max_runs` runs a job (10,000), each a batch at a time under the run's
+  projection lock, and the run's `transcript_paths` with them
   (`Apiary.Runs.TranscriptPath`), with one log line, `retention pruned transcripts=…`,
   when it deleted any.
 
@@ -725,16 +726,17 @@ defmodule Apiary.Retention do
     :ok
   end
 
-  # Under the job's lock, after the workspaces, the transcripts no run continues any more
+  # Under the job's lock, after the workspaces, the transcripts past the log cut-off
   # (the moduledoc); a dry run deletes none.
   defp prune_transcripts(opts) do
     unless Keyword.get(opts, :dry_run, false) do
       batch = opts |> Keyword.get(:batch, @default_batch) |> max(1) |> min(10_000)
       max_runs = Keyword.get(opts, :max_runs, @default_max_runs)
+      now = Keyword.get(opts, :now) || DateTime.utc_now()
 
       deleted =
         max_runs
-        |> transcripts_done()
+        |> transcripts_done(now)
         |> Enum.reduce(0, fn run, deleted ->
           query = from c in SessionChunk, where: c.run_id == ^run.id
           deleted = deleted + delete_batches(run, query, batch, 0)
@@ -751,7 +753,7 @@ defmodule Apiary.Retention do
   # The rows of what the run kept of each path of its transcript, which go with its chunks
   # (`Apiary.Runs.TranscriptPath`), in a transaction after the last batch of them: a job
   # that stops between the two leaves rows that the next job deletes
-  # (`transcripts_done/1`).
+  # (`transcripts_done/2`).
   defp delete_paths(run) do
     {:ok, _deleted} =
       Repo.transact(fn ->
@@ -762,31 +764,53 @@ defmodule Apiary.Retention do
     :ok
   end
 
-  # The runs with chunks of a transcript, or rows of its paths, that ended and whose work
-  # item is closed or undone, or that have no work item: a run still alive keeps its
-  # transcript whatever its work item's state, as its gateway may still send chunks. A run
-  # whose chunks a job deleted before it deleted the rows is found again, at most `limit`,
-  # of the workspaces the job walks
-  # whatever their settings: a workspace marked for deletion, or of an organisation
-  # marked, is left alone, as its purge deletes it whole (`workspaces/1`).
-  defp transcripts_done(limit) do
-    ended = Apiary.WorkItems.State.ended_states()
+  # The runs with chunks of a transcript, or rows of its paths, past the cut-off of their
+  # workspace's `log_retention_days`, by the age test of the `:log` phase (`due/6`): a run
+  # not alive, last heard from before the cut-off, and a lost run only `Run.lost_days/0`
+  # days after it was lost. A workspace with no log setting keeps every transcript. A run
+  # still alive keeps its transcript, as its gateway may still send chunks, and so does a
+  # paused run while the run that continues it has not ended: the continuation reads the
+  # transcript whenever it starts. A run whose chunks a job deleted before it deleted the
+  # rows is found again, at most `limit`, of the workspaces the job walks whatever their
+  # events setting: a workspace marked for deletion, or of an organisation marked, is
+  # left alone, as its purge deletes it whole (`workspaces/1`).
+  defp transcripts_done(limit, now) do
+    lost_before = DateTime.add(now, -Run.lost_days(), :day)
+
+    continued =
+      from c in DispatchRun,
+        where: c.continues_id == parent_as(:run).dispatch_run_id and c.state != :ended
 
     Repo.all(
       from r in Run,
+        as: :run,
         join: h in Workspace,
         on: h.id == r.workspace_id and h.organisation_id == r.organisation_id,
         join: o in assoc(h, :organisation),
         where: is_nil(h.deletion_marked_at) and is_nil(o.deletion_marked_at),
-        left_join: d in DispatchRun,
-        on: d.id == r.dispatch_run_id,
-        left_join: w in WorkItem,
-        on: w.id == d.work_item_id,
+        where: not is_nil(h.log_retention_days),
         where:
           r.id in subquery(from(c in SessionChunk, distinct: true, select: c.run_id)) or
             r.id in subquery(from(t in TranscriptPath, distinct: true, select: t.run_id)),
         where: r.state not in ^Run.alive_states(),
-        where: is_nil(w.id) or w.state in ^ended,
+        where:
+          fragment(
+            "COALESCE(?, ?) < ? - make_interval(days => ?)",
+            r.last_event_at,
+            r.inserted_at,
+            type(^now, :utc_datetime_usec),
+            h.log_retention_days
+          ),
+        where:
+          r.state != "lost" or
+            fragment(
+              "COALESCE(?, ?, ?) < ?",
+              r.lost_at,
+              r.last_event_at,
+              r.inserted_at,
+              ^lost_before
+            ),
+        where: r.state != "paused" or not exists(continued),
         order_by: r.id,
         limit: ^limit,
         select: %{id: r.id}

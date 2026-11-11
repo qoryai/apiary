@@ -1242,9 +1242,10 @@ offset at which the next chunk has to start, and `gap`, whether a checked chunk 
 start there. Qory Apiary scans each chunk for keys of a known form, a key cut across two
 chunks of the file included. The diagnostics leave the transcript events out. Log
 retention leaves `session_chunks` in place: when a phase deletes the run's events, the
-chunks stay. The daily retention job deletes the chunks of an ended run once its work
-item is closed or undone, and those of an ended run of no work item, at most 10,000 runs
-a job (`Apiary.Retention`).
+chunks stay. The daily retention job deletes the chunks of a run that is due by the
+workspace's `log_retention_days`, with the age test of the log phase, at most 10,000 runs
+a job, and a workspace with no such setting keeps them. A paused run keeps its chunks
+while the run that continues it has not ended (`Apiary.Retention`).
 
 ## What opened a run
 

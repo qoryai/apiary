@@ -4,7 +4,8 @@ defmodule Apiary.Runs.SessionChunk do
   `dev.qory.session.transcript` event, keyed by the event's sequence, with the session's
   number, the runtime's session id, the file's path and the chunk's offset in the file
   (`Apiary.Runs.Transcript`). A projection of the events, kept after the retention
-  deletes them, until the run's work item is closed or undone (`Apiary.Retention`).
+  deletes them, until the run is due by the workspace's log setting, and for a paused
+  run until the run that continues it ends (`Apiary.Retention`).
   """
   use Ecto.Schema
 

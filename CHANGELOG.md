@@ -1111,9 +1111,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Qory Apiary stores the transcript of a run's agent session, which the gateway sends as
   `dev.qory.session.transcript` events, up to 64 MiB and fewer than 100,000 chunks for
   each file. It scans the transcript for keys of a known form, as it scans the run's
-  events, and the diagnostics leave the transcript out. Log retention leaves a
-  transcript in place; the daily retention job deletes it once the run has ended and
-  its work item is closed or undone, or once the run has ended when it has no work item.
+  events, and the diagnostics leave the transcript out. The daily retention job
+  deletes a run's transcript with the run's log output, by **Keep a run's log output
+  for**; a paused run's transcript stays until the run that continues it ends.
 <!-- /feature -->
 
 ### Changed
