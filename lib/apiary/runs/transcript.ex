@@ -282,7 +282,7 @@ defmodule Apiary.Runs.Transcript do
   transcript there passes `check/2`; nil for any other run, so the continuation starts a
   new session.
   """
-  @spec resume_at_claim(DispatchRun.t()) :: map | nil
+  @spec resume_at_claim(map) :: map | nil
   def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation)
       when is_binary(paused_id) do
     with %Run{} = paused <- paused_run(continuation),
