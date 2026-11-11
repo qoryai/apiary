@@ -507,18 +507,22 @@ defmodule Apiary.Runs.SecretsRequest do
   end
 
   # The writes after the seal. Without a work credential, the seal's records alone
-  # (`record/3`). With one, in one transaction: its apply items kept or compared
-  # (`Apiary.Runs.WorkCredential.keep/1`), the seal's records, then the work
-  # credential's Activity entry, last. A step that fails rolls them all back, and the work
-  # credential is refused for its cause (`Apiary.Runs.WorkCredential.refused/4`).
+  # (`record/3`). With one, in one transaction: the seal's records, whose copies of the
+  # model keys take the run's row `FOR KEY SHARE` first; then the work entry's apply items
+  # kept or compared on its `run_credentials` row (`Apiary.Runs.WorkCredential.keep/1`);
+  # then the work credential's Activity entry, last. A run's deletion locks the run's row
+  # and then its `run_credentials` rows, so both take the run first and cannot deadlock;
+  # a request for the work entry alone has no copies and takes no lock on the run. A step
+  # that fails rolls them all back, and the work credential is refused for its cause
+  # (`Apiary.Runs.WorkCredential.refused/4`).
   defp recorded(access_key, run, seal, nil), do: record(access_key, run, seal)
 
   defp recorded(access_key, run, seal, issued) do
     written =
       try do
         Repo.transact(fn ->
-          with :ok <- WorkCredential.keep(issued),
-               :ok <- not_recorded(record(access_key, run, seal)),
+          with :ok <- not_recorded(record(access_key, run, seal)),
+               :ok <- WorkCredential.keep(issued),
                :ok <- WorkCredential.record_issued(access_key, run, issued),
                do: {:ok, :written}
         end)

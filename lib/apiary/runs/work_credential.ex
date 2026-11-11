@@ -177,7 +177,8 @@ defmodule Apiary.Runs.WorkCredential do
   @doc false
   # keep/1 keeps the apply items of `work` on its entry, where none are kept, or compares
   # them with those kept: `:ok`, or `{:error, :apply_moved}` for other items. Inside the
-  # caller's transaction, after the seal.
+  # caller's transaction, after the seal's records, which take the run's row first
+  # (`Apiary.Runs.SecretsRequest`).
   @spec keep(t) :: :ok | {:error, :apply_moved}
   def keep(%{row: %RunCredential{id: id}, issued: %RunCredentialIssue{apply: apply}}) do
     query =

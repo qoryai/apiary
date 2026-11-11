@@ -604,6 +604,36 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       refute log =~ @token
     end
 
+    test "at the run's start, takes the run's row before the work entry's, as a deletion does",
+         ctx do
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      handler = "secrets-lock-order-#{System.unique_integer()}"
+      test = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{source: source, query: query}, _config ->
+          if self() == test, do: send(test, {:statement, source, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      assert post_secrets(ctx, request(ctx, credentials: names(ctx))).status == 200
+      :telemetry.detach(handler)
+
+      # The copies' statement takes the run's row `FOR KEY SHARE`; the work entry's update
+      # locks its `run_credentials` row. A run's deletion locks the run, then that row.
+      writes = statements() |> Enum.filter(&(&1 in [:copies, :work_entry])) |> Enum.dedup()
+      assert writes == [:copies, :work_entry]
+    end
+
     test "at a renewal of work-1 alone, is answered a new credential and no model key", ctx do
       issued!(ctx)
       running!(ctx)
@@ -857,6 +887,20 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
           where: e.action == "run_credential.issue",
           order_by: [asc: e.inserted_at, asc: e.id]
       )
+
+  # The statements the test's process sent so far, in order: `:copies` for a write of
+  # `model_key_copies`, `:work_entry` for an update of `run_credentials`, else `:other`.
+  defp statements do
+    receive do
+      {:statement, source, query} -> [statement(source, query) | statements()]
+    after
+      0 -> []
+    end
+  end
+
+  defp statement("model_key_copies", "INSERT" <> _rest), do: :copies
+  defp statement("run_credentials", "UPDATE" <> _rest), do: :work_entry
+  defp statement(_source, _query), do: :other
 
   defp work_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :work)
 

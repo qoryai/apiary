@@ -840,14 +840,20 @@ for each other and never on each other at once:
    and decrypts each key in the request, whose row is bound to its secret, with the time
    its value was set. Then, in one transaction, for each key by id, it takes the run's row
    and the key's row in `secret_values` `FOR KEY SHARE`, then writes the key's row in
-   `model_key_copies`, and last the audit entry `secret.seal`: a key or a run deleted
-   meanwhile is left out of the copies. A model keys report reads the run's copies without
-   a lock, then takes the rows of its keys in `secret_values` `FOR SHARE`, by id, then the
-   locks of their state rows in one order, so two reports of the same keys at once cannot
-   deadlock, a key deleted before the report writes is left out of it, and a new value of
-   a key, which updates its row and then deletes its state rows, waits for the report or
-   comes before it: the report then leaves out a key whose value is not the one the run
-   has, a `value_set_at` other than the run's copy.
+   `model_key_copies`, then the audit entry `secret.seal`: a key or a run deleted
+   meanwhile is left out of the copies. A request for the model keys alone ends there. A
+   request that also lists the work entry then, in the same transaction, writes the apply
+   items on the entry's row in `run_credentials`, and last the Activity entry
+   `run_credential.issue`. A run's deletion locks the run's row, then its rows in
+   `model_key_copies` and `run_credentials`, so both take the run's row first and cannot
+   deadlock. A request for the work entry alone takes no lock on the run's row.
+   A model keys report reads the run's copies without a lock, then takes the rows of its
+   keys in `secret_values` `FOR SHARE`, by id, then the locks of their state rows in one
+   order, so two reports of the same keys at once cannot deadlock, a key deleted before
+   the report writes is left out of it, and a new value of a key, which updates its row
+   and then deletes its state rows, waits for the report or comes before it: the report
+   then leaves out a key whose value is not the one the run has, a `value_set_at` other
+   than the run's copy.
    A provider's deletion is refused while a pending or running run uses it, so the run's
    provider columns are empty only on a run that ended, and the request for such a run is
    refused.
