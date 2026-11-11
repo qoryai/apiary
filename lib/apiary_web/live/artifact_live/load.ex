@@ -9,12 +9,19 @@ defmodule ApiaryWeb.ArtifactLive.Load do
   use Gettext, backend: ApiaryWeb.Gettext
 
   alias Apiary.{Access, Artifacts, Processes, PublicId, WorkItems}
-  alias Apiary.Artifacts.{Type, Version}
+  alias Apiary.Artifacts.{Mockup, Type, Version}
   alias ApiaryWeb.ArtifactLive.Markdown
 
   # The most bytes of a structured file the view decodes: the largest a structured type
   # takes (`Apiary.Artifacts.Type`).
   @max_json 1_048_576
+
+  # A mockup of pages: its `screens.json`, at most 64 KiB, and its pages, at most 1 MiB
+  # each (`Apiary.Artifacts.Mockup`).
+  @json "application/json"
+  @html "text/html; charset=utf-8"
+  @max_index 65_536
+  @max_page 1_048_576
 
   # work_item/2 is the work item of the scope's workspace numbered `number`, for a reader
   # who may read it, or nil.
@@ -120,6 +127,43 @@ defmodule ApiaryWeb.ArtifactLive.Load do
 
   def content(_type, _version, _shown), do: %{}
 
+  # mockup/2 is the screens of a version of the standard type `mockup` that a run pushed
+  # with a `screens.json`, a mockup of pages (`Apiary.Artifacts.Mockup.index/1`):
+  # `{:ok, %{start: id, screens: screens}}`, each screen with its page among the
+  # version's files; nil for a version of pictures, of any other type, or whose
+  # `screens.json` cannot be read.
+  @doc false
+  @spec mockup(Type.t(), Version.t()) ::
+          {:ok, %{start: String.t(), screens: [Mockup.screen()]}} | nil
+  def mockup(%Type{standard: true, name: "mockup"}, %Version{files: files}) do
+    pages = for file <- files, file.content_type == @html, into: MapSet.new(), do: file.filename
+
+    with %{} = file <-
+           Enum.find(files, &(&1.filename == Mockup.index_name() and &1.content_type == @json)),
+         {:ok, bytes} <- read(file, @max_index),
+         {:ok, index} <- Mockup.index(bytes),
+         true <- Enum.all?(index.screens, &MapSet.member?(pages, &1.file)) do
+      {:ok, index}
+    else
+      _not -> nil
+    end
+  end
+
+  def mockup(_type, _version), do: nil
+
+  # mockup_page/2 is the bytes of the page of the screen `screen_id` of a mockup of pages
+  # (`mockup/2`), at most 1 MiB, else `:error`.
+  @doc false
+  @spec mockup_page(Version.t(), %{screens: [Mockup.screen()]}, term) :: {:ok, binary} | :error
+  def mockup_page(%Version{files: files}, %{screens: screens}, screen_id) do
+    with %{file: filename} <- Enum.find(screens, &(&1.id == screen_id)),
+         %{} = file <- Enum.find(files, &(&1.filename == filename and &1.content_type == @html)) do
+      read(file, @max_page)
+    else
+      _not -> :error
+    end
+  end
+
   defp markdown(text) do
     case Markdown.render(text) do
       :too_large -> :too_large
@@ -161,6 +205,7 @@ defmodule ApiaryWeb.ArtifactLive.Load do
   @spec base_view(Type.base_view()) :: String.t()
   def base_view(:document), do: gettext("Document")
   def base_view(:image), do: gettext("Image")
+  def base_view(:mockup), do: gettext("Mockup")
   def base_view(:video), do: gettext("Video")
   def base_view(:file), do: gettext("File")
   def base_view(:structured), do: gettext("Structured")

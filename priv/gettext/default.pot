@@ -12852,6 +12852,16 @@ msgstr ""
 msgid "Missing"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/load.ex
+#, elixir-autogen, elixir-format
+msgid "Mockup"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Mockup screen"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
@@ -16554,6 +16564,11 @@ msgstr ""
 msgid "Reload the page and act again, and %{contact_support} if it fails again. Qory Apiary could not act on the stage."
 msgstr ""
 
+#: lib/apiary_web/controllers/artifact_mockup_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the page to try again. This screen cannot be shown."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reload the page, then copy again. This run, or your access to its log, is gone."
@@ -18049,6 +18064,11 @@ msgstr ""
 msgid "Say hi to your agent"
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Screens"
+msgstr ""
+
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Search %{items}"
@@ -19065,6 +19085,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Start an organisation. You set up its first workspace next."
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Start screen"
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex

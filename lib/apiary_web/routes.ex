@@ -14,7 +14,8 @@ defmodule ApiaryWeb.Routes do
       instance_routes()
       organisation_routes()
 
-  - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
+  - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:mockup_frame`
+    (a screen of a mockup, for a frame), `:api`,
     `:docs_admin` (the files of the documentation for instance admins),
     `:contract` (a signed request of the server contract), `:contract_events` and
     `:contract_registration` (the same, each typing its body and held to a bucket of the key's rate
@@ -170,6 +171,16 @@ defmodule ApiaryWeb.Routes do
       pipeline :contract_diagnostics do
         plug :accepts, ["json"]
         plug ApiaryWeb.Contract.SignedRequest, kinds: [:diagnostics]
+      end
+
+      # A screen of a mockup of pages, which a frame of the version page loads
+      # (`ApiaryWeb.ArtifactMockupController`): the browser's session and the person, and
+      # none of the console's security headers or redirects, so that every answer carries
+      # the frame's headers alone.
+      pipeline :mockup_frame do
+        plug :fetch_session
+        plug :fetch_current_scope_for_user
+        plug ApiaryWeb.Lingo
       end
 
       # First for the organisation's and the workspace's pages: a segment in the place of
@@ -638,6 +649,18 @@ defmodule ApiaryWeb.Routes do
 
           get "/:org/jump", JumpController, :show
           get "/:org/:workspace/jump", JumpController, :show
+        end
+
+        # A screen of a mockup of pages, for the frame of the version page, with the
+        # `workflow_model` feature: the page itself, sent with a policy of its own and no
+        # redirect to sign in (`ApiaryWeb.ArtifactMockupController`). Not a page of the
+        # console.
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope, :mockup_frame]
+
+          get "/:org/:workspace/work/:number/artifacts/:version_id/mockup/:screen",
+              ArtifactMockupController,
+              :show
         end
 
         # The links of the breadcrumb's menus: to a workspace, and to an organisation, in

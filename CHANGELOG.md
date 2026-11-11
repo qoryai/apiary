@@ -12,6 +12,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A run's version of the artifact type `mockup` with a `screens.json` is a mockup of
+  HTML pages: the version's page shows it under “Mockup”, with the start screen in a
+  frame and the list of screens beside it, each a link that opens its screen in the
+  frame. The frame has the sandbox with no permission, and each screen is served with
+  a policy that lets it run no script and load nothing but `data:` images and fonts.
+  Qory Apiary checks every page when the run pushes it and refuses a page that runs a
+  script, loads an outside address, sends a form or links to a page that is not a
+  screen, with a message that names the file and the fix. A version of pictures, and
+  every version added on **Add a version**, shows as before, under “Image”.
 - On an integration's page in **Organisation settings › Integrations**, each collection
   assigned to a workspace, such as a repository, has **Unassign** for owners and admins.
   **Unassign** shows a confirmation in the row's place, then unassigns the collection:

@@ -4,7 +4,9 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   # who made it (a run or a person), the stage it was made in, its note, its files with
   # their sizes and downloads, the view of its type's base view
   # (`ApiaryWeb.ArtifactComponents.view/1`), and the artifact's history, every version
-  # newest first, each a link to its page.
+  # newest first, each a link to its page. A version of `mockup` that a run pushed with a
+  # `screens.json` is shown as a mockup of pages, "Mockup", in place of its type's
+  # "Image" (`Load.mockup/2`); a version of pictures as its type.
   #
   # Every member who may read the work item reads it (`work_item.read`); a number, or a
   # version id, of no work item or version the reader may read is not found. A reader who
@@ -70,10 +72,14 @@ defmodule ApiaryWeb.ArtifactLive.Show do
       <div class="q-art-cols grid gap-8">
         <div class="grid min-w-0 content-start gap-8">
           <section id="artifact-view-part" aria-labelledby="artifact-view-title" class="grid gap-3">
-            <h2 id="artifact-view-title" class="q-part-h">{Load.base_view(@type.base_view)}</h2>
+            <h2 id="artifact-view-title" class="q-part-h">{Load.base_view(@view.base_view)}</h2>
             <ArtifactComponents.view
               id={"artifact-view-#{@version.public_id}"}
-              type={@type}
+              type={@view}
+              mockup={@mockup}
+              screen_path={
+                &ArtifactComponents.mockup_path(@current_scope, @number, @version.public_id, &1)
+              }
               version={@version}
               content={@content}
               shown={@shown}
@@ -102,7 +108,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
               <dt class="text-muted">{gettext("Type")}</dt>
               <dd id="artifact-type">
                 {@version.artifact.type}
-                <span class="text-muted">· {Load.base_view(@type.base_view)}</span>
+                <span class="text-muted">· {Load.base_view(@view.base_view)}</span>
               </dd>
               <dt class="text-muted">{gettext("Name")}</dt>
               <dd id="artifact-name" class="break-all">{@version.artifact.name}</dd>
@@ -160,6 +166,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          %{} = version <- Load.version(work_item, version_id) do
       if connected?(socket), do: Artifacts.subscribe(scope, work_item)
       type = Load.type(work_item, version.artifact.type)
+      mockup = Load.mockup(type, version)
 
       {:ok,
        socket
@@ -168,6 +175,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          number: work_item.number,
          version: version,
          type: type,
+         view: if(mockup, do: %{type | base_view: :mockup}, else: type),
+         mockup: with({:ok, index} <- mockup, do: index),
          shown: nil,
          content: if(connected?(socket), do: Load.content(type, version), else: :pending),
          stage: Load.stage_name(work_item, version.stage_id),

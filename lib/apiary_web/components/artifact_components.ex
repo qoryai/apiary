@@ -54,6 +54,17 @@ defmodule ApiaryWeb.ArtifactComponents do
   end
 
   @doc """
+  mockup_path/4 is the address of the screen `screen_id` of a mockup of pages, the
+  version `version_id` of work item `number`, which the version page's frame loads
+  (`ApiaryWeb.ArtifactMockupController`).
+  """
+  @spec mockup_path(Apiary.Accounts.Scope.t(), integer | String.t(), String.t(), String.t()) ::
+          String.t()
+  def mockup_path(scope, number, version_id, screen_id) do
+    ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/artifacts/#{version_id}/mockup/#{screen_id}"
+  end
+
+  @doc """
   size/1 is a size in binary units, 1 KiB being 1,024 bytes, as every artifact page
   shows one: "812 B", "64 KiB", "1.5 MiB", "2 GiB". A whole number has no decimal, and
   a size that rounds up to 1,024 of its unit is shown in the next one.
@@ -331,6 +342,13 @@ defmodule ApiaryWeb.ArtifactComponents do
     * video: each MP4 or WebM file with the controls, the version's WebVTT files as its
       captions;
     * file: the downloads;
+    * mockup, a version of `mockup` a run pushed with a `screens.json`: the start screen
+      in a frame, `<iframe sandbox>` with no token, so its page runs no script, has an
+      opaque origin and sends no form, and beside it the list of the screens, in the
+      order of `screens.json`, each title a link that opens its screen in the frame, by
+      the frame's name, with no script; the start screen has "Start screen" after its
+      title. `mockup` is the screens (`ApiaryWeb.ArtifactLive.Load.mockup/2`), and
+      `screen_path` a function from a screen's id to its address (`mockup_path/4`);
     * structured: the JSON document as a table, nested objects and lists as nested
       rows, every value as text; a `change`'s `url` is a link where it is `http` or `https`,
       and a `questions` document's `context` is Markdown, as on Explore's tab.
@@ -348,6 +366,8 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :shown, :string, default: nil
   attr :path, :any, required: true
   attr :script, :string, default: nil
+  attr :mockup, :map, default: nil
+  attr :screen_path, :any, default: nil
 
   # Before the page has read the files, the view is an empty block of another id: the
   # document's block is left alone by later patches (`phx-update="ignore"`, so the
@@ -408,6 +428,44 @@ defmodule ApiaryWeb.ArtifactComponents do
           />
         </section>
       </div>
+    </div>
+    """
+  end
+
+  def view(%{type: %Type{base_view: :mockup}, mockup: %{start: _start}} = assigns) do
+    assigns = assign(assigns, :frame, "#{assigns.id}-frame")
+
+    ~H"""
+    <div id={@id} class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)]">
+      <iframe
+        id={@frame}
+        name={@frame}
+        sandbox
+        src={@screen_path.(@mockup.start)}
+        title={gettext("Mockup screen")}
+        phx-update="ignore"
+        class="h-[70vh] w-full rounded-field border border-base-300 bg-white"
+      ></iframe>
+      <nav
+        id={"#{@id}-screens"}
+        aria-labelledby={"#{@id}-screens-title"}
+        class="grid content-start gap-3"
+      >
+        <h3 id={"#{@id}-screens-title"} class="q-part-h">
+          {gettext("Screens")}
+          <span class="q-part-n">{ApiaryWeb.Format.number(length(@mockup.screens))}</span>
+        </h3>
+        <ul class="grid gap-1.5 text-[13px]/5">
+          <li :for={screen <- @mockup.screens} id={"#{@id}-screen-#{screen.id}"}>
+            <a href={@screen_path.(screen.id)} target={@frame} class="text-accent break-words">
+              {screen.title}
+            </a>
+            <span :if={screen.id == @mockup.start} class="text-[12.5px] text-muted">
+              {gettext("Start screen")}
+            </span>
+          </li>
+        </ul>
+      </nav>
     </div>
     """
   end

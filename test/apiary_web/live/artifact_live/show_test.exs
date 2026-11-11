@@ -71,6 +71,40 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
   defp page(ctx, version),
     do: ArtifactComponents.version_path(ctx.scope, ctx.work_item.number, version.public_id)
 
+  # A mockup of pages of two screens, home and cart; home's title has markup, as text.
+  defp mockup_pages do
+    page = fn title, body ->
+      ~s(<!doctype html><html><head><meta charset="utf-8"><title>#{title}</title></head>) <>
+        "<body>#{body}</body></html>"
+    end
+
+    index = %{
+      "start" => "home",
+      "screens" => [
+        %{
+          "id" => "home",
+          "title" => "Home <b>",
+          "file" => "home.html",
+          "criteria" => [],
+          "links" => [%{"to" => "cart", "label" => "Cart"}]
+        },
+        %{
+          "id" => "cart",
+          "title" => "Cart",
+          "file" => "cart.html",
+          "criteria" => [],
+          "links" => []
+        }
+      ]
+    }
+
+    [
+      {"screens.json", Jason.encode!(index)},
+      {"home.html", page.("Home &lt;b&gt;", ~s(<a href="cart.html">Cart</a>))},
+      {"cart.html", page.("Cart", "<p>Cart</p>")}
+    ]
+  end
+
   defp file_path(ctx, version, filename) do
     "/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/work/#{ctx.work_item.number}" <>
       "/artifacts/#{version.public_id}/files/#{filename}"
@@ -202,6 +236,74 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                view,
                ~s(figure a[href="#{file_path(ctx, version, "form.svg")}"][download])
              )
+    end
+
+    test "shows a run's mockup of pages in a sandboxed frame beside its list of screens", ctx do
+      version = pushed!(ctx, "mockup", mockup_pages())
+      {:ok, view, html} = live(ctx.conn, page(ctx, version))
+      view_id = "#artifact-view-#{version.public_id}"
+      frame = "artifact-view-#{version.public_id}-frame"
+
+      screen =
+        &ArtifactComponents.mockup_path(ctx.scope, ctx.work_item.number, version.public_id, &1)
+
+      assert has_element?(view, "#artifact-view-title", "Mockup")
+
+      assert view |> element("#artifact-type") |> render() =~
+               ~r/mockup\s*<span class="text-muted">· Mockup<\/span>/
+
+      [iframe] =
+        html |> LazyHTML.from_document() |> LazyHTML.query("#{view_id} iframe") |> Enum.to_list()
+
+      [attributes] = LazyHTML.attributes(iframe)
+      attributes = Map.new(attributes)
+
+      assert attributes["sandbox"] == ""
+      assert attributes["src"] == screen.("home")
+      assert attributes["title"] == "Mockup screen"
+      assert attributes["name"] == frame
+      refute Map.has_key?(attributes, "allow")
+      refute Map.has_key?(attributes, "srcdoc")
+
+      assert has_element?(view, "#{view_id} nav[aria-labelledby] h3", "Screens")
+      assert has_element?(view, "#{view_id} nav h3 .q-part-n", "2")
+
+      links = html |> LazyHTML.from_document() |> LazyHTML.query("#{view_id} nav a")
+      assert LazyHTML.text(links) |> String.replace(~r/\s+/, " ") =~ "Home <b>"
+
+      for {node, id} <- Enum.zip(Enum.to_list(links), ["home", "cart"]) do
+        [attributes] = LazyHTML.attributes(node)
+
+        assert Map.new(attributes) == %{
+                 "href" => screen.(id),
+                 "target" => frame,
+                 "class" => "text-accent break-words"
+               }
+      end
+
+      assert has_element?(view, "#{view_id}-screen-home span.text-muted", "Start screen")
+      refute has_element?(view, "#{view_id}-screen-cart span", "Start screen")
+      # No link opens a screen alone: each to a screen opens it in the frame. The Files
+      # part keeps each page's download, an attachment.
+      for node <- html |> LazyHTML.from_document() |> LazyHTML.query(~s(a[href*="/mockup/"])) do
+        assert [[{"target", ^frame}]] =
+                 LazyHTML.attributes(node)
+                 |> Enum.map(&Enum.filter(&1, fn {k, _} -> k == "target" end))
+      end
+
+      refute has_element?(view, "#{view_id} nav [phx-click]")
+      refute has_element?(view, "#{view_id} nav script")
+      refute html =~ "<b>"
+    end
+
+    test "shows a mockup of pictures as images, under Image, as before", ctx do
+      version = pushed!(ctx, "mockup", [{"form.png", @png}])
+      {:ok, view, html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(view, "#artifact-view-title", "Image")
+      assert has_element?(view, ~s(img[src="#{file_path(ctx, version, "form.png")}"]))
+      refute html =~ "<iframe"
+      refute html =~ "Screens"
     end
 
     test "shows a video with its captions", ctx do
@@ -719,6 +821,62 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                {:person, "By hand", ctx.scope.user.id}
 
       assert_redirect(view, page(ctx, version))
+    end
+
+    test "stores a mockup of pictures as before, and checks pages as pictures", ctx do
+      {:ok, view, _html} =
+        live(
+          ctx.conn,
+          ArtifactComponents.new_path(ctx.scope, ctx.work_item.number) <> "?type=mockup"
+        )
+
+      input =
+        file_input(view, "#artifact-form", :files, [
+          %{name: "form.png", content: @png, type: "image/png"}
+        ])
+
+      render_upload(input, "form.png")
+
+      view
+      |> form("#artifact-form", artifact: %{type: "mockup", name: "main", note: ""})
+      |> render_submit()
+
+      [artifact] = Artifacts.list(ctx.work_item)
+      [version] = artifact.versions
+      assert version.writer == :person
+      assert_redirect(view, page(ctx, version))
+
+      {:ok, view, html} = live(ctx.conn, page(ctx, version))
+      assert has_element?(view, "#artifact-view-title", "Image")
+      assert has_element?(view, ~s(img[src="#{file_path(ctx, version, "form.png")}"]))
+      refute html =~ "<iframe"
+
+      # A person's push of pages goes through the image check, as before: refused.
+      {:ok, view, _html} =
+        live(
+          ctx.conn,
+          ArtifactComponents.new_path(ctx.scope, ctx.work_item.number) <> "?type=mockup"
+        )
+
+      files =
+        for {name, bytes} <- mockup_pages() do
+          %{
+            name: name,
+            content: bytes,
+            type: if(name =~ ".json", do: "application/json", else: "text/html")
+          }
+        end
+
+      input = file_input(view, "#artifact-form", :files, files)
+      for %{name: name} <- files, do: render_upload(input, name)
+
+      html =
+        view
+        |> form("#artifact-form", artifact: %{type: "mockup", name: "pages", note: ""})
+        |> render_submit()
+
+      refute html =~ "<iframe"
+      assert [%{versions: [_one]}] = Artifacts.list(ctx.work_item)
     end
 
     test "offers only the types the workspace shows", ctx do
