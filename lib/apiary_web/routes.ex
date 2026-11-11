@@ -641,10 +641,10 @@ defmodule ApiaryWeb.Routes do
         end
 
         # A screen of a mockup of pages, for the frame of the version page, with the
-        # `workflow_model` feature: the page itself, sent with a policy of its own. It
-        # reads no session and no cookie: the signed token in the path is the person's
-        # read of the version (`ApiaryWeb.ArtifactMockupController`). Not a page of the
-        # console.
+        # `workflow_model` feature: the page itself, sent with the frame's policy in
+        # place of the console's. It reads no session and no cookie: the signed token in
+        # the path is the person's read of the version
+        # (`ApiaryWeb.ArtifactMockupController`). Not a page of the console.
         scope "/", ApiaryWeb do
           pipe_through [:path_scope]
 

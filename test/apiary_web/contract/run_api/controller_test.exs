@@ -1140,7 +1140,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [_one] = RunApiStubs.pushed()
     end
 
-    test "a mockup with screens.json is checked as pages, and each refusal says why", ctx do
+    test "a mockup with screens.json is checked as pages, and each refusal has its cause", ctx do
       page = fn title, body ->
         ~s(<!doctype html><html><head><meta charset="utf-8"><title>#{title}</title></head>) <>
           "<body>#{body}</body></html>"

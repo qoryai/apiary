@@ -5,9 +5,9 @@ defmodule ApiaryWeb.RequestLog do
 
   Six routes carry a bearer token in the path (an invitation, a log-in link, an
   email change, a password link, the test link of Instance settings › Mail), and one the
-  instance's set-up code; the frame of a mockup of pages carries a reader's token too. The
-  path is logged, so the token segment is replaced with `:token`, and the code with
-  `:code`, before the line is written: a reader of the log must not be able to sign in,
+  instance's set-up code; the address of a mockup page's frame has a reader's token
+  too. The path is logged, so the token segment is replaced with `:token`, and the code
+  with `:code`, before the line is written: a reader of the log must not be able to sign in,
   set a password, join an organisation, set the instance up or read a version with what
   it finds there.
   """
