@@ -34,8 +34,8 @@ defmodule Apiary.Artifacts.MockupTest do
   defp assert_verdict(verdict, result), do: flunk("expected #{verdict}, got #{inspect(result)}")
 
   describe "the shared cases" do
-    test "are all read: 133 lines in the cases blocks" do
-      assert length(@cases) == 133
+    test "are all read: 136 lines in the cases blocks" do
+      assert length(@cases) == 136
 
       assert Enum.all?(@cases, fn {verdict, place, _snippet} ->
                verdict in [:allowed, :refused] and place in [:head, :body]
@@ -109,6 +109,46 @@ defmodule Apiary.Artifacts.MockupTest do
       assert {:error,
               "Draw at most 1000 `<use>` elements in `start.html` (screen `start`): it has more."} =
                check(uses.(1_001))
+    end
+
+    test "1,000 <use> of a <g> with 99 paths are allowed, with 100 paths refused" do
+      uses = fn paths ->
+        page(
+          "",
+          ~s(<svg><defs><g id="a">) <>
+            String.duplicate(~s(<path d="M0 0"/>), paths) <>
+            "</g></defs>" <> String.duplicate(~s(<use href="#a"/>), 1_000) <> "</svg>"
+        )
+      end
+
+      assert {:ok, _linked} = check(uses.(99))
+
+      assert {:error,
+              "Draw at most 100000 elements through `<use>` in `start.html` (screen `start`): " <>
+                "each `<use>` draws the elements of its target, the target included, and the " <>
+                "page has 101000."} = check(uses.(100))
+    end
+
+    test "a gradient has only stops, and a clip path no url( on itself" do
+      assert {:error,
+              "Remove the SVG `<rect>` element from the `<linearGradient>` in `start.html` " <>
+                "(screen `start`): a gradient of a mockup page has only `<stop>` elements."} =
+               check(
+                 page(
+                   "",
+                   ~s(<svg><defs><linearGradient id="g"><rect width="1" height="1"/>) <>
+                     "</linearGradient></defs></svg>"
+                 )
+               )
+
+      assert {:error, "Remove the `url(` from the `clip-path` attribute of the SVG" <> _rest} =
+               check(
+                 page(
+                   "",
+                   ~s|<svg><defs><clipPath id="c" clip-path="url(#c)"><rect width="1" | <>
+                     ~s|height="1"/></clipPath></defs></svg>|
+                 )
+               )
     end
   end
 

@@ -123,6 +123,8 @@ refused body <svg><defs><path id="L%" d="M0 0"/></defs><use href="#L%"/></svg>
 refused body <svg><defs><clipPath id="c"><use href="#p"/></clipPath><path id="p" d="M0 0"/></defs></svg>
 refused body <svg><defs><clipPath id="a"><rect width="1" height="1"/></clipPath><clipPath id="b"><rect clip-path="url(#a)" width="1" height="1"/></clipPath></defs></svg>
 allowed body <svg><defs><clipPath id="c"><rect width="1" height="1"/></clipPath></defs><rect clip-path="url(#c)" width="1" height="1"/></svg>
+refused body <svg><defs><clipPath id="c" clip-path="url(#c)"><rect width="1" height="1"/></clipPath></defs></svg>
+refused body <svg><defs><linearGradient id="g"><rect width="1" height="1"/></linearGradient></defs></svg>
 refused body <svg><defs><path id="p" d="M0 0"/></defs><rect fill="url(#p)" width="1" height="1"/></svg>
 refused body <svg><defs><path id="p" d="M0 0"/><path id="p" d="M1 1"/></defs><use href="#p"/></svg>
 refused body <svg><rect fill="url(https://example.com/a.svg#g)" width="1" height="1"/></svg>
@@ -149,6 +151,7 @@ refused body <input type="text" form="f">
 allowed head <style>body{font-family:system-ui;color:#222}</style>
 allowed head <style>.logo{background:url(data:image/png;base64,iVBORw0KGgo=)}</style>
 allowed head <style>.logo{background:url("data:image/png;base64,iVBORw0KGgo=")}</style>
+allowed head <style>.a{background:url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7)}</style>
 allowed head <style>@font-face{font-family:F;src:url(data:font/woff2;base64,d09GMg==) format("woff2")}</style>
 refused head <style>.c{clip-path:url(#clip)}</style>
 refused head <style>@import "https://example.com/a.css";</style>
@@ -190,3 +193,6 @@ refused body <div style="background:u&#114;l(https://example.com/a.png)">x</div>
 - A page of 1 MiB is allowed when every rule passes; one byte more is refused.
 - A page with `<svg><defs><path id="p" d="M0 0"/></defs>` and then 1,000 `<use href="#p"/>`
   in the `<svg>` is allowed; with 1,001 it is refused.
+- A page with `<svg><defs><g id="a">` holding 99 `<path d="M0 0"/>`, then 1,000
+  `<use href="#a"/>` in the `<svg>`, is allowed (100,000 counted elements); with 100 paths in
+  the `<g>` it is refused (101,000).

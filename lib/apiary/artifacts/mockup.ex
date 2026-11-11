@@ -35,10 +35,12 @@ defmodule Apiary.Artifacts.Mockup do
   # `<id>.html` of a screen; an image address a base64 `data:` URI of PNG, JPEG, GIF or
   # WebP; a fragment `#` and a name with no `%`, compared with the `id`s as written, and
   # no `id` on two elements; a `use` reference a fragment, to an element that is no `use`
-  # and contains none, and at most 1,000 `use`; the `input` and `button` types listed;
-  # SVG `fill`, `stroke` and `clip-path` with `url(#…)` alone, to a `linearGradient`,
-  # `radialGradient` or `clipPath`; inside a `clipPath`, no `use` and no attribute with
-  # `url(`; no attribute value with `javascript:`, `vbscript:` or `data:text`, every
+  # and contains none, at most 1,000 `use`, and at most 100,000 elements drawn through
+  # them, each `use` counting the elements of its target, the target included; the
+  # `input` and `button` types listed; SVG `fill`, `stroke` and `clip-path` with
+  # `url(#…)` alone, to a `linearGradient`, `radialGradient` or `clipPath`; on a
+  # `clipPath` and inside it, no `use` and no attribute with `url(`; in a
+  # `linearGradient` or `radialGradient`, only `stop` elements; no attribute value with `javascript:`, `vbscript:` or `data:text`, every
   # ASCII white space and control character removed; and the CSS of `<style>` and
   # `style` checked after its comments are removed and its escapes decoded: `url(…)` and
   # `src(…)` only to a `data:` image, or a `data:` font inside `@font-face`, and no
@@ -79,6 +81,7 @@ defmodule Apiary.Artifacts.Mockup do
   @max_tags 10_000
   @max_attributes 256
   @max_uses 1_000
+  @max_used_elements 100_000
 
   @html_elements MapSet.new(~w(
     html head body title meta style main header footer nav section article aside div
@@ -500,14 +503,16 @@ defmodule Apiary.Artifacts.Mockup do
       linked: MapSet.new(),
       uses: 0,
       use_refs: [],
+      sizes: %{},
       url_refs: [],
       ids: %{},
       blocked: MapSet.new()
     }
 
     try do
-      {_contains_use, acc} = nodes(tree, :html, nil, false, ctx, acc)
+      {_contains_use, _size, acc} = nodes(tree, :html, nil, false, ctx, acc)
       :ok = use_refs(Enum.reverse(acc.use_refs), acc.blocked, ctx)
+      :ok = used_elements(acc.use_refs, acc.sizes, ctx)
       :ok = url_refs(Enum.reverse(acc.url_refs), acc.ids, ctx)
       :ok = title(Enum.reverse(acc.titles), title, ctx)
       {:ok, acc.linked}
@@ -519,12 +524,15 @@ defmodule Apiary.Artifacts.Mockup do
   defp refuse(message), do: throw({:refused, message})
 
   # The nodes, children of an element in `parent_ns` named `parent`, inside a `clipPath`
-  # where `clip?`: whether one is or contains a `use`, and the walk's findings.
+  # where `clip?`: whether one is or contains a `use`, how many elements they are with
+  # every element inside them, and the walk's findings.
   defp nodes(nodes, parent_ns, parent, clip?, ctx, acc) do
-    Enum.reduce(nodes, {false, acc}, fn
-      {name, attributes, children}, {contains, acc} when is_binary(name) ->
-        {use?, acc} = element(name, attributes, children, {parent_ns, parent, clip?}, ctx, acc)
-        {contains or use?, acc}
+    Enum.reduce(nodes, {false, 0, acc}, fn
+      {name, attributes, children}, {contains, count, acc} when is_binary(name) ->
+        {use?, size, acc} =
+          element(name, attributes, children, {parent_ns, parent, clip?}, ctx, acc)
+
+        {contains or use?, count + size, acc}
 
       _text_or_comment, result ->
         result
@@ -536,11 +544,14 @@ defmodule Apiary.Artifacts.Mockup do
     ns = namespace(parent_ns, parent, local)
     allowed!(ns, local, ctx)
 
+    if parent_ns == :svg and parent in ~w(lineargradient radialgradient),
+      do: stop!(ns, local, parent, ctx)
+
     attributes =
       Enum.map(attributes, fn {key, value} -> {String.downcase(key, :ascii), value} end)
 
     if ns == :html and local == "meta", do: meta!(attributes, ctx)
-    if clip?, do: clip!(ns, local, attributes, ctx)
+    if clip? or (ns == :svg and local == "clippath"), do: clip!(ns, local, attributes, ctx)
     acc = id(attributes, ns, local, ctx, acc)
 
     acc = Enum.reduce(attributes, acc, &attribute(&1, ns, local, ctx, &2))
@@ -572,18 +583,53 @@ defmodule Apiary.Artifacts.Mockup do
         acc
       end
 
-    {contains, acc} =
+    {contains, count, acc} =
       nodes(children, ns, local, clip? or (ns == :svg and local == "clippath"), ctx, acc)
 
     contains = contains or use?
+    size = count + 1
 
     acc =
       case List.keyfind(attributes, "id", 0) do
-        {"id", id} when contains -> %{acc | blocked: MapSet.put(acc.blocked, id)}
-        _other -> acc
+        {"id", id} when contains ->
+          %{acc | blocked: MapSet.put(acc.blocked, id), sizes: Map.put(acc.sizes, id, size)}
+
+        {"id", id} ->
+          %{acc | sizes: Map.put(acc.sizes, id, size)}
+
+        nil ->
+          acc
       end
 
-    {contains, acc}
+    {contains, size, acc}
+  end
+
+  # A gradient has only `stop` elements: a browser draws nothing else in one.
+  defp stop!(:svg, "stop", _parent, _ctx), do: :ok
+
+  defp stop!(ns, local, parent, ctx) do
+    gradient = if parent == "lineargradient", do: "linearGradient", else: "radialGradient"
+
+    refuse(
+      "Remove #{tag(ns, local)} from the `<#{gradient}>` in #{where(ctx)}: a gradient of a " <>
+        "mockup page has only `<stop>` elements."
+    )
+  end
+
+  # The elements the `use` of a page draw, each `use` the elements of its target with the
+  # target, at most `@max_used_elements`. Each target's size is counted once, in the walk.
+  defp used_elements(refs, sizes, ctx) do
+    total = Enum.reduce(refs, 0, fn {_name, "#" <> id}, sum -> sum + Map.get(sizes, id, 0) end)
+
+    if total > @max_used_elements,
+      do:
+        refuse(
+          "Draw at most #{@max_used_elements} elements through `<use>` in #{where(ctx)}: " <>
+            "each `<use>` draws the elements of its target, the target included, and the " <>
+            "page has #{total}."
+        )
+
+    :ok
   end
 
   # Each `id` is on one element of the page; a fragment points at it, as written.
@@ -604,8 +650,8 @@ defmodule Apiary.Artifacts.Mockup do
     end
   end
 
-  # Inside a `clipPath`, no `use` and no attribute with `url(`: a browser draws a clip
-  # path again for each element that points at it.
+  # On a `clipPath` and inside it, no `use` and no attribute with `url(`: a browser draws
+  # a clip path again for each element that points at it.
   defp clip!(:svg, "use", _attributes, ctx),
     do:
       refuse(
@@ -617,8 +663,8 @@ defmodule Apiary.Artifacts.Mockup do
     case Enum.find(attributes, fn {_name, value} -> String.contains?(css_lower(value), "url(") end) do
       {name, _value} ->
         refuse(
-          "Remove the `url(` from the `#{shorten(name)}` attribute of #{tag(ns, local)} inside " <>
-            "a `<clipPath>` in #{where(ctx)}: an element of a `<clipPath>` points at no other " <>
+          "Remove the `url(` from the `#{shorten(name)}` attribute of #{tag(ns, local)} in " <>
+            "#{where(ctx)}: a `<clipPath>` and the elements inside it point at no other " <>
             "element."
         )
 
