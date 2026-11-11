@@ -55,7 +55,7 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, SessionChunk}
-  alias Apiary.Runs.{Step, Target}
+  alias Apiary.Runs.{Step, Target, Transcript}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -686,18 +686,42 @@ defmodule Apiary.Runs.Projector do
   # A transcript's chunks are kept by sequence: a pass that folds an event again, as a
   # rebuild does, adds none, and a reset leaves them (`reset/1`), so a transcript
   # outlives the events the retention deletes (`Apiary.Runs.Transcript`).
+  #
+  # A run's chunks of one path are kept while they can still form a file that is
+  # restored, so a gateway cannot fill the table:
+  #
+  #   * none once the stored chunks pass `Transcript.max_file/0` bytes: the chunk that
+  #     passes it is kept, so the check of the file (`Apiary.Runs.Transcript.check/2`)
+  #     refuses it;
+  #   * none once `Transcript.max_chunks/0` are stored, as many as the check refuses;
+  #   * none once the stored chunks up to the run's projected sequence, before which every
+  #     event is in, have a gap in `offset`: no chunk that arrives later can fill it. A
+  #     chunk above that sequence is kept, as an event that arrives late may fill a gap
+  #     before it.
+  #
+  # Each bound holds whatever order the chunks arrive in. The chunks left out are logged in
+  # one line per pass and path, with the run's id, their count and the cause alone.
   defp insert_session_chunks(_run, []), do: :ok
 
   defp insert_session_chunks(run, chunks) do
+    chunks = new_chunks(run, chunks)
+    paths = chunks |> Enum.map(& &1.path) |> Enum.uniq()
+    stored = stored_paths(run, paths)
+
     rows =
-      for chunk <- chunks do
+      chunks
+      |> Enum.group_by(& &1.path)
+      |> Enum.flat_map(fn {path, path_chunks} ->
+        kept(run, path_chunks, Map.get(stored, path, {0, 0, true}))
+      end)
+      |> Enum.map(fn chunk ->
         Map.merge(chunk, %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
           workspace_id: run.workspace_id,
           run_id: run.id
         })
-      end
+      end)
 
     rows
     |> Enum.chunk_every(500)
@@ -708,6 +732,83 @@ defmodule Apiary.Runs.Projector do
         log: false
       )
     end)
+  end
+
+  # The chunks whose sequence the run has no chunk of yet, as a rebuild folds them again.
+  defp new_chunks(run, chunks) do
+    sequences = Enum.map(chunks, & &1.sequence)
+
+    known =
+      Repo.all(
+        from(c in SessionChunk,
+          where: c.run_id == ^run.id and c.sequence in ^sequences,
+          select: c.sequence
+        ),
+        log: false
+      )
+      |> MapSet.new()
+
+    Enum.reject(chunks, &MapSet.member?(known, &1.sequence))
+  end
+
+  # For each of `paths`, what the run keeps of it: `{count, bytes, contiguous}`, where
+  # contiguous is whether each chunk up to the run's projected sequence starts where the
+  # one before it, by sequence, ends, from offset 0. Reads the lengths, not the bytes.
+  defp stored_paths(_run, []), do: %{}
+
+  defp stored_paths(run, paths) do
+    through = run.projected_sequence || 0
+
+    Repo.all(
+      from(c in subquery(Transcript.chunk_ends(run.id, paths)),
+        group_by: c.path,
+        select:
+          {c.path,
+           {count(), type(coalesce(sum(c.length), 0), :integer),
+            fragment(
+              "COALESCE(bool_and(? = ?) FILTER (WHERE ? <= ?), true)",
+              c.offset,
+              c.start,
+              c.sequence,
+              ^through
+            )}}
+      ),
+      log: false
+    )
+    |> Map.new()
+  end
+
+  # The chunks of one path that are kept, in sequence order, given what is stored of it.
+  defp kept(run, chunks, stored) do
+    case keep(Enum.sort_by(chunks, & &1.sequence), stored, []) do
+      {kept, nil} ->
+        kept
+
+      {kept, {cause, left_out}} ->
+        Logger.warning(
+          "transcript chunks not kept run=#{run.id} count=#{left_out} reason=#{cause}"
+        )
+
+        kept
+    end
+  end
+
+  defp keep([], _stored, acc), do: {Enum.reverse(acc), nil}
+
+  defp keep([chunk | rest] = chunks, {count, bytes, contiguous?}, acc) do
+    cond do
+      not contiguous? ->
+        {Enum.reverse(acc), {:gap, length(chunks)}}
+
+      bytes > Transcript.max_file() ->
+        {Enum.reverse(acc), {:too_large, length(chunks)}}
+
+      count >= Transcript.max_chunks() ->
+        {Enum.reverse(acc), {:too_many, length(chunks)}}
+
+      true ->
+        keep(rest, {count + 1, bytes + byte_size(chunk.bytes), true}, [chunk | acc])
+    end
   end
 
   defp upsert_connections(_run, connections) when map_size(connections) == 0, do: :ok

@@ -1547,7 +1547,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     # The paused run that `ctx`'s run continues: a registered run of `:scope` (`ctx`'s by
     # default), of `ctx`'s work item, take in and stage unless `:same_item` is false, then
     # of another work item of that scope, ended Paused, with the transcript chunks
-    # `chunks`, each `{sequence, offset, bytes}`. `ctx`'s run becomes its second attempt.
+    # `chunks`, each `{sequence, offset, bytes}`. `ctx`'s run becomes its second attempt,
+    # with the `resume` its claim stores (`Apiary.Runs.Transcript.resume_at_claim/1`).
     defp paused!(ctx, chunks, opts \\ []) do
       scope = Keyword.get(opts, :scope, ctx.scope)
 
@@ -1616,6 +1617,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         })
       end
 
+      resume = %{
+        "run_id" => run.node_run_id,
+        "session_id" => "5f2c9a1e",
+        "path" => @transcript_path
+      }
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [resume: resume])
+
       Repo.get!(Run, run.id)
     end
 
@@ -1663,6 +1673,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         end
 
       assert Enum.uniq(answers) == [{404, ~s({"error":"not_found"})}]
+    end
+
+    test "a run whose claim stored no resume is 404, though it continues a paused run", ctx do
+      paused!(ctx, @lines)
+      {1, _rows} = Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [resume: nil])
+      assert read(ctx, "/resume/transcript").status == 404
     end
 
     test "a run that continues no paused run is 404", ctx do

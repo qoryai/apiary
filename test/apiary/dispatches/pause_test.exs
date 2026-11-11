@@ -213,19 +213,43 @@ defmodule Apiary.Dispatches.PauseTest do
 
       whole = "{\"a\":1}\n{\"b\":2}\n"
       sha = :crypto.hash(:sha256, whole) |> Base.encode16(case: :lower)
-      assert Transcript.file(run.id, @path) == {:ok, %{size: 16, sha256: sha}}
-      assert run.id |> Transcript.stream(@path) |> Enum.join() == whole
+      assert Transcript.check(run.id, @path) == {:ok, %{size: 16, max_sequence: 4}}
+      assert Transcript.digest(run.id, @path, 4) == sha
+      assert run.id |> Transcript.stream(@path, 4) |> Enum.join() == whole
+      # Only the chunks the check covered are sent, and signed.
+      assert run.id |> Transcript.stream(@path, 3) |> Enum.join() == "{\"a\":1}\n"
 
-      continuation = registered(run_of(dispatch_run.work_item_id, 2))
+      resume = %{"run_id" => run.node_run_id, "session_id" => "5f2c9a1e", "path" => @path}
+      queued = run_of(dispatch_run.work_item_id, 2)
+      assert Transcript.resume_at_claim(queued) == resume
 
-      assert Transcript.resume(continuation) == %{
-               "run_id" => run.node_run_id,
-               "session_id" => "5f2c9a1e",
-               "path" => @path
-             }
+      # The claim stores it, and each run configuration reads what it stored.
+      %{run: continuation} = handed_over(ctx.scope, ctx.key, queued, %{})
+      assert continuation.resume == resume
+      assert Transcript.resume(continuation) == resume
+
+      # A chunk stored after the claim changes no run configuration of the run.
+      event_fixture(run, 5, "session.transcript", chunk(16, "{\"c\":3}\n", "other"))
+      {:ok, _run} = Projector.project(run)
+      assert Transcript.resume(Repo.get!(Run, continuation.id)) == resume
 
       # The paused run itself, and a run that continues nothing, resume nothing.
       assert Transcript.resume(Repo.get!(Run, run.id)) == nil
+      assert Transcript.resume_at_claim(dispatch_run) == nil
+    end
+
+    test "is read only for a continuation of the same workspace", ctx do
+      %{dispatch_run: dispatch_run, run: run} =
+        handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      event_fixture(run, 3, "session.transcript", chunk(0, "{\"a\":1}\n"))
+      exit!(run, @paused)
+
+      queued = run_of(dispatch_run.work_item_id, 2)
+      assert %Run{} = Transcript.paused_run(queued)
+      other = workspace_fixture(ctx.scope.organisation)
+      assert Transcript.paused_run(%{queued | workspace_id: other.id}) == nil
+      assert Transcript.resume_at_claim(%{queued | workspace_id: other.id}) == nil
     end
 
     test "a gap in its offsets is never resumed, and the log line has no byte of it", ctx do
@@ -236,16 +260,38 @@ defmodule Apiary.Dispatches.PauseTest do
       event_fixture(run, 4, "session.transcript", chunk(99, "second-line-xq7\n"))
       exit!(run, @paused)
 
-      continuation = registered(run_of(dispatch_run.work_item_id, 2))
+      queued = run_of(dispatch_run.work_item_id, 2)
 
       log =
         capture_log(fn ->
-          assert Transcript.file(run.id, @path) == {:error, :gap}
-          assert Transcript.resume(continuation) == nil
+          assert Transcript.check(run.id, @path) == {:error, :gap}
+          assert Transcript.resume_at_claim(queued) == nil
         end)
 
       assert log =~ "transcript not restorable run=#{run.id} reason=gap"
       refute log =~ "xq7"
+    end
+
+    test "chunks after a gap are not kept, and the log line has no byte of them", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      count = fn ->
+        Repo.aggregate(from(c in SessionChunk, where: c.run_id == ^run.id), :count)
+      end
+
+      # The run registered: its sequence 1 is in, and these follow it.
+      event_fixture(run, 2, "session.transcript", chunk(0, "first-line-gq4\n"))
+      event_fixture(run, 3, "session.transcript", chunk(99, "second-line-gq4\n"))
+      assert {:ok, %Run{}} = Projector.project(run)
+      assert count.() == 2
+
+      # Every event up to the gap is in: no chunk that arrives later can fill it.
+      event_fixture(run, 4, "session.transcript", chunk(114, "third-line-gq4\n"))
+      log = capture_log(fn -> assert {:ok, %Run{}} = Projector.project(run) end)
+
+      assert count.() == 2
+      assert log =~ "transcript chunks not kept run=#{run.id} count=1 reason=gap"
+      refute log =~ "gq4"
     end
 
     test "a chunk that is not one is not kept, and its log line has no byte of it", ctx do

@@ -96,23 +96,23 @@ defmodule Apiary.Dispatches.Handover do
   #
   # Else the run is registered, as a registration through the gateway by the pool, on the
   # run record written when it was queued, which keeps its id, its number and its queue
-  # time (`Apiary.Dispatches.Queued`):
-  # `pending`, its `node_run_id` the run's `run_id`, on the pool, its instance the run's
-  # `run_id` too, under the pool's key, its labels the target's
-  # (`Apiary.Lingo.Domain.target_labels/1`) and, where the domain has one and gives the
-  # run variables, the label of its paths (`Apiary.Lingo.Domain.paths_label/1`) with its
-  # QORY_RUN_REPOSITORIES as the value, `about` the step and, for an explore run, its
-  # work item, its run variables (`registration_variables`), none where the domain gives
-  # none, its registration digest the SHA-256 of the claim's body, with no heartbeat
-  # interval, no answer digest and no contract version until its attach; with the
-  # gateway and a run code in place of a run key (`Apiary.Runs.RunCode`): the code's
-  # SHA-256, its expiry 15 minutes after the claim, the grant its run key will be made
-  # from at the code's redemption, `run_key_issued_at` the claim and `attach_by` the
-  # code's expiry. A run key of the grant is made all the same, and given to nobody, so a
-  # grant no run key can be made for refuses the claim as step 2 says. The run key's
-  # instance id is the run's id. A run with a work credential entry has it stored with
-  # the run (`Apiary.Runs.RunCredentials.insert!/2`). The dispatch stays claimed, and so
-  # does the run of the queue.
+  # time (`Apiary.Dispatches.Queued`): `pending`, its `node_run_id` the run's `run_id`, on
+  # the pool, its instance the run's `run_id` too, under the pool's key, its labels the
+  # target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the domain has one and
+  # gives the run variables, the label of its paths (`Apiary.Lingo.Domain.paths_label/1`)
+  # with its QORY_RUN_REPOSITORIES as the value, `about` the step and, for an explore run,
+  # its work item, its run variables (`registration_variables`), none where the domain
+  # gives none, for a continuation of a paused run its `resume`
+  # (`Apiary.Runs.Transcript.resume_at_claim/1`), its registration digest the SHA-256 of
+  # the claim's body, with no heartbeat interval, no answer digest and no contract version
+  # until its attach; with the gateway and a run code in place of a run key
+  # (`Apiary.Runs.RunCode`): the code's SHA-256, its expiry 15 minutes after the claim,
+  # the grant its run key will be made from at the code's redemption, `run_key_issued_at`
+  # the claim and `attach_by` the code's expiry. A run key of the grant is made all the
+  # same, and given to nobody, so a grant no run key can be made for refuses the claim as
+  # step 2 says. The run key's instance id is the run's id. A run with a work credential
+  # entry has it stored with the run (`Apiary.Runs.RunCredentials.insert!/2`). The
+  # dispatch stays claimed, and so does the run of the queue.
   #
   # A prebuild's documents have its destinations in the registry: `image_destination`,
   # and `environment_destination` or `environment_image`
@@ -1290,6 +1290,7 @@ defmodule Apiary.Dispatches.Handover do
       registration_about: formed.about,
       registration_digest: :crypto.hash(:sha256, body),
       registration_variables: formed.variables,
+      resume: Apiary.Runs.Transcript.resume_at_claim(dispatch_run),
       run_settings: formed.settings && formed.settings.stored,
       projected_sequence: Run.projected_from(%{registered_at: now}),
       dispatch_run_id: dispatch_run.id,

@@ -162,6 +162,13 @@ defmodule Apiary.Runs.Run do
     # changed; nil for every other run. Not folded: a rebuild keeps it.
     field :registration_variables, :map
 
+    # The `resume` member of the run configuration of a run of the queue that continues a
+    # paused run (`Apiary.Runs.Transcript.resume_at_claim/1`): `"run_id"`, the paused
+    # run's id, and `"session_id"` and `"path"` of its transcript. Written once with the
+    # registration and never changed, so every run configuration of the run has the same
+    # one; nil for every other run, which starts a new session. Not folded.
+    field :resume, :map
+
     # The run settings Qory wrote for a run of a workspace's queue when it registered it
     # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and
     # the model provider the run uses: its row, its keys' secret's row, its keys, its

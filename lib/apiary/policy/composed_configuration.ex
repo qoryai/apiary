@@ -108,11 +108,12 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # (`Apiary.Harnesses.RunHarness`, `harness_hidden`): `harness_hidden`, `true`. A run with
   # no walk, or whose walk did not hide its harness, gains no such member.
   #
-  # For a run of a workspace's queue that continues a paused run, whose transcript can be
-  # restored (`Apiary.Runs.Transcript.resume/1`): `resume`, the paused run's id and the
-  # session id and the path of its transcript's last chunk. Any other run gains no such
-  # member, and starts a new session. A `resume` the stored document has is dropped, so
-  # only Qory Apiary sets it.
+  # For a run of a workspace's queue that continues a paused run, whose transcript could
+  # be restored at its claim: `resume`, as the claim stored it (`runs.resume`,
+  # `Apiary.Runs.Transcript.resume/1`), the paused run's id and the session id and the
+  # path of its transcript's last chunk, the same in each document. Any other run gains no
+  # such member, and starts a new session. A `resume` the stored document has is dropped,
+  # so only Qory Apiary sets it.
   #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`, `stack_hosts`, `resume`,
