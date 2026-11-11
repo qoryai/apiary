@@ -743,7 +743,7 @@ version in force is exported; another version's path sends on to it.
   matches is a line over the list, only when the list is narrowed ("87 runs match"), in
   the list's status region (`role="status"`, `.q-status`), which is always rendered,
   empty and taking no place otherwise, so a screen reader hears what a view, a filter or
-  a search left; an empty list says its empty state's title there too.
+  a search left; while the list is empty, the region contains the empty state's title.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
   (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `machine-type:large`
   (the runs queued on that machine type), `item:3` (a work item's number, `item:#3` too), `started:>2026-09-01`, `denied:yes`;
@@ -2424,7 +2424,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   "Run completed after 12 m 04 s.", or "Run completed."; "Run failed with exit 1.", "Run
   failed with SIGKILL.", or "Run failed." where the header says no exit; "Run did not
   start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason; "Run
-  lost: stopped responding." for a run whose exit said it was lost, and "Run lost. No
+  lost: stopped responding." for a run whose exit's state is `lost`, and "Run lost. No
   heartbeat for 90 s." for one the lost-run check marked; a paused run in the words of
   its paused line, "Paused: every key of Northwind Claude is in cooldown until Fri 14:00.
   It continues in run 15."; and "Heartbeats resumed." when a quiet run is heard again. A
