@@ -89,6 +89,10 @@ defmodule Apiary.RetentionJobTest do
         bytes: "{}\n"
       })
 
+      path!(run)
+    end
+
+    defp path!(run) do
       Repo.insert!(%TranscriptPath{
         organisation_id: run.organisation_id,
         workspace_id: run.workspace_id,
@@ -141,6 +145,16 @@ defmodule Apiary.RetentionJobTest do
       assert Enum.map([exploring, closed, ended, alive], &paths/1) == [1, 0, 0, 1]
       assert log =~ "retention pruned transcripts=2"
       refute log =~ "{}"
+    end
+
+    test "deletes the rows of a run's paths that outlived its chunks", %{scope: scope} do
+      # A job that stopped after the last batch of chunks, before the rows.
+      ended = run_fixture(scope, %{state: "completed"})
+      path!(ended)
+      assert {chunks(ended), paths(ended)} == {0, 1}
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert paths(ended) == 0
     end
 
     test "stays in a workspace or an organisation marked for deletion", %{scope: scope} do

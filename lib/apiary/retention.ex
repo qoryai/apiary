@@ -749,7 +749,9 @@ defmodule Apiary.Retention do
   end
 
   # The rows of what the run kept of each path of its transcript, which go with its chunks
-  # (`Apiary.Runs.TranscriptPath`).
+  # (`Apiary.Runs.TranscriptPath`), in a transaction after the last batch of them: a job
+  # that stops between the two leaves rows that the next job deletes
+  # (`transcripts_done/1`).
   defp delete_paths(run) do
     {:ok, _deleted} =
       Repo.transact(fn ->
@@ -760,10 +762,11 @@ defmodule Apiary.Retention do
     :ok
   end
 
-  # The runs with chunks of a transcript whose work item is closed or undone, or that
-  # ended with no work item, at most `limit`, of the workspaces the job walks whatever
-  # their settings: a workspace marked for deletion, or of an organisation marked, is
-  # left alone, as its purge deletes it whole (`workspaces/1`).
+  # The runs with chunks of a transcript, or rows of its paths, whose work item is closed
+  # or undone, or that ended with no work item: a run whose chunks a job deleted before it
+  # deleted the rows is found again, at most `limit`, of the workspaces the job walks
+  # whatever their settings: a workspace marked for deletion, or of an organisation
+  # marked, is left alone, as its purge deletes it whole (`workspaces/1`).
   defp transcripts_done(limit) do
     ended = Apiary.WorkItems.State.ended_states()
 
@@ -777,7 +780,9 @@ defmodule Apiary.Retention do
         on: d.id == r.dispatch_run_id,
         left_join: w in WorkItem,
         on: w.id == d.work_item_id,
-        where: r.id in subquery(from(c in SessionChunk, distinct: true, select: c.run_id)),
+        where:
+          r.id in subquery(from(c in SessionChunk, distinct: true, select: c.run_id)) or
+            r.id in subquery(from(t in TranscriptPath, distinct: true, select: t.run_id)),
         where:
           (not is_nil(w.id) and w.state in ^ended) or
             (is_nil(w.id) and r.state not in ^Run.alive_states()),
