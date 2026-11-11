@@ -394,6 +394,27 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert Enum.any?(entries, &match?(%{sequence: 1, value: @github}, &1))
   end
 
+  test "keeps a split secret once when the second chunk alone has a secret's form", ctx do
+    # The second chunk starts with a whole key of its own form, the end of the secret.
+    secret =
+      "sk-ant-api03-" <> String.duplicate("A", 32) <> "sk-ant-api03-" <> String.duplicate("B", 40)
+
+    {head, rest} = String.split_at(secret, 45)
+    first = "key " <> head
+
+    events_fixture(ctx.run, [{2, "session.transcript", transcript(byte_size(first), rest)}])
+    project!(ctx.run)
+    assert [%LeakedSecret{source_sequence: 2}] = rows(ctx.run)
+
+    events_fixture(ctx.run, [{1, "session.transcript", transcript(0, first)}])
+    project!(ctx.run)
+
+    offset = byte_size("bytes\n") + byte_size("key ")
+
+    assert [%LeakedSecret{source_sequence: 1, offset: ^offset, length: length}] = rows(ctx.run)
+    assert length == byte_size(secret)
+  end
+
   test "reads no split secret across chunks of two files", ctx do
     {head, rest} = String.split_at(@github, 10)
     first = "key " <> head

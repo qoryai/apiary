@@ -73,8 +73,26 @@ defmodule Apiary.Runs.LeakedSecrets do
   @spec record_run(Run.t(), [map], [struct]) :: :ok
   def record_run(%Run{} = run, chunks, events) do
     times = Map.new(events, &{&1.sequence, &1.time})
-    rows = output_rows(run, chunks, events, times) ++ event_rows(run, events)
-    store_run(run, rows)
+    {found, covered} = event_rows(run, events)
+    :ok = drop_parts(run, covered)
+    store_run(run, output_rows(run, chunks, events, times) ++ found)
+  end
+
+  # A secret found whole across a chunk and the chunk stored after it in an earlier pass
+  # covers that chunk's start: a part of it the later chunk's text had alone, kept then,
+  # starts there and goes.
+  defp drop_parts(_run, []), do: :ok
+
+  defp drop_parts(run, covered) do
+    Enum.each(covered, fn {sequence, through} ->
+      Repo.delete_all(
+        from(l in LeakedSecret,
+          where: l.run_id == ^run.id and l.place == "event" and l.source_sequence == ^sequence,
+          where: l.offset >= ^@bytes_at and l.offset < ^through
+        ),
+        log: false
+      )
+    end)
   end
 
   @doc """
@@ -268,23 +286,31 @@ defmodule Apiary.Runs.LeakedSecrets do
     before = transcript_before(run, events)
     following = transcript_after(run, events)
 
-    for %Event{type: type} = event <- events,
-        type != @log_event,
-        row <-
-          event_findings(event, event_text(type, event.data), before) ++
-            following_findings(event, following) do
-      row
-    end
+    found =
+      for %Event{type: type} = event <- events, type != @log_event do
+        {event_findings(event, event_text(type, event.data), before),
+         following_findings(event, following)}
+      end
+
+    rows = Enum.flat_map(found, fn {own, following} -> own ++ following end)
+
+    covered =
+      for {_own, following} <- found,
+          %{covers: covers} <- following,
+          do: covers
+
+    {Enum.map(rows, &Map.delete(&1, :covers)), covered}
   end
 
   # The secrets that start in the end of a transcript chunk and end in the chunk stored
   # after it in the file, `following`'s, which a pass before may have stored first: each
   # kept at this chunk, where its first byte is, at its offset in this event's text. A
   # part of it that this chunk's text has alone, at the same offset, is replaced by the
-  # whole (`longest/1`).
+  # whole (`longest/1`); a part that the next chunk's text had alone is dropped by
+  # `covers`, the next chunk's sequence and where the secret ends in its text.
   defp following_findings(%Event{} = event, following) do
     with {key, bytes} <- transcript_end(event),
-         %{head: head} <- Map.get(following, key) do
+         %{head: head, sequence: next} <- Map.get(following, key) do
       tail = SecretScan.carry(bytes)
       base = byte_size(tail)
       text = tail <> head
@@ -300,7 +326,8 @@ defmodule Apiary.Runs.LeakedSecrets do
           offset: start + finding.offset,
           length: finding.length,
           value: binary_part(text, finding.offset, finding.length),
-          at: event.time
+          at: event.time,
+          covers: {next, @bytes_at + finding.offset + finding.length - base}
         }
       end
     else
@@ -402,7 +429,7 @@ defmodule Apiary.Runs.LeakedSecrets do
   defp transcript_end(_event), do: nil
 
   # The chunk after each transcript chunk of `events` in its file, from the run's stored
-  # chunks, by the chunk's place, its offset: the start of its bytes.
+  # chunks, by the chunk's place, its offset: its sequence and the start of its bytes.
   defp transcript_after(run, events) do
     keys = for event <- events, {key, _bytes} <- [transcript_end(event)], do: key
 
@@ -417,6 +444,7 @@ defmodule Apiary.Runs.LeakedSecrets do
           where: c.run_id == ^run.id and c.offset in ^starts,
           select: %{
             key: {c.session, c.session_id, c.path, c.offset},
+            sequence: c.sequence,
             head: fragment("substring(? from 1 for ?)", c.bytes, ^@transcript_tail)
           }
         ),
