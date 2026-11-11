@@ -52,11 +52,12 @@ curl http://localhost:4100/health
 ```
 
 ```text
-{"status":"ok","database":"ok","version":"0.1.0","revision":"4f2a9c1e0b…"}
+{"status":"ok","database":"ok","version":"0.1.0","revision":"4f2a9c1e0b…","set_up":false}
 ```
 
 The members of the object may come in another order. `version` is the release's, the one
-`.env` names, and `revision` the commit the release's image was built from.
+`.env` names, and `revision` the commit the release's image was built from. `set_up` is
+`false` until you set the instance up (step 4), and `true` after.
 
 Keep a copy of the keys if you mean to keep this installation:
 [Backup and restore](backup.md) says how, and what is lost without them.
