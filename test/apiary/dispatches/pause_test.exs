@@ -170,6 +170,25 @@ defmodule Apiary.Dispatches.PauseTest do
              "Paused: a key of #{ctx.provider.name} reached its limit."
   end
 
+  test "a cooldown that has ended leaves the line without its time", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    exit!(run, @paused)
+
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+        set: [paused_until: DateTime.add(DateTime.utc_now(), -60, :second)]
+      )
+
+    number = registered(run_of(dispatch_run.work_item_id, 2)).number
+    pause = Pause.of_run(Repo.get!(Run, run.id))
+    assert %{until: %DateTime{}, number: ^number} = pause
+
+    assert pause
+           |> ApiaryWeb.PauseWords.line("/runs/#{number}")
+           |> ApiaryWeb.RichText.plain_text() ==
+             "Paused: a key of #{ctx.provider.name} reached its limit. It continues in run #{number}."
+  end
+
   test "an outcome before the exit is refused, and the exit pauses the run", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
 
