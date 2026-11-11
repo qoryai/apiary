@@ -191,6 +191,52 @@ defmodule Apiary.Dispatches.PauseTest do
     assert run_of(dispatch_run.work_item_id, 2).continues_id == dispatch_run.id
   end
 
+  test "a paused run whose questions cannot be read has no warning of its outcome", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+    # A question no other test asks, so no other test stores the same file.
+    Apiary.WorkItemsFixtures.push_result!(
+      dispatch_run,
+      run,
+      Apiary.WorkItemsFixtures.questions_result([
+        "Which basket #{System.unique_integer([:positive])}?"
+      ])
+    )
+
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+    {version, _document} = Apiary.Explore.Questions.newest(work_item)
+    [file] = version.files
+    {:ok, path} = Apiary.Artifacts.open_file(file)
+    File.rename!(path, path <> ".away")
+    on_exit(fn -> File.rename(path <> ".away", path) end)
+
+    log = capture_log(fn -> exit!(run, @paused) end)
+
+    assert %Run{state: "paused"} = Repo.get!(Run, run.id)
+    assert %DispatchRun{result_outcome: nil} = Repo.get!(DispatchRun, dispatch_run.id)
+    refute log =~ "run outcome not stored"
+  end
+
+  test "the continuation's input counts the paused run once: attempt 1", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    target = %{system: "forge.example.com", path: "acme/shop"}
+    work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+
+    attempt = fn queued ->
+      {:ok, inputs} =
+        Apiary.Dispatches.Inputs.explore(work_item, queued, %{domain: "software", target: target})
+
+      (inputs |> Jason.encode!() |> Jason.decode!())["run"]
+    end
+
+    assert attempt.(dispatch_run) == %{"attempt" => 1}
+    exit!(run, @paused)
+
+    next = run_of(dispatch_run.work_item_id, 2)
+    assert %DispatchRun{attempt: 2} = next
+    assert attempt.(next) == %{"attempt" => 1}
+  end
+
   test "an exit with another reason is no pause", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, %{@paused | "reason" => "stopped"})

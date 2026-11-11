@@ -35,7 +35,8 @@ defmodule Apiary.Dispatches.Settle do
   # A projection whose settle fails clears what the row holds (`clear/1`), so the sweep
   # stores it again. A run whose newest questions, or whose newest verdict, cannot be read
   # at its end is left with no outcome (`Outcome.at_end/1` is nil), with a warning in the
-  # log that has the run's id, so the sweep reads it again. With the workflow model on,
+  # log that has the run's id, so the sweep reads it again; a run that paused at its
+  # model keys' limit is left with none and no warning. With the workflow model on,
   # the stage runner raises for the end of the newest run of a running stage
   # (`Apiary.Stages`), so the end's transaction rolls back and the lost-run check ends the
   # run again at a later tick (`Apiary.Dispatches.RunEnd.lose/3`). Any other run ended
@@ -84,7 +85,7 @@ defmodule Apiary.Dispatches.Settle do
     in_transaction!()
 
     case Outcome.at_end(dispatch_run) do
-      nil -> unread(dispatch_run)
+      nil -> if paused?(dispatch_run), do: [], else: unread(dispatch_run)
       outcome -> write(dispatch_run, outcome)
     end
   end
@@ -106,6 +107,14 @@ defmodule Apiary.Dispatches.Settle do
   end
 
   def settle_locked(%DispatchRun{}), do: []
+
+  # A run that paused at its model keys' limit (`Apiary.Runs.Run.paused?/1`) gave no
+  # outcome by design: its continuation gives one, so no warning is written for it.
+  defp paused?(%DispatchRun{id: id}) do
+    Repo.exists?(
+      from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^id and r.state == "paused"
+    )
+  end
 
   defp in_transaction! do
     unless Repo.in_transaction?(),
