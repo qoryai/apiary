@@ -395,8 +395,19 @@ defmodule ApiaryWeb.ModelKeyComponents do
       else: used
   end
 
+  # The windows of the contract (`Apiary.ModelKeys.State`) in words; another code shows
+  # as it is.
   defp window("five_hour"), do: gettext("5-hour")
   defp window("seven_day"), do: gettext("7-day")
+  defp window("seven_day_opus"), do: gettext("7-day Opus")
+  defp window("seven_day_sonnet"), do: gettext("7-day Sonnet")
+  defp window("overage"), do: gettext("Extra usage")
+  defp window("requests"), do: gettext("Requests per minute")
+  defp window("tokens"), do: gettext("Tokens per minute")
+  defp window("input_tokens"), do: gettext("Input tokens per minute")
+  defp window("output_tokens"), do: gettext("Output tokens per minute")
+  defp window("spend_limit"), do: gettext("Spend limit")
+  defp window("key"), do: gettext("Limit")
   defp window(code), do: code
 
   @doc """

@@ -209,7 +209,9 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
   defp refused(socket, params, :too_many_values) do
     limit =
-      gettext("A secret holds at most %{number} values.",
+      gettext(
+        "%{provider} has %{number} keys, the most it can have. Delete a key to add another.",
+        provider: socket.assigns.provider.name,
         number: Format.number(Secrets.max_values())
       )
 

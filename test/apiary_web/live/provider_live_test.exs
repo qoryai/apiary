@@ -683,15 +683,77 @@ defmodule ApiaryWeb.ProviderLiveTest do
         cooldown_until: DateTime.add(now, 3600)
       })
 
+      # A key with two windows in cooldown counts once.
+      record!(values(three)["spare"], %{
+        window: "seven_day",
+        status: "rejected",
+        cooldown_until: DateTime.add(now, 7200)
+      })
+
       record!(values(three)["backup"], %{
         window: "five_hour",
         status: "rejected",
         cooldown_until: DateTime.add(now, -3600)
       })
 
+      two = keys!(scope, "deepseek", ~w(main spare))
+
+      for {_id, value} <- values(two) do
+        record!(value, %{
+          window: "requests",
+          status: "rejected",
+          cooldown_until: DateTime.add(now, 60)
+        })
+      end
+
       {:ok, lv, _html} = live(conn, list_path(scope))
       assert text(lv, "#provider-#{three.public_id}-keys") == "3 keys, 1 in cooldown"
+      assert text(lv, "#provider-#{two.public_id}-keys") == "2 keys, 2 in cooldown"
       assert text(lv, "#provider-#{one.public_id}-keys") == "1 key"
+    end
+
+    test "name each window of the contract in words, and another by its code", ctx do
+      %{conn: conn, scope: scope, user: user} = ctx
+      Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
+      provider = keys!(scope, "anthropic", ~w(main))
+      value = values(provider)["main"]
+
+      words = [
+        {"five_hour", "5-hour"},
+        {"seven_day", "7-day"},
+        {"seven_day_opus", "7-day Opus"},
+        {"seven_day_sonnet", "7-day Sonnet"},
+        {"overage", "Extra usage"},
+        {"requests", "Requests per minute"},
+        {"tokens", "Tokens per minute"},
+        {"input_tokens", "Input tokens per minute"},
+        {"output_tokens", "Output tokens per minute"},
+        {"spend_limit", "Spend limit"},
+        {"key", "Limit"},
+        {"daily_cap", "daily_cap"}
+      ]
+
+      for {{window, _word}, n} <- Enum.with_index(words, 1),
+          do: record!(value, %{window: window, utilization: n})
+
+      {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
+      segments = lv |> text("#provider-key-main-state") |> String.split(" · ")
+      assert hd(segments) == "Available"
+
+      expected =
+        for {{window, word}, n} <- Enum.sort(Enum.with_index(words, 1)),
+            do: {window, "#{word} #{n}%"}
+
+      assert tl(segments) == Enum.map(expected, &elem(&1, 1))
+
+      # A reset follows the use.
+      now = DateTime.utc_now()
+      soon = DateTime.add(now, 60)
+      record!(value, %{window: "requests", utilization: 12, resets_at: soon})
+      {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
+
+      assert text(lv, "#provider-key-main-state") =~
+               "Requests per minute 12%, resets #{berlin(soon, now)}"
     end
   end
 
@@ -843,7 +905,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                ~s{#key-form [id$="-error"]},
-               "A secret holds at most 32 values."
+               "#{provider.name} has 32 keys, the most it can have. Delete a key to add another."
              )
 
       assert map_size(values(provider)) == 32

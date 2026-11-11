@@ -16,7 +16,8 @@ defmodule Apiary.ModelKeys do
   sent it. A read leaves out the utilization of a window whose `resets_at` has passed
   (`current/2`). `provider_states/2` is the states of a provider's keys, `known_reset/2`
   a key's known reset, `cooldown_until/1` the end of a key's cooldown, the latest
-  `cooldown_until` across its windows, and `in_cooldown?/2` whether a key is in cooldown.
+  `cooldown_until` across its windows, `in_cooldown?/2` whether a key is in cooldown, and
+  `cooldown_counts/2` how many keys of each provider are.
 
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
   credential in the run's run configuration. A report and its answer reach a key only
@@ -283,6 +284,28 @@ defmodule Apiary.ModelKeys do
   end
 
   def provider_states(%Connection{}, _now), do: %{}
+
+  @doc """
+  How many keys of each of `providers` are in cooldown at `now` (`in_cooldown?/2`), in
+  one query: a map from each provider's row id to its count, 0 for a provider with none.
+  """
+  @spec cooldown_counts([Connection.t()], DateTime.t()) :: %{Ecto.UUID.t() => non_neg_integer}
+  def cooldown_counts(providers, %DateTime{} = now) when is_list(providers) do
+    secret_ids = for %Connection{secret_id: id} <- providers, is_binary(id), do: id
+
+    counts =
+      Repo.all(
+        from s in State,
+          join: v in Value,
+          on: v.id == s.secret_value_id,
+          where: v.secret_id in ^secret_ids and s.cooldown_until > ^now,
+          group_by: v.secret_id,
+          select: {v.secret_id, count(s.secret_value_id, :distinct)}
+      )
+      |> Map.new()
+
+    Map.new(providers, &{&1.id, Map.get(counts, &1.secret_id, 0)})
+  end
 
   @doc """
   `state` as it reads at `now`: the utilization of a window whose `resets_at` has passed
