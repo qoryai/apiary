@@ -65,7 +65,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         "policy instead of the console's " <>
         "(`test/apiary_web/controllers/artifact_file_controller_test.exs` holds it)",
     "/:org/:workspace/work/:number/artifacts/:version_id/mockup/:token/:page" =>
-      "a screen of a mockup, never a page of the console: served for a frame under a " <>
+      "a screen of a mockup, never a page of the console: served for a frame under " <>
         "the frame's policy instead of the console's " <>
         "(`test/apiary_web/controllers/artifact_mockup_controller_test.exs` tests it)"
   }

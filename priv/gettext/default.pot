@@ -16531,11 +16531,6 @@ msgstr ""
 msgid "Reload the page and act again, and %{contact_support} if it fails again. Qory Apiary could not act on the stage."
 msgstr ""
 
-#: lib/apiary_web/controllers/artifact_mockup_controller.ex
-#, elixir-autogen, elixir-format
-msgid "Reload the page to try again. This screen cannot be shown."
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reload the page, then copy again. This run, or your access to its log, is gone."
@@ -16564,6 +16559,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Reload the page. Your access or the work item changed, so nothing was sent."
+msgstr ""
+
+#: lib/apiary_web/controllers/artifact_mockup_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the whole page to try again. This screen cannot be shown."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex

@@ -19,7 +19,7 @@ defmodule ApiaryWeb.ArtifactMockupController do
   # may read the work item (`work_item.read`, `Apiary.Access`), so access removed after
   # the token was signed counts at once; the version is a mockup of pages, and `<id>` the
   # id of one of its screens. Anything else is `404` with a page of one line, "Reload the
-  # page to try again. This screen cannot be shown." With the feature `workflow_model`
+  # whole page to try again. This screen cannot be shown." With the feature `workflow_model`
   # hidden from the person, it is that `404` too. With the feature off for the instance,
   # the route does not exist: a request gets the router's not found page, under the
   # console's policy (`ApiaryWeb.Features.Routes`).
@@ -142,7 +142,7 @@ defmodule ApiaryWeb.ArtifactMockupController do
   end
 
   defp not_found(conn) do
-    text = gettext("Reload the page to try again. This screen cannot be shown.")
+    text = gettext("Reload the whole page to try again. This screen cannot be shown.")
     line = text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
     body =

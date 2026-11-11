@@ -17,7 +17,7 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
 
   @policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; " <>
             "base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox"
-  @line "Reload the page to try again. This screen cannot be shown."
+  @line "Reload the whole page to try again. This screen cannot be shown."
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
 
   @home ~s(<!doctype html><html><head><meta charset="utf-8"><title>Home</title></head>) <>

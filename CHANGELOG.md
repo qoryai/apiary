@@ -19,12 +19,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a policy that lets it run no script and load nothing but `data:` images and fonts.
   The frame's address has a token that the page signs for its reader, valid for an
   hour, so the links between screens work inside the sandbox, which sends no session
-  cookie. Each request checks again that the reader's session lasts, so signing out
-  ends the token, and that the reader may read the work item. The logs show `:token`
-  in the token's place. After an hour, reload the page.
-  Qory Apiary checks every page when the run pushes it and refuses a page that runs a
-  script, loads an outside address, sends a form or links to a page that is not a
-  screen, with a message that has the file and the fix. A version of pictures, and
+  cookie. Qory Apiary checks on each request that the reader's session lasts, so
+  signing out ends the token, and that the reader may read the work item. The logs
+  show `:token` in the token's place. After an hour, reload the page.
+  A run's push of a mockup page that runs a script, loads an outside address, sends a
+  form or links to a page that is not a screen fails with `422` `invalid_artifact`,
+  and its message has the file and the fix. A version of pictures, and
   every version added on **Add a version**, shows as before, under “Image”.
 - On an integration's page in **Organisation settings › Integrations**, each collection
   assigned to a workspace, such as a repository, has **Unassign** for owners and admins.
