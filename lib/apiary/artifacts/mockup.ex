@@ -248,11 +248,80 @@ defmodule Apiary.Artifacts.Mockup do
   defp structured(type, path, at) do
     case Format.check(type, @index, path) do
       {:ok, @json} -> {:ok, @json}
-      {:error, {:schema, detail}} -> {:error, {:schema, at, detail}}
+      {:error, {:schema, detail}} -> {:error, text_refusal(detail, path, at)}
       {:error, :unreadable} -> {:error, {{:mockup, unreadable(@index)}, at}}
       {:error, _format} -> {:error, {{:mockup, index_format()}, at}}
     end
   end
+
+  # A screen's `title` or a link's `label` that fails the schema's text rule gets a
+  # message with the fix first, which names the screen and the link: a schema message
+  # quotes the rule's pattern. Every other schema refusal is the schema's.
+  defp text_refusal(%{path: place} = detail, path, at) do
+    with {:ok, screen, link} <- text_place(place),
+         {:ok, %{"screens" => screens}} when is_list(screens) <- decoded(path),
+         %{} = screen <- Enum.at(screens, screen),
+         {:ok, field, value} <- text_field(screen, link),
+         message when is_binary(message) <- text_message(field, value) do
+      {{:mockup, message}, at}
+    else
+      _other -> {:schema, at, detail}
+    end
+  end
+
+  # The screen's index, and the link's or nil for the title, of a place of the text rule.
+  defp text_place(place) do
+    case Regex.run(~r/\A#\/screens\/(\d+)\/(?:title|links\/(\d+)\/label)\z/, place) do
+      [_all, screen] -> {:ok, String.to_integer(screen), nil}
+      [_all, screen, link] -> {:ok, String.to_integer(screen), String.to_integer(link)}
+      nil -> :error
+    end
+  end
+
+  defp decoded(path) do
+    with {:ok, bytes} <- File.read(path), do: Jason.decode(bytes)
+  end
+
+  defp text_field(%{"title" => title} = screen, nil),
+    do: {:ok, "the title of #{screen_name(screen)}", title}
+
+  defp text_field(%{"links" => links} = screen, link) when is_list(links) do
+    case Enum.at(links, link) do
+      %{"label" => label} = found ->
+        to = if is_binary(found["to"]), do: " to `#{shown(found["to"])}`", else: ""
+        {:ok, "the label of the link#{to} on #{screen_name(screen)}", label}
+
+      _other ->
+        :error
+    end
+  end
+
+  defp text_field(_screen, _link), do: :error
+
+  defp screen_name(%{"id" => id}) when is_binary(id), do: "screen `#{shown(id)}`"
+  defp screen_name(_screen), do: "a screen"
+
+  # The fix for a text that is not 1 to 200 characters with no control character, or
+  # nil for a value that is no string.
+  defp text_message(field, value) when is_binary(value) do
+    cond do
+      value == "" ->
+        "Write #{field} in `screens.json`: it is empty."
+
+      String.length(value) > 200 ->
+        "Shorten #{field} in `screens.json` to at most 200 characters: it has " <>
+          "#{String.length(value)}."
+
+      Regex.match?(~r/[\x00-\x1f\x7f-\x9f]/u, value) ->
+        "Remove the control character from #{field} in `screens.json`: a tab, a line " <>
+          "feed and every other control character are refused."
+
+      true ->
+        nil
+    end
+  end
+
+  defp text_message(_field, _value), do: nil
 
   # The rules of screens.json that its schema cannot check, each at its place.
   defp cross(%{"start" => start, "screens" => screens}) do

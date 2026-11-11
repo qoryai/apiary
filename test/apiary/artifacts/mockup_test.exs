@@ -34,8 +34,8 @@ defmodule Apiary.Artifacts.MockupTest do
   defp assert_verdict(verdict, result), do: flunk("expected #{verdict}, got #{inspect(result)}")
 
   describe "the shared cases" do
-    test "are all read: 161 lines in the cases blocks" do
-      assert length(@cases) == 161
+    test "are all read: 164 lines in the cases blocks" do
+      assert length(@cases) == 164
 
       assert Enum.all?(@cases, fn {verdict, place, _snippet} ->
                verdict in [:allowed, :refused] and place in [:head, :body]
@@ -325,15 +325,15 @@ defmodule Apiary.Artifacts.MockupTest do
       assert {:error, {:schema, 0, %{path: "#", error: _error}}} =
                version(context, [{"screens.json", Map.put(screens(), "extra", 1)} | pages()])
 
-      assert {:error, {:schema, 0, %{path: "#/screens/0/title"}}} =
+      assert {:error, {:schema, 0, %{path: "#/screens/0/file"}}} =
                version(context, [
                  {"screens.json",
                   screens(
                     screens: [
                       %{
                         "id" => "a",
-                        "title" => "A\tB",
-                        "file" => "a.html",
+                        "title" => "A",
+                        "file" => 1,
                         "criteria" => [],
                         "links" => []
                       }
@@ -343,17 +343,37 @@ defmodule Apiary.Artifacts.MockupTest do
                ])
     end
 
+    test "whose screens.json has a title or a label out of the text rule has its fix",
+         context do
+      [start, next] = screens()["screens"]
+      label = fn text -> %{start | "links" => [%{"to" => "next", "label" => text}]} end
+      control = "Remove the control character from"
+
+      rest =
+        "in `screens.json`: a tab, a line feed and every other control character are refused."
+
+      for {screen, message} <- [
+            {%{start | "title" => String.duplicate("x", 201)},
+             "Shorten the title of screen `start` in `screens.json` to at most 200 " <>
+               "characters: it has 201."},
+            {%{start | "title" => "A\tB"}, "#{control} the title of screen `start` #{rest}"},
+            {%{start | "title" => ""},
+             "Write the title of screen `start` in `screens.json`: it is empty."},
+            {label.("Next\u0085"),
+             "#{control} the label of the link to `next` on screen `start` #{rest}"},
+            {label.("Next\n"),
+             "#{control} the label of the link to `next` on screen `start` #{rest}"}
+          ] do
+        assert {:error, {{:mockup, ^message}, 0}} =
+                 version(context, [{"screens.json", screens(screens: [screen, next])} | pages()])
+      end
+    end
+
     test "whose screens.json fails the schema has the failing limit's message", context do
       [start, next] = screens()["screens"]
-      long = String.duplicate("x", 201)
-      label = %{start | "links" => [%{"to" => "next", "label" => "Next\n"}]}
       screen = fn n -> %{next | "id" => "s#{n}", "file" => "s#{n}.html", "links" => []} end
 
       for {document, path, error} <- [
-            {screens(screens: [%{start | "title" => long}, next]), "#/screens/0/title",
-             "value does not conform to pattern"},
-            {screens(screens: [label, next]), "#/screens/0/links/0/label",
-             "value does not conform to pattern"},
             {screens(screens: [start, next | Enum.map(1..8, screen)]), "#/screens",
              "value should have at most 9 items"},
             {screens(screens: [%{start | "criteria" => ["ac-1", "ac-1"]}, next]),

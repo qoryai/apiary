@@ -369,6 +369,9 @@ Checks, in order, after the checks of every request:
      <error>.", such as "at #/start, use the id of a screen, not gone". A screen's `title`
      with a space at its start or end, or two spaces in a row, is refused at that title:
      it matches no page's `<title>`.
+     A `title` or a link's `label` that is empty, longer than 200 characters or has a
+     control character gets its fix, such as "Shorten the title of screen `home` in
+     `screens.json` to at most 200 characters: it has 201.", at `files[<n>]`.
    - Each page is at most 1 MiB (1048576 bytes) of UTF-8 with no byte order mark, has at
      most 10,000 start tags and at most 256 attributes on one tag, and follows the page
      rules of qory's mockup contract: it runs no script, loads nothing from outside the version
