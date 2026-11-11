@@ -19,8 +19,11 @@ defmodule Apiary.Runs.LeakedSecrets do
     * the data of each event other than `dev.qory.run.log`, whose output is in the log
       chunks, as `event_text/2` writes it, in the same pass: the bytes of a chunk of a
       session's transcript, `dev.qory.session.transcript`, decoded, as a continuation
-      reads them (`Apiary.Runs.Transcript`). A secret that the cut between two of its
-      chunks splits is not found;
+      reads them (`Apiary.Runs.Transcript`). A chunk is scanned after the end of the
+      chunk before it in the same file that a secret may start in
+      (`Apiary.SecretScan.carry/1`), read from the transcript's stored chunks, so a
+      secret that the cut between two chunks splits is found, once the chunk before it
+      is stored, and kept where its first byte is;
     * a dispatch's machine log, when Qory Apiary stores it;
     * a dispatch's release reason, when the release is stored.
 
@@ -39,12 +42,17 @@ defmodule Apiary.Runs.LeakedSecrets do
 
   alias Apiary.Dispatches.Dispatch
   alias Apiary.Repo
-  alias Apiary.Runs.{Event, LeakedSecret, LogChunk, Run}
+  alias Apiary.Runs.{Event, LeakedSecret, LogChunk, Run, SessionChunk}
   alias Apiary.SecretScan
 
   @cap 1_000
   @log_event "dev.qory.run.log"
   @transcript_event "dev.qory.session.transcript"
+  # Where the decoded bytes of a transcript chunk start in its text (`event_text/2`).
+  @bytes_at byte_size("bytes\n")
+  # The end of the chunk before a transcript chunk that is read: more than
+  # `Apiary.SecretScan.carry/1` keeps, with the context before it.
+  @transcript_tail 4200
   # The chunks before a pass's first chunk of a step read for the end a secret may start
   # in, and the chunks read at once for a secret's value.
   @carry_chunks 8
@@ -64,7 +72,7 @@ defmodule Apiary.Runs.LeakedSecrets do
   @spec record_run(Run.t(), [map], [struct]) :: :ok
   def record_run(%Run{} = run, chunks, events) do
     times = Map.new(events, &{&1.sequence, &1.time})
-    rows = output_rows(run, chunks, events, times) ++ event_rows(events)
+    rows = output_rows(run, chunks, events, times) ++ event_rows(run, events)
     store_run(run, rows)
   end
 
@@ -255,21 +263,134 @@ defmodule Apiary.Runs.LeakedSecrets do
     parts |> Enum.filter(fn {_sequence, start} -> start <= offset end) |> List.last()
   end
 
-  defp event_rows(events) do
+  defp event_rows(run, events) do
+    before = transcript_before(run, events)
+
     for %Event{type: type} = event <- events,
         type != @log_event,
-        text = event_text(type, event.data),
-        finding <- SecretScan.scan(text) do
+        row <- event_findings(event, event_text(type, event.data), before) do
+      row
+    end
+  end
+
+  # The secrets of one event's text. A transcript chunk's bytes are scanned after the end
+  # of the chunk before it in the file, `before`'s, too: a secret that starts in that
+  # end is kept at that chunk, where its first byte is, and the part of it in this
+  # chunk is not kept again.
+  defp event_findings(%Event{} = event, text, before) do
+    spanning =
+      case transcript_key(event) do
+        {key, bytes} when is_map_key(before, key) ->
+          spanning(Map.fetch!(before, key), bytes, event.time)
+
+        _none ->
+          []
+      end
+
+    covered = Enum.map(spanning, &(@bytes_at + &1.through))
+
+    own =
+      for finding <- SecretScan.scan(text),
+          not Enum.any?(covered, &(finding.offset >= @bytes_at and finding.offset < &1)) do
+        %{
+          kind: finding.kind,
+          place: "event",
+          step: nil,
+          source_sequence: event.sequence,
+          offset: finding.offset,
+          length: finding.length,
+          value: binary_part(text, finding.offset, finding.length),
+          at: event.time
+        }
+      end
+
+    Enum.map(spanning, &Map.delete(&1, :through)) ++ own
+  end
+
+  # The secrets that start in the end of the chunk before, `previous`, and end in `bytes`:
+  # each kept at `previous`'s event, at its offset in that event's text, with `through`,
+  # where its part in `bytes` ends. `at` is `time`, the event's, once the retention
+  # deleted `previous`'s.
+  defp spanning(previous, bytes, time) do
+    tail = SecretScan.carry(previous.tail)
+    base = byte_size(tail)
+    text = tail <> bytes
+    start = @bytes_at + previous.size - base
+
+    for finding <- SecretScan.scan(text),
+        finding.offset < base and finding.offset + finding.length > base do
       %{
         kind: finding.kind,
         place: "event",
         step: nil,
-        source_sequence: event.sequence,
-        offset: finding.offset,
+        source_sequence: previous.sequence,
+        offset: start + finding.offset,
         length: finding.length,
         value: binary_part(text, finding.offset, finding.length),
-        at: event.time
+        at: previous.at || time,
+        through: finding.offset + finding.length - base
       }
+    end
+  end
+
+  # A transcript chunk's place in its file, `{session, session_id, path, offset}`, and
+  # its decoded bytes; nil for any other event, and for a chunk whose data is not one.
+  defp transcript_key(%Event{type: @transcript_event, data: data}) do
+    with %{"session" => session, "session_id" => id, "path" => path, "offset" => offset} <-
+           data,
+         true <- is_integer(session) and is_binary(id) and is_binary(path),
+         true <- is_integer(offset) and offset > 0,
+         {:ok, bytes} <- decoded(data) do
+      {{session, id, path, offset}, bytes}
+    else
+      _other -> nil
+    end
+  end
+
+  defp transcript_key(_event), do: nil
+
+  defp decoded(%{"bytes" => encoded}) when is_binary(encoded), do: Base.decode64(encoded)
+  defp decoded(_data), do: :error
+
+  # The chunk before each transcript chunk of `events` in its file, from the run's stored
+  # chunks (`Apiary.Runs.SessionChunk`, which the pass stored before it scans), by the
+  # chunk's place: its sequence, its size, the end of its bytes and when its event was.
+  defp transcript_before(run, events) do
+    keys = for event <- events, {key, _bytes} <- [transcript_key(event)], do: key
+
+    if keys == [] do
+      %{}
+    else
+      ends = keys |> Enum.map(&elem(&1, 3)) |> Enum.uniq()
+      wanted = MapSet.new(keys)
+
+      chunks =
+        Repo.all(
+          from(c in SessionChunk,
+            left_join: e in Event,
+            on: e.run_id == c.run_id and e.sequence == c.sequence,
+            where: c.run_id == ^run.id,
+            where: fragment("? + octet_length(?)", c.offset, c.bytes) in ^ends,
+            select: %{
+              key:
+                {c.session, c.session_id, c.path,
+                 fragment("? + octet_length(?)", c.offset, c.bytes)},
+              sequence: c.sequence,
+              size: fragment("octet_length(?)", c.bytes),
+              tail:
+                fragment(
+                  "substring(? from greatest(octet_length(?) - ? + 1, 1))",
+                  c.bytes,
+                  c.bytes,
+                  ^@transcript_tail
+                ),
+              at: e.time
+            }
+          ),
+          log: false
+        )
+
+      for chunk <- chunks, MapSet.member?(wanted, chunk.key), into: %{}, do: {chunk.key, chunk}
     end
   end
 
@@ -288,12 +409,21 @@ defmodule Apiary.Runs.LeakedSecrets do
   @spec event_text(String.t() | nil, term) :: binary
   def event_text(@transcript_event, %{"bytes" => encoded} = data) when is_binary(encoded) do
     case Base.decode64(encoded) do
-      {:ok, bytes} -> event_text(Map.put(data, "bytes", bytes))
+      {:ok, bytes} -> transcript_text(bytes, data)
       :error -> event_text(data)
     end
   end
 
   def event_text(_type, data), do: event_text(data)
+
+  # A transcript chunk's text: its decoded bytes first, at `@bytes_at`, then the rest of
+  # its data, as `event_text/1` writes it.
+  defp transcript_text(bytes, data) do
+    case event_text(Map.delete(data, "bytes")) do
+      "" -> "bytes\n" <> bytes
+      rest -> "bytes\n" <> bytes <> "\n" <> rest
+    end
+  end
 
   defp strings(map) when is_map(map) do
     map
@@ -505,12 +635,17 @@ defmodule Apiary.Runs.LeakedSecrets do
         ),
         log: false
       )
-      |> Map.new(fn {sequence, type, data} -> {sequence, event_text(type, data)} end)
+      |> Map.new(fn {sequence, type, data} -> {sequence, {type, data}} end)
     end
   end
 
-  defp value(_run, %{place: "event"} = row, events, _texts),
-    do: events |> Map.get(row.source_sequence) |> slice(row)
+  defp value(run, %{place: "event"} = row, events, _texts) do
+    case Map.get(events, row.source_sequence) do
+      {@transcript_event, data} -> transcript_value(run, data, row)
+      {type, data} -> type |> event_text(data) |> slice(row)
+      nil -> nil
+    end
+  end
 
   defp value(_run, %{place: place} = row, _events, texts)
        when place in ["machine_log", "release_reason"],
@@ -561,6 +696,40 @@ defmodule Apiary.Runs.LeakedSecrets do
        do: binary_part(text, offset, length)
 
   defp slice(_text, _row), do: nil
+
+  # A secret in a transcript chunk's text, `data`'s. One that runs past the chunk's
+  # bytes is read on into the bytes of the stored chunk after it in the file; nil when
+  # that chunk is not stored.
+  defp transcript_value(run, data, row) do
+    text = event_text(@transcript_event, data)
+
+    with {:ok, bytes} <- decoded(data),
+         true <- row.offset >= @bytes_at and row.offset < @bytes_at + byte_size(bytes),
+         true <- row.offset + row.length > @bytes_at + byte_size(bytes),
+         offset when is_integer(offset) <- data["offset"] do
+      slice(bytes <> next_bytes(run, data, offset + byte_size(bytes)), %{
+        row
+        | offset: row.offset - @bytes_at
+      })
+    else
+      _within -> slice(text, row)
+    end
+  end
+
+  # The bytes of the stored chunk at `offset` in `data`'s file, the one that follows
+  # `data`'s chunk; empty when none is stored.
+  defp next_bytes(run, data, offset) do
+    Repo.one(
+      from(c in SessionChunk,
+        where: c.run_id == ^run.id and c.session == ^data["session"],
+        where: c.session_id == ^data["session_id"] and c.path == ^data["path"],
+        where: c.offset == ^offset,
+        limit: 1,
+        select: c.bytes
+      ),
+      log: false
+    ) || ""
+  end
 
   @doc "message/1 is what the document says of a secret found at `place`."
   @spec message(String.t()) :: String.t()
