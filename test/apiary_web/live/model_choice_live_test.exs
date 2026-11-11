@@ -491,6 +491,39 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert choice(scope).connection_id == deepseek.id
     end
 
+    test "a provider in two rows shows the refusal under the second row, and nothing is saved",
+         ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "model" => option(provider, "claude-sonnet-5-5"),
+          "fallbacks" => %{
+            "0" => %{
+              "provider" => subscription.public_id,
+              "model" => option(subscription, "claude-sonnet-5-5")
+            },
+            "1" => %{
+              "provider" => subscription.public_id,
+              "model" => option(subscription, "claude-sonnet-5-5")
+            }
+          }
+        }
+      })
+
+      assert has_element?(
+               lv,
+               "#model_choice_fallbacks_1_provider-error",
+               "Choose another provider: #{subscription.name} is chosen already."
+             )
+
+      assert has_element?(lv, ~s{#model_choice_fallbacks_1_provider[aria-invalid="true"]})
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider-error")
+      assert choice(scope) == nil
+    end
+
     test "an admin made a member while the page is open saves no fallback", ctx do
       %{scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
