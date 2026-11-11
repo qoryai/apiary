@@ -675,12 +675,12 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{bad} ended badly), %{denied}, open that day's runs"
+msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{paused} paused, %{bad} ended badly), %{denied}, open that day's runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{other} alive or ended badly), %{denied}, open that day's runs"
+msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{paused} paused, %{other} alive or ended badly), %{denied}, open that day's runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -15741,6 +15741,8 @@ msgid "Pause for"
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Paused"

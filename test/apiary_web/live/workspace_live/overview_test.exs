@@ -1029,7 +1029,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#days a[data-day='#{today}'][aria-label*='Today: 3 runs (1 ended well, 0 cancelled, 2 alive or ended badly), 0 denied attempts']"
+               "#days a[data-day='#{today}'][aria-label*='Today: 3 runs (1 ended well, 0 cancelled, 0 paused, 2 alive or ended badly), 0 denied attempts']"
              )
 
       assert has_element?(view, "#days .q-col-runs.q-col-today")
@@ -1053,7 +1053,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#days svg")
     end
 
-    test "the tiles, the table and the spoken days count every state in its family, Cancelled apart",
+    test "the tiles, the table and the spoken days count every state in its family, Cancelled and Paused apart",
          %{conn: conn, scope: scope} do
       # Today's runs start now, and the page is read clear of midnight, as above.
       clear_of_midnight()
@@ -1062,21 +1062,22 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       yesterday = Date.add(today, -1)
       noon = DateTime.new!(yesterday, ~T[12:00:00.000000], "Etc/UTC")
 
-      # Yesterday, every state that ends: two runs completed and three were cancelled.
-      for state <- ~w(completed completed cancelled cancelled cancelled failed lost),
+      # Yesterday, every state that ends: two runs completed, three were cancelled and two
+      # paused.
+      for state <- ~w(completed completed cancelled cancelled cancelled paused paused failed lost),
           do: run_fixture(scope, %{state: state, started_at: noon})
 
-      for state <- ~w(pending running completed cancelled failed),
+      for state <- ~w(pending running completed cancelled paused failed),
           do: run_fixture(scope, %{state: state, started_at: now})
 
       view = open(conn, scope)
 
       assert text(view, "#overview-strip-alive .q-sum-v") == "2"
-      assert text(view, "#overview-strip-runs .q-sum-v") == "12"
+      assert text(view, "#overview-strip-runs .q-sum-v") == "15"
       assert text(view, "#overview-strip-runs") =~ "3 ended well"
       # Failed and Lost: a cancelled run does not raise Ended badly.
       assert text(view, "#overview-strip-bad .q-sum-v") == "3"
-      assert text(view, "#overview-strip-bad") =~ "25% of the runs"
+      assert text(view, "#overview-strip-bad") =~ "20% of the runs"
 
       assert has_element?(view, "#overview-strip-bad[href*='state=failed%2Clost']")
 
@@ -1084,12 +1085,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#days a[data-day='#{day}'][aria-label^='#{Format.short_date(yesterday)}: 7 runs (2 ended well, 3 cancelled, 2 ended badly), 0 denied attempts, open that day']"
+               "#days a[data-day='#{day}'][aria-label^='#{Format.short_date(yesterday)}: 9 runs (2 ended well, 3 cancelled, 2 paused, 2 ended badly), 0 denied attempts, open that day']"
              )
 
       assert has_element?(
                view,
-               "#days a[data-day='#{Date.to_iso8601(today)}'][aria-label^='Today: 5 runs (1 ended well, 1 cancelled, 3 alive or ended badly), 0 denied attempts']"
+               "#days a[data-day='#{Date.to_iso8601(today)}'][aria-label^='Today: 6 runs (1 ended well, 1 cancelled, 1 paused, 3 alive or ended badly), 0 denied attempts']"
              )
 
       view |> element("#days-toggle") |> render_click()
@@ -1100,11 +1101,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         |> LazyHTML.query("#days table th")
         |> Enum.map(&LazyHTML.text/1)
 
-      assert headings == ["Day", "Runs", "Ended well", "Cancelled", "Denied attempts"]
+      assert headings == ["Day", "Runs", "Ended well", "Cancelled", "Paused", "Denied attempts"]
 
-      assert text(view, "#days-row-#{day}") == "#{Format.short_date(yesterday)} 7 2 3 0"
+      assert text(view, "#days-row-#{day}") == "#{Format.short_date(yesterday)} 9 2 3 2 0"
 
-      assert text(view, "#days-row-#{Date.to_iso8601(today)}") == "Today 5 1 1 0"
+      assert text(view, "#days-row-#{Date.to_iso8601(today)}") == "Today 6 1 1 1 0"
     end
 
     test "the active targets are the eight with the most runs; a path on two systems names them",

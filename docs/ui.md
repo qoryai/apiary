@@ -934,8 +934,9 @@ what needs the reader, then what their agents did, and never grows with the data
   seven days pass.
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
   `DaysChart` hook measured, with its table twin a text action away: Day, Runs, Ended
-  well, Cancelled and Denied attempts. Each day is said as its runs, of them how many
-  ended well, were cancelled and ended badly (today: alive or ended badly), and its denied
+  well, Cancelled, Paused and Denied attempts. A day's column counts every run of the
+  day, paused runs included. Each day is said as its runs, of them how many ended well,
+  were cancelled, paused and ended badly (today: alive or ended badly), and its denied
   attempts.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
   word unless it completed or is pending), a sparkline of its days and its denials.
