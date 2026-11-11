@@ -120,6 +120,9 @@ refused body <svg><use xlink:href="https://example.com/s.svg#p"/></svg>
 allowed body <svg><image href="data:image/png;base64,iVBORw0KGgo=" width="1" height="1"/></svg>
 refused body <svg><image href="https://example.com/a.png"/></svg>
 allowed body <svg><defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect fill="url(#g)" width="1" height="1"/></svg>
+allowed body <svg><defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect fill="url( #g )" width="1" height="1"/></svg>
+refused body <svg><defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect fill="url(' #g')" width="1" height="1"/></svg>
+refused body <svg><defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient></defs><rect fill="url('#g ')" width="1" height="1"/></svg>
 refused body <svg><defs><pattern id="p"/></defs></svg>
 refused body <svg><defs><mask id="m"/></defs></svg>
 refused body <svg><defs><path id="L%" d="M0 0"/></defs><use href="#L%"/></svg>
