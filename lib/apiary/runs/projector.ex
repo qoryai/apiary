@@ -385,6 +385,13 @@ defmodule Apiary.Runs.Projector do
         )
       end
 
+      if fold.refused_transcript_paths > 0 do
+        Logger.warning(
+          "transcript chunks refused run=#{run.id} count=#{fold.refused_transcript_paths} " <>
+            "reason=path_not_under_prefix"
+        )
+      end
+
       sequences = Enum.map(events, & &1.sequence)
       {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events)}}}
     else

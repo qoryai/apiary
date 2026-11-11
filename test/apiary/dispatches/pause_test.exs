@@ -476,6 +476,42 @@ defmodule Apiary.Dispatches.PauseTest do
       assert set.(%{whole | "path" => 1}) == "runs_resume_check"
     end
 
+    test "a chunk whose path is not under the resume prefix is refused, with one log line",
+         ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      refused = [
+        "~/.claude/projects/../../.bashrc",
+        "~/.claude/projects/-workspace/../5f2c9a1e.jsonl",
+        "/etc/cron.d/5f2c9a1e.jsonl",
+        "/home/agent/.claude/projects/-workspace/5f2c9a1e.jsonl",
+        "~/.claude/projects//5f2c9a1e.jsonl",
+        "~/.claude/projects/./-workspace/5f2c9a1e.jsonl",
+        "~/-workspace/5f2c9a1e.jsonl",
+        "~/.claude/projects/-work space/5f2c9a1e.jsonl",
+        "~/.claude/projects/-workspace/5f2c9a1e.txt",
+        "~/.claude/projects/-workspace/.jsonl",
+        "projects/-workspace/5f2c9a1e.jsonl"
+      ]
+
+      for {path, n} <- Enum.with_index(refused, 3) do
+        event_fixture(run, n, "session.transcript", %{chunk(0, "line\n") | "path" => path})
+      end
+
+      log = capture_log(fn -> assert {:ok, %Run{}} = Projector.project(run) end)
+
+      assert Repo.aggregate(from(c in SessionChunk, where: c.run_id == ^run.id), :count) == 0
+
+      assert [_line] =
+               Regex.scan(
+                 ~r/transcript chunks refused run=#{run.id} count=#{length(refused)} reason=path_not_under_prefix/,
+                 log
+               )
+
+      assert Transcript.resumable_path?(@path)
+      assert Transcript.resumable_path?("~/.resumer/x/-w0rk-1/s.jsonl")
+    end
+
     test "a chunk that is not one is not kept, and its log line has no byte of it", ctx do
       %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
       event_fixture(run, 3, "session.transcript", Map.delete(chunk(0, "hidden-zq9\n"), "path"))

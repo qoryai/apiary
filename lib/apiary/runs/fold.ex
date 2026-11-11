@@ -244,7 +244,8 @@ defmodule Apiary.Runs.Fold do
             log_chunks: [],
             skipped_log_chunks: 0,
             transcript_chunks: [],
-            skipped_transcript_chunks: 0
+            skipped_transcript_chunks: 0,
+            refused_transcript_paths: 0
 
   @type t :: %__MODULE__{
           run: map(),
@@ -257,7 +258,8 @@ defmodule Apiary.Runs.Fold do
           log_chunks: [map()],
           skipped_log_chunks: non_neg_integer(),
           transcript_chunks: [map()],
-          skipped_transcript_chunks: non_neg_integer()
+          skipped_transcript_chunks: non_neg_integer(),
+          refused_transcript_paths: non_neg_integer()
         }
 
   @doc """
@@ -275,7 +277,8 @@ defmodule Apiary.Runs.Fold do
   and the count of log events skipped because their bytes were not base64, and
   `transcript_chunks`, the chunks of `dev.qory.session.transcript` events in sequence
   order (`Apiary.Runs.Transcript.parse/1`), with the count of those events whose data is
-  no chunk.
+  no chunk, and the count of the chunks refused for their path
+  (`Apiary.Runs.Transcript.resumable_path?/1`).
   """
   @spec fold(map(), Enumerable.t(), map(), map()) :: t()
   def fold(run, events, latest \\ %{}, projected \\ %{}) do
@@ -423,12 +426,12 @@ defmodule Apiary.Runs.Fold do
   end
 
   defp event(acc, %{type: @transcript, data: data, sequence: sequence}) do
-    case Transcript.parse(data) do
-      {:ok, chunk} ->
-        %{acc | transcript_chunks: [Map.put(chunk, :sequence, sequence) | acc.transcript_chunks]}
-
-      :error ->
-        %{acc | skipped_transcript_chunks: acc.skipped_transcript_chunks + 1}
+    with {:ok, chunk} <- Transcript.parse(data),
+         true <- Transcript.resumable_path?(chunk.path) do
+      %{acc | transcript_chunks: [Map.put(chunk, :sequence, sequence) | acc.transcript_chunks]}
+    else
+      false -> %{acc | refused_transcript_paths: acc.refused_transcript_paths + 1}
+      :error -> %{acc | skipped_transcript_chunks: acc.skipped_transcript_chunks + 1}
     end
   end
 

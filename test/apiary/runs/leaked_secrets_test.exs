@@ -423,7 +423,10 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     events_fixture(ctx.run, [
       {1, "session.transcript", transcript(0, first)},
       {2, "session.transcript",
-       %{transcript(byte_size(first), rest) | "path" => "~/.claude/other.jsonl"}}
+       %{
+         transcript(byte_size(first), rest)
+         | "path" => "~/.claude/projects/-other/5f2c9a1e.jsonl"
+       }}
     ])
 
     project!(ctx.run)
