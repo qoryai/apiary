@@ -1,0 +1,491 @@
+defmodule Apiary.ModelKeysTest do
+  # The settings and the states of model keys (`Apiary.ModelKeys`): a key's weekly reset
+  # and Pause for, the default Pause for of its provider, the next reset of its schedule,
+  # a daylight-saving week included, and the states the gateways of runs report, the
+  # newest by `observed_at` kept. Not async: one test switches the features, which are
+  # the whole node's.
+  use Apiary.DataCase, async: false
+
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.{Connections, ModelKeys}
+  alias Apiary.Connections.Connection
+  alias Apiary.ModelKeys.{Report, Setting, State}
+  alias Apiary.Runs.Run
+  alias Apiary.Secrets.Value
+
+  @moduletag needs: [:factory, :secrets]
+
+  setup do
+    %{scope: scope} = sign_up_fixture()
+    {provider, values} = provider!(scope, ["main", "spare"])
+    %{scope: scope, provider: provider, values: values}
+  end
+
+  # A provider of the scope's organisation with a key for each value id, and its values
+  # by value id.
+  defp provider!(scope, value_ids) do
+    keys = for id <- value_ids, do: %{value_id: id, value: "sk-ant-fixture-#{id}-0123456789"}
+    {:ok, provider} = Connections.create_provider(scope, %{provider: "anthropic", keys: keys})
+    values = Repo.all(from v in Value, where: v.secret_id == ^provider.secret_id)
+    {provider, Map.new(values, &{&1.value_id, &1})}
+  end
+
+  defp key(%Value{} = value, name \\ "model-1"),
+    do: %{name: name, secret_value_id: value.id, organisation_id: value.organisation_id}
+
+  defp item(attrs) do
+    Map.merge(
+      %{
+        credential: "model-1",
+        window: "five_hour",
+        status: "allowed",
+        resets_at: nil,
+        utilization: nil,
+        cooldown_until: nil,
+        source: "provider",
+        observed_at: ~U[2026-11-10 12:00:00.000000Z]
+      },
+      Map.new(attrs)
+    )
+  end
+
+  defp states(%Value{id: id}),
+    do: Repo.all(from s in State, where: s.secret_value_id == ^id, order_by: s.window)
+
+  describe "the settings" do
+    test "are saved at the key's organisation, by the value's row id", ctx do
+      value = ctx.values["main"]
+
+      assert {:ok, setting} =
+               ModelKeys.put_setting(value, %{
+                 "reset_weekday" => 1,
+                 "reset_time" => "09:00:00",
+                 "reset_time_zone" => "Europe/Berlin",
+                 "pause_seconds" => 600,
+                 "organisation_id" => Ecto.UUID.generate()
+               })
+
+      assert setting.secret_value_id == value.id
+      assert setting.organisation_id == ctx.scope.organisation.id
+      assert ModelKeys.setting(value.id).pause_seconds == 600
+
+      # A second save changes the row; an empty field clears its setting.
+      assert {:ok, _} = ModelKeys.put_setting(value, %{"pause_seconds" => ""})
+      assert %Setting{pause_seconds: nil, reset_weekday: 1} = ModelKeys.setting(value.id)
+      assert Repo.aggregate(Setting, :count) == 1
+      assert ModelKeys.setting(ctx.values["spare"].id) == nil
+    end
+
+    test "refuse a weekday, a time zone or a Pause for out of range" do
+      for {attrs, field} <- [
+            {%{reset_weekday: 0, reset_time: ~T[09:00:00], reset_time_zone: "Etc/UTC"},
+             :reset_weekday},
+            {%{reset_weekday: 8, reset_time: ~T[09:00:00], reset_time_zone: "Etc/UTC"},
+             :reset_weekday},
+            {%{reset_weekday: 1, reset_time: ~T[09:00:00], reset_time_zone: "Mars/Olympus"},
+             :reset_time_zone},
+            {%{pause_seconds: 0}, :pause_seconds},
+            {%{pause_seconds: 604_801}, :pause_seconds}
+          ] do
+        changeset = Setting.changeset(%Setting{}, attrs)
+        refute changeset.valid?, inspect(attrs)
+        assert Map.has_key?(errors_on(changeset), field), inspect(attrs)
+      end
+
+      assert Setting.changeset(%Setting{}, %{pause_seconds: 1}).valid?
+      assert Setting.changeset(%Setting{}, %{pause_seconds: 604_800}).valid?
+    end
+
+    test "take a reset whole: a weekday alone leaves the time and the zone blank" do
+      changeset = Setting.changeset(%Setting{}, %{reset_weekday: 3})
+
+      assert errors_on(changeset) == %{
+               reset_time: ["can't be blank"],
+               reset_time_zone: ["can't be blank"]
+             }
+
+      assert Setting.changeset(%Setting{}, %{}).valid?
+    end
+  end
+
+  describe "the Pause for" do
+    test "is the key's setting, else 60 s for an API key and 3600 s for a subscription",
+         ctx do
+      assert ModelKeys.default_pause_seconds(ctx.provider) == 60
+      assert ModelKeys.pause_seconds(ctx.provider, nil) == 60
+      assert ModelKeys.pause_seconds(ctx.provider, %Setting{pause_seconds: 5}) == 5
+
+      subscription = %Connection{provider_kind: "claude-subscription"}
+      assert ModelKeys.default_pause_seconds(subscription) == 3600
+      assert ModelKeys.pause_seconds(subscription, %Setting{}) == 3600
+
+      assert ModelKeys.default_pause_seconds(%Connection{provider_kind: "gone"}) == 60
+    end
+  end
+
+  describe "the next scheduled reset" do
+    defp weekly(day, time, zone),
+      do: %Setting{reset_weekday: day, reset_time: time, reset_time_zone: zone}
+
+    test "is the next weekday and time in the zone, strictly after the time" do
+      monday = weekly(1, ~T[09:00:00], "Europe/Berlin")
+
+      # Wednesday 2026-11-11: the Monday after, at 09:00 CET.
+      assert ModelKeys.next_reset(monday, ~U[2026-11-11 10:00:00Z]) ==
+               ~U[2026-11-16 08:00:00.000000Z]
+
+      # At the reset itself, the one a week later.
+      assert ModelKeys.next_reset(monday, ~U[2026-11-16 08:00:00Z]) ==
+               ~U[2026-11-23 08:00:00.000000Z]
+
+      # The same Monday, before the reset.
+      assert ModelKeys.next_reset(monday, ~U[2026-11-16 07:59:59Z]) ==
+               ~U[2026-11-16 08:00:00.000000Z]
+
+      assert ModelKeys.next_reset(nil, ~U[2026-11-11 10:00:00Z]) == nil
+      assert ModelKeys.next_reset(%Setting{pause_seconds: 60}, ~U[2026-11-11 10:00:00Z]) == nil
+    end
+
+    test "follows the zone's clock across a daylight-saving week" do
+      monday = weekly(1, ~T[09:00:00], "Europe/Berlin")
+
+      # Berlin moves to summer time on Sunday 2026-03-29: 09:00 is 08:00 UTC the Monday
+      # before, and 07:00 UTC the Monday after.
+      assert ModelKeys.next_reset(monday, ~U[2026-03-20 12:00:00Z]) ==
+               ~U[2026-03-23 08:00:00.000000Z]
+
+      assert ModelKeys.next_reset(monday, ~U[2026-03-28 12:00:00Z]) ==
+               ~U[2026-03-30 07:00:00.000000Z]
+
+      # 02:30 that Sunday does not exist: the first moment after the gap, 03:00 CEST.
+      sunday = weekly(7, ~T[02:30:00], "Europe/Berlin")
+
+      assert ModelKeys.next_reset(sunday, ~U[2026-03-28 12:00:00Z]) ==
+               ~U[2026-03-29 01:00:00.000000Z]
+
+      # 02:30 on Sunday 2026-10-25 happens twice: the first, 02:30 CEST.
+      assert ModelKeys.next_reset(sunday, ~U[2026-10-24 12:00:00Z]) ==
+               ~U[2026-10-25 00:30:00.000000Z]
+    end
+  end
+
+  describe "a run's keys" do
+    test "are the value of its provider's secret with its value id, by the provider's name",
+         ctx do
+      run = %Run{
+        provider_api: %{"format" => "anthropic-messages"},
+        provider_connection_id: ctx.provider.id,
+        provider_secret_id: ctx.provider.secret_id,
+        provider_value_id: "spare"
+      }
+
+      assert ModelKeys.run_keys(run) == [
+               %{
+                 name: ctx.provider.public_id,
+                 secret_value_id: ctx.values["spare"].id,
+                 organisation_id: ctx.scope.organisation.id
+               }
+             ]
+
+      # A value id the secret does not have, a provider of another secret, and a run with
+      # no provider have none.
+      assert ModelKeys.run_keys(%{run | provider_value_id: "gone"}) == []
+
+      {other, _values} = provider!(ctx.scope, ["spare"])
+      assert ModelKeys.run_keys(%{run | provider_connection_id: other.id}) == []
+      assert ModelKeys.run_keys(%{run | provider_api: nil}) == []
+      assert ModelKeys.run_keys(%Run{}) == []
+    end
+
+    test "are none where model keys do not apply", ctx do
+      # The provider was added with every feature on; the instance runs without
+      # `factory` and `secrets` from here, until the test ends.
+      Apiary.DataCase.setup_features(%{with_features: [:observability, :security]})
+
+      run = %Run{
+        provider_api: %{"format" => "anthropic-messages"},
+        provider_connection_id: ctx.provider.id,
+        provider_secret_id: ctx.provider.secret_id,
+        provider_value_id: "main"
+      }
+
+      assert ModelKeys.run_keys(run) == []
+
+      # And a report is answered as for a run the server does not know.
+      assert Report.answer(
+               %Apiary.AccessKeys.AccessKey{},
+               Ecto.UUID.generate(),
+               %{time: DateTime.utc_now(), keys: []},
+               nil,
+               DateTime.utc_now()
+             ) == {:error, :not_found}
+    end
+  end
+
+  describe "the states" do
+    test "keep the newest report by observed_at: an older one never overwrites", ctx do
+      value = ctx.values["main"]
+      keys = [key(value)]
+      now = DateTime.utc_now()
+
+      newer =
+        item(
+          status: "rejected",
+          utilization: 100,
+          resets_at: ~U[2026-11-10 14:00:00.000000Z],
+          cooldown_until: ~U[2026-11-10 14:00:00.000000Z],
+          observed_at: ~U[2026-11-10 12:00:04.000000Z]
+        )
+
+      :ok = ModelKeys.record(keys, [newer], now)
+
+      assert [%State{status: "rejected", utilization: 100, organisation_id: org}] =
+               states(value)
+
+      assert org == ctx.scope.organisation.id
+
+      # An older report of the same window, from any gateway, leaves the row.
+      older = item(status: "allowed", utilization: 40, observed_at: ~U[2026-11-10 12:00:01Z])
+      :ok = ModelKeys.record(keys, [older], now)
+      assert [%State{status: "rejected", utilization: 100}] = states(value)
+
+      # The same time again is not newer either.
+      :ok = ModelKeys.record(keys, [%{older | observed_at: newer.observed_at}], now)
+      assert [%State{status: "rejected"}] = states(value)
+
+      # A newer one replaces it, the members it leaves out cleared.
+      latest = item(status: "allowed", observed_at: ~U[2026-11-10 14:00:02.000000Z])
+      :ok = ModelKeys.record(keys, [latest], now)
+
+      assert [
+               %State{
+                 status: "allowed",
+                 utilization: nil,
+                 cooldown_until: nil,
+                 resets_at: nil,
+                 observed_at: ~U[2026-11-10 14:00:02.000000Z]
+               }
+             ] = states(value)
+    end
+
+    test "of one window twice in a report keep the newer, and other credentials none",
+         ctx do
+      value = ctx.values["main"]
+
+      :ok =
+        ModelKeys.record(
+          [key(value)],
+          [
+            item(utilization: 70, observed_at: ~U[2026-11-10 12:00:03Z]),
+            item(utilization: 80, observed_at: ~U[2026-11-10 12:00:05Z]),
+            item(utilization: 60, observed_at: ~U[2026-11-10 12:00:04Z]),
+            item(window: "seven_day", utilization: 20),
+            item(credential: "model-2", window: "requests")
+          ],
+          DateTime.utc_now()
+        )
+
+      assert [%State{window: "five_hour", utilization: 80}, %State{window: "seven_day"}] =
+               states(value)
+
+      assert Repo.aggregate(State, :count) == 2
+    end
+
+    test "are kept for the contract's windows alone: another is left out, the rest kept",
+         ctx do
+      value = ctx.values["main"]
+
+      :ok =
+        ModelKeys.record(
+          [key(value)],
+          [item(window: "five_hour"), item(window: "seven_day_haiku"), item(window: "key")],
+          DateTime.utc_now()
+        )
+
+      assert Enum.map(states(value), & &1.window) == ["five_hour", "key"]
+      assert length(State.windows()) == 11
+    end
+
+    test "of a run are at most 66: 6 keys of 11 windows", ctx do
+      {_provider, values} = provider!(ctx.scope, ~w(k1 k2 k3 k4 k5 k6))
+      keys = for {id, value} <- values, do: key(value, id)
+      now = DateTime.utc_now()
+
+      items =
+        for name <- Map.keys(values),
+            window <- State.windows() ++ ["seven_day_haiku"],
+            do: item(credential: name, window: window)
+
+      :ok = ModelKeys.record(keys, items, now)
+      assert Repo.aggregate(State, :count) == 66
+
+      # A row of another window, written by an earlier release, is not read.
+      value = values["k1"]
+
+      Repo.insert_all(State, [
+        %{
+          secret_value_id: value.id,
+          organisation_id: value.organisation_id,
+          window: "seven_day_haiku",
+          status: "allowed",
+          source: "provider",
+          observed_at: now,
+          updated_at: now
+        }
+      ])
+
+      states = ModelKeys.run_states(keys, now)
+      assert length(states) == 6 * 11
+      assert length(Jason.decode!(Report.body(states))["keys"]) == 66
+    end
+
+    test "leave out the utilization of a window whose reset has passed", ctx do
+      value = ctx.values["main"]
+      now = ~U[2026-11-10 15:00:00.000000Z]
+
+      :ok =
+        ModelKeys.record(
+          [key(value)],
+          [
+            item(utilization: 88, resets_at: ~U[2026-11-10 14:00:00Z]),
+            item(window: "seven_day", utilization: 40, resets_at: ~U[2026-11-16 09:00:00Z])
+          ],
+          now
+        )
+
+      assert [{"model-1", five}, {"model-1", seven}] = ModelKeys.run_states([key(value)], now)
+      assert {five.window, five.utilization} == {"five_hour", nil}
+      assert {seven.window, seven.utilization} == {"seven_day", 40}
+
+      assert %{} = by_key = ModelKeys.provider_states(ctx.provider, now)
+      assert [%State{utilization: nil}, %State{utilization: 40}] = by_key[value.id]
+
+      # Before the reset, the utilization reads.
+      assert [{_, %State{utilization: 88}}, _] =
+               ModelKeys.run_states([key(value)], ~U[2026-11-10 13:00:00Z])
+    end
+
+    test "of a provider are its keys' states, by key", ctx do
+      %{"main" => main, "spare" => spare} = ctx.values
+      {other, %{"spare" => elsewhere}} = provider!(ctx.scope, ["spare"])
+      now = DateTime.utc_now()
+
+      :ok =
+        ModelKeys.record(
+          [key(main, "a"), key(spare, "b")],
+          [item(credential: "a"), item(credential: "b", window: "seven_day")],
+          now
+        )
+
+      :ok = ModelKeys.record([key(elsewhere)], [item([])], now)
+
+      by_key = ModelKeys.provider_states(ctx.provider, now)
+      assert Map.keys(by_key) |> Enum.sort() == Enum.sort([main.id, spare.id])
+      assert [%State{window: "seven_day"}] = by_key[spare.id]
+      assert Map.keys(ModelKeys.provider_states(other, now)) == [elsewhere.id]
+    end
+
+    test "give a key's known reset: the earliest future reset, else its schedule", ctx do
+      value = ctx.values["main"]
+      now = ~U[2026-11-10 15:00:00.000000Z]
+
+      assert ModelKeys.known_reset(value.id, now) == nil
+
+      {:ok, _} =
+        ModelKeys.put_setting(value, %{
+          reset_weekday: 1,
+          reset_time: ~T[09:00:00],
+          reset_time_zone: "Europe/Berlin"
+        })
+
+      assert ModelKeys.known_reset(value.id, now) == ~U[2026-11-16 08:00:00.000000Z]
+
+      :ok =
+        ModelKeys.record(
+          [key(value)],
+          [
+            item(window: "five_hour", resets_at: ~U[2026-11-10 14:00:00Z]),
+            item(window: "seven_day", resets_at: ~U[2026-11-14 09:00:00Z]),
+            item(window: "requests", resets_at: ~U[2026-11-10 15:01:00Z])
+          ],
+          now
+        )
+
+      # The five-hour window's reset has passed: the request window's is the earliest.
+      assert ModelKeys.known_reset(value.id, now) == ~U[2026-11-10 15:01:00.000000Z]
+
+      assert ModelKeys.known_reset(value.id, ~U[2026-11-10 15:01:00Z]) ==
+               ~U[2026-11-14 09:00:00.000000Z]
+    end
+
+    test "say whether a key is in cooldown at a time, until its latest cooldown", ctx do
+      value = ctx.values["main"]
+      refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 13:00:00Z])
+      assert ModelKeys.cooldown_until(value.id) == nil
+
+      :ok =
+        ModelKeys.record(
+          [key(value)],
+          [
+            item(
+              window: "five_hour",
+              status: "rejected",
+              cooldown_until: ~U[2026-11-10 14:00:00Z]
+            ),
+            item(window: "seven_day")
+          ],
+          DateTime.utc_now()
+        )
+
+      assert ModelKeys.cooldown_until(value.id) == ~U[2026-11-10 14:00:00.000000Z]
+      assert ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 13:59:59Z])
+      refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 14:00:00Z])
+      refute ModelKeys.in_cooldown?(ctx.values["spare"].id, ~U[2026-11-10 13:00:00Z])
+
+      # The 7-day window rejected too, until a later reset: the key stays in cooldown
+      # until then, past the 5-hour window's end.
+      :ok =
+        ModelKeys.record(
+          [key(value)],
+          [
+            item(
+              window: "seven_day",
+              status: "rejected",
+              cooldown_until: ~U[2026-11-14 09:00:00Z],
+              observed_at: ~U[2026-11-10 12:00:10Z]
+            )
+          ],
+          DateTime.utc_now()
+        )
+
+      assert ModelKeys.cooldown_until(value.id) == ~U[2026-11-14 09:00:00.000000Z]
+      assert ModelKeys.in_cooldown?(value.id, ~U[2026-11-10 14:00:00Z])
+      refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-14 09:00:00Z])
+    end
+
+    test "and the settings go with their key", ctx do
+      value = ctx.values["main"]
+      {:ok, _} = ModelKeys.put_setting(value, %{pause_seconds: 90})
+      :ok = ModelKeys.record([key(value)], [item([])], DateTime.utc_now())
+
+      Repo.delete!(value)
+      assert Repo.aggregate(State, :count) == 0
+      assert Repo.aggregate(Setting, :count) == 0
+    end
+
+    test "belong to the key's organisation alone", ctx do
+      value = ctx.values["main"]
+      %{scope: other} = sign_up_fixture()
+
+      # A row of another organisation for this key is refused by the database.
+      assert_raise Postgrex.Error, ~r/model_key_states/, fn ->
+        ModelKeys.record(
+          [%{key(value) | organisation_id: other.organisation.id}],
+          [item([])],
+          DateTime.utc_now()
+        )
+      end
+    end
+  end
+end

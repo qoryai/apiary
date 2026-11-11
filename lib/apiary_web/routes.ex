@@ -251,6 +251,9 @@ defmodule ApiaryWeb.Routes do
         get "/runs/:run_id", RegistrationController, :show
         post "/runs/:run_id/attach", AttachController, :create
         post "/runs/:run_id/outcome", OutcomeController, :create
+        # A gateway's report of a run's model keys, with the `factory` and `secrets`
+        # features.
+        post "/runs/:run_id/model-keys", ModelKeysController, :create
         # A gateway's secrets request, with the `factory` and `secrets` features.
         post "/secrets", SecretsController, :create
       end

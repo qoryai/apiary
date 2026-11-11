@@ -378,6 +378,32 @@ defmodule Apiary.DeletionTest do
 
       {:ok, _} = Apiary.ModelChoices.put_choice(inside, :workspace, %{provider: gone.public_id})
 
+      # The settings and a state of each provider's key, which go with the key.
+      for provider <- [gone, kept] do
+        value =
+          Repo.one!(from v in Apiary.Secrets.Value, where: v.secret_id == ^provider.secret_id)
+
+        {:ok, _} = Apiary.ModelKeys.put_setting(value, %{pause_seconds: 120})
+
+        :ok =
+          Apiary.ModelKeys.record(
+            [%{name: "model", secret_value_id: value.id, organisation_id: value.organisation_id}],
+            [
+              %{
+                credential: "model",
+                window: "five_hour",
+                status: "allowed",
+                source: "provider",
+                observed_at: DateTime.utc_now()
+              }
+            ],
+            DateTime.utc_now()
+          )
+      end
+
+      kept_value =
+        Repo.one!(from v in Apiary.Secrets.Value, where: v.secret_id == ^kept.secret_id)
+
       # The organisation's default refuses such a provider; a row written before that
       # refusal is purged too.
       Repo.insert!(%Apiary.ModelChoices.ModelChoice{
@@ -400,6 +426,10 @@ defmodule Apiary.DeletionTest do
 
       assert Repo.get(Apiary.Connections.Connection, kept.id)
       assert Repo.get(Apiary.Secrets.Secret, kept.secret_id)
+
+      assert [%{secret_value_id: id}] = Repo.all(Apiary.ModelKeys.State)
+      assert id == kept_value.id
+      assert [%{secret_value_id: ^id}] = Repo.all(Apiary.ModelKeys.Setting)
       assert Repo.get(Apiary.Connections.Connection, shared.id)
 
       assert %Entry{details: %{"rows" => rows}} =

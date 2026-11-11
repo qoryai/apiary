@@ -74,12 +74,15 @@
 # `push`, the run API in `link-run-answer`, the close reasons of a read-only workspace, and
 # `bare` on `dev.qory.session.started`; and the refusal codes `image_access_denied`,
 # `image_rate_limited` and `image_registry_unreachable`, after the check of an image whose
-# registry returned 401, 403 or 429, or could not be reached.
+# registry returned 401, 403 or 429, or could not be reached; and a gateway's report of the
+# states of a run's model keys, a signed POST to `<run.url>/<run_id>/model-keys`, one entry
+# per key and limit window, and its answer, the newest state of each key and window from
+# every gateway, under the run's credential names.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-5d87f8eb857b381e54a0bd8b4badc36de621ad5f
+94989fd5e89f069c64e3c784d55eaf8d8c330897
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
@@ -91,6 +94,8 @@ priv/contract/runtimes.json
 priv/contract/secrets-request.schema.json
 priv/contract/secrets-answer.schema.json
 priv/contract/sealed-plaintext.schema.json
+priv/contract/model-keys-report.schema.json
+priv/contract/model-keys-answer.schema.json
 test/fixtures/forager-contract/known-answers/keys.json
 test/fixtures/forager-contract/known-answers/small-order.json
 test/fixtures/forager-contract/policy/observe-allow-first.yaml
@@ -112,3 +117,17 @@ test/fixtures/forager-contract/sealed/sealed-plaintext.json
 test/fixtures/forager-contract/sealed/secrets-answer.json
 test/fixtures/forager-contract/sealed/secrets-request.json
 test/fixtures/forager-contract/sealed/vectors.json
+test/fixtures/forager-contract/model-keys-report/report.json
+test/fixtures/forager-contract/model-keys-report/report-cooldowns.json
+test/fixtures/forager-contract/model-keys-report/report-empty.json
+test/fixtures/forager-contract/model-keys-answer/answer.json
+test/fixtures/forager-contract/model-keys-answer/answer-empty.json
+test/fixtures/forager-contract/invalid/model-keys-answer-no-version.json
+test/fixtures/forager-contract/invalid/model-keys-report-cooldown-allowed.json
+test/fixtures/forager-contract/invalid/model-keys-report-no-observed-at.json
+test/fixtures/forager-contract/invalid/model-keys-report-rejected-without-cooldown.json
+test/fixtures/forager-contract/invalid/model-keys-report-time-fraction.json
+test/fixtures/forager-contract/invalid/model-keys-report-unknown-source.json
+test/fixtures/forager-contract/invalid/model-keys-report-unknown-status.json
+test/fixtures/forager-contract/invalid/model-keys-report-utilization-over-100.json
+test/fixtures/forager-contract/invalid/model-keys-report-window-upper-case.json

@@ -261,6 +261,7 @@ defmodule Apiary.Kinds.ServicesTest do
                  ~w(api-format.schema.json auth.schema.json policy.schema.json
                     run-configuration.schema.json runtimes.json secrets-request.schema.json
                     secrets-answer.schema.json sealed-plaintext.schema.json
+                    model-keys-report.schema.json model-keys-answer.schema.json
                     events/runtime.text.schema.json events/runtime.tool_result.schema.json
                     events/runtime.tool_denied.schema.json)
                  |> Enum.map(&("priv/contract/" <> &1))
@@ -277,7 +278,21 @@ defmodule Apiary.Kinds.ServicesTest do
                                   known-answers/keys.json known-answers/small-order.json
                                   policy/observe-allow-first.yaml
                                   invalid/policy-allow-first-pattern.yaml
-                                  invalid/policy-allow-first-too-many.yaml),
+                                  invalid/policy-allow-first-too-many.yaml
+                                  model-keys-report/report.json
+                                  model-keys-report/report-cooldowns.json
+                                  model-keys-report/report-empty.json
+                                  model-keys-answer/answer.json
+                                  model-keys-answer/answer-empty.json
+                                  invalid/model-keys-answer-no-version.json
+                                  invalid/model-keys-report-cooldown-allowed.json
+                                  invalid/model-keys-report-no-observed-at.json
+                                  invalid/model-keys-report-rejected-without-cooldown.json
+                                  invalid/model-keys-report-time-fraction.json
+                                  invalid/model-keys-report-unknown-source.json
+                                  invalid/model-keys-report-unknown-status.json
+                                  invalid/model-keys-report-utilization-over-100.json
+                                  invalid/model-keys-report-window-upper-case.json),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )
