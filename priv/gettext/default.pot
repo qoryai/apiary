@@ -15758,7 +15758,22 @@ msgstr ""
 
 #: lib/apiary_web/components/pause_words.ex
 #, elixir-autogen, elixir-format
+msgid "Paused: a key of %{provider} reached its limit."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
 msgid "Paused: a key of %{provider} reached its limit. It continues in run %{number}."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: a model key reached its limit."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: a model key reached its limit. It continues in run %{number}."
 msgstr ""
 
 #: lib/apiary_web/components/pause_words.ex

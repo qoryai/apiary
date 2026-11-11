@@ -2203,6 +2203,25 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#run-meta", "exit 1")
       assert html =~ "End of the record."
     end
+
+    test "a pause is announced as its line on the page says it", %{
+      conn: conn,
+      run: run,
+      now: now,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+      project_more(run, [
+        {4, "run.exited", %{"state" => "cancelled", "reason" => "model_key_limit"}, time: now}
+      ])
+
+      _html = flush(lv)
+
+      assert has_element?(lv, "#run-announcer", "Paused: a model key reached its limit.")
+      assert has_element?(lv, "#run-why", "Paused: a model key reached its limit.")
+    end
   end
 
   describe "windowing (rj)" do
@@ -4888,7 +4907,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     @tag needs: [:factory, :secrets]
     test "a paused run says why it paused and links the run that continues it",
-         %{conn: conn, scope: scope} do
+         %{conn: conn, scope: scope, user: user} do
+      Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
+
       {:ok, provider} =
         Apiary.Connections.create_provider(scope, %{
           provider: "anthropic",
@@ -4945,7 +4966,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-why a[href="#{next_path}"]), "#{number}")
       refute has_element?(lv, "#run-why-jump")
 
-      until = DateTime.add(DateTime.utc_now(), 3_600, :second)
+      # Two days on: the weekday and the clock in the reader's time zone.
+      until = DateTime.add(DateTime.utc_now(), 2, :day)
+      clock = until |> DateTime.shift_zone!("Europe/Berlin") |> Calendar.strftime("%a %H:%M")
 
       {1, _rows} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
@@ -4954,13 +4977,18 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       {:ok, lv, _html} = live(conn, path)
 
-      assert has_element?(
-               lv,
-               "#run-why",
-               "Paused: every key of #{provider.name} is in cooldown until "
-             )
+      line =
+        lv
+        |> element("#run-why .q-run-why-t")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.replace(~r/\s+/, " ")
+        |> String.trim()
 
-      assert has_element?(lv, "#run-why", ". It continues in run #{number}.")
+      assert line ==
+               "Paused: every key of #{provider.name} is in cooldown until #{clock}. " <>
+                 "It continues in run #{number}."
 
       # A paused run that no run continues has its state alone.
       alone =
@@ -4973,7 +5001,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{alone.number}")
 
       assert has_element?(lv, "#run-state", "Paused")
-      refute has_element?(lv, "#run-why")
+      assert has_element?(lv, "#run-why", "Paused: a model key reached its limit.")
+      refute has_element?(lv, "#run-why", "It continues")
     end
 
     test "a run that ended well says nothing more", %{conn: conn, scope: scope} do

@@ -161,7 +161,13 @@ defmodule Apiary.Dispatches.PauseTest do
 
     assert %Run{state: "paused"} = paused = Repo.get!(Run, run.id)
     assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
-    assert Pause.of_run(paused) == nil
+
+    # No run continues it: its line has the provider and no run.
+    assert %{provider: provider, number: nil} = pause = Pause.of_run(paused)
+    assert provider == ctx.provider.name
+
+    assert pause |> ApiaryWeb.PauseWords.line(nil) |> ApiaryWeb.RichText.plain_text() ==
+             "Paused: a key of #{ctx.provider.name} reached its limit."
   end
 
   test "an outcome before the exit is refused, and the exit pauses the run", ctx do

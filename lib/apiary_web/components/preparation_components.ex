@@ -1316,14 +1316,12 @@ defmodule ApiaryWeb.PreparationComponents do
   defp waiting_words(_reason), do: nil
 
   @doc false
-  # cooldown_time/1 is the end of a cooldown in the reader's time zone, as the page shows a
-  # time: the time of day alone on the reader's day, else with its date, "16 Nov, 14:00".
-  @spec cooldown_time(DateTime.t()) :: String.t()
-  def cooldown_time(until) do
-    if Format.short_date(until) == Format.short_date(DateTime.utc_now()),
-      do: Format.time(until),
-      else: Format.datetime(until, year: false)
-  end
+  # cooldown_time/2 is the end of a cooldown in the reader's time zone at `now`, as a key's
+  # row on Model providers shows it (`ApiaryWeb.Format.week_time/2`): the time of day
+  # alone on the reader's day, "14:00", the weekday on one of the six days after it,
+  # "Fri 14:00", else with its date, "26 Sept, 14:00".
+  @spec cooldown_time(DateTime.t(), DateTime.t()) :: String.t()
+  def cooldown_time(until, now \\ DateTime.utc_now()), do: Format.week_time(until, now)
 
   defp request_node(nil), do: nil
 

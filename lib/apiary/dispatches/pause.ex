@@ -5,13 +5,14 @@ defmodule Apiary.Dispatches.Pause do
   # gateway ended at its model keys' limit (`Apiary.Runs.Run.paused?/1`), and the run that
   # continues it (`Apiary.Dispatches.requeue_for_pause/2`).
   #
-  # `of/1` is, for each paused run of `run_ids` (`runs.id`) whose provider is known and
-  # that a continuation continues, `%{provider: name, until: time | nil, number: n,
-  # workspace_id: id}`: the name of the run's model provider; when every key of that
-  # provider was in cooldown as the run ended, the earliest end of those cooldowns
-  # (`dispatch_runs.paused_until`), else nil; and the continuation's run number and
-  # workspace. Any other run is not in the map. `of_public_ids/1` is the same by the runs'
-  # public ids (`rn_…`).
+  # `of/1` is, for each paused run of `run_ids` (`runs.id`), `%{provider: name | nil,
+  # until: time | nil, number: n | nil, workspace_id: id | nil}`: the name of the run's
+  # model provider, nil once the provider is deleted; when every key of that provider was
+  # in cooldown as the run ended, the earliest end of those cooldowns
+  # (`dispatch_runs.paused_until`), else nil; and the run number and workspace of the run
+  # that continues it, nil for a paused run that no run continues, such as a prebuild or
+  # a run whose work item left Explore. Any other run is not in the map.
+  # `of_public_ids/1` is the same by the runs' public ids (`rn_…`).
 
   import Ecto.Query, only: [from: 2]
 
@@ -21,10 +22,10 @@ defmodule Apiary.Dispatches.Pause do
   alias Apiary.Runs.Run
 
   @type t :: %{
-          provider: String.t(),
+          provider: String.t() | nil,
           until: DateTime.t() | nil,
-          number: pos_integer,
-          workspace_id: Ecto.UUID.t()
+          number: pos_integer | nil,
+          workspace_id: Ecto.UUID.t() | nil
         }
 
   @spec of([Ecto.UUID.t()]) :: %{optional(Ecto.UUID.t()) => t}
@@ -38,13 +39,13 @@ defmodule Apiary.Dispatches.Pause do
   defp read(key, values) do
     Repo.all(
       from r in Run,
-        join: d in DispatchRun,
+        left_join: d in DispatchRun,
         on: d.id == r.dispatch_run_id,
-        join: c in DispatchRun,
+        left_join: c in DispatchRun,
         on: c.continues_id == d.id,
-        join: next in Run,
+        left_join: next in Run,
         on: next.dispatch_run_id == c.id,
-        join: p in Connection,
+        left_join: p in Connection,
         on: p.id == r.provider_connection_id,
         where: field(r, ^key) in ^Enum.uniq(values) and r.state == "paused",
         select:

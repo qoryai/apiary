@@ -330,14 +330,16 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
         Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
 
       {_work_item, queued} = queue!(scope)
-      until = DateTime.add(DateTime.utc_now(), 2, :day)
+      now = DateTime.utc_now()
+      until = DateTime.add(now, 2, :day)
       cooling!(provider, until)
 
       view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
 
+      # The weekday and the clock, as the paused run's line has them.
       assert text(view, "#prepare-machine-why") ==
                "Waiting for a model key: every key of Team keys is in cooldown until " <>
-                 "#{ApiaryWeb.Format.datetime(until, year: false)}."
+                 "#{ApiaryWeb.Format.week_time(until, now)}."
     end
 
     test "becomes the page of a registered run at the claim, with no reload",
