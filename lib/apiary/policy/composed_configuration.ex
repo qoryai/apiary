@@ -111,7 +111,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # For a run of a workspace's queue that continues a paused run, whose transcript can be
   # restored (`Apiary.Runs.Transcript.resume/1`): `resume`, the paused run's id and the
   # session id and the path of its transcript's last chunk. Any other run gains no such
-  # member, and starts a new session.
+  # member, and starts a new session. A `resume` the stored document has is dropped, so
+  # only Qory Apiary sets it.
   #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`, `stack_hosts`, `resume`,
@@ -192,7 +193,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
         when image: image | (-> image),
              prebuild: boolean | (-> boolean)
   def shape(document, image, prebuild?, fixed? \\ false, members \\ nil) do
-    case {imaged(document, image, prebuild?, fixed?), members?(members)} do
+    compose? = members?(members) or written_resume?(document)
+    members = members || %{variables: nil, credential: nil}
+
+    case {imaged(document, image, prebuild?, fixed?), compose?} do
       {shaped, false} ->
         shaped
 
@@ -203,6 +207,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
         bytes |> with_members(members) |> composed(image)
     end
   end
+
+  # Whether `document` has a `resume` member at its top level, which only Qory Apiary
+  # sets, from the paused run a run continues: a document that has one is composed
+  # without it.
+  defp written_resume?(document) when is_binary(document),
+    do:
+      String.contains?(document, ~s("resume")) and
+        match?(%{"resume" => _}, Jason.decode!(document))
+
+  defp written_resume?(nil), do: false
 
   defp composed({:ok, bytes}, image), do: {:composed, bytes, image}
   defp composed({:error, _reason} = error, _image), do: error
@@ -694,7 +708,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
     members =
       (document || Render.no_policy_document())
       |> decode()
-      |> Enum.reject(fn {name, _value} -> name in names end)
+      |> Enum.reject(fn {name, _value} -> name in names or name == "resume" end)
 
     open? = is_map(registry) and host_open?(members, registry.instance_host)
 

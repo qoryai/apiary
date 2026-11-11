@@ -729,6 +729,38 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
              ) == :as_is
     end
 
+    test "drops a resume the stored document has, and keeps the paused run's" do
+      written = %{"run_id" => Ecto.UUID.generate(), "session_id" => "a1", "path" => "~/a.jsonl"}
+
+      resume = %{
+        "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+        "session_id" => "5f2c9a1e",
+        "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl"
+      }
+
+      document = Jason.encode!(Map.put(Jason.decode!(@document), "resume", written))
+
+      for members <- [nil, stack_members([], %{resume: nil})] do
+        assert {:composed, bytes, nil} =
+                 ComposedConfiguration.shape(document, nil, false, false, members)
+
+        refute Map.has_key?(Jason.decode!(bytes), "resume")
+        assert Jason.decode!(bytes)["security_policy"] == Jason.decode!(@policy)
+      end
+
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(
+                 document,
+                 nil,
+                 false,
+                 false,
+                 stack_members([], %{resume: resume})
+               )
+
+      assert Jason.decode!(bytes)["resume"] == resume
+      assert bytes |> String.split(~s("resume")) |> length() == 2
+    end
+
     test "with no host has no stack_hosts" do
       assert ComposedConfiguration.shape(@document, nil, false, false, stack_members([])) ==
                :as_is
