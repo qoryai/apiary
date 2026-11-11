@@ -1,17 +1,18 @@
 defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
   # The keys of a model provider added for the workspace alone, on the workspace's Secrets
   # and variables: listed with the provider's name and "Model provider key", masked;
-  # changed, added, renamed and deleted as the provider's keys, under `provider.write`;
-  # the secret's deletion refused while the provider links it; never a key in the page.
+  # changed, added, renamed and deleted as the provider's keys, under `provider.write`,
+  # added and changed with their settings; the secret's deletion refused while the
+  # provider links it; never a key in the page.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Connections, Repo, Secrets}
+  alias Apiary.{Connections, ModelKeys, Repo, Secrets}
   alias Apiary.Connections.Connection
-  alias Apiary.Secrets.Secret
+  alias Apiary.Secrets.{Secret, Value}
 
   @moduletag needs: :factory
 
@@ -131,6 +132,109 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
 
     assert Enum.count(changes, &(&1 == "provider_keys_changed")) == 4
     refute Repo.exists?(from e in Apiary.Audit.Entry, where: e.action == "secret.write")
+  end
+
+  test "adds and changes a key with its settings, Resets and Pause for", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+
+    assert has_element?(
+             lv,
+             "#secret_value_reset_day-resets-hint",
+             "Optional. The weekly time when this key's allowance resets. Set it if the provider's answers give no reset time."
+           )
+
+    assert has_element?(
+             lv,
+             "#secret_value_pause_number-pause-hint",
+             "Optional. How long runs skip this key after the provider refuses it, when no reset time is known. Empty: 1 minute."
+           )
+
+    html =
+      lv
+      |> form("#secret-form",
+        secret_value: %{
+          value_id: "spare",
+          value: "second-key",
+          reset_day: "1",
+          reset_time: "",
+          pause_number: "0"
+        }
+      )
+      |> render_submit()
+
+    refute_key(html)
+
+    assert has_element?(
+             lv,
+             "#secret_value_reset_day-resets-error",
+             "Set the day, the time and the time zone, or leave all three empty."
+           )
+
+    assert has_element?(
+             lv,
+             "#secret_value_pause_number-pause-error",
+             "Enter a time from 1 minute to 7 days."
+           )
+
+    assert reveal(provider, "spare") == {:error, :not_found}
+
+    lv
+    |> form("#secret-form",
+      secret_value: %{
+        value_id: "spare",
+        value: "second-key",
+        reset_day: "2",
+        reset_time: "10:30",
+        reset_zone: "Europe/Berlin",
+        pause_number: "3",
+        pause_unit: "days"
+      }
+    )
+    |> render_submit()
+
+    assert render(lv) =~ "spare is added to #{secret.name}."
+    assert reveal(provider, "spare") == {:ok, "second-key"}
+    value = Repo.get_by!(Value, secret_id: secret.id, value_id: "spare")
+    setting = ModelKeys.setting(value.id)
+    assert {setting.reset_weekday, setting.reset_time} == {2, ~T[10:30:00]}
+    assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 259_200}
+
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{secret.public_id}/values/spare/change"))
+
+    assert has_element?(lv, ~s{#secret_value_reset_day option[value="2"][selected]})
+    assert has_element?(lv, ~s{#secret_value_pause_number[value="3"]})
+    assert has_element?(lv, ~s{#secret_value_pause_unit option[value="days"][selected]})
+
+    lv
+    |> form("#secret-form",
+      secret_value: %{
+        value: "third-key",
+        reset_day: "",
+        reset_time: "",
+        pause_number: "45",
+        pause_unit: "minutes"
+      }
+    )
+    |> render_submit()
+
+    assert render(lv) =~ "spare of #{secret.name} is saved."
+    assert reveal(provider, "spare") == {:ok, "third-key"}
+    setting = ModelKeys.setting(value.id)
+    assert {setting.reset_weekday, setting.pause_seconds} == {nil, 2700}
+  end
+
+  test "another secret's value has no settings", ctx do
+    %{conn: conn, scope: scope} = ctx
+    {:ok, plain} = Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "plain-value"})
+
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{plain.public_id}/change-value"))
+
+    assert has_element?(lv, "#secret-form")
+    refute has_element?(lv, "#secret_value_reset_day")
+    refute has_element?(lv, "#secret_value_pause_number")
   end
 
   test "refuses to delete the secret while the provider links it", ctx do

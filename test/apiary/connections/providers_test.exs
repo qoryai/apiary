@@ -4,10 +4,11 @@ defmodule Apiary.Connections.ProvidersTest do
   import Apiary.OrganisationsFixtures
   import ExUnit.CaptureLog
 
-  alias Apiary.{Connections, Secrets}
+  alias Apiary.{Connections, ModelKeys, Secrets}
   alias Apiary.Audit.Entry
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.Providers
+  alias Apiary.ModelKeys.Setting
   alias Apiary.Secrets.{Secret, Value}
 
   # A model provider needs `factory` and `secrets`; a leg with `factory` has `secrets`
@@ -494,6 +495,183 @@ defmodule Apiary.Connections.ProvidersTest do
       for entry <- Repo.all(Entry) do
         refute inspect({entry.details, entry.before, entry.after}, limit: :infinity) =~ @key
       end
+    end
+  end
+
+  defp value!(provider, value_id),
+    do: Repo.get_by!(Value, secret_id: provider.secret_id, value_id: value_id)
+
+  describe "a key's settings" do
+    @settings %{
+      "reset_weekday" => "1",
+      "reset_time" => "09:00",
+      "reset_time_zone" => "Europe/Berlin",
+      "pause_seconds" => 7200
+    }
+
+    test "are added with the key, in one transaction", %{scope: scope} do
+      provider = openrouter!(scope)
+
+      assert {:ok, _provider} =
+               Connections.add_provider_key(
+                 scope,
+                 provider,
+                 %{value_id: "third", value: "z"},
+                 @settings
+               )
+
+      setting = ModelKeys.setting(value!(provider, "third").id)
+      assert {setting.reset_weekday, setting.reset_time} == {1, ~T[09:00:00]}
+      assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 7200}
+
+      # Settings that cannot be saved leave no key.
+      assert {:error, %Ecto.Changeset{data: %Setting{}}} =
+               Connections.add_provider_key(
+                 scope,
+                 provider,
+                 %{value_id: "fourth", value: "y"},
+                 %{"reset_weekday" => "2"}
+               )
+
+      refute Repo.get_by(Value, secret_id: provider.secret_id, value_id: "fourth")
+
+      # A key added without settings has none.
+      assert {:ok, _provider} =
+               Connections.add_provider_key(
+                 scope,
+                 provider,
+                 %{value_id: "fifth", value: "x"},
+                 %{}
+               )
+
+      refute ModelKeys.setting(value!(provider, "fifth").id)
+    end
+
+    test "change with the value, in one transaction", %{scope: scope} do
+      provider = openrouter!(scope)
+      id = value!(provider, "spare").id
+
+      assert {:ok, _provider} =
+               Connections.set_provider_key(scope, provider, "spare", "sk-new", @settings)
+
+      assert ModelKeys.setting(id).pause_seconds == 7200
+
+      assert Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), "spare") ==
+               {:ok, "sk-new"}
+
+      assert {:error, %Ecto.Changeset{data: %Setting{}}} =
+               Connections.set_provider_key(scope, provider, "spare", "sk-newer", %{
+                 "pause_seconds" => 604_801
+               })
+
+      assert ModelKeys.setting(id).pause_seconds == 7200
+
+      assert Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), "spare") ==
+               {:ok, "sk-new"}
+    end
+
+    test "a key's change renames it, and its settings and states stay", %{scope: scope} do
+      provider = openrouter!(scope)
+      value = value!(provider, "spare")
+      key = %{name: "model-1", secret_value_id: value.id, organisation_id: value.organisation_id}
+      now = ~U[2026-11-10 12:00:00.000000Z]
+
+      :ok =
+        ModelKeys.record(
+          [key],
+          [
+            %{
+              credential: "model-1",
+              window: "five_hour",
+              status: "allowed",
+              utilization: 30,
+              source: "provider",
+              observed_at: now
+            }
+          ],
+          now
+        )
+
+      assert {:ok, _provider} =
+               Connections.update_provider_key(scope, provider, "spare", %{
+                 "value_id" => "backup",
+                 "settings" => @settings
+               })
+
+      assert value!(provider, "backup").id == value.id
+      assert ModelKeys.setting(value.id).pause_seconds == 7200
+      assert [%{utilization: 30}] = ModelKeys.provider_states(provider, now)[value.id]
+
+      # Settings alone; then a save that changes nothing leaves no entry.
+      assert {:ok, _provider} =
+               Connections.update_provider_key(scope, provider, "backup", %{
+                 "value_id" => "backup",
+                 "settings" => Map.put(@settings, "pause_seconds", 60)
+               })
+
+      entries = length(trail(provider.id))
+
+      assert {:ok, _provider} =
+               Connections.update_provider_key(scope, provider, "backup", %{
+                 "value_id" => "backup",
+                 "settings" => Map.put(@settings, "pause_seconds", 60)
+               })
+
+      assert length(trail(provider.id)) == entries
+      assert ModelKeys.setting(value.id).pause_seconds == 60
+
+      assert Enum.map(
+               Enum.take(trail(provider.id), -2),
+               &{&1.before, &1.after, &1.details["value_id"]}
+             ) ==
+               [
+                 {%{"value_id" => "spare"}, %{"value_id" => "backup"}, "backup"},
+                 {nil, nil, "backup"}
+               ]
+
+      # Settings that cannot be saved leave the name as it was.
+      assert {:error, %Ecto.Changeset{data: %Setting{}}} =
+               Connections.update_provider_key(scope, provider, "backup", %{
+                 "value_id" => "other",
+                 "settings" => Map.put(@settings, "reset_weekday", nil)
+               })
+
+      assert value!(provider, "backup").id == value.id
+
+      # A name another key has is refused.
+      assert {:error, changeset} =
+               Connections.update_provider_key(scope, provider, "backup", %{"value_id" => "main"})
+
+      assert errors_on(changeset).value_id == ["is already a value ID of this secret"]
+      assert Connections.update_provider_key(scope, provider, "gone", %{}) == {:error, :not_found}
+    end
+
+    test "are for a reader with provider.write, in the provider's organisation", %{scope: scope} do
+      provider = openrouter!(scope)
+      %{scope: member} = member_fixture(scope)
+      %{scope: other} = sign_up_fixture()
+      other_provider = openrouter!(other)
+
+      for {reader, target} <- [{member, provider}, {other, provider}, {member, other_provider}] do
+        refused = [
+          Connections.add_provider_key(reader, target, %{value_id: "x", value: "y"}, @settings),
+          Connections.set_provider_key(reader, target, "spare", "y", @settings),
+          Connections.update_provider_key(reader, target, "spare", %{
+            "value_id" => "spare",
+            "settings" => @settings
+          })
+        ]
+
+        for result <- refused, do: assert(result in [{:error, :forbidden}, {:error, :not_found}])
+      end
+
+      # Another organisation's key is not one of this organisation's provider's keys.
+      assert Connections.update_provider_key(scope, other_provider, "spare", %{
+               "value_id" => "spare",
+               "settings" => @settings
+             }) == {:error, :not_found}
+
+      refute Repo.exists?(from(s in Setting))
     end
   end
 

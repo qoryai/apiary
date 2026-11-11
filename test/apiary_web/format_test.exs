@@ -227,6 +227,25 @@ defmodule ApiaryWeb.FormatTest do
       assert Format.clock(~U[2026-09-18 14:02:11Z], @now) == "18 Sept 2026, 14:02:11"
     end
 
+    test "a time of the coming week: the clock today, the weekday within six days" do
+      # @now is Sunday 20 September 2026.
+      assert Format.week_time(~U[2026-09-20 18:00:00Z], @now) == "18:00"
+      assert Format.week_time(~U[2026-09-21 09:00:00Z], @now) == "Mon 09:00"
+      assert Format.week_time(~U[2026-09-26 23:59:00Z], @now) == "Sat 23:59"
+      assert Format.week_time(~U[2026-09-27 09:00:00Z], @now) == "27 Sept, 09:00"
+      assert Format.week_time(~U[2027-01-04 09:00:00Z], @now) == "4 Jan 2027, 09:00"
+
+      # 23:30 UTC on the 20th is Monday in Berlin.
+      Format.put_time_zone("Europe/Berlin")
+      assert Format.week_time(~U[2026-09-20 23:30:00Z], @now) == "Mon 01:30"
+    end
+
+    test "the days of the week, Monday first" do
+      assert Format.weekdays() |> hd() == {"Monday", 1}
+      assert Format.weekdays() |> List.last() == {"Sunday", 7}
+      assert length(Format.weekdays()) == 7
+    end
+
     test "days turn at the reader's midnight" do
       # 23:30 UTC on the 19th is already the 20th in Berlin, and still the 19th in Lima.
       at = ~U[2026-09-19 23:30:00Z]
