@@ -121,9 +121,11 @@ defmodule Apiary.Dispatches.Handover do
   #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
-  # provider's row id, its keys' secret's row id, the chosen key's value id, the
+  # provider's row id, its keys' secret's row id, its model keys in their order, the
   # provider's chain and the API of the provider the run uses; later reads take those,
-  # never the choices. Its input is formed with the name of the workspace's domain
+  # never the choices. Where every key of the choice's provider and of each fallback
+  # that forms is in cooldown, the claim registers nothing: `register/2` answers
+  # `:wait`, and the run waits again (`Apiary.Dispatches`). Its input is formed with the name of the workspace's domain
   # (`Apiary.Lingo.Domain.name/1`) and the run's target, or none for an explore run whose
   # work item has none, and takes what the rest of the run's documents leave of their
   # limit: it leaves out its oldest comments first (`comments_omitted`). The documents'
@@ -304,12 +306,14 @@ defmodule Apiary.Dispatches.Handover do
   # register/2 registers the run of the queue `claimed.run`, which the claim took, with
   # a run code, through the gateway `claimed.gateway`, inside the claim's transaction:
   # `{:ok, registered}`, `{:ended, workspace_ids}` when the run could not be formed and
-  # ended, or `{:error, :unavailable}` (the moduledoc). `claimed` has the key, the
-  # dispatch, the run of the queue, the gateway and its workspace, the gateway's active
-  # keys, at most two, the clock and the claim's body.
+  # ended, `:wait` when every key of its model choice's provider and of each fallback is
+  # in cooldown (`Apiary.Dispatches.RunSettings`), with no run registered, or
+  # `{:error, :unavailable}` (the moduledoc). `claimed` has the key, the dispatch, the
+  # run of the queue, the gateway and its workspace, the gateway's active keys, at most
+  # two, the clock and the claim's body.
   @doc false
   @spec register(map, DateTime.t()) ::
-          {:ok, registered} | {:ended, [Ecto.UUID.t()]} | {:error, :unavailable}
+          {:ok, registered} | {:ended, [Ecto.UUID.t()]} | :wait | {:error, :unavailable}
   def register(%{run: %DispatchRun{} = dispatch_run} = claimed, %DateTime{} = now) do
     case RunSettings.hold(dispatch_run) do
       :unstable ->
@@ -369,6 +373,9 @@ defmodule Apiary.Dispatches.Handover do
         )
 
         {:error, :unavailable}
+
+      :cooling ->
+        :wait
 
       {:ok, formed} ->
         documents = formed.answer |> DispatchAnswer.documents() |> Jason.encode!()
@@ -775,7 +782,7 @@ defmodule Apiary.Dispatches.Handover do
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
          harness = lowered_access(harness, dispatch_run),
-         {:ok, settings} <- RunSettings.build(held) do
+         {:ok, settings} <- RunSettings.build(held, locked.now) do
       formed(dispatch_run, workspace, target, work_item, settings, harness, fn domain ->
         rest = %{
           dispatch_run: dispatch_run,
@@ -794,6 +801,7 @@ defmodule Apiary.Dispatches.Handover do
       {:end, _cause} = ended -> ended
       :unavailable -> :unavailable
       :unstable -> :unstable
+      :cooling -> :cooling
     end
   end
 

@@ -9,15 +9,17 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog, only: [with_log: 1]
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunSettings}
   alias Apiary.Kinds.{Coded, Providers, Runtimes}
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
   alias Apiary.Runs.{Projector, Run, Target}
+  alias Apiary.Secrets.Value
 
   @moduletag needs: :factory
 
@@ -78,6 +80,15 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
   defp settings(%{run_settings: settings}), do: settings |> Jason.encode!() |> Jason.decode!()
 
+  # The value ids of the keys a run keeps, in its order.
+  defp value_ids(%Run{model_keys: keys}) do
+    by_id = Map.new(Repo.all(Value), &{&1.id, &1.value_id})
+    for %{"id" => id} <- keys, do: by_id[id]
+  end
+
+  defp value!(provider, value_id), do: key_value!(provider, value_id)
+  defp state!(provider, value_id, attrs), do: key_state!(provider, value_id, attrs)
+
   defp choose!(scope, place, attrs) do
     {:ok, choice} = ModelChoices.put_choice(scope, place, attrs)
     choice
@@ -121,7 +132,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                run_settings: %{"runtime" => @runtime},
                provider_connection_id: nil,
                provider_secret_id: nil,
-               provider_value_id: nil,
+               model_keys: nil,
                provider_chain: nil,
                provider_api: nil
              } = Repo.get!(Run, handed.run.id)
@@ -181,7 +192,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
       assert %{"model" => "claude-sonnet-5-5"} = settings(handed)
-      assert %Run{provider_value_id: "spare"} = Repo.get!(Run, handed.run.id)
+      assert value_ids(Repo.get!(Run, handed.run.id)) == ["spare", "main"]
     end
 
     test "keeps the provider and the API the run uses on the run", ctx do
@@ -196,10 +207,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert %Run{
                provider_connection_id: ^provider_id,
                provider_secret_id: ^secret_id,
-               provider_value_id: "main",
                provider_chain: "organisation",
                provider_api: @messages
              } = run = Repo.get!(Run, handed.run.id)
+
+      # The default key first, then the other by the order they were added.
+      assert value_ids(run) == ["main", "spare"]
 
       assert run.run_settings == settings(handed)
 
@@ -259,6 +272,179 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                  "thinking" => "acme-large"
                }
              }
+    end
+  end
+
+  describe "the model keys of a claim" do
+    test "are every key of the provider, ordered, each named by its place, with its resets",
+         ctx do
+      pid = ctx.provider.public_id
+      choose!(ctx.scope, :workspace, %{provider: pid})
+
+      # The default key has a known reset; the other has none, so it goes first.
+      reset = in_seconds(7200)
+      state!(ctx.provider, "main", resets_at: reset)
+
+      {:ok, _setting} =
+        ModelKeys.put_setting(value!(ctx.provider, "spare"), %{pause_seconds: 300})
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      run = Repo.get!(Run, handed.run.id)
+
+      assert run.model_keys == [
+               %{
+                 "id" => value!(ctx.provider, "spare").id,
+                 "name" => "#{pid}-1",
+                 "pause_for_s" => 300
+               },
+               %{
+                 "id" => value!(ctx.provider, "main").id,
+                 "name" => "#{pid}-2",
+                 "pause_for_s" => 60,
+                 "resets_at" => DateTime.to_iso8601(reset)
+               }
+             ]
+
+      # No key value, value id or key's row id in the documents' run settings.
+      encoded = Jason.encode!(handed.run_settings)
+      refute encoded =~ value!(ctx.provider, "spare").id
+      refute encoded =~ "sk-ant"
+    end
+
+    test "send a named key in cooldown after the free keys, chosen, never as the start key",
+         ctx do
+      pid = ctx.provider.public_id
+      choose!(ctx.scope, :workspace, %{provider: pid, key: "spare"})
+      until = in_seconds(3600)
+      state!(ctx.provider, "spare", until: until)
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      [start, cooling] = Repo.get!(Run, handed.run.id).model_keys
+
+      assert start == %{
+               "id" => value!(ctx.provider, "main").id,
+               "name" => "#{pid}-1",
+               "pause_for_s" => 60
+             }
+
+      assert cooling == %{
+               "id" => value!(ctx.provider, "spare").id,
+               "name" => "#{pid}-2",
+               "pause_for_s" => 60,
+               "resets_at" => DateTime.to_iso8601(until),
+               "cooldown_until" => DateTime.to_iso8601(until),
+               "chosen" => true
+             }
+    end
+
+    test "are at most 6, the free keys first", ctx do
+      {:ok, many} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          keys: for(n <- 1..8, do: %{value_id: "key-#{n}", value: "sk-ant-many-#{n}"})
+        })
+
+      choose!(ctx.scope, :workspace, %{provider: many.public_id})
+      state!(many, "key-1", until: in_seconds(600))
+      state!(many, "key-2", until: in_seconds(300))
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      run = Repo.get!(Run, handed.run.id)
+
+      assert value_ids(run) == ~w(key-3 key-4 key-5 key-6 key-7 key-8)
+
+      assert Enum.map(run.model_keys, & &1["name"]) ==
+               for(n <- 1..6, do: "#{many.public_id}-#{n}")
+    end
+
+    test "come from the first fallback with a free key, with its model and effort, while every key of the provider is in cooldown",
+         ctx do
+      {:ok, cooling} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Cooling keys",
+          keys: [%{value_id: "main", value: "sk-ant-cooling-0123456789"}]
+        })
+
+      {:ok, free} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Free keys",
+          keys: [%{value_id: "main", value: "sk-ant-free-0123456789"}]
+        })
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        model: "claude-opus-5-5",
+        fallbacks: [
+          %{provider: cooling.public_id, model: "claude-opus-5-5", effort: "max"},
+          %{provider: free.public_id, model: "claude-sonnet-5-5", effort: "high"}
+        ]
+      })
+
+      for {provider, key} <- [{ctx.provider, "main"}, {ctx.provider, "spare"}, {cooling, "main"}],
+          do: state!(provider, key, until: in_seconds(3600))
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      assert queued.model_provider_ids == [ctx.provider.id, cooling.id, free.id]
+      assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = settings(handed)
+
+      free_id = free.id
+
+      assert %Run{provider_connection_id: ^free_id, model_keys: [%{"name" => name} = key]} =
+               Repo.get!(Run, handed.run.id)
+
+      assert name == "#{free.public_id}-1"
+      assert key["id"] == value!(free, "main").id
+      assert key["pause_for_s"] == 60
+      refute Map.has_key?(key, "chosen")
+    end
+
+    test "leave the run waiting while every key of the provider and its fallbacks is in cooldown",
+         ctx do
+      # Queued before the choice: the run has no providers, so the claim's filter passes
+      # it, and the claim's check of the keys leaves it waiting.
+      work_item = work_item_fixture(ctx.scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      assert queued.model_provider_ids == []
+
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
+
+      assert {:ok, :none} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
+
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, queued.id)
+
+      assert Repo.aggregate(from(d in Dispatch, where: d.dispatch_run_id == ^queued.id), :count) ==
+               0
+
+      # Once a key's cooldown ends, the next claim takes the run on that key.
+      state!(ctx.provider, "spare", until: in_seconds(-1))
+
+      assert {:ok, %{registered: run}} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
+
+      assert run.dispatch_run_id == queued.id
+      assert value_ids(Repo.get!(Run, run.id)) == ["spare", "main"]
+    end
+
+    test "are never built with a start key in cooldown or two chosen keys", ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, key: "main"})
+
+      for {cooled, n} <- Enum.with_index([[], ["main"], ["spare"]]) do
+        for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(-1))
+        for key <- cooled, do: state!(ctx.provider, key, until: in_seconds(3600))
+
+        {{:ok, handed}, _queued, _dispatch} =
+          handover!(ctx, %{external_ref: "acme/shop##{50 + n}"})
+
+        [start | _rest] = keys = Repo.get!(Run, handed.run.id).model_keys
+
+        refute Map.has_key?(start, "cooldown_until"), inspect(cooled)
+        assert Enum.count(keys, &(&1["chosen"] == true)) == 1, inspect(cooled)
+      end
     end
   end
 
@@ -429,8 +615,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert %Run{provider_api: %{"endpoint" => "https://litellm.example.com/team"}} =
                kept = Repo.get!(Run, run.id)
 
-      assert {kept.run_settings, kept.provider_api, kept.provider_value_id} ==
-               {run.run_settings, run.provider_api, run.provider_value_id}
+      assert {kept.run_settings, kept.provider_api, kept.model_keys} ==
+               {run.run_settings, run.provider_api, run.model_keys}
 
       # The next run takes the address as it is now.
       {{:ok, next}, _queued, _dispatch} = handover!(ctx, %{external_ref: "acme/shop#13"})
@@ -472,10 +658,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert %Run{
                provider_connection_id: nil,
                provider_secret_id: nil,
-               provider_value_id: "main",
+               model_keys: [%{"name" => name} | _],
                provider_api: @messages,
                run_settings: %{"model" => "claude-opus-5-5"}
              } = Repo.get!(Run, run.id)
+
+      assert name == "#{ctx.provider.public_id}-1"
     end
 
     test "keeps refusing with the choices alone while no run uses it", ctx do
@@ -544,11 +732,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert %{
                provider_connection_id: id,
                provider_secret_id: secret_id,
-               provider_value_id: "main",
+               model_keys: [%{"id" => key_id, "chosen" => true}],
                provider_chain: "operator"
              } = built.columns
 
       assert {id, secret_id} == {ctx.theirs.id, ctx.theirs.secret_id}
+
+      assert Repo.get!(Apiary.Secrets.Value, key_id).secret_id == ctx.theirs.secret_id
     end
 
     test "has the runtime alone where the edition names no operator", ctx do

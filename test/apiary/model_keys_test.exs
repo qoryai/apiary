@@ -171,28 +171,51 @@ defmodule Apiary.ModelKeysTest do
   end
 
   describe "a run's keys" do
-    test "are the value of its provider's secret with its value id, by the provider's name",
-         ctx do
+    test "are the keys the run keeps, in its order, by their credential names", ctx do
+      stored = [
+        %{"id" => ctx.values["spare"].id, "name" => "model-1", "pause_for_s" => 60},
+        %{"id" => ctx.values["main"].id, "name" => "model-2", "pause_for_s" => 60}
+      ]
+
       run = %Run{
         provider_api: %{"format" => "anthropic-messages"},
         provider_connection_id: ctx.provider.id,
         provider_secret_id: ctx.provider.secret_id,
-        provider_value_id: "spare"
+        model_keys: stored
       }
 
       assert ModelKeys.run_keys(run) == [
                %{
-                 name: ctx.provider.public_id,
+                 name: "model-1",
                  secret_value_id: ctx.values["spare"].id,
+                 organisation_id: ctx.scope.organisation.id
+               },
+               %{
+                 name: "model-2",
+                 secret_value_id: ctx.values["main"].id,
                  organisation_id: ctx.scope.organisation.id
                }
              ]
 
-      # A value id the secret does not have, a provider of another secret, and a run with
-      # no provider have none.
-      assert ModelKeys.run_keys(%{run | provider_value_id: "gone"}) == []
+      # A key renamed since the claim stays a key of the run, by its row id.
+      {1, _rows} =
+        Repo.update_all(from(v in Value, where: v.id == ^ctx.values["spare"].id),
+          set: [value_id: "renamed"]
+        )
 
-      {other, _values} = provider!(ctx.scope, ["spare"])
+      assert [%{name: "model-1"}, %{name: "model-2"}] = ModelKeys.run_keys(run)
+
+      # A key of another secret is not a key of the run, nor are the keys of a run with
+      # none, of a provider of another secret, or with no provider.
+      {other, other_values} = provider!(ctx.scope, ["spare"])
+
+      assert ModelKeys.run_keys(%{
+               run
+               | model_keys: [%{"id" => other_values["spare"].id, "name" => "model-1"}]
+             }) == []
+
+      assert ModelKeys.run_keys(%{run | model_keys: []}) == []
+
       assert ModelKeys.run_keys(%{run | provider_connection_id: other.id}) == []
       assert ModelKeys.run_keys(%{run | provider_api: nil}) == []
       assert ModelKeys.run_keys(%Run{}) == []
@@ -207,7 +230,7 @@ defmodule Apiary.ModelKeysTest do
         provider_api: %{"format" => "anthropic-messages"},
         provider_connection_id: ctx.provider.id,
         provider_secret_id: ctx.provider.secret_id,
-        provider_value_id: "main"
+        model_keys: [%{"id" => ctx.values["main"].id, "name" => "model-1"}]
       }
 
       assert ModelKeys.run_keys(run) == []
@@ -220,6 +243,123 @@ defmodule Apiary.ModelKeysTest do
                nil,
                DateTime.utc_now()
              ) == {:error, :not_found}
+    end
+  end
+
+  describe "the keys at a claim" do
+    # A state of `value` in `window`, written as a report writes one.
+    defp state!(%Value{} = value, window, attrs) do
+      ModelKeys.record(
+        [key(value)],
+        [item(Keyword.merge([window: window, observed_at: DateTime.utc_now()], attrs))],
+        DateTime.utc_now()
+      )
+    end
+
+    # Whether a claim at `now` may take a run of the queue with the providers `ids`, as
+    # the claim's filter reads it.
+    defp claimable?(ids, now) do
+      Repo.one(
+        from r in fragment(
+               "SELECT ?::uuid[] AS model_provider_ids",
+               type(^ids, {:array, Ecto.UUID})
+             ),
+             as: :run,
+             where: ^ModelKeys.claimable(now),
+             select: true
+      ) == true
+    end
+
+    test "have their resets, schedule, cooldown, Pause for and whether they are named", ctx do
+      now = ~U[2026-11-10 12:00:00.000000Z]
+      main = ctx.values["main"]
+      spare = ctx.values["spare"]
+
+      state!(main, "five_hour", resets_at: ~U[2026-11-10 14:00:00Z])
+      state!(main, "seven_day", resets_at: ~U[2026-11-09 14:00:00Z])
+
+      state!(spare, "five_hour",
+        status: "rejected",
+        resets_at: ~U[2026-11-10 13:00:00Z],
+        cooldown_until: ~U[2026-11-10 13:00:00Z]
+      )
+
+      {:ok, _setting} =
+        ModelKeys.put_setting(spare, %{
+          reset_weekday: 1,
+          reset_time: ~T[09:00:00],
+          reset_time_zone: "Etc/UTC",
+          pause_seconds: 120
+        })
+
+      keys = ctx.provider |> ModelKeys.claim_keys("spare", now) |> Map.new(&{&1.value_id, &1})
+
+      assert %{
+               id: main_id,
+               named: false,
+               default: true,
+               resets_at: ~U[2026-11-10 14:00:00.000000Z],
+               schedule_resets_at: nil,
+               known_reset: ~U[2026-11-10 14:00:00.000000Z],
+               cooldown_until: nil,
+               pause_seconds: 60
+             } = keys["main"]
+
+      assert main_id == main.id
+
+      assert %{
+               named: true,
+               default: false,
+               resets_at: ~U[2026-11-10 13:00:00.000000Z],
+               schedule_resets_at: ~U[2026-11-16 09:00:00.000000Z],
+               cooldown_until: ~U[2026-11-10 13:00:00.000000Z],
+               pause_seconds: 120
+             } = keys["spare"]
+    end
+
+    test "a run of the queue waits while every key of each of its providers is in cooldown",
+         ctx do
+      now = DateTime.utc_now()
+      later = DateTime.add(now, 3600)
+      {fallback, fallback_values} = provider!(ctx.scope, ["only"])
+
+      # None in cooldown, and a run with no providers: claimable.
+      assert claimable?([ctx.provider.id, fallback.id], now)
+      assert claimable?([], now)
+
+      # One key of the first provider in cooldown: the other is free.
+      state!(ctx.values["main"], "five_hour", status: "rejected", cooldown_until: later)
+      assert claimable?([ctx.provider.id], now)
+      assert ModelKeys.cooling_until([ctx.provider.id], now) == nil
+
+      # Both keys of the first provider in cooldown: the fallback's key is free.
+      state!(ctx.values["spare"], "seven_day",
+        status: "rejected",
+        cooldown_until: DateTime.add(now, 600)
+      )
+
+      refute claimable?([ctx.provider.id], now)
+      assert claimable?([ctx.provider.id, fallback.id], now)
+
+      assert ModelKeys.cooling_until([ctx.provider.id], now) ==
+               DateTime.truncate(DateTime.add(now, 600), :microsecond)
+
+      # Every key of both in cooldown: the run waits until the first key's end.
+      state!(fallback_values["only"], "five_hour",
+        status: "rejected",
+        cooldown_until: DateTime.add(now, 1200)
+      )
+
+      refute claimable?([ctx.provider.id, fallback.id], now)
+
+      assert ModelKeys.cooling_until([ctx.provider.id, fallback.id], now) ==
+               DateTime.truncate(DateTime.add(now, 600), :microsecond)
+
+      # At the end of a cooldown the key is free again; a provider that is gone does not
+      # count as cooling.
+      assert claimable?([ctx.provider.id, fallback.id], DateTime.add(now, 600))
+      assert claimable?([ctx.provider.id, Ecto.UUID.generate()], now)
+      assert ModelKeys.cooling_until([ctx.provider.id, Ecto.UUID.generate()], now) == nil
     end
   end
 

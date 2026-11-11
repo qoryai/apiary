@@ -558,7 +558,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
       # The model key comes first, and the registry credential, where the feature is on,
       # before the work entry.
-      assert hd(decoded["credentials"])["name"] == work.provider.public_id
+      assert hd(decoded["credentials"])["name"] == "#{work.provider.public_id}-1"
       refute document =~ ~s("token")
 
       {"credentials", entries} =
@@ -612,7 +612,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
         &Apiary.Runs.SecretsRequest.answer(key, &1, Apiary.ContractFixtures.instance_id(), now)
 
       request = &Apiary.SealedRunsFixtures.secrets_request(work.run, work.digest, &1, now)
-      model = work.provider.public_id
+      model = "#{work.provider.public_id}-1"
 
       assert answer.(request.(["work-1"])) == {:error, :credential_unavailable}
       assert answer.(request.([model, "work-1"])) == {:error, :credential_unavailable}

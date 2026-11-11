@@ -1264,6 +1264,14 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp waiting_words(:no_pool), do: gettext("Waiting: no pool can take the run")
 
+  defp waiting_words({:cooldown, provider, until}),
+    do:
+      gettext(
+        "Waiting for a model key: every key of %{provider} is in cooldown until %{time}.",
+        provider: ExternalText.line(provider),
+        time: cooldown_time(until)
+      )
+
   defp waiting_words({:image, target, :queued}),
     do:
       gettext("Waiting for the environment image: a build of %{target} is queued.",
@@ -1306,6 +1314,14 @@ defmodule ApiaryWeb.PreparationComponents do
     do: gettext("Waiting for %{node} to run it.", node: ExternalText.line(name))
 
   defp waiting_words(_reason), do: nil
+
+  # The end of a cooldown in the reader's time zone, as the page shows a time: the time
+  # of day alone on the reader's day, else with its date, "16 Nov, 14:00".
+  defp cooldown_time(until) do
+    if Format.short_date(until) == Format.short_date(DateTime.utc_now()),
+      do: Format.time(until),
+      else: Format.datetime(until, year: false)
+  end
 
   defp request_node(nil), do: nil
 

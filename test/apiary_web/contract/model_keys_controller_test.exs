@@ -42,7 +42,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
   defp state(ctx, attrs \\ %{}) do
     %{
-      "credential" => ctx.provider.public_id,
+      "credential" => "#{ctx.provider.public_id}-1",
       "window" => "five_hour",
       "status" => "rejected",
       "resets_at" => now_z(3600),
@@ -133,7 +133,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert five["window"] == "five_hour"
 
       assert seven == %{
-               "credential" => ctx.provider.public_id,
+               "credential" => "#{ctx.provider.public_id}-1",
                "window" => "seven_day",
                "status" => "allowed_warning",
                "resets_at" => "2099-01-05T09:00:00Z",
@@ -312,7 +312,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
       # This gateway's key, for the other organisation's run.
       body =
-        report(ctx, [state(ctx, credential: other.provider.public_id)],
+        report(ctx, [state(ctx, credential: "#{other.provider.public_id}-1")],
           run_id: other.run.node_run_id
         )
 

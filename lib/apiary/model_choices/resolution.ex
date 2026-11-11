@@ -32,7 +32,8 @@ defmodule Apiary.ModelChoices.Resolution do
   # provider's row id, its model, the provider's default model where it names none, and
   # its effort, none with the default model. A fallback whose provider is not among
   # `providers` is left out, and so are a choice's fallbacks that were not read
-  # (`Ecto.Association.NotLoaded`).
+  # (`Ecto.Association.NotLoaded`). `fallback/3` is the resolution of one of them, with
+  # its provider in place of the choice's.
   @moduledoc false
 
   alias Apiary.ModelChoices.{Fallback, ModelChoice}
@@ -138,6 +139,35 @@ defmodule Apiary.ModelChoices.Resolution do
   # or nil for none. It reads only `input.choices` and the run's places.
   @spec in_effect(map) :: {ModelChoice.level(), ModelChoice.t()} | nil
   def in_effect(%{} = input), do: Enum.find(order(input), &chose_provider?/1)
+
+  @doc false
+  # fallback/3 is the resolution `resolution` of `input` with its fallback `fallback` in
+  # place of its provider: the fallback's provider, the provider's default key, the
+  # fallback's model and effort, and the tiers as the moduledoc maps them for that
+  # provider; the same runtime and level, and no fallbacks. The provider is among
+  # `input.providers`, as each of `resolution.fallbacks` is.
+  @spec fallback(input, t, fallback) :: t
+  def fallback(%{} = input, %__MODULE__{} = resolution, %{connection_id: id} = fallback) do
+    {_level, choice} = in_effect(input)
+    provider = effort_of(Map.fetch!(input.providers, id), input, choice)
+
+    tiers =
+      for tier <- @tiers,
+          {tier_level, entry} <- [tier(order(input), tier, provider)],
+          entry != nil,
+          do: {tier, tier_level, entry}
+
+    %{
+      resolution
+      | connection_id: id,
+        value_id: provider.default_value_id,
+        model_id: fallback.model_id,
+        effort: fallback.effort,
+        tiers: Map.new(tiers, fn {tier, _level, entry} -> {tier, entry} end),
+        tier_levels: Map.new(tiers, fn {tier, tier_level, _entry} -> {tier, tier_level} end),
+        fallbacks: []
+    }
+  end
 
   # The choices in the order of the moduledoc, each `{level, choice}`.
   defp order(input) do

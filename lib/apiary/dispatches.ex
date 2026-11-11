@@ -245,18 +245,19 @@ defmodule Apiary.Dispatches do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Environments, MachineTypes, Nodes, PublicId, Repo}
+  alias Apiary.{Access, AccessKeys, Environments, MachineTypes, ModelKeys, Nodes, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Handover, HarnessReads, MachineEnds}
   alias Apiary.Dispatches.{MachineLogs, Queued, Release}
-  alias Apiary.Dispatches.{RunEnd, Settle}
+  alias Apiary.Dispatches.{RunEnd, RunSettings, Settle}
   alias Apiary.Dispatches.Slots
   alias Apiary.Environments.Record
   alias Apiary.Harnesses.{RunHarness, WalkJob}
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.ProviderCredential
   alias Apiary.WorkItems.WorkItem
 
   # The step every run of a take in is queued for: the contract's `explore`.
@@ -462,6 +463,7 @@ defmodule Apiary.Dispatches do
         of: of,
         queued_at: now()
       })
+      |> with_model_providers()
       |> Repo.insert()
 
     with {:ok, run} <- result,
@@ -480,6 +482,29 @@ defmodule Apiary.Dispatches do
     do: Map.take(stage, [:machine_type, :machine_spec, :machine_type_was_default])
 
   defp machine_type(stage), do: MachineTypes.queued_on(stage[:machine_type])
+
+  # The new run's changeset with the model providers of its model choice as the choice is
+  # when the run is queued: the choice's provider, then its fallbacks in their order
+  # (`Apiary.Dispatches.RunSettings.choice_in_effect/1`), while runs are given model
+  # keys (`Apiary.Runs.ProviderCredential.applies?/0`); none else. A later save of a
+  # choice leaves them as they are: the claim checks the providers again.
+  defp with_model_providers(changeset) do
+    with true <- changeset.valid? and ProviderCredential.applies?(),
+         {_level, choice} <-
+           RunSettings.choice_in_effect(Ecto.Changeset.apply_changes(changeset)) do
+      fallbacks =
+        choice
+        |> Repo.preload(:fallbacks)
+        |> Map.fetch!(:fallbacks)
+        |> Enum.sort_by(& &1.position)
+        |> Enum.map(& &1.connection_id)
+
+      ids = [choice.connection_id | fallbacks] |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      Ecto.Changeset.put_change(changeset, :model_provider_ids, ids)
+    else
+      _none -> changeset
+    end
+  end
 
   # `run` with whether it is a run of Explore, as known when it is queued
   # (`Apiary.Stages.explore_at_queue/3`).
@@ -902,7 +927,7 @@ defmodule Apiary.Dispatches do
              ),
            :ok <- below_limit(pool, now) do
         fit = fit(%{pool | offers: offers}, MachineTypes.default_type())
-        HarnessReads.prefetch(waiting_query(key, fit), @max_ended, now)
+        HarnessReads.prefetch(waiting_query(key, fit, now), @max_ended, now)
       else
         _no_read -> %{}
       end
@@ -1055,7 +1080,9 @@ defmodule Apiary.Dispatches do
   defp pick(_key, _pool, _through, _now, _default, 0, ended, _skipped), do: {:none, ended}
 
   defp pick(key, pool, through, now, default, max, ended, skipped) do
-    case Repo.one(from r in waiting_query(key, fit(pool, default)), where: r.id not in ^skipped) do
+    case Repo.one(
+           from r in waiting_query(key, fit(pool, default), now), where: r.id not in ^skipped
+         ) do
       nil ->
         {:none, ended}
 
@@ -1124,6 +1151,10 @@ defmodule Apiary.Dispatches do
 
       {:ended, changed} ->
         pick(key, pool, through, now, default, max - 1, staged(run) ++ changed ++ ended, skipped)
+
+      :wait ->
+        unclaim(claimed)
+        pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
 
       {:error, :unavailable} = error ->
         error
@@ -1254,6 +1285,20 @@ defmodule Apiary.Dispatches do
     end
   end
 
+  # The claim of `claimed` taken back, in the claim's transaction, for a run its handover
+  # leaves waiting (`Apiary.Dispatches.Handover.register/2`, `:wait`): the dispatch the
+  # claim inserted goes, and the run of the queue waits again, as it was.
+  defp unclaim(%{dispatch: %Dispatch{id: dispatch_id}, run: %DispatchRun{id: run_id}}) do
+    {1, _rows} = Repo.delete_all(from d in Dispatch, where: d.id == ^dispatch_id)
+
+    {1, _rows} =
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run_id and r.state == :claimed),
+        set: [state: :waiting]
+      )
+
+    :ok
+  end
+
   defp claim_run(key, pool, run, for, now, machine) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
@@ -1337,15 +1382,17 @@ defmodule Apiary.Dispatches do
     if Nodes.instances_in_use(pool, now) < limit, do: :ok, else: :at_limit
   end
 
-  # waiting_query/2 is the query of the oldest waiting run the pool of `key` may take,
-  # locked `FOR UPDATE SKIP LOCKED`, of the runs that pass `fit`, a condition on a run
-  # bound `:run`, by its machine type (`fit/2`), any run when not given. A prebuild goes
-  # only to the pool it is held for, only on an instance with a registry
-  # (`prebuild_taken/0`); a run held for the pool's build of its target
-  # (`Apiary.Environments.held/1`) is left waiting.
+  # waiting_query/3 is the query of the oldest waiting run the pool of `key` may take at
+  # `now`, the queue's clock when not given, locked `FOR UPDATE SKIP LOCKED`, of the runs
+  # that pass `fit`, a condition on a run bound `:run`, by its machine type (`fit/2`), any
+  # run when not given. A prebuild goes only to the pool it is held for, only on an
+  # instance with a registry (`prebuild_taken/0`); a run held for the pool's build of its
+  # target (`Apiary.Environments.held/1`) is left waiting, and so is a run while every key
+  # of each of its model providers is in cooldown at `now` (`keys_free/1`).
   @doc false
-  @spec waiting_query(AccessKey.t(), Ecto.Query.dynamic_expr() | true) :: Ecto.Query.t()
-  def waiting_query(key, fit \\ true)
+  @spec waiting_query(AccessKey.t(), Ecto.Query.dynamic_expr() | true, DateTime.t() | nil) ::
+          Ecto.Query.t()
+  def waiting_query(key, fit \\ true, now \\ nil)
 
   def waiting_query(
         %AccessKey{
@@ -1353,7 +1400,8 @@ defmodule Apiary.Dispatches do
           workspace_id: workspace_id,
           node_id: pool_id
         },
-        fit
+        fit,
+        now
       )
       when is_binary(workspace_id) do
     query =
@@ -1364,6 +1412,7 @@ defmodule Apiary.Dispatches do
         where: ^fitting(fit),
         where: r.step != ^@prebuild or r.pool_id == ^pool_id,
         where: ^prebuild_taken(),
+        where: ^keys_free(now),
         where: not exists(walk_unresolved()),
         order_by: [asc: r.queued_at, asc: r.id],
         limit: 1,
@@ -1381,7 +1430,7 @@ defmodule Apiary.Dispatches do
   # across organisations, and the prebuilds held for it, each in a place in use
   # (`in_use_place/0`). A workspace whose pool never enrolled has a pool in use: its runs
   # wait for that pool.
-  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}, fit) do
+  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}, fit, now) do
     takes =
       dynamic(
         [run: r],
@@ -1396,6 +1445,7 @@ defmodule Apiary.Dispatches do
       where: ^takes,
       where: ^fitting(fit),
       where: ^prebuild_taken(),
+      where: ^keys_free(now),
       where: ^in_use_place(),
       where: not exists(walk_unresolved()),
       order_by: [asc: r.queued_at, asc: r.id],
@@ -1405,6 +1455,15 @@ defmodule Apiary.Dispatches do
 
   defp fitting(true), do: dynamic([run: _r], true)
   defp fitting(fit), do: fit
+
+  # The condition, on a run of the queue bound `:run`, that not every key of each of its
+  # model providers is in cooldown at `now` (`Apiary.ModelKeys.claimable/1`), while runs
+  # are given model keys (`Apiary.Runs.ProviderCredential.applies?/0`); any run else.
+  defp keys_free(now) do
+    if ProviderCredential.applies?(),
+      do: ModelKeys.claimable(now || now()),
+      else: dynamic([run: _r], true)
+  end
 
   # The condition, on a run of the queue bound `:run`, that a claim may take it: a run
   # that is not a prebuild; a prebuild only on an instance with a registry

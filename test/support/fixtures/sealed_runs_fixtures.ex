@@ -36,16 +36,31 @@ defmodule Apiary.SealedRunsFixtures do
 
   With `place: :workspace`, the provider is added for the scope's workspace alone, its key
   a secret of that workspace (`Apiary.Connections.create_provider/3`).
+
+  With `keys: keys`, the provider has `keys`, maps of `value_id` and `value`, in place of
+  the one key; with `choice: attrs`, the workspace's model choice has `attrs` beside the
+  provider; and with `before_claim: fun`, `fun` is called with the provider before the
+  claim, to write the states of its keys, say.
   """
   def sealed_run_fixture(%Scope{} = scope, opts \\ []) do
     {:ok, provider} =
       Connections.create_provider(
         scope,
-        %{provider: "anthropic", keys: [%{value_id: "main", value: @model_key}]},
+        %{
+          provider: "anthropic",
+          keys: Keyword.get(opts, :keys, [%{value_id: "main", value: @model_key}])
+        },
         Keyword.get(opts, :place, :organisation)
       )
 
-    {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+    {:ok, _choice} =
+      ModelChoices.put_choice(
+        scope,
+        :workspace,
+        Map.put(Map.new(Keyword.get(opts, :choice, %{})), :provider, provider.public_id)
+      )
+
+    if fun = opts[:before_claim], do: fun.(provider)
 
     place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope, allow_secrets: true)
     {key, seed} = place.gateway_key

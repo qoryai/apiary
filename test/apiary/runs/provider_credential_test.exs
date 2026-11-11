@@ -75,7 +75,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       names = Enum.map(decoded.values, &elem(&1, 0))
       assert names == ~w(version security_policy variables credentials model_credential)
 
-      name = ctx.provider.public_id
+      name = "#{ctx.provider.public_id}-1"
       assert name =~ ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
 
       assert Jason.decode!(document)["credentials"] == [
@@ -83,7 +83,8 @@ defmodule Apiary.Runs.ProviderCredentialTest do
                  "name" => name,
                  "format" => "anthropic-messages",
                  "endpoint" => "https://api.anthropic.com",
-                 "auth" => %{"scheme" => "header", "header" => "x-api-key"}
+                 "auth" => %{"scheme" => "header", "header" => "x-api-key"},
+                 "pause_for_s" => 60
                }
              ]
 
@@ -138,12 +139,15 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
     end
 
-    test "every run of the provider is given the same name", ctx do
+    test "every run of the provider names its start key by the provider and its place", ctx do
       %{run: run} = ctx
       {:ok, credential} = ProviderCredential.for_run(run)
       {:ok, again} = ProviderCredential.for_run(%{run | id: Ecto.UUID.generate()})
       assert credential.name == again.name
-      assert credential.name == ctx.provider.public_id
+      assert credential.name == "#{ctx.provider.public_id}-1"
+      assert [%{name: name, secret_value_id: id}] = credential.keys
+      assert name == credential.name
+      assert [%{"id" => ^id}] = run.model_keys
     end
 
     test "a provider row that fails its integrity code leaves no run configuration", ctx do
@@ -166,6 +170,47 @@ defmodule Apiary.Runs.ProviderCredentialTest do
 
       {answer, _log} = with_log(fn -> reload(ctx) end)
       assert answer == {:error, :unavailable}
+    end
+  end
+
+  describe "a run with several keys" do
+    test "is given each key of the run, the named key in cooldown last, which the schema takes" do
+      %{scope: scope} = sign_up_fixture()
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
+      until = Apiary.ModelKeysFixtures.in_seconds(3600)
+
+      ctx =
+        sealed_run_fixture(scope,
+          keys: [
+            %{value_id: "main", value: model_key()},
+            %{value_id: "spare", value: "sk-ant-spare-0123456789"}
+          ],
+          choice: %{key: "spare"},
+          before_claim: &Apiary.ModelKeysFixtures.key_state!(&1, "spare", until: until)
+        )
+
+      document = document(ctx)
+      p = ctx.provider.public_id
+      at = DateTime.to_iso8601(until)
+
+      assert [start, cooling] = Jason.decode!(document)["credentials"]
+      assert start["name"] == "#{p}-1"
+      refute Map.has_key?(start, "cooldown_until")
+      refute Map.has_key?(start, "chosen")
+
+      assert Map.take(cooling, ~w(name resets_at cooldown_until chosen pause_for_s)) == %{
+               "name" => "#{p}-2",
+               "resets_at" => at,
+               "cooldown_until" => at,
+               "chosen" => true,
+               "pause_for_s" => 60
+             }
+
+      assert Jason.decode!(document)["model_credential"] == "#{p}-1"
+      assert Apiary.Policy.Schema.validate(document) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+      refute document =~ model_key()
+      refute document =~ "sk-ant-spare"
     end
   end
 
@@ -293,15 +338,17 @@ defmodule Apiary.Runs.ProviderCredentialTest do
           "format" => "anthropic-messages",
           "endpoint" => "https://litellm.example.com",
           "auth" => %{"scheme" => "bearer"}
-        }
+        },
+        model_keys: [%{"id" => Ecto.UUID.generate(), "name" => "model-1", "pause_for_s" => 60}]
       }
 
-      assert {:ok, %{hosts: ["litellm.example.com"], entry: entry}} =
+      assert {:ok, %{hosts: ["litellm.example.com"], keys: [%{entry: entry}]}} =
                ProviderCredential.for_run(run)
 
       assert Jason.encode!(entry) ==
-               ~s({"name":"#{litellm.public_id}","format":"anthropic-messages",) <>
-                 ~s("endpoint":"https://litellm.example.com","auth":{"scheme":"bearer"}})
+               ~s({"name":"model-1","format":"anthropic-messages",) <>
+                 ~s("endpoint":"https://litellm.example.com","auth":{"scheme":"bearer"},) <>
+                 ~s("pause_for_s":60})
     end
   end
 

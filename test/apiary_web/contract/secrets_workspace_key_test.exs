@@ -40,7 +40,7 @@ defmodule ApiaryWeb.Contract.SecretsWorkspaceKeyTest do
     secrets_request(
       ctx.run,
       Keyword.get(attrs, :digest, ctx.attached.digest),
-      Keyword.get(attrs, :credentials, [ctx.provider.public_id]),
+      Keyword.get(attrs, :credentials, ["#{ctx.provider.public_id}-1"]),
       SignedRequest.now()
     )
   end
@@ -94,7 +94,7 @@ defmodule ApiaryWeb.Contract.SecretsWorkspaceKeyTest do
 
     log =
       capture_log(fn ->
-        conn = post_secrets(ctx, request(ctx, digest: digest, credentials: [theirs.public_id]))
+        conn = post_secrets(ctx, request(ctx, digest: digest))
         assert conn.status == 409
         assert Jason.decode!(conn.resp_body)["error"] == "credential_unavailable"
       end)
