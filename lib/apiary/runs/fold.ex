@@ -727,8 +727,8 @@ defmodule Apiary.Runs.Fold do
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
   def exit_state("paused", @paused_reason), do: "paused"
-  # The shape of a pause until every gateway sends `paused`: Qory Apiary is deployed
-  # before Forager, so it reads both while gateways of both versions run.
+  # The shape of a pause from a gateway built with qoryai/forager#53 and before #54,
+  # which ends a paused run `cancelled`: read as Paused while such gateways run.
   def exit_state("cancelled", @paused_reason), do: "paused"
   def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
   def exit_state("succeeded", _reason), do: "completed"

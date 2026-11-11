@@ -1342,8 +1342,8 @@ The fold maps an exit to a state by the first rule that applies
    and it is never a person's cancel. The state is final, and the end of a paused run of
    a workspace's queue queues the run that continues it (A run that continues a paused
    run, under The run endpoint). `cancelled` with `model_key_limit`, the shape a gateway
-   sent before the contract had `paused`, is Paused too, while gateways of both versions
-   run: Qory Apiary is deployed before Forager. The contract allows `model_key_limit`
+   sent before the contract had `paused` (a gateway built with qoryai/forager#53 and
+   before #54), is Paused too, while such gateways run. The contract allows `model_key_limit`
    with `paused` alone, and `paused` with `model_key_limit` alone: with any other
    `state`, or none, the reason changes nothing, as an unknown reason does, and `paused`
    with another reason, or none, is read as an unknown `state`; the rules below apply,
