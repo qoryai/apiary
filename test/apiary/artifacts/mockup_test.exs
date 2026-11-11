@@ -540,7 +540,7 @@ defmodule Apiary.Artifacts.MockupTest do
                timed(bytes)
     end
 
-    test "10,000 start tags are allowed, the template's 5 included, and 10,001 refused" do
+    test "10,000 start tags are allowed, the 5 tags of the page around the snippet included, and 10,001 refused" do
       # End tags are not counted: each `<i>` has its `</i>`.
       tags = fn n -> check(page("", String.duplicate("<i></i>", n - 5))) end
 

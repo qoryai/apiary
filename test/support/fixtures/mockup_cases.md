@@ -196,9 +196,9 @@ refused body <div style="background:u&#114;l(https://example.com/a.png)">x</div>
 - A page with a UTF-8 byte order mark is refused.
 - A page that is not valid UTF-8 (the byte `0xFF`) is refused.
 - A page of 1 MiB is allowed when every rule passes; one byte more is refused.
-- A page with 10,000 start tags in all, the template's 5 included, is allowed; with 10,001
-  it is refused. A `<p>` with 256 `data-a1` to `data-a256` attributes is allowed; with 257
-  it is refused.
+- A page with 10,000 start tags in all, the 5 tags of the page around the snippet
+  included, is allowed; with 10,001 it is refused. A `<p>` with 256 `data-a1` to
+  `data-a256` attributes is allowed; with 257 it is refused.
 - A page whose `<style>` contains `<x` followed by 257 words separated by spaces, with no
   `>` after them, before `</style>`, is refused.
 - A page with `<svg><defs><path id="p" d="M0 0"/></defs>` and then 1,000 `<use href="#p"/>`
