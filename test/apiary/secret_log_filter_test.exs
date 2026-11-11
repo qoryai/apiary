@@ -364,6 +364,47 @@ defmodule Apiary.SecretLogFilterTest do
       end
     end
 
+    test "of a mockup frame is replaced in a line, a URL and a path's segments" do
+      token =
+        Phoenix.Token.sign(ApiaryWeb.Endpoint, "mockup frame", %{v: "av_1", w: "w", u: "u"})
+
+      path = "/acme/main/work/7/artifacts/av_1jvd3522b8vqehhm/mockup/#{token}/home.html"
+      redacted = "/acme/main/work/7/artifacts/av_1jvd3522b8vqehhm/mockup/:token/home.html"
+
+      %{msg: {:string, text}} = SecretLogFilter.filter(event({:string, "GET " <> path}), nil)
+      assert text == "GET " <> redacted
+
+      %{msg: {:string, text}} =
+        SecretLogFilter.filter(event({:string, "at https://qory.example.com#{path}."}), nil)
+
+      assert text == "at https://qory.example.com#{redacted}."
+
+      segments = String.split(path, "/", trim: true)
+
+      %{meta: %{path_info: kept}} =
+        SecretLogFilter.filter(%{event({:string, "x"}) | meta: %{path_info: segments}}, nil)
+
+      assert kept == String.split(redacted, "/", trim: true)
+      assert SecretLogFilter.redact_path(path) == redacted
+
+      # A path that ends at the token, a query after it, and a router's not found line.
+      frame = "/acme/main/work/7/artifacts/av_1jvd3522b8vqehhm/mockup/"
+
+      for {line, kept} <- [
+            {"GET #{frame}#{token}", "GET #{frame}:token"},
+            {"GET #{frame}#{token}?x=1", "GET #{frame}:token?x=1"},
+            {"GET #{frame}#{token}#top", "GET #{frame}:token#top"},
+            {~s(url "#{frame}#{token}"), ~s(url "#{frame}:token")},
+            {"no route found for GET #{frame}#{token} (ApiaryWeb.Router)",
+             "no route found for GET #{frame}:token (ApiaryWeb.Router)"}
+          ] do
+        assert filtered_text(line) == kept
+      end
+
+      assert SecretLogFilter.redact_path(frame <> token) == frame <> ":token"
+      assert SecretLogFilter.redact_path(frame <> token <> "/") == frame <> ":token"
+    end
+
     test "is replaced in a report's terms and in the metadata, a path's segments among them",
          %{token: token} do
       report = %{

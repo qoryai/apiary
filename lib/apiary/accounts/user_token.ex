@@ -79,6 +79,27 @@ defmodule Apiary.Accounts.UserToken do
   end
 
   @doc """
+  verify_session_token_id_query/1 is `verify_session_token_query/1` for the session
+  record whose id is `id`, not its token: the person and the session's creation time
+  while the session lasts and the account is in use. A session that ended, by signing
+  out or by a password change, has no record.
+  """
+  def verify_session_token_id_query(id) do
+    query =
+      from(token in __MODULE__,
+        where: token.id == ^id and token.context == "session",
+        join: user in assoc(token, :user),
+        as: :account,
+        where: token.inserted_at > ago(@session_validity_in_days, "day"),
+        where: is_nil(user.deleted_at),
+        select: {%{user | authenticated_at: token.authenticated_at}, token.inserted_at}
+      )
+      |> Apiary.Edition.active_accounts(:account)
+
+    {:ok, query}
+  end
+
+  @doc """
   Builds a token and its hash to be delivered to the user's email.
 
   The non-hashed token is sent to the user email while the

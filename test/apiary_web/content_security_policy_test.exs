@@ -63,7 +63,11 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     "/:org/:workspace/work/:number/artifacts/:version_id/files/:filename" =>
       "a file of an artifact, never a page: served as an attachment under a sandbox " <>
         "policy instead of the console's " <>
-        "(`test/apiary_web/controllers/artifact_file_controller_test.exs` holds it)"
+        "(`test/apiary_web/controllers/artifact_file_controller_test.exs` holds it)",
+    "/:org/:workspace/work/:number/artifacts/:version_id/mockup/:token/:page" =>
+      "a screen of a mockup, never a page of the console: served for a frame under " <>
+        "the frame's policy instead of the console's " <>
+        "(`test/apiary_web/controllers/artifact_mockup_controller_test.exs` tests it)"
   }
 
   # Routes that answer 404 to anyone here, each with the reason.

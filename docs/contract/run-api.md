@@ -354,6 +354,36 @@ Checks, in order, after the checks of every request:
    attributes as "the attributes past the 256th on the rect element". An element that
    declares a prefix, or `xmlns`, twice is not well-formed XML and gets the "Make
    checkout.svg a well-formed SVG file …" message.
+
+   A run's version of `mockup` with a file named `screens.json` is a mockup of pages:
+   `screens.json` and one HTML page per screen, and no other file. A version of `mockup`
+   without `screens.json` is a mockup of images, checked and shown as before.
+
+   - `screens.json` is at most 64 KiB (65536 bytes), one JSON document valid against
+     Qory Apiary's schema of the mockup format,
+     `priv/schemas/artifacts/mockup.schema.json`: 1 to 9 screens, each with an `id`, a
+     `title`, a `file` that is the id and `.html`, its `criteria` and its `links`.
+     Beside the schema, Qory Apiary checks that the ids differ, that `start` and each
+     link's `to` are ids of screens, and that every screen can be reached from `start`
+     through links. A refusal is "Fix screens.json to match the format of mockup: at
+     <path>, <error>.", such as "at #/start, use the id of a screen, not `gone`". A
+     screen's `title` with a space at its start or end, or two spaces in a row, is
+     refused at that title: it matches no page's `<title>`. A `title` or a link's
+     `label` that is empty, longer than 200 characters or has a control character gets
+     its fix, such as "Shorten the title of screen `home` in `screens.json` to at most
+     200 characters: it has 201.", at `files[<n>]`.
+   - Each page is at most 1 MiB (1048576 bytes) of UTF-8 with no byte order mark, has at
+     most 10,000 start tags and at most 256 attributes on one tag, and follows Qory
+     Apiary's page rules for a mockup: it runs no script, loads nothing from outside the
+     version but base64 `data:` images and fonts, sends no form, has exactly one
+     `<title>` equal to the screen's `title`, and links with `<a href="<id>.html">`
+     exactly to the screens of its `links`. The page is read as a browser reads it,
+     by the HTML5 algorithm. In the `<title>`, each run of ASCII white space is one
+     space and the ends are trimmed; a no-break space stays.
+   - A refusal's message has the file and the fix, such as "Remove the `<script>`
+     element from `home.html` (screen `home`): a mockup page runs no script." at
+     `files[1]`, or "Add `home.html` to the version: it is the page of screen `home` in
+     `screens.json`." at `files`.
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version, or a version of `questions` that breaks one of the
    `decision` rules of this check: `422` `invalid_artifact`, with the file in `names`
@@ -510,6 +540,9 @@ The messages:
       attribute", "the url() in the style element", "the url() in the xmlns:a
       attribute", "the @import in the text of the desc element" or "the image-set() in
       the style attribute". A name past 64 characters is cut to 64 and "…".
+  - For a run's version of `mockup` with `screens.json`, the message of the first
+    rule the version breaks, with the fix first, such as "Remove the `<script>` element
+    from `home.html` (screen `home`): a mockup page runs no script."
   - For a version of `verdict` whose `answer` point is about a question that is not open:
     "Push the questions first, or point at an open question in verdict.json: point 2 is
     about question q7, which is not open."

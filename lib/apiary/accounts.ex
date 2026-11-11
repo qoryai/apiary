@@ -354,6 +354,33 @@ defmodule Apiary.Accounts do
   end
 
   @doc """
+  session_token_id/1 is the id of the session record of the session token `token`, or
+  nil when no session has it.
+  """
+  @spec session_token_id(binary) :: Ecto.UUID.t() | nil
+  def session_token_id(token) when is_binary(token) do
+    Repo.one(
+      from t in UserToken, where: t.token == ^token and t.context == "session", select: t.id
+    )
+  end
+
+  @doc """
+  get_user_by_session_token_id/1 is `get_user_by_session_token/1` by the id of the
+  session record: `{user, token_inserted_at}` while the session lasts, else nil.
+  """
+  @spec get_user_by_session_token_id(term) :: {%User{}, DateTime.t()} | nil
+  def get_user_by_session_token_id(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} ->
+        {:ok, query} = UserToken.verify_session_token_id_query(id)
+        Repo.one(query)
+
+      :error ->
+        nil
+    end
+  end
+
+  @doc """
   Gets the user with the given magic link token.
   """
   def get_user_by_magic_link_token(token) do

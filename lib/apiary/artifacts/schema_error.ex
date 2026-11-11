@@ -7,13 +7,16 @@ defmodule Apiary.Artifacts.SchemaError do
   # "First" is in one order for one file and one schema: JSV's errors sorted by their
   # data path, segment by segment, then by keyword, the ties in JSV's order. An error
   # that only points at a deeper one, such as "property 'gaps' did not conform to the
-  # property schema", is passed over while a deeper error exists.
+  # property schema", is passed over while a deeper error exists. With `unwrap: true`, as
+  # for the type `mockup`, an `allOf` error, which a `$ref` to a definition with a limit
+  # on its length makes, is the errors of its schemas that failed, so "value did not
+  # conform to all of the given schemas" is replaced by the failing limit's message.
   #
   # Both strings come from the file: a member name is part of the path, and a message
   # can quote a member name or a value. Each is cut to at most 1,024 bytes before its
   # control characters are replaced (`Apiary.ExternalText.line/1`), then the path to at
   # most 256 bytes and the error to at most 300 characters, on a character boundary.
-  # A caller that validates within a budget calls `first/1` inside it.
+  # A caller that validates within a budget calls `first/2` inside it.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -28,10 +31,14 @@ defmodule Apiary.Artifacts.SchemaError do
   @typedoc "Where a structured file fails its JSON Schema, and why."
   @type t :: %{path: String.t(), error: String.t()}
 
-  # first/1 is the first failing place of JSV's `error`.
+  # first/2 is the first failing place of JSV's `error`; `opts` is `[]` or
+  # `[unwrap: true]`, which reads the errors inside an `allOf`.
   @doc false
-  @spec first(JSV.ValidationError.t()) :: t
-  def first(%JSV.ValidationError{errors: errors}) do
+  @spec first(JSV.ValidationError.t(), keyword) :: t
+  def first(%JSV.ValidationError{errors: errors}, opts \\ []) do
+    errors =
+      if Keyword.get(opts, :unwrap, false), do: Enum.flat_map(errors, &failed/1), else: errors
+
     sorted = Enum.sort_by(errors, &{Enum.reverse(&1.data_path), &1.kind})
 
     {error, message} =
@@ -54,6 +61,18 @@ defmodule Apiary.Artifacts.SchemaError do
       error: error |> cleaned() |> cut_characters(@error_characters)
     }
   end
+
+  # An `allOf` error is the errors of its failed schemas, each read the same way.
+  defp failed(%{kind: :allOf, args: args} = error) do
+    nested =
+      for {_index, %{errors: errors}} <- Keyword.get(args, :invalidated, []),
+          error <- errors,
+          do: error
+
+    if nested == [], do: [error], else: Enum.flat_map(nested, &failed/1)
+  end
+
+  defp failed(error), do: [error]
 
   defp first_pointer([error | _rest]) do
     {_level, message} = message(error)

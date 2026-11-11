@@ -640,6 +640,19 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/jump", JumpController, :show
         end
 
+        # A screen of a mockup of pages, for the frame of the version page, with the
+        # `workflow_model` feature: the page itself, sent with the frame's policy in
+        # place of the console's. It reads no session and no cookie: the signed token in
+        # the path is the person's read of the version
+        # (`ApiaryWeb.ArtifactMockupController`). Not a page of the console.
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope]
+
+          get "/:org/:workspace/work/:number/artifacts/:version_id/mockup/:token/:page",
+              ArtifactMockupController,
+              :show
+        end
+
         # The links of the breadcrumb's menus: to a workspace, and to an organisation, in
         # the workspace the person last used there (`-` is no workspace's slug), sent on to
         # the page the reader is on, its list page, its section or the workspace's overview:

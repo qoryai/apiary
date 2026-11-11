@@ -57,6 +57,37 @@ defmodule ApiaryWeb.RequestLogTest do
     end
   end
 
+  @frame "/acme/main/work/7/artifacts/av_1jvd3522b8vqehhm/mockup"
+  @frame_token "SFMyNTY.g2gDdAAAAAN3AXVtAAAAJGE.Xy-9_aB"
+
+  test "replaces the token of a mockup frame's path, and keeps the rest" do
+    for path <- ["#{@frame}/#{@frame_token}/home.html", "/#{@frame}//#{@frame_token}/home.html/"] do
+      assert RequestLog.redact_path(path) == "#{@frame}/:token/home.html"
+    end
+
+    # A path that ends at the token: its last segment is read as a token.
+    assert RequestLog.redact_path("#{@frame}/#{@frame_token}") == "#{@frame}/:token"
+    assert RequestLog.redact_path("#{@frame}/home.html") == "#{@frame}/:token"
+    assert RequestLog.redact_path("#{@frame}") == "#{@frame}"
+  end
+
+  test "the logged request line of a mockup frame has no token" do
+    conn = Plug.Test.conn(:get, "#{@frame}/#{@frame_token}/home.html") |> Plug.Conn.resp(200, "")
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        RequestLog.handle_event(
+          [:phoenix, :endpoint, :stop],
+          %{duration: System.convert_time_unit(1, :millisecond, :native)},
+          %{conn: conn},
+          :error
+        )
+      end)
+
+    assert log =~ "GET #{@frame}/:token/home.html"
+    refute log =~ @frame_token
+  end
+
   test "the logged request line carries the redacted path" do
     conn = Plug.Test.conn(:get, "/users/log-in/#{@token}") |> Plug.Conn.resp(200, "")
 
