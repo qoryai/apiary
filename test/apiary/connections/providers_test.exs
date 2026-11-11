@@ -556,7 +556,7 @@ defmodule Apiary.Connections.ProvidersTest do
 
       assert ModelKeys.setting(id).pause_seconds == 7200
 
-      assert Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), "spare") ==
+      assert Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), id) ==
                {:ok, "sk-new"}
 
       assert {:error, %Ecto.Changeset{data: %Setting{}}} =
@@ -566,7 +566,7 @@ defmodule Apiary.Connections.ProvidersTest do
 
       assert ModelKeys.setting(id).pause_seconds == 7200
 
-      assert Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), "spare") ==
+      assert Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), id) ==
                {:ok, "sk-new"}
     end
 

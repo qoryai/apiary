@@ -734,7 +734,21 @@ defmodule ApiaryWeb.ProviderLiveTest do
       ]
 
       for {{window, _word}, n} <- Enum.with_index(words, 1),
+          window != "daily_cap",
           do: record!(value, %{window: window, utilization: n})
+
+      # A report keeps no window outside the contract's list (`Apiary.ModelKeys.record/3`),
+      # so a row of another window, one stored before, is written as it is.
+      Repo.insert!(%Apiary.ModelKeys.State{
+        secret_value_id: value.id,
+        organisation_id: value.organisation_id,
+        window: "daily_cap",
+        status: "allowed",
+        utilization: 12,
+        source: "provider",
+        observed_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      })
 
       {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
       segments = lv |> text("#provider-key-main-state") |> String.split(" · ")
@@ -816,7 +830,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert {setting.reset_weekday, setting.reset_time} == {1, ~T[09:00:00]}
       assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 7200}
 
-      assert Apiary.Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), "spare") ==
+      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
                {:ok, @key <> "-2"}
     end
 
