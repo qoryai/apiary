@@ -2294,8 +2294,17 @@ defmodule ApiaryWeb.SecretLive.Index do
     %{current_scope: scope, secret: secret, value: value, provider: provider} = socket.assigns
 
     set =
-      if provider,
-        do:
+      cond do
+        # A provider's key with New value left empty: its settings alone, the value kept.
+        provider && blank?(params["value"]) ->
+          with_key_settings(params, fn settings ->
+            Connections.update_provider_key(scope, provider, value.value_id, %{
+              "value_id" => value.value_id,
+              "settings" => settings
+            })
+          end)
+
+        provider ->
           with_key_settings(params, fn settings ->
             Connections.set_provider_key(
               scope,
@@ -2304,8 +2313,11 @@ defmodule ApiaryWeb.SecretLive.Index do
               params["value"],
               settings
             )
-          end),
-        else: Secrets.set_value(scope, secret, value.value_id, params["value"])
+          end)
+
+        true ->
+          Secrets.set_value(scope, secret, value.value_id, params["value"])
+      end
 
     socket = if provider, do: assign(socket, :key_form, key_form(params)), else: socket
 
@@ -2618,6 +2630,8 @@ defmodule ApiaryWeb.SecretLive.Index do
   # The write of a model provider's key with the settings its form sent
   # (`ApiaryWeb.ModelKeyComponents.read_settings/1`); none is written while they cannot
   # be saved, and their errors come back as `{:settings, errors}`.
+  defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
+
   defp with_key_settings(params, fun) do
     case ModelKeyComponents.read_settings(params) do
       {:ok, settings} -> fun.(settings)

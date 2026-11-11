@@ -463,7 +463,8 @@ replaces the navigation it is in.
   32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
   another." under Key. Add key of a subscription has About model providers beside the
   form. Workspace settings › Secrets and variables has the same Resets and Pause for on
-  Add value and Change value of a model provider's key.
+  Add value and Change value of a model provider's key. Change value with New value
+  empty saves Resets and Pause for and keeps the key's value.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
   the part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next

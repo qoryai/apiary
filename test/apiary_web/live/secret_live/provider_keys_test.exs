@@ -236,6 +236,33 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     assert {setting.reset_weekday, setting.pause_seconds} == {nil, 2700}
   end
 
+  test "Change value with New value empty saves a key's settings and keeps its value", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    value = Repo.get_by!(Value, secret_id: secret.id, value_id: "main")
+
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+    lv
+    |> form("#secret-form",
+      secret_value: %{
+        value: "",
+        reset_day: "5",
+        reset_time: "14:00",
+        reset_zone: "Europe/Berlin",
+        pause_number: "2",
+        pause_unit: "hours"
+      }
+    )
+    |> render_submit()
+
+    assert render(lv) =~ "main of #{secret.name} is saved."
+    assert reveal(provider, "main") == {:ok, @key}
+    setting = ModelKeys.setting(value.id)
+    assert {setting.reset_weekday, setting.reset_time} == {5, ~T[14:00:00]}
+    assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 7200}
+  end
+
   test "another secret's value has no settings", ctx do
     %{conn: conn, scope: scope} = ctx
     {:ok, plain} = Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "plain-value"})
