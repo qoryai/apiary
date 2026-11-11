@@ -762,9 +762,11 @@ defmodule Apiary.Retention do
     :ok
   end
 
-  # The runs with chunks of a transcript, or rows of its paths, whose work item is closed
-  # or undone, or that ended with no work item: a run whose chunks a job deleted before it
-  # deleted the rows is found again, at most `limit`, of the workspaces the job walks
+  # The runs with chunks of a transcript, or rows of its paths, that ended and whose work
+  # item is closed or undone, or that have no work item: a run still alive keeps its
+  # transcript whatever its work item's state, as its gateway may still send chunks. A run
+  # whose chunks a job deleted before it deleted the rows is found again, at most `limit`,
+  # of the workspaces the job walks
   # whatever their settings: a workspace marked for deletion, or of an organisation
   # marked, is left alone, as its purge deletes it whole (`workspaces/1`).
   defp transcripts_done(limit) do
@@ -783,9 +785,8 @@ defmodule Apiary.Retention do
         where:
           r.id in subquery(from(c in SessionChunk, distinct: true, select: c.run_id)) or
             r.id in subquery(from(t in TranscriptPath, distinct: true, select: t.run_id)),
-        where:
-          (not is_nil(w.id) and w.state in ^ended) or
-            (is_nil(w.id) and r.state not in ^Run.alive_states()),
+        where: r.state not in ^Run.alive_states(),
+        where: is_nil(w.id) or w.state in ^ended,
         order_by: r.id,
         limit: ^limit,
         select: %{id: r.id}

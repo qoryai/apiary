@@ -1109,8 +1109,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `dev.qory.session.transcript` events, up to 64 MiB and fewer than 100,000 chunks for
   each file. It scans the transcript for keys of a known form, as it scans the run's
   events, and the diagnostics leave the transcript out. Log retention leaves a
-  transcript in place; the daily retention job deletes it once its work item is closed
-  or undone, or once the run has ended when it has no work item.
+  transcript in place; the daily retention job deletes it once the run has ended and
+  its work item is closed or undone, or once the run has ended when it has no work item.
 <!-- /feature -->
 
 ### Changed

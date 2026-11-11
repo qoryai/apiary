@@ -118,31 +118,40 @@ defmodule Apiary.RetentionJobTest do
       handed_over_fixture(scope, key)
     end
 
-    test "goes once its work item is closed, or its run of no work item ended", %{
-      scope: scope
-    } do
+    test "goes once its run ended and its work item is closed, or its run of no work item ended",
+         %{scope: scope} do
       %{run: exploring} = handed_over_run(scope)
       %{run: closed, dispatch_run: dispatch_run} = handed_over_run(scope)
+      %{run: closed_alive, dispatch_run: alive_dispatch} = handed_over_run(scope)
       ended = run_fixture(scope, %{state: "completed"})
       alive = run_fixture(scope)
-      Enum.each([exploring, closed, ended, alive], &chunk!/1)
+      runs = [exploring, closed, closed_alive, ended, alive]
+      Enum.each(runs, &chunk!/1)
 
-      {1, _rows} =
-        Repo.update_all(from(w in WorkItem, where: w.id == ^dispatch_run.work_item_id),
+      {2, _rows} =
+        Repo.update_all(
+          from(w in WorkItem,
+            where: w.id in ^[dispatch_run.work_item_id, alive_dispatch.work_item_id]
+          ),
           set: [state: :closed, closed_at: @now]
         )
 
+      # The run of the second closed work item is still alive: its gateway may still send
+      # chunks.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^closed.id), set: [state: "cancelled"])
+
       assert {:ok, _results} = Retention.prune_all(now: @now, dry_run: true)
-      assert Enum.map([exploring, closed, ended, alive], &chunks/1) == [1, 1, 1, 1]
+      assert Enum.map(runs, &chunks/1) == [1, 1, 1, 1, 1]
 
       level = Logger.level()
       Logger.configure(level: :info)
       on_exit(fn -> Logger.configure(level: level) end)
       log = capture_log([level: :info], fn -> Retention.prune_all(now: @now) end)
 
-      assert Enum.map([exploring, closed, ended, alive], &chunks/1) == [1, 0, 0, 1]
+      assert Enum.map(runs, &chunks/1) == [1, 0, 1, 0, 1]
       # What the run kept of the path goes with the chunks.
-      assert Enum.map([exploring, closed, ended, alive], &paths/1) == [1, 0, 0, 1]
+      assert Enum.map(runs, &paths/1) == [1, 0, 1, 0, 1]
       assert log =~ "retention pruned transcripts=2"
       refute log =~ "{}"
     end
