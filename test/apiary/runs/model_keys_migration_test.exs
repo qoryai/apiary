@@ -17,8 +17,8 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
-  alias Apiary.Runs.Run
+  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys, Repo}
+  alias Apiary.Runs.{ProviderCredential, Run}
   alias Apiary.Secrets.Value
 
   @version 20_261_111_090_000
@@ -102,18 +102,35 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
         [Ecto.UUID.dump!(ended.id)]
       )
 
+    # The key's setting, written before the upgrade.
+    {:ok, _setting} = ModelKeys.put_setting(value(ctx, "spare"), %{pause_seconds: 900})
+
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
 
     # Up: the key with that value id, by its row id, under the name the run's run
-    # configuration had for its one key, the provider's public id; for a key that is
-    # gone, the all-zero row id, which no key has.
+    # configuration had for its one key, the provider's public id, with its Pause for,
+    # its setting; for a key that is gone, the all-zero row id, which no key has, and the
+    # default of an API key, 60 seconds.
     assert Repo.get!(Run, run.id).model_keys == [
-             %{"id" => value(ctx, "spare").id, "name" => ctx.provider.public_id}
+             %{
+               "id" => value(ctx, "spare").id,
+               "name" => ctx.provider.public_id,
+               "pause_for_s" => 900
+             }
            ]
 
     assert Repo.get!(Run, gone.id).model_keys == [
-             %{"id" => Ecto.UUID.cast!(<<0::128>>), "name" => ctx.provider.public_id}
+             %{
+               "id" => Ecto.UUID.cast!(<<0::128>>),
+               "name" => ctx.provider.public_id,
+               "pause_for_s" => 60
+             }
            ]
+
+    # The run configuration has the Pause for, and a later change of the setting leaves it.
+    {:ok, _setting} = ModelKeys.put_setting(value(ctx, "spare"), %{pause_seconds: 120})
+    {:ok, %{keys: [%{entry: entry}]}} = ProviderCredential.for_run(Repo.get!(Run, run.id))
+    assert entry["pause_for_s"] == 900
 
     assert Repo.get!(Run, ended.id).model_keys == []
   end

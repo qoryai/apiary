@@ -150,24 +150,6 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert [%{"id" => ^id}] = run.model_keys
     end
 
-    test "a key the run keeps without a Pause for gets the key's setting, else the default",
-         ctx do
-      %{run: run} = ctx
-      [key] = run.model_keys
-      # As a run kept its one key before it kept several: no `pause_for_s`, no `start`.
-      run = %{run | model_keys: [Map.take(key, ~w(id name))]}
-      pause = fn -> hd(elem(ProviderCredential.for_run(run), 1).keys).entry["pause_for_s"] end
-
-      # An API key's default is 60 seconds.
-      assert pause.() == 60
-
-      value = Repo.get!(Apiary.Secrets.Value, key["id"])
-      {:ok, _setting} = Apiary.ModelKeys.put_setting(value, %{pause_seconds: 900})
-      assert pause.() == 900
-      assert {:ok, %{name: name}} = ProviderCredential.for_run(run)
-      assert name == key["name"]
-    end
-
     test "a provider row that fails its integrity code leaves no run configuration", ctx do
       {1, _rows} =
         Repo.update_all(from(c in Connection, where: c.id == ^ctx.provider.id),

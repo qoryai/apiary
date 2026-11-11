@@ -18,10 +18,17 @@ defmodule Apiary.Repo.Migrations.KeepARunSModelKeys do
   #
   # Each run with `provider_value_id` gets the key of its provider's secret with that
   # value id, under the name its run configuration has for it, the provider's public id,
-  # so the run configuration of a live run stays as it was. A run whose key is gone since
-  # its claim gets the all-zero row id in its place, which no key has: its run
-  # configuration stays, and a secrets request for the key is refused, as before. A run
-  # whose provider is gone, which only an ended run is, gets an empty list.
+  # so the run configuration of a live run names the key as it did. The key gets its
+  # Pause for, `pause_for_s`, once, which the contract requires of every key of a run
+  # configuration, so a live run's run configuration gains it and no later change of the
+  # key's setting changes it: the key's setting (`model_key_settings.pause_seconds`),
+  # else the default of `Apiary.ModelKeys.default_pause_seconds/1`, 3600 seconds for a
+  # subscription, whose API's `auth` has `oauth: true`, and 60 for an API key, read from
+  # the API the run keeps (`provider_api`), as each provider of the catalogue has one
+  # API. A run whose key is gone since its claim gets the all-zero row id in its place,
+  # which no key has, and the default: its run configuration stays, and a secrets request
+  # for the key is refused, as before. A run whose provider is gone, which only an ended
+  # run is, gets an empty list.
   # `runs_provider_check` then names `model_keys` in place of `provider_value_id`, which
   # goes.
   #
@@ -43,11 +50,14 @@ defmodule Apiary.Repo.Migrations.KeepARunSModelKeys do
     execute("""
     UPDATE runs r SET model_keys = COALESCE((
       SELECT jsonb_build_array(jsonb_build_object(
-        'id', COALESCE(v.id, '#{@no_key}'::uuid)::text, 'name', c.public_id))
+        'id', COALESCE(v.id, '#{@no_key}'::uuid)::text, 'name', c.public_id,
+        'pause_for_s', COALESCE(s.pause_seconds,
+          CASE WHEN r.provider_api #>> '{auth,oauth}' = 'true' THEN 3600 ELSE 60 END)))
       FROM organisation_connections c
       LEFT JOIN secret_values v
         ON v.secret_id = c.secret_id AND v.secret_id = r.provider_secret_id
           AND v.value_id = r.provider_value_id
+      LEFT JOIN model_key_settings s ON s.secret_value_id = v.id
       WHERE c.id = r.provider_connection_id
       LIMIT 1
     ), '[]'::jsonb)
