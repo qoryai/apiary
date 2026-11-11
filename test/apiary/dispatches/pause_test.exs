@@ -536,6 +536,7 @@ defmodule Apiary.Dispatches.PauseTest do
         "~/.claude/projects/-work space/5f2c9a1e.jsonl",
         "~/.claude/projects/-workspace/5f2c9a1e.txt",
         "~/.claude/projects/-workspace/.jsonl",
+        "~/.claude/projects/-workspace/6a3d0b2f.jsonl",
         "projects/-workspace/5f2c9a1e.jsonl"
       ]
 
@@ -553,8 +554,9 @@ defmodule Apiary.Dispatches.PauseTest do
                  log
                )
 
-      assert Transcript.resumable_path?(@path)
-      assert Transcript.resumable_path?("~/.resumer/x/-w0rk-1/s.jsonl")
+      assert Transcript.resumable_path?(@path, "5f2c9a1e")
+      assert Transcript.resumable_path?("~/.resumer/x/-w0rk-1/s.jsonl", "s")
+      refute Transcript.resumable_path?(@path, "6a3d0b2f")
     end
 
     test "a chunk that is not one is not kept, and its log line has no byte of it", ctx do

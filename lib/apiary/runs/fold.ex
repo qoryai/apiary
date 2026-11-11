@@ -278,7 +278,7 @@ defmodule Apiary.Runs.Fold do
   `transcript_chunks`, the chunks of `dev.qory.session.transcript` events in sequence
   order (`Apiary.Runs.Transcript.parse/1`), with the count of those events whose data is
   no chunk, and the count of the chunks refused for their path
-  (`Apiary.Runs.Transcript.resumable_path?/1`).
+  (`Apiary.Runs.Transcript.resumable_path?/2`).
   """
   @spec fold(map(), Enumerable.t(), map(), map()) :: t()
   def fold(run, events, latest \\ %{}, projected \\ %{}) do
@@ -427,7 +427,7 @@ defmodule Apiary.Runs.Fold do
 
   defp event(acc, %{type: @transcript, data: data, sequence: sequence}) do
     with {:ok, chunk} <- Transcript.parse(data),
-         true <- Transcript.resumable_path?(chunk.path) do
+         true <- Transcript.resumable_path?(chunk.path, chunk.session_id) do
       %{acc | transcript_chunks: [Map.put(chunk, :sequence, sequence) | acc.transcript_chunks]}
     else
       false -> %{acc | refused_transcript_paths: acc.refused_transcript_paths + 1}

@@ -11,7 +11,7 @@ defmodule Apiary.Runs.Transcript do
   from 0; and `bytes`, 4 to 43,692 characters of base64 that decode to 1 to 32,768 bytes.
   Any other data is no chunk. The projection keeps each chunk by its event's sequence
   (`Apiary.Runs.SessionChunk`, `Apiary.Runs.Projector`), and refuses a chunk whose path
-  is not one a continuation's machine may write at (`resumable_path?/1`).
+  is not one a continuation's machine may write at (`resumable_path?/2`).
 
   **The file.** A run's transcript at a path is its chunks of that path in sequence
   order. It can be restored only when they start at offset 0 and each starts where the
@@ -27,7 +27,7 @@ defmodule Apiary.Runs.Transcript do
   paused run this run continues (`paused_run/1`): of the same organisation, workspace,
   work item and stage, registered, and ended with the reason `model_key_limit`
   (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume` (`resume_at_claim/1`) for
-  a path a machine may write at (`resumable_path?/1`), as the contract has it fixed when
+  a path a machine may write at (`resumable_path?/2`), as the contract has it fixed when
   the run starts; every run configuration of the run then has it (`resume/1`), and its
   gateway fetches the file through the run API.
 
@@ -112,32 +112,33 @@ defmodule Apiary.Runs.Transcript do
   def parse(_data), do: :error
 
   @doc """
-  Whether `path`, a chunk's path, is one a continuation's machine may write the
-  transcript at: the contract's template for it, `resume.prefix` followed by the slug of
-  the runtime's working directory, `/` and the file's name (the Forager contract, A
-  session's transcript). Qory Apiary has no runtime descriptor, so the prefix it checks
-  is the widest one the contract's pattern for `resume.prefix` allows, a directory of
-  the runtime's home: the path is `~/`, one or more directories, a slug of ASCII
-  letters, digits and `-`, `/`, and a file name that ends in `.jsonl`; no segment of it
-  is empty, `.` or `..`, and it has no whitespace or control character. An absolute
-  path, and one that leaves the home, is none.
+  Whether `path`, the path of a chunk of the session `session_id`, is one a
+  continuation's machine may write the transcript at: the contract's template for it,
+  `resume.prefix` followed by the slug of the runtime's working directory, `/`, the
+  session id and `.jsonl` (the Forager contract, A session's transcript; the run API,
+  The transcript of a paused run). Qory Apiary has no runtime descriptor, so the prefix
+  it checks is the widest one the contract's pattern for `resume.prefix` allows, a
+  directory of the runtime's home: the path is `~/`, one or more directories, a slug of
+  ASCII letters, digits and `-`, `/`, and the file name `<session_id>.jsonl`; no segment
+  of it is empty, `.` or `..`, and it has no whitespace or control character. An
+  absolute path, one that leaves the home, and one with another file name is none.
   """
-  @spec resumable_path?(String.t()) :: boolean
-  def resumable_path?("~/" <> rest) do
+  @spec resumable_path?(String.t(), String.t()) :: boolean
+  def resumable_path?("~/" <> rest, session_id) when is_binary(session_id) do
     segments = String.split(rest, "/")
 
     with [file, slug | [_ | _]] <- Enum.reverse(segments),
          false <- Enum.any?(segments, &(&1 in ["", ".", ".."])),
          false <- String.match?(rest, ~r/[\s[:cntrl:]]/u),
          true <- Regex.match?(~r/\A[A-Za-z0-9-]+\z/, slug),
-         true <- String.ends_with?(file, ".jsonl") and byte_size(file) > 6 do
+         true <- session_id != "" and file == session_id <> ".jsonl" do
       true
     else
       _other -> false
     end
   end
 
-  def resumable_path?(_path), do: false
+  def resumable_path?(_path, _session_id), do: false
 
   # A string of 1 to `max` characters, as JSON Schema counts them: code points.
   defp text?(value, max) when is_binary(value) do
@@ -324,7 +325,7 @@ defmodule Apiary.Runs.Transcript do
       when is_binary(paused_id) do
     with %Run{} = paused <- paused_run(continuation),
          %{session_id: session_id, path: path} <- last(paused.id),
-         true <- resumable_path?(path),
+         true <- resumable_path?(path, session_id),
          {:ok, _file} <- check(paused.id, path) do
       %{"run_id" => paused.node_run_id, "session_id" => session_id, "path" => path}
     else

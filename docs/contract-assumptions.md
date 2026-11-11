@@ -1227,7 +1227,7 @@ the run's `session_chunks`, keyed by the event's sequence (`Apiary.Runs.Transcri
 `Apiary.Runs.SessionChunk`): its `session`, `session_id`, `path`, `offset` and bytes, as
 `events/session.transcript.schema.json` has them. A chunk whose `path` is not the
 contract's template for a transcript, a directory under `~/` as `resume.prefix`, a slug,
-`/` and a file name ending in `.jsonl`, with no empty, `.` or `..` segment and no
+`/`, the chunk's `session_id` and `.jsonl`, with no empty, `.` or `..` segment and no
 whitespace, is refused and not stored, as a continuation's machine writes the file at
 that path; the projection logs one line per pass with their count. A run's transcript of
 a path is its chunks of that path in sequence order, and it can be restored only when
