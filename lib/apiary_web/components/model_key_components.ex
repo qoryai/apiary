@@ -213,7 +213,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
         errors={@resets_errors}
         hint={
           gettext(
-            "The weekly time when this key's allowance resets. Set it if the provider's answers have no reset time."
+            "The weekly time when this key's allowance resets. Set it if the provider sends no reset time."
           )
         }
       />

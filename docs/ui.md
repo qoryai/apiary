@@ -450,8 +450,8 @@ replaces the navigation it is in.
   can view it again."; then Resets and Pause for
   (`ApiaryWeb.ModelKeyComponents.settings_fields/1`). Resets is a group of Day, Time and
   Time zone, whose zone is the reader's for a key with no reset, with the hint "The
-  weekly time when this key's allowance resets. Set it if the provider's answers have no
-  reset time." Pause for is a number and a unit, minutes, hours or days, with the hint
+  weekly time when this key's allowance resets. Set it if the provider sends no reset
+  time." Pause for is a number and a unit, minutes, hours or days, with the hint
   "How long runs skip this key after the provider returns a limit error, when no reset
   time is known. Empty: 1 hour." for a subscription's key, and "Empty: 1 minute." at its
   end for an API key. A group's error takes its hint's place: "Set the day, the time and

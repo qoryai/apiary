@@ -1022,7 +1022,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   under **Key**, and a name that another key of the provider has shows “Another key of
   Northwind Claude has this name.” under **Name**.
 - **Resets**, optional, is the day, time and time zone of each week at which a key's
-  allowance resets, for a provider whose answers have no reset time. Set all three or
+  allowance resets, for a provider that sends no reset time. Set all three or
   none: “Set the day, the time and the time zone, or leave all three empty.” **Pause
   for**, optional, is how long runs skip a key after its limit error when no reset time
   is known, from 1 minute to 7 days, in minutes, hours or days: “Enter a time from 1

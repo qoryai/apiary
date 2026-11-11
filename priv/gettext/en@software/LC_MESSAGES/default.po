@@ -21609,7 +21609,7 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
-msgid "The weekly time when this key's allowance resets. Set it if the provider's answers have no reset time."
+msgid "The weekly time when this key's allowance resets. Set it if the provider sends no reset time."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

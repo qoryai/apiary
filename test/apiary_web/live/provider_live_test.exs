@@ -798,7 +798,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#key_reset_day-resets-hint",
-               "The weekly time when this key's allowance resets. Set it if the provider's answers have no reset time."
+               "The weekly time when this key's allowance resets. Set it if the provider sends no reset time."
              )
 
       assert has_element?(
