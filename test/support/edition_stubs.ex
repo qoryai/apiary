@@ -762,6 +762,27 @@ defmodule Apiary.EditionStubs do
       do: %{path: "/8wonders/policy", can_change: true, new_rule_path: nil}
   end
 
+  defmodule ServesNoRun do
+    @moduledoc """
+    No enrolled key posts for a run (`run.post_events` with a run as the subject), as an
+    edition may narrow what a gateway's key takes, while the gateway itself may still
+    serve the run's workspace (`Apiary.Access.may_serve?/2`, which asks with a key that
+    has no key id): a request of the run endpoint for a run, signed by the key, is `404`.
+    """
+    alias Apiary.Accounts.Scope
+    alias Apiary.AccessKeys.AccessKey
+
+    def check(
+          %Scope{access_key: %AccessKey{key_id: key_id}},
+          :"run.post_events",
+          %Apiary.Runs.Run{}
+        )
+        when is_binary(key_id),
+        do: {:error, :forbidden}
+
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule ReadsThePolicy do
     @moduledoc """
     A person reads the security policy and changes none of its rules

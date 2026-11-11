@@ -1694,6 +1694,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       refute log =~ ~s({"a":1})
     end
 
+    test "a run that Apiary.Access does not let the key post for is 404", ctx do
+      paused!(ctx, @lines)
+      assert read(ctx, "/resume/transcript").status == 200
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ServesNoRun)
+      conn = read(ctx, "/resume/transcript")
+      assert conn.status == 404
+      assert conn.resp_body == ~s({"error":"not_found"})
+    end
+
     test "a run whose claim stored no resume is 404, though it continues a paused run", ctx do
       paused!(ctx, @lines)
       {1, _rows} = Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [resume: nil])

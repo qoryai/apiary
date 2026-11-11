@@ -559,9 +559,9 @@ A model choice's fallbacks, on Workspace settings › Model, are saved with the 
 under the choice's action: `model_choice.write` of the workspace or the target, owners'
 and admins', of the feature `factory`.
 
-Two requests of the run endpoint are a gateway's for a run, signed by its access key: the
-model keys report, checked under the action `run.post_events`, and the transcript of a
-paused run, checked under no action, by the run alone:
+Two requests of the run endpoint are a gateway's for a run, signed by its access key, and
+each is checked under the action `run.post_events`: the model keys report, and the
+transcript of a paused run:
 
 - **The model keys report**, `POST /v1/runs/<run_id>/model-keys`, needs the features
   `factory` and `secrets`. The run must be, as for the gateway's secrets request, a run
@@ -575,9 +575,10 @@ paused run, checked under no action, by the run alone:
   feature `observability`. The run must be one the run API finds for the key, a run of a
   work item, still live, whose `resume` is set; and the paused run must
   be the one it continues, of the same organisation, workspace, work item and stage
-  (`ApiaryWeb.Contract.TranscriptController`, `Apiary.Runs.Transcript.paused_run/1`). Any
-  other case gets `404`, so a run configuration with another run's id reads no other
-  run's transcript.
+  (`ApiaryWeb.Contract.TranscriptController`, `Apiary.Runs.Transcript.paused_run/1`).
+  Then `Apiary.Access.check/3` checks `run.post_events` on the run for the key. Any other
+  case, and a key that fails, gets `404`, so a run configuration with another run's id
+  reads no other run's transcript.
 
 ## Leaving
 

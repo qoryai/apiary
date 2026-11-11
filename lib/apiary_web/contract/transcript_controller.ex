@@ -16,7 +16,9 @@ defmodule ApiaryWeb.Contract.TranscriptController do
   run continues (`Apiary.Runs.Transcript`), at the path its `resume` has, sent in
   chunks: the chunks `Apiary.Runs.Transcript.check/2` checked, whose SHA-256 the answer
   is signed over. A run the key's gateway does not hold, as the run API reads it, a run
-  that ended, a run with no `resume`, a paused run that is no longer the one it
+  that `Apiary.Access` does not let the key take, checked under `run.post_events`, the
+  action of the run endpoint's requests, as the model keys report checks it
+  (`Apiary.ModelKeys.Report`), a run that ended, a run with no `resume`, a paused run that is no longer the one it
   continues, and a transcript that is gone, has a gap in its offsets or is over 64 MiB
   are each `404` `not_found`. No transcript byte is logged or put in an error. An
   exception before the answer starts is `503` `unavailable`; one while the chunks are
@@ -27,6 +29,8 @@ defmodule ApiaryWeb.Contract.TranscriptController do
 
   require Logger
 
+  alias Apiary.Access
+  alias Apiary.Accounts.Scope
   alias Apiary.Runs.{Run, Transcript}
   alias ApiaryWeb.Contract.RunApi.Run, as: HeldRun
 
@@ -56,7 +60,10 @@ defmodule ApiaryWeb.Contract.TranscriptController do
   # (`Apiary.Runs.Transcript.check/2`), with the digest of the chunks checked. Before any
   # byte is sent, so an exception here is still a `503`.
   defp file(conn, run_id) do
-    with {:ok, held} <- HeldRun.fetch(conn.assigns.access_key, run_id, conn.assigns[:instance_id]),
+    key = conn.assigns.access_key
+
+    with {:ok, held} <- HeldRun.fetch(key, run_id, conn.assigns[:instance_id]),
+         :ok <- Access.check(Scope.for_access_key(key), :"run.post_events", held.run),
          true <- HeldRun.live?(held),
          %{"run_id" => paused_run_id, "path" => path} <- Transcript.resume(held.run),
          %Run{node_run_id: ^paused_run_id} = paused <- Transcript.paused_run(held.dispatch_run),
