@@ -1787,7 +1787,7 @@ defmodule Apiary.Connections do
   `value_id` (`provider.write`), and, with `settings`, its settings, in one transaction,
   which also deletes the key's states (`Apiary.ModelKeys.clear_states/2`): the new value
   is out of cooldown. `{:ok, provider}`, or `{:error, refusal}` as
-  `Apiary.Secrets.set_value/5` answers, or a changeset of the settings, which leaves the
+  `Apiary.Secrets.set_value/5` returns, or a changeset of the settings, which leaves the
   value and the states as they were.
   """
   @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t(), map | nil) ::
