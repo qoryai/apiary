@@ -657,7 +657,7 @@ version in force is exported; another version's path sends on to it.
   other is. Ended badly counts the runs that failed or were lost. The Filter menu's State
   section lists the six states and Queued under their four families, each heading a
   checkbox for the whole family: Alive (Queued, Pending, Running), Ended well (Completed),
-  Cancelled (Cancelled) and Ended badly (Failed, Lost). Queued is a pending run that waits
+  Cancelled (Cancelled), Paused (Paused) and Ended badly (Failed, Lost). Queued is a pending run that waits
   in the queue for a machine (`Apiary.Runs.Run.queued?/1`): it has its run record and its
   number from the moment it is queued (`Apiary.Dispatches.Queued`), with no node and no
   registration; Pending is any other pending run. Newest first, the queued runs come

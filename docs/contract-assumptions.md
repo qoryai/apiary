@@ -1224,6 +1224,7 @@ A run is in one of six states, in four families (`Apiary.Runs.Run.states/0`,
 | `running` | Running | Alive | no |
 | `completed` | Completed | Ended well | yes |
 | `cancelled` | Cancelled | Cancelled | yes |
+| `paused` | Paused | Paused | yes |
 | `failed` | Failed | Ended badly | yes |
 | `lost` | Lost | Ended badly | from an exit, yes; from the lost-run check, no (Liveness) |
 
