@@ -1,8 +1,8 @@
 defmodule Apiary.ModelKeys.State do
   @moduledoc """
   The state of one model key in one limit window, as a run's gateway reports it from the
-  provider's answers (`Apiary.ModelKeys.Report`): one row per key, by the value's row id
-  (`secret_values.id`), and window.
+  provider's responses (`Apiary.ModelKeys.Report`): one row per key, by the value's row
+  id (`secret_values.id`), and window.
 
     * `window`: the limit's window, one of `windows/0`, such as `five_hour` or
       `seven_day`. A report may have any code of the form `^[a-z][a-z0-9_]{0,63}$`; a

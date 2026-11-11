@@ -509,8 +509,8 @@ outcome's state and reason (Events, below).
 
 A signed POST, `Content-Type: application/json`, under a key of the gateway that attached
 the run: the state of the run's model keys in each limit window, as the gateway saw it in
-the provider's answers. A run of Explore gets up to 6 keys of its model provider, each a
-credential of its run configuration. The body:
+the provider's responses. A run of Explore gets up to 6 keys of its model provider, each
+a credential of its run configuration. The body:
 
 ```json
 {"version": 1, "run_id": "<run_id>", "time": "2026-10-11T12:30:00Z",

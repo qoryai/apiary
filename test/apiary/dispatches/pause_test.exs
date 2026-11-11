@@ -114,7 +114,7 @@ defmodule Apiary.Dispatches.PauseTest do
     # One key is not in cooldown, so the pause has no end time (`until: nil`).
     continuation = registered(next)
 
-    # The run's organisation's provider is named, and is no operator's.
+    # The run's organisation's provider is named, and is not the instance admin's.
     assert Pause.of_run(paused) == %{
              provider: ctx.provider.name,
              operator: false,
@@ -197,7 +197,7 @@ defmodule Apiary.Dispatches.PauseTest do
              "Paused: a key of #{ctx.provider.name} reached its limit. It continues in run #{number}."
   end
 
-  test "an operator's provider has no name in the line", ctx do
+  test "an instance admin's provider has no name in the line", ctx do
     %{scope: operator} = sign_up_fixture()
     keys = [%{value_id: "main", value: "sk-ant-operator-main-0123456789"}]
     {:ok, theirs} = Connections.create_provider(operator, %{provider: "anthropic", keys: keys})
