@@ -304,6 +304,193 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert Enum.any?(definitions, &(&1 =~ ~r/\(workspace_id\)\z/))
   end
 
+  test "finds a secret in the decoded bytes of a chunk of a session's transcript", ctx do
+    transcript = %{
+      "session" => 1,
+      "session_id" => "5f2c9a1e",
+      "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl",
+      "offset" => 0,
+      "bytes" => Base.encode64(~s({"content":"key #{@github}"}\n))
+    }
+
+    events_fixture(ctx.run, [{1, "session.transcript", transcript}])
+    project!(ctx.run)
+
+    assert [%LeakedSecret{place: "event", kind: "github_token", source_sequence: 1}] =
+             rows(ctx.run)
+
+    {[entry], 0} = read(ctx.run)
+    assert %{place: "event", sequence: 1, value: @github} = entry
+  end
+
+  # A chunk of the transcript file at `offset`, with `bytes`.
+  defp transcript(offset, bytes),
+    do: %{
+      "session" => 1,
+      "session_id" => "5f2c9a1e",
+      "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl",
+      "offset" => offset,
+      "bytes" => Base.encode64(bytes)
+    }
+
+  test "finds a secret that the cut between two transcript chunks splits, in one pass", ctx do
+    {head, rest} = String.split_at(@github, 10)
+    first = ~s({"content":"key ) <> head
+
+    events_fixture(ctx.run, [
+      {1, "session.transcript", transcript(0, first)},
+      {2, "session.transcript", transcript(byte_size(first), rest <> ~s("}\n))}
+    ])
+
+    project!(ctx.run)
+
+    # Kept once, where its first byte is, whole, and not again as the part in the second.
+    offset = byte_size("bytes\n") + byte_size(~s({"content":"key ))
+
+    assert [
+             %LeakedSecret{
+               place: "event",
+               kind: "github_token",
+               source_sequence: 1,
+               offset: ^offset,
+               length: 40
+             }
+           ] = rows(ctx.run)
+
+    assert {[%{place: "event", sequence: 1, value: @github}], 0} = read(ctx.run)
+  end
+
+  test "finds a split secret when the second chunk comes in a later pass", ctx do
+    {head, rest} = String.split_at(@github, 25)
+    first = "key " <> head
+
+    events_fixture(ctx.run, [{1, "session.transcript", transcript(0, first)}])
+    project!(ctx.run)
+    events_fixture(ctx.run, [{2, "session.transcript", transcript(byte_size(first), rest)}])
+    project!(ctx.run)
+
+    assert [%LeakedSecret{source_sequence: 1, offset: 10, length: 40}] = rows(ctx.run)
+    assert {[%{sequence: 1, value: @github}], 0} = read(ctx.run)
+  end
+
+  test "finds a split secret when the second chunk is stored first", ctx do
+    {head, rest} = String.split_at(@github, 25)
+    first = "key " <> head
+
+    events_fixture(ctx.run, [{2, "session.transcript", transcript(byte_size(first), rest)}])
+    project!(ctx.run)
+    refute Enum.any?(rows(ctx.run), &(&1.source_sequence == 1))
+
+    events_fixture(ctx.run, [{1, "session.transcript", transcript(0, first)}])
+    project!(ctx.run)
+
+    # Kept once, at the first chunk, where its first byte is, whole.
+    offset = byte_size("bytes\n") + byte_size("key ")
+
+    assert [%LeakedSecret{source_sequence: 1, offset: ^offset, length: 40}] =
+             Enum.filter(rows(ctx.run), &(&1.source_sequence == 1))
+
+    {entries, 0} = read(ctx.run)
+    assert Enum.any?(entries, &match?(%{sequence: 1, value: @github}, &1))
+  end
+
+  test "keeps a split secret once when the second chunk alone has a secret's form", ctx do
+    # The second chunk starts with the end of the secret, which alone has the form of a
+    # key.
+    secret =
+      "sk-ant-api03-" <> String.duplicate("A", 32) <> "sk-ant-api03-" <> String.duplicate("B", 40)
+
+    {head, rest} = String.split_at(secret, 45)
+    first = "key " <> head
+
+    events_fixture(ctx.run, [{2, "session.transcript", transcript(byte_size(first), rest)}])
+    project!(ctx.run)
+    assert [%LeakedSecret{source_sequence: 2}] = rows(ctx.run)
+
+    events_fixture(ctx.run, [{1, "session.transcript", transcript(0, first)}])
+    project!(ctx.run)
+
+    offset = byte_size("bytes\n") + byte_size("key ")
+
+    assert [%LeakedSecret{source_sequence: 1, offset: ^offset, length: length}] = rows(ctx.run)
+    assert length == byte_size(secret)
+  end
+
+  test "a pass reads the chunks next to its new chunks alone, however many the run has",
+       ctx do
+    # 400 chunks of one byte, stored; a pass with one more, where a secret starts, which
+    # checks the 400 for a gap (`Apiary.Runs.Projector`, each stored chunk once); then the
+    # pass measured, with the chunk where the secret ends.
+    {head, rest} = String.split_at(@github, 10)
+    stored = 400
+
+    events_fixture(
+      ctx.run,
+      for(n <- 1..stored, do: {n, "session.transcript", transcript(n - 1, "x")})
+    )
+
+    project!(ctx.run)
+
+    event_fixture(ctx.run, stored + 1, "session.transcript", transcript(stored, "key " <> head))
+    project!(ctx.run)
+
+    event_fixture(ctx.run, stored + 2, "session.transcript", transcript(stored + 4 + 10, rest))
+
+    # Index scans only, so the count does not depend on the planner's choice of a scan.
+    Repo.query!("SET LOCAL enable_seqscan = off")
+    before = rows_read("session_chunks")
+    project!(ctx.run)
+    read = rows_read("session_chunks") - before
+
+    assert read <= 10, "one pass read #{read} rows of session_chunks"
+
+    assert [%LeakedSecret{source_sequence: sequence, length: 40}] = rows(ctx.run)
+    assert sequence == stored + 1
+  end
+
+  # The rows of `table` this transaction has read so far, by a sequential or an index scan.
+  defp rows_read(table) do
+    %{rows: [[read]]} =
+      Repo.query!(
+        "SELECT (coalesce(sum(seq_tup_read), 0) + coalesce(sum(idx_tup_fetch), 0))::bigint " <>
+          "FROM pg_stat_xact_user_tables WHERE relname = $1",
+        [table]
+      )
+
+    read
+  end
+
+  test "reads no split secret across chunks of two files", ctx do
+    {head, rest} = String.split_at(@github, 10)
+    first = "key " <> head
+
+    events_fixture(ctx.run, [
+      {1, "session.transcript", transcript(0, first)},
+      {2, "session.transcript",
+       %{
+         transcript(byte_size(first), rest)
+         | "path" => "~/.claude/projects/-other/5f2c9a1e.jsonl"
+       }}
+    ])
+
+    project!(ctx.run)
+
+    refute Enum.any?(rows(ctx.run), &(&1.source_sequence == 1))
+  end
+
+  test "event_text/2 decodes a transcript chunk's bytes, and leaves any other event's" do
+    bytes = Base.encode64("line")
+    data = %{"bytes" => bytes, "path" => "p"}
+
+    assert LeakedSecrets.event_text("dev.qory.session.transcript", data) == "bytes\nline\npath\np"
+
+    assert LeakedSecrets.event_text("dev.qory.run.started", data) ==
+             LeakedSecrets.event_text(data)
+
+    assert LeakedSecrets.event_text("dev.qory.session.transcript", %{"bytes" => "%%"}) ==
+             "bytes\n%%"
+  end
+
   test "event_text/1 is each key and string, keys sorted, one per line" do
     assert LeakedSecrets.event_text(%{"b" => ["x", 1, %{"d" => "y", "c" => nil}], "a" => "z"}) ==
              "a\nz\nb\nx\nc\nd\ny"

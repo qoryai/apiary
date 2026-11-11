@@ -27,6 +27,7 @@ serves, and a request for a run the key does not serve gets `404` `not_found`.
 | `GET artifacts/<version_id>/files/<filename>` | One file of one version, as a download |
 | `POST artifacts` | Stores a new version of an artifact; returns the version |
 | `POST verdict` | Stores the run's verdict as a version of the `verdict` artifact |
+| `GET resume/transcript` | The transcript of the paused run that the run continues, as a download |
 
 ### Signing and the order of checks
 
@@ -476,14 +477,34 @@ take in, so the run pushes its questions first; otherwise the verdict is `422`
 `invalid_artifact`, with the message "Push the questions first, or point at an open
 question in verdict.json: point 2 is about question q7, which is not open."
 
+## GET resume/transcript
+
+The session of a run that continues a paused run reads the paused run's transcript with
+this request before its runtime starts, to resume the runtime's session. Unlike the other
+requests, it belongs to the feature `observability`, the run endpoint's: without
+`workflow_model` it is served all the same. The run's run configuration has `resume`,
+with the paused run's id and the path of the transcript
+([contract-assumptions.md](../contract-assumptions.md), A run that continues a paused
+run).
+
+The checks are 1 and 3 of the order of checks, then: a run that is no longer pending or
+running, whose sending has ended, or whose run of the workspace's queue has ended, a run
+with no `resume`, a paused run that is no longer the one the run continues, and a
+transcript that is gone, has a gap in its offsets, is over 64 MiB or has 100,000 chunks
+or more, are each `404`
+`not_found`. Else the answer is `200`, `application/x-ndjson`, the paused run's chunks of
+the transcript at the path of `resume`, in sequence order, sent in chunks and signed over
+their SHA-256. A failure before the answer starts is `503` `unavailable`; one while the
+chunks are sent ends the answer there. No byte of a transcript is logged.
+
 ## Errors
 
 | Status | `error` | Other members | When |
 |---|---|---|---|
 | `400` | `invalid_request` | `names` | A body that is not the request's object, or a content that is not strict base64 |
 | `401` | `unauthorized` | | The request does not verify; unsigned |
-| `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file |
-| `404` | (the error page) | | The instance does not have `workflow_model` |
+| `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served |
+| `404` | (the error page) | | The instance does not have `workflow_model`, or for `GET resume/transcript`, `observability` |
 | `409` | `run_ended` | `message` | A push or a verdict after the run ended, checked before the push and again when the version is stored |
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |

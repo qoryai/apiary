@@ -24,6 +24,11 @@ config :apiary, Apiary.Repo,
   queue_target: 5_000,
   queue_interval: 5_000
 
+# The transcript answer reads the chunks through a stub that a test makes fail
+# (`ApiaryWeb.TranscriptStub`); elsewhere it is `Apiary.Runs.Transcript`, fixed when the
+# controller compiles.
+config :apiary, ApiaryWeb.Contract.TranscriptController, transcript: ApiaryWeb.TranscriptStub
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :apiary, ApiaryWeb.Endpoint,

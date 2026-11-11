@@ -1,19 +1,25 @@
 defmodule Apiary.Runs.ProviderCredential do
   @moduledoc false
 
-  # The model key of a run that its claim set a model provider for
-  # (`Apiary.Dispatches.RunSettings`), as its run configuration contains it: one entry of the
-  # contract's `credentials`, an API credential, and the hosts the provider needs, which
-  # the run's `egress.allow` and `egress.allow_first` gain
-  # (`Apiary.Policy.ComposedConfiguration`). Both come from
-  # the run's stored provider columns and the provider's row, so a choice changed after
-  # the claim changes neither.
+  # The model keys of a run that its claim set a model provider for
+  # (`Apiary.Dispatches.RunSettings`), as its run configuration contains them: one entry
+  # of the contract's `credentials` per key, an API credential, in the order the run keeps
+  # its keys (`runs.model_keys`); and the hosts the provider needs,
+  # which the run's `egress.allow` and `egress.allow_first` gain
+  # (`Apiary.Policy.ComposedConfiguration`). Both come from the run's stored provider
+  # columns and the provider's row, so a choice or a key's state changed after the claim
+  # changes neither.
   #
-  # The entry has, in the schema's order: `name`, the provider's public id, the same for
-  # every run of the provider; `format`, `endpoint` and `auth` of the API the run uses
-  # (`runs.provider_api`); and `key_prefixes` when the API has them. It has no key value,
-  # no secret id and no value id: the gateway fetches the value with the secrets request
-  # (`Apiary.Runs.SecretsRequest`).
+  # Each entry has, in the schema's order: `name`, the key's credential name as the run
+  # keeps it; `format`, `endpoint` and `auth` of the API the run uses
+  # (`runs.provider_api`), the same for every key; `key_prefixes` when the API has them;
+  # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
+  # `cooldown_until` and `chosen`, each where the run keeps it. Every key has
+  # `pause_for_s`: from its claim, or, for a run claimed before runs kept several keys,
+  # from the migration that keeps a run's model keys. The start key, `model_credential`,
+  # is the key the run keeps with `start`, else its first. An entry has no key value, no
+  # secret id and no value id: the gateway fetches the values with the secrets request
+  # (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
   #
   # The hosts are the description's `egress_hosts`, in its order, each once. An entry
   # `{"setting": name}` is the host of that setting's address: the address in
@@ -25,7 +31,7 @@ defmodule Apiary.Runs.ProviderCredential do
   # `{:error, :unavailable}` when the run has a provider whose row is gone, fails its
   # integrity code (`Apiary.Connections.intact?/1`), or is no longer in the catalogue as
   # it was added, and when the stored endpoint fails the endpoint rule: the run is then
-  # given no run configuration, since one without its key would run on another. Reads; it
+  # given no run configuration, since one without its keys would run on another. Reads; it
   # locks and writes nothing.
 
   import Ecto.Query, only: [from: 2]
@@ -38,23 +44,31 @@ defmodule Apiary.Runs.ProviderCredential do
   alias Apiary.Nodes.Node
 
   @typedoc """
-  A run's model key: the credential's `name`, the `entry` as the run configuration writes
-  it, the `hosts` the run reaches it on, and the provider's row it was read from.
+  A run's model keys: `name`, the start key's credential name, the run configuration's
+  `model_credential`; `keys`, each key's credential `name`, row id (`secret_value_id`) and
+  `entry` as the run configuration writes it, in order; the `hosts` the run reaches them
+  on; and the provider's row they were read from.
   """
   @type t :: %{
           name: String.t(),
-          entry: Jason.OrderedObject.t(),
+          keys: [
+            %{name: String.t(), secret_value_id: Ecto.UUID.t(), entry: Jason.OrderedObject.t()}
+          ],
           hosts: [String.t()],
           provider: Connection.t()
         }
 
   # The order the contract's `auth.schema.json` lists its members in.
   @auth_members ~w(scheme header username oauth)
+  # The members a run keeps for each key, in the order of the contract's `api_credential`.
+  @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until chosen)
 
   @doc false
+  # for_run/1 is the model keys of `run` (`t/0`): nil for a run with none, as for a run
+  # that keeps no key, whose key was gone when the run's keys were first stored.
   @spec for_run(map | nil) :: {:ok, t | nil} | {:error, :unavailable}
-  def for_run(%{provider_api: %{} = api} = run) do
-    if applies?(), do: credential(run, api), else: {:ok, nil}
+  def for_run(%{provider_api: %{} = api, model_keys: [_ | _] = keys} = run) do
+    if applies?(), do: credential(run, api, keys), else: {:ok, nil}
   end
 
   def for_run(_run), do: {:ok, nil}
@@ -62,7 +76,9 @@ defmodule Apiary.Runs.ProviderCredential do
   @doc false
   # workspace_hosts/1 is the hosts of the model providers the model choices that reach
   # `workspace` use, at the organisation's default, the workspace and its targets, for any
-  # workflow: for each provider, the hosts `for_run/1` gives a run of each of its APIs
+  # workflow, as their provider or as one of their fallbacks, since a run of the
+  # workspace may be given a fallback's keys: for each provider, the hosts `for_run/1`
+  # gives a run of each of its APIs
   # (`hosts/3`). `[%{host:, connection:}]` with the provider's `id`, `public_id` and
   # `name`, each host once per provider. A provider that cannot be read, as `for_run/1`
   # reads it, adds none. A run gains the hosts of the one provider and API it is given.
@@ -74,15 +90,28 @@ defmodule Apiary.Runs.ProviderCredential do
     {chain, owner} = Apiary.ModelChoices.chain_owner(workspace.organisation_id)
 
     if applies?() and is_binary(owner) do
-      ids =
+      places =
+        from m in Apiary.ModelChoices.ModelChoice,
+          where: m.organisation_id == ^owner and m.chain == ^chain,
+          where: is_nil(m.workspace_id) or m.workspace_id == ^workspace.id
+
+      chosen =
         Repo.all(
-          from m in Apiary.ModelChoices.ModelChoice,
-            where: m.organisation_id == ^owner and m.chain == ^chain,
-            where: is_nil(m.workspace_id) or m.workspace_id == ^workspace.id,
+          from m in places,
             where: not is_nil(m.connection_id),
             distinct: true,
             select: m.connection_id
         )
+
+      fallbacks =
+        Repo.all(
+          from f in Apiary.ModelChoices.Fallback,
+            where: f.model_choice_id in subquery(from m in places, select: m.id),
+            distinct: true,
+            select: f.connection_id
+        )
+
+      ids = Enum.uniq(chosen ++ fallbacks)
 
       from(c in Connection,
         where: c.id in ^ids and not is_nil(c.provider_kind) and c.chain == ^chain,
@@ -180,14 +209,21 @@ defmodule Apiary.Runs.ProviderCredential do
       do: Edition.operator_chain_organisation(run_organisation_id)
   end
 
-  defp credential(run, api) do
+  defp credential(run, api, keys) do
     with {:ok, provider} <- provider(Map.get(run, :provider_connection_id)),
          :ok <- endpoint(provider, api["endpoint"]),
          {:ok, description} <- description(provider) do
+      start = Enum.find(keys, hd(keys), &(&1["start"] == true))["name"]
+
+      keys =
+        for %{"id" => id, "name" => name} = key <- keys do
+          %{name: name, secret_value_id: id, entry: entry(name, api, key)}
+        end
+
       {:ok,
        %{
-         name: provider.public_id,
-         entry: entry(provider.public_id, api),
+         name: start,
+         keys: keys,
          hosts: hosts(provider, description, api),
          provider: provider
        }}
@@ -252,9 +288,10 @@ defmodule Apiary.Runs.ProviderCredential do
   end
 
   @doc false
-  # entry/2 is the API credential named `name` for `api`, the run's `provider_api`.
-  @spec entry(String.t(), map) :: Jason.OrderedObject.t()
-  def entry(name, %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api) do
+  # entry/3 is the API credential named `name` for `api`, the run's `provider_api`, with
+  # the members the run keeps for the key `key` (`runs.model_keys`).
+  @spec entry(String.t(), map, map) :: Jason.OrderedObject.t()
+  def entry(name, %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api, key \\ %{}) do
     auth = for member <- @auth_members, Map.has_key?(auth, member), do: {member, auth[member]}
 
     prefixes =
@@ -263,13 +300,15 @@ defmodule Apiary.Runs.ProviderCredential do
         _none -> []
       end
 
+    kept = for member <- @key_members, Map.has_key?(key, member), do: {member, key[member]}
+
     Jason.OrderedObject.new(
       [
         {"name", name},
         {"format", format},
         {"endpoint", endpoint},
         {"auth", Jason.OrderedObject.new(auth)}
-      ] ++ prefixes
+      ] ++ prefixes ++ kept
     )
   end
 

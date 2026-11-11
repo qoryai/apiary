@@ -261,8 +261,10 @@ defmodule Apiary.Kinds.ServicesTest do
                  ~w(api-format.schema.json auth.schema.json policy.schema.json
                     run-configuration.schema.json runtimes.json secrets-request.schema.json
                     secrets-answer.schema.json sealed-plaintext.schema.json
+                    model-keys-report.schema.json model-keys-answer.schema.json
                     events/runtime.text.schema.json events/runtime.tool_result.schema.json
-                    events/runtime.tool_denied.schema.json)
+                    events/runtime.tool_denied.schema.json
+                    events/session.transcript.schema.json)
                  |> Enum.map(&("priv/contract/" <> &1))
                  |> Enum.concat(
                    for file <- ~w(sealed/invalid/bad-signature.json sealed/invalid/expired.json
@@ -277,7 +279,41 @@ defmodule Apiary.Kinds.ServicesTest do
                                   known-answers/keys.json known-answers/small-order.json
                                   policy/observe-allow-first.yaml
                                   invalid/policy-allow-first-pattern.yaml
-                                  invalid/policy-allow-first-too-many.yaml),
+                                  invalid/policy-allow-first-too-many.yaml
+                                  model-keys-report/report.json
+                                  model-keys-report/report-cooldowns.json
+                                  model-keys-report/report-empty.json
+                                  model-keys-answer/answer.json
+                                  model-keys-answer/answer-empty.json
+                                  invalid/model-keys-answer-no-version.json
+                                  invalid/model-keys-report-cooldown-allowed.json
+                                  invalid/model-keys-report-no-observed-at.json
+                                  invalid/model-keys-report-rejected-without-cooldown.json
+                                  invalid/model-keys-report-time-fraction.json
+                                  invalid/model-keys-report-unknown-source.json
+                                  invalid/model-keys-report-unknown-status.json
+                                  invalid/model-keys-report-utilization-over-100.json
+                                  invalid/model-keys-report-window-upper-case.json
+                                  run-configuration/model-keys-cooling.json
+                                  invalid/run-configuration-beyond-schema-model-keys-start-cooling.json
+                                  invalid/run-configuration-beyond-schema-model-keys-two-chosen.json
+                                  invalid/run-configuration-credentials-api-chosen-false.json
+                                  invalid/run-configuration-credentials-api-cooldown-until-not-a-time.json
+                                  invalid/run-configuration-credentials-host-chosen.json
+                                  link/link-batch-exited-model-key-limit.json
+                                  link/link-batch-session-exited-model-key-limit.json
+                                  link/link-batch-session-transcript.json
+                                  link/link-run-answer-resume.json
+                                  run-configuration/resume.json
+                                  invalid/run-configuration-resume-no-session-id.json
+                                  invalid/run-configuration-resume-run-id-upper-case.json
+                                  invalid/event-session-transcript-no-session-id.json
+                                  invalid/event-session-transcript-offset-negative.json
+                                  invalid/event-session-transcript-over-32-kib.json
+                                  invalid/event-session-transcript-session-zero.json
+                                  invalid/event-session-exited-model-key-limit-failed.json
+                                  invalid/link-batch-exited-model-key-limit-failed.json
+                                  invalid/link-batch-session-exited-model-key-limit-failed.json),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )

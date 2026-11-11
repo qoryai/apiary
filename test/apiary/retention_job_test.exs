@@ -7,14 +7,17 @@ defmodule Apiary.RetentionJobTest do
   use Apiary.DataCase, async: false
 
   import Apiary.AccessKeysFixtures
+  import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import ExUnit.CaptureLog
 
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Retention
   alias Apiary.Retention.RetentionRun
-  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run}
+  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk, TranscriptPath}
+  alias Apiary.WorkItems.WorkItem
 
   @now ~U[2026-12-01 03:00:00.000000Z]
 
@@ -68,6 +71,208 @@ defmodule Apiary.RetentionJobTest do
       assert {:ok, []} = Retention.prune_all(now: @now)
       assert count(Event, run) == 15
       assert Repo.aggregate(RetentionRun, :count) == 0
+    end
+  end
+
+  describe "a session's transcript" do
+    @describetag needs: [:factory]
+
+    defp chunk!(run) do
+      Repo.insert!(%SessionChunk{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: run.id,
+        sequence: 1,
+        session: 1,
+        session_id: "5f2c9a1e",
+        path: "~/.claude/projects/-workspace/5f2c9a1e.jsonl",
+        offset: 0,
+        bytes: "{}\n"
+      })
+
+      path!(run)
+    end
+
+    defp path!(run) do
+      Repo.insert!(%TranscriptPath{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: run.id,
+        path: "~/.claude/projects/-workspace/5f2c9a1e.jsonl",
+        chunks: 1,
+        bytes: 3,
+        checked_sequence: 0,
+        next_offset: 0,
+        gap: false
+      })
+    end
+
+    defp chunks(run),
+      do: Repo.aggregate(from(c in SessionChunk, where: c.run_id == ^run.id), :count)
+
+    defp paths(run),
+      do: Repo.aggregate(from(t in TranscriptPath, where: t.run_id == ^run.id), :count)
+
+    defp handed_over_run(scope) do
+      pool = pool_fixture(scope)
+      %{access_key: key} = enrolled_key_fixture(scope, pool)
+      handed_over_fixture(scope, key)
+    end
+
+    # The run last heard from `days` days ago, in `state`.
+    defp age!(run, days, state) do
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [state: state, last_event_at: days_ago(days)]
+        )
+    end
+
+    test "goes with the run's log output, whatever its work item's state", %{scope: scope} do
+      %{run: open, dispatch_run: open_dispatch} = handed_over_run(scope)
+      %{run: closed, dispatch_run: closed_dispatch} = handed_over_run(scope)
+      %{run: young} = handed_over_run(scope)
+      %{run: alive} = handed_over_run(scope)
+      ended = run_fixture(scope, %{state: "completed"})
+      runs = [open, closed, young, alive, ended]
+      Enum.each(runs, &chunk!/1)
+
+      age!(open, 40, "completed")
+      age!(closed, 40, "failed")
+      age!(young, 5, "completed")
+      age!(alive, 40, "running")
+      age!(ended, 40, "completed")
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^closed_dispatch.work_item_id),
+          set: [state: :closed, closed_at: @now]
+        )
+
+      assert Repo.get!(WorkItem, open_dispatch.work_item_id).state == :exploring
+
+      # With no log setting, every transcript stays.
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert Enum.map(runs, &chunks/1) == [1, 1, 1, 1, 1]
+
+      retain(scope, log_retention_days: 30)
+
+      assert {:ok, _results} = Retention.prune_all(now: @now, dry_run: true)
+      assert Enum.map(runs, &chunks/1) == [1, 1, 1, 1, 1]
+
+      level = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: level) end)
+      log = capture_log([level: :info], fn -> Retention.prune_all(now: @now) end)
+
+      # A run still alive keeps its transcript: its gateway may still send chunks.
+      assert Enum.map(runs, &chunks/1) == [0, 0, 1, 1, 0]
+      # What the run kept of the path goes with the chunks.
+      assert Enum.map(runs, &paths/1) == [0, 0, 1, 1, 0]
+      assert log =~ "retention pruned transcripts=3"
+      refute log =~ "{}"
+    end
+
+    test "of a paused run stays past the cut-off until the run that continues it ends", %{
+      scope: scope
+    } do
+      %{run: paused, dispatch_run: dispatch_run} = handed_over_run(scope)
+      chunk!(paused)
+      age!(paused, 40, "paused")
+      retain(scope, log_retention_days: 30)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      {:ok, %DispatchRun{id: continuation_id}} =
+        Repo.transact(fn ->
+          dispatch_run = Repo.get!(DispatchRun, dispatch_run.id)
+          Apiary.Dispatches.requeue_for_pause(dispatch_run, nil)
+        end)
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert chunks(paused) == 1
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^continuation_id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert {chunks(paused), paths(paused)} == {0, 0}
+    end
+
+    test "of a paused run that no run continues goes at the cut-off", %{scope: scope} do
+      %{run: paused} = handed_over_run(scope)
+      %{run: young} = handed_over_run(scope)
+      Enum.each([paused, young], &chunk!/1)
+      age!(paused, 40, "paused")
+      age!(young, 5, "paused")
+      retain(scope, log_retention_days: 30)
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert Enum.map([paused, young], &chunks/1) == [0, 1]
+    end
+
+    test "deletes the rows of a run's paths that outlived its chunks", %{scope: scope} do
+      # A job that stopped after the last batch of chunks, before the rows.
+      ended = run_fixture(scope, %{state: "completed"})
+      path!(ended)
+      age!(ended, 40, "completed")
+      retain(scope, log_retention_days: 30)
+      assert {chunks(ended), paths(ended)} == {0, 1}
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert paths(ended) == 0
+    end
+
+    test "stays in a workspace or an organisation marked for deletion", %{scope: scope} do
+      %{scope: other} = sign_up_fixture()
+      %{scope: third} = sign_up_fixture()
+      marked = run_fixture(scope, %{state: "completed"})
+      in_marked_organisation = run_fixture(other, %{state: "completed"})
+      kept_out = run_fixture(third, %{state: "completed"})
+      Enum.each([marked, in_marked_organisation, kept_out], &chunk!/1)
+      Enum.each([marked, in_marked_organisation, kept_out], &age!(&1, 40, "completed"))
+      Enum.each([scope, other, third], &retain(&1, log_retention_days: 30))
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Organisations.Workspace, where: h.id == ^scope.workspace.id),
+          set: [deletion_marked_at: @now, purge_after: @now, purge_trigger: "grace_period"]
+        )
+
+      {1, _rows} =
+        Repo.update_all(
+          from(o in Apiary.Organisations.Organisation, where: o.id == ^other.organisation.id),
+          set: [deletion_marked_at: @now, purge_after: @now, purge_trigger: "grace_period"]
+        )
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert Enum.map([marked, in_marked_organisation, kept_out], &chunks/1) == [1, 1, 0]
+    end
+
+    test "goes by the events setting when the log setting is empty", %{scope: scope} do
+      %{run: run} = handed_over_run(scope)
+      events_fixture(run, record())
+      {:ok, _run} = Projector.project(run)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [state: "completed", last_event_at: days_ago(40), event_count: 15]
+        )
+
+      young = run_fixture(scope, %{state: "completed"})
+      Enum.each([run, young], &chunk!/1)
+      age!(young, 5, "completed")
+      retain(scope, events_retention_days: 10)
+
+      # The events phase deletes the run's log output with its events, and the transcript
+      # goes with the log output.
+      assert {:ok, [_]} = Retention.prune_all(now: @now)
+      assert count(Event, run) == 0
+      assert Enum.map([run, young], &chunks/1) == [0, 1]
+      assert Enum.map([run, young], &paths/1) == [0, 1]
     end
   end
 

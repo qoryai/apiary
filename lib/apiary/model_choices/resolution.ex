@@ -27,9 +27,16 @@ defmodule Apiary.ModelChoices.Resolution do
   # of each runtime by its name, a model's effort values are those its runtime has too. A
   # tier no choice maps so is left out: the run's program fills it, or runs the agent on
   # the run's model.
+  #
+  # **The fallbacks** come from the same choice as the provider, in their order: each its
+  # provider's row id, its model, the provider's default model where it names none, and
+  # its effort, none with the default model. A fallback whose provider is not among
+  # `providers` is left out, and so are a choice's fallbacks that were not read
+  # (`Ecto.Association.NotLoaded`). `fallback/3` is the resolution of one of them, with
+  # its provider in place of the choice's.
   @moduledoc false
 
-  alias Apiary.ModelChoices.ModelChoice
+  alias Apiary.ModelChoices.{Fallback, ModelChoice}
 
   @tiers ~w(light fast thinking)
 
@@ -63,11 +70,22 @@ defmodule Apiary.ModelChoices.Resolution do
         }
 
   @typedoc """
+  A fallback of a resolution: its provider's row id (`connection_id`), its `model_id`, nil
+  where the provider has no default model, and its `effort` value or nil.
+  """
+  @type fallback :: %{
+          connection_id: Ecto.UUID.t(),
+          model_id: String.t() | nil,
+          effort: String.t() | nil
+        }
+
+  @typedoc """
   A resolution: the `runtime`'s name, nil where the choice names none and the input has
   no default, the provider's row id (`connection_id`), the key's `value_id`, the
   `model_id`, the `effort` value or nil, the `tiers`, each an object of `model` and, when
-  it has one, `effort`, and the level each came from: `level` for the provider, the key,
-  the model and the effort, and `tier_levels` for each tier.
+  it has one, `effort`, the level each came from: `level` for the provider, the key,
+  the model and the effort, and `tier_levels` for each tier, and the `fallbacks`, in
+  their order.
   """
   @type t :: %__MODULE__{
           runtime: String.t() | nil,
@@ -77,7 +95,8 @@ defmodule Apiary.ModelChoices.Resolution do
           effort: String.t() | nil,
           tiers: %{optional(String.t()) => %{required(String.t()) => String.t()}},
           level: ModelChoice.level(),
-          tier_levels: %{optional(String.t()) => ModelChoice.level()}
+          tier_levels: %{optional(String.t()) => ModelChoice.level()},
+          fallbacks: [fallback]
         }
 
   @enforce_keys [:connection_id, :level]
@@ -88,7 +107,8 @@ defmodule Apiary.ModelChoices.Resolution do
             effort: nil,
             tiers: %{},
             level: nil,
-            tier_levels: %{}
+            tier_levels: %{},
+            fallbacks: []
 
   @doc false
   # tiers/0 is the tiers a tier map may set.
@@ -119,6 +139,35 @@ defmodule Apiary.ModelChoices.Resolution do
   # or nil for none. It reads only `input.choices` and the run's places.
   @spec in_effect(map) :: {ModelChoice.level(), ModelChoice.t()} | nil
   def in_effect(%{} = input), do: Enum.find(order(input), &chose_provider?/1)
+
+  @doc false
+  # fallback/3 is the resolution `resolution` of `input` with its fallback `fallback` in
+  # place of its provider: the fallback's provider, the provider's default key, the
+  # fallback's model and effort, and the tiers as the moduledoc maps them for that
+  # provider; the same runtime and level, and no fallbacks. The provider is among
+  # `input.providers`, as each of `resolution.fallbacks` is.
+  @spec fallback(input, t, fallback) :: t
+  def fallback(%{} = input, %__MODULE__{} = resolution, %{connection_id: id} = fallback) do
+    {_level, choice} = in_effect(input)
+    provider = effort_of(Map.fetch!(input.providers, id), input, choice)
+
+    tiers =
+      for tier <- @tiers,
+          {tier_level, entry} <- [tier(order(input), tier, provider)],
+          entry != nil,
+          do: {tier, tier_level, entry}
+
+    %{
+      resolution
+      | connection_id: id,
+        value_id: provider.default_value_id,
+        model_id: fallback.model_id,
+        effort: fallback.effort,
+        tiers: Map.new(tiers, fn {tier, _level, entry} -> {tier, entry} end),
+        tier_levels: Map.new(tiers, fn {tier, tier_level, _entry} -> {tier, tier_level} end),
+        fallbacks: []
+    }
+  end
 
   # The choices in the order of the moduledoc, each `{level, choice}`.
   defp order(input) do
@@ -203,9 +252,26 @@ defmodule Apiary.ModelChoices.Resolution do
       effort: effort,
       level: level,
       tiers: Map.new(tiers, fn {tier, _level, entry} -> {tier, entry} end),
-      tier_levels: Map.new(tiers, fn {tier, tier_level, _entry} -> {tier, tier_level} end)
+      tier_levels: Map.new(tiers, fn {tier, tier_level, _entry} -> {tier, tier_level} end),
+      fallbacks: fallbacks(choice, input.providers)
     }
   end
+
+  # The choice's fallbacks in their order, each whose provider is among `providers`.
+  defp fallbacks(%ModelChoice{fallbacks: fallbacks}, providers) when is_list(fallbacks) do
+    for %Fallback{connection_id: id} = fallback <- Enum.sort_by(fallbacks, & &1.position),
+        {:ok, provider} <- [Map.fetch(providers, id)] do
+      {model_id, effort} =
+        case fallback.model_id do
+          nil -> {provider.default_model_id, nil}
+          model_id -> {model_id, fallback.effort}
+        end
+
+      %{connection_id: id, model_id: model_id, effort: effort}
+    end
+  end
+
+  defp fallbacks(_choice, _providers), do: []
 
   # The first entry for `tier` in the order whose model and effort go with the provider:
   # `{level, entry}`, or `{nil, nil}` for none.

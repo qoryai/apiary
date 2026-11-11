@@ -127,6 +127,7 @@ defmodule Apiary.Connections do
     Integrations,
     LogMetadata,
     ModelChoices,
+    ModelKeys,
     PublicId,
     Repo,
     Secrets
@@ -1055,7 +1056,8 @@ defmodule Apiary.Connections do
   purge_workspace_providers/2 deletes, for the purge of the workspace `workspace_id`
   (`Apiary.Deletion.purge_workspace/1`), the model providers of the organisation
   `organisation_id` whose keys are a secret of that workspace, with the model choices
-  that name them, at any level, in one transaction, before the purge deletes the
+  that name them, at any level, and the fallbacks of other choices that name them, in
+  one transaction, before the purge deletes the
   workspace's secrets: no provider is left linking a secret that is gone. Their
   workspaces' rows go with them (`ON DELETE CASCADE`), and the runs that name them keep
   no link to them (`ON DELETE SET NULL`). It asks nothing of `Apiary.Access` and
@@ -1080,6 +1082,12 @@ defmodule Apiary.Connections do
               select: c.id
           )
 
+        {fallbacks, _} =
+          Repo.delete_all(
+            from f in Apiary.ModelChoices.Fallback,
+              where: f.organisation_id == ^organisation_id and f.connection_id in ^ids
+          )
+
         {choices, _} =
           Repo.delete_all(
             from m in Apiary.ModelChoices.ModelChoice,
@@ -1087,9 +1095,16 @@ defmodule Apiary.Connections do
           )
 
         {providers, _} = Repo.delete_all(from c in Connection, where: c.id in ^ids)
-        {:ok, %{"model_choices" => choices, "organisation_connections" => providers}}
+
+        {:ok,
+         %{
+           "model_choice_fallbacks" => fallbacks,
+           "model_choices" => choices,
+           "organisation_connections" => providers
+         }}
       end)
 
+    :ok = Apiary.Dispatches.refresh_model_providers({:organisation, organisation_id})
     deleted
   end
 
@@ -1335,6 +1350,7 @@ defmodule Apiary.Connections do
         {:ok, inserted}
       end
     end)
+    |> refreshed()
     |> reload()
     |> without_keys()
   end
@@ -1523,6 +1539,7 @@ defmodule Apiary.Connections do
            :ok <- valid(changeset),
            do: save_provider(scope, current, changeset, description)
     end)
+    |> refreshed()
   end
 
   # The reach is set at the add: a change of `applies_to` is refused. A provider whose keys
@@ -1665,10 +1682,27 @@ defmodule Apiary.Connections do
         {:ok, deleted}
       end
     end)
+    |> refreshed()
     |> without_keys()
   end
 
   def delete_provider(%Scope{}, %Connection{}), do: {:error, :not_found}
+
+  # The result of a change of a model provider, once it has committed, with the model
+  # providers of the waiting runs that the change may change set again
+  # (`Apiary.Dispatches.refresh_model_providers/1`): those of the provider's
+  # organisation, and for a provider of the operator's chain, which serves the runs of
+  # other organisations, every waiting run.
+  defp refreshed({:ok, %Connection{chain: chain, organisation_id: id}} = result) do
+    :ok =
+      Apiary.Dispatches.refresh_model_providers(
+        if(chain == "operator", do: :all, else: {:organisation, id})
+      )
+
+    result
+  end
+
+  defp refreshed(result), do: result
 
   defp not_used([], []), do: :ok
   defp not_used(places, []), do: {:error, {:model_in_use, places}}
@@ -1729,39 +1763,130 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  add_provider_key/3 adds a key to a model provider's keys (`provider.write`): `attrs`
-  has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them. `{:ok, provider}`,
-  or `{:error, refusal}` as `Apiary.Secrets.add_value/4` answers.
+  add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs`
+  has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them, and `settings`
+  the key's settings (`Apiary.ModelKeys.Setting.changeset/2`), nil for none. The key and
+  its settings are written in one transaction. `{:ok, provider}`, or `{:error, refusal}`
+  as `Apiary.Secrets.add_value/4` returns, or a changeset of the settings, which leaves
+  no key added.
   """
-  @spec add_provider_key(Scope.t(), Connection.t(), map) ::
+  @spec add_provider_key(Scope.t(), Connection.t(), map, map | nil) ::
           {:ok, Connection.t()} | {:error, refusal}
-  def add_provider_key(%Scope{} = scope, %Connection{} = provider, attrs),
+  def add_provider_key(%Scope{} = scope, %Connection{} = provider, attrs, settings \\ nil),
     do:
       write_keys(scope, provider, fn scope, secret, current ->
         value_id = Value.normalise_value_id(stringify(attrs)["value_id"])
 
         with {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
+             {:ok, _setting} <- put_key_setting(current, value_id, settings),
              do: {:ok, %{after: %{value_id: value_id}, details: %{value_id: value_id}}}
       end)
 
   @doc """
-  set_provider_key/4 replaces the value of a model provider's key with the value id
-  `value_id` (`provider.write`). `{:ok, provider}`, or `{:error, refusal}` as
-  `Apiary.Secrets.set_value/5` answers.
+  set_provider_key/5 replaces the value of a model provider's key with the value id
+  `value_id` (`provider.write`), and, with `settings`, its settings, in one transaction,
+  which also deletes the key's states (`Apiary.ModelKeys.clear_states/2`): the new value
+  is out of cooldown. `{:ok, provider}`, or `{:error, refusal}` as
+  `Apiary.Secrets.set_value/5` returns, or a changeset of the settings, which leaves the
+  value and the states as they were.
   """
-  @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t()) ::
+  @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t(), map | nil) ::
           {:ok, Connection.t()} | {:error, refusal}
-  def set_provider_key(%Scope{} = scope, %Connection{} = provider, value_id, value),
-    do:
-      write_keys(
-        scope,
-        provider,
-        fn scope, secret, current ->
-          with {:ok, _secret} <-
-                 Secrets.set_value(scope, secret, value_id, value, provider: current),
-               do: {:ok, %{details: %{value_id: value_id}}}
+  def set_provider_key(
+        %Scope{} = scope,
+        %Connection{} = provider,
+        value_id,
+        value,
+        settings \\ nil
+      ),
+      do:
+        write_keys(
+          scope,
+          provider,
+          fn scope, secret, current ->
+            with {:ok, _secret} <-
+                   Secrets.set_value(scope, secret, value_id, value, provider: current),
+                 :ok <- ModelKeys.clear_states(current.secret_id, value_id),
+                 {:ok, _setting} <- put_key_setting(current, value_id, settings),
+                 do: {:ok, %{details: %{value_id: value_id}}}
+          end
+        )
+
+  @doc """
+  update_provider_key/4 changes a model provider's key with the value id `value_id`
+  (`provider.write`), but its value: `attrs` has its new `value_id`, which renames it as
+  `rename_provider_key/4` does, and its `settings` (`Apiary.ModelKeys.Setting.changeset/2`).
+  A rename keeps the settings and the states, which are the value's row's: the value
+  stays as it is, and only a new value deletes the states (`set_provider_key/5`). The
+  name and the settings are written in one transaction, and a save that changes neither
+  leaves no entry.
+  `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for a value id the provider's
+  keys do not have, a refusal of the rename as `rename_provider_key/4` returns, or a
+  changeset of the settings, which leaves the name as it was.
+  """
+  @spec update_provider_key(Scope.t(), Connection.t(), String.t(), map) ::
+          {:ok, Connection.t()} | {:error, refusal}
+  def update_provider_key(%Scope{} = scope, %Connection{} = provider, value_id, attrs) do
+    attrs = stringify(attrs)
+    new_value_id = Value.normalise_value_id(attrs["value_id"])
+
+    write_keys(scope, provider, fn scope, secret, current ->
+      with %Value{} = value <- Enum.find(current.secret.values, &(&1.value_id == value_id)),
+           changeset = ModelKeys.change_setting(value, attrs["settings"] || %{}),
+           :ok <- valid(changeset),
+           {:ok, renamed} <- rename_key(scope, secret, current, value_id, new_value_id),
+           {:ok, _setting} <- write_setting(changeset) do
+        cond do
+          renamed ->
+            {:ok,
+             %{
+               before: %{value_id: value_id},
+               after: %{value_id: new_value_id},
+               details: %{value_id: new_value_id}
+             }}
+
+          changeset.changes != %{} ->
+            {:ok, %{details: %{value_id: value_id}}}
+
+          true ->
+            {:ok, :unchanged}
         end
+      else
+        nil -> {:error, :not_found}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+  end
+
+  # A rename of the key `value_id` to `new_value_id`: `{:ok, true}` once renamed,
+  # `{:ok, false}` for the same value id.
+  defp rename_key(_scope, _secret, _current, value_id, value_id), do: {:ok, false}
+
+  defp rename_key(scope, secret, current, value_id, new_value_id) do
+    with {:ok, _secret} <-
+           Secrets.rename_value(scope, secret, value_id, new_value_id, provider: current),
+         do: {:ok, true}
+  end
+
+  # A settings changeset with no change writes nothing: a key without settings keeps no
+  # empty row.
+  defp write_setting(%Ecto.Changeset{changes: changes}) when changes == %{}, do: {:ok, nil}
+  defp write_setting(changeset), do: Repo.insert_or_update(changeset)
+
+  # The settings of the provider's key `value_id`, its row read in the keys' secret after
+  # the write of its value; nothing to write for nil.
+  defp put_key_setting(_current, _value_id, nil), do: {:ok, nil}
+
+  defp put_key_setting(%Connection{secret_id: secret_id}, value_id, settings) do
+    value =
+      Repo.one!(
+        from v in Value,
+          where: v.secret_id == ^secret_id and v.value_id == ^value_id,
+          select: struct(v, [:id, :organisation_id])
       )
+
+    value |> ModelKeys.change_setting(settings) |> write_setting()
+  end
 
   @doc """
   rename_provider_key/4 gives a model provider's key another value id
@@ -1803,7 +1928,8 @@ defmodule Apiary.Connections do
   # A write to a provider's keys, under the provider's locks: `fun` of the scope, the
   # keys' secret and the provider, as `Apiary.Secrets` writes it, answers the `before`,
   # `after` and `details` of the change, which the provider's `provider_keys_changed`
-  # entry records. A key that is the default key stays, with the reason on `value_id`.
+  # entry records, or `:unchanged`, which records none. A key that is the default key
+  # stays, with the reason on `value_id`.
   defp write_keys(scope, provider, fun) do
     write_provider(scope, provider, fn scope, _organisation, current ->
       # The level the keys are at is read again from the secret's row
@@ -1811,6 +1937,9 @@ defmodule Apiary.Connections do
       secret = %Secret{id: current.secret_id, organisation_id: current.organisation_id}
 
       case fun.(scope, secret, current) do
+        {:ok, :unchanged} ->
+          {:ok, current}
+
         {:ok, change} ->
           details =
             Map.merge(Map.get(change, :details, %{}), %{

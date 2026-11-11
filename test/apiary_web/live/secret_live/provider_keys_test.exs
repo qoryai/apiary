@@ -1,17 +1,19 @@
 defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
   # The keys of a model provider added for the workspace alone, on the workspace's Secrets
   # and variables: listed with the provider's name and "Model provider key", masked;
-  # changed, added, renamed and deleted as the provider's keys, under `provider.write`;
-  # the secret's deletion refused while the provider links it; never a key in the page.
+  # changed, added, renamed and deleted as the provider's keys, under `provider.write`,
+  # added and changed with their settings; the secret's deletion refused while the
+  # provider links it; never a key in the page.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Connections, Repo, Secrets}
+  alias Apiary.{Connections, ModelKeys, Repo, Secrets}
   alias Apiary.Connections.Connection
-  alias Apiary.Secrets.Secret
+  alias Apiary.Secrets.{Secret, Value}
 
   @moduletag needs: :factory
 
@@ -33,8 +35,19 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
   defp secrets_path(scope, rest \\ ""),
     do: "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/secrets#{rest}"
 
-  defp reveal(provider, value_id),
-    do: Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), value_id)
+  # The key `value_id` of `provider`, as the secrets endpoint reveals it, by its row id;
+  # `{:error, :not_found}` once no key has that value id.
+  defp reveal(provider, value_id) do
+    provider = Repo.get!(Connection, provider.id)
+
+    case Repo.one(
+           from v in Apiary.Secrets.Value,
+             where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
+         ) do
+      nil -> {:error, :not_found}
+      value -> Secrets.reveal_key_for_sealing(provider, value.id)
+    end
+  end
 
   defp refute_key(html) do
     refute html =~ @key
@@ -131,6 +144,158 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
 
     assert Enum.count(changes, &(&1 == "provider_keys_changed")) == 4
     refute Repo.exists?(from e in Apiary.Audit.Entry, where: e.action == "secret.write")
+  end
+
+  test "adds and changes a key with its settings, Resets and Pause for", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+
+    assert has_element?(
+             lv,
+             "#secret_value_reset_day-resets-hint",
+             "The weekly time when this key's allowance resets. Set it if the provider sends no reset time."
+           )
+
+    assert has_element?(
+             lv,
+             "#secret_value_pause_number-pause-hint",
+             "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 minute."
+           )
+
+    html =
+      lv
+      |> form("#secret-form",
+        secret_value: %{
+          value_id: "spare",
+          value: "second-key",
+          reset_day: "1",
+          reset_time: "",
+          pause_number: "0"
+        }
+      )
+      |> render_submit()
+
+    refute_key(html)
+
+    assert has_element?(
+             lv,
+             "#secret_value_reset_day-resets-error",
+             "Set the day, the time and the time zone, or leave all three empty."
+           )
+
+    assert has_element?(
+             lv,
+             "#secret_value_pause_number-pause-error",
+             "Enter a time from 1 minute to 7 days."
+           )
+
+    assert reveal(provider, "spare") == {:error, :not_found}
+
+    lv
+    |> form("#secret-form",
+      secret_value: %{
+        value_id: "spare",
+        value: "second-key",
+        reset_day: "2",
+        reset_time: "10:30",
+        reset_zone: "Europe/Berlin",
+        pause_number: "3",
+        pause_unit: "days"
+      }
+    )
+    |> render_submit()
+
+    assert render(lv) =~ "spare is added to #{secret.name}."
+    assert reveal(provider, "spare") == {:ok, "second-key"}
+    value = Repo.get_by!(Value, secret_id: secret.id, value_id: "spare")
+    setting = ModelKeys.setting(value.id)
+    assert {setting.reset_weekday, setting.reset_time} == {2, ~T[10:30:00]}
+    assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 259_200}
+
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{secret.public_id}/values/spare/change"))
+
+    assert has_element?(lv, ~s{#secret_value_reset_day option[value="2"][selected]})
+    assert has_element?(lv, ~s{#secret_value_pause_number[value="3"]})
+    assert has_element?(lv, ~s{#secret_value_pause_unit option[value="days"][selected]})
+
+    lv
+    |> form("#secret-form",
+      secret_value: %{
+        value: "third-key",
+        reset_day: "",
+        reset_time: "",
+        pause_number: "45",
+        pause_unit: "minutes"
+      }
+    )
+    |> render_submit()
+
+    assert render(lv) =~ "spare of #{secret.name} is saved."
+    assert reveal(provider, "spare") == {:ok, "third-key"}
+    setting = ModelKeys.setting(value.id)
+    assert {setting.reset_weekday, setting.pause_seconds} == {nil, 2700}
+  end
+
+  test "Change value with New value empty saves a key's settings and keeps its value", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    value = Repo.get_by!(Value, secret_id: secret.id, value_id: "main")
+    key_state!(provider, "main", until: in_seconds(3_600))
+
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+    lv
+    |> form("#secret-form",
+      secret_value: %{
+        value: "",
+        reset_day: "5",
+        reset_time: "14:00",
+        reset_zone: "Europe/Berlin",
+        pause_number: "2",
+        pause_unit: "hours"
+      }
+    )
+    |> render_submit()
+
+    assert render(lv) =~ "main of #{secret.name} is saved."
+    assert reveal(provider, "main") == {:ok, @key}
+    setting = ModelKeys.setting(value.id)
+    assert {setting.reset_weekday, setting.reset_time} == {5, ~T[14:00:00]}
+    assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 7200}
+
+    # The value stays, and so does its cooldown.
+    assert [%{status: "rejected"}] =
+             ModelKeys.provider_states(provider, DateTime.utc_now())[value.id]
+  end
+
+  test "Change value with a new value clears the key's cooldown", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    value = Repo.get_by!(Value, secret_id: secret.id, value_id: "main")
+    key_state!(provider, "main", until: in_seconds(3_600))
+
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+    lv
+    |> form("#secret-form", secret_value: %{value: "second-key"})
+    |> render_submit()
+
+    assert render(lv) =~ "main of #{secret.name} is saved."
+    assert reveal(provider, "main") == {:ok, "second-key"}
+    refute ModelKeys.provider_states(provider, DateTime.utc_now())[value.id]
+  end
+
+  test "another secret's value has no settings", ctx do
+    %{conn: conn, scope: scope} = ctx
+    {:ok, plain} = Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "plain-value"})
+
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{plain.public_id}/change-value"))
+
+    assert has_element?(lv, "#secret-form")
+    refute has_element?(lv, "#secret_value_reset_day")
+    refute has_element?(lv, "#secret_value_pause_number")
   end
 
   test "refuses to delete the secret while the provider links it", ctx do

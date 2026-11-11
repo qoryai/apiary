@@ -12,8 +12,8 @@ defmodule Apiary.Secrets do
 
   ## Write-only
 
-  No function of this module returns a value, but `reveal_for_sealing/3` and the reveal
-  of a model provider's key, which the secrets endpoint calls to seal a value to the
+  No function of this module returns a value, but `reveal_for_sealing/3` and the reveals
+  of a model provider's key, by its value id or its row id, which the secrets endpoint calls to seal a value to the
   gateway, and only that. A listing loads the
   values without their ciphertext. Nothing logs a value, and an audit entry names a
   secret and a value id, never a value.
@@ -833,9 +833,14 @@ defmodule Apiary.Secrets do
     |> reload_deleted()
   end
 
-  # A secret deleted with its values, once nothing uses it, and its entry.
+  # A secret deleted with its values, once nothing uses it, and its entry. The values'
+  # rows are locked `FOR UPDATE` in the order of their ids before the delete, whose
+  # cascade would lock them in an order the statement does not fix: a secrets request
+  # takes the rows of a run's keys `FOR KEY SHARE` in that order too
+  # (`Apiary.ModelKeys.keep_copies/2`), so the two cannot deadlock.
   defp deleted(scope, current, opts \\ []) do
     with :ok <- not_in_use(Usage.uses(Repo, current)),
+         _ids = lock_values(current),
          {:ok, deleted} <- Repo.delete(current),
          {:ok, _entry} <-
            entry(opts, scope, deleted, %{
@@ -849,6 +854,12 @@ defmodule Apiary.Secrets do
            }) do
       {:ok, %{deleted | values: current.values}}
     end
+  end
+
+  defp lock_values(%Secret{id: id}) do
+    Repo.all(
+      from v in Value, where: v.secret_id == ^id, order_by: v.id, lock: "FOR UPDATE", select: v.id
+    )
   end
 
   defp reload_deleted({:error, %Ecto.Changeset{} = changeset}), do: {:error, scrub(changeset)}
@@ -1067,63 +1078,101 @@ defmodule Apiary.Secrets do
     end
   end
 
-  # With the `factory` feature: reveal_for_sealing/2
-  # is the plaintext of the key `value_id` of the model provider `provider`, a row of
-  # `Apiary.Connections` the caller has read and checked (`Apiary.Connections.intact?/1`),
-  # for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The key is a value of
-  # the secret that the provider's row links (`secret_id`), read at the level that secret
-  # is at, as `reveal_for_sealing/3` reads it, with the same results: for the
-  # organisation's secret, under the organisation's data key; for a workspace's, under
-  # that workspace's data key. The caller checks that the run is of that workspace
+  # With the `factory` feature: reveal_key_for_sealing/2 is the plaintext of the key of the
+  # model provider `provider`, a row of `Apiary.Connections` the caller has read and
+  # checked (`Apiary.Connections.intact?/1`), whose row id (`secret_values.id`) is
+  # `secret_value_id`, for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The
+  # key is a value of the secret that the provider's row links (`secret_id`), read at the
+  # level that secret is at, as `reveal_for_sealing/3` reads it, with the same results:
+  # for the organisation's secret, under the organisation's data key; for a workspace's,
+  # under that workspace's data key. The caller checks that the run is of that workspace
   # (`provider_keys_workspace/1`). The edition is not called: the core keeps the
-  # provider's keys whatever the edition returns for the organisation's other secrets.
-  # `{:error, :not_found}` for a provider that links no secret.
+  # provider's keys whatever the edition returns for the organisation's other secrets. The
+  # key is decrypted under the value id it has now, which its associated data binds, so a
+  # key renamed since a run's claim is revealed. `{:error, :not_found}` for a provider that
+  # links no secret, and for a key that is not a value of that secret, or is gone.
   @doc false
-  @spec reveal_for_sealing(Connection.t(), String.t()) ::
+  @spec reveal_key_for_sealing(Connection.t(), Ecto.UUID.t()) ::
           {:ok, binary} | {:error, :not_found | :unavailable}
-  def reveal_for_sealing(
+  def reveal_key_for_sealing(provider, secret_value_id) do
+    case reveal_key_and_set_at(provider, secret_value_id) do
+      {:ok, plaintext, _value_set_at} -> {:ok, plaintext}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # reveal_key_and_set_at/2 is `reveal_key_for_sealing/2` with the time the revealed
+  # value was set (`secret_values.value_set_at`), read from the same row:
+  # `{:ok, plaintext, value_set_at}`.
+  @doc false
+  @spec reveal_key_and_set_at(Connection.t(), Ecto.UUID.t()) ::
+          {:ok, binary, DateTime.t()} | {:error, :not_found | :unavailable}
+  def reveal_key_and_set_at(
         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
-        value_id
+        secret_value_id
       )
-      when is_binary(organisation_id) and is_binary(secret_row_id) and is_binary(value_id) and
-             not is_nil(provider.provider_kind) do
+      when is_binary(organisation_id) and is_binary(secret_row_id) and
+             is_binary(secret_value_id) and not is_nil(provider.provider_kind) do
+    with {:ok, row_id} <- Ecto.UUID.cast(secret_value_id),
+         {query, secret_id, workspace_id} <- provider_values(provider),
+         {%Value{value_id: value_id} = row, data_key} when is_binary(value_id) <-
+           Repo.one(where(query, [v], v.id == ^row_id)),
+         {:ok, plaintext} <-
+           decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id) do
+      {:ok, plaintext, row.value_set_at}
+    else
+      {:error, :unavailable} -> {:error, :unavailable}
+      _gone -> {:error, :not_found}
+    end
+  end
+
+  def reveal_key_and_set_at(_provider, _secret_value_id), do: {:error, :not_found}
+
+  # The query of the values of the secret the provider's row links, at that secret's
+  # level, each with its data key, `{query, secret's public id, workspace id or nil}`;
+  # nil for a provider that links no secret of its organisation.
+  defp provider_values(
+         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = _provider
+       ) do
     case Repo.one(
            from s in Secret,
              where: s.id == ^secret_row_id and s.organisation_id == ^organisation_id,
              select: {s.public_id, s.workspace_id}
          ) do
       {secret_id, nil} ->
-        from(v in Value,
-          join: s in Secret,
-          on: s.id == v.secret_id and s.organisation_id == v.organisation_id,
-          join: k in OrganisationDataKey,
-          on: k.id == v.organisation_data_key_id and k.organisation_id == v.organisation_id,
-          where:
-            s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
-              is_nil(s.workspace_id) and is_nil(v.workspace_id),
-          select: {v, k}
-        )
-        |> reveal(organisation_id, nil, secret_id, value_id)
+        query =
+          from(v in Value,
+            join: s in Secret,
+            on: s.id == v.secret_id and s.organisation_id == v.organisation_id,
+            join: k in OrganisationDataKey,
+            on: k.id == v.organisation_data_key_id and k.organisation_id == v.organisation_id,
+            where:
+              s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
+                is_nil(s.workspace_id) and is_nil(v.workspace_id),
+            select: {v, k}
+          )
+
+        {query, secret_id, nil}
 
       {secret_id, workspace_id} ->
-        from(v in Value,
-          join: s in Secret,
-          on: s.id == v.secret_id and s.workspace_id == v.workspace_id,
-          join: k in DataKey,
-          on: k.id == v.data_key_id and k.workspace_id == v.workspace_id,
-          where:
-            s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
-              s.workspace_id == ^workspace_id and v.workspace_id == ^workspace_id,
-          select: {v, k}
-        )
-        |> reveal(organisation_id, workspace_id, secret_id, value_id)
+        query =
+          from(v in Value,
+            join: s in Secret,
+            on: s.id == v.secret_id and s.workspace_id == v.workspace_id,
+            join: k in DataKey,
+            on: k.id == v.data_key_id and k.workspace_id == v.workspace_id,
+            where:
+              s.id == ^secret_row_id and s.organisation_id == ^organisation_id and
+                s.workspace_id == ^workspace_id and v.workspace_id == ^workspace_id,
+            select: {v, k}
+          )
+
+        {query, secret_id, workspace_id}
 
       nil ->
-        {:error, :not_found}
+        nil
     end
   end
-
-  def reveal_for_sealing(_provider, _value_id), do: {:error, :not_found}
 
   @doc false
   # provider_keys_workspace/1 is the workspace whose secret the model provider
@@ -1159,19 +1208,24 @@ defmodule Apiary.Secrets do
 
     case Repo.one(query) do
       {%Value{} = row, data_key} ->
-        aad = value_aad(organisation_id, workspace_id, secret_id, value_id)
-
-        # An unwrap that fails has said so in the log already.
-        with {:ok, key} <- unwrap(data_key),
-             {:ok, plaintext} <- Cipher.decrypt(key, aad, row.nonce, row.ciphertext) do
-          {:ok, plaintext}
-        else
-          {:error, :key_unavailable} -> {:error, :unavailable}
-          :error -> unavailable(organisation_id, workspace_id, secret_id, value_id)
-        end
+        decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id)
 
       nil ->
         {:error, :not_found}
+    end
+  end
+
+  # The plaintext of `row`, under the associated data of its value id as the row has it.
+  defp decrypt_for_sealing(%Value{} = row, data_key, organisation_id, workspace_id, secret_id) do
+    aad = value_aad(organisation_id, workspace_id, secret_id, row.value_id)
+
+    # An unwrap that fails has said so in the log already.
+    with {:ok, key} <- unwrap(data_key),
+         {:ok, plaintext} <- Cipher.decrypt(key, aad, row.nonce, row.ciphertext) do
+      {:ok, plaintext}
+    else
+      {:error, :key_unavailable} -> {:error, :unavailable}
+      :error -> unavailable(organisation_id, workspace_id, secret_id, row.value_id)
     end
   end
 
@@ -1459,7 +1513,7 @@ defmodule Apiary.Secrets do
 
   # Encrypts the changeset's plaintext under the data key of the secret's level, bound to
   # the value id it will have, takes the plaintext out of the changeset, and writes the
-  # row.
+  # row, with the time its value was set (`value_set_at`).
   defp encrypt_and_write(scope, secret, changeset, how) do
     plaintext = Ecto.Changeset.get_change(changeset, :value)
     value_id = Ecto.Changeset.get_field(changeset, :value_id)
@@ -1471,7 +1525,12 @@ defmodule Apiary.Secrets do
       changeset
       |> Ecto.Changeset.delete_change(:value)
       |> Ecto.Changeset.change(
-        [nonce: nonce, ciphertext: ciphertext, updated_by_id: scope.user.id] ++ key_field
+        [
+          nonce: nonce,
+          ciphertext: ciphertext,
+          value_set_at: DateTime.utc_now(),
+          updated_by_id: scope.user.id
+        ] ++ key_field
       )
       |> then(fn changeset ->
         case how do

@@ -40,6 +40,7 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.TargetLive.FurtherRepositories,
     ApiaryWeb.ProviderLive.Index,
     ApiaryWeb.ProviderLive.Show,
+    ApiaryWeb.ProviderLive.Key,
     ApiaryWeb.ModelChoiceLive,
     ApiaryWeb.HarnessLive,
     ApiaryWeb.CollectionsLive,
@@ -47,7 +48,8 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.AdapterRedirectController,
     ApiaryWeb.WorkItemRedirectController,
     ApiaryWeb.AdapterInstallController,
-    ApiaryWeb.AdapterSetupController
+    ApiaryWeb.AdapterSetupController,
+    ApiaryWeb.Contract.ModelKeysController
   ]
 
   # The modules of the feature's pages of the Instance level not built yet, which answer
@@ -220,11 +222,15 @@ defmodule ApiaryWeb.FactoryShellTest do
                  {:get, "/instance/machine-types/new"},
                  {:get, "/instance/machine-types/x1/edit"},
                  {:get, "/instance/machine-types/x1/delete"},
-                 # The organisation's model providers: the list, New model provider and a
-                 # provider's page; and a workspace's Model.
+                 # The organisation's model providers: the list, New model provider, a
+                 # provider's page with Add key and Edit key; and a workspace's Model.
                  {:get, "#{org}/settings/model-providers"},
                  {:get, "#{org}/settings/model-providers/new"},
                  {:get, "#{org}/settings/model-providers/x1"},
+                 {:get, "#{org}/settings/model-providers/x1/keys/new"},
+                 {:get, "#{org}/settings/model-providers/x1/keys/x1/edit"},
+                 # A gateway's report of a run's model keys.
+                 {:post, "/v1/runs/x1/model-keys"},
                  {:get, workspace_path(scope, "/settings/model")},
                  # The chooser of set-up's Work sources and Destinations.
                  {:get, workspace_path(scope, "/set-up/x1/choose")}

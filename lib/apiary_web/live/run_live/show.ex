@@ -46,7 +46,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   alias Apiary.Access
   alias Apiary.Dispatches
-  alias Apiary.Dispatches.{DispatchRun, MachineLogs}
+  alias Apiary.Dispatches.{DispatchRun, MachineLogs, Pause}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
@@ -58,6 +58,7 @@ defmodule ApiaryWeb.RunLive.Show do
   alias ApiaryWeb.ConnectionLive.Rules
   alias ApiaryWeb.RunLive.Concealed
   alias ApiaryWeb.MachineTypeWords
+  alias ApiaryWeb.PauseWords
   alias ApiaryWeb.PreparationComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.TranscriptComponents
@@ -225,12 +226,13 @@ defmodule ApiaryWeb.RunLive.Show do
               </p>
               <p :if={@ending} id="run-why" class="q-run-why">
                 <span class="q-run-why-k">{gettext("How it ended")}</span>
-                <%!-- A step's ending has no item to jump to, and wraps whole. --%>
+                <%!-- A step's ending has no item to jump to, and wraps whole. A paused
+                      run's line is rich text, with the link to the run that continues it. --%>
                 <span
                   :if={@ending.text}
                   class={["q-run-why-t", is_nil(@ending.seq) && "q-run-why-whole"]}
                   title={@ending.seq && @ending.text}
-                >{@ending.text}</span>
+                ><.rich text={@ending[:rich] || @ending.text} /></span>
                 <.link
                   :if={@ending.seq}
                   id="run-why-jump"
@@ -2515,9 +2517,11 @@ defmodule ApiaryWeb.RunLive.Show do
   # (`Preparation.stop_line/1`), or with the image a prebuild did not save
   # (`PreparationComponents.built_line/1`); else with the item the candidates find; else
   # with its failed push or copy (`Preparation.push_line/1`); else, for a prebuild lost
-  # before its image arrived, that (`unsaved_ending/2`). A prebuild that ended in another
-  # state ends with the image it did not save, as one that completed whose report failed
-  # its check, or one cancelled before its image arrived. A step's ending has no `seq`.
+  # before its image arrived, that (`unsaved_ending/2`). A paused run ends with why it
+  # paused and the run that continues it, where one does (`ApiaryWeb.PauseWords`). A
+  # prebuild that ended in another state ends with the image it did not save, as one
+  # that completed whose report failed its check, or one cancelled before its image
+  # arrived. A step's ending has no `seq`.
   defp assign_ending(socket, state, run, index) do
     preparation = socket.assigns.preparation
     scope = socket.assigns.current_scope
@@ -2534,6 +2538,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
         assign(socket, ending: ending)
 
+      rich = paused_line(scope, run) ->
+        assign(socket, ending: %{seq: nil, text: plain_text(rich), rich: rich})
+
       not alive?(run) ->
         ending =
           step_ending(PreparationComponents.built_line(preparation)) ||
@@ -2543,6 +2550,21 @@ defmodule ApiaryWeb.RunLive.Show do
 
       true ->
         assign(socket, ending: nil)
+    end
+  end
+
+  # The line of a paused run in rich text (`ApiaryWeb.PauseWords`), with the link to the
+  # run that continues it where one does; nil for any other run.
+  defp paused_line(scope, run) do
+    case Pause.of_run(run) do
+      %{number: number} = pause when is_integer(number) ->
+        PauseWords.line(pause, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{number}")
+
+      %{} = pause ->
+        PauseWords.line(pause, nil)
+
+      nil ->
+        nil
     end
   end
 
@@ -3644,6 +3666,15 @@ defmodule ApiaryWeb.RunLive.Show do
     if was_quiet? and is_nil(quiet_for(run)) and state == "running",
       do: announce(socket, gettext("Heartbeats resumed."), :now),
       else: socket
+  end
+
+  # When a run becomes paused, the screen-reader announcer (`#run-announcer`) is set to the
+  # plain text of the paused line on the page, or the state sentence if no line is shown.
+  defp announce_change(socket, _old, %Run{state: "paused"} = run, _was_quiet?) do
+    case paused_line(socket.assigns.current_scope, run) do
+      nil -> announce(socket, state_sentence(run), :now)
+      rich -> announce(socket, plain_text(rich), :now)
+    end
   end
 
   defp announce_change(socket, _old, %Run{} = run, _was_quiet?) do

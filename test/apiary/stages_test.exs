@@ -2204,6 +2204,39 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{attempt: 2, of: 3, round: 1, loop_entry: nil} = newest_run(work_item)
     end
 
+    test "a continuation of a paused run uses up none of its entry's runs", %{scope: scope} do
+      work_item = take_in!(scope)
+      paused = newest_run(work_item)
+
+      # The run ends at its model keys' limit, and its continuation is queued
+      # (`Apiary.Dispatches.requeue_for_pause/2`).
+      {:ok, continuation} =
+        Repo.transact(fn ->
+          paused
+          |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
+          |> Repo.update!()
+          |> Apiary.Dispatches.requeue_for_pause(nil)
+        end)
+
+      assert %DispatchRun{attempt: 2, round: 1} = continuation
+      assert continuation.continues_id == paused.id
+
+      work_item = end_run!(work_item, understood_result())
+      [proposal] = versions(work_item, "proposal")
+
+      assert {:ok, %WorkItem{stage_state: :running}} =
+               Stages.request_changes(
+                 scope,
+                 work_item,
+                 "Leave out the invoice",
+                 proposal.public_id,
+                 expect_stage: reload(work_item).stage_id
+               )
+
+      # One run of the entry before, not two: this run and one more are left.
+      assert %DispatchRun{attempt: 3, of: 4, round: 1} = newest_run(work_item)
+    end
+
     test "only the listed approvers approve", %{scope: scope} do
       member = member_fixture(scope)
 

@@ -208,7 +208,8 @@ defmodule ApiaryWeb.PreparationComponents do
   what Remove the machine shows (`clean_up/3`), nil for no report. `session_open` is the
   `sequence` of the start of the agent session whose Agent session and Run the agent
   open when they appear on a run that ended, as for a link to an event inside it; nil
-  for none. `run_state` is the run's state, for the heading. `wall` is whether the run
+  for none. `run_state` is the run's state, for the heading, and a session that paused
+  on a run that is `completed` reads as one that succeeded. `wall` is whether the run
   has a wall: only then does a Start the wall that did not run have a row. The `session`
   slot is a session's Timeline, inside its Run the agent, called with that `sequence`.
   """
@@ -223,7 +224,7 @@ defmodule ApiaryWeb.PreparationComponents do
   slot :session
 
   def run_list(assigns) do
-    preparation = assigns.preparation
+    preparation = finished(assigns.preparation, assigns.run_state)
     alive = assigns.alive
     machine = preparation.machine
     removed = removed_row(assigns.clean_up, machine)
@@ -1062,7 +1063,8 @@ defmodule ApiaryWeb.PreparationComponents do
 
   # A step made of steps: failed when one failed; else running when one runs or
   # `going_on`, so it shows no end between two of its steps; else cancelled when one was
-  # cancelled; else succeeded. Skipped when none ran. It spans from the first one's start
+  # cancelled; else paused when an agent session paused; else succeeded. Skipped when
+  # none ran. It spans from the first one's start
   # to the last one's end, and its clock counts while one of its steps counts.
   defp group(fields, children, going_on) do
     ran = Enum.reject(children, &(is_nil(&1) or &1.state == "skipped"))
@@ -1074,6 +1076,7 @@ defmodule ApiaryWeb.PreparationComponents do
         "failed" in states -> "failed"
         "running" in states or going_on -> "running"
         "cancelled" in states -> "cancelled"
+        "paused" in states -> "paused"
         true -> "succeeded"
       end
 
@@ -1217,6 +1220,20 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp waiting_words(:no_pool), do: gettext("Waiting: no pool can take the run")
 
+  defp waiting_words({:cooldown, nil, until}),
+    do:
+      gettext("Waiting for a model key: every model key is in cooldown until %{time}.",
+        time: cooldown_time(until)
+      )
+
+  defp waiting_words({:cooldown, provider, until}),
+    do:
+      gettext(
+        "Waiting for a model key: every key of %{provider} is in cooldown until %{time}.",
+        provider: ExternalText.line(provider),
+        time: cooldown_time(until)
+      )
+
   defp waiting_words({:image, target, :queued}),
     do:
       gettext("Waiting for the environment image: a build of %{target} is queued.",
@@ -1259,6 +1276,14 @@ defmodule ApiaryWeb.PreparationComponents do
     do: gettext("Waiting for %{node} to run it.", node: ExternalText.line(name))
 
   defp waiting_words(_reason), do: nil
+
+  @doc false
+  # cooldown_time/2 is the end of a cooldown in the reader's time zone at `now`, as a key's
+  # row on Model providers shows it (`ApiaryWeb.Format.week_time/2`): the time of day
+  # alone on the reader's day, "14:00", the weekday on one of the six days after it,
+  # "Fri 14:00", else with its date, "26 Sept, 14:00".
+  @spec cooldown_time(DateTime.t(), DateTime.t()) :: String.t()
+  def cooldown_time(until, now \\ DateTime.utc_now()), do: Format.week_time(until, now)
 
   defp request_node(nil), do: nil
 
@@ -1625,8 +1650,9 @@ defmodule ApiaryWeb.PreparationComponents do
   defp create_line(_started, _step_started_at), do: []
 
   # Run the agent spans from a session's start to its exit. Its state is the exit's,
-  # succeeded for an exit with no state of a step; running while the run is alive with no
-  # exit; cancelled once the run ended with none.
+  # paused for an exit at the run's model keys' limit, succeeded for an exit with no state
+  # of a step; running while the run is alive with no exit; cancelled once the run ended
+  # with none.
   defp session_row(at, finished, alive) do
     exited_at = finished && finished.exited_at
 
@@ -1639,6 +1665,35 @@ defmodule ApiaryWeb.PreparationComponents do
 
     %{state: state, at: at, duration_ms: exited_at && ms_between(at, exited_at)}
   end
+
+  # A run that paused after it pushed its questions or a proposal ended completed
+  # (`Apiary.Runs.Fold.settle/1`), so each of its sessions that paused reads as one that
+  # succeeded. A run that paused and is continued keeps its paused sessions.
+  defp finished(preparation, "completed") do
+    Map.new(preparation, fn
+      {:session_end, finished} -> {:session_end, succeeded(finished)}
+      {:sessions, sessions} -> {:sessions, Enum.map(sessions, &%{&1 | end: succeeded(&1.end)})}
+      pair -> pair
+    end)
+  end
+
+  defp finished(preparation, _run_state), do: preparation
+
+  defp succeeded(%{} = finished) do
+    if exit_state(finished) == "paused",
+      do: Map.merge(finished, %{state: "succeeded", reason: nil}),
+      else: finished
+  end
+
+  defp succeeded(finished), do: finished
+
+  defp exit_state(%{state: "paused", reason: "model_key_limit"}), do: "paused"
+  # A pause for any other reason, or none, is no end the contract has: failed, as the run
+  # reads it (`Apiary.Runs.Fold.exit_state/2`).
+  defp exit_state(%{state: "paused"}), do: "failed"
+  # The shape of a pause from a gateway built with qoryai/forager#53 and before #54,
+  # which ends a paused run `cancelled`: read as Paused while such gateways run.
+  defp exit_state(%{state: "cancelled", reason: "model_key_limit"}), do: "paused"
 
   defp exit_state(%{state: state}) when state in ["succeeded", "failed", "cancelled"],
     do: state
@@ -1970,6 +2025,11 @@ defmodule ApiaryWeb.PreparationComponents do
       <% "cancelled" -> %>
         <.icon name="hero-minus-circle-micro" class="text-faint size-4 self-center" />
         <span class="sr-only">{gettext("Cancelled")}</span>
+      <% "paused" -> %>
+        <span class="q-st q-st-paused size-4 justify-center self-center" aria-hidden="true">
+          <i></i>
+        </span>
+        <span class="sr-only">{gettext("Paused")}</span>
       <% "skipped" -> %>
         <.icon name="hero-no-symbol-micro" class="text-faint size-4 self-center" />
       <% _running -> %>

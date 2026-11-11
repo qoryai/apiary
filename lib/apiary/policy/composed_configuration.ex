@@ -51,7 +51,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # - `variables`, the run variables Qory set for the run (`runs.registration_variables`,
   #   `Apiary.Runs.RunVariables.document/1`);
   # - with the `secrets` feature too, for a run its claim set a model provider for:
-  #   `credentials`, the provider's API credential, and `model_credential`, its name
+  #   `credentials`, an API credential for each of the run's model keys, in their order,
+  #   and `model_credential`, the start key's name
   #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
   #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after
   #   the entries there, and each exact one (`Apiary.Policy.Grammar.exact_host?/1`) in its
@@ -62,7 +63,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #   when its provider cannot be read.
   #
   # With the `registry` feature, for a run through a gateway, whatever the other features:
-  # the run's registry credential, after the model key in `credentials`; the instance's
+  # the run's registry credential, after the model keys in `credentials`; the instance's
   # host and the registry's in `egress.allow` and `egress.allow_first`, as the provider's
   # hosts are; the registry host's path rules in `egress.paths`, in place of any the
   # document has for that host (`Apiary.Registry.RunAccess`); and for the instance's
@@ -96,8 +97,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # (`Apiary.Harnesses.RunHarness`, `harness_hidden`): `harness_hidden`, `true`. A run with
   # no walk, or whose walk did not hide its harness, gains no such member.
   #
+  # For a run of a workspace's queue that continues a paused run, whose transcript could
+  # be restored at its claim: `resume`, as the claim stored it (`runs.resume`,
+  # `Apiary.Runs.Transcript.resume/1`), the paused run's id and the session id and the
+  # path of its transcript's last chunk, the same in each document. Any other run gains no
+  # such member, and starts a new session. A `resume` the stored document has is dropped,
+  # so only Qory Apiary sets it.
+  #
   # The members come after the document's last member, in the schema's order:
-  # `variables`, `credentials`, `model_credential`, `stack_hosts`, `harness_hidden`. A
+  # `variables`, `credentials`, `model_credential`, `stack_hosts`, `resume`,
+  # `harness_hidden`. A
   # document composed with them is composed for the run and kept as any other
   # (`serve/7`), so its digest is the SHA-256 of the bytes the run is sent, and a
   # document composed from no policy gains them too.
@@ -112,7 +121,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   alias Apiary.Policy.{Grammar, Render, RunConfiguration}
   alias Apiary.Repo
   alias Apiary.Registry.RunAccess
-  alias Apiary.Runs.{ProviderCredential, Run, RunCredentials, RunVariables}
+  alias Apiary.Runs.{ProviderCredential, Run, RunCredentials, RunVariables, Transcript}
 
   @type t :: %__MODULE__{}
 
@@ -173,7 +182,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
         when image: image | (-> image),
              prebuild: boolean | (-> boolean)
   def shape(document, image, _prebuild?, _fixed? \\ false, members \\ nil) do
-    case {imaged(document, value(image)), members?(members)} do
+    compose? = members?(members) or written_resume?(document)
+    members = members || %{variables: nil, credential: nil}
+
+    case {imaged(document, value(image)), compose?} do
       {shaped, false} ->
         shaped
 
@@ -184,6 +196,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
         bytes |> with_members(members) |> composed(image)
     end
   end
+
+  # Whether `document` has a `resume` member at its top level, which only Qory Apiary
+  # sets, from the paused run a run continues: a document that has one is composed
+  # without it.
+  defp written_resume?(document) when is_binary(document),
+    do:
+      String.contains?(document, ~s("resume")) and
+        match?(%{"resume" => _}, Jason.decode!(document))
+
+  defp written_resume?(nil), do: false
 
   defp composed({:ok, bytes}, image), do: {:composed, bytes, image}
   defp composed({:error, _reason} = error, _image), do: error
@@ -467,6 +489,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         registry: RunAccess.member(run),
         work: RunCredentials.work(run),
         stack_hosts: stack_hosts(pins),
+        resume: Transcript.resume(run),
         harness_hidden: hidden?
       }
 
@@ -478,7 +501,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
     do:
       (is_map(variables) and map_size(variables) > 0) or not is_nil(credential) or
         not is_nil(Map.get(members, :registry)) or not is_nil(Map.get(members, :work)) or
-        Map.get(members, :stack_hosts, []) != [] or Map.get(members, :harness_hidden) == true
+        Map.get(members, :stack_hosts, []) != [] or not is_nil(Map.get(members, :resume)) or
+        Map.get(members, :harness_hidden) == true
 
   defp members?(nil), do: false
 
@@ -573,7 +597,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
       if(credential, do: credential.hosts, else: []) ++ if(registry, do: registry.hosts, else: [])
 
     entries =
-      if(credential, do: [credential.entry], else: []) ++
+      if(credential, do: Enum.map(credential.keys, & &1.entry), else: []) ++
         if(registry, do: [registry.entry], else: []) ++
         if work, do: [work.entry], else: []
 
@@ -585,6 +609,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         if(entries != [], do: [{"credentials", entries}], else: []) ++
         if(credential, do: [{"model_credential", credential.name}], else: []) ++
         if(stack_hosts != [], do: [{"stack_hosts", stack_hosts}], else: []) ++
+        resume_member(Map.get(run_members, :resume)) ++
         if Map.get(run_members, :harness_hidden) == true,
           do: [{"harness_hidden", true}],
           else: []
@@ -594,7 +619,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
     members =
       (document || Render.no_policy_document())
       |> decode()
-      |> Enum.reject(fn {name, _value} -> name in names end)
+      |> Enum.reject(fn {name, _value} -> name in names or name == "resume" end)
 
     open? = is_map(registry) and host_open?(members, registry.instance_host)
 
@@ -603,6 +628,20 @@ defmodule Apiary.Policy.ComposedConfiguration do
          {:ok, members} <- policy_with_hosts(members, hosts, if(work, do: work.hosts, else: [])),
          do: {:ok, encode(policy_with_paths(members, registry, open?) ++ added)}
   end
+
+  # The `resume` member, its members in the schema's order.
+  defp resume_member(%{"run_id" => run_id, "session_id" => session_id, "path" => path}) do
+    [
+      {"resume",
+       Jason.OrderedObject.new([
+         {"run_id", run_id},
+         {"session_id", session_id},
+         {"path", path}
+       ])}
+    ]
+  end
+
+  defp resume_member(nil), do: []
 
   defp credentials_fit(entries) when length(entries) > @credentials_max,
     do: {:error, {:credentials_too_many, length(entries)}}

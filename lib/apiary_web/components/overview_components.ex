@@ -1329,7 +1329,7 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   Two plots on one day axis: runs per day above, denied attempts per day below, fourteen
   columns each, today last and in ink. `days` holds fourteen maps `%{day:, runs:, alive:,
-  ended_well:, cancelled:, ended_badly:, denied:}`, oldest first, zeros filled in by the
+  ended_well:, cancelled:, paused:, ended_badly:, denied:}`, oldest first, zeros filled in by the
   caller.
   `width` is the drawing's width in pixels, as the `DaysChart` hook measured it, so its
   words are never scaled; `table?` shows the table twin instead of the drawing.
@@ -1400,6 +1400,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 <th scope="col" class="q-num">{gettext("Runs")}</th>
                 <th scope="col" class="q-num">{gettext("Ended well")}</th>
                 <th scope="col" class="q-num">{gettext("Cancelled")}</th>
+                <th scope="col" class="q-num">{gettext("Paused")}</th>
                 <th scope="col" class="q-num">{gettext("Denied attempts")}</th>
               </tr>
             </thead>
@@ -1409,6 +1410,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 <td class="q-num">{day.runs}</td>
                 <td class="q-num">{day.ended_well}</td>
                 <td class="q-num">{day.cancelled}</td>
+                <td class="q-num">{day.paused}</td>
                 <td class={["q-num", day.denied > 0 && "q-hot"]}>{day.denied}</td>
               </tr>
             </tbody>
@@ -1582,21 +1584,23 @@ defmodule ApiaryWeb.OverviewComponents do
   defp slot_label(day, today) do
     if Date.compare(day.day, today) == :eq do
       gettext(
-        "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{other} alive or ended badly), %{denied}, open that day's runs",
+        "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{paused} paused, %{other} alive or ended badly), %{denied}, open that day's runs",
         day: day_label(day.day, today),
         runs: runs_count(day.runs),
         well: Format.number(day.ended_well),
         cancelled: Format.number(day.cancelled),
+        paused: Format.number(day.paused),
         other: Format.number(day.alive + day.ended_badly),
         denied: denied_count(day.denied)
       )
     else
       gettext(
-        "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{bad} ended badly), %{denied}, open that day's runs",
+        "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{paused} paused, %{bad} ended badly), %{denied}, open that day's runs",
         day: day_label(day.day, today),
         runs: runs_count(day.runs),
         well: Format.number(day.ended_well),
         cancelled: Format.number(day.cancelled),
+        paused: Format.number(day.paused),
         bad: Format.number(day.ended_badly),
         denied: denied_count(day.denied)
       )

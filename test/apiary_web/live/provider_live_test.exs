@@ -1,15 +1,20 @@
 defmodule ApiaryWeb.ProviderLiveTest do
-  # Organisation settings › Model providers (`ApiaryWeb.ProviderLive.Index` and
-  # `ApiaryWeb.ProviderLive.Show`): the list, New model provider with its key and, for
-  # LiteLLM, its address, and a provider's page with its keys, never a key; who sees what.
+  # Organisation settings › Model providers (`ApiaryWeb.ProviderLive.Index`,
+  # `ApiaryWeb.ProviderLive.Show` and `ApiaryWeb.ProviderLive.Key`): the list, New model
+  # provider with its key and, for LiteLLM, its address, a provider's page with its keys
+  # and their states, never a key, Add key and Edit key with a key's settings; who sees
+  # what.
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Connections, Repo}
+  alias Apiary.{Connections, ModelKeys, Repo}
+  alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Provider, Providers}
-  alias Apiary.Secrets.Secret
+  alias Apiary.Secrets.{Secret, Value}
   alias ApiaryWeb.ProviderLive.Index
 
   @moduletag needs: [:factory, :secrets]
@@ -43,6 +48,78 @@ defmodule ApiaryWeb.ProviderLiveTest do
       )
 
     %{user: user, organisation: organisation}
+  end
+
+  defp key_path(scope, provider, rest),
+    do: "#{list_path(scope)}/#{provider.public_id}/keys/#{rest}"
+
+  # A provider of `name` with a key for each value id, added in their order, a second
+  # apart.
+  defp keys!(scope, name, [first | rest]) do
+    {:ok, provider} =
+      Connections.create_provider(scope, %{
+        provider: name,
+        keys: [%{value_id: first, value: @key}]
+      })
+
+    provider =
+      Enum.reduce(rest, provider, fn value_id, provider ->
+        {:ok, provider} =
+          Connections.add_provider_key(scope, provider, %{value_id: value_id, value: @key})
+
+        provider
+      end)
+
+    base = ~U[2026-01-01 00:00:00.000000Z]
+
+    for {value_id, n} <- Enum.with_index([first | rest]) do
+      Repo.update_all(
+        from(v in Value, where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id),
+        set: [inserted_at: DateTime.add(base, n)]
+      )
+    end
+
+    provider
+  end
+
+  defp values(provider),
+    do:
+      Repo.all(from v in Value, where: v.secret_id == ^provider.secret_id)
+      |> Map.new(&{&1.value_id, &1})
+
+  # A state of the key `value`, as a run's gateway reports it.
+  defp record!(value, attrs) do
+    key = %{
+      name: "model-1",
+      secret_value_id: value.id,
+      organisation_id: value.organisation_id,
+      copy_set_at: value.value_set_at,
+      copy_kept: true
+    }
+
+    item =
+      Map.merge(
+        %{
+          credential: "model-1",
+          status: "allowed",
+          source: "provider",
+          observed_at: DateTime.utc_now()
+        },
+        attrs
+      )
+
+    :ok = ModelKeys.record([key], [item], DateTime.utc_now())
+  end
+
+  # A time as a reader in Berlin reads it at `now`: the clock on the day of `now`, the
+  # weekday and the clock on another.
+  defp berlin(at, now) do
+    local = DateTime.shift_zone!(at, "Europe/Berlin")
+    today = now |> DateTime.shift_zone!("Europe/Berlin") |> DateTime.to_date()
+
+    if DateTime.to_date(local) == today,
+      do: Calendar.strftime(local, "%H:%M"),
+      else: Calendar.strftime(local, "%a %H:%M")
   end
 
   defp member_conn(scope, level) do
@@ -501,6 +578,502 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert_raise ApiaryWeb.NotFound, fn ->
         live(conn, "#{list_path(scope)}/#{provider.public_id}")
       end
+    end
+  end
+
+  describe "a provider's keys" do
+    test "are in the provider's order, each with its state, in the reader's time zone", ctx do
+      %{conn: conn, scope: scope, user: user} = ctx
+      Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
+      now = DateTime.utc_now()
+
+      provider = keys!(scope, "anthropic", ~w(zeta beta alpha gamma delta omega))
+      {:ok, provider} = Connections.put_default_key(scope, provider, "alpha")
+      values = values(provider)
+
+      soon = DateTime.add(now, 60)
+      in_two_days = DateTime.add(now, 2, :day)
+      in_three_days = DateTime.add(now, 3, :day)
+
+      record!(values["zeta"], %{
+        window: "five_hour",
+        status: "rejected",
+        cooldown_until: DateTime.add(now, -3600)
+      })
+
+      record!(values["beta"], %{window: "five_hour", utilization: 89, resets_at: soon})
+      record!(values["beta"], %{window: "seven_day", utilization: 40, resets_at: in_three_days})
+
+      record!(values["alpha"], %{
+        window: "seven_day",
+        status: "rejected",
+        cooldown_until: in_two_days
+      })
+
+      # A Pause for shows the cooldown that applied, from the answer to its end: delta's
+      # 2 hours, though its setting is 10 minutes now, and omega's 1 minute.
+      for {name, source, observed_at} <- [
+            {"gamma", "schedule", now},
+            {"delta", "pause_for", DateTime.add(in_two_days, -7200)},
+            {"omega", "pause_for", DateTime.add(in_two_days, -60)}
+          ] do
+        record!(values[name], %{
+          window: "five_hour",
+          status: "rejected",
+          cooldown_until: in_two_days,
+          source: source,
+          observed_at: observed_at
+        })
+      end
+
+      {:ok, _setting} = put_key_setting(scope, values["delta"], %{"pause_seconds" => 600})
+
+      {:ok, lv, html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
+
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("#provider-keys li")
+             |> LazyHTML.attribute("id") ==
+               Enum.map(~w(alpha zeta beta gamma delta omega), &"provider-key-#{&1}")
+
+      until = "In cooldown until #{berlin(in_two_days, now)}"
+
+      assert text(lv, "#provider-key-alpha-state") == "#{until} · from the provider's answer"
+      assert text(lv, "#provider-key-zeta-state") == "Available"
+
+      assert text(lv, "#provider-key-beta-state") ==
+               "Available · 5-hour 89%, resets #{berlin(soon, now)} · 7-day 40%, resets #{berlin(in_three_days, now)}"
+
+      assert text(lv, "#provider-key-gamma-state") == "#{until} · from this key's schedule"
+
+      assert text(lv, "#provider-key-delta-state") ==
+               "#{until} · no reset time given; paused for 2 hours"
+
+      assert text(lv, "#provider-key-omega-state") ==
+               "#{until} · no reset time given; paused for 1 minute"
+
+      assert text(lv, "#provider-key-alpha-name") == "alpha"
+      refute html =~ @key
+    end
+
+    test "an owner has Add key and Edit on each row; a member has neither", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      page = "#{list_path(scope)}/#{provider.public_id}"
+
+      {:ok, lv, _html} = live(conn, page)
+      assert has_element?(lv, ~s{a#provider-add-key[href="#{page}/keys/new"]}, "Add key")
+
+      assert has_element?(
+               lv,
+               ~s{a#provider-key-spare-edit[href="#{page}/keys/spare/edit"][aria-label="Edit key spare"]},
+               "Edit"
+             )
+
+      member = member_conn(scope, :member)
+      {:ok, lv, _html} = live(member, page)
+      assert has_element?(lv, "#provider-key-spare-state", "Available")
+      refute has_element?(lv, "#provider-add-key")
+      refute has_element?(lv, "#provider-key-spare-edit")
+
+      for path <- ["#{page}/keys/new", "#{page}/keys/spare/edit"] do
+        assert_raise ApiaryWeb.NotFound, fn -> live(member, path) end
+      end
+    end
+
+    test "the list counts each provider's keys and those in cooldown", ctx do
+      %{conn: conn, scope: scope} = ctx
+      three = keys!(scope, "anthropic", ~w(main spare backup))
+      one = keys!(scope, "openrouter", ~w(main))
+      now = DateTime.utc_now()
+
+      record!(values(three)["spare"], %{
+        window: "five_hour",
+        status: "rejected",
+        cooldown_until: DateTime.add(now, 3600)
+      })
+
+      # A key with two windows in cooldown counts once.
+      record!(values(three)["spare"], %{
+        window: "seven_day",
+        status: "rejected",
+        cooldown_until: DateTime.add(now, 7200)
+      })
+
+      record!(values(three)["backup"], %{
+        window: "five_hour",
+        status: "rejected",
+        cooldown_until: DateTime.add(now, -3600)
+      })
+
+      two = keys!(scope, "deepseek", ~w(main spare))
+
+      for {_id, value} <- values(two) do
+        record!(value, %{
+          window: "requests",
+          status: "rejected",
+          cooldown_until: DateTime.add(now, 60)
+        })
+      end
+
+      {:ok, lv, _html} = live(conn, list_path(scope))
+      assert text(lv, "#provider-#{three.public_id}-keys") == "3 keys, 1 in cooldown"
+      assert text(lv, "#provider-#{two.public_id}-keys") == "2 keys, 2 in cooldown"
+      assert text(lv, "#provider-#{one.public_id}-keys") == "1 key"
+    end
+
+    test "name each window of the contract in words, and another by its code", ctx do
+      %{conn: conn, scope: scope, user: user} = ctx
+      Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
+      provider = keys!(scope, "anthropic", ~w(main))
+      value = values(provider)["main"]
+
+      words = [
+        {"five_hour", "5-hour"},
+        {"seven_day", "7-day"},
+        {"seven_day_opus", "7-day Opus"},
+        {"seven_day_sonnet", "7-day Sonnet"},
+        {"overage", "Extra usage"},
+        {"requests", "Requests per minute"},
+        {"tokens", "Tokens per minute"},
+        {"input_tokens", "Input tokens per minute"},
+        {"output_tokens", "Output tokens per minute"},
+        {"spend_limit", "Spend limit"},
+        {"key", "Limit"},
+        {"daily_cap", "daily_cap"}
+      ]
+
+      for {{window, _word}, n} <- Enum.with_index(words, 1),
+          window != "daily_cap",
+          do: record!(value, %{window: window, utilization: n})
+
+      # A report keeps no window outside the contract's list (`Apiary.ModelKeys.record/3`),
+      # so a row of another window, one stored before, is written as it is.
+      Repo.insert!(%Apiary.ModelKeys.State{
+        secret_value_id: value.id,
+        organisation_id: value.organisation_id,
+        window: "daily_cap",
+        status: "allowed",
+        utilization: 12,
+        source: "provider",
+        observed_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      })
+
+      {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
+      segments = lv |> text("#provider-key-main-state") |> String.split(" · ")
+      assert hd(segments) == "Available"
+
+      expected =
+        for {{window, word}, n} <- Enum.sort(Enum.with_index(words, 1)),
+            do: {window, "#{word} #{n}%"}
+
+      assert tl(segments) == Enum.map(expected, &elem(&1, 1))
+
+      # A reset follows the use.
+      now = DateTime.utc_now()
+      soon = DateTime.add(now, 60)
+      record!(value, %{window: "requests", utilization: 12, resets_at: soon})
+      {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
+
+      assert text(lv, "#provider-key-main-state") =~
+               "Requests per minute 12%, resets #{berlin(soon, now)}"
+    end
+  end
+
+  describe "Add key" do
+    test "adds a key with its settings, never rendering it", ctx do
+      %{conn: conn, scope: scope, user: user} = ctx
+      Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
+      provider = provider!(scope)
+
+      {:ok, lv, html} = live(conn, key_path(scope, provider, "new"))
+      assert has_element?(lv, "h1", "Add key")
+      assert page_title(lv) =~ "Add key · #{provider.name} · Model providers"
+      assert has_element?(lv, "#key_value_id-hint", "Lowercase letters, digits, ., _ and -.")
+
+      assert html =~
+               "Qory Apiary stores the key encrypted, and nobody can view it again."
+
+      assert has_element?(
+               lv,
+               "#key_reset_day-resets-hint",
+               "The weekly time when this key's allowance resets. Set it if the provider sends no reset time."
+             )
+
+      assert has_element?(
+               lv,
+               "#key_pause_number-pause-hint",
+               "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 minute."
+             )
+
+      assert has_element?(lv, ~s{#key_reset_zone option[value="Europe/Berlin"][selected]})
+      assert has_element?(lv, ~s{#key_pause_unit option[value="minutes"][selected]})
+      assert has_element?(lv, ~s{#key_reset_day option[value="1"]}, "Monday")
+      refute has_element?(lv, "#key-get-key")
+      assert has_element?(lv, "#key-submit", "Add key")
+
+      result =
+        lv
+        |> form("#key-form",
+          key: %{
+            value_id: "spare",
+            key: @key <> "-2",
+            reset_day: "1",
+            reset_time: "09:00",
+            reset_zone: "Europe/Berlin",
+            pause_number: "2",
+            pause_unit: "hours"
+          }
+        )
+        |> render_submit()
+
+      assert {:error, {:live_redirect, %{to: to}}} = result
+      assert to == "#{list_path(scope)}/#{provider.public_id}"
+      {:ok, show, html} = follow_redirect(result, conn)
+      assert html =~ "spare is added."
+      assert has_element?(show, "#provider-key-spare-state", "Available")
+      refute html =~ @key
+
+      value = values(provider)["spare"]
+      setting = ModelKeys.setting(value.id)
+      assert {setting.reset_weekday, setting.reset_time} == {1, ~T[09:00:00]}
+      assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 7200}
+
+      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
+               {:ok, @key <> "-2"}
+    end
+
+    test "for a subscription, says where to get the key and the terms, and pauses for an hour",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope, "claude-subscription")
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      assert has_element?(
+               lv,
+               "#key_pause_number-pause-hint",
+               "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 hour."
+             )
+
+      assert has_element?(lv, ~s{#key_pause_unit option[value="hours"][selected]})
+      assert has_element?(lv, "#key-get-key-command", "claude setup-token")
+
+      assert text(lv, "#key-get-key-copy-token") ==
+               "Then copy the token it prints. Anthropic's terms (opens in a new tab) allow this for personal use only."
+    end
+
+    test "says what is wrong under each field, and adds nothing", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      html =
+        lv
+        |> form("#key-form",
+          key: %{value_id: "Bad Name", key: @key, reset_day: "1", pause_number: "0"}
+        )
+        |> render_submit()
+
+      refute html =~ @key
+      assert has_element?(lv, "#key_value_id-error")
+      assert has_element?(lv, ~s{#key-form input[type=password]:not([value])})
+
+      assert has_element?(
+               lv,
+               "#key_reset_day-resets-error",
+               "Set the day, the time and the time zone, or leave all three empty."
+             )
+
+      assert has_element?(
+               lv,
+               "#key_pause_number-pause-error",
+               "Enter a time from 1 minute to 7 days."
+             )
+
+      refute has_element?(lv, "#key_pause_number-pause-hint")
+
+      lv
+      |> form("#key-form",
+        key: %{value_id: "key-1", key: @key, reset_day: "", pause_number: "8", pause_unit: "days"}
+      )
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               "#key_pause_number-pause-error",
+               "Enter a time from 1 minute to 7 days."
+             )
+
+      lv
+      |> form("#key-form", key: %{value_id: "key-1", key: @key, pause_number: ""})
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               "#key_value_id-error",
+               "Another key of #{provider.name} has this name."
+             )
+
+      assert Map.keys(values(provider)) == ["key-1"]
+    end
+
+    test "at the most keys a provider has, says so under Key", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", for(n <- 1..32, do: "key-#{n}"))
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      lv |> form("#key-form", key: %{value_id: "one-more", key: @key}) |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s{#key-form [id$="-error"]},
+               "#{provider.name} has 32 keys, the most it can have. Delete a key to add another."
+             )
+
+      assert map_size(values(provider)) == 32
+    end
+
+    test "a person who can no longer write keys adds nothing", ctx do
+      %{scope: scope} = ctx
+      provider = provider!(scope)
+      %{user: user, membership: membership} = member_fixture(scope, :admin)
+      conn = log_in_user(build_conn(), user)
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+      {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
+
+      lv |> form("#key-form", key: %{value_id: "spare", key: @key}) |> render_submit()
+
+      assert has_element?(lv, "#key-refusal")
+      assert Map.keys(values(provider)) == ["key-1"]
+    end
+
+    test "a provider or a key of another organisation is not found", ctx do
+      %{conn: conn, scope: scope} = ctx
+      %{scope: other} = sign_up_fixture()
+      theirs = keys!(other, "anthropic", ~w(key-1 theirs))
+      ours = provider!(scope)
+
+      for path <- [
+            key_path(scope, theirs, "new"),
+            key_path(scope, theirs, "theirs/edit"),
+            key_path(scope, ours, "theirs/edit")
+          ] do
+        assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
+      end
+    end
+  end
+
+  describe "Edit key" do
+    test "shows the key's settings, and renames it, its settings and state kept", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      value = values(provider)["spare"]
+      now = DateTime.utc_now()
+
+      {:ok, _setting} =
+        put_key_setting(scope, value, %{
+          "reset_weekday" => 5,
+          "reset_time" => "14:00",
+          "reset_time_zone" => "Europe/Berlin",
+          "pause_seconds" => 7200
+        })
+
+      record!(value, %{window: "five_hour", utilization: 30, resets_at: DateTime.add(now, 3600)})
+
+      {:ok, lv, html} = live(conn, key_path(scope, provider, "spare/edit"))
+      assert has_element?(lv, "h1", "Edit key")
+      assert has_element?(lv, ~s{#key_value_id[value="spare"]})
+      refute has_element?(lv, ~s{#key-form input[type=password]})
+      assert has_element?(lv, ~s{#key_reset_day option[value="5"][selected]})
+      assert has_element?(lv, ~s{#key_reset_time[value="14:00"]})
+      assert has_element?(lv, ~s{#key_reset_zone option[value="Europe/Berlin"][selected]})
+      assert has_element?(lv, ~s{#key_pause_number[value="2"]})
+      assert has_element?(lv, ~s{#key_pause_unit option[value="hours"][selected]})
+      assert has_element?(lv, "#key-submit", "Save")
+      refute html =~ @key
+
+      result =
+        lv
+        |> form("#key-form",
+          key: %{
+            value_id: "backup",
+            reset_day: "",
+            reset_time: "",
+            pause_number: "30",
+            pause_unit: "minutes"
+          }
+        )
+        |> render_submit()
+
+      {:ok, show, html} = follow_redirect(result, conn)
+      assert html =~ "backup is saved."
+      assert text(show, "#provider-key-backup-state") =~ "Available · 5-hour 30%"
+      assert values(provider)["backup"].id == value.id
+      setting = ModelKeys.setting(value.id)
+      assert {setting.reset_weekday, setting.pause_seconds} == {nil, 1800}
+    end
+
+    test "says what is wrong under each field, and changes nothing", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      lv
+      |> form("#key-form", key: %{value_id: "spare", reset_time: "09:00"})
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               "#key_reset_day-resets-error",
+               "Set the day, the time and the time zone, or leave all three empty."
+             )
+
+      lv |> form("#key-form", key: %{value_id: "main", reset_time: ""}) |> render_submit()
+
+      assert has_element?(
+               lv,
+               "#key_value_id-error",
+               "Another key of #{provider.name} has this name."
+             )
+
+      assert Map.keys(values(provider)) |> Enum.sort() == ["main", "spare"]
+      refute ModelKeys.setting(values(provider)["spare"].id)
+    end
+
+    test "a key deleted while the page is open: Save says it is no longer there", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+      {:ok, _provider} = Connections.delete_provider_key(scope, provider, "spare")
+
+      lv
+      |> form("#key-form", key: %{value_id: "renamed", pause_number: "5"})
+      |> render_submit()
+
+      assert text(lv, "#key-refusal") == "It is no longer there."
+      assert has_element?(lv, ~s{#key_value_id[value="renamed"]})
+      assert Map.keys(values(provider)) == ["main"]
+    end
+
+    test "a person who can no longer write keys changes nothing", ctx do
+      %{scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      %{user: user, membership: membership} = member_fixture(scope, :admin)
+      conn = log_in_user(build_conn(), user)
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+      {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
+
+      lv
+      |> form("#key-form", key: %{value_id: "renamed", pause_number: "5"})
+      |> render_submit()
+
+      assert has_element?(lv, "#key-refusal")
+      assert Map.keys(values(provider)) |> Enum.sort() == ["main", "spare"]
+      refute ModelKeys.setting(values(provider)["spare"].id)
     end
   end
 end

@@ -483,6 +483,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("adapter_id", _path, p), do: p.adapter_id
   defp value_of("provider_id", _path, p), do: p.provider_id
   defp value_of("release_id", _path, p), do: p.release_id
+  # A model provider's key, by the value id `provider_id/1` gave it.
+  defp value_of("value_id", "/:org/settings/model-providers/" <> _, _p), do: "key-1"
   defp value_of("value_id", _path, p), do: p.value_id
   defp value_of("section", _path, _p), do: "runs"
   # Each step of a workspace's set-up; the chooser opens the owner's grant in Work sources.

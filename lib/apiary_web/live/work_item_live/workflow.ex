@@ -16,7 +16,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # **The runs.** `Apiary.Stages.runs/1` of the current take in, each numbered by its
   # attempt in the take in, not the run's number in its workspace. A run whose `questions`
   # artifact has a version shows as questions: the versions carry the run of the queue, so
-  # `runs/2` reads the registered runs' links to it (`runs`).
+  # `runs/2` reads the registered runs' links to it (`runs`). A paused run with no verdict
+  # that a run continues shows why it paused and the run that continues it
+  # (`Apiary.Dispatches.Pause`, `with_pauses/2`).
   #
   # **The feature.** `on?/1` is whether the reader is shown `workflow_model`. A work item
   # the stage runner has not placed (`Apiary.Stages.status/2` is nil) draws as before the
@@ -37,6 +39,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   alias Apiary.{Access, Artifacts, Features, Processes, Repo, Stages, WorkItems}
   alias Apiary.Accounts.Scope
+  alias Apiary.Dispatches.Pause
   alias Apiary.Runs.Run
   alias Apiary.Stages.{Approvers, Runner}
   alias Apiary.WorkItems.WorkItem
@@ -101,7 +104,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       )
 
     explore_id = Stages.explore_stage_id(row)
-    runs = with_paths(scope, runs, current_id, explore_id)
+    runs = scope |> with_paths(runs, current_id, explore_id) |> with_pauses(scope)
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
@@ -200,7 +203,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
         path: nil,
         workflow: run.workflow,
         round: run.round,
-        shows: shows(run, asked)
+        shows: shows(run, asked),
+        paused: nil,
+        paused_path: nil
       }
     end
   end
@@ -231,6 +236,27 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   defp with_paths(_scope, runs, _stage_id, _explore_id), do: runs
+
+  # Each paused run that shows no verdict, with why it paused and the path of the run
+  # that continues it, where the reader may read that run's workspace.
+  defp with_pauses(runs, scope) do
+    pauses = Pause.of_public_ids(for %{id: id} when is_binary(id) <- runs, do: id)
+
+    ctx = %{
+      scope: scope,
+      readable: View.readable(scope, Enum.map(Map.values(pauses), & &1.workspace_id))
+    }
+
+    for run <- runs do
+      case pauses[run.id] do
+        %{} = pause when run.shows == :no_verdict ->
+          %{run | shows: :paused, paused: pause, paused_path: View.run_path(ctx, pause)}
+
+        _other ->
+          run
+      end
+    end
+  end
 
   # The work item's take in, else the take in of its newest run.
   defp current_take_in(%{take_in: take_in}, _runs) when is_integer(take_in), do: take_in

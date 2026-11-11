@@ -5727,6 +5727,54 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert separator =~ "\n    margin: 0 8px;\n"
     end
 
+    test "a paused run that a run continues shows why it paused, with a link to that run",
+         %{conn: conn, scope: scope} do
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-ant-fixture-main-0123456789"}]
+        })
+
+      work_item = shape_gate_on!(scope, [])
+      {paused, paused_run} = ended_run!(work_item, @shape, "paused")
+
+      paused
+      |> Ecto.Changeset.change(
+        provider_connection_id: provider.id,
+        provider_secret_id: provider.secret_id,
+        provider_chain: "organisation",
+        provider_api: %{
+          "format" => "anthropic-messages",
+          "endpoint" => "https://api.model.example/anthropic",
+          "auth" => %{"scheme" => "x-api-key"}
+        },
+        model_keys: [],
+        run_settings: %{}
+      )
+      |> Repo.update!()
+
+      continuation =
+        work_item
+        |> stage_run!(@shape)
+        |> Ecto.Changeset.change(continues_id: paused_run.id)
+        |> Repo.update!()
+
+      {next, _dispatch_run} = registered!(work_item, continuation, :handed_over)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      row = "div#work-item-record-#{paused.number}.q-xp-runrow"
+
+      assert has_element?(
+               view,
+               row,
+               "Paused: a key of #{provider.name} reached its limit. It continues in run #{next.number}."
+             )
+
+      href = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{next.number}"
+      assert has_element?(view, ~s(#{row} a[href="#{href}"]), "#{next.number}")
+      refute has_element?(view, row, "ended without a verdict")
+    end
+
     test "a later stage's run with no verdict in each state: its state once it failed, was cancelled or lost, in a row with no fold",
          %{conn: conn, scope: scope} do
       for {state, word, unshown} <- [

@@ -23,6 +23,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   use ApiaryWeb, :html
 
+  alias ApiaryWeb.PauseWords
   alias ApiaryWeb.WorkItemComponents
 
   @note_units 2 * 2_000
@@ -805,10 +806,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
       verdict:
-        if(run.shows == :running,
-          do: running_word(%{class: "text-info-soft-content"}),
-          else: shows_words(run.shows)
-        )
+        cond do
+          run.shows == :running -> running_word(%{class: "text-info-soft-content"})
+          run.shows == :paused -> PauseWords.line(run.paused, run.paused_path)
+          true -> shows_words(run.shows)
+        end
     )
   end
 
@@ -820,10 +822,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     [
       run.workflow,
       run.round && gettext("round %{round}", round: Format.number(run.round)),
-      if(run.shows == :running,
-        do: running_word(%{class: running_class}),
-        else: shows_words(run.shows)
-      )
+      cond do
+        run.shows == :running -> running_word(%{class: running_class})
+        run.shows == :paused -> PauseWords.line(run.paused, run.paused_path)
+        true -> shows_words(run.shows)
+      end
     ]
     |> Enum.reject(&(&1 in [nil, ""]))
   end

@@ -784,6 +784,60 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert length(explore.earlier_runs) == 2
       assert for_three == for_one
     end
+
+    test "why the runs paused is read in one query, for one paused run as for three", ctx do
+      one = work_item_fixture(ctx.scope)
+      explore_run_fixture(one, result: understood_result())
+
+      for _n <- 1..3, do: explore_run_fixture(ctx.work_item, result: understood_result())
+
+      for work_item <- [one, ctx.work_item] do
+        Repo.update_all(
+          from(r in Apiary.Runs.Run,
+            join: d in DispatchRun,
+            on: d.id == r.dispatch_run_id,
+            where: d.work_item_id == ^work_item.id
+          ),
+          set: [state: "paused"]
+        )
+      end
+
+      {_explore, for_one} = pause_reads(fn -> ExploreView.explore(one, DateTime.utc_now()) end)
+
+      {explore, for_three} =
+        pause_reads(fn -> ExploreView.explore(ctx.work_item, DateTime.utc_now()) end)
+
+      assert length(explore.earlier_runs) == 2
+      assert for_one == 1
+      assert for_three == 1
+    end
+
+    # What `fun` returned, and how many reads of why a run paused
+    # (`Apiary.Dispatches.Pause`, which joins a run of the queue on `continues_id`) this
+    # process ran while it ran.
+    defp pause_reads(fun) do
+      handler = "explore-view-pauses-#{System.unique_integer([:positive])}"
+      me = self()
+
+      :ok =
+        :telemetry.attach(
+          handler,
+          [:apiary, :repo, :query],
+          fn _event, _measurements, meta, _config ->
+            if self() == me and meta[:source] == "runs" and
+                 String.contains?(meta[:query] || "", ~s(."continues_id" = )),
+               do: send(me, :query)
+          end,
+          nil
+        )
+
+      try do
+        result = fun.()
+        {result, count_queries(0)}
+      after
+        :telemetry.detach(handler)
+      end
+    end
   end
 
   describe "the confirmations of the earlier take ins" do

@@ -31,9 +31,10 @@ defmodule Apiary.Runs.Diagnostics do
   output. `machine_logs` is there for an instance admin, who may read the instance
   (`instance.read`, asked in the instance's organisation, `Apiary.Access.in_instance/1`),
   and for a diagnostics key. The events are read as the run page reads them, through the
-  edition (its `client_reads` callback, `:run_events`), under the person's scope or
-  the instance's; the `dev.qory.run.log` events are left out, as their output is in `log`
-  and in the steps' output already. `log` and `events` are also left out once the
+  edition (its `client_reads` callback, `:run_events`), under the person's scope or the
+  instance's; the `dev.qory.run.log` events are left out, as their output is in `log` and
+  in the steps' output already, and so are the `dev.qory.session.transcript` events, the
+  chunks of a runtime session's transcript. `log` and `events` are also left out once the
   retention removed them (`runs.log_pruned_at`, `runs.events_pruned_at`).
 
   **Text.** Every text member is the stored text as it is: valid UTF-8, each byte that
@@ -75,6 +76,9 @@ defmodule Apiary.Runs.Diagnostics do
   @slack 64
 
   @log_event "dev.qory.run.log"
+  # The chunks of a runtime session's transcript, which a continuation reads and the
+  # document never has (`Apiary.Runs.Transcript`).
+  @transcript_event "dev.qory.session.transcript"
 
   @code ~r/\A[a-z][a-z0-9_]{0,63}\z/
   @step ~r/\A[a-z][a-z_]{0,39}\z/
@@ -489,12 +493,13 @@ defmodule Apiary.Runs.Diagnostics do
   end
 
   # The run's events as the run page reads them for `scope` (`Apiary.Runs.Record`), the
-  # edition narrowing them (`:run_events`), without the `dev.qory.run.log` events.
+  # edition narrowing them (`:run_events`), without the `dev.qory.run.log` and
+  # `dev.qory.session.transcript` events.
   defp events_query(%Scope{} = scope, %Run{id: id} = run) do
     query =
       from e in Event,
         where: e.organisation_id == ^run.organisation_id and e.workspace_id == ^run.workspace_id,
-        where: e.run_id == ^id and e.type != @log_event
+        where: e.run_id == ^id and e.type not in [@log_event, @transcript_event]
 
     Edition.client_reads(scope, :run_events, run, query)
   end

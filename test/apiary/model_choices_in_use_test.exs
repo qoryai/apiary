@@ -104,6 +104,39 @@ defmodule Apiary.ModelChoicesInUseTest do
       assert {:ok, _} = Connections.delete_provider_key(scope, provider, "third")
     end
 
+    test "a provider that a choice has as a fallback is not removed", %{scope: scope} do
+      {:ok, fallback} =
+        Connections.create_provider(scope, %{
+          provider: "deepseek",
+          keys: [%{value_id: "main", value: "sk-in-use-3"}]
+        })
+
+      {:ok, main} =
+        Connections.create_provider(scope, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-in-use-4"}]
+        })
+
+      {:ok, _} =
+        ModelChoices.put_choice(scope, :workspace, %{
+          provider: main.public_id,
+          fallbacks: [%{provider: fallback.public_id}]
+        })
+
+      assert [%{level: 5}] = ModelChoices.places_using(fallback)
+
+      assert {:error, {:model_in_use, [%{level: 5}]}} =
+               Connections.delete_provider(scope, fallback)
+
+      assert Repo.get(Connection, fallback.id)
+
+      {:ok, _} =
+        ModelChoices.put_choice(scope, :workspace, %{provider: main.public_id, fallbacks: []})
+
+      assert ModelChoices.places_using(fallback) == []
+      assert {:ok, _} = Connections.delete_provider(scope, fallback)
+    end
+
     test "a listing of five and more names five and counts the rest", %{provider: provider} do
       places =
         for n <- 1..7,

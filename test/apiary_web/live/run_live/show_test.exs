@@ -2203,6 +2203,25 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#run-meta", "exit 1")
       assert html =~ "End of the record."
     end
+
+    test "a pause is announced as its line on the page says it", %{
+      conn: conn,
+      run: run,
+      now: now,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+      project_more(run, [
+        {4, "run.exited", %{"state" => "cancelled", "reason" => "model_key_limit"}, time: now}
+      ])
+
+      _html = flush(lv)
+
+      assert has_element?(lv, "#run-announcer", "Paused: a model key reached its limit.")
+      assert has_element?(lv, "#run-why", "Paused: a model key reached its limit.")
+    end
   end
 
   describe "windowing (rj)" do
@@ -4884,6 +4903,106 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              )
 
       assert has_element?(lv, ~s(#run-why-jump[href="#{path}?seq=2"]), "Jump to it")
+    end
+
+    @tag needs: [:factory, :secrets]
+    test "a paused run says why it paused and links the run that continues it",
+         %{conn: conn, scope: scope, user: user} do
+      Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
+
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-ant-fixture-main-0123456789"}]
+        })
+
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(r in DispatchRun, where: r.id == ^queued.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      # The run that continues it, queued as the end of the paused run queues it.
+      ended = Repo.get!(DispatchRun, queued.id)
+      {:ok, next} = Repo.transact(fn -> Dispatches.requeue_for_pause(ended, nil) end)
+      number = Repo.one!(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^next.id).number
+
+      run =
+        projected(
+          scope,
+          [
+            {1, "run.started", started_data()},
+            {2, "run.exited",
+             %{"state" => "cancelled", "reason" => "model_key_limit", "exit_code" => -1}}
+          ],
+          %{
+            dispatch_run_id: queued.id,
+            provider_connection_id: provider.id,
+            provider_secret_id: provider.secret_id,
+            provider_chain: "organisation",
+            provider_api: %{
+              "format" => "anthropic-messages",
+              "endpoint" => "https://api.model.example/anthropic",
+              "auth" => %{"scheme" => "x-api-key"}
+            },
+            model_keys: [],
+            run_settings: %{}
+          }
+        )
+
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(
+               lv,
+               "#run-why",
+               "Paused: a key of #{provider.name} reached its limit. It continues in run #{number}."
+             )
+
+      next_path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{number}"
+      assert has_element?(lv, ~s(#run-why a[href="#{next_path}"]), "#{number}")
+      refute has_element?(lv, "#run-why-jump")
+
+      # Two days on: the weekday and the clock in the reader's time zone.
+      until = DateTime.add(DateTime.utc_now(), 2, :day)
+      clock = until |> DateTime.shift_zone!("Europe/Berlin") |> Calendar.strftime("%a %H:%M")
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+          set: [paused_until: until]
+        )
+
+      {:ok, lv, _html} = live(conn, path)
+
+      line =
+        lv
+        |> element("#run-why .q-run-why-t")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.replace(~r/\s+/, " ")
+        |> String.trim()
+
+      assert line ==
+               "Paused: every key of #{provider.name} is in cooldown until #{clock}. " <>
+                 "It continues in run #{number}."
+
+      # A paused run that no run continues has its state alone.
+      alone =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "cancelled", "reason" => "model_key_limit"}}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{alone.number}")
+
+      assert has_element?(lv, "#run-state", "Paused")
+      assert has_element?(lv, "#run-why", "Paused: a model key reached its limit.")
+      refute has_element?(lv, "#run-why", "It continues")
     end
 
     test "a run that ended well says nothing more", %{conn: conn, scope: scope} do

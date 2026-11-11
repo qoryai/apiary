@@ -1,13 +1,14 @@
 defmodule ApiaryWeb.Contract.RawBody do
   @moduledoc """
   Reads the body of a delivery to the events endpoint, of a run's registration, of a run's
-  attach, of a run's outcome, and of an enrolment, before anything parses it.
+  attach, of a run's outcome, of a report of a run's model keys, and of an enrolment,
+  before anything parses it.
 
   The signature of a signed POST is over the raw bytes, and it is checked before the body
   is parsed; an enrolment is read strictly, a member twice refused, which a parser that
   keeps the last of them cannot tell. So for `POST /v1/events`, `POST /v1/runs`,
-  `POST /v1/runs/<run_id>/attach`, `POST /v1/runs/<run_id>/outcome` and
-  `POST /.well-known/qory-enrolment`, whatever the
+  `POST /v1/runs/<run_id>/attach`, `POST /v1/runs/<run_id>/outcome`,
+  `POST /v1/runs/<run_id>/model-keys` and `POST /.well-known/qory-enrolment`, whatever the
   content type, this plug reads the body
   itself, keeps it in `conn.assigns[:raw_body]` and leaves the body parameters empty; the
   endpoint skips `Plug.Parsers` for such a request. Signed paths of other contracts, which
@@ -19,7 +20,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   of an outcome, 4 KiB, and
   `max_bytes(:enrolment)` of an enrolment, 8 KiB, the last three many times the longest
   the schema allows: what an unauthenticated sender can make the
-  server hold is small. A longer body is answered `413` here, before the signature or the
+  server hold is small. Of a report of a run's model keys, `max_bytes(:model_keys)`, 32 KiB,
+  the contract's limit, are read. A longer body is answered `413` here, before the signature or the
   code is looked at, as the contract's reference receiver does.
 
   A run's push and verdict, `POST /v1/runs/<run_id>/artifacts` and
@@ -38,6 +40,10 @@ defmodule ApiaryWeb.Contract.RawBody do
   @max_bytes 2 * 1024 * 1024
   @registration_max_bytes 64 * 1024
   @outcome_max_bytes 4 * 1024
+  # A report of a run's model keys, `POST /v1/runs/<run_id>/model-keys`, of the `factory`
+  # and `secrets` features both: at most 32 KiB, the Forager contract's limit, read as a
+  # secrets request is, where both are on or where the request has a signature.
+  @model_keys_max_bytes 32 * 1024
   @enrolment_max_bytes 8 * 1024
   # The integration contract's limit, 1 MiB, for its signed paths, which this
   # documentation does not name.
@@ -98,7 +104,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   @doc """
   The largest body that is accepted, in bytes: of a delivery (`max_bytes/0`), of a
   registration (`max_bytes(:registration)`), of an attach (`max_bytes(:attach)`), of an
-  outcome (`max_bytes(:outcome)`), of an enrolment (`max_bytes(:enrolment)`), or of a
+  outcome (`max_bytes(:outcome)`), of a report of a run's model keys
+  (`max_bytes(:model_keys)`), of an enrolment (`max_bytes(:enrolment)`), or of a
   run's push or verdict (`max_bytes(:run_api)`), of which at most
   `max_bytes(:unauthenticated)` are read before the key id is looked up.
   """
@@ -107,6 +114,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   def max_bytes(:registration), do: @registration_max_bytes
   def max_bytes(:attach), do: @registration_max_bytes
   def max_bytes(:outcome), do: @outcome_max_bytes
+  def max_bytes(:model_keys), do: @model_keys_max_bytes
   def max_bytes(:enrolment), do: @enrolment_max_bytes
   def max_bytes(:adapter), do: @adapter_max_bytes
   def max_bytes(:pool), do: @pool_max_bytes
@@ -124,8 +132,8 @@ defmodule ApiaryWeb.Contract.RawBody do
       endpoint when endpoint in @gated ->
         if served?(conn), do: keep(conn, max_bytes(endpoint)), else: conn
 
-      :secrets ->
-        if secrets_served?(conn), do: keep(conn, max_bytes(:secrets)), else: conn
+      endpoint when endpoint in [:secrets, :model_keys] ->
+        if secrets_served?(conn), do: keep(conn, max_bytes(endpoint)), else: conn
 
       :run_api ->
         if run_api_served?(conn), do: keep_of_a_gateway(conn), else: conn
@@ -169,6 +177,7 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   defp of_a_run(["v1", "runs", _run_id, "attach"]), do: :attach
   defp of_a_run(["v1", "runs", _run_id, "outcome"]), do: :outcome
+  defp of_a_run(["v1", "runs", _run_id, "model-keys"]), do: :model_keys
   defp of_a_run(["v1", "runs", _run_id, action]) when action in @run_api_actions, do: :run_api
 
   defp of_a_run(["v1", "dispatches", _dispatch_id, action]) when action in @dispatch_actions,

@@ -91,6 +91,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias Apiary.Harnesses.{Qory, Walk}
   alias ApiaryWeb.BacklogComponents
   alias ApiaryWeb.HarnessComponents
+  alias ApiaryWeb.PauseWords
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
   alias ApiaryWeb.WorkItemLive.StageComponents
@@ -2968,7 +2969,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :now, :any, required: true
 
   # Which run of the take in, as a link to its page, its state, its time. Before a run
-  # exists, and while it is pending, it is Queued, Explore's word.
+  # exists, and while it is pending, it is Queued, Explore's word. A paused run that a run
+  # continues has why it paused in place of its state (`ApiaryWeb.PauseWords`).
   defp run_line(assigns) do
     run = assigns.run
     state = run[:state]
@@ -2977,10 +2979,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       assign(assigns,
         place: run_place(run),
         state_word:
-          if(state in [nil, :pending],
-            do: gettext("Queued"),
-            else: RunComponents.state_label(state)
-          ),
+          cond do
+            state in [nil, :pending] -> gettext("Queued")
+            run[:paused] -> PauseWords.line(run.paused, run[:paused_path])
+            true -> RunComponents.state_label(state)
+          end,
         state_class:
           cond do
             state == :running -> running_word_class(run)
@@ -2993,7 +2996,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     ~H"""
     <p id={@id} class="q-xp-run">
       <span><b><.rich text={place_ref(@run, @place)} /></b></span>
-      <span class={@state_class}>{@state_word}</span>
+      <span class={@state_class}><.rich text={@state_word} /></span>
       <span :if={@time}><.rich text={@time} /></span>
     </p>
     """
@@ -5125,7 +5128,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # when it ended; while it runs, when it started. A stage run handed over whose run has
   # not started (state nil or pending) reads queued, as the tab's top line (`run_line/1`).
   # A stage run with no verdict (running, or ended without one) whose run failed, was
-  # lost or was cancelled reads that state, as the top line, in place of the verdict.
+  # lost, was cancelled or paused reads that state, as the top line, in place of the
+  # verdict; a paused run that a run continues shows why it paused
+  # (`StageComponents.verdict_parts/2`).
   # A run with no stage run has what it wrote, or its state, in place of the three. In a
   # fold's summary, a click on `place`'s link opens the run's page, and a click beside it
   # opens the fold (`open_fold`).
@@ -5141,7 +5146,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     # or round.
     parts =
       if stage_run.shows in [:running, :no_verdict] and
-           run[:state] in [:failed, :lost, :cancelled],
+           run[:state] in [:failed, :lost, :cancelled, :paused],
          do: List.replace_at(parts, -1, RunComponents.state_label(run.state)),
          else: parts
 
@@ -5181,9 +5186,16 @@ defmodule ApiaryWeb.WorkItemComponents do
           said = wrote ++ asked
 
           said =
-            if said == [] or run.state in [:failed, :lost, :cancelled],
-              do: said ++ [RunComponents.state_label(run.state)],
-              else: said
+            cond do
+              run[:paused] ->
+                said ++ [PauseWords.line(run.paused, run[:paused_path])]
+
+              said == [] or run.state in [:failed, :lost, :cancelled, :paused] ->
+                said ++ [RunComponents.state_label(run.state)]
+
+              true ->
+                said
+            end
 
           said ++ List.wrap(run[:ended_at] && ended_ago(run.ended_at, now))
       end

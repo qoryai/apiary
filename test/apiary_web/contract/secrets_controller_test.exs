@@ -17,6 +17,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   alias Apiary.Audit.Entry
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.ModelKeys.Copy
   alias Apiary.Runs.{Run, RunCredential}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.Contract.SignedRequest
@@ -69,12 +70,16 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     secrets_request(
       Keyword.get(attrs, :run, ctx.run),
       Keyword.get(attrs, :digest, ctx.attached.digest),
-      Keyword.get(attrs, :credentials, [ctx.provider.public_id]),
+      Keyword.get(attrs, :credentials, [start(ctx)]),
       Keyword.get(attrs, :now, SignedRequest.now())
     )
   end
 
   defp code(conn), do: Jason.decode!(conn.resp_body)["error"]
+
+  # The credential name of the run's start key, its first: the provider's public id and
+  # its place.
+  defp start(ctx), do: "#{ctx.provider.public_id}-1"
 
   defp seals, do: Repo.all(from e in Entry, where: e.action == "secret.seal")
 
@@ -106,7 +111,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
       assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", plaintext) == :ok
 
-      name = ctx.provider.public_id
+      name = start(ctx)
 
       assert plaintext ==
                ~s({"version":1,"run_configuration":"#{ctx.attached.digest}",) <>
@@ -117,11 +122,67 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert [entry] = seals()
       assert entry.organisation_id == ctx.scope.organisation.id
       assert entry.subject_id == ctx.run.id
-      assert entry.details["provider_id"] == name
+      assert entry.details["provider_id"] == ctx.provider.public_id
       assert entry.details["credential"] == name
+      assert entry.details["credentials"] == [name]
       refute inspect(entry) =~ model_key()
       refute log =~ model_key()
       refute log =~ conn.resp_body
+    end
+
+    test "is answered only the keys it names, of the run's keys" do
+      # A run of another organisation, with two keys: the choice's, then the default.
+      %{scope: scope} = sign_up_fixture()
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
+
+      ctx =
+        sealed_run_fixture(scope,
+          keys: [
+            %{value_id: "main", value: model_key()},
+            %{value_id: "spare", value: "sk-ant-spare-0123456789"}
+          ],
+          choice: %{key: "spare"}
+        )
+
+      p = ctx.provider.public_id
+
+      for {names, values} <- [
+            {["#{p}-1"], ["sk-ant-spare-0123456789"]},
+            {["#{p}-2"], [model_key()]},
+            {["#{p}-1", "#{p}-2"], ["sk-ant-spare-0123456789", model_key()]}
+          ] do
+        conn = post_secrets(ctx, request(ctx, credentials: names))
+        assert conn.status == 200, inspect(names)
+        {_bytes, plaintext} = opened(ctx, conn)
+        assert Enum.map(plaintext["values"], & &1["credential"]) == names
+        assert Enum.map(plaintext["values"], & &1["value"]) == values
+        assert names in Enum.map(seals(), & &1.details["credentials"])
+      end
+    end
+
+    test "keeps when the value it sealed was set, the last request's", ctx do
+      %{"id" => id} = hd(ctx.run.model_keys)
+      value = Repo.get!(Value, id)
+      copies = fn -> Repo.all(from c in Copy, where: c.run_id == ^ctx.run.id) end
+
+      assert post_secrets(ctx, request(ctx)).status == 200
+      assert [%Copy{secret_value_id: ^id, value_set_at: set_at}] = copies.()
+      assert set_at == value.value_set_at
+
+      # A new value of the key: the next request seals it, and keeps its time.
+      {:ok, _provider} =
+        Apiary.Connections.set_provider_key(
+          ctx.scope,
+          ctx.provider,
+          value.value_id,
+          "sk-ant-new-0123456789",
+          nil
+        )
+
+      assert post_secrets(ctx, request(ctx)).status == 200
+      assert [%Copy{value_set_at: new_set_at}] = copies.()
+      assert new_set_at == Repo.get!(Value, id).value_set_at
+      assert DateTime.after?(new_set_at, set_at)
     end
 
     test "is answered again for a second request, under a fresh ephemeral key", ctx do
@@ -236,7 +297,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
 
     test "409 credentials_differ for a credential the run does not have", ctx do
-      for credentials <- [["forge"], [ctx.provider.public_id, "forge"]] do
+      for credentials <- [["forge"], [start(ctx), "forge"], [ctx.provider.public_id]] do
         conn = post_secrets(ctx, request(ctx, credentials: credentials))
         assert conn.status == 409
         assert code(conn) == "credentials_differ"
@@ -294,16 +355,85 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert seals() == []
     end
 
-    test "409 credential_unavailable for a key the run no longer has", ctx do
+    test "409 credential_unavailable for a key deleted since the claim", ctx do
+      {:ok, _provider} =
+        Apiary.Connections.add_provider_key(ctx.scope, provider(ctx), %{
+          value_id: "spare",
+          value: "sk-ant-spare-0123456789"
+        })
+
+      {:ok, _provider} = Apiary.Connections.put_default_key(ctx.scope, provider(ctx), "spare")
+      {:ok, _provider} = Apiary.Connections.delete_provider_key(ctx.scope, provider(ctx), "main")
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx)) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+
+      assert log =~
+               "the key #{start(ctx)} of the model provider #{ctx.provider.public_id} " <>
+                 "cannot be read (not_found)"
+
+      refute log =~ model_key()
+      assert seals() == []
+    end
+
+    test "a key renamed since the claim is revealed under its new value id", ctx do
+      # The default key is not renamed: another key becomes the default first.
+      {:ok, _provider} =
+        Apiary.Connections.add_provider_key(ctx.scope, provider(ctx), %{
+          value_id: "spare",
+          value: "sk-ant-spare-0123456789"
+        })
+
+      {:ok, _provider} = Apiary.Connections.put_default_key(ctx.scope, provider(ctx), "spare")
+
+      {:ok, _provider} =
+        Apiary.Connections.rename_provider_key(ctx.scope, provider(ctx), "main", "renamed")
+
+      conn = post_secrets(ctx, request(ctx))
+      assert conn.status == 200
+      assert {_bytes, %{"values" => [value]}} = opened(ctx, conn)
+      assert value == %{"credential" => start(ctx), "value" => model_key()}
+    end
+
+    test "409 credential_unavailable for a key of another organisation on the run's list",
+         ctx do
+      %{scope: other} = sign_up_fixture()
+      %{provider: theirs} = sealed_run_fixture(other)
+      [theirs_key] = Repo.all(from v in Value, where: v.secret_id == ^theirs.secret_id)
+
+      # The run's list, written past the claim, has their key's row id in place of the
+      # run's key's.
+      [entry] = ctx.run.model_keys
+
       {1, _rows} =
         Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
-          set: [provider_value_id: "gone"]
+          set: [model_keys: [%{entry | "id" => theirs_key.id}]]
         )
 
       {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx)) end)
       assert conn.status == 409
       assert code(conn) == "credential_unavailable"
-      assert log =~ "#{ctx.provider.public_id} cannot be read (not_found)"
+      assert log =~ "the key #{start(ctx)} of the model provider"
+      refute log =~ model_key()
+      assert seals() == []
+    end
+
+    test "409 credentials_differ for a key of the provider not on the run's list", ctx do
+      {:ok, _provider} =
+        Apiary.Connections.add_provider_key(ctx.scope, provider(ctx), %{
+          value_id: "spare",
+          value: "sk-ant-spare-0123456789"
+        })
+
+      # The provider's second key came after the claim: the run's list has the one key,
+      # and a request for a second name finds no such credential.
+      conn =
+        post_secrets(ctx, request(ctx, credentials: [start(ctx), "#{ctx.provider.public_id}-2"]))
+
+      assert conn.status == 409
+      assert code(conn) == "credentials_differ"
+      assert seals() == []
     end
 
     test "409 credential_unavailable for a provider of another organisation", ctx do
@@ -324,7 +454,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       log =
         capture_log(fn ->
           conn =
-            post_secrets(ctx, request(ctx, digest: digest, credentials: [theirs.public_id]))
+            post_secrets(ctx, request(ctx, digest: digest, credentials: [start(ctx)]))
 
           assert conn.status == 409
           assert code(conn) == "credential_unavailable"
@@ -428,7 +558,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       {bytes, plaintext} = opened(ctx, conn)
       assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
       assert plaintext["credentials"] == Enum.sort(names(ctx))
-      assert %{"value" => model} = value(plaintext, ctx.provider.public_id)
+      assert %{"value" => model} = value(plaintext, start(ctx))
       assert model == model_key()
       work = value(plaintext, "work-1")
       assert Map.keys(work) == ~w(apply credential expires_at value)
@@ -472,6 +602,36 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
       assert length(seals()) == 1
       refute log =~ @token
+    end
+
+    test "at the run's start, takes the run's row before the work entry's, as a deletion does",
+         ctx do
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      handler = "secrets-lock-order-#{System.unique_integer()}"
+      test = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{source: source, query: query}, _config ->
+          if self() == test, do: send(test, {:statement, source, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      assert post_secrets(ctx, request(ctx, credentials: names(ctx))).status == 200
+      :telemetry.detach(handler)
+
+      # The copies' statement takes the run's row `FOR KEY SHARE`; the work entry's update
+      # locks its `run_credentials` row. A run's deletion locks the run, then that row.
+      writes = statements() |> Enum.filter(&(&1 in [:copies, :work_entry])) |> Enum.dedup()
+      assert writes == [:copies, :work_entry]
     end
 
     test "at a renewal of work-1 alone, is answered a new credential and no model key", ctx do
@@ -714,7 +874,9 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
   # The credential names of a run with a model key and a work entry, in the run
   # configuration's order.
-  defp names(ctx), do: [ctx.provider.public_id, "work-1"]
+  defp names(ctx), do: [start(ctx), "work-1"]
+
+  defp provider(ctx), do: Repo.get!(Connection, ctx.provider.id)
 
   defp value(plaintext, name), do: Enum.find(plaintext["values"], &(&1["credential"] == name))
 
@@ -725,6 +887,20 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
           where: e.action == "run_credential.issue",
           order_by: [asc: e.inserted_at, asc: e.id]
       )
+
+  # The statements the test's process sent so far, in order: `:copies` for a write of
+  # `model_key_copies`, `:work_entry` for an update of `run_credentials`, else `:other`.
+  defp statements do
+    receive do
+      {:statement, source, query} -> [statement(source, query) | statements()]
+    after
+      0 -> []
+    end
+  end
+
+  defp statement("model_key_copies", "INSERT" <> _rest), do: :copies
+  defp statement("run_credentials", "UPDATE" <> _rest), do: :work_entry
+  defp statement(_source, _query), do: :other
 
   defp work_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :work)
 
@@ -837,7 +1013,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
         set: [
           provider_connection_id: run.provider_connection_id,
           provider_secret_id: run.provider_secret_id,
-          provider_value_id: run.provider_value_id,
+          model_keys: run.model_keys,
           provider_api: run.provider_api
         ]
       )

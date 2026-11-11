@@ -147,7 +147,7 @@ defmodule Apiary.Runs.Attach do
   @int4 2_147_483_647
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
   # The states of a run that has ended.
-  @ended ~w(completed failed cancelled)
+  @ended ~w(completed failed cancelled paused)
 
   @typedoc "An attach's body, as `parse/1` read it."
   @type t :: %__MODULE__{

@@ -1662,13 +1662,14 @@ defmodule Apiary.Stages do
     })
   end
 
-  # The runs queued before for the entry of `spec`, in its round, in the take in.
+  # The runs queued before for the entry of `spec`, in its round, in the take in. A run
+  # that continues a paused run (`Apiary.Dispatches.requeue_for_pause/2`) is no new run.
   defp runs_of_entry(work_item, stage, spec) do
     Repo.aggregate(
       from(d in DispatchRun,
         where: d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in,
         where: d.stage_id == ^stage["id"] and d.stage_entry == ^spec.entry,
-        where: d.round == ^spec.round
+        where: d.round == ^spec.round and is_nil(d.continues_id)
       ),
       :count
     )

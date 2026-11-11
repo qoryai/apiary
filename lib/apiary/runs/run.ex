@@ -36,7 +36,7 @@ defmodule Apiary.Runs.Run do
   # docs show its name alone.
   @typep run :: %__MODULE__{}
 
-  @states ~w(pending running completed failed cancelled lost)
+  @states ~w(pending running completed failed cancelled lost paused)
 
   # The most a `bigint` holds: the highest number a run can have.
   @max_number 9_223_372_036_854_775_807
@@ -162,21 +162,41 @@ defmodule Apiary.Runs.Run do
     # changed; nil for every other run. Not folded: a rebuild keeps it.
     field :registration_variables, :map
 
+    # The `resume` member of the run configuration of a run of the queue that continues a
+    # paused run (`Apiary.Runs.Transcript.resume_at_claim/1`): `"run_id"`, the paused
+    # run's id, and `"session_id"` and `"path"` of its transcript. Written once with the
+    # registration and never changed, so every run configuration of the run has the same
+    # one; nil for every other run, which starts a new session. Not folded.
+    field :resume, :map
+
+    # Whether the run of the queue that registered the run pushed its questions or a
+    # proposal during this run, not during an earlier attempt: an artifact version of
+    # either type whose `run_id` is the run's `dispatch_run_id`. Not stored: the
+    # projector reads it for a pass that folds the run's exit, so `Apiary.Runs.Fold.settle/1`
+    # ends such a run that paused completed, with its result and no continuation.
+    field :result_pushed, :boolean, virtual: true, default: false
+
     # The run settings Qory wrote for a run of a workspace's queue when it registered it
     # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and
-    # the model provider the run uses: its row, its keys' secret's row, the value id of
-    # its chosen key, its chain, and the API of the provider the run uses
-    # (`provider_api`: `format`, `endpoint`, `auth` and, when the description lists them,
-    # `key_prefixes`). Written once with the registration and never changed; nil for every
-    # other run, and for an explore run with `factory` or `secrets` off. The provider
-    # fields are nil where no provider was chosen, and the two rows become nil should they
-    # be deleted. Not folded: a rebuild keeps them. The secret's row id, the key's value
-    # id and the API are left out of the struct's inspection.
+    # the model provider the run uses: its row, its keys' secret's row, its keys, its
+    # chain, and the API of the provider the run uses (`provider_api`: `format`,
+    # `endpoint`, `auth` and, when the description lists them, `key_prefixes`). The keys
+    # (`model_keys`) are in the order of the run configuration's `credentials`, at most 6,
+    # each a map of `"id"`, the key's row id (`secret_values.id`), `"name"`, its
+    # credential's name, `"start"`, true on the start key, which a run that kept one key
+    # before has not, and what the claim wrote for the run configuration:
+    # `"pause_for_s"`, and where the claim had them, `"resets_at"`,
+    # `"schedule_resets_at"`, `"chosen"` and `"cooldown_until"`; never a key value.
+    # Written once with the registration and never changed; nil for every other run, and
+    # for an explore run with `factory` or `secrets` off. The provider fields are nil
+    # where no provider was chosen, and the two rows become nil should they be deleted.
+    # Not folded: a rebuild keeps them. The secret's row id, the keys and the API are left
+    # out of the struct's inspection.
     field :run_settings, :map
     belongs_to :provider_connection, Apiary.Connections.Connection
     field :provider_secret_id, :binary_id, redact: true
     belongs_to :provider_secret, Apiary.Secrets.Secret, define_field: false
-    field :provider_value_id, :string, redact: true
+    field :model_keys, {:array, :map}, redact: true
     field :provider_chain, :string
     field :provider_api, :map, redact: true
 
@@ -296,8 +316,8 @@ defmodule Apiary.Runs.Run do
   end
 
   @doc """
-  Every state a run can be in: pending, running, completed, failed, cancelled and lost. The
-  `CHECK` on the column allows these six and no other.
+  Every state a run can be in: pending, running, completed, failed, cancelled, lost and
+  paused. The `CHECK` on the column allows these seven and no other.
   """
   def states, do: @states
 
@@ -356,7 +376,7 @@ defmodule Apiary.Runs.Run do
   @spec shown_state(t() | map()) :: String.t()
   def shown_state(run), do: if(queued?(run), do: "queued", else: run.state)
 
-  @doc "Every state the pages show: `queued`, then the six stored states (`states/0`)."
+  @doc "Every state the pages show: `queued`, then the seven stored states (`states/0`)."
   def shown_states, do: ["queued" | @states]
 
   @doc "The states of a run that ended well: completed, its outcome a success."
@@ -369,10 +389,23 @@ defmodule Apiary.Runs.Run do
   def cancelled_states, do: ~w(cancelled)
 
   @doc """
-  The states of a run that ended badly: failed and lost. The four families, alive, ended
-  well, cancelled and ended badly, are `Apiary.Runs.Filters.families/0`.
+  The states of a run that ended badly: failed and lost. The five families, alive, ended
+  well, cancelled, paused and ended badly, are `Apiary.Runs.Filters.families/0`.
   """
   def ended_badly_states, do: ~w(failed lost)
+
+  @doc """
+  The states of a run that paused: its gateway ended it with the reason
+  `model_key_limit`, as every model key it had was at its limit, and its work goes on in
+  the run that continues it, which the end of the paused run queues. Not a failure, and
+  never a person's cancel.
+  """
+  def paused_states, do: ~w(paused)
+
+  @doc "Whether the run paused (`paused_states/0`)."
+  @spec paused?(t() | map()) :: boolean()
+  def paused?(%{state: "paused"}), do: true
+  def paused?(_run), do: false
 
   @doc """
   The days a lost run counts as lost recently, from its `lost_at`: the Overview lists it

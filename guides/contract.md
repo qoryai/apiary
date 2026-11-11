@@ -504,6 +504,68 @@ Forager's reason, stays on record beside it, and the run page says both when the
 `dev.qory.run.exited` arrives, each signed `2xx` to its batches carries `end` with the
 outcome's state and reason (Events, below).
 
+<!-- feature: factory, secrets -->
+### A run's model keys: `POST /v1/runs/<run_id>/model-keys`
+
+A signed POST, `Content-Type: application/json`, under a key of the gateway that attached
+the run: the state of the run's model keys in each limit window, as the gateway saw it in
+the provider's responses. A run of Explore gets up to 6 keys of its model provider, each
+a credential of its run configuration. The body:
+
+```json
+{"version": 1, "run_id": "<run_id>", "time": "2026-10-11T12:30:00Z",
+ "keys": [{"credential": "con_…-1", "window": "five_hour", "status": "rejected",
+           "resets_at": "2026-10-11T14:00:00Z", "cooldown_until": "2026-10-11T14:00:00Z",
+           "source": "provider", "observed_at": "2026-10-11T12:29:58Z"}]}
+```
+
+`keys` has at most 66 items. Each has `credential`, `window`, `status`, `source` and
+`observed_at`, and may have `resets_at` and `utilization`; `cooldown_until` is required
+when `status` is `rejected`, and absent otherwise. Qory Apiary records the windows
+`five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, `overage`, `requests`,
+`tokens`, `input_tokens`, `output_tokens`, `spend_limit` and `key`, and leaves out an item
+of any other window or of a credential the run does not have. A `resets_at` or a
+`cooldown_until` more than 31 days after its `observed_at` is stored as that bound. A
+state is replaced only by one with a later `observed_at`, whichever gateway sent it.
+
+The answers, after the refusals every signed request gets (`413` over 32 KiB, `415`, a
+header sent twice, `401`, `429` from the run endpoint's bucket, the instance id, the
+contract version); the first that applies is the answer:
+
+| Status | When | Body |
+|---|---|---|
+| `400` | the body is not a report, has a member twice, or has an `observed_at` more than 300 seconds after the server's clock | `{"error":"invalid_request","names":["<member>"]}` |
+| `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
+| `404` | the instance does not have the features `factory` and `secrets`; or the run is not attached to the gateway that sends the report: through this gateway, its run key listing the key, reloadable by this key and instance, of a workspace the gateway may still serve, whose events the key may post (`run.post_events`) | `{"error":"not_found"}` |
+| `410` | the run has ended; a report that arrives at most 60 seconds after the run ended is recorded first: by the server's clock, the first of when its first `dev.qory.run.exited` or `dev.qory.run.refused` arrived and when Qory Apiary ended it | empty |
+| `503` | the report could not be stored | `{"error":"unavailable"}` |
+| `200` | recorded | `{"version":1,"keys":[…]}` |
+
+The `200` has the header `X-Qory-Configuration`. Its `keys` are the newest state of each
+of the run's keys in each window, from every gateway, under the run's credential names,
+without the utilization of a window whose `resets_at` has passed. A gateway reads them to skip a
+key that a run on another machine found at its limit.
+<!-- /feature -->
+
+### A paused run's transcript: `GET /v1/runs/<run_id>/resume/transcript`
+
+A signed GET, under a key of the gateway to which the run is attached: the session of a
+run that continues a paused run reads the paused run's transcript with it before its
+runtime starts, to resume the agent's session. `<run_id>` is the continuing run's id. A run that
+continues a paused run has `resume` in its run configuration: the paused run's id, its
+session id and the path of the transcript. The route needs the feature `observability`,
+the run endpoint's.
+
+| Status | When | Body |
+|---|---|---|
+| `404` | the run is not attached to the gateway that sends the request, or the key may not post its events (`run.post_events`), or it ended, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has 100,000 chunks or more | `{"error":"not_found"}` |
+| `503` | the transcript could not be read | `{"error":"unavailable"}` |
+| `200` | found | the transcript, `application/x-ndjson` |
+
+The `200` is sent in chunks, the paused run's chunks of the transcript in sequence
+order, and signed over their SHA-256. A failure while the chunks are sent ends the
+answer there, short of its signed length. No byte of a transcript is logged.
+
 ### Events: `POST /v1/events`
 
 A signed POST: one batch of one run's events, a non-empty JSON array. A request is refused in

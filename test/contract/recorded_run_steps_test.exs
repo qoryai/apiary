@@ -203,13 +203,15 @@ defmodule Apiary.Contract.RecordedRunStepsTest do
         {Path.basename(name, ".json"), fold}
       end
 
-    assert map_size(folded) == 8
+    assert map_size(folded) == 9
 
     assert folded["event-step-started-step-zero"].steps == %{}
     assert %{1 => %{kind: nil}} = folded["event-step-started-unknown-kind"].steps
     assert %{1 => %{name: nil, kind: "fetch"}} = folded["event-step-started-without-name"].steps
     assert %{1 => %{state: "failed"}} = folded["event-step-exited-unknown-state"].steps
     assert %{1 => %{state: "failed"}} = folded["event-step-exited-without-state"].steps
+    # A step never ends paused: the state is one the fold does not know.
+    assert %{1 => %{state: "failed"}} = folded["event-step-exited-paused"].steps
     assert %{1 => %{duration_ms: nil}} = folded["event-step-exited-without-duration"].steps
 
     assert %{1 => %{exit_code: -2}} =

@@ -259,6 +259,357 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert %{"model" => "claude-sonnet-5-5", "effort" => "low"} = settings
   end
 
+  describe "Fallbacks" do
+    defp add_provider(scope, kind),
+      do:
+        Connections.create_provider(scope, %{
+          provider: kind,
+          keys: [%{value_id: "main", value: "sk-#{kind}-model-page-0123456789"}]
+        })
+
+    defp fallbacks(scope) do
+      choice = scope |> choice() |> Repo.preload(fallbacks: :connection)
+      for f <- choice.fallbacks, do: {f.position, f.connection.public_id, f.model_id, f.effort}
+    end
+
+    # Whether a model choice anywhere has a fallback of `provider`.
+    defp fallbacks_of_provider?(_scope, provider),
+      do:
+        Repo.exists?(
+          from f in Apiary.ModelChoices.Fallback, where: f.connection_id == ^provider.id
+        )
+
+    test "with no other provider, names the chosen one and says what to add", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(lv, "#model-fallbacks h2", "Fallbacks")
+
+      assert has_element?(
+               lv,
+               "#model-fallbacks-line",
+               "When every key of #{provider.name} is in cooldown, runs use these, in order, from the next run."
+             )
+
+      refute has_element?(lv, "#model-fallback-rows")
+      refute has_element?(lv, "#model-fallback-add")
+
+      assert has_element?(
+               lv,
+               "#model-fallback-none",
+               "Add another model provider that serves #{ModelChoices.default_runtime().title} in Organisation settings › Model providers, then add it here as a fallback."
+             )
+    end
+
+    test "Add fallback adds a row of a provider left, with the chosen model where it has it",
+         ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, deepseek} = add_provider(scope, "deepseek")
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      lv
+      |> form("#model-form",
+        model_choice: %{model: option(provider, "claude-sonnet-5-5"), effort: "low"}
+      )
+      |> render_change()
+
+      lv |> element("#model-fallback-add") |> render_click()
+
+      # The first provider left, by name, with the same model and effort.
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_provider option[value="#{subscription.public_id}"][selected]}
+             )
+
+      refute has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_provider option[value="#{provider.public_id}"]}
+             )
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_model-options input[value="#{option(subscription, "claude-sonnet-5-5")}"][checked]}
+             )
+
+      assert has_element?(lv, ~s{#model_choice_fallbacks_0_effort option[value="low"][selected]})
+
+      # A provider without that model: its first.
+      lv |> element("#model-fallback-add") |> render_click()
+      first = deepseek |> ModelChoices.suggestions(ModelChoices.default_runtime()) |> hd()
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_1_model-options input[value="#{option(deepseek, first.id)}"][checked]}
+             )
+
+      # No provider is left to add.
+      refute has_element?(lv, "#model-fallback-add")
+      assert has_element?(lv, "#model-fallback-none")
+
+      # A row offers the providers no other row has; one changed takes its model.
+      refute has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_provider option[value="#{deepseek.public_id}"]}
+             )
+
+      lv |> element("#model-fallback-1-remove") |> render_click()
+
+      lv
+      |> form("#model-form",
+        model_choice: %{fallbacks: %{"0" => %{provider: deepseek.public_id}}}
+      )
+      |> render_change()
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_model-options input[value="#{option(deepseek, first.id)}"][checked]}
+             )
+    end
+
+    test "Save keeps the rows in their order; Move up, Move down and Remove change them", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, deepseek} = add_provider(scope, "deepseek")
+      {:ok, lv, _html} = live(conn, path(scope))
+      main = Connections.default_model(provider)
+      deepseek_first = Connections.default_model(deepseek)
+
+      lv |> element("#model-fallback-add") |> render_click()
+      lv |> element("#model-fallback-add") |> render_click()
+
+      assert has_element?(lv, "#model-fallback-0-up[disabled]")
+      assert has_element?(lv, "#model-fallback-1-down[disabled]")
+      assert has_element?(lv, ~s{#model-fallback-1-up[aria-label="Move fallback 2 up"]})
+
+      lv |> element("#model-fallback-1-up") |> render_click()
+      lv |> form("#model-form") |> render_submit()
+
+      assert fallbacks(scope) == [
+               {0, deepseek.public_id, deepseek_first, nil},
+               {1, subscription.public_id, main, nil}
+             ]
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_provider option[value="#{deepseek.public_id}"][selected]}
+             )
+
+      lv |> element("#model-fallback-0-down") |> render_click()
+      lv |> form("#model-form") |> render_submit()
+      assert [{0, sub_id, _, _}, {1, ds_id, _, _}] = fallbacks(scope)
+      assert {sub_id, ds_id} == {subscription.public_id, deepseek.public_id}
+
+      lv |> element("#model-fallback-0-remove") |> render_click()
+      refute has_element?(lv, "#model-fallback-1")
+      lv |> form("#model-form") |> render_submit()
+      assert fallbacks(scope) == [{0, deepseek.public_id, deepseek_first, nil}]
+    end
+
+    test "Remove of an index that no row has removes no row", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, _subscription} = add_provider(scope, "claude-subscription")
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      lv |> element("#model-fallback-add") |> render_click()
+
+      for index <- ["-1", "1", "x"] do
+        render_hook(lv, "remove_fallback", %{"index" => index})
+        assert has_element?(lv, "#model-fallback-0")
+      end
+    end
+
+    test "a save that chooses a row's provider drops that row and saves the others", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, deepseek} = add_provider(scope, "deepseek")
+
+      {:ok, _} =
+        ModelChoices.put_choice(scope, :workspace, %{
+          provider: provider.public_id,
+          fallbacks: [%{provider: subscription.public_id}, %{provider: deepseek.public_id}]
+        })
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      # The chosen provider becomes the first row's.
+      lv
+      |> form("#model-form",
+        model_choice: %{model: option(subscription, "claude-sonnet-5-5")}
+      )
+      |> render_change()
+
+      lv |> form("#model-form") |> render_submit()
+
+      assert has_element?(lv, "#flash-info", "Model saved.")
+      assert choice(scope).connection_id == subscription.id
+      assert [{0, deepseek_id, _model, _effort}] = fallbacks(scope)
+      assert deepseek_id == deepseek.public_id
+    end
+
+    test "a refused row shows the refusal under its field, and nothing is saved", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, deepseek} = add_provider(scope, "deepseek")
+
+      {:ok, _} =
+        ModelChoices.put_choice(scope, :workspace, %{
+          provider: deepseek.public_id,
+          fallbacks: [%{provider: subscription.public_id}, %{provider: provider.public_id}]
+        })
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      # The first row's provider is chosen, so that row is dropped; the second row's
+      # refusal shows under the second row.
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "model" => option(subscription, "claude-sonnet-5-5"),
+          "fallbacks" => %{
+            "0" => %{
+              "provider" => subscription.public_id,
+              "model" => option(subscription, "claude-sonnet-5-5")
+            },
+            "1" => %{
+              "provider" => provider.public_id,
+              "model" => option(provider, "claude-sonnet-5-5"),
+              "effort" => "turbo"
+            }
+          }
+        }
+      })
+
+      assert has_element?(
+               lv,
+               "#model_choice_fallbacks_1_effort-error",
+               "Choose one of claude-sonnet-5-5's effort values"
+             )
+
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider-error")
+      assert choice(scope).connection_id == deepseek.id
+    end
+
+    test "a provider in two rows shows the error under the second row, and nothing is saved",
+         ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "model" => option(provider, "claude-sonnet-5-5"),
+          "fallbacks" => %{
+            "0" => %{
+              "provider" => subscription.public_id,
+              "model" => option(subscription, "claude-sonnet-5-5")
+            },
+            "1" => %{
+              "provider" => subscription.public_id,
+              "model" => option(subscription, "claude-sonnet-5-5")
+            }
+          }
+        }
+      })
+
+      assert has_element?(
+               lv,
+               "#model_choice_fallbacks_1_provider-error",
+               "Choose another provider: #{subscription.name} is chosen already."
+             )
+
+      assert has_element?(lv, ~s{#model_choice_fallbacks_1_provider[aria-invalid="true"]})
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider-error")
+      assert choice(scope) == nil
+    end
+
+    test "an admin made a member while the page is open saves no fallback", ctx do
+      %{scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      %{user: user, membership: membership} = member_fixture(scope, :admin)
+      {:ok, lv, _html} = live(log_in_user(build_conn(), user), path(scope))
+
+      lv |> element("#model-fallback-add") |> render_click()
+      {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
+
+      lv
+      |> form("#model-form", model_choice: %{model: option(provider)})
+      |> render_submit()
+
+      assert has_element?(lv, "#flash-error", "Only owners and admins change this.")
+      assert choice(scope) == nil
+      refute has_element?(lv, "#model-fallback-add")
+      refute fallbacks_of_provider?(scope, subscription)
+    end
+
+    test "a member's events change no row and save nothing", ctx do
+      %{scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      %{user: user} = member_fixture(scope, :member)
+      {:ok, lv, _html} = live(log_in_user(build_conn(), user), path(scope))
+
+      render_hook(lv, "add_fallback", %{})
+      refute has_element?(lv, "#model-fallback-0")
+
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "model" => option(provider),
+          "fallbacks" => %{"0" => %{"provider" => subscription.public_id}}
+        }
+      })
+
+      assert choice(scope) == nil
+    end
+
+    test "a sent row with another organisation's provider is refused, and nothing is saved",
+         ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, _subscription} = add_provider(scope, "claude-subscription")
+      %{scope: other} = sign_up_fixture()
+      {:ok, foreign} = add_provider(other, "claude-subscription")
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      lv |> element("#model-fallback-add") |> render_click()
+
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "model" => option(provider),
+          "fallbacks" => %{
+            "0" => %{
+              "provider" => foreign.public_id,
+              "model" => option(foreign, "claude-sonnet-5-5")
+            }
+          }
+        }
+      })
+
+      assert has_element?(lv, "#model_choice_fallbacks_0_provider-error")
+      assert choice(scope) == nil
+      refute fallbacks_of_provider?(other, foreign)
+    end
+
+    test "a member sees the rows disabled, and no button to change them", ctx do
+      %{scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+
+      {:ok, _} =
+        ModelChoices.put_choice(scope, :workspace, %{
+          provider: provider.public_id,
+          fallbacks: [%{provider: subscription.public_id}]
+        })
+
+      %{user: user} = member_fixture(scope, :member)
+      {:ok, lv, _html} = live(log_in_user(build_conn(), user), path(scope))
+
+      assert has_element?(lv, "#model_choice_fallbacks_0_provider[disabled]")
+      assert has_element?(lv, "#model_choice_fallbacks_0_model[disabled]")
+      refute has_element?(lv, "#model-fallback-0-remove")
+      refute has_element?(lv, "#model-fallback-add")
+      refute has_element?(lv, "#model-fallback-none")
+    end
+  end
+
   describe "the runtime" do
     test "is hidden while the list has one runtime, and the choice names none", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx

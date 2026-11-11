@@ -147,14 +147,14 @@ defmodule Apiary.Runs.ListingTest do
       assert parse(%{"zzz" => "1"}).dropped == []
     end
 
-    test "the states read as four families, and whole families are named as such" do
+    test "the states read as five families, and whole families are named as such" do
       assert Enum.map(Filters.families(), & &1.key) ==
-               ~w(alive ended_well cancelled ended_badly)
+               ~w(alive ended_well cancelled paused ended_badly)
 
       assert Enum.map(Filters.families(), & &1.label) ==
-               ["Alive", "Ended well", "Cancelled", "Ended badly"]
+               ["Alive", "Ended well", "Cancelled", "Paused", "Ended badly"]
 
-      # Every state the pages show is in exactly one family: the six and queued.
+      # Every state the pages show is in exactly one family: the seven and queued.
       states = Filters.families() |> Enum.flat_map(& &1.states)
       assert Enum.sort(states) == Enum.sort(Apiary.Runs.Run.shown_states())
       assert length(states) == length(Enum.uniq(states))
@@ -162,6 +162,7 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.family_states("alive") == ~w(queued pending running)
       assert Filters.family_states("ended_well") == ~w(completed)
       assert Filters.family_states("cancelled") == ~w(cancelled)
+      assert Filters.family_states("paused") == ~w(paused)
       assert Filters.family_states("ended_badly") == ~w(failed lost)
       assert Filters.family_states("ended") == nil
 
@@ -174,7 +175,7 @@ defmodule Apiary.Runs.ListingTest do
                ~w(alive ended_well cancelled)
 
       assert Filters.families_of(Apiary.Runs.Run.shown_states()) ==
-               ~w(alive ended_well cancelled ended_badly)
+               ~w(alive ended_well cancelled paused ended_badly)
 
       # Alive without Queued is no whole family.
       assert Filters.families_of(~w(completed cancelled running pending)) == nil
@@ -835,7 +836,7 @@ defmodule Apiary.Runs.ListingTest do
     test "every state counts in its family", %{scope: scope} do
       at = DateTime.add(@now, -60, :second)
 
-      for state <- ~w(pending running completed failed cancelled lost),
+      for state <- ~w(pending running completed failed cancelled lost paused),
           do: run_fixture(scope, %{state: state, started_at: at})
 
       facets = Runs.run_facets(scope, parse(%{}), now: @now)
@@ -846,16 +847,18 @@ defmodule Apiary.Runs.ListingTest do
                {"completed", "completed", 1},
                {"failed", "failed", 1},
                {"cancelled", "cancelled", 1},
-               {"lost", "lost", 1}
+               {"lost", "lost", 1},
+               {"paused", "paused", 1}
              ]
 
       assert Runs.view_counts(scope, parse(%{}), @now) ==
-               %{all: 6, alive: 2, ended_badly: 2, with_denials: 0}
+               %{all: 7, alive: 2, ended_badly: 2, with_denials: 0}
 
       assert [day] = Runs.day_facts(scope, DateTime.add(@now, -3600, :second))
-      assert %{runs: 6, alive: 2, ended_well: 1, cancelled: 1, ended_badly: 2} = day
-      # The four families count every run once.
-      assert day.alive + day.ended_well + day.cancelled + day.ended_badly == day.runs
+      assert %{runs: 7, alive: 2, ended_well: 1, cancelled: 1, paused: 1, ended_badly: 2} = day
+      # The five families count every run once.
+      assert day.alive + day.ended_well + day.cancelled + day.paused + day.ended_badly ==
+               day.runs
 
       for family <- Filters.families() do
         params = %{"state" => Enum.join(family.states, ",")}

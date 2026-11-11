@@ -37,6 +37,19 @@ defmodule Apiary.Connections.WorkspaceKeysTest do
     {workspace, workspace_scope(scope.user, workspace)}
   end
 
+  # The key `value_id` of `provider`, as the secrets endpoint reveals it, by its row id.
+  defp reveal(provider, value_id) do
+    provider = Repo.get!(Connection, provider.id)
+
+    value =
+      Repo.one!(
+        from v in Value,
+          where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
+      )
+
+    Secrets.reveal_key_for_sealing(provider, value.id)
+  end
+
   describe "adding a provider for the workspace" do
     test "keeps its keys as the workspace's secret, and reaches that workspace alone",
          %{scope: scope} do
@@ -152,7 +165,7 @@ defmodule Apiary.Connections.WorkspaceKeysTest do
       assert {:ok, _} = Connections.rename_provider_key(scope, provider, "spare", "backup")
       assert values(provider) == ["backup", "main"]
 
-      assert Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), "backup") ==
+      assert reveal(provider, "backup") ==
                {:ok, "y"}
 
       assert {:ok, _} = Connections.delete_provider_key(scope, provider, "backup")
@@ -202,7 +215,7 @@ defmodule Apiary.Connections.WorkspaceKeysTest do
       assert Secrets.set_value(scope, secret, "main", "z", provider: other) ==
                {:error, :not_found}
 
-      assert Secrets.reveal_for_sealing(Repo.get!(Connection, provider.id), "main") ==
+      assert reveal(provider, "main") ==
                {:ok, @key}
     end
 

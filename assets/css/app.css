@@ -4846,6 +4846,11 @@
   .q-st-lost > i {
     background-color: var(--color-warning);
   }
+  /* A paused run goes on in its continuation: a ring in the hue of a running run. */
+  .q-st-paused > i {
+    background: none;
+    box-shadow: inset 0 0 0 1.5px var(--color-info);
+  }
   .q-st-pending > i,
   .q-st-queued > i {
     border: 1.5px solid var(--q-border-field);
@@ -6456,6 +6461,7 @@
   }
   .q-run-meta .q-sdot-completed,
   .q-run-meta .q-sdot-cancelled,
+  .q-run-meta .q-sdot-paused,
   .q-run-meta .q-sdot-pending,
   .q-run-meta .q-sdot-queued {
     color: var(--color-base-content);
@@ -11430,6 +11436,10 @@
   }
   .q-sdot-lost > i {
     background-color: var(--color-warning);
+  }
+  .q-sdot-paused > i {
+    background: none;
+    box-shadow: inset 0 0 0 1.5px var(--color-info);
   }
   .phx-client-error .q-sdot-running > i::after,
   .phx-server-error .q-sdot-running > i::after {

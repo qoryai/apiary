@@ -708,7 +708,7 @@ defmodule Apiary.Gateways do
   defp holding_runs(gateway_id, now) do
     from(r in Run,
       where: r.gateway_id == ^gateway_id,
-      where: r.state not in ~w(completed failed cancelled lost),
+      where: r.state not in ~w(completed failed cancelled lost paused),
       where: is_nil(r.exited_at) and is_nil(r.outcome_state) and is_nil(r.events_pruned_at),
       where: not is_nil(r.attached_at) or r.attach_by >= ^now,
       order_by: [asc: r.registered_at, asc: r.node_run_id]

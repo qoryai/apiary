@@ -825,7 +825,8 @@ defmodule Apiary.Runs.Record.Timeline do
   `scope:` and `run:`, given together, are the reader and the run: the policy of each
   `policy.applied` line, and the previous one the delta is taken from, is first read
   through `client_reads/4`, so the counts and the delta are of what the
-  edition leaves the reader. Without them, no policy is narrowed.
+  edition leaves the reader. Without them, no policy is narrowed. A paused end of a run
+  that is `completed` is the end of a completed run, with no reason.
   """
   def build(light, events, opts \\ []) when is_list(light) do
     full = opts |> Keyword.get(:full, []) |> MapSet.new()
@@ -858,10 +859,19 @@ defmodule Apiary.Runs.Record.Timeline do
         session: event[:session]
       })
       |> Map.merge(body(item, event, events, limit))
+      |> settled(opts[:run])
     end
   end
 
   defp first_sequence(%{seq: seq}), do: seq
+
+  # The end of a run that paused after it pushed its questions or a proposal, which ended
+  # completed (`Apiary.Runs.Fold.settle/1`), reads as a completed run's end, with no
+  # reason. A run that paused and is continued keeps its paused end.
+  defp settled(%{kind: :run_exited, state: "paused"} = item, %{state: "completed"}),
+    do: Map.merge(item, %{state: "completed", reason: nil})
+
+  defp settled(item, _run), do: item
 
   # A `policy.applied` line shows counts and a delta of its lists. They are taken from the
   # policy as the edition leaves it to the reader, for the event and for the previous event

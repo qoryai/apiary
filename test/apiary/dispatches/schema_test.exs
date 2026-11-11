@@ -74,6 +74,10 @@ defmodule Apiary.Dispatches.SchemaTest do
   # that takes work items in again drops: down first, up last.
   @declined_version 20_261_103_090_000
   @declined Apiary.Repo.Migrations.CloseEveryDeclinedWorkItem
+  # The later migration that keeps a run's model keys in place of the column the migration
+  # that keeps a run whose start failed clears: down first, up last.
+  @model_keys_version 20_261_111_100_000
+  @model_keys Apiary.Repo.Migrations.KeepARunSModelKeys
 
   setup_all do
     for {version, migration, name} <- [
@@ -88,7 +92,8 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@artifacts_version, @artifacts, "create_artifacts"},
           {@stages_version, @stages, "keep_gate_decisions_and_escalations"},
           {@machine_end_version, @machine_end, "keep_what_a_starter_reports_of_a_machine_s_end"},
-          {@declined_version, @declined, "close_every_declined_work_item"}
+          {@declined_version, @declined, "close_every_declined_work_item"},
+          {@model_keys_version, @model_keys, "keep_a_run_s_model_keys"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -1068,6 +1073,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @model_keys_version, @model_keys, @options)
     assert :ok = Ecto.Migrator.down(Repo, @declined_version, @declined, @options)
     assert :ok = Ecto.Migrator.down(Repo, @machine_end_version, @machine_end, @options)
     assert :ok = Ecto.Migrator.down(Repo, @stages_version, @stages, @options)
@@ -1094,6 +1100,7 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @stages_version, @stages, @options)
     assert :ok = Ecto.Migrator.up(Repo, @machine_end_version, @machine_end, @options)
     assert :ok = Ecto.Migrator.up(Repo, @declined_version, @declined, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @model_keys_version, @model_keys, @options)
 
     # `DispatchRun` writes `image_requeue` and `machine_type_was_default`, of migrations
     # left down, on every insert.

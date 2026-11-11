@@ -470,7 +470,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
       # The model key comes first, and the registry credential, where the feature is on,
       # before the work entry.
-      assert hd(decoded["credentials"])["name"] == work.provider.public_id
+      assert hd(decoded["credentials"])["name"] == "#{work.provider.public_id}-1"
       refute document =~ ~s("token")
 
       {"credentials", entries} =
@@ -524,7 +524,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
         &Apiary.Runs.SecretsRequest.answer(key, &1, Apiary.ContractFixtures.instance_id(), now)
 
       request = &Apiary.SealedRunsFixtures.secrets_request(work.run, work.digest, &1, now)
-      model = work.provider.public_id
+      model = "#{work.provider.public_id}-1"
 
       assert answer.(request.(["work-1"])) == {:error, :credential_unavailable}
       assert answer.(request.([model, "work-1"])) == {:error, :credential_unavailable}
@@ -598,6 +598,79 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert Jason.decode!(bytes)["security_policy"] == Jason.decode!(@policy)
       assert Schema.validate(bytes) == :ok
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
+    end
+
+    test "has resume after stack_hosts, before harness_hidden, as the contract orders it" do
+      resume = %{
+        "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+        "session_id" => "5f2c9a1e",
+        "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl"
+      }
+
+      members = stack_members(["git.example"], %{resume: resume, harness_hidden: true})
+
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(@document, nil, false, false, members)
+
+      decoded = Jason.decode!(bytes, objects: :ordered_objects)
+
+      assert Enum.map(decoded.values, &elem(&1, 0)) ==
+               ~w(version security_policy stack_hosts resume harness_hidden)
+
+      assert Enum.map(decoded["resume"].values, &elem(&1, 0)) == ~w(run_id session_id path)
+      assert Jason.decode!(bytes)["resume"] == resume
+      assert Schema.validate(bytes) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
+
+      # A resume alone composes a document; none leaves the document as it is.
+      assert {:composed, _bytes, nil} =
+               ComposedConfiguration.shape(
+                 @document,
+                 nil,
+                 false,
+                 false,
+                 stack_members([], %{resume: resume})
+               )
+
+      assert ComposedConfiguration.shape(
+               @document,
+               nil,
+               false,
+               false,
+               stack_members([], %{resume: nil})
+             ) == :as_is
+    end
+
+    test "drops a resume the stored document has, and keeps the paused run's" do
+      written = %{"run_id" => Ecto.UUID.generate(), "session_id" => "a1", "path" => "~/a.jsonl"}
+
+      resume = %{
+        "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+        "session_id" => "5f2c9a1e",
+        "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl"
+      }
+
+      document = Jason.encode!(Map.put(Jason.decode!(@document), "resume", written))
+
+      for members <- [nil, stack_members([], %{resume: nil})] do
+        assert {:composed, bytes, nil} =
+                 ComposedConfiguration.shape(document, nil, false, false, members)
+
+        refute Map.has_key?(Jason.decode!(bytes), "resume")
+        assert Jason.decode!(bytes)["security_policy"] == Jason.decode!(@policy)
+      end
+
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(
+                 document,
+                 nil,
+                 false,
+                 false,
+                 stack_members([], %{resume: resume})
+               )
+
+      assert Jason.decode!(bytes)["resume"] == resume
+      assert bytes |> String.split(~s("resume")) |> length() == 2
     end
 
     test "with no host has no stack_hosts" do

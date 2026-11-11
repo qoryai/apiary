@@ -269,6 +269,50 @@ defmodule ApiaryWeb.Format do
   end
 
   @doc """
+  A moment of the coming week, as the reader's day and clock place it: "14:00" on the
+  day of `now`, "Mon 09:00" on one of the six days after it, and "26 Sept, 14:00", with
+  the year when it is not the current one, before or after those days.
+  """
+  @spec week_time(moment(), DateTime.t()) :: String.t()
+  def week_time(at, now \\ DateTime.utc_now()) do
+    case -days_back(at, now) do
+      0 ->
+        time(at)
+
+      days when days in 1..6 ->
+        %DateTime{microsecond: {us, _precision}} = local = local(at)
+
+        Cldr.DateTime.to_string!(%{local | microsecond: {us, 6}},
+          backend: Backend,
+          locale: locale(),
+          format: :EHm
+        )
+
+      _other ->
+        datetime(at, year: not this_year?(at, now))
+    end
+  end
+
+  @doc """
+  The days of the week in the reader's language, Monday first, each with its ISO number:
+  `[{"Monday", 1}, …, {"Sunday", 7}]`, as a select offers them.
+  """
+  @spec weekdays() :: [{String.t(), 1..7}]
+  def weekdays do
+    # 2024-01-01 is a Monday.
+    for n <- 1..7 do
+      name =
+        Cldr.Calendar.localize(Date.add(~D[2024-01-01], n - 1), :day_of_week,
+          backend: Backend,
+          locale: locale(),
+          format: :wide
+        )
+
+      {name, n}
+    end
+  end
+
+  @doc """
   The reader's time zone as a time names it, at the moment `at`: "UTC", "CEST", or
   "GMT-05:00" for a zone without an abbreviation.
   """

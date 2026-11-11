@@ -154,6 +154,7 @@ defmodule ApiaryWeb.RunComponents do
       "failed" -> gettext("Failed")
       "cancelled" -> gettext("Cancelled")
       "lost" -> gettext("Lost")
+      "paused" -> gettext("Paused")
     end
   end
 
@@ -447,6 +448,7 @@ defmodule ApiaryWeb.RunComponents do
   defp state_glyph("failed"), do: "hero-x-mark-micro"
   defp state_glyph("cancelled"), do: "hero-stop-micro"
   defp state_glyph("lost"), do: "hero-signal-slash-micro"
+  defp state_glyph("paused"), do: "hero-pause-micro"
   defp state_glyph(_state), do: nil
 
   defp exit_word(%{state: "failed", signal: signal}) when is_binary(signal), do: signal
@@ -1147,6 +1149,11 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp ended_sentence("lost", _run), do: gettext("Lost")
+
+  defp ended_sentence("paused", %{duration_ms: ms}) when is_integer(ms),
+    do: gettext("Paused after %{duration}", duration: format_duration_ms(ms))
+
+  defp ended_sentence("paused", _run), do: gettext("Paused")
 
   ## Filter bar
 
@@ -2591,7 +2598,7 @@ defmodule ApiaryWeb.RunComponents do
   leaves out its Duration.
   """
   def run_length(%{run: %{state: state}} = assigns)
-      when state in ~w(completed failed cancelled) do
+      when state in ~w(completed failed cancelled paused) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """

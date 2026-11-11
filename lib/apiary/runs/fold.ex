@@ -137,7 +137,9 @@ defmodule Apiary.Runs.Fold do
   with none took its instance, which a rebuild no longer counts.
   """
 
-  alias Apiary.Runs.{About, Liveness}
+  require Logger
+
+  alias Apiary.Runs.{About, Liveness, Transcript}
 
   @ping "dev.qory.ping"
   @started "dev.qory.run.started"
@@ -146,6 +148,7 @@ defmodule Apiary.Runs.Fold do
   @policy_applied "dev.qory.run.policy_applied"
   @heartbeat "dev.qory.run.heartbeat"
   @log "dev.qory.run.log"
+  @transcript "dev.qory.session.transcript"
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
   @exited "dev.qory.run.exited"
@@ -213,12 +216,15 @@ defmodule Apiary.Runs.Fold do
   @statuses 100..599
 
   # The states no start or heartbeat folded later changes.
-  @terminal ~w(completed failed cancelled)
+  @terminal ~w(completed failed cancelled paused)
   # A reason: an open code of Forager's or of the run's starter.
   @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
+  # The reason of an exit at the run's model keys' limit: with the state `paused`, the run
+  # paused (`exit_state/2`).
+  @paused_reason "model_key_limit"
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
@@ -236,7 +242,10 @@ defmodule Apiary.Runs.Fold do
             connections: %{},
             steps: %{},
             log_chunks: [],
-            skipped_log_chunks: 0
+            skipped_log_chunks: 0,
+            transcript_chunks: [],
+            skipped_transcript_chunks: 0,
+            refused_transcript_paths: 0
 
   @type t :: %__MODULE__{
           run: map(),
@@ -247,7 +256,10 @@ defmodule Apiary.Runs.Fold do
           connections: %{optional({String.t(), integer(), String.t(), String.t()}) => map()},
           steps: %{optional(pos_integer()) => map()},
           log_chunks: [map()],
-          skipped_log_chunks: non_neg_integer()
+          skipped_log_chunks: non_neg_integer(),
+          transcript_chunks: [map()],
+          skipped_transcript_chunks: non_neg_integer(),
+          refused_transcript_paths: non_neg_integer()
         }
 
   @doc """
@@ -262,7 +274,11 @@ defmodule Apiary.Runs.Fold do
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
   (host, port, path, channel), `steps` as one delta per step number, `log_chunks` in sequence order
-  and the count of log events skipped because their bytes were not base64.
+  and the count of log events skipped because their bytes were not base64, and
+  `transcript_chunks`, the chunks of `dev.qory.session.transcript` events in sequence
+  order (`Apiary.Runs.Transcript.parse/1`), with the count of those events whose data is
+  no chunk, and the count of the chunks refused for their path
+  (`Apiary.Runs.Transcript.resumable_path?/2`).
   """
   @spec fold(map(), Enumerable.t(), map(), map()) :: t()
   def fold(run, events, latest \\ %{}, projected \\ %{}) do
@@ -280,7 +296,12 @@ defmodule Apiary.Runs.Fold do
       |> count_beat()
       |> sessions(events, projected)
 
-    %{acc | run: settle(acc.run), log_chunks: Enum.reverse(acc.log_chunks)}
+    %{
+      acc
+      | run: settle(acc.run),
+        log_chunks: Enum.reverse(acc.log_chunks),
+        transcript_chunks: Enum.reverse(acc.transcript_chunks)
+    }
   end
 
   # settle/1 is the last step of every fold, and what a rebuild's reset and an end Qory
@@ -290,11 +311,13 @@ defmodule Apiary.Runs.Fold do
   # before a run of the queue was refused one, decides over that as over all the rest
   # (`outcome/1`). No outcome is recorded for a release. A run whose machine never
   # started it (`start_failure`, `Apiary.Dispatches.Handover.fail_start/3`) is failed,
-  # its reason that cause, and not lost, before both. Every other run is `outcome/1`
-  # alone.
+  # its reason that cause, and not lost, before both. A run that paused after it pushed
+  # its questions or a proposal in this run (`result_pushed`, which the projector reads)
+  # is completed, with no reason, between the release and the outcome: it finished, and
+  # no run continues it. Every other run is `outcome/1` alone.
   @doc false
   @spec settle(map()) :: map()
-  def settle(run), do: run |> start_failed() |> released() |> outcome()
+  def settle(run), do: run |> start_failed() |> released() |> finished() |> outcome()
 
   defp start_failed(%{start_failure: failure} = run) when is_binary(failure),
     do: Map.merge(run, %{state: "failed", reason: failure, lost_at: nil})
@@ -308,6 +331,11 @@ defmodule Apiary.Runs.Fold do
   end
 
   defp released(run), do: run
+
+  defp finished(%{state: "paused", result_pushed: true} = run),
+    do: Map.merge(run, %{state: "completed", reason: nil})
+
+  defp finished(run), do: run
 
   @doc """
   `run` with its starter's outcome applied: given an outcome (`outcome_state`, from
@@ -404,6 +432,16 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
+  defp event(acc, %{type: @transcript, data: data, sequence: sequence}) do
+    with {:ok, chunk} <- Transcript.parse(data),
+         true <- Transcript.resumable_path?(chunk.path, chunk.session_id) do
+      %{acc | transcript_chunks: [Map.put(chunk, :sequence, sequence) | acc.transcript_chunks]}
+    else
+      false -> %{acc | refused_transcript_paths: acc.refused_transcript_paths + 1}
+      :error -> %{acc | skipped_transcript_chunks: acc.skipped_transcript_chunks + 1}
+    end
+  end
+
   defp event(acc, %{type: @egress, data: data, time: time, sequence: sequence}) do
     with host when is_binary(host) <- host(string(data, "host", :infinity)),
          port when is_integer(port) <- integer(data, "port", 0..65_535) do
@@ -461,7 +499,25 @@ defmodule Apiary.Runs.Fold do
   defp event(acc, %{type: @exited, data: data} = event) do
     ranked(acc, event, fn run ->
       reason = code(data, "reason")
-      state = exit_state(string(data, "state"), reason)
+      given = string(data, "state")
+      state = exit_state(given, reason)
+
+      cond do
+        reason == @paused_reason and state != "paused" ->
+          Logger.warning(
+            "a run's exit has the reason model_key_limit with a state other than paused; " <>
+              "the run ends #{state}, without a pause"
+          )
+
+        given == "paused" and state != "paused" ->
+          Logger.warning(
+            "a run's exit has the state paused without the reason model_key_limit; " <>
+              "the run ends #{state}, without a pause"
+          )
+
+        true ->
+          :ok
+      end
 
       Map.merge(run, %{
         state: state,
@@ -654,14 +710,26 @@ defmodule Apiary.Runs.Fold do
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
   that applies:
 
-    1. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
-    2. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
-    3. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
+    1. `paused` with `model_key_limit` is paused: the run's gateway ended it at its model
+       keys' limit, and a continuation goes on with its work. So is `cancelled` with
+       `model_key_limit`, the shape a gateway sent before the contract had `paused`. The
+       contract allows `model_key_limit` with `paused` alone, and `paused` with
+       `model_key_limit` alone: with another state the reason changes nothing, as an
+       unknown reason does, and `paused` with another reason, or none, is read as an
+       unknown state; the fold logs one line for each.
+    2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
+    3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
+    4. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
        lost, and any other reason, or none, failed.
 
-  A state other than the three is read as absent.
+  A state other than the three, and `paused` without `model_key_limit`, is read as
+  absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
+  def exit_state("paused", @paused_reason), do: "paused"
+  # The shape of a pause from a gateway built with qoryai/forager#53 and before #54,
+  # which ends a paused run `cancelled`: read as Paused while such gateways run.
+  def exit_state("cancelled", @paused_reason), do: "paused"
   def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
   def exit_state("succeeded", _reason), do: "completed"
   def exit_state("failed", _reason), do: "failed"

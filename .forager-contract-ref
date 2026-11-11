@@ -74,12 +74,24 @@
 # `push`, the run API in `link-run-answer`, the close reasons of a read-only workspace, and
 # `bare` on `dev.qory.session.started`; and the refusal codes `image_access_denied`,
 # `image_rate_limited` and `image_registry_unreachable`, after the check of an image whose
-# registry returned 401, 403 or 429, or could not be reached.
+# registry returned 401, 403 or 429, or could not be reached; and a gateway's report of the
+# states of a run's model keys, a signed POST to `<run.url>/<run_id>/model-keys`, one entry
+# per key and limit window, and its answer, the newest state of each key and window from
+# every gateway, under the run's credential names; and `chosen` and `cooldown_until` on an
+# API credential, the key the model choice names and the end of a key's cooldown at the
+# claim, which the start key never has in the future; and a run that pauses at its
+# model keys' limit, `model_key_limit` on `dev.qory.session.exited` and
+# `dev.qory.run.exited` with the state `paused` and no other state, and `paused` with
+# `model_key_limit` alone and never on a step's exit, the chunks of a
+# runtime session's transcript, `dev.qory.session.transcript`, and a continuation's `resume` in its run configuration,
+# the paused run whose transcript it reads; and a key of a key group without
+# `pause_for_s`, which the gateway gives a cooldown of 60 seconds for an API key and 3600
+# seconds for a subscription.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-5d87f8eb857b381e54a0bd8b4badc36de621ad5f
+14b898dcd5849bcbbbf9786040a936bee30bf459
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
@@ -91,6 +103,8 @@ priv/contract/runtimes.json
 priv/contract/secrets-request.schema.json
 priv/contract/secrets-answer.schema.json
 priv/contract/sealed-plaintext.schema.json
+priv/contract/model-keys-report.schema.json
+priv/contract/model-keys-answer.schema.json
 test/fixtures/forager-contract/known-answers/keys.json
 test/fixtures/forager-contract/known-answers/small-order.json
 test/fixtures/forager-contract/policy/observe-allow-first.yaml
@@ -112,3 +126,38 @@ test/fixtures/forager-contract/sealed/sealed-plaintext.json
 test/fixtures/forager-contract/sealed/secrets-answer.json
 test/fixtures/forager-contract/sealed/secrets-request.json
 test/fixtures/forager-contract/sealed/vectors.json
+test/fixtures/forager-contract/model-keys-report/report.json
+test/fixtures/forager-contract/model-keys-report/report-cooldowns.json
+test/fixtures/forager-contract/model-keys-report/report-empty.json
+test/fixtures/forager-contract/model-keys-answer/answer.json
+test/fixtures/forager-contract/model-keys-answer/answer-empty.json
+test/fixtures/forager-contract/invalid/model-keys-answer-no-version.json
+test/fixtures/forager-contract/invalid/model-keys-report-cooldown-allowed.json
+test/fixtures/forager-contract/invalid/model-keys-report-no-observed-at.json
+test/fixtures/forager-contract/invalid/model-keys-report-rejected-without-cooldown.json
+test/fixtures/forager-contract/invalid/model-keys-report-time-fraction.json
+test/fixtures/forager-contract/invalid/model-keys-report-unknown-source.json
+test/fixtures/forager-contract/invalid/model-keys-report-unknown-status.json
+test/fixtures/forager-contract/invalid/model-keys-report-utilization-over-100.json
+test/fixtures/forager-contract/invalid/model-keys-report-window-upper-case.json
+test/fixtures/forager-contract/run-configuration/model-keys-cooling.json
+test/fixtures/forager-contract/invalid/run-configuration-beyond-schema-model-keys-start-cooling.json
+test/fixtures/forager-contract/invalid/run-configuration-beyond-schema-model-keys-two-chosen.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-chosen-false.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-cooldown-until-not-a-time.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-host-chosen.json
+priv/contract/events/session.transcript.schema.json
+test/fixtures/forager-contract/link/link-batch-exited-model-key-limit.json
+test/fixtures/forager-contract/link/link-batch-session-exited-model-key-limit.json
+test/fixtures/forager-contract/link/link-batch-session-transcript.json
+test/fixtures/forager-contract/link/link-run-answer-resume.json
+test/fixtures/forager-contract/run-configuration/resume.json
+test/fixtures/forager-contract/invalid/run-configuration-resume-no-session-id.json
+test/fixtures/forager-contract/invalid/run-configuration-resume-run-id-upper-case.json
+test/fixtures/forager-contract/invalid/event-session-transcript-no-session-id.json
+test/fixtures/forager-contract/invalid/event-session-transcript-offset-negative.json
+test/fixtures/forager-contract/invalid/event-session-transcript-over-32-kib.json
+test/fixtures/forager-contract/invalid/event-session-transcript-session-zero.json
+test/fixtures/forager-contract/invalid/event-session-exited-model-key-limit-failed.json
+test/fixtures/forager-contract/invalid/link-batch-exited-model-key-limit-failed.json
+test/fixtures/forager-contract/invalid/link-batch-session-exited-model-key-limit-failed.json

@@ -19,9 +19,12 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
   @move {20_261_016_090_200, Apiary.Repo.Migrations.MoveConnectionsToTheOrganisation,
          "move_connections_to_the_organisation"}
 
-  # The later migrations of a model provider and its model choice, whose keys depend on
-  # the tables this one makes: down before it, and up after it.
+  # The later migrations of a model provider, its model choice and the choice's
+  # fallbacks, whose keys depend on the tables this one makes: down before it, and up
+  # after it.
   @later [
+    {20_261_110_153_000, Apiary.Repo.Migrations.KeepTheFallbacksOfAModelChoice,
+     "keep_the_fallbacks_of_a_model_choice"},
     {20_261_026_140_000, Apiary.Repo.Migrations.KeepNoModelListForAProvider,
      "keep_no_model_list_for_a_provider"},
     {20_261_019_070_200, Apiary.Repo.Migrations.KeepTheModelChoiceAtEachLevel,

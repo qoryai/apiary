@@ -15,6 +15,15 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # the key and the tiers the place had while its provider stays the same; each refusal
   # shows its text under the field it is about.
   #
+  # Fallbacks, below them: the providers runs use, in order, while every key of the chosen
+  # provider is in cooldown, each a row of Provider, Model, Another model and Effort as
+  # above, with Move up, Move down and Remove. Add fallback adds a row of the first
+  # provider left: one that applies to the workspace and serves the chosen runtime, and is
+  # neither the chosen provider nor in a row. A new row's model, and a row's model after
+  # its provider changes, is the chosen model where the provider has a model of the same
+  # id, else the provider's first. Save writes the rows with the choice; each refusal
+  # shows under its row's field.
+  #
   # Every member reads it (`connection.read`); owners and admins change it
   # (`model_choice.write`), and anyone else sees the fields disabled, no Save, and one line
   # of who changes it. The context asks again.
@@ -61,14 +70,19 @@ defmodule ApiaryWeb.ModelChoiceLive do
         :error -> ModelChoices.default_runtime()
       end
 
+    applicable = Enum.filter(providers, &applies?(&1, scope.workspace.id))
+    stored = if choice, do: Enum.map(choice.fallbacks, & &1.connection), else: []
+
     socket
     |> assign(
-      applicable: Enum.filter(providers, &applies?(&1, scope.workspace.id)),
+      applicable: applicable,
+      known: Map.new(applicable ++ stored, &{&1.public_id, &1}),
       runtimes: Runtimes.list(),
       choice: choice
     )
     |> assign_runtime(runtime)
     |> then(&assign_form(&1, choice_params(choice, &1.assigns.providers), []))
+    |> then(&assign_fallbacks(&1, fallback_rows(choice, &1.assigns.providers), %{}))
   end
 
   # The runtime the form has chosen, and the providers that serve it, each with its
@@ -177,6 +191,205 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp find_model(_models, :other), do: :other
   defp find_model(models, model_id), do: Enum.find(models, &(&1.id == model_id))
 
+  ## Fallbacks
+
+  # The rows of the place's fallbacks, in their order, as the form sends them: `provider`,
+  # the provider's public id, and `model`, `other` and `effort` as the choice's.
+  defp fallback_rows(nil, _providers), do: []
+
+  defp fallback_rows(%ModelChoice{fallbacks: fallbacks}, providers) do
+    for fallback <- fallbacks do
+      provider = fallback.connection
+      models = models_of(providers, provider)
+      model_id = fallback.model_id || Connections.default_model(provider)
+
+      model =
+        if Enum.any?(models, &(&1.id == model_id)),
+          do: %{
+            "model" => option(provider, model_id),
+            "other" => "",
+            "effort" => fallback.effort || ""
+          },
+          else: %{"model" => option(provider, nil), "other" => model_id || "", "effort" => ""}
+
+      Map.put(model, "provider", provider.public_id)
+    end
+  end
+
+  defp models_of(providers, %Connection{id: id}) do
+    case Enum.find(providers, &(&1.provider.id == id)) do
+      %{models: models} -> models
+      nil -> []
+    end
+  end
+
+  defp assign_fallbacks(socket, rows, errors),
+    do: assign(socket, fallbacks: rows, fallback_errors: errors)
+
+  # The row for `provider`: the chosen model where the provider has a model of the same
+  # id, else its first, else Another model; with the chosen effort where that model has it.
+  defp new_row(socket, %Connection{} = provider) do
+    models = models_of(socket.assigns.providers, provider)
+    params = socket.assigns.form.params
+
+    same =
+      case socket.assigns.chosen do
+        {_entry, %{id: id}} -> Enum.find(models, &(&1.id == id))
+        {_entry, :other} -> Enum.find(models, &(&1.id == blank_to_nil(params["other"])))
+        nil -> nil
+      end
+
+    case same || List.first(models) do
+      nil ->
+        %{
+          "provider" => provider.public_id,
+          "model" => option(provider, nil),
+          "other" => "",
+          "effort" => ""
+        }
+
+      model ->
+        effort = if params["effort"] in model.effort, do: params["effort"], else: ""
+
+        %{
+          "provider" => provider.public_id,
+          "model" => option(provider, model.id),
+          "other" => "",
+          "effort" => effort
+        }
+    end
+  end
+
+  # The rows as the form sent them, in their order. A row whose provider changed, or whose
+  # model is not of its provider, takes `new_row/2`'s model. With no rows sent, the rows
+  # are as they were: a form without them, or with them off for a reader.
+  defp sent_rows(socket, %{"fallbacks" => %{} = sent}) do
+    old = socket.assigns.fallbacks
+
+    sent
+    |> Enum.flat_map(fn {index, row} ->
+      case Integer.parse(index) do
+        {i, ""} when is_map(row) -> [{i, row}]
+        _other -> []
+      end
+    end)
+    |> Enum.sort()
+    |> Enum.map(fn {i, row} ->
+      row = Map.merge(Enum.at(old, i, %{}), Map.take(row, ~w(provider model other effort)))
+      row = Map.merge(%{"model" => "", "other" => "", "effort" => ""}, row)
+
+      case socket.assigns.known[row["provider"]] do
+        %Connection{public_id: id} = provider ->
+          if String.split(row["model"] || "", "/", parts: 2) |> hd() == id and
+               row["provider"] == (Enum.at(old, i) || %{})["provider"],
+             do: row,
+             else: new_row(socket, provider)
+
+        nil ->
+          row
+      end
+    end)
+  end
+
+  defp sent_rows(socket, _params), do: socket.assigns.fallbacks
+
+  # The providers a new row may have: those that serve the chosen runtime, but the chosen
+  # provider and those of the rows but `except`.
+  defp left(assigns, except \\ nil) do
+    taken =
+      for {row, i} <- Enum.with_index(assigns.fallbacks), i != except, do: row["provider"]
+
+    main = main_provider(assigns)
+
+    for %{provider: provider} <- assigns.providers,
+        provider.public_id not in taken,
+        main == nil or provider.id != main.id,
+        do: provider
+  end
+
+  defp main_provider(%{chosen: {%{provider: provider}, _model}}), do: provider
+  defp main_provider(_assigns), do: nil
+
+  # A row's providers: those `left/2` offers it, with the row's provider, in the order of
+  # the page.
+  defp row_providers(assigns, row, index) do
+    offered = left(assigns, index)
+
+    case assigns.known[row["provider"]] do
+      %Connection{} = provider ->
+        if Enum.any?(offered, &(&1.id == provider.id)), do: offered, else: offered ++ [provider]
+
+      nil ->
+        offered
+    end
+  end
+
+  # What a row's model chose: a model of the provider's list, `:other`, or nil.
+  defp row_model(assigns, row) do
+    with %Connection{public_id: id} = provider <- assigns.known[row["provider"]],
+         [^id | rest] <- String.split(row["model"] || "", "/", parts: 2) do
+      case rest do
+        [] -> :other
+        [model_id] -> Enum.find(models_of(assigns.providers, provider), &(&1.id == model_id))
+      end
+    else
+      _other -> nil
+    end
+  end
+
+  # The fallbacks a save sends: each row's provider, model and effort, as the choice's.
+  defp fallback_attrs(assigns, rows) do
+    for row <- rows do
+      case row_model(assigns, row) do
+        :other ->
+          %{provider: row["provider"], model: blank_to_nil(row["other"]), effort: nil}
+
+        %{id: id} ->
+          %{provider: row["provider"], model: id, effort: blank_to_nil(row["effort"])}
+
+        nil ->
+          %{provider: row["provider"], model: nil, effort: nil}
+      end
+    end
+  end
+
+  # The refusals of the fallbacks, by the row's index: each on its row's field, the
+  # model's under Another model when that is chosen.
+  defp fallback_field_errors(assigns, rows, errors) do
+    errors
+    |> Enum.flat_map(fn
+      {:fallbacks, {message, opts}} ->
+        index = opts[:fallback]
+
+        if is_integer(index) do
+          row = Enum.at(rows, index) || %{}
+
+          field =
+            case opts[:field] do
+              :model -> if row_model(assigns, row) == :other, do: :other, else: :model
+              field when field in [:provider, :effort] -> field
+              _other -> :model
+            end
+
+          [{index, {field, {message, opts}}}]
+        else
+          []
+        end
+
+      _other ->
+        []
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  defp row_form(row, index, errors) do
+    to_form(row,
+      as: "model_choice[fallbacks][#{index}]",
+      id: "model_choice_fallbacks_#{index}",
+      errors: Map.get(errors, index, [])
+    )
+  end
+
   defp assign_form(socket, params, errors) do
     params =
       errors
@@ -206,11 +419,57 @@ defmodule ApiaryWeb.ModelChoiceLive do
         do: params,
         else: Map.merge(params, choice_params(nil, socket.assigns.providers))
 
-    {:noreply, assign_form(socket, params, [])}
+    socket = assign_form(socket, params, [])
+    {:noreply, assign_fallbacks(socket, sent_rows(socket, params), %{})}
+  end
+
+  def handle_event("add_fallback", _params, %{assigns: %{writes: true}} = socket) do
+    case left(socket.assigns) do
+      [provider | _rest] ->
+        rows = socket.assigns.fallbacks ++ [new_row(socket, provider)]
+        {:noreply, assign_fallbacks(socket, rows, %{})}
+
+      [] ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event(
+        "move_fallback",
+        %{"index" => index, "to" => to},
+        %{assigns: %{writes: true}} = socket
+      ) do
+    rows = socket.assigns.fallbacks
+
+    with {i, ""} <- Integer.parse(index),
+         j = if(to == "up", do: i - 1, else: i + 1),
+         true <-
+           to in ["up", "down"] and i in 0..(length(rows) - 1)//1 and
+             j in 0..(length(rows) - 1)//1 do
+      rows = rows |> List.replace_at(i, Enum.at(rows, j)) |> List.replace_at(j, Enum.at(rows, i))
+      {:noreply, assign_fallbacks(socket, rows, %{})}
+    else
+      _other -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove_fallback", %{"index" => index}, %{assigns: %{writes: true}} = socket) do
+    rows = socket.assigns.fallbacks
+
+    # Only the index of a row: List.delete_at/2 takes -1 as the last row.
+    case Integer.parse(index) do
+      {i, ""} when i in 0..(length(rows) - 1)//1 ->
+        {:noreply, assign_fallbacks(socket, List.delete_at(rows, i), %{})}
+
+      _other ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("save", %{"model_choice" => params}, %{assigns: %{writes: true}} = socket) do
     scope = socket.assigns.current_scope
+    rows = sent_rows(socket, params)
+    socket = assign_fallbacks(socket, rows, %{})
 
     case chosen(params["model"], socket.assigns.providers) do
       nil ->
@@ -225,7 +484,8 @@ defmodule ApiaryWeb.ModelChoiceLive do
             runtime: if(runtimes?(socket.assigns.runtimes), do: socket.assigns.runtime.name),
             provider: provider.public_id,
             model: model_id,
-            effort: effort
+            effort: effort,
+            fallbacks: fallback_attrs(socket.assigns, rows)
           }
           |> Map.merge(kept(socket.assigns.choice, provider))
 
@@ -237,7 +497,15 @@ defmodule ApiaryWeb.ModelChoiceLive do
              |> load()}
 
           {:error, %Ecto.Changeset{errors: errors}} ->
-            {:noreply, assign_form(socket, params, field_errors(errors, model))}
+            {fallbacks, main} =
+              Enum.split_with(errors, fn {field, {_message, opts}} ->
+                field == :fallbacks and is_integer(opts[:fallback])
+              end)
+
+            {:noreply,
+             socket
+             |> assign_form(params, field_errors(main, model))
+             |> assign_fallbacks(rows, fallback_field_errors(socket.assigns, rows, fallbacks))}
 
           {:error, :not_found} ->
             {:noreply, UserAuth.reload_scope(socket)}
@@ -251,7 +519,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
     end
   end
 
-  def handle_event("save", _params, socket), do: {:noreply, socket}
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   # The key and the tiers of the place's choice, kept while its provider stays the same.
   defp kept(%ModelChoice{connection_id: id} = choice, %Connection{id: id}),
@@ -365,6 +633,179 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp efforts({_entry, %{effort: [_ | _] = effort}}), do: effort
   defp efforts(_chosen), do: []
 
+  # What the Fallbacks part reads of the page's assigns.
+  defp fallback_page(assigns),
+    do:
+      Map.take(
+        assigns,
+        ~w(writes fallbacks fallback_errors providers known chosen runtime current_scope)a
+      )
+
+  attr :page, :map, required: true, doc: "the page's assigns that `fallback_page/1` takes"
+  attr :provider, Connection, required: true, doc: "the chosen provider"
+
+  # The Fallbacks part: its line, a row per fallback, Add fallback, or what to add first.
+  defp fallbacks(%{page: page} = assigns) do
+    assigns =
+      assign(assigns,
+        writes: page.writes,
+        rows: Enum.with_index(page.fallbacks),
+        left: left(page)
+      )
+
+    ~H"""
+    <SettingsComponents.part id="model-fallbacks" title={gettext("Fallbacks")}>
+      <p id="model-fallbacks-line" class="text-[13.5px]/5 text-muted">
+        {gettext(
+          "When every key of %{provider} is in cooldown, runs use these, in order, from the next run.",
+          provider: @provider.name
+        )}
+      </p>
+      <ol :if={@rows != []} id="model-fallback-rows" class="grid gap-4">
+        <.fallback_row
+          :for={{row, index} <- @rows}
+          page={@page}
+          row={row}
+          index={index}
+          last={index == length(@rows) - 1}
+        />
+      </ol>
+      <div :if={@writes}>
+        <.button
+          :if={@left != []}
+          id="model-fallback-add"
+          type="button"
+          phx-click="add_fallback"
+        >
+          {gettext("Add fallback")}
+        </.button>
+        <p :if={@left == []} id="model-fallback-none" class="text-[13.5px]/5 text-muted">
+          <.rich text={
+            rich_gettext(
+              "Add another model provider that serves %{runtime} in %{place}, then add it here as a fallback.",
+              runtime: @page.runtime.title,
+              place: providers_link(@page.current_scope)
+            )
+          } />
+        </p>
+      </div>
+    </SettingsComponents.part>
+    """
+  end
+
+  attr :page, :map, required: true
+  attr :row, :map, required: true
+  attr :index, :integer, required: true
+  attr :last, :boolean, required: true
+
+  # One fallback: Provider, Model, Another model and Effort, as the choice's, then Move up,
+  # Move down and Remove; a group named by its place ("Fallback 2"), for whoever hears it,
+  # with a rule above it from the second row on.
+  defp fallback_row(assigns) do
+    %{page: page, row: row, index: index} = assigns
+    model = row_model(page, row)
+
+    assigns =
+      assign(assigns,
+        form: row_form(row, index, page.fallback_errors),
+        number: index + 1,
+        providers: row_providers(page, row, index),
+        model: model,
+        efforts: if(match?(%{effort: [_ | _]}, model), do: model.effort, else: []),
+        options:
+          case page.known[row["provider"]] do
+            %Connection{} = provider ->
+              provider_options(provider, models_of(page.providers, provider))
+
+            nil ->
+              []
+          end
+      )
+
+    ~H"""
+    <li
+      id={"model-fallback-#{@index}"}
+      class="border-t border-line pt-4 first:border-t-0 first:pt-0"
+    >
+      <fieldset class="grid gap-3 sm:grid-cols-2 sm:items-start">
+        <legend class="sr-only">{gettext("Fallback %{number}", number: @number)}</legend>
+        <.input
+          field={@form[:provider]}
+          type="select"
+          label={gettext("Provider")}
+          options={for provider <- @providers, do: {provider.name, provider.public_id}}
+          disabled={!@page.writes}
+        />
+        <.input
+          field={@form[:model]}
+          type="choice"
+          label={gettext("Model")}
+          options={@options}
+          search
+          search_label={gettext("Find a model")}
+          found={gettext("%{shown} of %{total} models", shown: "%{shown}", total: "%{total}")}
+          disabled={!@page.writes}
+        />
+        <.input
+          :if={@model == :other}
+          field={@form[:other]}
+          type="text"
+          label={gettext("Another model")}
+          autocomplete="off"
+          spellcheck="false"
+          class="font-mono"
+          disabled={!@page.writes}
+        />
+        <.input
+          :if={@efforts != []}
+          field={@form[:effort]}
+          type="select"
+          label={gettext("Effort")}
+          prompt={gettext("Not set")}
+          options={@efforts}
+          disabled={!@page.writes}
+        />
+        <div :if={@page.writes} class="flex flex-wrap gap-2 sm:col-span-2">
+          <.button
+            id={"model-fallback-#{@index}-up"}
+            type="button"
+            size="xs"
+            phx-click="move_fallback"
+            phx-value-index={@index}
+            phx-value-to="up"
+            disabled={@index == 0}
+            aria-label={gettext("Move fallback %{number} up", number: @number)}
+          >
+            {gettext("Move up")}
+          </.button>
+          <.button
+            id={"model-fallback-#{@index}-down"}
+            type="button"
+            size="xs"
+            phx-click="move_fallback"
+            phx-value-index={@index}
+            phx-value-to="down"
+            disabled={@last}
+            aria-label={gettext("Move fallback %{number} down", number: @number)}
+          >
+            {gettext("Move down")}
+          </.button>
+          <.button
+            id={"model-fallback-#{@index}-remove"}
+            type="button"
+            size="xs"
+            phx-click="remove_fallback"
+            phx-value-index={@index}
+            aria-label={gettext("Remove fallback %{number}", number: @number)}
+          >
+            {gettext("Remove")}
+          </.button>
+        </div>
+      </fieldset>
+    </li>
+    """
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -448,6 +889,11 @@ defmodule ApiaryWeb.ModelChoiceLive do
             prompt={gettext("Not set")}
             options={efforts(@chosen)}
             disabled={!@writes}
+          />
+          <.fallbacks
+            :if={main_provider(assigns)}
+            page={fallback_page(assigns)}
+            provider={main_provider(assigns)}
           />
           <SettingsComponents.save id="model-save">
             <.button

@@ -1,7 +1,10 @@
 defmodule Apiary.Runs.Projector do
   @moduledoc """
   Folds a run's events into what the console reads: the `runs` row, its `connections`,
-  its `run_steps`, its `log_chunks` and the workspace's `targets`.
+  its `run_steps`, its `log_chunks`, its `session_chunks` and the workspace's `targets`.
+  A rebuild deletes and folds again all but the `session_chunks`, which it adds to: the
+  transcript of a paused run outlives the events the retention deletes
+  (`Apiary.Runs.Transcript`).
 
   The receiver stores events and answers; it calls `project_async/1` after its
   transaction has committed. `project/1` is the same work done synchronously: the tests
@@ -51,7 +54,8 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, Step, Target}
+  alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, SessionChunk}
+  alias Apiary.Runs.{Step, Target, Transcript, TranscriptPath}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -342,7 +346,7 @@ defmodule Apiary.Runs.Projector do
 
       fold =
         fold_module().fold(
-          %{run | workspace: workspace},
+          %{run | workspace: workspace, result_pushed: result_pushed?(run, events)},
           events,
           latest(run, events),
           projected
@@ -356,6 +360,7 @@ defmodule Apiary.Runs.Projector do
         |> Repo.update!(log: false)
 
       insert_log_chunks(run, fold.log_chunks)
+      insert_session_chunks(run, fold.transcript_chunks)
       LeakedSecrets.record_run(run, fold.log_chunks, events)
       upsert_connections(run, fold.connections)
       upsert_steps(run, fold.steps)
@@ -373,6 +378,20 @@ defmodule Apiary.Runs.Projector do
         )
       end
 
+      if fold.skipped_transcript_chunks > 0 do
+        Logger.warning(
+          "transcript chunks skipped run=#{run.id} count=#{fold.skipped_transcript_chunks} " <>
+            "reason=invalid_data"
+        )
+      end
+
+      if fold.refused_transcript_paths > 0 do
+        Logger.warning(
+          "transcript chunks refused run=#{run.id} count=#{fold.refused_transcript_paths} " <>
+            "reason=path_not_under_prefix"
+        )
+      end
+
       sequences = Enum.map(events, & &1.sequence)
       {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events)}}}
     else
@@ -380,6 +399,22 @@ defmodule Apiary.Runs.Projector do
       {:events, run, []} -> {:ok, {run, nil}}
     end
   end
+
+  # Whether the run of the queue of `run` pushed its questions or a proposal in this run,
+  # for a pass that folds the run's exit (`Apiary.Runs.Run`, `result_pushed`); false for
+  # any other pass, which folds no exit, and for a run of no queue. A run pushes nothing
+  # after its exit (`@settling`).
+  defp result_pushed?(%Run{dispatch_run_id: id}, events) when is_binary(id) do
+    Enum.any?(events, &(&1.type in @settling)) and
+      Repo.exists?(
+        from v in Apiary.Artifacts.Version,
+          join: a in Apiary.Artifacts.Artifact,
+          on: a.id == v.artifact_id,
+          where: v.run_id == ^id and a.type in ["questions", "proposal"]
+      )
+  end
+
+  defp result_pushed?(_run, _events), do: false
 
   # The fold is replaceable so that a test can make a pass raise; nothing else sets it.
   defp fold_module, do: Application.get_env(:apiary, __MODULE__, [])[:fold] || Fold
@@ -669,6 +704,179 @@ defmodule Apiary.Runs.Projector do
       conflict_target: [:run_id, :sequence],
       log: false
     )
+  end
+
+  # The columns of a path's row (`Apiary.Runs.TranscriptPath`) a pass writes.
+  @path_fields ~w(organisation_id workspace_id run_id path chunks bytes checked_sequence
+    next_offset gap)a
+
+  # A transcript's chunks are kept by sequence: a pass that folds an event again, as a
+  # rebuild does, adds none, and a reset leaves them (`reset/1`), so a transcript
+  # outlives the events the retention deletes (`Apiary.Runs.Transcript`).
+  #
+  # A run's chunks of one path are kept while they can still form a file that is
+  # restored. The bounds below hold for each path alone: the run's gateway can send
+  # chunks of many paths, each kept up to these bounds, and the number of a run's paths
+  # has no limit.
+  #
+  #   * none once the stored chunks pass `Transcript.max_file/0` bytes: the chunk that
+  #     passes it is kept, so the check of the file (`Apiary.Runs.Transcript.check/2`)
+  #     refuses it;
+  #   * none once `Transcript.max_chunks/0` are stored, as many as the check refuses;
+  #   * none once the stored chunks up to the run's projected sequence, before which every
+  #     event is in, have a gap in `offset`: no chunk that arrives later can fill it. A
+  #     chunk above that sequence is kept, as an event that arrives late may fill a gap
+  #     before it. A gap is a chunk that does not start at the sum of the lengths of the
+  #     stored chunks of its path before it by sequence.
+  #
+  # The run keeps a row per path for the bounds of that path
+  # (`Apiary.Runs.TranscriptPath`), so a pass reads no more than its new chunks and the
+  # stored chunks that came under the projected sequence since the last check, each
+  # checked once, in sequence order, under the run's lock. Each bound holds whatever
+  # order the chunks arrive in. The chunks left out are logged in one line per pass and
+  # path, with the run's id, their count and the cause alone.
+  defp insert_session_chunks(_run, []), do: :ok
+
+  defp insert_session_chunks(run, chunks) do
+    chunks = new_chunks(run, chunks)
+    paths = chunks |> Enum.map(& &1.path) |> Enum.uniq()
+    checked = checked_paths(run, paths)
+
+    {rows, states} =
+      chunks
+      |> Enum.group_by(& &1.path)
+      |> Enum.map(fn {path, path_chunks} ->
+        kept(run, path_chunks, Map.get_lazy(checked, path, fn -> new_path(run, path) end))
+      end)
+      |> Enum.unzip()
+
+    rows
+    |> Enum.concat()
+    |> Enum.map(fn chunk ->
+      Map.merge(chunk, %{
+        id: Ecto.UUID.generate(),
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: run.id
+      })
+    end)
+    |> Enum.chunk_every(500)
+    |> Enum.each(fn batch ->
+      Repo.insert_all(SessionChunk, batch,
+        on_conflict: :nothing,
+        conflict_target: [:run_id, :sequence],
+        log: false
+      )
+    end)
+
+    Repo.insert_all(TranscriptPath, Enum.map(states, &Map.take(&1, @path_fields)),
+      on_conflict: {:replace, [:chunks, :bytes, :checked_sequence, :next_offset, :gap]},
+      conflict_target: [:run_id, :path],
+      log: false
+    )
+  end
+
+  # The chunks whose sequence the run has no chunk of yet, as a rebuild folds them again.
+  defp new_chunks(run, chunks) do
+    sequences = Enum.map(chunks, & &1.sequence)
+
+    known =
+      Repo.all(
+        from(c in SessionChunk,
+          where: c.run_id == ^run.id and c.sequence in ^sequences,
+          select: c.sequence
+        ),
+        log: false
+      )
+      |> MapSet.new()
+
+    Enum.reject(chunks, &MapSet.member?(known, &1.sequence))
+  end
+
+  defp new_path(run, path),
+    do: %TranscriptPath{
+      organisation_id: run.organisation_id,
+      workspace_id: run.workspace_id,
+      run_id: run.id,
+      path: path,
+      chunks: 0,
+      bytes: 0,
+      checked_sequence: 0,
+      next_offset: 0,
+      gap: false
+    }
+
+  # For each of `paths` the run has a row of, that row with the stored chunks after its
+  # `checked_sequence` and up to the run's projected sequence checked, in sequence order:
+  # the chunks of the pass are above that sequence, and are checked by a later pass once
+  # the projected sequence passes them. A path with a gap reads no chunk.
+  defp checked_paths(_run, []), do: %{}
+
+  defp checked_paths(run, paths) do
+    through = run.projected_sequence || 0
+
+    Repo.all(from(t in TranscriptPath, where: t.run_id == ^run.id and t.path in ^paths),
+      log: false
+    )
+    |> Map.new(fn state -> {state.path, check_stored(run, state, through)} end)
+  end
+
+  defp check_stored(_run, %TranscriptPath{gap: true} = state, _through), do: state
+
+  defp check_stored(_run, %TranscriptPath{checked_sequence: checked} = state, through)
+       when checked >= through,
+       do: state
+
+  defp check_stored(run, state, through) do
+    Repo.all(
+      from(c in SessionChunk,
+        where: c.run_id == ^run.id and c.path == ^state.path,
+        where: c.sequence > ^state.checked_sequence and c.sequence <= ^through,
+        order_by: c.sequence,
+        select: {c.offset, fragment("octet_length(?)", c.bytes)}
+      ),
+      log: false
+    )
+    |> Enum.reduce_while(%{state | checked_sequence: through}, fn {offset, length}, state ->
+      if offset == state.next_offset,
+        do: {:cont, %{state | next_offset: offset + length}},
+        else: {:halt, %{state | gap: true}}
+    end)
+  end
+
+  # The chunks of one path that are kept, in sequence order, given what is stored of it,
+  # and the path's row with them counted.
+  defp kept(run, chunks, state) do
+    case keep(Enum.sort_by(chunks, & &1.sequence), state, []) do
+      {kept, state, nil} ->
+        {kept, state}
+
+      {kept, state, {cause, left_out}} ->
+        Logger.warning(
+          "transcript chunks not kept run=#{run.id} count=#{left_out} reason=#{cause}"
+        )
+
+        {kept, state}
+    end
+  end
+
+  defp keep([], state, acc), do: {Enum.reverse(acc), state, nil}
+
+  defp keep([chunk | rest] = chunks, state, acc) do
+    cond do
+      state.gap ->
+        {Enum.reverse(acc), state, {:gap, length(chunks)}}
+
+      state.bytes > Transcript.max_file() ->
+        {Enum.reverse(acc), state, {:too_large, length(chunks)}}
+
+      state.chunks >= Transcript.max_chunks() ->
+        {Enum.reverse(acc), state, {:too_many, length(chunks)}}
+
+      true ->
+        state = %{state | chunks: state.chunks + 1, bytes: state.bytes + byte_size(chunk.bytes)}
+        keep(rest, state, [chunk | acc])
+    end
   end
 
   defp upsert_connections(_run, connections) when map_size(connections) == 0, do: :ok

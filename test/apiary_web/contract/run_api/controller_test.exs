@@ -1600,6 +1600,257 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
   end
 
+  describe "GET resume/transcript" do
+    @transcript_path "~/.claude/projects/-workspace/5f2c9a1e.jsonl"
+
+    # The paused run that `ctx`'s run continues: a registered run of `:scope` (`ctx`'s by
+    # default), of `ctx`'s work item, take in and stage unless `:same_item` is false, then
+    # of another work item of that scope, ended Paused, with the transcript chunks
+    # `chunks`, each `{sequence, offset, bytes}`. `ctx`'s run becomes its second attempt,
+    # with the `resume` its claim stores (`Apiary.Runs.Transcript.resume_at_claim/1`).
+    defp paused!(ctx, chunks, opts \\ []) do
+      scope = Keyword.get(opts, :scope, ctx.scope)
+
+      work_item =
+        if Keyword.get(opts, :same_item, true),
+          do: ctx.work_item,
+          else: Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [attempt: 2, of: ctx.dispatch_run.of + 1]
+        )
+
+      paused =
+        %DispatchRun{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id
+        }
+        |> DispatchRun.queue_changeset(%{
+          work_item_id: work_item.id,
+          step: ctx.dispatch_run.step,
+          take_in: work_item.take_in || ctx.dispatch_run.take_in,
+          attempt: 1,
+          of: ctx.dispatch_run.of,
+          queued_at: ctx.dispatch_run.queued_at
+        })
+        |> Ecto.Changeset.change(
+          state: :ended,
+          end_cause: :run_ended,
+          stage_id: ctx.dispatch_run.stage_id
+        )
+        |> Repo.insert!()
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [continues_id: paused.id]
+        )
+
+      run =
+        Apiary.RunEventsFixtures.run_fixture(scope, %{
+          dispatch_run_id: paused.id,
+          projected_sequence: 1,
+          registered_at: DateTime.utc_now(),
+          registration_labels: %{},
+          registration_about: %{},
+          registration_digest: :crypto.hash(:sha256, "registration"),
+          registration_interval_seconds: 30,
+          registration_answer_digest: Apiary.Policy.Render.digest(~s({"version":1})),
+          state: "paused",
+          exit_state: "paused",
+          exit_reason: "model_key_limit",
+          exited_at: DateTime.utc_now()
+        })
+
+      for {sequence, offset, bytes} <- chunks do
+        Repo.insert!(%Apiary.Runs.SessionChunk{
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          run_id: run.id,
+          sequence: sequence,
+          session: 1,
+          session_id: "5f2c9a1e",
+          path: @transcript_path,
+          offset: offset,
+          bytes: bytes
+        })
+      end
+
+      resume = %{
+        "run_id" => run.node_run_id,
+        "session_id" => "5f2c9a1e",
+        "path" => @transcript_path
+      }
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [resume: resume])
+
+      Repo.get!(Run, run.id)
+    end
+
+    @lines [{3, 0, ~s({"a":1}\n)}, {5, 8, ~s({"b":2}\n)}]
+
+    test "is the paused run's transcript, signed, as NDJSON", ctx do
+      paused!(ctx, @lines)
+      conn = read(ctx, "/resume/transcript")
+
+      assert response(conn, 200) == ~s({"a":1}\n{"b":2}\n)
+      assert signed_answer?(conn)
+      assert get_resp_header(conn, "content-type") == ["application/x-ndjson"]
+      assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+    end
+
+    # The route belongs to the run endpoint's feature, as `run.url` does, so a run that
+    # registered reads its transcript whether `workflow_model` is on or off.
+    test "belongs to observability, and answers with workflow_model off", ctx do
+      assert ApiaryWeb.Contract.TranscriptController.__feature__() == :observability
+      RunApiStubs.put(:flag, false)
+      paused!(ctx, @lines)
+
+      assert response(read(ctx, "/resume/transcript"), 200) == ~s({"a":1}\n{"b":2}\n)
+    end
+
+    test "an unsigned request is 401, with no transcript", ctx do
+      paused!(ctx, @lines)
+      conn = get(build_conn(), "/v1/runs/#{ctx.run.node_run_id}/resume/transcript")
+      assert json_response(conn, 401) == %{"error" => "unauthorized"}
+    end
+
+    test "another run's key, another run's id and the paused run are the same 404", ctx do
+      paused = paused!(ctx, @lines)
+      other = other_run()
+
+      answers =
+        for conn <- [
+              read(ctx, "/resume/transcript", key: other.key),
+              read(ctx, "/resume/transcript", run_id: other.run.node_run_id),
+              read(ctx, "/resume/transcript", run_id: paused.node_run_id),
+              read(ctx, "/resume/transcript", run_id: Ecto.UUID.generate())
+            ] do
+          assert signed_answer?(conn)
+          {conn.status, conn.resp_body}
+        end
+
+      assert Enum.uniq(answers) == [{404, ~s({"error":"not_found"})}]
+    end
+
+    test "an error while the chunks are sent ends the answer, with one log line", ctx do
+      paused!(ctx, [{3, 0, ~s({"a":1}\n)}, {5, 8, ~s({"b":2}\n)}, {7, 16, ~s({"c":3}\n)}])
+
+      # The second chunk's read raises (`ApiaryWeb.TranscriptStub`).
+      ApiaryWeb.TranscriptStub.fail_at(1)
+
+      {conn, log} = ExUnit.CaptureLog.with_log(fn -> read(ctx, "/resume/transcript") end)
+
+      # The status went with the first chunk; the answer stops at the failure, and the
+      # chunk after it is not taken.
+      assert conn.status == 200
+      assert conn.halted
+      assert conn.resp_body == ~s({"a":1}\n)
+      assert_received {:transcript_pulled, ~s({"a":1}\n)}
+      refute_received {:transcript_pulled, _bytes}
+      assert log =~ "a transcript stopped while it was sent: RuntimeError"
+      refute log =~ ~s({"a":1})
+    end
+
+    test "a run that Apiary.Access does not let the key post for is 404", ctx do
+      paused!(ctx, @lines)
+      assert read(ctx, "/resume/transcript").status == 200
+
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ServesNoRun)
+      conn = read(ctx, "/resume/transcript")
+      assert conn.status == 404
+      assert conn.resp_body == ~s({"error":"not_found"})
+    end
+
+    test "a run whose claim stored no resume is 404, though it continues a paused run", ctx do
+      paused!(ctx, @lines)
+      {1, _rows} = Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [resume: nil])
+      assert read(ctx, "/resume/transcript").status == 404
+    end
+
+    test "a run that continues no paused run is 404", ctx do
+      assert read(ctx, "/resume/transcript").resp_body == ~s({"error":"not_found"})
+      assert read(ctx, "/resume/transcript").status == 404
+    end
+
+    test "a paused run of another organisation is 404", ctx do
+      %{scope: other} = sign_up_fixture()
+      paused!(ctx, @lines, scope: other, same_item: false)
+      assert read(ctx, "/resume/transcript").status == 404
+    end
+
+    test "a paused run of another work item, the one that did not queue this run, is 404",
+         ctx do
+      paused!(ctx, @lines, same_item: false)
+      assert read(ctx, "/resume/transcript").status == 404
+    end
+
+    test "a run that ended without model_key_limit is 404", ctx do
+      paused = paused!(ctx, @lines)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^paused.id),
+          set: [state: "cancelled", exit_reason: "stopped"]
+        )
+
+      assert read(ctx, "/resume/transcript").status == 404
+    end
+
+    test "a continuation that ended is 404", ctx do
+      paused!(ctx, @lines)
+      end_run!(ctx)
+      assert read(ctx, "/resume/transcript").status == 404
+    end
+
+    test "a gap in the offsets is 404, and the log has no byte of the transcript", ctx do
+      paused!(ctx, [{3, 0, "first-line-xq7\n"}, {5, 99, "second-line-xq7\n"}])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn = read(ctx, "/resume/transcript")
+          assert conn.status == 404
+          refute conn.resp_body =~ "xq7"
+        end)
+
+      assert log =~ "reason=gap"
+      refute log =~ "xq7"
+    end
+
+    test "a transcript over 64 MiB is 404", ctx do
+      paused = paused!(ctx, [])
+      bytes = :binary.copy("x", 32_768)
+      count = div(Apiary.Runs.Transcript.max_file(), 32_768) + 1
+
+      for batch <- Enum.chunk_every(1..count, 128) do
+        Repo.insert_all(
+          Apiary.Runs.SessionChunk,
+          for n <- batch do
+            %{
+              id: Ecto.UUID.generate(),
+              organisation_id: paused.organisation_id,
+              workspace_id: paused.workspace_id,
+              run_id: paused.id,
+              sequence: n,
+              session: 1,
+              session_id: "5f2c9a1e",
+              path: @transcript_path,
+              offset: (n - 1) * 32_768,
+              bytes: bytes
+            }
+          end
+        )
+      end
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert read(ctx, "/resume/transcript").status == 404
+        end)
+
+      assert log =~ "reason=too_large"
+    end
+  end
+
   describe "through the whole endpoint" do
     # The body is sent as the gateway sends it: `ApiaryWeb.Contract.RawBody` reads it, and
     # nothing is assigned by hand.

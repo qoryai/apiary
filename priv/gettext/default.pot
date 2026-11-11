@@ -675,12 +675,12 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{bad} ended badly), %{denied}, open that day's runs"
+msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{paused} paused, %{bad} ended badly), %{denied}, open that day's runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{other} alive or ended badly), %{denied}, open that day's runs"
+msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{paused} paused, %{other} alive or ended badly), %{denied}, open that day's runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -1214,6 +1214,11 @@ msgstr ""
 msgid "%{items} from the %{assigned}. Take one in to make it a work item."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{keys}, %{cooling}"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -1530,6 +1535,7 @@ msgstr ""
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is added."
 msgstr ""
@@ -1608,6 +1614,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is saved."
@@ -2115,6 +2122,7 @@ msgstr[1] ""
 #: lib/apiary/instance_config.ex
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -2287,10 +2295,18 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} hour"
 msgid_plural "%{number} hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} in cooldown"
+msgid_plural "%{number} in cooldown"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2313,6 +2329,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} kB"
 msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} key"
+msgid_plural "%{number} keys"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/components/transcript_components.ex
@@ -2393,6 +2416,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} minute"
@@ -3029,6 +3053,7 @@ msgstr ""
 msgid "%{percent} % uploaded"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{percent}%"
@@ -3083,6 +3108,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "%{product} menu"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "%{provider} has %{number} keys, the most it can have. Delete a key to add another."
 msgstr ""
 
 #: lib/apiary/stages/points.ex
@@ -3595,6 +3625,11 @@ msgstr ""
 msgid "%{url} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{use}, resets %{time}"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{value_id} is added to %{name}."
@@ -3837,6 +3872,7 @@ msgid "(opens in a new tab)"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
 msgid "(optional)"
 msgstr ""
@@ -3913,9 +3949,29 @@ msgstr ""
 msgid "1: one machine."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "5-hour"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "587 for STARTTLS; 465 for TLS from the start."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "7-day"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "7-day Opus"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "7-day Sonnet"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -4531,6 +4587,7 @@ msgid "About mail"
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
 msgid "About model providers"
 msgstr ""
@@ -4913,6 +4970,11 @@ msgstr ""
 msgid "Add another model provider in %{place}: Qory Apiary no longer has the description %{provider} was added from."
 msgstr ""
 
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Add another model provider that serves %{runtime} in %{place}, then add it here as a fallback."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add another value"
@@ -4941,6 +5003,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Add exactly one Markdown file (.md) to the version."
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Add fallback"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4973,6 +5040,12 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Add it"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/key.ex
+#: lib/apiary_web/live/provider_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Add key"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -6212,6 +6285,11 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Auto"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Available"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -8158,6 +8236,7 @@ msgstr ""
 msgid "Dark"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
@@ -8980,6 +9059,7 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/types.ex
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/integration_live/definition.ex
+#: lib/apiary_web/live/provider_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Edit"
 msgstr ""
@@ -8998,6 +9078,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
 msgid "Edit custom API"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "Edit key"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Edit key %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -9242,6 +9332,11 @@ msgstr ""
 msgid "Enter a host, such as %{example}."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Enter a time from 1 minute to 7 days."
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an address"
@@ -9362,6 +9457,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Every path, or /v1/* /health"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every paused state"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -9709,6 +9809,11 @@ msgstr ""
 msgid "Exported from the workspace %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Extra usage"
+msgstr ""
+
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
@@ -9764,6 +9869,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Fails its integrity check"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Fallback %{number}"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Fallbacks"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -10824,6 +10939,16 @@ msgstr ""
 msgid "How long an audit log entry keeps the IP address and the browser or program it came from, never longer than the entries."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 hour."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 minute."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "How long the audit log keeps an entry. Older entries are deleted once a day."
@@ -10995,6 +11120,11 @@ msgstr ""
 msgid "In background"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "In cooldown until %{time}"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
@@ -11078,6 +11208,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "In this browser"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Input tokens per minute"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -11816,6 +11951,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -12084,6 +12220,11 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Light"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Limit"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -12404,6 +12545,7 @@ msgstr ""
 msgid "Lowercase letters and digits joined by hyphens, such as demo-findings. It cannot change later."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Lowercase letters, digits, ., _ and -."
@@ -12888,6 +13030,7 @@ msgstr ""
 #: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/provider_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Model providers"
@@ -12995,9 +13138,29 @@ msgstr ""
 msgid "Move back?"
 msgstr ""
 
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Move down"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Move fallback %{number} down"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Move fallback %{number} up"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Move to %{version}"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Move up"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
@@ -13046,6 +13209,7 @@ msgstr ""
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -13884,6 +14048,16 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No runs match these filters"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No runs paused %{range}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No runs paused."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -15318,6 +15492,11 @@ msgstr ""
 msgid "Outcome"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Output tokens per minute"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -15541,6 +15720,54 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Paths, optional"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Pause for"
+msgstr ""
+
+#: lib/apiary/runs/filters.ex
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/preparation_components.ex
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Paused"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Paused after %{duration}"
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: a key of %{provider} reached its limit."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: a key of %{provider} reached its limit. It continues in run %{number}."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: a model key reached its limit."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: a model key reached its limit. It continues in run %{number}."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: every key of %{provider} is in cooldown until %{time}. It continues in run %{number}."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: every model key is in cooldown until %{time}. It continues in run %{number}."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -15902,6 +16129,7 @@ msgstr ""
 msgid "Proposal"
 msgstr ""
 
+#: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -16181,6 +16409,7 @@ msgid "Qory Apiary stopped reading %{source} after %{seconds} seconds, before it
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stores the key encrypted, and nobody can view it again."
 msgstr ""
@@ -16579,6 +16808,7 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/artifact_live/new.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
+#: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
@@ -16672,6 +16902,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Remove adapter…"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Remove fallback %{number}"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -17097,6 +17332,11 @@ msgstr ""
 msgid "Request changes?"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Requests per minute"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Required"
@@ -17115,6 +17355,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reserved variables"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Resets"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -17867,6 +18112,7 @@ msgstr ""
 #: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/stages_live/index.ex
@@ -18002,6 +18248,7 @@ msgstr ""
 #: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/further_repositories.ex
@@ -18421,6 +18668,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Set the adapter's call address to an https address at %{host}. Qory Apiary calls an adapter only at its name under the instance's name, so it makes no call to this one."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set the day, the time and the time zone, or leave all three empty."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -19006,6 +19258,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Spec"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Spend limit"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -21375,6 +21632,11 @@ msgstr ""
 msgid "The wall refuses link-local addresses and the machine's addresses,"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "The weekly time when this key's allowance resets. Set it if the provider sends no reset time."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "The whole stage"
@@ -21969,11 +22231,17 @@ msgstr ""
 msgid "Thread"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Time"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Time limit changed"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Time zone"
@@ -22067,6 +22335,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #, elixir-autogen, elixir-format
 msgid "Together with %{target}, at most 256 characters."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Tokens per minute"
 msgstr ""
 
 #: lib/apiary_web/attempt_limits.ex
@@ -22832,6 +23105,16 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
+msgid "Waiting for a model key: every key of %{provider} is in cooldown until %{time}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a model key: every model key is in cooldown until %{time}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
 msgid "Waiting for a report"
 msgstr ""
 
@@ -23094,6 +23377,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/general.ex
 #, elixir-autogen, elixir-format
 msgid "When a name other than Qory Apiary is set, the sidebar, the log-in pages and every email also say “Powered by Qory Apiary”."
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "When every key of %{provider} is in cooldown, runs use these, in order, from the next run."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -24664,6 +24952,7 @@ msgstr ""
 msgid "dark light appearance"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "days"
@@ -24877,6 +25166,16 @@ msgstr ""
 msgid "from %{from} to %{to}"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "from the provider's answer"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "from this key's schedule"
+msgstr ""
+
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "general name slug"
@@ -24890,6 +25189,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "harness"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "hours"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -25196,6 +25500,11 @@ msgstr ""
 msgid "members users invitations"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "minutes"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "model %{model}"
@@ -25284,6 +25593,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "no policy, every connection is observed"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "no reset time given; paused for %{duration}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -25480,6 +25794,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "path"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "paused"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

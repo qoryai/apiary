@@ -11,9 +11,11 @@ defmodule Apiary.Dispatches.Inputs do
   #   - `work_item`: its public id, its number and its address (`Apiary.WorkItems.stable_url/1`);
   #   - `run`: the run's `attempt`, counted over the runs of its take in that started: a
   #     run that ended before it started because its image was missing from the registry,
-  #     and was queued again (`Apiary.Dispatches.requeue_for_image/1`), does not count.
-  #     Such a requeue raises the take in's attempt by one in Qory Apiary, so the input
-  #     gives it less the take in's requeues up to the run, from 1, with no maximum;
+  #     and was queued again (`Apiary.Dispatches.requeue_for_image/1`), does not count,
+  #     and neither does a run that continues a paused run
+  #     (`Apiary.Dispatches.requeue_for_pause/2`). Each such run raises the take in's
+  #     attempt by one in Qory Apiary, so the input gives it less the take in's requeues
+  #     and continuations up to the run, from 1, with no maximum;
   #   - `ticket`: the ticket as the work item kept it when it was taken in, its ref, its
   #     address, its title and its collection's title, and as the ticket's row holds it now,
   #     its text, who filed it and when (`Apiary.Sources.Item`). A test work item has no
@@ -241,13 +243,15 @@ defmodule Apiary.Dispatches.Inputs do
   end
 
   # The `attempt` of `dispatch_run` counted over the runs of its take in that started
-  # (the moduledoc): less the runs of the take in up to it that an image requeue queued.
+  # (the moduledoc): less the runs of the take in up to it that an image requeue queued,
+  # or that continue a paused run.
   defp started(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt}) do
     requeues =
       Repo.aggregate(
         from(r in DispatchRun,
           where: r.work_item_id == ^id and r.take_in == ^take_in,
-          where: r.image_requeue and r.attempt <= ^attempt
+          where: r.image_requeue or not is_nil(r.continues_id),
+          where: r.attempt <= ^attempt
         ),
         :count
       )

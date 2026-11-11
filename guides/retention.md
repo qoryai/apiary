@@ -86,6 +86,16 @@ random part of an hour, and prunes every workspace that has a setting.
   a day, and a machine's instances other than its latest not seen for thirty days. Runs keep
   the instance id they were started under. The log line is `retention pruned node
   instances=<count>`, on a day that pruned any.
+- Under the same lock, the job deletes the transcripts of agent sessions with the log
+  output: a run's transcript goes once the run is due by **Keep a run's log output for**,
+  or by **Keep a run's events for** when the log setting is empty, since the job deletes
+  the log output with the events. A workspace that leaves both settings empty keeps every
+  transcript. A paused run keeps its transcript, past the days too, until the run that
+  continues it ends, because that run reads the transcript when it starts, and a key's
+  cooldown can last up to 31 days. The job deletes at most 10,000 runs' transcripts a job.
+  A workspace or an organisation marked for deletion is left alone. The log line is
+  `retention pruned transcripts=<count>`, the chunks deleted, on a day that deleted any. A
+  dry run deletes no transcript.
 - Postgres reuses the space of deleted rows; it does not give it back to the operating
   system. The database's files stop growing, they do not shrink. `VACUUM FULL` or
   `pg_repack` gives the space back, and neither is needed for the instance to work.

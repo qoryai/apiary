@@ -28,6 +28,11 @@ msgstr ""
 msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "Another key of %{provider} has this name."
+msgstr ""
+
 #: lib/apiary/connections.ex
 #, elixir-autogen, elixir-format
 msgid "Change the model choices that use the key %{value} first: %{places}."
@@ -82,6 +87,11 @@ msgstr ""
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another provider for %{runtime}. %{runtime} has no environment variable for %{provider}'s key with the same authentication."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider: %{provider} is chosen already."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
@@ -439,6 +449,7 @@ msgid "is not a gateway this machine may use"
 msgstr ""
 
 #: lib/apiary/accounts/user.ex
+#: lib/apiary/model_keys/setting.ex
 #, elixir-autogen, elixir-format
 msgid "is not a known time zone"
 msgstr ""

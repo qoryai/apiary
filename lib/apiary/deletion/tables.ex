@@ -37,8 +37,8 @@ defmodule Apiary.Deletion.Tables do
   @typedoc "What a table holds: an organisation's rows, or a workspace's too."
   @type mark :: :organisation | :workspace
 
-  # Children first: a run's events, log, connections, steps and credential entries before
-  # the run; the deliveries before the access keys they name; the composed run
+  # Children first: a run's events, log, transcript, connections, steps and credential
+  # entries before the run; the deliveries before the access keys they name; the composed run
   # configurations before the run configurations they were composed from; the run
   # configurations and the policy's rules
   # before the targets, and so are the pins; the runs before the runs of the queue they
@@ -60,9 +60,13 @@ defmodule Apiary.Deletion.Tables do
   # gates and its stages' failed checks; its escalations before the runs of the queue they
   # name; the work items and the runs of the queue before the process versions they run
   # under, and a work item or a run of another workspace that still links to one has that
-  # link set to null (`ON DELETE SET NULL`); a connection's workspaces before the
+  # link set to null (`ON DELETE SET NULL`); a model choice's fallbacks before the choice
+  # and the connections they name, and a workspace's purge deletes them with its choices
+  # (`ON DELETE CASCADE`); a connection's workspaces before the
   # connection, and the connections before the releases, the service definitions and the
-  # secrets they name; everything of a workspace before the workspace.
+  # secrets they name; a model key's states and settings before the secret's value they
+  # name, which a workspace's purge deletes with them (`ON DELETE CASCADE`); everything
+  # of a workspace before the workspace.
   #
   # A run of the queue names its work item by the organisation, not the workspace: it
   # stays in the workspace it was queued in when its work item moves to another. So a
@@ -73,6 +77,8 @@ defmodule Apiary.Deletion.Tables do
   @tables [
     {"leaked_secrets", :workspace},
     {"log_chunks", :workspace},
+    {"transcript_paths", :workspace},
+    {"session_chunks", :workspace},
     {"events", :workspace},
     {"connections", :workspace},
     {"run_steps", :workspace},
@@ -94,6 +100,7 @@ defmodule Apiary.Deletion.Tables do
     {"work_item_events", :workspace},
     {"work_item_confirmations", :workspace},
     {"work_item_comments", :workspace},
+    {"model_choice_fallbacks", :organisation},
     {"model_choices", :workspace},
     {"time_limits", :workspace},
     {"stacks", :workspace},
@@ -109,6 +116,8 @@ defmodule Apiary.Deletion.Tables do
     {"service_definitions", :organisation},
     {"integration_releases", :organisation},
     {"variables", :workspace},
+    {"model_key_states", :organisation},
+    {"model_key_settings", :organisation},
     {"secret_values", :workspace},
     {"secrets", :workspace},
     {"workspace_data_keys", :workspace},

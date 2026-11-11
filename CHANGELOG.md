@@ -1019,6 +1019,102 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   support with run rn_….” where the instance's pool serves the workspace. **Queue the
   run** shows the run's **Machine type** by name and key.
 <!-- /feature -->
+<!-- feature: factory, secrets -->
+- On **Organisation settings › Model providers › a provider**, each key's row shows its
+  name and its state, in the reader's time zone: “Available”, then the use and the reset
+  of each limit window, such as “Available · 5-hour 89%, resets 14:00 · 7-day 40%,
+  resets Mon 09:00”; or “In cooldown until Fri 14:00”, then where that time comes from:
+  “from the provider's answer”, “from this key's schedule” or “no reset time given;
+  paused for 1 hour”. The windows read “5-hour”, “7-day”, “7-day Opus”, “7-day Sonnet”,
+  “Extra usage”, “Requests per minute”, “Tokens per minute”, “Input tokens per minute”,
+  “Output tokens per minute”, “Spend limit” and “Limit”. The default key comes first,
+  then the other keys in the order they were added. Owners and admins have **Add key**
+  above the keys and **Edit** on each row, each a separate page. **Add key** has
+  **Name**, **Key**, **Resets** and **Pause for**; **Edit key** has the same fields
+  without **Key**, so the key's value stays as it is. A provider with 32 keys shows
+  “Northwind Claude has 32 keys, the most it can have. Delete a key to add another.”
+  under **Key**, and a name that another key of the provider has shows “Another key of
+  Northwind Claude has this name.” under **Name**.
+- **Resets**, optional, is the day, time and time zone of each week at which a key's
+  allowance resets, for a provider that sends no reset time. Set all three or
+  none: “Set the day, the time and the time zone, or leave all three empty.” **Pause
+  for**, optional, is how long runs skip a key after its limit error when no reset time
+  is known, from 1 minute to 7 days, in minutes, hours or days: “Enter a time from 1
+  minute to 7 days.” Empty, it is 1 minute for an API key and 1 hour for a
+  subscription. **Workspace settings › Secrets and variables** has both fields on **Add
+  value** and **Change value** of a model provider's key.
+- A key's cooldown ends when **Change value** saves a new value of the key. A save with
+  **New value** empty and a rename keep the cooldown.
+- **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
+  Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
+  from the next run.” Each fallback has Provider, Model, Another model and Effort, with
+  **Move up**, **Move down** and **Remove**. **Add fallback** adds a provider that
+  applies to the workspace, serves the chosen runtime, and is neither the chosen
+  provider nor a fallback already, with the chosen model where the provider has a model
+  of the same id. **Save** saves the fallbacks with the model choice. With no such
+  provider left, the part shows “Add another model provider that serves Claude Code in
+  Organisation settings › Model providers, then add it here as a fallback.”
+- Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
+  provider at its claim, each a separate credential of the run, named after the
+  provider's public id: `con_…-1` to `con_…-6`. The run starts with the key chosen in the
+  model choice while that key is out of cooldown, else a key with no known reset, the
+  default key first, else the key whose known reset is closest. Forager's gateway moves
+  to the next key when a key reaches its limit. Where every key of the provider is in
+  cooldown, the run gets the keys of the first fallback with a key out of cooldown, and
+  that fallback's model and effort. Where every key of the provider and of each
+  fallback is in cooldown, the run waits in the queue, and its page shows “Waiting for a
+  model key: every key of Northwind Claude is in cooldown until 14:00.”, for the
+  provider whose key leaves its cooldown first. The first claim after that time takes
+  the run.
+- A gateway reports the state of a run's keys with a signed
+  `POST /v1/runs/<run_id>/model-keys`: one entry per key and limit window, with its
+  status, its reset, its use and its cooldown. Qory Apiary keeps the newest state of
+  each key and window, by the time the provider's answer arrived, whichever gateway
+  sent it, and the `200` has that state for each key of the run. So a run on another
+  machine skips a key that is in cooldown. The route returns `404` without the features
+  `factory` and `secrets`, and `410` for a run that ended.
+- A run whose gateway ended it at its keys' limit, with the state `paused` and the
+  reason `model_key_limit`, ends **Paused**, and so does one with the state `cancelled`
+  and that reason, from a gateway of the earlier contract. With another state, which the
+  contract does not allow, the run ends in that state, without a pause; the state
+  `paused` with another reason, or none, is read as an unknown state. A paused run
+  counts as no failure and moves no stage. While its work item is still in Explore, at
+  the same take in and stage, that stage runs, and its other runs have ended, a run that
+  continues it is queued at once, at the paused run's place in the queue, as the next
+  run of the stage. The continuation starts on a new machine, and its session reads the
+  paused run's transcript with the signed `GET /v1/runs/<run_id>/resume/transcript`,
+  under the feature `observability`, to resume the agent's session. **How it ended** on
+  the run page, the work item's runs and the stage show “Paused: every key of Northwind
+  Claude is in cooldown until Fri 14:00. It continues in run 15.”, with the run's number
+  a link to its page. Once that time has passed, or with no time known, the line is
+  “Paused: a key of Northwind Claude reached its limit. It continues in run 15.” A
+  paused run that no run continues shows “Paused: a key of Northwind Claude reached its
+  limit.” Where the provider was deleted since, the line starts “Paused: a model key
+  reached its limit.” A provider that the instance admin set up is not named: the line
+  is “Paused: every model key is in cooldown until Fri 14:00. It continues in run 15.”
+  while that time is to come, else it starts “Paused: a model key reached its limit.”,
+  and a waiting run shows “Waiting for a model key: every model key is in cooldown until
+  14:00.” The runs list's Filter menu has the family Paused, with the state Paused,
+  between Cancelled and Ended badly, and `state:paused`; a filter of that family alone
+  that finds no run shows “No runs paused.”
+- A run of Explore that pushed its questions or a proposal, and then reached its keys'
+  limit, ends **Completed** with its result: no run continues it, its stage goes on as
+  after any completed run, and it shows no Paused line. A result that an earlier run
+  of the take in pushed does not count.
+- The workspace overview's runs per day count paused runs: the table under the chart
+  has **Paused** after **Cancelled**, and each day reads “Today: 6 runs (1 ended well, 1
+  cancelled, 1 paused, 3 alive or ended badly), 0 denied attempts, open that day's
+  runs”.
+- On the run page, **Run the agent** of a session that paused at its keys' limit, and
+  its **Agent session**, show **Paused**, with the ring of a paused run, as the run does.
+- Qory Apiary stores the transcript of a run's agent session, which the gateway sends as
+  `dev.qory.session.transcript` events, up to 64 MiB and fewer than 100,000 chunks for
+  each file. It scans the transcript for keys of a known form, as it scans the run's
+  events, and the diagnostics leave the transcript out. The daily retention job
+  deletes a run's transcript with the run's log output, by **Keep a run's log output
+  for**, or by **Keep a run's events for** when the log setting is empty; a paused
+  run's transcript stays until the run that continues it ends.
+<!-- /feature -->
 - `GET /health` returns `set_up` in its `200`: `false` until the instance's first set-up
   and `true` after it, for a deploy script or an instance admin. The `503` has no
   `set_up`, and a `200` has no `set_up` when the lookup fails.
@@ -1559,6 +1655,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 - An instance admin who stops being one while a page of Instance settings is open moves to
   `/`. Before, the page and its buttons stayed until it was reloaded, and each save failed.
+<!-- feature: factory, secrets -->
+- The Keys column of **Organisation settings › Model providers** shows how many keys each
+  provider has and how many of them are in cooldown, such as “3 keys, 1 in cooldown”, in
+  place of a number. A provider's page shows each key's state in place of a mask.
+<!-- /feature -->
 
 ### Fixed
 
@@ -1707,8 +1808,63 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   qoryai/forager#52 or later. A gateway built before it returns an error for each batch
   that contains one of the three image codes `image_access_denied`, `image_rate_limited`
   and `image_registry_unreachable`.
+<!-- feature: factory, secrets -->
+- Upgrade every Qory Gateway first, to a gateway built with qoryai/forager#53 or later,
+  then upgrade Qory Apiary. Each model key in a run configuration has `pause_for_s`, a
+  member that the run configuration schema of an earlier gateway does not define. A run
+  registered before the upgrade keeps its one key and goes on across the deploy; its run
+  configuration gains `pause_for_s` (Migrations, below). Each key starts with no settings
+  and no state, so it shows “Available” until a gateway reports it.
+<!-- /feature -->
 
 ### Migrations
+
+<!-- feature: factory, secrets -->
+- `model_key_copies` (20261111220000): a row for each pending or running run and each of
+  its model keys, with the key's `value_set_at`, so a run registered before the upgrade
+  keeps its keys' reports. It takes no lock that blocks reads or writes. Rolling back
+  changes nothing.
+- `secret_values` and `model_key_copies` (20261111190000): a column
+  `secret_values.value_set_at`, the time a key's value was last set, which a rename leaves
+  as it is, filled from `updated_at`, which rewrites every row of `secret_values`; and a
+  new table `model_key_copies`, with a row per run and model key: the `value_set_at` of
+  the value last sealed for that run, deleted with the run and with the key.
+- `runs` (20261111170000): a nullable column `resume`, the paused run whose transcript a
+  continuation reads, with a check that it is an object of exactly `run_id`,
+  `session_id` and `path`, each a string; the check scans `runs` under a lock that
+  blocks reads and writes. It changes no row: a continuation registered before it starts
+  a new session.
+- `session_chunks` and `transcript_paths` (20261111143100): two new tables. The first
+  has the chunks of a run's session transcript, with an index on the run, the path and
+  the sequence. The second has a row per run and path: the chunks and bytes kept of the
+  path, the sequence up to which they were checked for a gap, the offset at which the
+  next chunk has to start, and `gap`, whether a checked chunk did not start there. It
+  changes no row: the transcript events of a run stored before it become chunks only if
+  that run is rebuilt from its events.
+- `runs` and `dispatch_runs` (20261111143000): the checks on `runs.state` and
+  `runs.exit_state` take `paused`; the first scans `runs` under a lock that blocks reads
+  and writes, and the second stays not validated, as it was. Two nullable columns:
+  `dispatch_runs.continues_id`, the paused run that a run continues, set to null when
+  that run is deleted, with a unique index built inside the migration, so writes to
+  `dispatch_runs` wait until the build ends; and `dispatch_runs.paused_until`, the
+  earliest end of a cooldown among the keys of a paused run's provider, when every one of
+  them was in cooldown as the run ended. It changes no row. Rolling back makes each
+  paused run Cancelled.
+- `runs` and `dispatch_runs` (20261111100000): `runs.model_keys`, a run's keys in the
+  order of its run configuration, at most 6, in place of `runs.provider_value_id`, which
+  is dropped; and `dispatch_runs.model_provider_ids`, the model providers a queued run
+  waits for, with a constant default, an empty list, which rewrites no row. Each run with
+  a key gets that key under the credential name its run configuration has, the
+  provider's public id, with its Pause for (`pause_for_s`), written once: the key's
+  setting, else 60 seconds for an API key and 1 hour for a subscription. A run that is
+  live during the deploy keeps its key and goes on, and its run configuration gains
+  `pause_for_s`. A run whose key was deleted after its claim gets a key id that no key
+  has, so a secrets request for that key fails, as before. The migration rewrites each
+  run with a key, and its two checks on `runs` scan `runs` under a lock that blocks reads
+  and writes. Rolling back sets `provider_value_id` to the first key of the
+  list where that key still exists, and clears the provider columns of a run whose first
+  key is gone.
+<!-- /feature -->
 
 - `machine_types` and `runs` (20261111090000): drops `machine_types.image`, with its
   check, and `runs.configured_image_from_type` and
@@ -1718,6 +1874,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   upgrade starts in that image only where the image is in the organisation's place in
   the registry, else in the pool's default image. Rolling back adds the columns again,
   with no image on any type and no run marked.
+<!-- feature: factory, secrets -->
+- `model_key_settings` and `model_key_states` (20261110161700): two new tables, keyed by
+  a key's row in `secret_values`: a key's Resets and Pause for, and its state in each
+  limit window. A unique index on `secret_values` (`id`, `organisation_id`), built inside
+  the migration, so writes to `secret_values` wait until the build ends. It changes no
+  row.
+- `model_choice_fallbacks` (20261110153000): a new table of the fallbacks of a model
+  choice, each a model provider at a position, with an optional model and effort. A
+  unique index on `model_choices` (`id`, `organisation_id`), built inside the migration,
+  so writes to `model_choices` wait until the build ends. It changes no row.
+<!-- /feature -->
+
 - `runs` (20261110090000): a column `configured_image_from_type`, false by default, and
   a nullable column `configured_image_machine_type_id`, a foreign key to
   `machine_types`, with a partial index and a check. It changes no row, and

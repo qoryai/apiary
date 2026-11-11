@@ -9,6 +9,7 @@ defmodule Apiary.Runs.WaitingTest do
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures, only: [walked_claim: 2, workspace_gateway!: 1]
   import Apiary.MachineTypesFixtures
+  import Apiary.ModelKeysFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -156,6 +157,73 @@ defmodule Apiary.Runs.WaitingTest do
 
     run = queue!(scope)
     assert reason(run) == {:busy, pool.name, 1, 1}
+  end
+
+  @tag needs: [:factory, :secrets]
+  test "while every key of its model providers is in cooldown, the provider and the first end",
+       %{scope: scope} do
+    {_pool, _key} = ready_pool!(scope)
+
+    {:ok, main} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        name: "Team keys",
+        keys: [
+          %{value_id: "main", value: "sk-ant-waiting-main"},
+          %{value_id: "spare", value: "sk-ant-waiting-spare"}
+        ]
+      })
+
+    {:ok, fallback} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        name: "Spare keys",
+        keys: [%{value_id: "main", value: "sk-ant-waiting-fallback"}]
+      })
+
+    {:ok, _choice} =
+      Apiary.ModelChoices.put_choice(scope, :workspace, %{
+        provider: main.public_id,
+        fallbacks: [%{provider: fallback.public_id}]
+      })
+
+    run = queue!(scope)
+    cooling!(main, in_seconds(3600))
+
+    # The fallback has a free key: the run does not wait for a key.
+    assert {:pool, _name} = reason(run)
+
+    # The fallback's key leaves its cooldown first: the reason has its provider and end.
+    first = in_seconds(1800)
+    cooling!(fallback, first)
+    assert {:cooldown, "Spare keys", until} = reason(run)
+    assert DateTime.compare(until, first) == :eq
+  end
+
+  @tag needs: [:factory, :secrets]
+  test "while every key of an operator's provider is in cooldown, the first end alone",
+       %{scope: scope} do
+    {_pool, _key} = ready_pool!(scope)
+    %{scope: operator} = sign_up_fixture()
+
+    {:ok, theirs} =
+      Apiary.Connections.create_provider(operator, %{
+        provider: "anthropic",
+        name: "Operator keys",
+        keys: [%{value_id: "main", value: "sk-ant-waiting-operator"}]
+      })
+
+    run = queue!(scope)
+
+    {1, _rows} =
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+        set: [model_provider_ids: [theirs.id]]
+      )
+
+    first = in_seconds(1800)
+    cooling!(theirs, first)
+    assert {:cooldown, nil, until} = reason(run)
+    assert DateTime.compare(until, first) == :eq
   end
 
   describe "the instance's pool" do
