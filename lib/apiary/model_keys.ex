@@ -20,8 +20,10 @@ defmodule Apiary.ModelKeys do
   a key deletes its states (`clear_states/2`); a rename keeps them.
 
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
-  credential in the run's run configuration. A report and its answer reach a key only
-  through this function.
+  credential in the run's run configuration and the time the run's value of it was set.
+  A report and its answer reach a key only through this function. A gateway's secrets
+  request keeps which value of each key it sealed for the run (`keep_copies/2`,
+  `Apiary.ModelKeys.Copy`).
 
   **At a claim** (`claim_keys/3`): the keys of a provider with their resets, cooldowns
   and Pause for, which `Apiary.ModelKeys.Order` orders. A claim passes a run of the queue
@@ -35,7 +37,7 @@ defmodule Apiary.ModelKeys do
 
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Provider, Providers}
-  alias Apiary.ModelKeys.{Setting, State}
+  alias Apiary.ModelKeys.{Copy, Setting, State}
   alias Apiary.Repo
   alias Apiary.Runs.{ProviderCredential, Run}
   alias Apiary.Secrets.Value
@@ -46,12 +48,14 @@ defmodule Apiary.ModelKeys do
 
   @typedoc """
   A model key of a run: `name`, the credential's name in the run's run configuration;
-  `secret_value_id`, the value's row id; and `organisation_id`, the value's organisation.
+  `secret_value_id`, the value's row id; `organisation_id`, the value's organisation; and
+  `copy_set_at`, when the value the run has was set (`run_keys/1`), nil when unknown.
   """
   @type run_key :: %{
           name: String.t(),
           secret_value_id: Ecto.UUID.t(),
-          organisation_id: Ecto.UUID.t()
+          organisation_id: Ecto.UUID.t(),
+          copy_set_at: DateTime.t() | nil
         }
 
   ## Settings
@@ -157,6 +161,11 @@ defmodule Apiary.ModelKeys do
   each by its row id, so a key renamed since the claim stays a key of the run. A key
   removed since the claim, or no longer a value of the run's secret, and every key of a
   run whose provider's row no longer has that secret, is not a key of the run.
+
+  Each has `copy_set_at`, when the value the run has was set: that of the value a secrets
+  request sealed for the run last (`keep_copies/2`); for a key no request sealed, the
+  time the run's row was written, as the run has no value set later than that; nil for a
+  run not stored.
   """
   @spec run_keys(Run.t()) :: [run_key]
   def run_keys(
@@ -165,7 +174,7 @@ defmodule Apiary.ModelKeys do
           provider_connection_id: connection_id,
           provider_secret_id: secret_id,
           model_keys: [_ | _] = keys
-        } = _run
+        } = run
       )
       when is_binary(connection_id) and is_binary(secret_id) do
     if ProviderCredential.applies?() do
@@ -182,16 +191,69 @@ defmodule Apiary.ModelKeys do
         )
         |> Map.new()
 
+      copies = copies(run, ids)
+
       for %{"id" => id, "name" => name} <- keys,
           organisation_id = found[id],
           organisation_id != nil,
-          do: %{name: name, secret_value_id: id, organisation_id: organisation_id}
+          do: %{
+            name: name,
+            secret_value_id: id,
+            organisation_id: organisation_id,
+            copy_set_at: Map.get(copies, id, run.inserted_at)
+          }
     else
       []
     end
   end
 
   def run_keys(%Run{}), do: []
+
+  # The `value_set_at` of the value of each key of `ids` that a secrets request sealed for
+  # `run` last, by the key's row id.
+  defp copies(%Run{id: run_id}, ids) when is_binary(run_id) do
+    Repo.all(
+      from c in Copy,
+        where: c.run_id == ^run_id and c.secret_value_id in ^ids,
+        select: {c.secret_value_id, c.value_set_at}
+    )
+    |> Map.new()
+  end
+
+  defp copies(%Run{}, _ids), do: %{}
+
+  @doc """
+  Keeps, for the run `run_id`, which value of each of its keys a secrets request sealed:
+  `copies`, `[{secret_value_id, value_set_at}]`, each the key's row id and when the
+  sealed value was set (`Apiary.Secrets.reveal_key_and_set_at/2`), read with the value.
+  One row per run and key (`Apiary.ModelKeys.Copy`), the last request's. Each statement
+  takes the run's row and the key's row `FOR KEY SHARE`, in the order of the keys' ids,
+  then the copy's row: a key or a run deleted since the request is left out, as a copy
+  goes with either. In the caller's transaction. Returns `:ok`.
+  """
+  @spec keep_copies(Ecto.UUID.t(), [{Ecto.UUID.t(), DateTime.t()}]) :: :ok
+  def keep_copies(run_id, copies) when is_binary(run_id) and is_list(copies) do
+    for {id, %DateTime{} = value_set_at} <- Enum.sort(copies) do
+      Repo.insert_all(
+        Copy,
+        from(v in Value,
+          join: r in Run,
+          on: r.id == ^run_id,
+          where: v.id == ^id,
+          lock: "FOR KEY SHARE",
+          select: %{
+            run_id: r.id,
+            secret_value_id: v.id,
+            value_set_at: type(^usec(value_set_at), :utc_datetime_usec)
+          }
+        ),
+        on_conflict: {:replace, [:value_set_at]},
+        conflict_target: [:run_id, :secret_value_id]
+      )
+    end
+
+    :ok
+  end
 
   ## Keys at a claim
 
@@ -378,14 +440,15 @@ defmodule Apiary.ModelKeys do
   newer counts. The rows are written in the order of their key's row id and window. A
   key deleted before the write is left out: its value's row is locked `FOR SHARE`
   first, so a deletion waits for the write or comes before it. So does a new value of
-  the key (`clear_states/2`): on a row written after its insert, an item observed before
-  the row was last written (`updated_at`) is of an older value, or of the same value
-  before a rename, and is left out, so a late report brings back no cooldown of an old
-  value. Returns `:ok`.
+  the key (`clear_states/2`): a key whose value was set after the value the run has
+  (`value_set_at` after the key's `copy_set_at`, both by this server's clock, or a nil
+  `copy_set_at`) is left out, so a run that still has the old value brings back no
+  cooldown on the new one. A rename leaves `value_set_at` as it is. Returns `:ok`.
   """
   @spec record([run_key], [map], DateTime.t()) :: :ok
   def record(keys, items, %DateTime{} = now) do
     by_name = Map.new(keys, &{&1.name, &1})
+    copies = Map.new(keys, &{&1.secret_value_id, &1.copy_set_at})
 
     rows =
       items
@@ -403,31 +466,31 @@ defmodule Apiary.ModelKeys do
       |> Enum.sort_by(&{&1.secret_value_id, &1.window})
 
     if rows != [] do
-      {:ok, :ok} = Repo.transact(fn -> {:ok, write_states(rows)} end)
+      {:ok, :ok} = Repo.transact(fn -> {:ok, write_states(rows, copies)} end)
     end
 
     :ok
   end
 
-  # The rows of the keys that still exist, observed since their values were last written,
-  # written after their values' rows are locked in the order of their ids, the order of a
-  # deletion and of a new value: the value, then its states. `FOR SHARE` waits for a new
-  # value's update of the row, which then reads as written, and the new value's deletion of
-  # the states waits for this write.
-  defp write_states(rows) do
+  # The rows of the keys that still exist, whose value the run has (`copies`), written
+  # after their values' rows are locked in the order of their ids, the order of a deletion
+  # and of a new value: the value, then its states. `FOR SHARE` waits for a new value's
+  # update of the row, which then reads as set, and the new value's deletion of the
+  # states waits for this write.
+  defp write_states(rows, copies) do
     ids = rows |> Enum.map(& &1.secret_value_id) |> Enum.uniq()
 
-    written =
+    set =
       Repo.all(
         from v in Value,
           where: v.id in ^ids,
           order_by: v.id,
           lock: "FOR SHARE",
-          select: {v.id, {v.inserted_at, v.updated_at}}
+          select: {v.id, v.value_set_at}
       )
       |> Map.new()
 
-    case Enum.filter(rows, &current?(&1, written)) do
+    case Enum.filter(rows, &current?(&1, set, copies)) do
       [] ->
         :ok
 
@@ -441,12 +504,12 @@ defmodule Apiary.ModelKeys do
     end
   end
 
-  # A row never written after its insert has had one value, which every item is of.
-  defp current?(row, written) do
-    case Map.fetch(written, row.secret_value_id) do
-      {:ok, {inserted_at, inserted_at}} -> true
-      {:ok, {_inserted_at, written_at}} -> DateTime.compare(row.observed_at, written_at) != :lt
-      :error -> false
+  # Whether the run has the key's value: the run's value was set no earlier than the
+  # key's value.
+  defp current?(row, set, copies) do
+    case {Map.fetch(set, row.secret_value_id), Map.get(copies, row.secret_value_id)} do
+      {{:ok, set_at}, %DateTime{} = copy_set_at} -> DateTime.compare(copy_set_at, set_at) != :lt
+      _gone_or_unknown -> false
     end
   end
 

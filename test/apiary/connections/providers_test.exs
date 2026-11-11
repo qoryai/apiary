@@ -590,7 +590,14 @@ defmodule Apiary.Connections.ProvidersTest do
     test "a key's change renames it, and its settings and states stay", %{scope: scope} do
       provider = openrouter!(scope)
       value = value!(provider, "spare")
-      key = %{name: "model-1", secret_value_id: value.id, organisation_id: value.organisation_id}
+
+      key = %{
+        name: "model-1",
+        secret_value_id: value.id,
+        organisation_id: value.organisation_id,
+        copy_set_at: value.value_set_at
+      }
+
       now = ~U[2026-11-10 12:00:00.000000Z]
 
       :ok =

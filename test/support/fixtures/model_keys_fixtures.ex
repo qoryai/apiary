@@ -13,7 +13,8 @@ defmodule Apiary.ModelKeysFixtures do
 
   @doc """
   Writes the state of the key `value_id` of `provider` in its 5-hour window, as a
-  gateway's report writes it (`Apiary.ModelKeys.record/3`). With `until`, the key is in
+  gateway's report of a run with the key's value writes it (`Apiary.ModelKeys.record/3`).
+  With `until`, the key is in
   cooldown until then, and its reset is then; else it is allowed, with a reset at
   `resets_at` (none by default).
   """
@@ -22,7 +23,14 @@ defmodule Apiary.ModelKeysFixtures do
     until = attrs[:until]
 
     Apiary.ModelKeys.record(
-      [%{name: "k", secret_value_id: value.id, organisation_id: value.organisation_id}],
+      [
+        %{
+          name: "k",
+          secret_value_id: value.id,
+          organisation_id: value.organisation_id,
+          copy_set_at: value.value_set_at
+        }
+      ],
       [
         %{
           credential: "k",

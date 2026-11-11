@@ -17,6 +17,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   alias Apiary.Audit.Entry
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.ModelKeys.Copy
   alias Apiary.Runs.{Run, RunCredential}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.Contract.SignedRequest
@@ -157,6 +158,31 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
         assert Enum.map(plaintext["values"], & &1["value"]) == values
         assert names in Enum.map(seals(), & &1.details["credentials"])
       end
+    end
+
+    test "keeps when the value it sealed was set, the last request's", ctx do
+      %{"id" => id} = hd(ctx.run.model_keys)
+      value = Repo.get!(Value, id)
+      copies = fn -> Repo.all(from c in Copy, where: c.run_id == ^ctx.run.id) end
+
+      assert post_secrets(ctx, request(ctx)).status == 200
+      assert [%Copy{secret_value_id: ^id, value_set_at: set_at}] = copies.()
+      assert set_at == value.value_set_at
+
+      # A new value of the key: the next request seals it, and keeps its time.
+      {:ok, _provider} =
+        Apiary.Connections.set_provider_key(
+          ctx.scope,
+          ctx.provider,
+          value.value_id,
+          "sk-ant-new-0123456789",
+          nil
+        )
+
+      assert post_secrets(ctx, request(ctx)).status == 200
+      assert [%Copy{value_set_at: new_set_at}] = copies.()
+      assert new_set_at == Repo.get!(Value, id).value_set_at
+      assert DateTime.after?(new_set_at, set_at)
     end
 
     test "is answered again for a second request, under a fresh ephemeral key", ctx do

@@ -32,8 +32,14 @@ defmodule Apiary.ModelKeysTest do
     {provider, Map.new(values, &{&1.value_id, &1})}
   end
 
+  # A key of a run that has its value.
   defp key(%Value{} = value, name \\ "model-1"),
-    do: %{name: name, secret_value_id: value.id, organisation_id: value.organisation_id}
+    do: %{
+      name: name,
+      secret_value_id: value.id,
+      organisation_id: value.organisation_id,
+      copy_set_at: value.value_set_at
+    }
 
   defp item(attrs) do
     Map.merge(
@@ -58,6 +64,43 @@ defmodule Apiary.ModelKeysTest do
 
   defp states(%Value{id: id}),
     do: Repo.all(from s in State, where: s.secret_value_id == ^id, order_by: s.window)
+
+  # A run of the scope's queue, handed over to a gateway, with the key `value` of the
+  # provider of `ctx`.
+  defp keys_run(ctx, %Value{id: id}) do
+    pool = Apiary.NodesFixtures.pool_fixture(ctx.scope)
+    %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, pool)
+
+    %{run: run} =
+      Apiary.DispatchedRunsFixtures.handed_over_fixture(ctx.scope, key, %{
+        provider_connection_id: ctx.provider.id,
+        provider_secret_id: ctx.provider.secret_id,
+        provider_chain: "organisation",
+        provider_api: %{
+          "format" => "anthropic-messages",
+          "endpoint" => "https://api.model.example/anthropic",
+          "auth" => %{"scheme" => "x-api-key"}
+        },
+        model_keys: [%{"id" => id, "name" => "model-1", "pause_for_s" => 60}],
+        run_settings: %{}
+      })
+
+    run
+  end
+
+  # Keeps the value the key `value` has now as the run's, as a secrets request that
+  # sealed it does.
+  defp seal(run, %Value{id: id}) do
+    {:ok, _plaintext, value_set_at} =
+      Apiary.Secrets.reveal_key_and_set_at(Repo.get!(Connection, run.provider_connection_id), id)
+
+    ModelKeys.keep_copies(run.id, [{id, value_set_at}])
+  end
+
+  # A new value of the key `spare` of the provider of `ctx`, as Edit key saves it.
+  defp set_value!(ctx, value) do
+    {:ok, _provider} = Connections.set_provider_key(ctx.scope, ctx.provider, "spare", value, nil)
+  end
 
   describe "the settings" do
     test "are saved at the key's organisation, by the value's row id", ctx do
@@ -209,12 +252,14 @@ defmodule Apiary.ModelKeysTest do
                %{
                  name: "model-1",
                  secret_value_id: ctx.values["spare"].id,
-                 organisation_id: ctx.scope.organisation.id
+                 organisation_id: ctx.scope.organisation.id,
+                 copy_set_at: nil
                },
                %{
                  name: "model-2",
                  secret_value_id: ctx.values["main"].id,
-                 organisation_id: ctx.scope.organisation.id
+                 organisation_id: ctx.scope.organisation.id,
+                 copy_set_at: nil
                }
              ]
 
@@ -711,39 +756,59 @@ defmodule Apiary.ModelKeysTest do
       assert Repo.aggregate(Setting, :count) == 0
     end
 
-    test "of a key whose value changed leave out a report observed before the change", ctx do
+    test "of a key whose value changed leave out a report of a run with the old value",
+         ctx do
       value = ctx.values["spare"]
+      run = keys_run(ctx, value)
       until = in_seconds(3_600)
 
-      {:ok, _provider} =
-        Connections.set_provider_key(
-          ctx.scope,
-          ctx.provider,
-          "spare",
-          "sk-ant-fixture-new-0123456789",
-          nil
-        )
+      # A cooldown observed after the change, as a run hits the limit on its old value.
+      report = fn ->
+        rejected =
+          item(
+            status: "rejected",
+            resets_at: until,
+            cooldown_until: until,
+            observed_at: in_seconds(1)
+          )
 
-      changed_at = Repo.reload!(value).updated_at
+        ModelKeys.record(ModelKeys.run_keys(run), [rejected], DateTime.utc_now())
+      end
 
-      late =
-        item(
-          status: "rejected",
-          resets_at: until,
-          cooldown_until: until,
-          observed_at: DateTime.add(changed_at, -1, :millisecond)
-        )
+      # The run's secrets request sealed the value it has; then the value changes.
+      :ok = seal(run, value)
+      set_value!(ctx, "sk-ant-fixture-new-0123456789")
 
-      # A report of the old value, which arrives after the change, brings back no cooldown.
-      :ok = ModelKeys.record([key(value)], [late], DateTime.utc_now())
+      :ok = report.()
       assert states(value) == []
 
-      # One observed after the change is of the new value.
-      after_change = %{late | observed_at: DateTime.add(changed_at, 1, :millisecond)}
-      :ok = ModelKeys.record([key(value)], [after_change], DateTime.utc_now())
-
+      # At its next secrets request the run gets the new value: its report is of it.
+      :ok = seal(run, value)
+      :ok = report.()
       assert [%State{status: "rejected", cooldown_until: cooldown_until}] = states(value)
       assert DateTime.compare(cooldown_until, until) == :eq
+    end
+
+    test "of a run no secrets request sealed the key for leave out a value set since the run",
+         ctx do
+      value = ctx.values["spare"]
+      run = keys_run(ctx, value)
+      set_value!(ctx, "sk-ant-fixture-new-0123456789")
+
+      :ok = ModelKeys.record(ModelKeys.run_keys(run), [item([])], DateTime.utc_now())
+      assert states(value) == []
+    end
+
+    test "of a key renamed since the run got its value are kept", ctx do
+      value = ctx.values["spare"]
+      run = keys_run(ctx, value)
+      :ok = seal(run, value)
+
+      {:ok, _provider} =
+        Connections.rename_provider_key(ctx.scope, ctx.provider, "spare", "renamed")
+
+      :ok = ModelKeys.record(ModelKeys.run_keys(run), [item([])], DateTime.utc_now())
+      assert [%State{status: "allowed"}] = states(value)
     end
 
     test "belong to the key's organisation alone", ctx do

@@ -30,7 +30,12 @@ defmodule Apiary.ModelKeysRacesTest do
   end
 
   defp key(%Value{} = value, name),
-    do: %{name: name, secret_value_id: value.id, organisation_id: value.organisation_id}
+    do: %{
+      name: name,
+      secret_value_id: value.id,
+      organisation_id: value.organisation_id,
+      copy_set_at: value.value_set_at
+    }
 
   defp item(credential, window, observed_at, status \\ "allowed") do
     %{

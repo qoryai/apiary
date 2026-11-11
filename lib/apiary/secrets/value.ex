@@ -29,6 +29,9 @@ defmodule Apiary.Secrets.Value do
     field :value, :string, virtual: true, redact: true
     field :nonce, :binary, redact: true
     field :ciphertext, :binary, redact: true
+    # When the value was last set, by this server's clock: at its insert and at each new
+    # value, never at a rename (`Apiary.ModelKeys.record/3`).
+    field :value_set_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

@@ -1083,7 +1083,20 @@ defmodule Apiary.Secrets do
   @doc false
   @spec reveal_key_for_sealing(Connection.t(), Ecto.UUID.t()) ::
           {:ok, binary} | {:error, :not_found | :unavailable}
-  def reveal_key_for_sealing(
+  def reveal_key_for_sealing(provider, secret_value_id) do
+    case reveal_key_and_set_at(provider, secret_value_id) do
+      {:ok, plaintext, _value_set_at} -> {:ok, plaintext}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # reveal_key_and_set_at/2 is `reveal_key_for_sealing/2` with the time the revealed
+  # value was set (`secret_values.value_set_at`), read from the same row:
+  # `{:ok, plaintext, value_set_at}`.
+  @doc false
+  @spec reveal_key_and_set_at(Connection.t(), Ecto.UUID.t()) ::
+          {:ok, binary, DateTime.t()} | {:error, :not_found | :unavailable}
+  def reveal_key_and_set_at(
         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
         secret_value_id
       )
@@ -1092,14 +1105,17 @@ defmodule Apiary.Secrets do
     with {:ok, row_id} <- Ecto.UUID.cast(secret_value_id),
          {query, secret_id, workspace_id} <- provider_values(provider),
          {%Value{value_id: value_id} = row, data_key} when is_binary(value_id) <-
-           Repo.one(where(query, [v], v.id == ^row_id)) do
-      decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id)
+           Repo.one(where(query, [v], v.id == ^row_id)),
+         {:ok, plaintext} <-
+           decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id) do
+      {:ok, plaintext, row.value_set_at}
     else
+      {:error, :unavailable} -> {:error, :unavailable}
       _gone -> {:error, :not_found}
     end
   end
 
-  def reveal_key_for_sealing(_provider, _secret_value_id), do: {:error, :not_found}
+  def reveal_key_and_set_at(_provider, _secret_value_id), do: {:error, :not_found}
 
   # The query of the values of the secret the provider's row links, at that secret's
   # level, each with its data key, `{query, secret's public id, workspace id or nil}`;
@@ -1486,7 +1502,7 @@ defmodule Apiary.Secrets do
 
   # Encrypts the changeset's plaintext under the data key of the secret's level, bound to
   # the value id it will have, takes the plaintext out of the changeset, and writes the
-  # row.
+  # row, with the time its value was set (`value_set_at`).
   defp encrypt_and_write(scope, secret, changeset, how) do
     plaintext = Ecto.Changeset.get_change(changeset, :value)
     value_id = Ecto.Changeset.get_field(changeset, :value_id)
@@ -1498,7 +1514,12 @@ defmodule Apiary.Secrets do
       changeset
       |> Ecto.Changeset.delete_change(:value)
       |> Ecto.Changeset.change(
-        [nonce: nonce, ciphertext: ciphertext, updated_by_id: scope.user.id] ++ key_field
+        [
+          nonce: nonce,
+          ciphertext: ciphertext,
+          value_set_at: DateTime.utc_now(),
+          updated_by_id: scope.user.id
+        ] ++ key_field
       )
       |> then(fn changeset ->
         case how do

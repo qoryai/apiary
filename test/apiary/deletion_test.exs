@@ -388,7 +388,14 @@ defmodule Apiary.DeletionTest do
 
         :ok =
           Apiary.ModelKeys.record(
-            [%{name: "model", secret_value_id: value.id, organisation_id: value.organisation_id}],
+            [
+              %{
+                name: "model",
+                secret_value_id: value.id,
+                organisation_id: value.organisation_id,
+                copy_set_at: value.value_set_at
+              }
+            ],
             [
               %{
                 credential: "model",
