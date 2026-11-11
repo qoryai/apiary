@@ -1204,9 +1204,11 @@ defmodule Apiary.Artifacts.Mockup do
 
   # prescan/1 counts the tags of a page and the attributes of each, as an HTML5 tokenizer
   # reads a tag: `:ok`, `:tags` past `@max_tags`, or `:attributes` past `@max_attributes`
-  # on one tag. Which `<` starts a tag depends on the parser's state (a comment, raw text,
-  # a quoted value), so every `<` followed by an ASCII letter, `</` too, is read as the
-  # start of a tag: the counts are at least the parser's. A tag is read from its start by
+  # on one tag. Only a `<` followed by an ASCII letter counts toward `@max_tags`, as the
+  # contract counts tags, anywhere in the source. Which `<` starts a tag depends on the
+  # parser's state (a comment, raw text, a quoted value), so for the attribute count
+  # every `<` or `</` followed by an ASCII letter is read as the start of a tag, an end
+  # tag's attributes included: that count is at least the parser's. A tag is read from its start by
   # the tokenizer's states, which depend on nothing before it; two reads in the same state
   # at the same byte go on alike, so they are kept as one, with the higher count, and at
   # most one read per state is kept.
@@ -1249,9 +1251,10 @@ defmodule Apiary.Artifacts.Mockup do
   defp step_byte(<<byte, rest::binary>>, active, tags),
     do: scan(rest, step_all(active, byte), tags)
 
-  # After a `<`: a letter, or `/` and a letter, starts a tag.
+  # After a `<`: a letter starts a tag, counted toward `@max_tags`; `/` and a letter
+  # starts an end tag, not counted there, whose attributes the tokenizer reads too.
   defp open(<<letter, rest::binary>>, active, tags) when letter in ?a..?z or letter in ?A..?Z,
-    do: start_tag(rest, step_all(active, letter), tags)
+    do: start_tag(rest, step_all(active, letter), tags + 1)
 
   defp open(<<?/, letter, rest::binary>>, active, tags)
        when letter in ?a..?z or letter in ?A..?Z,
@@ -1259,10 +1262,10 @@ defmodule Apiary.Artifacts.Mockup do
 
   defp open(rest, active, tags), do: scan(rest, active, tags)
 
-  defp start_tag(_rest, _active, tags) when tags >= @max_tags, do: :tags
+  defp start_tag(_rest, _active, tags) when tags > @max_tags, do: :tags
 
   defp start_tag(rest, active, tags),
-    do: scan(rest, Map.update(active, :tag_name, 0, &max(&1, 0)), tags + 1)
+    do: scan(rest, Map.update(active, :tag_name, 0, &max(&1, 0)), tags)
 
   defp step_all(active, byte) do
     Enum.reduce(active, %{}, fn {state, count}, acc ->

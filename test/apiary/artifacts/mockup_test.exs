@@ -540,6 +540,30 @@ defmodule Apiary.Artifacts.MockupTest do
                timed(bytes)
     end
 
+    test "10,000 start tags are allowed, the template's 5 included, and 10,001 refused" do
+      # End tags are not counted: each `<i>` has its `</i>`.
+      tags = fn n -> check(page("", String.duplicate("<i></i>", n - 5))) end
+
+      assert {:ok, _linked} = tags.(10_000)
+      assert {:error, "Shrink `start.html` to at most 10000 tags" <> _rest} = tags.(10_001)
+    end
+
+    test "256 attributes on a <p> are allowed, 257 refused" do
+      p = fn n ->
+        check(page("", "<p " <> Enum.map_join(1..n, " ", &"data-a#{&1}") <> ">x</p>"))
+      end
+
+      assert {:ok, _linked} = p.(256)
+      assert {:error, "Give each tag in `start.html` at most 256 attributes" <> _rest} = p.(257)
+    end
+
+    test "a <style> with <x and 257 words before </style> is refused by the raw count" do
+      words = Enum.map_join(1..257, " ", &"w#{&1}")
+
+      assert {:error, "Give each tag in `start.html` at most 256 attributes" <> _rest} =
+               check(page("<style><x #{words}</style>", ""))
+    end
+
     test "10,000 nested elements, the most tags, are checked in time" do
       bytes = page("", Enum.map_join(1..9_990, &~s|<b id="b#{&1}">|))
       assert {:ok, _linked} = timed(bytes)
