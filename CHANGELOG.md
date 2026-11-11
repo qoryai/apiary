@@ -1106,8 +1106,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   until Fri 14:00. It continues in run 15.” while that time is to come, else it starts
   “Paused: a model key reached its limit.”, and a waiting run shows “Waiting for a model
   key: every model key is in cooldown until 14:00.” The runs list's Filter menu has the
-  family Paused, with the state Paused, between Cancelled and Ended badly,
-  and `state:paused`; a filter of that family alone that finds no run shows “No runs
+  family Paused, with the state Paused, between Cancelled and Ended badly, and
+  `state:paused`; a filter of that family alone that finds no run shows “No runs
   paused.”
 - Qory Apiary stores the transcript of a run's agent session, which the gateway sends as
   `dev.qory.session.transcript` events, up to 64 MiB and fewer than 100,000 chunks for

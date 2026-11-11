@@ -1909,9 +1909,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   model key is in cooldown until Fri 14:00. It continues in run 15." while that time is
   still to come, else the lines of a deleted provider. On the work item's page, the
   run's row on Explore and the stage's round show the same line in place of the run's
-  state, the number a link where the reader may
-  read the workspace of the run that continues it. For a run that a failed step of its preparation
-  stopped, the line states what happened at that step, with no advice, such as "Start the
+  state, the number a link where the reader may read the workspace of the run that
+  continues it. For a run that a failed step of its preparation stopped, the line states
+  what happened at that step, with no advice, such as "Start the
   wall failed with exit code 125.", on every pool. Else the line is the last result of its
   timeline that was no success, else its
   last failed turn or tool, in one cut line whole on hover, with "Jump to it", the
