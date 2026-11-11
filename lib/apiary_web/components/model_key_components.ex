@@ -18,7 +18,6 @@ defmodule ApiaryWeb.ModelKeyComponents do
   alias Apiary.Accounts.Scope
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Provider, Providers}
-  alias Apiary.ModelKeys
   alias Apiary.ModelKeys.{Setting, State}
   alias ApiaryWeb.UserLive.Settings, as: UserSettings
 
@@ -312,26 +311,25 @@ defmodule ApiaryWeb.ModelKeyComponents do
   ## A key's state
 
   @doc """
-  The state of a key of `provider` at `now`, from `states`, its states by window
+  The state of a key at `now`, from `states`, its states by window
   (`Apiary.ModelKeys.provider_states/2`), in the reader's time zone:
 
     * `{:cooldown, until, source}` while the latest `cooldown_until` across its windows is
-      after `now`: "In cooldown until Fri 14:00", and where that time comes from, the
-      Pause for in words from the key's settings `setting`, a function of no argument
-      that reads them only then;
+      after `now`: "In cooldown until Fri 14:00", and where that time comes from; for a
+      Pause for, the cooldown that applied, from the answer that started it to its end
+      (`cooldown_until` less `observed_at`), whatever the key's Pause for is now;
     * `{:available, segments}` otherwise, one segment per window with a utilization or a
       reset still to come: "5-hour 89%, resets 14:00".
   """
-  @spec state(Connection.t(), [State.t()], (-> Setting.t() | nil), DateTime.t()) ::
+  @spec state([State.t()], DateTime.t()) ::
           {:cooldown, String.t(), String.t()} | {:available, [String.t()]}
-  def state(%Connection{} = provider, states, setting, %DateTime{} = now)
-      when is_function(setting, 0) do
+  def state(states, %DateTime{} = now) do
     case latest_cooldown(states) do
       %State{cooldown_until: until} = state when not is_nil(until) ->
         if DateTime.compare(until, now) == :gt,
           do:
             {:cooldown, gettext("In cooldown until %{time}", time: Format.week_time(until, now)),
-             source(state.source, provider, setting)},
+             source(state)},
           else: {:available, segments(states, now)}
 
       _none ->
@@ -345,13 +343,13 @@ defmodule ApiaryWeb.ModelKeyComponents do
     |> Enum.max_by(& &1.cooldown_until, DateTime, fn -> nil end)
   end
 
-  defp source("provider", _provider, _setting), do: gettext("from the provider's answer")
-  defp source("schedule", _provider, _setting), do: gettext("from this key's schedule")
+  defp source(%State{source: "provider"}), do: gettext("from the provider's answer")
+  defp source(%State{source: "schedule"}), do: gettext("from this key's schedule")
 
-  defp source(_pause_for, provider, setting),
+  defp source(%State{cooldown_until: until, observed_at: observed_at}),
     do:
       gettext("no reset time given; paused for %{duration}",
-        duration: pause_words(ModelKeys.pause_seconds(provider, setting.()))
+        duration: pause_words(max(DateTime.diff(until, observed_at, :second), 1))
       )
 
   @doc """

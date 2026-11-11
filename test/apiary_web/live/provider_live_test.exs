@@ -603,20 +603,23 @@ defmodule ApiaryWeb.ProviderLiveTest do
         cooldown_until: in_two_days
       })
 
-      for {name, source} <- [
-            {"gamma", "schedule"},
-            {"delta", "pause_for"},
-            {"omega", "pause_for"}
+      # A Pause for shows the cooldown that applied, from the answer to its end: delta's
+      # 2 hours, though its setting is 10 minutes now, and omega's 1 minute.
+      for {name, source, observed_at} <- [
+            {"gamma", "schedule", now},
+            {"delta", "pause_for", DateTime.add(in_two_days, -7200)},
+            {"omega", "pause_for", DateTime.add(in_two_days, -60)}
           ] do
         record!(values[name], %{
           window: "five_hour",
           status: "rejected",
           cooldown_until: in_two_days,
-          source: source
+          source: source,
+          observed_at: observed_at
         })
       end
 
-      {:ok, _setting} = ModelKeys.put_setting(values["delta"], %{"pause_seconds" => 7200})
+      {:ok, _setting} = ModelKeys.put_setting(values["delta"], %{"pause_seconds" => 600})
 
       {:ok, lv, html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
 
