@@ -1631,6 +1631,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
     end
 
+    # The route belongs to the run endpoint's feature, as `run.url` does, so a run that
+    # registered reads its transcript whether `workflow_model` is on or off.
+    test "belongs to observability, and answers with workflow_model off", ctx do
+      assert ApiaryWeb.Contract.TranscriptController.__feature__() == :observability
+      RunApiStubs.put(:flag, false)
+      paused!(ctx, @lines)
+
+      assert response(read(ctx, "/resume/transcript"), 200) == ~s({"a":1}\n{"b":2}\n)
+    end
+
     test "an unsigned request is 401, with no transcript", ctx do
       paused!(ctx, @lines)
       conn = get(build_conn(), "/v1/runs/#{ctx.run.node_run_id}/resume/transcript")

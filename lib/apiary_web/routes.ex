@@ -254,6 +254,9 @@ defmodule ApiaryWeb.Routes do
         # A gateway's report of a run's model keys, with the `factory` and `secrets`
         # features.
         post "/runs/:run_id/model-keys", ModelKeysController, :create
+        # The transcript of the paused run a run continues, for its session's resume:
+        # under the run endpoint, with the `observability` feature, as `run.url` is.
+        get "/runs/:run_id/resume/transcript", TranscriptController, :show
         # A gateway's secrets request, with the `factory` and `secrets` features.
         post "/secrets", SecretsController, :create
       end
@@ -269,8 +272,6 @@ defmodule ApiaryWeb.Routes do
         get "/artifacts/:version_id/files/:filename", Controller, :file
         post "/artifacts", Controller, :push
         post "/verdict", Controller, :verdict
-        # The transcript of the paused run the run continues, for its session's resume.
-        get "/resume/transcript", Controller, :transcript
       end
 
       scope "/v1", ApiaryWeb.Contract do
