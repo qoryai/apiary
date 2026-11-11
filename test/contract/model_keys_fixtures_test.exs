@@ -1,8 +1,9 @@
 defmodule Apiary.Contract.ModelKeysFixturesTest do
   # The Forager contract's fixtures of a model keys report and its answer, vendored at the
   # commit in `.forager-contract-ref`: each report fixture passes the vendored schema and
-  # `Apiary.ModelKeys.Report.parse/3`, and the answer the server writes for the states of
-  # the answer fixture is that fixture.
+  # `Apiary.ModelKeys.Report.parse/3`, each invalid report fixture is refused by both,
+  # the invalid answer fixture is refused by the schema, and the answer the server writes
+  # for the states of the answer fixture is that fixture.
   use ExUnit.Case, async: true
 
   alias Apiary.ForagerSchemas
@@ -36,6 +37,34 @@ defmodule Apiary.Contract.ModelKeysFixturesTest do
         assert item.observed_at == time(wire["observed_at"]), path
       end
     end
+  end
+
+  test "each invalid report fixture is refused by the schema and by the server" do
+    for {file, name} <- [
+          {"model-keys-report-cooldown-allowed.json", "keys.cooldown_until"},
+          {"model-keys-report-no-observed-at.json", "keys"},
+          {"model-keys-report-rejected-without-cooldown.json", "keys.cooldown_until"},
+          {"model-keys-report-time-fraction.json", "time"},
+          {"model-keys-report-unknown-source.json", "keys.source"},
+          {"model-keys-report-unknown-status.json", "keys.status"},
+          {"model-keys-report-utilization-over-100.json", "keys.utilization"},
+          {"model-keys-report-window-upper-case.json", "keys.window"}
+        ] do
+      path = "invalid/" <> file
+      assert (@fixtures <> path) in Apiary.ContractFixtures.vendored(), path
+      bytes = fixture(path)
+      body = Jason.decode!(bytes)
+      assert {:error, _} = ForagerSchemas.validate("model-keys-report.schema.json", body), path
+
+      {:ok, time} = Batch.time(body["time"])
+      assert Report.parse(bytes, body["run_id"], time) == {:error, :invalid_request, name}, path
+    end
+  end
+
+  test "the invalid answer fixture is refused by the schema" do
+    path = "invalid/model-keys-answer-no-version.json"
+    assert (@fixtures <> path) in Apiary.ContractFixtures.vendored()
+    assert {:error, _} = ForagerSchemas.validate("model-keys-answer.schema.json", fixture(path))
   end
 
   test "the answer to the answer fixture's states is that fixture" do

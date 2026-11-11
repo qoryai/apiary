@@ -283,7 +283,16 @@ defmodule Apiary.Kinds.ServicesTest do
                                   model-keys-report/report-cooldowns.json
                                   model-keys-report/report-empty.json
                                   model-keys-answer/answer.json
-                                  model-keys-answer/answer-empty.json),
+                                  model-keys-answer/answer-empty.json
+                                  invalid/model-keys-answer-no-version.json
+                                  invalid/model-keys-report-cooldown-allowed.json
+                                  invalid/model-keys-report-no-observed-at.json
+                                  invalid/model-keys-report-rejected-without-cooldown.json
+                                  invalid/model-keys-report-time-fraction.json
+                                  invalid/model-keys-report-unknown-source.json
+                                  invalid/model-keys-report-unknown-status.json
+                                  invalid/model-keys-report-utilization-over-100.json
+                                  invalid/model-keys-report-window-upper-case.json),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )

@@ -122,3 +122,12 @@ test/fixtures/forager-contract/model-keys-report/report-cooldowns.json
 test/fixtures/forager-contract/model-keys-report/report-empty.json
 test/fixtures/forager-contract/model-keys-answer/answer.json
 test/fixtures/forager-contract/model-keys-answer/answer-empty.json
+test/fixtures/forager-contract/invalid/model-keys-answer-no-version.json
+test/fixtures/forager-contract/invalid/model-keys-report-cooldown-allowed.json
+test/fixtures/forager-contract/invalid/model-keys-report-no-observed-at.json
+test/fixtures/forager-contract/invalid/model-keys-report-rejected-without-cooldown.json
+test/fixtures/forager-contract/invalid/model-keys-report-time-fraction.json
+test/fixtures/forager-contract/invalid/model-keys-report-unknown-source.json
+test/fixtures/forager-contract/invalid/model-keys-report-unknown-status.json
+test/fixtures/forager-contract/invalid/model-keys-report-utilization-over-100.json
+test/fixtures/forager-contract/invalid/model-keys-report-window-upper-case.json
