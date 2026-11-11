@@ -95,7 +95,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
                )
     end
 
-    test "lists the seeded default with its key, mark, spec, image, workflows and pools", %{
+    test "lists the seeded default with its key, mark, spec, workflows and pools", %{
       conn: conn,
       scope: scope
     } do
@@ -104,26 +104,25 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
 
       assert html =~ ~r{<title[^>]*>\s*Machine types · Instance settings · Qory Apiary\s*</title>}
 
+      # No image between the spec and the workflows; their count differs by the features.
       assert spaced(view, "#machine-type-standard") =~
-               "Standard standard Default 2 vCPUs, 4 GiB 30 GiB disk, amd64 Not set"
+               ~r/^Standard standard Default 2 vCPUs, 4 GiB 30 GiB disk, amd64 \d+ workflows? /
 
       assert has_element?(view, "th", "Spec")
-      assert has_element?(view, "th", "Image")
+      refute has_element?(view, "th", "Image")
       refute has_element?(view, "th", "vCPUs")
 
-      image = "ghcr.io/qoryai/qory-agent-browser@sha256:" <> String.duplicate("0", 64)
+      assert text(view, ".q-settings-head-sub") ==
+               "The machines that runs start on. A workflow runs on the type it picks, else on the workspace's default, else on the instance default."
 
       browser_type()
-      |> Ecto.Changeset.change(virtualization: true, image: image)
+      |> Ecto.Changeset.change(virtualization: true)
       |> Apiary.Repo.update!()
 
       {:ok, view, _html} = live(conn, ~p"/instance/machine-types")
 
       assert spaced(view, "#machine-type-browser") =~
-               "Browser tests browser 2 vCPUs, 4 GiB 30 GiB disk, amd64, virtualization " <>
-                 "qory-agent-browser sha256:000000000000"
-
-      assert has_element?(view, ~s(#machine-type-browser-image[title="#{image}"]))
+               ~r/^Browser tests browser 2 vCPUs, 4 GiB 30 GiB disk, amd64, virtualization \d+ workflows? /
 
       assert text(view, "#machine-type-standard-pools") == pool.name
 
@@ -146,10 +145,10 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       assert form =~
                "Key Process files and stages use the key, such as browser. Lowercase letters, digits and hyphens, starting with a letter, at most 64."
 
-      assert form =~
-               "Image (optional) The image a run on this type starts in, pinned by digest, such as ghcr.io/qoryai/qory-agent-prerelease@sha256:… Leave it empty to start runs in the repository's prebuilt image, else in the default type's image, else in the run machine's image."
-
-      assert has_element?(view, ~s(#type_image[placeholder="registry/name@sha256:…"]))
+      # A type is a size: the form has no Image field.
+      refute form =~ "Image"
+      refute has_element?(view, "#type_image")
+      refute has_element?(view, ~s(#machine-type-form input[name="type[image]"]))
 
       add(view, %{key: "default"})
 
@@ -174,12 +173,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
                  "Write a name of 1 to 100 characters on one line, with no tabs."
       end
 
-      add(view, %{image: "ghcr.io/qoryai/agent:latest"})
-
-      assert text(view, "#machine-type-form") =~
-               "Write a reference pinned by digest, such as ghcr.io/qoryai/qory-agent-prerelease@sha256: and 64 hexadecimal digits."
-
-      add(view, %{image: "", vcpus: "four", memory_gib: "0.3", disk_gib: "0"})
+      add(view, %{vcpus: "four", memory_gib: "0.3", disk_gib: "0"})
       form = text(view, "#machine-type-form")
       assert form =~ "Write a whole number from 1 to 1024."
       assert form =~ "Write a number from 0.5 to 8192, in steps of 1 MiB."
@@ -193,7 +187,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       assert text(view, "#flash-info") =~ "Large added."
 
       assert spaced(view, "#machine-type-large") =~
-               "Large large 4 vCPUs, 1.5 GiB 60 GiB disk, amd64, virtualization Not set 0 workflows"
+               "Large large 4 vCPUs, 1.5 GiB 60 GiB disk, amd64, virtualization 0 workflows"
 
       assert %MachineType{memory_mib: 1536, virtualization: true, is_default: false} =
                MachineTypes.get("large")
@@ -208,9 +202,8 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       assert names() == [{"standard", true}, {"browser", false}]
     end
 
-    test "edits a type's name, image and spec, and makes it the default", %{conn: conn} do
+    test "edits a type's name and spec, and makes it the default", %{conn: conn} do
       machine_type_fixture(key: "large")
-      image = "ghcr.io/qoryai/qory-agent-prerelease@sha256:" <> String.duplicate("c", 64)
       {:ok, view, _html} = live(conn, ~p"/instance/machine-types/large/edit")
 
       # Instance settings / Machine types / Edit Large, the section once.
@@ -222,7 +215,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
 
       view
       |> form("#machine-type-form",
-        type: %{name: "Large builds", image: image, vcpus: "8", is_default: "true"}
+        type: %{name: "Large builds", vcpus: "8", is_default: "true"}
       )
       |> render_submit()
 
@@ -230,10 +223,8 @@ defmodule ApiaryWeb.InstanceLive.MachineTypesTest do
       assert text(view, "#flash-info") =~ "Large builds saved."
       assert names() == [{"standard", false}, {"browser", false}, {"large", true}]
 
-      assert %MachineType{name: "Large builds", image: ^image, vcpus: 8} =
-               MachineTypes.get("large")
+      assert %MachineType{name: "Large builds", vcpus: 8} = MachineTypes.get("large")
 
-      # A type with no image, as Standard is, becomes the default too.
       view
       |> element(~s(#machine-type-standard-menu [phx-click="make_default"]))
       |> render_click()

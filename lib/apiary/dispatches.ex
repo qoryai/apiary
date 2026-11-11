@@ -591,9 +591,7 @@ defmodule Apiary.Dispatches do
   # work items with `target`, `build_failed`, with the outcome `error`, with any stale
   # dispatch of them (`run_ended`), inside the caller's transaction
   # (`Apiary.Environments.build_failed/6`): the workspace and the work items to tell. A
-  # run a claim took is no longer waiting and is left as it is, and so is a run whose
-  # target's run configuration names an image (`Apiary.Environments.unset_by_policy/1`),
-  # or whose machine type has one (`Apiary.MachineTypes.no_image/1`), as no build holds it.
+  # run a claim took is no longer waiting and is left as it is.
   @doc false
   @spec end_held(
           [Ecto.UUID.t()],
@@ -617,8 +615,6 @@ defmodule Apiary.Dispatches do
           where: r.work_item_id in ^work_item_ids and r.workspace_id == ^workspace_id,
           where: r.step != ^@prebuild and fragment("? = 'waiting'", r.state),
           where: w.target_system == ^system and w.target_path == ^path,
-          where: ^Environments.unset_by_policy(workspace_id),
-          where: ^MachineTypes.no_image(:run),
           select: {r.id, r.work_item_id}
         ),
         set: [state: :ended, end_cause: :build_failed, result_outcome: :error, updated_at: now]
@@ -1050,8 +1046,7 @@ defmodule Apiary.Dispatches do
   # (`Apiary.Dispatches.Handover.register/2`): `max` at most per claim. A run whose
   # harness the claim reads again later (`Apiary.Dispatches.HarnessReads.at_claim/3`),
   # or of which it is not known yet whether it is a run of Explore
-  # (`Apiary.Stages.known_explore/1`), or whose machine type a change or a delete holds
-  # (`for_run/2`), stays waiting, and the claim passes it (`skipped`).
+  # (`Apiary.Stages.known_explore/1`), stays waiting, and the claim passes it (`skipped`).
   defp pick(_key, _pool, _through, _now, _default, 0, ended, _skipped), do: {:none, ended}
 
   defp pick(key, pool, through, now, default, max, ended, skipped) do
@@ -1071,9 +1066,6 @@ defmodule Apiary.Dispatches do
     case for_run(run, pool) do
       :held ->
         pick(key, pool, through, now, default, max - 1, ended, skipped)
-
-      :skip ->
-        pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
 
       {:ok, for} ->
         case HarnessReads.at_claim(run, through.reads, now) do
@@ -1138,35 +1130,15 @@ defmodule Apiary.Dispatches do
 
   # What the run is for: its work item, with the image `pool` keeps for its target, or a
   # prebuild's collection. A run whose image went since `waiting_query/2` read it is
-  # held again (`Apiary.Environments.claim_image/2`): `:held`, and it waits. A run whose
-  # machine type, not the default, has an image (`Apiary.MachineTypes.image/1`) starts in
-  # it: the claim fixes that image and the type's id (`image_type`), so a key or image
-  # changed before the attach changes nothing, and no build of its target holds it. The
-  # type is read again `FOR KEY SHARE SKIP LOCKED` (`Apiary.MachineTypes.shared/1`), so a
-  # delete or a key change of it cannot commit between that read and the insert of the run
-  # that refers to it. Where a change or a delete of the type holds its row, the run stays
-  # waiting and the claim passes it: `:skip`.
+  # held again (`Apiary.Environments.claim_image/2`): `:held`, and it waits.
   defp for_run(%DispatchRun{step: @prebuild} = run, _pool) do
     with {:ok, collection} <- collection_of(run), do: {:ok, %{collection: collection}}
   end
 
   defp for_run(%DispatchRun{} = run, pool) do
     with {:ok, work_item} <- work_item_of(run),
-         {:ok, image, type} <- run_image(run, pool, work_item) do
-      {:ok, %{work_item: work_item, image: image, image_type: type}}
-    end
-  end
-
-  defp run_image(%DispatchRun{machine_type: key}, pool, work_item) do
-    case MachineTypes.imaged(key) do
-      nil ->
-        with {:ok, image} <- Environments.claim_image(pool, work_item), do: {:ok, image, nil}
-
-      type ->
-        case MachineTypes.shared(type) do
-          nil -> :skip
-          shared -> {:ok, shared.image, shared.id}
-        end
+         {:ok, image} <- Environments.claim_image(pool, work_item) do
+      {:ok, %{work_item: work_item, image: image}}
     end
   end
 

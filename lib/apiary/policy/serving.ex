@@ -32,8 +32,8 @@ defmodule Apiary.Policy.Serving do
   next batch says the truth.
 
   A run whose answers are composed for it (`Apiary.Policy.ComposedConfiguration`: a run
-  given an image at its attach, or one that must build on its pool's default image, of a
-  workspace whose policy names an image) is answered the digest of the document composed from the configuration in force, as its
+  given an image at its attach, or a run of a workspace whose policy sets an image) is
+  answered the digest of the document composed from the configuration in force, as its
   reload is given it: computed, never stored here. So the run reloads only when the
   policy changes, and is given the same image each time. A reported digest of a document
   composed from a configuration in force is in force too.

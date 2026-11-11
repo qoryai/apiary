@@ -248,6 +248,41 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
   end
 
   @tag needs: :security
+  test "a policy that sets an image is given without it, as its reloads and its digest are",
+       ctx do
+    {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
+    {:ok, current} = Policy.current_configuration(ctx.scope, nil)
+
+    setting =
+      String.replace(current.document, ~s(]}}), ~s(]},"image":"with-docker"}), global: false)
+
+    assert Jason.decode!(setting)["security_policy"]["image"] == "with-docker"
+
+    Repo.insert!(%RunConfiguration{
+      organisation_id: ctx.scope.organisation.id,
+      workspace_id: ctx.scope.workspace.id,
+      version: current.version + 1,
+      document: setting,
+      digest: Render.digest(setting),
+      rendered_at: DateTime.utc_now()
+    })
+
+    run_id = Ecto.UUID.generate()
+    registered = signed_register(build_conn(), ctx.key.key_id, ctx.secret, registration(run_id))
+    assert registered.status == 200
+
+    without = Apiary.Policy.ComposedConfiguration.without_image(setting)
+    assert registered.resp_body == without
+    [digest] = get_resp_header(registered, "x-qory-run-configuration")
+    assert digest == Render.digest(without)
+
+    reloaded = reload(ctx, run_id)
+    assert reloaded.resp_body == registered.resp_body
+    assert get_resp_header(reloaded, "x-qory-run-configuration") == [digest]
+    assert Policy.answered_digest(ctx.scope, run(run_id)) == digest
+  end
+
+  @tag needs: :security
   test "a target with rules of its own gets its own; any other gets the baseline", ctx do
     shop = target_fixture(ctx.scope, "github.example", "acme/site")
     _plain = target_fixture(ctx.scope, "github.example", "acme/docs")

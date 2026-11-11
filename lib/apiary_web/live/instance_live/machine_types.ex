@@ -5,13 +5,12 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
   anyone else gets the page for a path that does not exist. The page lists the instance's
   machine types (`Apiary.MachineTypes`): each type's name, with its key and the mark
   Default on the default under it, its spec in two lines (vCPUs and memory; disk,
-  architecture and virtualization), its image (the last part of its name and the first 12
-  digits of its digest, the whole reference on hover), the workflows that run on it, and
-  the pools that serve it, with a row menu of Edit, Make default (on a type that is not
-  the default) and Delete…, confirmed in its row (`…/:key/delete`).
+  architecture and virtualization), the workflows that run on it, and the pools that
+  serve it, with a row menu of Edit, Make default (on a type that is not the default) and
+  Delete…, confirmed in its row (`…/:key/delete`).
 
-  Add machine type opens `…/new`, a separate page with the type's name, key, spec, image
-  and whether it is the default; Edit opens `…/:key/edit`, the same form. A save that
+  Add machine type opens `…/new`, a separate page with the type's name, key, spec and
+  whether it is the default; Edit opens `…/:key/edit`, the same form. A save that
   changes the key shows a warning first, under the form: the key change breaks every file
   that uses the key, with the counts of the workspaces, workspace types and waiting runs
   that use it, the Qory harness's `process.yaml` files that the instance admin fixes, and
@@ -89,7 +88,6 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
     params = %{
       "name" => "",
       "key" => "",
-      "image" => "",
       "vcpus" => "",
       "memory_gib" => "",
       "disk_gib" => "",
@@ -111,7 +109,6 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
         params = %{
           "name" => type.name,
           "key" => type.key,
-          "image" => type.image || "",
           "vcpus" => to_string(type.vcpus),
           "memory_gib" => gib(type.memory_mib),
           "disk_gib" => to_string(type.disk_gib),
@@ -350,12 +347,6 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
       else: gettext("Write a name of 1 to 100 characters on one line, with no tabs.")
   end
 
-  defp field_line(:image, _opts, _params),
-    do:
-      gettext(
-        "Write a reference pinned by digest, such as ghcr.io/qoryai/qory-agent-prerelease@sha256: and 64 hexadecimal digits."
-      )
-
   defp field_line(:vcpus, opts, _params) do
     if opts[:validation] == :no_pool,
       do: gettext("No pool offers a machine that fits this type."),
@@ -392,7 +383,6 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
        %{
          key: String.trim(params["key"] || ""),
          name: String.trim(params["name"] || ""),
-         image: String.trim(params["image"] || ""),
          vcpus: vcpus,
          memory_mib: memory,
          disk_gib: disk,
@@ -512,21 +502,6 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
               options={MachineType.arches()}
             />
           </div>
-          <.input
-            field={@form[:image]}
-            type="text"
-            label={gettext("Image (optional)")}
-            placeholder={gettext("registry/name@sha256:…")}
-            hint={
-              gettext(
-                "The image a run on this type starts in, pinned by digest, such as ghcr.io/qoryai/qory-agent-prerelease@sha256:… Leave it empty to start runs in the target's prebuilt image, else in the default type's image, else in the run machine's image."
-              )
-            }
-            class="font-mono"
-            maxlength="327"
-            autocomplete="off"
-            spellcheck="false"
-          />
           <div class="grid gap-1">
             <.input
               field={@form[:virtualization]}
@@ -609,24 +584,6 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
               <span id={"machine-type-#{type.key}-spec"}>
                 {spec_line(type)}
                 <span class="mt-0.5 block text-[12px]/4 text-muted">{disk_line(type)}</span>
-              </span>
-            </:col>
-            <:col :let={type} label={gettext("Image")}>
-              <span
-                :if={type.image}
-                id={"machine-type-#{type.key}-image"}
-                class="grid min-w-44 whitespace-normal"
-                title={type.image}
-              >
-                <span class="font-mono text-[12.5px]/[18px] [overflow-wrap:anywhere]">
-                  {image_name(type.image)}
-                </span>
-                <span class="mt-0.5 block font-mono text-[12px]/4 text-muted">
-                  {image_digest(type.image)}
-                </span>
-              </span>
-              <span :if={!type.image} id={"machine-type-#{type.key}-image"} class="text-muted">
-                {gettext("Not set")}
               </span>
             </:col>
             <:col :let={type} label={gettext("Used by")}>
@@ -863,7 +820,7 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
   defp subtitle,
     do:
       gettext(
-        "The machines that runs start on, and the image a run starts in. A workflow runs on the type it picks, else on the workspace's default, else on the instance default."
+        "The machines that runs start on. A workflow runs on the type it picks, else on the workspace's default, else on the instance default."
       )
 
   defp spec_line(type),
@@ -885,15 +842,6 @@ defmodule ApiaryWeb.InstanceLive.MachineTypes do
         disk: MachineTypeWords.disk(type.disk_gib),
         arch: type.arch
       )
-
-  # The last part of an image's name, without its registry and its path:
-  # `ghcr.io/qoryai/qory-agent-prerelease@sha256:…` is qory-agent-prerelease.
-  defp image_name(image),
-    do: image |> String.split("@") |> hd() |> String.split("/") |> List.last()
-
-  # An image's digest cut to its first 12 digits: sha256:cbe08a2e8275.
-  defp image_digest(image),
-    do: "sha256:" <> (image |> String.split(":") |> List.last() |> binary_part(0, 12))
 
   defp used_by(count),
     do: ngettext("%{count} workflow", "%{count} workflows", count, count: Format.number(count))

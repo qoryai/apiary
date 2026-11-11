@@ -769,32 +769,17 @@ run configuration: a registration is answered `{"version":1}`, the document of n
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.
 
 **The image.** A run of a workspace's queue that is not a prebuild (A run of the queue,
-above) is given the first of: the image of its machine type, where that type is not the
-default and has the run's key (`Apiary.MachineTypes.image/1`); the image the node pool
-that claimed it recorded for the run's target (`Apiary.Environments.image_for/2`): of
-the pool's builds for that target, the newest whose `environment_ref` (`built_ref`) is
-its collection's `environment_ref`, an image built on the default type's image; the
-default type's image; else no image, and the run starts in the pool's default. The claim
-chooses the type's image, else the target's, and keeps it on the registered run
-(`runs.configured_image`), marked as a type's image with the type's id
-(`runs.configured_image_from_type`, `runs.configured_image_machine_type_id`), so a key
-or image changed before the attach changes nothing; the attach gives the run that image,
-else the default type's, which it marks the same way; a run claimed before that rule has
-it chosen at the attach. A prebuild is given the default type's image, else none, and
-starts in the pool's default. The claim reads a type that is not the default `FOR KEY
-SHARE SKIP LOCKED`: while a change or a delete of that type holds its row, the claim
-passes the run, which waits for the next claim. The attach reads the default type's row
-again by id `FOR KEY SHARE`: while a change holds the row, the attach waits for it, then
-gives the type's image as the change left it. The run configuration schema's top-level
-`image` has the type's image, as it has a target's: a digest reference that the
-machine's `images.allow` must allow. A pull of a type's image that ends `run.exited`
-with reason `image_missing` ends the run as any exit does: no build is cleared or
-queued, and nothing is queued again (`Apiary.Dispatches.RunEnd`), read by the mark the
-run kept, whatever the type's image is by then and also once the type is deleted, which
-sets the id to null. A run, of a type's image or of a target's, whose `run.exited` has
+above) is given the image the node pool that claimed it recorded for the run's target
+(`Apiary.Environments.image_for/2`): of the pool's builds for that target, the newest
+whose `environment_ref` (`built_ref`) is its collection's `environment_ref`; with none,
+no image, and the run starts in the pool's default, the machine's default image. A
+machine type sets the size of the machine alone, never an image. The claim chooses the
+image and keeps it on the registered run (`runs.configured_image`), and the attach gives
+the run that image; a run claimed before that rule has it chosen at the attach. A
+prebuild is given no image and starts in the pool's default. A run whose `run.exited` has
 the reason `image_access_denied`, `image_rate_limited` or `image_registry_unreachable`
-ends as any exit does too: a build or a new run pulls from the same registry, so no
-build is cleared or queued, and nothing is queued again.
+ends as any exit does: a build or a new run pulls from the same registry, so no build is
+cleared or queued, and nothing is queued again.
 
 **A run held for its build.** In a workspace whose domain has prebuilds, a waiting run
 of a work item whose target a live collection names with an `environment_ref` waits for
@@ -807,12 +792,8 @@ next claim; nothing else queues a build ahead of a run, apart from a member's Re
 and an image found missing. The claim holds the collections it queues a build of `FOR
 SHARE`, by id, before the pool's row. A run whose target no collection names, or of a
 workspace whose domain has no prebuilds, waits for nothing and starts in the pool's
-default. A run whose machine type is not the default and has an image
-(`Apiary.MachineTypes.no_image/1`) waits for nothing, queues no build and starts in that
-image; a run on the default type waits as before, whatever the default type's image.
-With the feature `security`, a run whose target's run configuration in force names an
-image in its `security_policy` waits for nothing, queues no build and is not ended by a
-build's failure: it starts in the policy's image.
+default. A run waits for its target's build whatever its machine type, and whatever image
+the `security_policy` of its target's run configuration sets.
 
 A run given an image has its configuration composed for it
 (`Apiary.Policy.ComposedConfiguration`), `image` beside `security_policy` and never
@@ -827,28 +808,23 @@ are canonical, as a stored document's are, and its digest is theirs. A composed 
 kept by its digest and the configuration it was composed from, one row per document and
 configuration of a workspace (`composed_run_configurations`), since leaving a policy's
 `image` out can make two configurations give the same bytes; a row goes with its
-configuration and with the workspace. Where the workspace's policy names an image (`security_policy.image`) at a
-run's attach, no run is given one beside it: the run starts in the policy's, and the two
-never both name one. The attach keeps what the run started in (`runs.started_image_from`
-and `runs.started_image`): the image given at the top level, the image its policy named, or
-none. Forager fixes the image when the run starts: it takes a reload only when the reload
-names, at the top level, the image the start named there, or none as the start did, and
-selects the image the run started in. So when the policy in force names another image than
-the run started in, or none where the run started in one, or one where it started in none,
-the reload carries the start's image that way. A run given an image at the top level keeps
-it there, beside the policy in force without its `image`. A run that started in the image
-its policy named is given the policy in force with that image as its `image`, and nothing
-at the top level. A run that started in no image is given the policy in force without its
-`image`. The rest of the policy applies at once, the policy's image from the next attach,
-and the two still never both name one. A policy that selects what the run started in is
-reloaded byte for byte as stored. A run that attached before the start was kept is reloaded
-as it was. A
-prebuild whose workspace's policy names an image is given that policy without its `image`,
-the rest as stored, beside the default type's image at the top level where that type has
-one, else nothing, and builds on the pool's default. Every other run, a
-run a node registered itself, a run with no recorded image and a prebuild under a policy
-that names none among them, is given the stored bytes, under their digest, as above, until
-its policy comes to select another image than it started in. A
+configuration and with the workspace. Where the workspace's policy sets an image
+(`security_policy.image`), every run, a prebuild and a run a node registered itself
+among them, is given that policy without its `image`, the rest as stored, beside the
+image it is given at the top level where it is given one: no run starts in an image a
+policy sets, and the document never sets an image in both places. The attach keeps what
+the run started in (`runs.started_image_from` and `runs.started_image`): the image given
+at the top level, or none; `policy`, the image the `security_policy` set, is only on runs
+that attached while a run could start in its policy's image. Forager
+fixes the image when the run starts: it takes a reload only when the reload sets, at the
+top level, the image the start set there, or none as the start did, and selects the
+image the run started in. A run given an image at the top level keeps it there, beside the
+policy in force without its `image`. A run that started in no image is given the policy in
+force without its `image`. The rest of the policy applies at once. A run that attached
+before the start was kept, and one that started in its policy's image, is given the policy
+in force without its `image`, and nothing at the top level. Every other run, a run with no
+recorded image under a policy that sets none among them, is given the stored bytes, under
+their digest, as above. A
 run is behind when the digest it reported is not the one it would be answered now, the
 configuration in force composed for it as its reload would be. A page that names the
 version a digest stands for reads a composed digest as the configuration it was composed
@@ -923,13 +899,14 @@ workspace and organisation, its bytes with `,"labels":…` and `,"about":…` ad
 closing brace, each only when the registration had some, with `X-Qory-Run-Configuration`
 and `ETag` of the configuration's digest, not the body's, so that a reload and the run's
 batches carry the same digest, and `X-Qory-Configuration`. For a run given an image, and a
-prebuild under a policy that names one, the configuration is the composed document and the
+run under a policy that sets one, the configuration is the composed document and the
 digest is the composed document's (The image, above); a repeat is given it by the stored digest. The run keeps
 `attached_at`, `attach_interval_seconds`, the digest given (`attach_answer_digest`), the
 instance id the attach was signed with (`gateway_instance_id`), the attach's Forager
 version (the `User-Agent`'s first) and contract version, the image it was given at the top
 level (`configured_image`), nil for none, and what it started in (`started_image_from`:
-`top_level`, `policy` or `none`; `started_image`, nil for none).
+`top_level` or `none`, and `policy` on a run that attached while a policy's image could
+start one; `started_image`, nil for none).
 
 **The reload.** `GET /v1/runs/<run_id>`, signed with `X-Qory-Timestamp`, is answered only
 to the active keys of the node that registered the run, or, for a run through a gateway,
@@ -947,9 +924,10 @@ longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`) is `410`
 attach composed its configuration is given the configuration in force now composed the
 same way, with the image it was given at its attach, under the composed digest: Forager
 fixes the image when the run starts, so every reload names the same one, and a policy
-change is the only reason the digest moves. A policy in force that selects another image
-than the run started in is composed with the start's image (The image, above), under a
-digest that maps back to the policy's, so the run is not shown behind it. A reload on a workspace with no policy, or a
+change is the only reason the digest moves. A policy in force that sets an image is
+composed without it, beside the start's image (The image, above), under a digest that
+maps back to the policy's, so the run is not shown behind it. A reload on a workspace
+with no policy, or a
 policy removed mid-run, answers `404`, a run given an image included; only a run whose
 attach was answered `{"version":1,"image":"…"}`, its image where the workspace served no
 run configuration, is answered that again there, and only while the workspace has never

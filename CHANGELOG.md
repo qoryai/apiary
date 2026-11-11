@@ -144,6 +144,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   work did not come back from the machine.” A run that stopped before its session
   started has no note above the Timeline. An instance admin also reads the machine log
   under **Start the machine**. The list updates without a reload while the run runs.
+- A run whose pull of its image ends with `image_access_denied`, `image_rate_limited` or
+  `image_registry_unreachable` shows the failed step under **Pull the images** and ends
+  as any failed run does: it queues no build and no run again.
 - **Remove the machine** shows what the node pool reported about removing the run's
   machine: "Machine removal requested" or "Removal failed: the machine still exists",
   or, once the machine is gone, how long the removal took and why: "Run ended" or
@@ -915,18 +918,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   value.
 <!-- feature: factory -->
 - **Instance settings › Machine types** lists the machines that runs start on: each
-  type's name and key, its spec, its image, the workflows that run on it, and the pools
-  that serve it. A new instance has two types: Standard (`standard`), the default, and
-  Browser tests (`browser`), each 2 vCPUs, 4 GiB, 30 GiB of disk, amd64, with no image;
-  the migration adds `browser` to an instance without one (Migrations, `machine_types`).
-  An instance admin adds a type with **Add machine type**, edits it, makes it the
-  default and deletes it, each after a recent sign-in and each an `instance.configure`
-  entry in the instance's trail. A type has a name of 1 to 100 characters on one line,
-  with no control character, that no other type has, ignoring case, such as Browser
-  tests, and a key, such as `browser`, that process files and stages use: 1 to 64
-  lowercase letters, digits and hyphens, starting with a letter, not `default`. A type
-  may have an image, a reference pinned by digest, such as
-  `ghcr.io/acme/agent@sha256:…`, or none, the default type too. The default type, and a
+  type's name and key, its spec, the workflows that run on it, and the pools that serve
+  it. A new instance has two types: Standard (`standard`), the default, and Browser
+  tests (`browser`), each 2 vCPUs, 4 GiB, 30 GiB of disk, amd64; the migration adds
+  `browser` to an instance without one (Migrations, `machine_types`). An instance admin
+  adds a type with **Add machine type**, edits it, makes it the default and deletes it,
+  each after a recent sign-in and each an `instance.configure` entry in the instance's
+  trail. A type has a name of 1 to 100 characters on one line, with no control
+  character, that no other type has, ignoring case, such as Browser tests, and a key,
+  such as `browser`, that process files and stages use: 1 to 64 lowercase letters,
+  digits and hyphens, starting with a letter, not `default`. The default type, and a
   type that a workspace's process or a workspace type uses, cannot be deleted; the page
   shows how many workflows in how many organisations use it, such as “4 workflows in 2
   organisations use it”, how many workspaces in how many organisations have it as their
@@ -986,40 +987,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a machine: build-pool runs 3 of its 3 machines.” At the claim, the page becomes the
   page of the running run without a reload. A run that ends while it waits keeps its
   number.
-- A run starts in the image of its machine type. The order is: the policy's image; the
-  image of the run's type, where that type is not the default; the image prebuilt for
-  the run's target, which is built on the default type's image; the default type's
-  image; else the machine's default image. The claim fixes the image of a type that is
-  not the default, so a key or image changed before the attach changes nothing for the
-  run. A run on such a type waits for no build of its target's environment image, and
-  a run on the default type waits for it as before. A pull of a type's image that ends
-  `image_missing` ends the run as any exit does: it queues no build and no run again,
-  whatever the type's image is by then.
-- A prebuild starts from the default type's image, sent in its run configuration as a
-  run's image is, also under a policy that sets an image. Where the default type has no
-  image, a prebuild starts on the machine's default image, as before.
+- Every run starts in its target's prebuilt image, else the machine's default image; a
+  machine type sets the size only.
 - When an instance admin changes a type's key, every run that waits in the queue on a
   version of a workspace's process that the change replaces moves to the new version,
   and the runs on the key move to the new key. A run that started keeps its key.
-- On a run's page, while **Pull the images** pulls the image of the run's type, the step
-  shows “The machine pulls the image of the machine type Browser tests (`browser`). Each
-  run pulls its image before the agent starts.” and “No action needed.” When that image
-  is not in its registry, the step and “How it ended” show “Pull the images failed: the
-  image of the machine type Browser tests (`browser`) is not in its registry:
-  `ghcr.io/acme/agent@sha256:0123456789ab…`.”, and the step shows an instance admin “An
-  instance admin sets an image that exists in Instance settings › Machine types, then
-  runs the work item again.”, and anyone else “Contact support with run rn_….” in plain
-  text. **Details** show such an image with its digest cut to 12 digits, whole on hover,
-  and without “Prebuilt for this target”.
-- When the registry or the run's proxy returns 401 or 403, or 429, for the image of the
-  run's machine type, or the connection to the registry fails or takes longer than 30
-  seconds, the run's page shows the cause under **Pull the images** and in “How it
-  ended”, such as “Pull the images failed: a rate limit stopped the requests for the
-  image of the machine type Browser tests (`browser`).” An instance admin reads who
-  fixes it, the cause and the image. Anyone else reads, in plain text, “Contact support
-  with run rn_….”, or after a rate limit “Run the work item again later. If it fails
-  again, contact support with run rn_….” Such a run ends as any failed run does: it
-  queues no build and no run again.
 - A queued run on a type that no pool offer fits shows **Why it waits** in its header,
   and under **Queue the run**, as “Waiting for a machine: no pool offers a machine that
   fits UI tests, large (`ui-tests-large`: 8 vCPUs, 32 GiB, 100 GiB disk).”, then, for an
@@ -1028,11 +1000,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   pool that serves the workspace, and for anyone else, in plain text, “Contact support
   with run rn_…, or ask the admin of build-pool to add an offer that fits.”, or “Contact
   support with run rn_….” where the instance's pool serves the workspace. **Queue the
-  run** shows the run's **Machine type** by name and key, and **Details** show the image
-  of a type that is not the default, read when the page loads, with its digest cut to 12
-  digits, whole on hover. A queued run on the default type or on a key no type has, and
-  one on a type with no image, show no **Image** row. Such a run is given its target's
-  prebuilt image first, where one is recorded.
+  run** shows the run's **Machine type** by name and key.
 <!-- /feature -->
 
 ### Changed
@@ -1705,13 +1673,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
-- `runs` (20261110090000): a column `configured_image_from_type`, false by default,
-  true where the run was given the image of a machine type, and a nullable column
-  `configured_image_machine_type_id`, that type, a foreign key to `machine_types` set to
-  null when the type is deleted, with a partial index and a check:
-  `configured_image_from_type` is true only where `configured_image` is set, and the
-  type's id is set only where it is true. It changes no row: a run given an image before
-  is read as given its target's.
+- `machine_types` and `runs` (20261111090000): drops `machine_types.image`, with its
+  check, and `runs.configured_image_from_type` and
+  `runs.configured_image_machine_type_id`, with their check and index. Each type's image
+  and the mark of which runs started in a type's image are lost; `runs.configured_image`
+  and each type's key, name and spec stay. A run claimed with a type's image before the
+  upgrade starts in that image only where the image is in the organisation's place in
+  the registry, else in the pool's default image. Rolling back adds the columns again,
+  with no image on any type and no run marked.
+- `runs` (20261110090000): a column `configured_image_from_type`, false by default, and
+  a nullable column `configured_image_machine_type_id`, a foreign key to
+  `machine_types`, with a partial index and a check. It changes no row, and
+  20261111090000 drops both columns.
 - `escalations` (20261109100001): the column `gaps` is dropped, and a column `points`, a
   JSON array that is empty by default, takes its place. Each line of an `escalate`
   escalation's gaps becomes one `run_again` point, up to 20. The gaps of other
@@ -1731,12 +1704,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `machine_types` (20261109090000): the column `name` becomes `key`, with its index and
   its check. A column `name` gets each type's key with its first letter in upper case
   and its hyphens as spaces, such as Standard for `standard` and Large gpu for
-  `large-gpu`; a nullable column `image` is added. A unique index on the lower case of
-  `name` follows, and a check of 1 to 100 characters with no control character and no
-  line or paragraph separator (U+2028, U+2029). Unless a row has the key `browser`, the
-  migration adds the type `browser`, 2 vCPUs, 4 GiB, 30 GiB of disk, amd64, with no
-  image, named Browser tests, or Browser tests (browser) where another row has the name
-  Browser tests in any case. It changes no other table.
+  `large-gpu`; a nullable column `image` is added, which 20261111090000 drops. A unique
+  index on the lower case of `name` follows, and a check of 1 to 100 characters with no
+  control character and no line or paragraph separator (U+2028, U+2029). Unless a row
+  has the key `browser`, the migration adds the type `browser`, 2 vCPUs, 4 GiB, 30 GiB
+  of disk, amd64, named Browser tests, or Browser tests (browser) where another row has
+  the name Browser tests in any case. It changes no other table.
 - `run_configurations` and `audit_entries`: each workspace with no security policy gets
   version 1, observe with no rules, and its entry in the audit log, by Qory Apiary. No
   migration writes these rows. Qory Apiary writes them when it starts, after the

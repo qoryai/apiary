@@ -68,18 +68,12 @@ defmodule Apiary.Runs.Preparation do
       found lost or its exit, and `refused` `:lost` or `:cancelled`. `fix` is what the
       reader of `scope` does about an image not saved (`t:built_fix/0`). Nil otherwise,
       and for any other run.
-    * `image_type`: the machine type whose image the run was given
-      (`runs.configured_image`), by the id its claim or attach kept
-      (`runs.configured_image_machine_type_id`, `Apiary.Runs.Attach`), with its key,
-      name and image as they are now; nil for a run given a target's image or none, and
-      for a type deleted since.
 
   Every read is scoped as `Apiary.Runs.Record` scopes it: the scope's organisation and
   workspace, and the run's row id.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
-  import ApiaryWeb.RichText, only: [rich_gettext: 2]
 
   import Ecto.Query, only: [from: 2]
 
@@ -102,18 +96,12 @@ defmodule Apiary.Runs.Preparation do
   # contract's list counts as the workspace's.
   @pool_kinds ~w(image join wall machine)
 
-  # The reasons of a run's exit after the pull of its image failed, each a refusal code of
-  # Forager: the image is not in its registry; the registry, its token server or the run's
-  # proxy returned 401 or 403; one of them returned 429; or the connection to the
-  # registry failed or took longer than 30 seconds.
-  @image_reasons ~w(image_missing image_access_denied image_rate_limited image_registry_unreachable)
-
   # The kinds of step that run after the last agent session: the push of the run's work,
   # and the copy of it back from the wall.
   @after_kinds ~w(push copy)
 
   @typedoc "Where the cause of a failure lies, by who can fix it."
-  @type fixer :: :support | :operator_admin | :workspace_admin | :instance_admin
+  @type fixer :: :support | :operator_admin | :workspace_admin
 
   @typedoc "Why a preparation failed."
   @type cause ::
@@ -231,22 +219,16 @@ defmodule Apiary.Runs.Preparation do
   (nil for any other cause), who can fix it, and the cause line: `text`, what happened
   and who fixes it, `what`, its first sentence alone, and `fix`, its second. `detail` is
   the part of qory's step name that the step's label leaves out (`step_detail/1`), in
-  parentheses at the end of `what`; nil when there is none. For a run whose machine
-  type's image is not in its registry, `rich` is `what` as rich text
-  (`ApiaryWeb.RichText`), and `fix_shown` is true where the run page shows `fix` under
-  it; for a reader of `scope` who is not an instance admin, `fix` is "Contact support
-  with run …".
+  parentheses at the end of `what`; nil when there is none.
   """
   @type stopped :: %{
-          required(:cause) => cause,
-          required(:step) => pos_integer | nil,
-          required(:fixer) => fixer,
-          required(:text) => String.t(),
-          required(:what) => String.t(),
-          required(:fix) => String.t(),
-          required(:detail) => String.t() | nil,
-          optional(:rich) => term,
-          optional(:fix_shown) => true
+          cause: cause,
+          step: pos_integer | nil,
+          fixer: fixer,
+          text: String.t(),
+          what: String.t(),
+          fix: String.t(),
+          detail: String.t() | nil
         }
 
   @typedoc """
@@ -312,8 +294,7 @@ defmodule Apiary.Runs.Preparation do
           outputs: [output_version],
           stopped: stopped | nil,
           prebuild: boolean,
-          built: built | nil,
-          image_type: %{key: String.t(), name: String.t(), image: String.t()} | nil
+          built: built | nil
         }
 
   @type built :: %{
@@ -406,37 +387,8 @@ defmodule Apiary.Runs.Preparation do
         ),
       prebuild: prebuild,
       built: if(prebuild, do: built(scope, run, session_end, machine)),
-      queued: if(is_nil(machine), do: queued(scope, run)),
-      image_type: image_type(run)
+      queued: if(is_nil(machine), do: queued(scope, run))
     }
-  end
-
-  # The machine type whose image the run was given (`runs.configured_image`), by the id
-  # its claim or attach kept (`runs.configured_image_machine_type_id`,
-  # `Apiary.Runs.Attach`): `%{key: key, name: name, image: image}`, its key and name as
-  # they are now; nil for a run given a target's image or none, and for a type deleted
-  # since, whose run then has the cause line of any failed step.
-  defp image_type(%Run{configured_image: image, configured_image_machine_type_id: id})
-       when is_binary(image) and is_binary(id) do
-    case Repo.get(Apiary.MachineTypes.MachineType, id) do
-      %{key: key, name: name} -> %{key: key, name: name, image: image}
-      nil -> nil
-    end
-  end
-
-  defp image_type(%Run{}), do: nil
-
-  @doc """
-  An image reference as a page shows it: its digest cut to its first 12 hexadecimal
-  digits and an ellipsis, as "ghcr.io/acme/agent@sha256:0123456789ab…"; any other
-  reference as it is.
-  """
-  @spec short_image(String.t()) :: String.t()
-  def short_image(image) do
-    case Regex.run(~r/\A(.+@sha256:[0-9a-f]{12})[0-9a-f]{52}\z/, image) do
-      [_image, short] -> short <> "…"
-      nil -> image
-    end
   end
 
   # A queued run (`Apiary.Runs.Run.queued?/1`): when it began to wait, its record's
@@ -1144,12 +1096,6 @@ defmodule Apiary.Runs.Preparation do
       nil ->
         nil
 
-      %{kind: "image"} = step when run.exit_reason in @image_reasons ->
-        case image_type(run) do
-          nil -> step_stopped(scope, run, machine, step)
-          type -> image_stopped(scope, run, step, type, machine && machine.pool)
-        end
-
       step ->
         step_stopped(scope, run, machine, step)
     end
@@ -1172,128 +1118,6 @@ defmodule Apiary.Runs.Preparation do
       fix: fix,
       detail: step_detail(step)
     }
-  end
-
-  # The pull of the image of the run's machine type failed with one of Forager's image
-  # codes (`@image_reasons`): an instance admin fixes it, as the type's image is set in
-  # Instance settings › Machine types. `rich` is the first sentence, what happened, with
-  # the key in code font; the run's header shows it too. An instance admin then reads the
-  # fix, its cause and the image (`image_fix/3`); anyone else reads the line of the
-  # instance's pool, "Contact support with run …" (`image_support/2`): an organisation's
-  # people never see the word "instance", and "support" is how they reach the instance
-  # admins.
-  defp image_stopped(scope, run, step, type, pool) do
-    rich = image_what(run.exit_reason, type)
-    what = ApiaryWeb.RichText.plain_text(rich)
-
-    {fixer, fix} =
-      if Access.instance_admin?(scope),
-        do: {:instance_admin, image_fix(run.exit_reason, short_image(type.image), pool)},
-        else: {:support, image_support(run.exit_reason, run.public_id)}
-
-    %{
-      cause: :step_failed,
-      step: step.number,
-      fixer: fixer,
-      text: what <> " " <> fix,
-      what: what,
-      fix: fix,
-      detail: nil,
-      rich: rich,
-      fix_shown: true
-    }
-  end
-
-  # What happened, for every reader: the code's cause in plain words, and the type.
-  defp image_what("image_missing", type) do
-    rich_gettext(
-      "Pull the images failed: the image of the machine type %{name} (%{key}) is not in its registry: %{image}.",
-      name: type.name,
-      key: {:m, type.key, "font-mono"},
-      image: {:m, short_image(type.image), "font-mono"}
-    )
-  end
-
-  defp image_what("image_access_denied", type) do
-    rich_gettext(
-      "Pull the images failed: access to the image of the machine type %{name} (%{key}) was denied.",
-      name: type.name,
-      key: {:m, type.key, "font-mono"}
-    )
-  end
-
-  defp image_what("image_rate_limited", type) do
-    rich_gettext(
-      "Pull the images failed: a rate limit stopped the requests for the image of the machine type %{name} (%{key}).",
-      name: type.name,
-      key: {:m, type.key, "font-mono"}
-    )
-  end
-
-  defp image_what("image_registry_unreachable", type) do
-    rich_gettext(
-      "Pull the images failed: no connection to the image's registry, for the machine type %{name} (%{key}).",
-      name: type.name,
-      key: {:m, type.key, "font-mono"}
-    )
-  end
-
-  # The line of a reader who is not an instance admin. A rate limit resets with time, so
-  # that reader runs the work item again first.
-  defp image_support("image_rate_limited", public_id) do
-    gettext(
-      "Run the work item again later. If it fails again, contact support with run %{run}.",
-      run: public_id
-    )
-  end
-
-  defp image_support(_reason, public_id),
-    do: gettext("Contact support with run %{run}.", run: public_id)
-
-  # The instance admin's line: the fix, then the cause, then the image.
-  defp image_fix("image_missing", _image, _pool) do
-    gettext(
-      "An instance admin sets an image that exists in Instance settings › Machine types, then runs the work item again."
-    )
-  end
-
-  # `image_access_denied` covers a 401 or 403 from the registry, its token server or the
-  # run's proxy, and on Docker Hub a repository that does not exist. A repository here is
-  # the registry's, of images, in every domain: the context "plain" (docs/lingo.md).
-  defp image_fix("image_access_denied", image, _pool) do
-    pgettext(
-      "plain",
-      "An instance admin gives the run's registry credential read access to the image, or sets another image in Instance settings › Machine types. If the workspace's policy blocks the registry, a workspace admin allows it on the workspace's Policy page. The registry returned 401 or 403 for %{image}, or the run's proxy returned 403 because of the policy. On Docker Hub, 401 also means that the repository does not exist.",
-      image: image
-    )
-  end
-
-  # The gateway's run limits are set where the pool's gateway runs: by an admin of the
-  # pool for a pool of the run's workspace or of another organisation, by an instance
-  # admin for the instance's pool, and for a run with no pool known, whose line then has
-  # no pool's name. A pool's name came from a person and is shown as a text an external
-  # system sent, as the run's waiting line shows it.
-  defp image_fix("image_rate_limited", image, %{place: place, name: pool})
-       when place in [:workspace, :operator] do
-    gettext(
-      "An instance admin runs the work item again once the registry's rate limit resets, or the admin of %{pool} raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for %{image}.",
-      image: image,
-      pool: ExternalText.line(pool)
-    )
-  end
-
-  defp image_fix("image_rate_limited", image, _pool) do
-    gettext(
-      "An instance admin runs the work item again once the registry's rate limit resets, or raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for %{image}.",
-      image: image
-    )
-  end
-
-  defp image_fix("image_registry_unreachable", image, _pool) do
-    gettext(
-      "An instance admin checks that the registry's host name resolves, that the registry is running and that its certificate is valid, then runs the work item again. The connection to the registry for %{image} failed or took longer than 30 seconds.",
-      image: image
-    )
   end
 
   # Each cause line is two sentences: what happened, then who fixes it. The first sentence
