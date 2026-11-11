@@ -884,7 +884,10 @@ fallback's model and effort. Where every key of the provider and of each fallbac
 cooldown, the claim registers nothing and the run of the queue waits again, its
 `dispatch_runs.model_provider_ids` set to those providers; no claim takes a run of the
 queue while every key of each of its providers is in cooldown
-(`Apiary.ModelKeys.claimable/1`). A gateway's secrets request reveals each key in the
+(`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its fallbacks, or of a
+model provider sets the providers of each waiting run it may change again, from the
+choice in effect, once the change has committed
+(`Apiary.Dispatches.refresh_model_providers/1`). A gateway's secrets request reveals each key in the
 request by the key's row id, under the value id the key has at the request: a key renamed since the
 claim is revealed, and a request for a key deleted since fails. A run stored before runs
 kept several keys keeps its one key, under the provider's public id, and its run

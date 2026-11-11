@@ -522,12 +522,27 @@ defmodule Apiary.ModelChoices do
       Repo.transact(fn ->
         :ok = Access.lock_places(scope)
 
-        with {:ok, scope, at} <- hold_place(scope, holder, workflow, chain) do
-          fun.(scope, at)
-        end
+        with {:ok, scope, at} <- hold_place(scope, holder, workflow, chain),
+             {:ok, value} <- fun.(scope, at),
+             do: {:ok, {value, waiting_runs(at)}}
       end)
+      |> case do
+        {:ok, {value, runs}} ->
+          :ok = Apiary.Dispatches.refresh_model_providers(runs)
+          {:ok, value}
+
+        error ->
+          error
+      end
     end
   end
+
+  # The waiting runs whose model providers a write at `at` may change: those of the
+  # place's workspace, or of its organisation for the organisation's default, and for the
+  # operator's chain, which serves the runs of other organisations, every waiting run.
+  defp waiting_runs(%{chain: "operator"}), do: :all
+  defp waiting_runs(%{workspace: %Workspace{id: id}}), do: {:workspace, id}
+  defp waiting_runs(%{organisation: %Organisation{id: id}}), do: {:organisation, id}
 
   defp chain_place("organisation", _holder), do: :ok
   defp chain_place("operator", :organisation), do: :ok

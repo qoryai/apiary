@@ -1104,6 +1104,7 @@ defmodule Apiary.Connections do
          }}
       end)
 
+    :ok = Apiary.Dispatches.refresh_model_providers({:organisation, organisation_id})
     deleted
   end
 
@@ -1349,6 +1350,7 @@ defmodule Apiary.Connections do
         {:ok, inserted}
       end
     end)
+    |> refreshed()
     |> reload()
     |> without_keys()
   end
@@ -1537,6 +1539,7 @@ defmodule Apiary.Connections do
            :ok <- valid(changeset),
            do: save_provider(scope, current, changeset, description)
     end)
+    |> refreshed()
   end
 
   # The reach is set at the add: a change of `applies_to` is refused. A provider whose keys
@@ -1679,10 +1682,27 @@ defmodule Apiary.Connections do
         {:ok, deleted}
       end
     end)
+    |> refreshed()
     |> without_keys()
   end
 
   def delete_provider(%Scope{}, %Connection{}), do: {:error, :not_found}
+
+  # The result of a change of a model provider, once it has committed, with the model
+  # providers of the waiting runs that the change may change set again
+  # (`Apiary.Dispatches.refresh_model_providers/1`): those of the provider's
+  # organisation, and for a provider of the operator's chain, which serves the runs of
+  # other organisations, every waiting run.
+  defp refreshed({:ok, %Connection{chain: chain, organisation_id: id}} = result) do
+    :ok =
+      Apiary.Dispatches.refresh_model_providers(
+        if(chain == "operator", do: :all, else: {:organisation, id})
+      )
+
+    result
+  end
+
+  defp refreshed(result), do: result
 
   defp not_used([], []), do: :ok
   defp not_used(places, []), do: {:error, {:model_in_use, places}}

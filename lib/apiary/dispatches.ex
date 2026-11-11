@@ -507,14 +507,24 @@ defmodule Apiary.Dispatches do
   defp machine_type(stage), do: MachineTypes.queued_on(stage[:machine_type])
 
   # The new run's changeset with the model providers of its model choice as the choice is
-  # when the run is queued: the choice's provider, then its fallbacks in their order
-  # (`Apiary.Dispatches.RunSettings.choice_in_effect/1`), while runs are given model
-  # keys (`Apiary.Runs.ProviderCredential.applies?/0`); none else. A later save of a
-  # choice leaves them as they are: the claim checks the providers again.
+  # when the run is queued (`model_providers/1`). A later change of a choice or of a
+  # provider sets them again (`refresh_model_providers/1`), and the claim checks them.
   defp with_model_providers(changeset) do
-    with true <- changeset.valid? and ProviderCredential.applies?(),
-         {_level, choice} <-
-           RunSettings.choice_in_effect(Ecto.Changeset.apply_changes(changeset)) do
+    if changeset.valid? do
+      ids = model_providers(Ecto.Changeset.apply_changes(changeset))
+      Ecto.Changeset.put_change(changeset, :model_provider_ids, ids)
+    else
+      changeset
+    end
+  end
+
+  # The model providers of the model choice in effect for the run of the queue
+  # `dispatch_run`: the choice's provider, then its fallbacks in their order
+  # (`Apiary.Dispatches.RunSettings.choice_in_effect/1`), while runs are given model
+  # keys (`Apiary.Runs.ProviderCredential.applies?/0`); none else.
+  defp model_providers(%DispatchRun{} = dispatch_run) do
+    with true <- ProviderCredential.applies?(),
+         {_level, choice} <- RunSettings.choice_in_effect(dispatch_run) do
       fallbacks =
         choice
         |> Repo.preload(:fallbacks)
@@ -522,11 +532,47 @@ defmodule Apiary.Dispatches do
         |> Enum.sort_by(& &1.position)
         |> Enum.map(& &1.connection_id)
 
-      ids = [choice.connection_id | fallbacks] |> Enum.reject(&is_nil/1) |> Enum.uniq()
-      Ecto.Changeset.put_change(changeset, :model_provider_ids, ids)
+      [choice.connection_id | fallbacks] |> Enum.reject(&is_nil/1) |> Enum.uniq()
     else
-      _none -> changeset
+      _none -> []
     end
+  end
+
+  @doc false
+  # refresh_model_providers/1 sets again the model providers of the waiting runs of the
+  # queue in `place`, `{:workspace, id}`, `{:organisation, id}` or `:all`, from the model
+  # choices as they are now (`model_providers/1`): called right after each change of a
+  # model choice, of its fallbacks or of a model provider has committed, so that no run
+  # waits for a provider that its choice no longer has. Each run is written in a
+  # statement of its own, and only while it waits: a run that a claim holds is written
+  # once that claim has committed, if it waits again. A claim in between reads the choice
+  # as it is (`Apiary.Dispatches.Handover.register/2`). Inside a caller's transaction,
+  # each run written stays locked until it commits, and a claim passes it by until then.
+  # `:ok`.
+  @spec refresh_model_providers(
+          {:workspace, Ecto.UUID.t()}
+          | {:organisation, Ecto.UUID.t()}
+          | :all
+        ) :: :ok
+  def refresh_model_providers(place) do
+    query = from r in DispatchRun, where: r.state == :waiting and r.step == @step, order_by: r.id
+
+    query =
+      case place do
+        {:workspace, id} -> from r in query, where: r.workspace_id == ^id
+        {:organisation, id} -> from r in query, where: r.organisation_id == ^id
+        :all -> query
+      end
+
+    for run <- Repo.all(query),
+        ids = model_providers(run),
+        ids != run.model_provider_ids do
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id and r.state == :waiting),
+        set: [model_provider_ids: ids]
+      )
+    end
+
+    :ok
   end
 
   # `run` with whether it is a run of Explore, as known when it is queued

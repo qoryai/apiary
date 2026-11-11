@@ -2074,7 +2074,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      14:00." while every key of each of the run's model providers, its model choice's
      provider and its fallbacks, is in cooldown: the run's queueing stores those
      providers (`dispatch_runs.model_provider_ids`), each claim that leaves the run
-     waiting stores again the providers it checked, and the line reads them
+     waiting stores again the providers it checked, a change of a model choice or of a
+     model provider stores them again from the choice in effect, and the line reads them
      (`Apiary.ModelKeys.first_to_leave/2`): the provider whose key leaves its cooldown
      first, and when, the time as a key's row on Model providers shows it. Nothing runs
      when the cooldown ends: the first claim after

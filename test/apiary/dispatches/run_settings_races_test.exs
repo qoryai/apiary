@@ -191,7 +191,17 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
     end
 
     test "the deletion first: the claim waits, then finds no choice", ctx do
-      queued!(ctx)
+      # The run with no model providers, as the choice's removal sets them: the removal
+      # then leaves the run's row as it is, so the claim takes the run and waits on the
+      # provider's row, which this test is about. A removal that writes the row holds
+      # it, and the claim passes the run by until the removal commits.
+      {:ok, queued} = queued!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Apiary.Dispatches.DispatchRun, where: r.id == ^queued.id),
+          set: [model_provider_ids: []]
+        )
+
       {first, first_pid} = hold(delete_provider(ctx))
       assert {:ok, %Connection{}} = first.result
 
