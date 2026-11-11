@@ -17,6 +17,7 @@ defmodule Apiary.Repo.Migrations.KeepAContinuationSResume do
     create constraint(:runs, :runs_resume_check,
              check: """
              resume IS NULL OR (jsonb_typeof(resume) = 'object'
+               AND resume ?& array['run_id', 'session_id', 'path']
                AND resume - 'run_id' - 'session_id' - 'path' = '{}'::jsonb
                AND jsonb_typeof(resume -> 'run_id') = 'string'
                AND jsonb_typeof(resume -> 'session_id') = 'string'

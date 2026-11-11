@@ -751,31 +751,69 @@ defmodule Apiary.Runs.Projector do
     Enum.reject(chunks, &MapSet.member?(known, &1.sequence))
   end
 
-  # For each of `paths`, what the run keeps of it: `{count, bytes, contiguous}`, where
-  # contiguous is whether each chunk up to the run's projected sequence starts where the
-  # one before it, by sequence, ends, from offset 0. Reads the lengths, not the bytes.
+  # For each of `paths`, what the run keeps of it: `{count, bytes, contiguous}`, from
+  # aggregates over its chunks' lengths, never their bytes or a window over them. For the
+  # chunks up to the run's projected sequence, contiguous is: none, or they start at
+  # offset 0, their lengths add up to their furthest end, and the last of them by
+  # sequence ends there. A gap or an overlap fails it, and so does a chunk out of order
+  # unless the last chunk still ends the file; such a file is refused when it is checked
+  # (`Apiary.Runs.Transcript.check/2`), and the bounds on bytes and chunks still hold.
   defp stored_paths(_run, []), do: %{}
 
   defp stored_paths(run, paths) do
     through = run.projected_sequence || 0
 
-    Repo.all(
-      from(c in subquery(Transcript.chunk_ends(run.id, paths)),
-        group_by: c.path,
-        select:
-          {c.path,
-           {count(), type(coalesce(sum(c.length), 0), :integer),
-            fragment(
-              "COALESCE(bool_and(? = ?) FILTER (WHERE ? <= ?), true)",
-              c.offset,
-              c.start,
-              c.sequence,
-              ^through
-            )}}
+    totals =
+      Repo.all(
+        from(c in SessionChunk,
+          where: c.run_id == ^run.id and c.path in ^paths,
+          group_by: c.path,
+          select:
+            {c.path,
+             {count(), type(coalesce(sum(fragment("octet_length(?)", c.bytes)), 0), :integer),
+              fragment("count(*) FILTER (WHERE ? <= ?)", c.sequence, ^through),
+              fragment("min(?) FILTER (WHERE ? <= ?)", c.offset, c.sequence, ^through),
+              type(
+                fragment(
+                  "sum(octet_length(?)) FILTER (WHERE ? <= ?)",
+                  c.bytes,
+                  c.sequence,
+                  ^through
+                ),
+                :integer
+              ),
+              fragment(
+                "max(? + octet_length(?)) FILTER (WHERE ? <= ?)",
+                c.offset,
+                c.bytes,
+                c.sequence,
+                ^through
+              )}}
+        ),
+        log: false
+      )
+
+    Map.new(totals, fn {path, {count, bytes, below, first, length, furthest}} ->
+      contiguous? =
+        below == 0 or
+          (first == 0 and length == furthest and last_end(run, path, through) == furthest)
+
+      {path, {count, bytes, contiguous?}}
+    end)
+  end
+
+  # Where the last chunk of `path` up to the sequence `through` ends, by the index on the
+  # run, the path and the sequence.
+  defp last_end(run, path, through) do
+    Repo.one(
+      from(c in SessionChunk,
+        where: c.run_id == ^run.id and c.path == ^path and c.sequence <= ^through,
+        order_by: [desc: c.sequence],
+        limit: 1,
+        select: fragment("? + octet_length(?)", c.offset, c.bytes)
       ),
       log: false
     )
-    |> Map.new()
   end
 
   # The chunks of one path that are kept, in sequence order, given what is stored of it.

@@ -346,6 +346,51 @@ defmodule Apiary.Dispatches.PauseTest do
       refute log =~ "gq4"
     end
 
+    test "chunks that arrive out of order across two passes are kept whole", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      # The middle chunk's event comes in a later pass: the first pass stores a gap above
+      # the projected sequence, which the second fills.
+      event_fixture(run, 2, "session.transcript", chunk(0, "{\"a\":1}\n"))
+      event_fixture(run, 4, "session.transcript", chunk(16, "{\"c\":3}\n"))
+      assert {:ok, %Run{}} = Projector.project(run)
+
+      event_fixture(run, 3, "session.transcript", chunk(8, "{\"b\":2}\n"))
+      assert {:ok, %Run{}} = Projector.project(run)
+
+      assert Repo.aggregate(from(c in SessionChunk, where: c.run_id == ^run.id), :count) == 3
+      assert {:ok, %{size: 24, max_sequence: 4}} = Transcript.check(run.id, @path)
+
+      assert run.id |> Transcript.stream(@path, 4) |> Enum.join() ==
+               "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n"
+    end
+
+    test "a resume has its three members, each a string, and no other", ctx do
+      %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      set = fn resume ->
+        try do
+          Repo.transaction(fn ->
+            Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [resume: resume])
+          end)
+
+          :ok
+        rescue
+          error in Postgrex.Error -> error.postgres[:constraint]
+        end
+      end
+
+      whole = %{"run_id" => "r", "session_id" => "s", "path" => "p"}
+      assert set.(whole) == :ok
+      assert set.(nil) == :ok
+
+      for missing <- Map.keys(whole),
+          do: assert(set.(Map.delete(whole, missing)) == "runs_resume_check")
+
+      assert set.(Map.put(whole, "other", "x")) == "runs_resume_check"
+      assert set.(%{whole | "path" => 1}) == "runs_resume_check"
+    end
+
     test "a chunk that is not one is not kept, and its log line has no byte of it", ctx do
       %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
       event_fixture(run, 3, "session.transcript", Map.delete(chunk(0, "hidden-zq9\n"), "path"))

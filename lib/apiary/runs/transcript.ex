@@ -67,13 +67,22 @@ defmodule Apiary.Runs.Transcript do
           bytes: binary
         }
 
-  @doc "The most bytes of a transcript that is restored: 64 MiB."
+  @doc """
+  The most bytes of a transcript that is restored: 64 MiB. A test sets a lower one as
+  `:max_file` in the application's configuration of this module.
+  """
   @spec max_file() :: pos_integer
-  def max_file, do: @max_file
+  def max_file, do: limit(:max_file, @max_file)
 
-  @doc "The most chunks of one path a run keeps, and fewer than a restored file has: 100,000."
+  @doc """
+  The most chunks of one path a run keeps, and fewer than a restored file has: 100,000. A
+  test sets a lower one as `:max_chunks`, as for `max_file/0`.
+  """
   @spec max_chunks() :: pos_integer
-  def max_chunks, do: @max_chunks
+  def max_chunks, do: limit(:max_chunks, @max_chunks)
+
+  defp limit(name, default),
+    do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), name, default)
 
   @doc "The chunk `data` is, an event's data (the moduledoc), or `:error`."
   @spec parse(term) :: {:ok, chunk} | :error
@@ -154,7 +163,7 @@ defmodule Apiary.Runs.Transcript do
       not contiguous? ->
         refused(run_id, :gap)
 
-      size > @max_file or count >= @max_chunks ->
+      size > max_file() or count >= max_chunks() ->
         refused(run_id, :too_large)
 
       true ->
@@ -171,9 +180,7 @@ defmodule Apiary.Runs.Transcript do
   # path, sequence, offset and length, and `start`, the sum of the lengths of the chunks
   # of its path before it by sequence, where it would start without a gap. It reads the
   # lengths, never the bytes.
-  @doc false
-  @spec chunk_ends(Ecto.UUID.t(), [String.t()]) :: Ecto.Query.t()
-  def chunk_ends(run_id, paths) do
+  defp chunk_ends(run_id, paths) do
     from(c in SessionChunk,
       where: c.run_id == ^run_id and c.path in ^paths,
       select: %{
