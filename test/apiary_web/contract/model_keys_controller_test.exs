@@ -166,11 +166,57 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert [%State{status: "rejected", utilization: 100}] = rows()
     end
 
-    test "takes 66 entries, 6 keys of 11 windows", ctx do
-      entry = state(ctx, status: "allowed", cooldown_until: nil, resets_at: nil, utilization: nil)
-      conn = post_report(ctx, report(ctx, List.duplicate(entry, 66)))
+    test "holds a resets_at and a cooldown_until to 31 days after observed_at", ctx do
+      observed = SignedRequest.now() - 1
+      bound = DateTime.from_unix!(observed + 31 * 86_400)
+      later = DateTime.to_iso8601(DateTime.add(bound, 1, :second))
+      observed_z = observed |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+      five = state(ctx, resets_at: later, cooldown_until: later, observed_at: observed_z)
+
+      seven =
+        state(ctx,
+          window: "seven_day",
+          status: "allowed",
+          cooldown_until: nil,
+          resets_at: DateTime.to_iso8601(bound),
+          observed_at: observed_z
+        )
+
+      conn = post_report(ctx, report(ctx, [five, seven]))
+
       assert conn.status == 200
-      assert [%State{window: "five_hour"}] = rows()
+
+      assert [five, seven_row] = rows() |> Enum.sort_by(& &1.window)
+      assert {five.window, seven_row.window} == {"five_hour", "seven_day"}
+      assert DateTime.compare(five.resets_at, bound) == :eq
+      assert DateTime.compare(five.cooldown_until, bound) == :eq
+      assert DateTime.compare(seven_row.resets_at, bound) == :eq
+
+      bound_z = DateTime.to_iso8601(bound)
+      %{"keys" => answered} = Jason.decode!(conn.resp_body)
+      five_answer = Enum.find(answered, &(&1["window"] == "five_hour"))
+      assert {five_answer["resets_at"], five_answer["cooldown_until"]} == {bound_z, bound_z}
+    end
+
+    test "takes 66 entries, 6 keys of 11 windows", ctx do
+      entries =
+        for n <- 1..6, window <- State.windows() do
+          state(ctx,
+            credential: "#{ctx.provider.public_id}-#{n}",
+            window: window,
+            status: "allowed",
+            cooldown_until: nil,
+            resets_at: nil,
+            utilization: nil
+          )
+        end
+
+      assert length(entries) == 66
+      conn = post_report(ctx, report(ctx, entries))
+      assert conn.status == 200
+      # The run has one key, so its 11 windows are stored.
+      assert Enum.sort(Enum.map(rows(), & &1.window)) == Enum.sort(State.windows())
     end
 
     test "leaves out a window outside the contract's list, and takes the rest", ctx do
@@ -283,8 +329,13 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert signed_answer?(conn)
       assert rows() == []
 
-      # At most 300 s ahead is taken.
-      conn = post_report(ctx, report(ctx, [state(ctx, observed_at: now_z(200))]))
+      # 301 s ahead is refused, and 300 s ahead is taken.
+      conn = post_report(ctx, report(ctx, [state(ctx, observed_at: now_z(301))]))
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body)["names"] == ["observed_at"]
+      assert rows() == []
+
+      conn = post_report(ctx, report(ctx, [state(ctx, observed_at: now_z(300))]))
       assert conn.status == 200
     end
 
@@ -352,6 +403,46 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert conn.status == 410
       assert signed_answer?(conn)
       assert rows() == []
+    end
+
+    test "410 that stores a report up to 60 s after the run's exit, and none later", ctx do
+      exited = fn seconds_ago ->
+        Repo.delete_all(from(e in Apiary.Runs.Event, where: e.run_id == ^ctx.run.id))
+
+        Apiary.RunEventsFixtures.event_fixture(ctx.run, 1, "run.exited", %{},
+          received_at: DateTime.add(DateTime.utc_now(), -seconds_ago, :second)
+        )
+
+        {1, _} =
+          Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+      end
+
+      exited.(61)
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert signed_answer?(conn)
+      assert rows() == []
+
+      exited.(59)
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert signed_answer?(conn)
+      assert [%State{window: "five_hour", status: "rejected"}] = rows()
+    end
+
+    test "a report before the run's exit is stored and answered, and one after is 410", ctx do
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 200
+      assert [%State{window: "five_hour"}] = rows()
+
+      Apiary.RunEventsFixtures.event_fixture(ctx.run, 1, "run.exited", %{},
+        received_at: DateTime.add(DateTime.utc_now(), -120, :second)
+      )
+
+      seven = state(ctx, window: "seven_day", status: "allowed", cooldown_until: nil)
+      conn = post_report(ctx, report(ctx, [seven]))
+      assert conn.status == 410
+      assert Enum.map(rows(), & &1.window) == ["five_hour"]
     end
   end
 end

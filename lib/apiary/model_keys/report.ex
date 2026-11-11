@@ -9,7 +9,10 @@ defmodule Apiary.ModelKeys.Report do
   whole second, `2026-11-10T12:00:05Z`; and `keys`, at most 66, each item a key's state in
   one window (`credential`, `window`, `status`, `resets_at`, `utilization`,
   `cooldown_until`, `source` and `observed_at`), with `cooldown_until` when the status is
-  `rejected` and without it otherwise. A member the schema does not define, a member
+  `rejected` and without it otherwise. A `resets_at` or a `cooldown_until` more than
+  `max_reset_days/0` days after the item's `observed_at` is taken as that bound: the
+  contract's README bounds a window's reset at 31 days after the answer arrived, and a
+  cooldown ends at a reset. A member the schema does not define, a member
   twice, and a value of the wrong form are
   `{:error, :invalid_request, name}`, where `name` is the member and never a value. An
   `observed_at` more than `max_skew_seconds/0` after the server's clock is refused as
@@ -27,7 +30,9 @@ defmodule Apiary.ModelKeys.Report do
        gateway may still serve; then where `Apiary.Access` refuses the key
        `run.post_events` on the run;
     3. `{:error, :gone}` for a run that has ended: not pending or running, or its sending
-       ended (`Apiary.Runs.Sender.sending_ended?/1`);
+       ended (`Apiary.Runs.Sender.sending_ended?/1`); the states are recorded first, as in
+       step 4, when this server took the run's `dev.qory.run.exited` at most 60 seconds
+       before, as the gateway sends its last report within 10 seconds of the run's end;
     4. else the states are recorded (`Apiary.ModelKeys.record/3`), through the run's keys
        alone (`Apiary.ModelKeys.run_keys/1`): an item of a credential the run does not
        have, and an item of a window outside the contract's list
@@ -38,19 +43,26 @@ defmodule Apiary.ModelKeys.Report do
   No key value is read or written here, and a log line has no part of the body.
   """
 
+  import Ecto.Query, only: [from: 2]
+
   require Logger
 
   alias Apiary.{Access, ModelKeys, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.ModelKeys.State
-  alias Apiary.Runs.{Batch, ProviderCredential, Registration, Run, RunKey, Sender}
+  alias Apiary.Runs.{Batch, Event, ProviderCredential, Registration, Run, RunKey, Sender}
 
   @members ~w(version run_id time keys)
   @required_item ~w(credential window status source observed_at)
   @item_members @required_item ++ ~w(resets_at utilization cooldown_until)
   @credential ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
   @max_skew_seconds 300
+  # The gateway sends its last report within 10 s of the run's end, sometimes before its
+  # `dev.qory.run.exited`: a report this long after that exit is still stored.
+  @after_exit_seconds 60
+  # The contract's bound on `resets_at`: at most 31 days after the answer arrived.
+  @max_reset_days 31
   # 6 keys of a run, 11 windows each (`Apiary.ModelKeys.State.windows/0`).
   @max_keys 66
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
@@ -61,6 +73,10 @@ defmodule Apiary.ModelKeys.Report do
   @doc "The most seconds a report's `time` may be from the server's clock."
   @spec max_skew_seconds() :: pos_integer
   def max_skew_seconds, do: @max_skew_seconds
+
+  @doc "The most days a stored `resets_at` or `cooldown_until` is after its `observed_at`."
+  @spec max_reset_days() :: pos_integer
+  def max_reset_days, do: @max_reset_days
 
   @doc """
   Reads the report in `raw_body` for the run `run_id` of the path, at `now`:
@@ -138,9 +154,9 @@ defmodule Apiary.ModelKeys.Report do
          credential: fields["credential"],
          window: fields["window"],
          status: fields["status"],
-         resets_at: resets_at,
+         resets_at: bound(resets_at, observed_at),
          utilization: fields["utilization"],
-         cooldown_until: cooldown_until,
+         cooldown_until: bound(cooldown_until, observed_at),
          source: fields["source"],
          observed_at: observed_at
        }}
@@ -168,6 +184,14 @@ defmodule Apiary.ModelKeys.Report do
     end
   end
 
+  # A time held to at most `@max_reset_days` days after `observed_at`.
+  defp bound(nil, _observed_at), do: nil
+
+  defp bound(time, observed_at) do
+    limit = DateTime.add(observed_at, @max_reset_days * 86_400, :second)
+    if DateTime.compare(time, limit) == :gt, do: limit, else: time
+  end
+
   defp later?(time, now),
     do: DateTime.diff(time, now, :microsecond) > @max_skew_seconds * 1_000_000
 
@@ -188,11 +212,20 @@ defmodule Apiary.ModelKeys.Report do
 
     with true <- ProviderCredential.applies?() || {:error, :not_found},
          {:ok, run} <- run(access_key, run_id, instance_id),
-         :ok <- may_post(access_key, run),
-         true <- live?(run) || {:error, :gone} do
-      keys = ModelKeys.run_keys(run)
-      :ok = ModelKeys.record(keys, report.keys, now)
-      {:ok, body(ModelKeys.run_states(keys, now))}
+         :ok <- may_post(access_key, run) do
+      cond do
+        live?(run) ->
+          keys = ModelKeys.run_keys(run)
+          :ok = ModelKeys.record(keys, report.keys, now)
+          {:ok, body(ModelKeys.run_states(keys, now))}
+
+        just_exited?(run, now) ->
+          :ok = ModelKeys.record(ModelKeys.run_keys(run), report.keys, now)
+          {:error, :gone}
+
+        true ->
+          {:error, :gone}
+      end
     end
   rescue
     exception ->
@@ -228,6 +261,18 @@ defmodule Apiary.ModelKeys.Report do
 
   defp live?(%Run{} = run),
     do: run.state in Run.alive_states() and not Sender.sending_ended?(run)
+
+  # Whether this server took the run's `dev.qory.run.exited` at most `@after_exit_seconds`
+  # before `now`.
+  defp just_exited?(%Run{id: id}, now) do
+    since = DateTime.add(now, -@after_exit_seconds, :second)
+
+    Repo.exists?(
+      from e in Event,
+        where: e.run_id == ^id and e.type == "dev.qory.run.exited",
+        where: e.received_at >= ^since
+    )
+  end
 
   @doc """
   The body of the answer for `states` (`Apiary.ModelKeys.run_states/2`):
