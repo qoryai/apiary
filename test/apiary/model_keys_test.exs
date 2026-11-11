@@ -153,6 +153,21 @@ defmodule Apiary.ModelKeysTest do
       assert ModelKeys.next_reset(%Setting{pause_seconds: 60}, ~U[2026-11-11 10:00:00Z]) == nil
     end
 
+    test "of a zone the time zone database no longer has is in UTC, with one log line" do
+      # Setting.changeset/2 accepts only a known zone: a zone written before a database
+      # update that dropped it.
+      gone = %{weekly(1, ~T[09:00:00], "Europe/Nowhere") | secret_value_id: Ecto.UUID.generate()}
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert ModelKeys.next_reset(gone, ~U[2026-11-11 10:00:00Z]) ==
+                   ~U[2026-11-16 09:00:00.000000Z]
+        end)
+
+      assert [_one] = Regex.scan(~r/reset time zone is not in the time zone database/, log)
+      assert log =~ gone.secret_value_id
+    end
+
     test "follows the zone's clock across a daylight-saving week" do
       monday = weekly(1, ~T[09:00:00], "Europe/Berlin")
 

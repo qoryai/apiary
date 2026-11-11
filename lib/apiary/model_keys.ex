@@ -30,6 +30,8 @@ defmodule Apiary.ModelKeys do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Provider, Providers}
   alias Apiary.ModelKeys.{Setting, State}
@@ -101,11 +103,13 @@ defmodule Apiary.ModelKeys do
   The next reset of the weekly schedule of `setting` after `time`, strictly, in UTC; nil
   for settings with no reset. The reset is the weekday and time in the setting's time
   zone: a time that the clocks skip is the first moment after the gap, and a time that
-  happens twice is the first of the two.
+  happens twice is the first of the two. A zone that the time zone database no longer
+  has is read as UTC, with one warning in the log.
   """
   @spec next_reset(Setting.t() | nil, DateTime.t()) :: DateTime.t() | nil
   def next_reset(setting, %DateTime{} = time) do
     if Setting.reset?(setting) do
+      setting = known_zone(setting)
       local = DateTime.shift_zone!(time, setting.reset_time_zone)
       date = DateTime.to_date(local)
       days = Integer.mod(setting.reset_weekday - Date.day_of_week(date), @week_days)
@@ -114,6 +118,21 @@ defmodule Apiary.ModelKeys do
       if DateTime.compare(first, time) == :gt,
         do: first,
         else: reset_at(Date.add(date, days + @week_days), setting)
+    end
+  end
+
+  defp known_zone(%Setting{reset_time_zone: zone} = setting) do
+    case DateTime.shift_zone(~U[2026-01-01 00:00:00Z], zone) do
+      {:ok, _time} ->
+        setting
+
+      {:error, _reason} ->
+        Logger.warning(
+          "a model key's reset time zone is not in the time zone database; " <>
+            "its reset is read in UTC key=#{setting.secret_value_id}"
+        )
+
+        %{setting | reset_time_zone: "Etc/UTC"}
     end
   end
 
