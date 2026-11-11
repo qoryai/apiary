@@ -182,6 +182,32 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert document["log"]["text"] == "key #{@secret}\n"
     end
 
+    test "leaves out the transcript events, and counts none of them",
+         %{schema: schema, run: run} do
+      bytes = Base.encode64(~s({"type":"user","text":"line one"}\n))
+
+      transcript = %{
+        "session" => 1,
+        "session_id" => "5d0c6a51-3b2e-4f7a-9c1d-8e6f4a2b0c37",
+        "path" => "~/.claude/projects/-workspace/5d0c6a51-3b2e-4f7a-9c1d-8e6f4a2b0c37.jsonl",
+        "offset" => 0,
+        "bytes" => bytes
+      }
+
+      events_fixture(run, [
+        {1, "session.transcript", transcript},
+        {2, "run.started", %{}},
+        {3, "session.transcript", %{transcript | "offset" => 33}}
+      ])
+
+      json = Jason.encode!(Diagnostics.document(run, :instance))
+      document = valid!(schema, Jason.decode!(json))
+
+      assert [%{"sequence" => 2}] = document["events"]
+      assert document["events_omitted"] == 0
+      refute json =~ bytes
+    end
+
     test "keeps every text as stored, a secret too, and replaces U+0000 and bytes outside UTF-8",
          %{schema: schema, run: run} do
       events_fixture(run, [
