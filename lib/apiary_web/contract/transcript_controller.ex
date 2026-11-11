@@ -37,7 +37,7 @@ defmodule ApiaryWeb.Contract.TranscriptController do
         |> put_resp_header("x-content-type-options", "nosniff")
         |> put_resp_content_type("application/x-ndjson", nil)
         |> put_private(:qory_body_sha256, file.sha256)
-        |> send_chunks(Transcript.stream(paused_id, path, file.max_sequence))
+        |> send_chunks(transcript().stream(paused_id, path, file.max_sequence))
 
       :not_found ->
         conn |> put_status(404) |> json(%{error: "not_found"})
@@ -66,6 +66,11 @@ defmodule ApiaryWeb.Contract.TranscriptController do
       Logger.error("a transcript could not be read: #{inspect(exception.__struct__)}")
       :unavailable
   end
+
+  # The module that reads the chunks, `Apiary.Runs.Transcript`; a test sets another in
+  # the application's configuration to fail while the chunks are sent.
+  defp transcript,
+    do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), :transcript, Transcript)
 
   # Once the answer has started, a failure can no longer change its status: one line in
   # the log, with the exception's module alone, and the answer ends where it is.

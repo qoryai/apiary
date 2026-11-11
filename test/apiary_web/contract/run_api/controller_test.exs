@@ -1675,6 +1675,37 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert Enum.uniq(answers) == [{404, ~s({"error":"not_found"})}]
     end
 
+    defmodule FailingTranscript do
+      # The transcript's first chunk, then an error, as a read that fails while the
+      # chunks are sent.
+      def stream(run_id, path, max_sequence) do
+        Stream.concat(
+          Stream.take(Apiary.Runs.Transcript.stream(run_id, path, max_sequence), 1),
+          Stream.map([:fail], fn _fail -> raise "chunk read failed" end)
+        )
+      end
+    end
+
+    test "an error while the chunks are sent ends the answer, with one log line", ctx do
+      paused!(ctx, @lines)
+
+      Application.put_env(:apiary, ApiaryWeb.Contract.TranscriptController,
+        transcript: FailingTranscript
+      )
+
+      on_exit(fn -> Application.delete_env(:apiary, ApiaryWeb.Contract.TranscriptController) end)
+
+      {conn, log} = ExUnit.CaptureLog.with_log(fn -> read(ctx, "/resume/transcript") end)
+
+      # The status went with the first chunk; the answer stops there, and no later chunk
+      # is sent.
+      assert conn.status == 200
+      assert conn.halted
+      refute conn.resp_body =~ ~s({"b":2})
+      assert log =~ "a transcript stopped while it was sent: RuntimeError"
+      refute log =~ ~s({"a":1})
+    end
+
     test "a run whose claim stored no resume is 404, though it continues a paused run", ctx do
       paused!(ctx, @lines)
       {1, _rows} = Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [resume: nil])
