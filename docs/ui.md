@@ -2161,7 +2161,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        before it. A step with only its exit recorded belongs to the last session that
        started before its exit. It is running on a live run until its session starts.
      - **Run the agent**: from the session's `dev.qory.session.started` to its last
-       `dev.qory.session.exited`, with the exit's state. It opens to Started; Finished,
+       `dev.qory.session.exited`, with the exit's state: Paused, with the ring of a paused
+       run, for an exit `paused`, or `cancelled` with the reason `model_key_limit` from a
+       gateway of the earlier contract. The session's Agent session is Paused too, unless
+       one of its steps failed, runs or was cancelled. It opens to Started; Finished,
        the time of the session's last `dev.qory.runtime.result`, or of its exit for a
        session with no result; Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84"
        (an exit code of -1 is no exit status and is left out); and Model, from the

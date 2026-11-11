@@ -1109,7 +1109,8 @@ defmodule ApiaryWeb.PreparationComponents do
 
   # A step made of steps: failed when one failed; else running when one runs or
   # `going_on`, so it shows no end between two of its steps; else cancelled when one was
-  # cancelled; else succeeded. Skipped when none ran. It spans from the first one's start
+  # cancelled; else paused when an agent session paused; else succeeded. Skipped when
+  # none ran. It spans from the first one's start
   # to the last one's end, and its clock counts while one of its steps counts.
   defp group(fields, children, going_on) do
     ran = Enum.reject(children, &(is_nil(&1) or &1.state == "skipped"))
@@ -1121,6 +1122,7 @@ defmodule ApiaryWeb.PreparationComponents do
         "failed" in states -> "failed"
         "running" in states or going_on -> "running"
         "cancelled" in states -> "cancelled"
+        "paused" in states -> "paused"
         true -> "succeeded"
       end
 
@@ -1694,8 +1696,9 @@ defmodule ApiaryWeb.PreparationComponents do
   defp create_line(_started, _step_started_at), do: []
 
   # Run the agent spans from a session's start to its exit. Its state is the exit's,
-  # succeeded for an exit with no state of a step; running while the run is alive with no
-  # exit; cancelled once the run ended with none.
+  # paused for an exit at the run's model keys' limit, succeeded for an exit with no state
+  # of a step; running while the run is alive with no exit; cancelled once the run ended
+  # with none.
   defp session_row(at, finished, alive) do
     exited_at = finished && finished.exited_at
 
@@ -1708,6 +1711,11 @@ defmodule ApiaryWeb.PreparationComponents do
 
     %{state: state, at: at, duration_ms: exited_at && ms_between(at, exited_at)}
   end
+
+  defp exit_state(%{state: "paused"}), do: "paused"
+  # The shape of a pause until every gateway sends `paused`: Qory Apiary is deployed
+  # before Forager, so it reads both while gateways of both versions run.
+  defp exit_state(%{state: "cancelled", reason: "model_key_limit"}), do: "paused"
 
   defp exit_state(%{state: state}) when state in ["succeeded", "failed", "cancelled"],
     do: state
@@ -2041,6 +2049,11 @@ defmodule ApiaryWeb.PreparationComponents do
       <% "cancelled" -> %>
         <.icon name="hero-minus-circle-micro" class="text-faint size-4 self-center" />
         <span class="sr-only">{gettext("Cancelled")}</span>
+      <% "paused" -> %>
+        <span class="q-st q-st-paused size-4 justify-center self-center" aria-hidden="true">
+          <i></i>
+        </span>
+        <span class="sr-only">{gettext("Paused")}</span>
       <% "skipped" -> %>
         <.icon name="hero-no-symbol-micro" class="text-faint size-4 self-center" />
       <% _running -> %>

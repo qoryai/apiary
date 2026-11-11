@@ -1986,10 +1986,31 @@ defmodule Apiary.Runs.PreparationTest do
                  cost_usd: 0.84,
                  exited_at: %DateTime{},
                  state: "succeeded",
+                 reason: nil,
                  exit_code: 0,
                  model: "model-large-1"
                }
              } = Preparation.read(ctx.scope, run)
+    end
+
+    test "session_end has the exit's reason, as the contract's paused session has it", ctx do
+      path = "test/fixtures/forager-contract/link/link-batch-session-exited-model-key-limit.json"
+      assert path in Apiary.ContractFixtures.vendored()
+
+      [%{"type" => "dev.qory.session.exited", "data" => exited}] =
+        path |> File.read!() |> Jason.decode!()
+
+      run =
+        ctx.scope
+        |> run_fixture()
+        |> project!([
+          {1, "run.started", started_data()},
+          {2, "session.started", Map.put(session_started_data(), "session", exited["session"])},
+          {3, "session.exited", exited}
+        ])
+
+      assert %{session_end: %{state: "paused", reason: "model_key_limit", exit_code: 1}} =
+               Preparation.read(ctx.scope, run)
     end
 
     test "outputs are the versions the run pushed, not a person's", ctx do

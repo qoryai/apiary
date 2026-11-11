@@ -893,8 +893,8 @@ defmodule Apiary.Runs.Record do
   `dev.qory.session.exited` events in sequence order: `%{type, sequence, time, session,
   data}` each. `session` is the session's number, nil when the event has none that is an
   integer, as in a record written before Forager sent it on every runtime event. `data`
-  has only the members that the end of a session shows (`state`, `exit_code`, `outcome`,
-  `turns`, `duration_ms`, `cost_usd` and `model`).
+  has only the members that the end of a session shows (`state`, `reason`, `exit_code`,
+  `outcome`, `turns`, `duration_ms`, `cost_usd` and `model`).
   """
   @spec session_end_events(Scope.t(), Run.t()) :: [
           %{
@@ -917,7 +917,8 @@ defmodule Apiary.Runs.Record do
           session: fragment("? -> 'session'", e.data),
           data:
             fragment(
-              "jsonb_strip_nulls(jsonb_build_object('state', ? -> 'state', 'exit_code', ? -> 'exit_code', 'outcome', ? -> 'outcome', 'turns', ? -> 'turns', 'duration_ms', ? -> 'duration_ms', 'cost_usd', ? -> 'cost_usd', 'model', ? -> 'model'))",
+              "jsonb_strip_nulls(jsonb_build_object('state', ? -> 'state', 'reason', ? -> 'reason', 'exit_code', ? -> 'exit_code', 'outcome', ? -> 'outcome', 'turns', ? -> 'turns', 'duration_ms', ? -> 'duration_ms', 'cost_usd', ? -> 'cost_usd', 'model', ? -> 'model'))",
+              e.data,
               e.data,
               e.data,
               e.data,

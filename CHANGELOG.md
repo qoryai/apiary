@@ -1112,6 +1112,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   14:00.” The runs list's Filter menu has the family Paused, with the state Paused,
   between Cancelled and Ended badly, and `state:paused`; a filter of that family alone
   that finds no run shows “No runs paused.”
+- On the run page, **Run the agent** of a session that paused at its keys' limit, and
+  its **Agent session**, show **Paused**, with the ring of a paused run, as the run does.
 - Qory Apiary stores the transcript of a run's agent session, which the gateway sends as
   `dev.qory.session.transcript` events, up to 64 MiB and fewer than 100,000 chunks for
   each file. It scans the transcript for keys of a known form, as it scans the run's

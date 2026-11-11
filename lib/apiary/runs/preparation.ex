@@ -253,7 +253,8 @@ defmodule Apiary.Runs.Preparation do
   How a session ended. `result_at` is the time of the session's last
   `dev.qory.runtime.result`, and `outcome`, `turns`, `duration_ms` and `cost_usd` are
   from it, nil without one. `exited_at` is the time of the session's last
-  `dev.qory.session.exited`, and `state` and `exit_code` are from it, nil without one.
+  `dev.qory.session.exited`, and `state`, `reason` and `exit_code` are from it, nil
+  without one.
   `model` is the model of the session's last `dev.qory.runtime.started`, nil without
   one. An event belongs to the session whose number its `session` has; an event with no
   `session`, as in a record written before Forager sent it on every runtime event, to
@@ -268,6 +269,7 @@ defmodule Apiary.Runs.Preparation do
           cost_usd: number | nil,
           exited_at: DateTime.t() | nil,
           state: String.t() | nil,
+          reason: String.t() | nil,
           exit_code: integer | nil,
           model: String.t() | nil
         }
@@ -765,6 +767,7 @@ defmodule Apiary.Runs.Preparation do
         cost_usd: if(is_number(result_data["cost_usd"]), do: result_data["cost_usd"]),
         exited_at: exited && exited.time,
         state: text(exited_data["state"]),
+        reason: text(exited_data["reason"]),
         exit_code: integer(exited_data["exit_code"]),
         model: text(started_data["model"])
       }
