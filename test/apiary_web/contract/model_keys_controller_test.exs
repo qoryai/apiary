@@ -22,9 +22,10 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
   @moduletag needs: [:factory, :secrets, :observability]
 
   setup do
-    # The server reads this clock (`SignedRequest.now/0`), and each time a test sends is
-    # set from it, so a second that ends between building a report and checking the
-    # answer changes no value. The module is not async, so no other test reads it.
+    # The server reads this pinned clock (`SignedRequest.now/0`), and the signed time of
+    # every request a test sends comes from it, so a second that ends between building a
+    # report and checking the response changes no value. The module is not async, so no
+    # other test reads it.
     now = System.os_time(:second)
     Application.put_env(:apiary, :contract_now, fn -> now end)
     on_exit(fn -> Application.delete_env(:apiary, :contract_now) end)
