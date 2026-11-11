@@ -31,10 +31,10 @@ defmodule Apiary.ModelKeys.Report do
        `run.post_events` on the run;
     3. `{:error, :gone}` for a run that has ended: not pending or running, or its sending
        ended (`Apiary.Runs.Sender.sending_ended?/1`); the states are recorded first, as in
-       step 4, when the run ended at most 60 seconds before: this server took its
-       `dev.qory.run.exited` then, or ended it then by another path, such as the lost-run
-       check, before that event came. The gateway sends its last report within 10 seconds
-       of the run's end;
+       step 4, when the run ended at most 60 seconds before by this server's clock: this
+       server took its `dev.qory.run.exited` or `dev.qory.run.refused` then, or ended it
+       then by another path, such as the lost-run check, before that event came. The
+       gateway sends its last report within 10 seconds of the run's end;
     4. else the states are recorded (`Apiary.ModelKeys.record/3`), through the run's keys
        alone (`Apiary.ModelKeys.run_keys/1`): an item of a credential the run does not
        have, and an item of a window outside the contract's list
@@ -264,30 +264,33 @@ defmodule Apiary.ModelKeys.Report do
   defp live?(%Run{} = run),
     do: run.state in Run.alive_states() and not Sender.sending_ended?(run)
 
-  # Whether the run ended at most `@after_exit_seconds` before `now`: this server took its
-  # `dev.qory.run.exited` then, or ended it by another path then, before that event came
-  # (`ended_at/1`).
+  # Whether the run ended at most `@after_exit_seconds` before `now`, by this server's
+  # clock alone: this server took its `dev.qory.run.exited` or `dev.qory.run.refused`
+  # then (`received_at`), or ended it by another path then (`ended_at/1`). The times of
+  # those events are the gateway's, and are not read.
   defp just_ended?(%Run{id: id} = run, now) do
     since = DateTime.add(now, -@after_exit_seconds, :second)
 
     at = ended_at(run)
-    (not is_nil(at) and DateTime.compare(at, since) != :lt) or exited_since?(id, since)
+    (not is_nil(at) and DateTime.compare(at, since) != :lt) or ended_since?(id, since)
   end
 
-  defp exited_since?(id, since) do
+  defp ended_since?(id, since) do
     Repo.exists?(
       from e in Event,
-        where: e.run_id == ^id and e.type == "dev.qory.run.exited",
+        where: e.run_id == ^id and e.type in ["dev.qory.run.exited", "dev.qory.run.refused"],
         where: e.received_at >= ^since
     )
   end
 
-  # When this server ended the run by a path other than its exit, the latest of: the
-  # lost-run check (`lost_at`), a start that failed (`start_failed_at`), a refusal
-  # (`refused_at`), a release (`released_at`) and the starter's outcome
-  # (`outcome_received_at`); nil for none.
+  # When this server ended the run by a path other than an event of its gateway, by its
+  # clock, the latest of: the lost-run check (`lost_at` of a run with no exit, as an exit
+  # that says lost sets `lost_at` to its time), a start that failed (`start_failed_at`)
+  # and the starter's outcome (`outcome_received_at`); nil for none.
   defp ended_at(%Run{} = run) do
-    [run.lost_at, run.start_failed_at, run.refused_at, run.released_at, run.outcome_received_at]
+    lost_at = if is_nil(run.exited_at), do: run.lost_at
+
+    [lost_at, run.start_failed_at, run.outcome_received_at]
     |> Enum.reject(&is_nil/1)
     |> Enum.max(DateTime, fn -> nil end)
   end

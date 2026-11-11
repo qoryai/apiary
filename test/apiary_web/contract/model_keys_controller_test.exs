@@ -488,6 +488,36 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert [%State{window: "five_hour"}] = rows()
     end
 
+    test "410 that reads a refusal's arrival, not the time the gateway gave it", ctx do
+      future = ~U[2099-01-01 00:00:00.000000Z]
+
+      refused = fn seconds_ago ->
+        Repo.delete_all(State)
+        Repo.delete_all(from(e in Apiary.Runs.Event, where: e.run_id == ^ctx.run.id))
+
+        Apiary.RunEventsFixtures.event_fixture(ctx.run, 1, "run.refused", %{},
+          time: future,
+          received_at: DateTime.add(DateTime.utc_now(), -seconds_ago, :second)
+        )
+
+        {1, _} =
+          Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+            set: [state: "failed", refused_at: future]
+          )
+      end
+
+      # The refusal is dated 2099 by the gateway's clock, and arrived 61 s ago.
+      refused.(61)
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert rows() == []
+
+      refused.(59)
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert [%State{window: "five_hour"}] = rows()
+    end
+
     test "a report before the run's exit is stored and answered, and one after is 410", ctx do
       conn = post_report(ctx, report(ctx, [state(ctx)]))
       assert conn.status == 200
