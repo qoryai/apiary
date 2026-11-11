@@ -355,8 +355,9 @@ defmodule Apiary.ModelKeys do
   `keys`, or of a window outside `Apiary.ModelKeys.State.windows/0`, is left out. One
   statement writes every row, and keeps a row only where the
   item's `observed_at` is newer than the row's; of two items of one key and window, the
-  newer counts. The rows are written in the order of their key's row id and window.
-  Returns `:ok`.
+  newer counts. The rows are written in the order of their key's row id and window. A
+  key deleted before the write is left out: its value's row is locked `FOR KEY SHARE`
+  first, so a deletion waits for the write or comes before it. Returns `:ok`.
   """
   @spec record([run_key], [map], DateTime.t()) :: :ok
   def record(keys, items, %DateTime{} = now) do
@@ -378,13 +379,39 @@ defmodule Apiary.ModelKeys do
       |> Enum.sort_by(&{&1.secret_value_id, &1.window})
 
     if rows != [] do
-      Repo.insert_all(State, rows,
-        on_conflict: newer(),
-        conflict_target: [:secret_value_id, :window]
-      )
+      {:ok, :ok} = Repo.transact(fn -> {:ok, write_states(rows)} end)
     end
 
     :ok
+  end
+
+  # The rows of the keys that still exist, written after their values' rows are locked
+  # in the order of their ids, the order of a deletion: the value, then its states.
+  defp write_states(rows) do
+    ids = rows |> Enum.map(& &1.secret_value_id) |> Enum.uniq()
+
+    kept =
+      Repo.all(
+        from v in Value,
+          where: v.id in ^ids,
+          order_by: v.id,
+          lock: "FOR KEY SHARE",
+          select: v.id
+      )
+      |> MapSet.new()
+
+    case Enum.filter(rows, &MapSet.member?(kept, &1.secret_value_id)) do
+      [] ->
+        :ok
+
+      kept_rows ->
+        Repo.insert_all(State, kept_rows,
+          on_conflict: newer(),
+          conflict_target: [:secret_value_id, :window]
+        )
+
+        :ok
+    end
   end
 
   defp row(key, item, now) do
