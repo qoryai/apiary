@@ -154,6 +154,9 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
     running = keys_run(scope, provider, main, "running")
     ended = keys_run(scope, provider, main, "completed")
     sealed = keys_run(scope, provider, spare, "pending")
+    # A key that has no value row, such as a deleted key, gets no copy.
+    gone =
+      keys_run(scope, provider, %Value{id: "00000000-0000-0000-0000-000000000000"}, "running")
 
     # The upgrade's fill from `updated_at`, which a rename after the runs were written
     # moved: each key reads as set since the runs.
@@ -185,6 +188,7 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
              Enum.sort([{running.id, main.id, later}, {sealed.id, spare.id, sealed_at}])
 
     refute Enum.any?(copies, fn {run_id, _id, _at} -> run_id == ended.id end)
+    assert Repo.aggregate(from(c in Copy, where: c.run_id == ^gone.id), :count) == 0
 
     # Run again, it writes no second row.
     down!(@live_copies)

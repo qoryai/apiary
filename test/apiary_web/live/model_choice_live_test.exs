@@ -491,7 +491,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert choice(scope).connection_id == deepseek.id
     end
 
-    test "a provider in two rows shows the refusal under the second row, and nothing is saved",
+    test "a provider in two rows shows the error under the second row, and nothing is saved",
          ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
