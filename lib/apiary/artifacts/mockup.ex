@@ -36,11 +36,12 @@ defmodule Apiary.Artifacts.Mockup do
   # WebP; a fragment `#` and a name with no `%`, compared with the `id`s as written, and
   # no `id` on two elements; a `use` reference a fragment, to an element that is no `use`
   # and contains none, at most 1,000 `use`, and at most 100,000 elements drawn through
-  # them, each `use` counting the elements of its target, the target included; the
+  # them and 1,048,576 characters of their attribute values and texts, each `use`
+  # counting the elements and characters of its target, the target included; the
   # `input` and `button` types listed; SVG `fill`, `stroke` and `clip-path` with
   # `url(#…)` alone, to a `linearGradient`, `radialGradient` or `clipPath`; on a
   # `clipPath` and inside it, no `use` and no attribute with `url(`; in a
-  # `linearGradient` or `radialGradient`, only `stop` elements; no attribute value with `javascript:`, `vbscript:` or `data:text`, every
+  # `linearGradient` or `radialGradient`, only `stop` elements, and none inside a `stop`; no attribute value with `javascript:`, `vbscript:` or `data:text`, every
   # ASCII white space and control character removed; and the CSS of `<style>` and
   # `style` checked after its comments are removed and its escapes decoded: `url(…)` and
   # `src(…)` only to a `data:` image, or a `data:` font inside `@font-face`, and no
@@ -82,6 +83,7 @@ defmodule Apiary.Artifacts.Mockup do
   @max_attributes 256
   @max_uses 1_000
   @max_used_elements 100_000
+  @max_used_characters 1_048_576
 
   @html_elements MapSet.new(~w(
     html head body title meta style main header footer nav section article aside div
@@ -524,17 +526,21 @@ defmodule Apiary.Artifacts.Mockup do
   defp refuse(message), do: throw({:refused, message})
 
   # The nodes, children of an element in `parent_ns` named `parent`, inside a `clipPath`
-  # where `clip?`: whether one is or contains a `use`, how many elements they are with
-  # every element inside them, and the walk's findings.
+  # where `clip?`: whether one is or contains a `use`, their size (how many elements they
+  # are with every element inside them, and how many characters their attribute values
+  # and texts have), and the walk's findings.
   defp nodes(nodes, parent_ns, parent, clip?, ctx, acc) do
-    Enum.reduce(nodes, {false, 0, acc}, fn
-      {name, attributes, children}, {contains, count, acc} when is_binary(name) ->
-        {use?, size, acc} =
+    Enum.reduce(nodes, {false, {0, 0}, acc}, fn
+      {name, attributes, children}, {contains, {count, chars}, acc} when is_binary(name) ->
+        {use?, {size, size_chars}, acc} =
           element(name, attributes, children, {parent_ns, parent, clip?}, ctx, acc)
 
-        {contains or use?, count + size, acc}
+        {contains or use?, {count + size, chars + size_chars}, acc}
 
-      _text_or_comment, result ->
+      text, {contains, {count, chars}, acc} when is_binary(text) ->
+        {contains, {count, chars + code_points(text)}, acc}
+
+      _comment, result ->
         result
     end)
   end
@@ -546,6 +552,13 @@ defmodule Apiary.Artifacts.Mockup do
 
     if parent_ns == :svg and parent in ~w(lineargradient radialgradient),
       do: stop!(ns, local, parent, ctx)
+
+    if parent_ns == :svg and parent == "stop",
+      do:
+        refuse(
+          "Remove #{tag(ns, local)} from the `<stop>` in #{where(ctx)}: a `<stop>` of a " <>
+            "mockup page has no element inside it."
+        )
 
     attributes =
       Enum.map(attributes, fn {key, value} -> {String.downcase(key, :ascii), value} end)
@@ -583,11 +596,14 @@ defmodule Apiary.Artifacts.Mockup do
         acc
       end
 
-    {contains, count, acc} =
+    {contains, {count, chars}, acc} =
       nodes(children, ns, local, clip? or (ns == :svg and local == "clippath"), ctx, acc)
 
     contains = contains or use?
-    size = count + 1
+
+    size =
+      {count + 1,
+       Enum.reduce(attributes, chars, fn {_name, value}, sum -> sum + code_points(value) end)}
 
     acc =
       case List.keyfind(attributes, "id", 0) do
@@ -616,21 +632,41 @@ defmodule Apiary.Artifacts.Mockup do
     )
   end
 
-  # The elements the `use` of a page draw, each `use` the elements of its target with the
-  # target, at most `@max_used_elements`. Each target's size is counted once, in the walk.
+  # What the `use` of a page draw: each `use` the elements of its target with the target,
+  # at most `@max_used_elements` in all, and the characters of their attribute values and
+  # texts, in code points, at most `@max_used_characters`. Each target's size is counted
+  # once, in the walk.
   defp used_elements(refs, sizes, ctx) do
-    total = Enum.reduce(refs, 0, fn {_name, "#" <> id}, sum -> sum + Map.get(sizes, id, 0) end)
+    {elements, characters} =
+      Enum.reduce(refs, {0, 0}, fn {_name, "#" <> id}, {elements, characters} ->
+        {size, chars} = Map.get(sizes, id, {0, 0})
+        {elements + size, characters + chars}
+      end)
 
-    if total > @max_used_elements,
+    if elements > @max_used_elements,
       do:
         refuse(
           "Draw at most #{@max_used_elements} elements through `<use>` in #{where(ctx)}: " <>
             "each `<use>` draws the elements of its target, the target included, and the " <>
-            "page has #{total}."
+            "page has #{elements}."
+        )
+
+    if characters > @max_used_characters,
+      do:
+        refuse(
+          "Draw at most #{@max_used_characters} characters through `<use>` in " <>
+            "#{where(ctx)}: each `<use>` draws the attribute values and texts of its " <>
+            "target, the target included, and the page has #{characters}."
         )
 
     :ok
   end
+
+  # The code points of UTF-8 `text`: every byte but a continuation byte.
+  defp code_points(text), do: code_points(text, 0)
+  defp code_points(<<byte, rest::binary>>, n) when byte in 0x80..0xBF, do: code_points(rest, n)
+  defp code_points(<<_byte, rest::binary>>, n), do: code_points(rest, n + 1)
+  defp code_points(<<>>, n), do: n
 
   # Each `id` is on one element of the page; a fragment points at it, as written.
   defp id(attributes, ns, local, ctx, acc) do

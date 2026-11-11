@@ -125,6 +125,7 @@ refused body <svg><defs><clipPath id="a"><rect width="1" height="1"/></clipPath>
 allowed body <svg><defs><clipPath id="c"><rect width="1" height="1"/></clipPath></defs><rect clip-path="url(#c)" width="1" height="1"/></svg>
 refused body <svg><defs><clipPath id="c" clip-path="url(#c)"><rect width="1" height="1"/></clipPath></defs></svg>
 refused body <svg><defs><linearGradient id="g"><rect width="1" height="1"/></linearGradient></defs></svg>
+refused body <svg><defs><linearGradient id="g"><stop offset="0"><rect width="1" height="1"/></stop></linearGradient></defs></svg>
 refused body <svg><defs><path id="p" d="M0 0"/></defs><rect fill="url(#p)" width="1" height="1"/></svg>
 refused body <svg><defs><path id="p" d="M0 0"/><path id="p" d="M1 1"/></defs><use href="#p"/></svg>
 refused body <svg><rect fill="url(https://example.com/a.svg#g)" width="1" height="1"/></svg>
@@ -175,6 +176,7 @@ refused head <style>.a{behavior:url(x.htc)}</style>
 refused head <style>.a{-moz-binding:url(x.xml#b)}</style>
 allowed head <style>html{scroll-behavior:smooth}</style>
 allowed head <style>.behavior-x{color:red}</style>
+refused head <style>.a{.b{color:red}behavior:none}</style>
 refused head <style>.a{background:image-rect(url(data:image/png;base64,iVBORw0KGgo=),0,0,1,1)}</style>
 refused head <style>.a{BEHAVIOR:url(x.htc)}</style>
 refused head <style>.a::after{content:attr(data-x)}</style>
@@ -194,5 +196,8 @@ refused body <div style="background:u&#114;l(https://example.com/a.png)">x</div>
 - A page with `<svg><defs><path id="p" d="M0 0"/></defs>` and then 1,000 `<use href="#p"/>`
   in the `<svg>` is allowed; with 1,001 it is refused.
 - A page with `<svg><defs><g id="a">` holding 99 `<path d="M0 0"/>`, then 1,000
-  `<use href="#a"/>` in the `<svg>`, is allowed (100,000 counted elements); with 100 paths in
-  the `<g>` it is refused (101,000).
+  `<use href="#a"/>` in the `<svg>`, is allowed (100,000 counted elements). With 100 paths
+  in the `<g>` it is refused (101,000).
+- A page with `<svg><defs><text id="a">` holding 1,047 `x` characters, then 1,000
+  `<use href="#a"/>` in the `<svg>`, is allowed: 1,048,000 counted characters, 1,047 of
+  text and 1 of the `id` value per `use`. With 1,048 `x` it is refused (1,049,000).

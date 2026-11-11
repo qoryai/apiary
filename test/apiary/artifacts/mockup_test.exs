@@ -34,8 +34,8 @@ defmodule Apiary.Artifacts.MockupTest do
   defp assert_verdict(verdict, result), do: flunk("expected #{verdict}, got #{inspect(result)}")
 
   describe "the shared cases" do
-    test "are all read: 136 lines in the cases blocks" do
-      assert length(@cases) == 136
+    test "are all read: 138 lines in the cases blocks" do
+      assert length(@cases) == 138
 
       assert Enum.all?(@cases, fn {verdict, place, _snippet} ->
                verdict in [:allowed, :refused] and place in [:head, :body]
@@ -127,6 +127,37 @@ defmodule Apiary.Artifacts.MockupTest do
               "Draw at most 100000 elements through `<use>` in `start.html` (screen `start`): " <>
                 "each `<use>` draws the elements of its target, the target included, and the " <>
                 "page has 101000."} = check(uses.(100))
+    end
+
+    test "1,000 <use> of a <text> of 1,047 characters are allowed, of 1,048 refused" do
+      uses = fn characters ->
+        page(
+          "",
+          ~s(<svg><defs><text id="a">) <>
+            String.duplicate("x", characters) <>
+            "</text></defs>" <> String.duplicate(~s(<use href="#a"/>), 1_000) <> "</svg>"
+        )
+      end
+
+      assert {:ok, _linked} = check(uses.(1_047))
+
+      assert {:error,
+              "Draw at most 1048576 characters through `<use>` in `start.html` (screen " <>
+                "`start`): each `<use>` draws the attribute values and texts of its target, " <>
+                "the target included, and the page has 1049000."} = check(uses.(1_048))
+
+      # Code points, after references are decoded: `&eacute;` is one, `é` in UTF-8 one.
+      many = fn text ->
+        page(
+          "",
+          ~s(<svg><defs><text id="a">#{text}</text></defs>) <>
+            String.duplicate(~s(<use href="#a"/>), 1_000) <> "</svg>"
+        )
+      end
+
+      assert {:ok, _linked} = check(many.(String.duplicate("&eacute;", 1_047)))
+      assert {:ok, _linked} = check(many.(String.duplicate("é", 1_047)))
+      assert {:error, _message} = check(many.(String.duplicate("é", 1_048)))
     end
 
     test "a gradient has only stops, and a clip path no url( on itself" do
