@@ -454,9 +454,12 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   def handle_event("remove_fallback", %{"index" => index}, %{assigns: %{writes: true}} = socket) do
+    rows = socket.assigns.fallbacks
+
+    # Only the index of a row: List.delete_at/2 takes -1 as the last row.
     case Integer.parse(index) do
-      {i, ""} ->
-        {:noreply, assign_fallbacks(socket, List.delete_at(socket.assigns.fallbacks, i), %{})}
+      {i, ""} when i in 0..(length(rows) - 1)//1 ->
+        {:noreply, assign_fallbacks(socket, List.delete_at(rows, i), %{})}
 
       _other ->
         {:noreply, socket}

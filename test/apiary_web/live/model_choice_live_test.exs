@@ -401,6 +401,19 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert fallbacks(scope) == [{0, deepseek.public_id, deepseek_first, nil}]
     end
 
+    test "Remove of an index that no row has removes no row", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, _subscription} = add_provider(scope, "claude-subscription")
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      lv |> element("#model-fallback-add") |> render_click()
+
+      for index <- ["-1", "1", "x"] do
+        render_hook(lv, "remove_fallback", %{"index" => index})
+        assert has_element?(lv, "#model-fallback-0")
+      end
+    end
+
     test "a refused row shows the refusal under its field, and nothing is saved", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
