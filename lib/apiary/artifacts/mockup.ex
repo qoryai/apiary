@@ -24,8 +24,8 @@ defmodule Apiary.Artifacts.Mockup do
   #     (`LazyHTML`, lexbor) and walked, every element and attribute, in its namespace;
   #     one HTML `<title>`, whose text with each run of ASCII white space (tab, line
   #     feed, form feed, carriage return, space) made one space and trimmed at both ends
-  #     is the screen's title, any other white space kept as it is; and the screens the page's `<a href>` links lead to are the
-  #     `to` values of the screen's `links`.
+  #     is the screen's title, any other white space kept as it is; and the screens the
+  #     page's `<a href>` links lead to are the `to` values of the screen's `links`.
   #
   # The page rules, in short (the contract has them in full): the HTML and SVG elements
   # of `@html_elements` and `@svg_elements`; the attributes of `@global` on every
@@ -44,12 +44,14 @@ defmodule Apiary.Artifacts.Mockup do
   # `linearGradient` or `radialGradient`, only `stop` elements, and none inside a
   # `stop`; no attribute value with `javascript:`, `vbscript:` or `data:text`, every
   # ASCII white space and control character removed; and the CSS of `<style>` and
-  # `style` checked after its comments are removed and its escapes decoded: `url(…)` and
-  # `src(…)` only to a `data:` image, or a `data:` font inside `@font-face`, and no
-  # `url(#…)`; no `image()`, `image-set()`, `image-rect()`, `cross-fade()`, `element()`,
-  # `paint()`, `expression()` or `attr()`, also with a prefix such as `-webkit-` and
-  # inside a CSS string; no `@import`, `@namespace` or `@document`; no `behavior`,
-  # `stroke-dasharray` or `-moz-binding` property, and no SVG `stroke-dasharray`
+  # `style`, read as the tokens of CSS Syntax 3, its comments removed and its escapes
+  # decoded: `url(…)` and `src(…)` outside a string only to a `data:` image, or a
+  # `data:` font inside `@font-face`, and no `url(#…)`; outside a string no `image()`,
+  # `image-set()`, `-webkit-image-set()`, `image-rect()`, `-webkit-image-rect()`,
+  # `cross-fade()`, `element()` or `paint()`, and no at-rule `@import`, `@namespace` or
+  # `@document`; anywhere, strings included, no `expression(`, `attr(` or
+  # `javascript:`; and no property `behavior`, `-moz-binding` or `stroke-dasharray`,
+  # each a whole name at the start of a declaration, and no SVG `stroke-dasharray`
   # attribute.
   # Core checks the contract alone, not the further refusals of the harness's pack step.
   #
@@ -166,8 +168,9 @@ defmodule Apiary.Artifacts.Mockup do
   @data_image ~r/\Adata:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+\/]*={0,2}\z/i
   @data_font ~r/\Adata:font\/(?:woff2|woff|ttf|otf);base64,[A-Za-z0-9+\/]*={0,2}\z/i
   @gap ~r/[\x00-\x20\x7F]/
-  @refused_at_rules ~r/@(?:-[a-z0-9]+-)?(import|namespace|document)/
-  @refused_functions ~w(image-set image-rect image cross-fade element paint expression attr)
+  @refused_at_rules ~w(import namespace document)
+  @refused_functions ~w(image image-set -webkit-image-set image-rect -webkit-image-rect
+                        cross-fade element paint)
   @script_words ["javascript:", "vbscript:", "data:text"]
 
   @typedoc "Why a version of a mockup is refused, with the index of the file or nil."
@@ -261,6 +264,7 @@ defmodule Apiary.Artifacts.Mockup do
 
     with :ok <- unique(ids),
          :ok <- files(screens),
+         :ok <- titles(screens),
          :ok <- start(start, ids),
          :ok <- targets(screens, ids) do
       reachable(start, screens)
@@ -277,7 +281,7 @@ defmodule Apiary.Artifacts.Mockup do
            {:error,
             SchemaError.detail(
               "#/screens/#{at}/id",
-              "the id #{id} is the id of an earlier screen"
+              "use an id that no earlier screen has: #{id} is the id of an earlier screen"
             )}},
         else: {:cont, MapSet.put(seen, id)}
     end)
@@ -296,7 +300,25 @@ defmodule Apiary.Artifacts.Mockup do
           {:error,
            SchemaError.detail(
              "#/screens/#{at}/file",
-             "the file is not #{id}.html, the screen's id and .html"
+             "use #{id}.html, the screen's id and .html"
+           )}
+    end)
+  end
+
+  # A page's `<title>` is compared with its white space collapsed, so a title with a
+  # space at its start or end, or two spaces in a row, matches no page.
+  defp titles(screens) do
+    screens
+    |> Enum.with_index()
+    |> Enum.find_value(:ok, fn {%{"title" => title}, at} ->
+      if collapse(title) != title,
+        do:
+          {:error,
+           SchemaError.detail(
+             "#/screens/#{at}/title",
+             "write the title with no space at its start or end and one space between " <>
+               "words: a page's <title> is compared with its white space collapsed, so " <>
+               "this title matches no page"
            )}
     end)
   end
@@ -304,8 +326,7 @@ defmodule Apiary.Artifacts.Mockup do
   defp start(start, ids) do
     if start in ids,
       do: :ok,
-      else:
-        {:error, SchemaError.detail("#/start", "the start #{start} is not the id of a screen")}
+      else: {:error, SchemaError.detail("#/start", "use the id of a screen, not #{start}")}
   end
 
   defp targets(screens, ids) do
@@ -320,7 +341,7 @@ defmodule Apiary.Artifacts.Mockup do
             {:error,
              SchemaError.detail(
                "#/screens/#{at}/links/#{link_at}/to",
-               "the to #{to} is not the id of a screen"
+               "use the id of a screen, not #{to}"
              )}
       end)
     end)
@@ -340,7 +361,8 @@ defmodule Apiary.Artifacts.Mockup do
           {:error,
            SchemaError.detail(
              "#/screens/#{at}",
-             "the screen #{id} cannot be reached from the start screen through links"
+             "add a link to #{id} on the start screen, or on a screen that its links " <>
+               "reach: they do not reach #{id}"
            )}
     end)
   end
@@ -508,6 +530,7 @@ defmodule Apiary.Artifacts.Mockup do
       linked: MapSet.new(),
       uses: 0,
       use_refs: [],
+      drawn_refs: [],
       sizes: %{},
       url_refs: [],
       ids: %{},
@@ -517,7 +540,7 @@ defmodule Apiary.Artifacts.Mockup do
     try do
       {_contains_use, _size, acc} = nodes(tree, :html, nil, false, ctx, acc)
       :ok = use_refs(Enum.reverse(acc.use_refs), acc.blocked, ctx)
-      :ok = used_elements(acc.use_refs, acc.sizes, ctx)
+      :ok = used_elements(acc.drawn_refs, acc.sizes, ctx)
       :ok = url_refs(Enum.reverse(acc.url_refs), acc.ids, ctx)
       :ok = title(Enum.reverse(acc.titles), title, ctx)
       {:ok, acc.linked}
@@ -571,6 +594,7 @@ defmodule Apiary.Artifacts.Mockup do
     acc = id(attributes, ns, local, ctx, acc)
 
     acc = Enum.reduce(attributes, acc, &attribute(&1, ns, local, ctx, &2))
+    acc = if ns == :svg and local == "use", do: drawn_ref(attributes, acc), else: acc
 
     acc =
       cond do
@@ -641,7 +665,7 @@ defmodule Apiary.Artifacts.Mockup do
   # once, in the walk.
   defp used_elements(refs, sizes, ctx) do
     {elements, characters} =
-      Enum.reduce(refs, {0, 0}, fn {_name, "#" <> id}, {elements, characters} ->
+      Enum.reduce(refs, {0, 0}, fn "#" <> id, {elements, characters} ->
         {size, chars} = Map.get(sizes, id, {0, 0})
         {elements + size, characters + chars}
       end)
@@ -699,7 +723,7 @@ defmodule Apiary.Artifacts.Mockup do
       )
 
   defp clip!(ns, local, attributes, ctx) do
-    case Enum.find(attributes, fn {_name, value} -> String.contains?(css_lower(value), "url(") end) do
+    case Enum.find(attributes, fn {_name, value} -> String.contains?(lower(value), "url(") end) do
       {name, _value} ->
         refuse(
           "Remove the `url(` from the `#{shorten(name)}` attribute of #{tag(ns, local)} in " <>
@@ -776,6 +800,25 @@ defmodule Apiary.Artifacts.Mockup do
           ~s(Write each `<meta>` element in #{where(ctx)} as `<meta charset="utf-8">` or ) <>
             ~s(`<meta name="viewport" content="…">`: a mockup page has no other `<meta>`.)
         )
+  end
+
+  # A `use` with both `href` and `xlink:href` draws the target of `href` alone, as a
+  # browser does: the address of `xlink:href` leaves the targets drawn.
+  defp drawn_ref(attributes, acc) do
+    if List.keymember?(attributes, "href", 0) and List.keymember?(attributes, "xlink:href", 0),
+      do: %{acc | drawn_refs: drawn_without_xlink(attributes, acc.drawn_refs)},
+      else: acc
+  end
+
+  # The attributes are read in order, so the address of `xlink:href` is the first of
+  # the two at the head of `drawn`, if it comes after `href`, else the second.
+  defp drawn_without_xlink(attributes, [last, first | drawn]) do
+    names = attributes |> Enum.map(&elem(&1, 0)) |> Enum.filter(&(&1 in ~w(href xlink:href)))
+
+    case names do
+      ["href", "xlink:href"] -> [first | drawn]
+      ["xlink:href", "href"] -> [last | drawn]
+    end
   end
 
   defp value_of(attributes, name) do
@@ -862,7 +905,7 @@ defmodule Apiary.Artifacts.Mockup do
             "`id` of an element of the page, with no `%`: it is `#{shown(value)}`."
         )
 
-    %{acc | use_refs: [{name, address} | acc.use_refs]}
+    %{acc | use_refs: [{name, address} | acc.use_refs], drawn_refs: [address | acc.drawn_refs]}
   end
 
   defp value_rule({"type", value, _address}, :html, "input", ctx, acc) do
@@ -1009,82 +1052,234 @@ defmodule Apiary.Artifacts.Mockup do
 
   # The CSS `css` of `place`, in `mode`: `:sheet` for a `<style>` element,
   # `:declarations` for a `style` attribute, `:fragment` for an SVG attribute that takes
-  # `url(#…)` alone. Checked after its comments are removed and its escapes decoded.
+  # `url(#…)` alone. Read as the tokens of CSS Syntax 3 (`tokens/2`), so a comment, a
+  # string and a `url(` token are each one token, in one pass: `expression(`, `attr(`
+  # and `javascript:` anywhere in the text, strings included; at-rules, functions,
+  # addresses and property names as tokens. The contract checks CSS after its comments
+  # are removed, so the text without them, where `ur/**/l(` is `url(`, is read as tokens
+  # again and checked the same way. The comments are the tokens', so a `/*` inside a
+  # string or a `url(` hides nothing. The fragments, in order.
   defp css!(css, mode, place, ctx) do
-    plain = plain_css(css)
-    lower = lower(plain)
-    squeezed = squeeze(lower)
+    css = css |> String.replace("\r\n", "\n") |> String.replace(["\r", "\f"], "\n")
+    css = String.replace(css, <<0>>, "\uFFFD")
     spot = "#{place} in #{where(ctx)}"
+    tokens = tokens(css, [])
+    fragments = css_check!(tokens, mode, spot)
 
-    fragments = addresses!(plain, lower, mode, spot)
+    case uncommented(css, tokens) do
+      ^css ->
+        fragments
 
-    case Regex.run(@refused_at_rules, squeezed) do
-      [rule, _name] ->
-        refuse(
-          "Remove `#{rule}` from #{spot}: a mockup page loads nothing from outside the version."
-        )
-
-      nil ->
-        :ok
-    end
-
-    case Enum.find(@refused_functions, &String.contains?(squeezed, &1 <> "(")) do
-      nil -> :ok
-      name -> refuse("Remove `#{name}()` from #{spot}: #{function_reason(name)}.")
-    end
-
-    cond do
-      Regex.match?(~r/(?<![a-z0-9_-])behavior\s*:/, lower) ->
-        refuse("Remove the `behavior` property from #{spot}: a mockup page runs no script.")
-
-      Regex.match?(~r/(?<![a-z0-9_-])stroke-dasharray\s*:/, lower) ->
-        refuse(
-          "Remove the `stroke-dasharray` property from #{spot}: a mockup page draws no " <>
-            "dashed SVG stroke, which takes a browser long to paint."
-        )
-
-      String.contains?(squeezed, "-moz-binding") ->
-        refuse("Remove the `-moz-binding` property from #{spot}: a mockup page runs no script.")
-
-      word = Enum.find(@script_words, &String.contains?(squeezed, &1)) ->
-        refuse(
-          "Remove `#{word}` from #{spot}: a mockup page runs no script and opens no address."
-        )
-
-      true ->
+      text ->
+        _again = css_check!(tokens(text, []), mode, spot)
         fragments
     end
   end
 
-  defp plain_css(css), do: css |> String.replace(~r{/\*.*?(?:\*/|\z)}s, "") |> decode_escapes()
-  defp css_lower(value), do: value |> plain_css() |> lower()
+  defp css_check!(tokens, mode, spot) do
+    anywhere!(tokens, spot)
+    state = %{mode: mode, spot: spot, blocks: [], font_faces: 0, font_face?: false}
+    css_walk(tokens, mode == :declarations, state, [])
+  end
 
-  defp function_reason(name) when name in ~w(expression), do: "a mockup page runs no script"
-  defp function_reason("attr"), do: "the mockup format lists no `attr()`"
-  defp function_reason(_name), do: "a mockup page loads nothing from outside the version"
+  # The CSS without its comments: each comment token is the bytes between two sizes of
+  # what was left to read.
+  defp uncommented(css, tokens) do
+    total = byte_size(css)
 
-  # Each `url(` and `src(` of the CSS takes a `data:` image or a fragment, and inside
-  # `@font-face` a `data:` font; in `:fragment` mode a fragment alone.
-  # Each `url(` and `src(` of the CSS: in a `<style>` element or a `style` attribute, a
-  # `data:` image, or inside `@font-face` a `data:` font; in `:fragment` mode, a fragment
-  # alone, `#` and a name with no `%`. The fragments, in order.
-  defp addresses!(plain, lower, mode, spot) do
-    font_faces = if mode == :sheet, do: font_faces(lower), else: []
+    {parts, at} =
+      Enum.reduce(tokens, {[], 0}, fn
+        {:comment, left, after_left}, {parts, at} ->
+          from = total - left
+          {[binary_part(css, at, from - at) | parts], total - after_left}
 
-    ~r/(?:url|src)\(/
-    |> Regex.scan(lower, return: :index)
-    |> Enum.flat_map(fn [{at, length}] ->
-      value = argument(binary_part(plain, at + length, byte_size(plain) - at - length))
-      font_face? = Enum.any?(font_faces, fn {first, last} -> at > first and at < last end)
+        _token, acc ->
+          acc
+      end)
 
-      cond do
-        mode == :fragment and fragment?(value) -> [value]
-        mode == :fragment -> refuse(address_refusal(mode, value, spot))
-        Regex.match?(@data_image, value) -> []
-        font_face? and Regex.match?(@data_font, value) -> []
-        true -> refuse(address_refusal(mode, value, spot))
+    case parts do
+      [] -> css
+      parts -> IO.iodata_to_binary(Enum.reverse([binary_part(css, at, total - at) | parts]))
+    end
+  end
+
+  # The CSS's text after its comments are removed and its escapes decoded, strings and
+  # their quotes included: `expression(`, `attr(` and `javascript:` are refused anywhere
+  # in it, without regard to case.
+  defp anywhere!(tokens, spot) do
+    text = tokens |> Enum.map(&css_text/1) |> IO.iodata_to_binary() |> lower()
+
+    cond do
+      String.contains?(text, "expression(") ->
+        refuse("Remove `expression()` from #{spot}: a mockup page runs no script.")
+
+      String.contains?(text, "attr(") ->
+        refuse("Remove `attr()` from #{spot}: the mockup format lists no `attr()`.")
+
+      String.contains?(text, "javascript:") ->
+        refuse(
+          "Remove `javascript:` from #{spot}: a mockup page runs no script and opens no " <>
+            "address."
+        )
+
+      true ->
+        :ok
+    end
+  end
+
+  # The tokens in order, one pass. `start?` is whether a declaration can start at the
+  # next token: after `{`, `;` or `}`, and at the start of a `style` attribute.
+  defp css_walk([], _start?, _state, fragments), do: Enum.reverse(fragments)
+
+  defp css_walk([:ws | rest], start?, state, fragments),
+    do: css_walk(rest, start?, state, fragments)
+
+  defp css_walk([{:comment, _left, _after} | rest], start?, state, fragments),
+    do: css_walk(rest, start?, state, fragments)
+
+  defp css_walk([{:at, name} | rest], _start?, state, fragments) do
+    case lower(name) do
+      rule when rule in @refused_at_rules ->
+        refuse(
+          "Remove `@#{rule}` from #{state.spot}: a mockup page loads nothing from outside " <>
+            "the version."
+        )
+
+      "font-face" ->
+        css_walk(rest, false, %{state | font_face?: true}, fragments)
+
+      _other ->
+        css_walk(rest, false, %{state | font_face?: false}, fragments)
+    end
+  end
+
+  defp css_walk([:lbrace | rest], _start?, state, fragments) do
+    state = %{
+      state
+      | blocks: [state.font_face? | state.blocks],
+        font_faces: state.font_faces + if(state.font_face?, do: 1, else: 0),
+        font_face?: false
+    }
+
+    css_walk(rest, true, state, fragments)
+  end
+
+  defp css_walk([:rbrace | rest], _start?, state, fragments) do
+    state =
+      case state.blocks do
+        [font_face? | blocks] ->
+          %{
+            state
+            | blocks: blocks,
+              font_faces: state.font_faces - if(font_face?, do: 1, else: 0),
+              font_face?: false
+          }
+
+        [] ->
+          %{state | font_face?: false}
       end
-    end)
+
+    css_walk(rest, true, state, fragments)
+  end
+
+  defp css_walk([:semicolon | rest], _start?, state, fragments),
+    do: css_walk(rest, true, %{state | font_face?: false}, fragments)
+
+  defp css_walk([{:ident, name} | rest], true, state, fragments) do
+    if next_significant(rest) == :colon, do: property!(lower(name), state.spot)
+    css_walk(rest, false, state, fragments)
+  end
+
+  defp css_walk([{:url, value} | rest], _start?, state, fragments),
+    do: css_walk(rest, false, state, address(value, state, fragments))
+
+  defp css_walk([{:bad_url, raw} | _rest], _start?, state, _fragments),
+    do: refuse(address_refusal(state.mode, raw, state.spot))
+
+  defp css_walk([{:function, name} | rest], _start?, state, fragments) do
+    case lower(name) do
+      function when function in @refused_functions ->
+        refuse(
+          "Remove `#{function}()` from #{state.spot}: a mockup page loads nothing from " <>
+            "outside the version."
+        )
+
+      function when function in ["url", "src"] ->
+        {value, rest} = function_argument(rest)
+        css_walk(rest, false, state, address(value, state, fragments))
+
+      _other ->
+        css_walk(rest, false, state, fragments)
+    end
+  end
+
+  defp css_walk([_token | rest], _start?, state, fragments),
+    do: css_walk(rest, false, state, fragments)
+
+  defp next_significant([:ws | rest]), do: next_significant(rest)
+  defp next_significant([{:comment, _left, _after} | rest]), do: next_significant(rest)
+  defp next_significant([token | _rest]), do: token
+  defp next_significant([]), do: nil
+
+  defp property!("behavior", spot),
+    do: refuse("Remove the `behavior` property from #{spot}: a mockup page runs no script.")
+
+  defp property!("-moz-binding", spot),
+    do: refuse("Remove the `-moz-binding` property from #{spot}: a mockup page runs no script.")
+
+  defp property!("stroke-dasharray", spot),
+    do:
+      refuse(
+        "Remove the `stroke-dasharray` property from #{spot}: a mockup page draws no " <>
+          "dashed SVG stroke, which takes a browser long to paint."
+      )
+
+  defp property!(_name, _spot), do: :ok
+
+  # The address of a `url(` or `src(` function: a string, or else the text of its
+  # tokens up to its `)`, trimmed; and the tokens after it.
+  defp function_argument(tokens) do
+    case drop_ws(tokens) do
+      [{:string, value, _quote, _closed?} | rest] -> {value, rest}
+      rest -> function_text(rest, 0, [])
+    end
+  end
+
+  defp function_text([], _depth, text), do: {text |> Enum.reverse() |> to_text(), []}
+
+  defp function_text([:rparen | rest], 0, text),
+    do: {text |> Enum.reverse() |> to_text(), rest}
+
+  defp function_text([:rparen | rest], depth, text),
+    do: function_text(rest, depth - 1, [")" | text])
+
+  defp function_text([token | rest], depth, text)
+       when token == :lparen or elem(token, 0) == :function,
+       do: function_text(rest, depth + 1, [css_text(token) | text])
+
+  defp function_text([token | rest], depth, text),
+    do: function_text(rest, depth, [css_text(token) | text])
+
+  defp to_text(iodata), do: iodata |> IO.iodata_to_binary() |> trim()
+
+  defp drop_ws([:ws | rest]), do: drop_ws(rest)
+  defp drop_ws([{:comment, _left, _after} | rest]), do: drop_ws(rest)
+  defp drop_ws(tokens), do: tokens
+
+  # An address of the CSS: in `:fragment` mode a fragment alone, else a `data:` image, or
+  # inside `@font-face` a `data:` font.
+  defp address(value, %{mode: :fragment} = state, fragments) do
+    if fragment?(value),
+      do: [value | fragments],
+      else: refuse(address_refusal(:fragment, value, state.spot))
+  end
+
+  defp address(value, state, fragments) do
+    cond do
+      Regex.match?(@data_image, value) -> fragments
+      state.font_faces > 0 and Regex.match?(@data_font, value) -> fragments
+      true -> refuse(address_refusal(state.mode, value, state.spot))
+    end
   end
 
   defp address_refusal(:fragment, value, spot),
@@ -1099,92 +1294,344 @@ defmodule Apiary.Artifacts.Mockup do
         "`url(#…)` goes only in the SVG attributes `fill`, `stroke` and `clip-path`. " <>
         "It has `#{shown(value)}`."
 
-  # The argument of a `url(` or `src(`: quoted, to its closing quote; else to the `)`;
-  # with the white space around it removed.
-  defp argument(rest) do
-    rest = trim_leading(rest)
+  # A token's text, its escapes decoded: a string with its quotes, a comment as nothing.
+  defp css_text(:ws), do: " "
+  defp css_text({:comment, _left, _after}), do: ""
+  defp css_text(:colon), do: ":"
+  defp css_text(:semicolon), do: ";"
+  defp css_text(:comma), do: ","
+  defp css_text(:lbrace), do: "{"
+  defp css_text(:rbrace), do: "}"
+  defp css_text(:lparen), do: "("
+  defp css_text(:rparen), do: ")"
+  defp css_text(:lbracket), do: "["
+  defp css_text(:rbracket), do: "]"
+  defp css_text({:ident, name}), do: name
+  defp css_text({:function, name}), do: [name, "("]
+  defp css_text({:at, name}), do: ["@", name]
+  defp css_text({:hash, name}), do: ["#", name]
+  defp css_text({:string, value, quote, true}), do: [quote, value, quote]
+  defp css_text({:string, value, quote, false}), do: [quote, value]
+  defp css_text({:url, value}), do: ["url(", value, ")"]
+  defp css_text({:bad_url, raw}), do: raw
+  defp css_text({:delim, text}), do: text
+  defp css_text({:other, text}), do: text
 
-    case rest do
-      <<quote, inner::binary>> when quote in [?", ?'] ->
-        [value | _rest] = :binary.split(inner, <<quote>>)
-        trim(value)
+  ## CSS tokens
 
-      _unquoted ->
-        [value | _rest] = :binary.split(rest, ")")
-        trim(value)
-    end
+  # tokens/2 is the tokens of CSS Syntax 3, section 4, in one pass over the bytes, which
+  # `css!/4` preprocessed (`\r\n`, `\r` and `\f` made `\n`, NUL made U+FFFD): a comment
+  # is `{:comment, left, after}`, the sizes of what was left to read before and after
+  # it; an escape is decoded; a string runs to its closing quote, to a line feed (a bad
+  # string, its text kept as a string's), or to the end; `url(` with no quote is a `url`
+  # token, or a bad URL; a `\` that is a valid escape starts a name. A number, a CDO and
+  # a CDC are `:other` tokens. `:ws` is a run of white space.
+  defguardp css_ws(c) when c in [?\n, ?\t, ?\s]
+  defguardp name_start(c) when c in ?a..?z or c in ?A..?Z or c == ?_ or c >= 0x80
+  defguardp name_char(c) when name_start(c) or c in ?0..?9 or c == ?-
+  defguardp digit(c) when c in ?0..?9
+
+  @punctuation %{
+    ?: => :colon,
+    ?; => :semicolon,
+    ?, => :comma,
+    ?{ => :lbrace,
+    ?} => :rbrace,
+    ?( => :lparen,
+    ?) => :rparen,
+    ?[ => :lbracket,
+    ?] => :rbracket
+  }
+
+  defp tokens(<<>>, acc), do: Enum.reverse(acc)
+
+  defp tokens(<<"/*", rest::binary>> = bytes, acc) do
+    rest = comment_end(rest)
+    tokens(rest, [{:comment, byte_size(bytes), byte_size(rest)} | acc])
   end
 
-  # The byte ranges of the `@font-face` blocks of the CSS, from the `{` to its `}`.
-  defp font_faces(lower) do
-    ~r/@(?:-[a-z0-9]+-)?font-face/
-    |> Regex.scan(lower, return: :index)
-    |> Enum.flat_map(fn [{at, length}] ->
-      from = at + length
-      rest = binary_part(lower, from, byte_size(lower) - from)
+  defp tokens(<<c, _::binary>> = s, acc) when css_ws(c), do: tokens(skip_ws(s), [:ws | acc])
 
-      case :binary.match(rest, ["{", ";", "}"]) do
-        {open, 1} ->
-          if :binary.at(rest, open) == ?{,
-            do: [{from + open, block_end(rest, open + 1, 1) + from}],
-            else: []
-
-        :nomatch ->
-          []
-      end
-    end)
+  defp tokens(<<quote, rest::binary>>, acc) when quote in [?", ?'] do
+    {value, closed?, rest} = string(rest, quote, [])
+    tokens(rest, [{:string, value, <<quote>>, closed?} | acc])
   end
 
-  defp block_end(_rest, at, 0), do: at - 1
-  defp block_end(rest, at, _depth) when at >= byte_size(rest), do: byte_size(rest)
-
-  defp block_end(rest, at, depth) do
-    case :binary.at(rest, at) do
-      ?{ -> block_end(rest, at + 1, depth + 1)
-      ?} -> block_end(rest, at + 1, depth - 1)
-      _other -> block_end(rest, at + 1, depth)
-    end
-  end
-
-  @escape ~r/\\(?:([0-9A-Fa-f]{1,6})(?:\r\n|[\t\n\f\r ])?|(\r\n|[\n\f\r])|(.))?/su
-
-  defp decode_escapes(css) do
-    if String.contains?(css, "\\") do
-      Regex.replace(@escape, css, fn
-        _whole, digits, _newline, _other when digits != "" ->
-          code_point(String.to_integer(digits, 16))
-
-        _whole, "", newline, _other when newline != "" ->
-          ""
-
-        _whole, "", "", other when other != "" ->
-          other
-
-        _whole, _digits, _newline, _other ->
-          "�"
-      end)
+  defp tokens(<<?#, rest::binary>>, acc) do
+    if name_next?(rest) do
+      {name, rest} = name(rest, [])
+      tokens(rest, [{:hash, name} | acc])
     else
-      css
+      tokens(rest, [{:delim, "#"} | acc])
     end
   end
+
+  defp tokens(<<?@, rest::binary>>, acc) do
+    if ident_start?(rest) do
+      {name, rest} = name(rest, [])
+      tokens(rest, [{:at, name} | acc])
+    else
+      tokens(rest, [{:delim, "@"} | acc])
+    end
+  end
+
+  defp tokens(<<"<!--", rest::binary>>, acc), do: tokens(rest, [{:other, "<!--"} | acc])
+  defp tokens(<<"-->", rest::binary>>, acc), do: tokens(rest, [{:other, "-->"} | acc])
+
+  defp tokens(<<c, rest::binary>> = s, acc) do
+    cond do
+      Map.has_key?(@punctuation, c) -> tokens(rest, [Map.fetch!(@punctuation, c) | acc])
+      number_start?(s) -> number(s, acc)
+      ident_start?(s) -> ident_like(s, acc)
+      true -> delim(s, acc)
+    end
+  end
+
+  defp delim(<<c::utf8, rest::binary>>, acc), do: tokens(rest, [{:delim, <<c::utf8>>} | acc])
+
+  defp comment_end(<<"*/", rest::binary>>), do: rest
+  defp comment_end(<<>>), do: <<>>
+
+  defp comment_end(bytes) do
+    case :binary.match(bytes, "*/") do
+      {at, 2} -> binary_part(bytes, at + 2, byte_size(bytes) - at - 2)
+      :nomatch -> <<>>
+    end
+  end
+
+  defp skip_ws(<<c, rest::binary>>) when css_ws(c), do: skip_ws(rest)
+  defp skip_ws(rest), do: rest
+
+  # Whether the bytes start a name: a name character or a valid escape.
+  defp name_next?(<<c, _::binary>>) when name_char(c), do: true
+  defp name_next?(bytes), do: valid_escape?(bytes)
+
+  defp valid_escape?(<<?\\, c, _::binary>>), do: c != ?\n
+  defp valid_escape?(_bytes), do: false
+
+  # Whether the bytes start an ident sequence (CSS Syntax 3, 4.3.9).
+  defp ident_start?(<<?-, c, _::binary>>) when name_start(c) or c == ?-, do: true
+  defp ident_start?(<<?-, rest::binary>>), do: valid_escape?(rest)
+  defp ident_start?(<<c, _::binary>>) when name_start(c), do: true
+  defp ident_start?(bytes), do: valid_escape?(bytes)
+
+  defp number_start?(<<sign, c, _::binary>>) when sign in [?+, ?-] and digit(c), do: true
+  defp number_start?(<<sign, ?., c, _::binary>>) when sign in [?+, ?-] and digit(c), do: true
+  defp number_start?(<<?., c, _::binary>>) when digit(c), do: true
+  defp number_start?(<<c, _::binary>>) when digit(c), do: true
+  defp number_start?(_bytes), do: false
+
+  # A name (CSS Syntax 3, 4.3.12), its escapes decoded, and the bytes after it.
+  defp name(<<c, rest::binary>>, acc) when name_char(c) and c < 0x80, do: name(rest, [c | acc])
+
+  defp name(<<c::utf8, rest::binary>>, acc) when c >= 0x80,
+    do: name(rest, [<<c::utf8>> | acc])
+
+  defp name(<<?\\, _::binary>> = bytes, acc) do
+    if valid_escape?(bytes) do
+      {char, rest} = escape(binary_part(bytes, 1, byte_size(bytes) - 1))
+      name(rest, [char | acc])
+    else
+      {acc |> Enum.reverse() |> IO.iodata_to_binary(), bytes}
+    end
+  end
+
+  defp name(rest, acc), do: {acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+
+  # An escape after its `\` (CSS Syntax 3, 4.3.7): up to 6 hex digits and one white space
+  # after them, else the next code point; at the end, U+FFFD.
+  defp escape(<<>>), do: {"�", <<>>}
+
+  defp escape(<<c, _::binary>> = bytes) when c in ?0..?9 or c in ?a..?f or c in ?A..?F do
+    {hex, rest} = hex(bytes, [], 0)
+
+    rest =
+      case rest do
+        <<w, after_ws::binary>> when css_ws(w) -> after_ws
+        _other -> rest
+      end
+
+    {code_point(String.to_integer(hex, 16)), rest}
+  end
+
+  defp escape(<<c::utf8, rest::binary>>), do: {<<c::utf8>>, rest}
+
+  defp hex(<<c, rest::binary>>, acc, n)
+       when n < 6 and (c in ?0..?9 or c in ?a..?f or c in ?A..?F),
+       do: hex(rest, [c | acc], n + 1)
+
+  defp hex(rest, acc, _n), do: {acc |> Enum.reverse() |> List.to_string(), rest}
 
   defp code_point(code) when code == 0 or code > 0x10FFFF or code in 0xD800..0xDFFF, do: "�"
   defp code_point(code), do: <<code::utf8>>
 
+  # A string after its opening quote: its text, whether a closing quote ends it, and the
+  # bytes after it. A line feed ends a bad string and stays in the input.
+  defp string(<<>>, _quote, acc), do: {iodata(acc), false, <<>>}
+  defp string(<<quote, rest::binary>>, quote, acc), do: {iodata(acc), true, rest}
+  defp string(<<?\n, _::binary>> = rest, _quote, acc), do: {iodata(acc), false, rest}
+  defp string(<<?\\>>, _quote, acc), do: {iodata(acc), false, <<>>}
+  defp string(<<?\\, ?\n, rest::binary>>, quote, acc), do: string(rest, quote, acc)
+
+  defp string(<<?\\, rest::binary>>, quote, acc) do
+    {char, rest} = escape(rest)
+    string(rest, quote, [char | acc])
+  end
+
+  defp string(bytes, quote, acc) do
+    # The bytes up to the next quote, `\` or line feed, at once.
+    case :binary.match(bytes, [<<quote>>, "\\", "\n"]) do
+      {at, 1} ->
+        string(binary_part(bytes, at, byte_size(bytes) - at), quote, [
+          binary_part(bytes, 0, at) | acc
+        ])
+
+      :nomatch ->
+        {iodata([bytes | acc]), false, <<>>}
+    end
+  end
+
+  defp iodata(acc), do: acc |> Enum.reverse() |> IO.iodata_to_binary()
+
+  # A number, a percentage or a dimension, as `:other`.
+  defp number(bytes, acc) do
+    {sign, rest} =
+      case bytes do
+        <<s, rest::binary>> when s in [?+, ?-] -> {<<s>>, rest}
+        _other -> {"", bytes}
+      end
+
+    {int, rest} = digits(rest, [])
+
+    {fraction, rest} =
+      case rest do
+        <<?., d, _::binary>> when digit(d) ->
+          {digits, rest} = digits(binary_part(rest, 1, byte_size(rest) - 1), [])
+          {"." <> digits, rest}
+
+        _other ->
+          {"", rest}
+      end
+
+    {exponent, rest} =
+      case rest do
+        <<e, s, d, _::binary>> when e in [?e, ?E] and s in [?+, ?-] and digit(d) ->
+          {digits, rest} = digits(binary_part(rest, 2, byte_size(rest) - 2), [])
+          {<<e, s>> <> digits, rest}
+
+        <<e, d, _::binary>> when e in [?e, ?E] and digit(d) ->
+          {digits, rest} = digits(binary_part(rest, 1, byte_size(rest) - 1), [])
+          {<<e>> <> digits, rest}
+
+        _other ->
+          {"", rest}
+      end
+
+    number = sign <> int <> fraction <> exponent
+
+    cond do
+      ident_start?(rest) ->
+        {unit, rest} = name(rest, [])
+        tokens(rest, [{:other, number <> unit} | acc])
+
+      match?(<<?%, _::binary>>, rest) ->
+        tokens(binary_part(rest, 1, byte_size(rest) - 1), [{:other, number <> "%"} | acc])
+
+      true ->
+        tokens(rest, [{:other, number} | acc])
+    end
+  end
+
+  defp digits(<<d, rest::binary>>, acc) when digit(d), do: digits(rest, [d | acc])
+  defp digits(rest, acc), do: {acc |> Enum.reverse() |> List.to_string(), rest}
+
+  # An ident, a function, or a `url(` with no quote (CSS Syntax 3, 4.3.4).
+  defp ident_like(bytes, acc) do
+    {name, rest} = name(bytes, [])
+
+    case rest do
+      <<?(, after_paren::binary>> ->
+        if lower(name) == "url" do
+          case skip_ws(after_paren) do
+            <<quote, _::binary>> when quote in [?", ?'] ->
+              tokens(after_paren, [{:function, name} | acc])
+
+            unquoted ->
+              {token, rest} = url(unquoted, [])
+              tokens(rest, [token | acc])
+          end
+        else
+          tokens(after_paren, [{:function, name} | acc])
+        end
+
+      _other ->
+        tokens(rest, [{:ident, name} | acc])
+    end
+  end
+
+  # A `url(` token after its white space (CSS Syntax 3, 4.3.6).
+  defp url(<<>>, acc), do: {{:url, iodata(acc)}, <<>>}
+  defp url(<<?), rest::binary>>, acc), do: {{:url, iodata(acc)}, rest}
+
+  defp url(<<c, _::binary>> = bytes, acc) when css_ws(c) do
+    case skip_ws(bytes) do
+      <<>> -> {{:url, iodata(acc)}, <<>>}
+      <<?), rest::binary>> -> {{:url, iodata(acc)}, rest}
+      rest -> bad_url(rest, [" " | acc])
+    end
+  end
+
+  defp url(<<c, _::binary>> = bytes, acc)
+       when c in [?", ?', ?(] or c in 0x00..0x08 or c == 0x0B or c in 0x0E..0x1F or c == 0x7F,
+       do: bad_url(bytes, acc)
+
+  defp url(<<?\\, _::binary>> = bytes, acc) do
+    if valid_escape?(bytes) do
+      {char, rest} = escape(binary_part(bytes, 1, byte_size(bytes) - 1))
+      url(rest, [char | acc])
+    else
+      bad_url(bytes, acc)
+    end
+  end
+
+  defp url(<<c::utf8, rest::binary>>, acc), do: url(rest, [<<c::utf8>> | acc])
+
+  # The rest of a bad URL, to its `)` or the end (CSS Syntax 3, 4.3.14).
+  defp bad_url(<<>>, acc), do: {{:bad_url, iodata(acc)}, <<>>}
+  defp bad_url(<<?), rest::binary>>, acc), do: {{:bad_url, iodata(acc)}, rest}
+
+  defp bad_url(<<?\\, _::binary>> = bytes, acc) do
+    if valid_escape?(bytes) do
+      {char, rest} = escape(binary_part(bytes, 1, byte_size(bytes) - 1))
+      bad_url(rest, [char | acc])
+    else
+      bad_url(binary_part(bytes, 1, byte_size(bytes) - 1), ["\\" | acc])
+    end
+  end
+
+  defp bad_url(<<c::utf8, rest::binary>>, acc), do: bad_url(rest, [<<c::utf8>> | acc])
+
   ## srcset
 
-  # The addresses of a `srcset`, by the parsing rules of HTML: each candidate's address
-  # runs to white space; one that ends in commas loses them, and has no descriptors.
+  # The addresses of a `srcset`, by the parsing rules of HTML, in one pass: each
+  # candidate's address runs to white space; one that ends in commas loses them, and has
+  # no descriptors.
   defp srcset(value), do: srcset(value, [])
 
   defp srcset(value, acc) do
-    case Regex.replace(~r/\A[\t\n\f\r ,]+/, value, "") do
-      "" ->
+    case skip_separators(value) do
+      <<>> ->
         Enum.reverse(acc)
 
       rest ->
-        [url | after_url] = Regex.split(~r/[\t\n\f\r ]/, rest, parts: 2)
-        after_url = List.first(after_url) || ""
+        {url, after_url} =
+          case :binary.match(rest, [" ", "\t", "\n", "\f", "\r"]) do
+            {at, 1} ->
+              {binary_part(rest, 0, at), binary_part(rest, at + 1, byte_size(rest) - at - 1)}
+
+            :nomatch ->
+              {rest, <<>>}
+          end
 
         if String.ends_with?(url, ",") do
           srcset(after_url, [String.trim_trailing(url, ",") | acc])
@@ -1193,6 +1640,11 @@ defmodule Apiary.Artifacts.Mockup do
         end
     end
   end
+
+  defp skip_separators(<<c, rest::binary>>) when c in [?\t, ?\n, ?\f, ?\r, ?\s, ?,],
+    do: skip_separators(rest)
+
+  defp skip_separators(rest), do: rest
 
   defp skip_descriptors(<<>>, _parens), do: ""
   defp skip_descriptors(<<?(, rest::binary>>, _parens), do: skip_descriptors(rest, true)
@@ -1208,10 +1660,10 @@ defmodule Apiary.Artifacts.Mockup do
   # contract counts tags, anywhere in the source. Which `<` starts a tag depends on the
   # parser's state (a comment, raw text, a quoted value), so for the attribute count
   # every `<` or `</` followed by an ASCII letter is read as the start of a tag, an end
-  # tag's attributes included: that count is at least the parser's. A tag is read from its start by
-  # the tokenizer's states, which depend on nothing before it; two reads in the same state
-  # at the same byte go on alike, so they are kept as one, with the higher count, and at
-  # most one read per state is kept.
+  # tag's attributes included: that count is at least the parser's. A tag is read from
+  # its start by the tokenizer's states, which depend on nothing before it; two reads in
+  # the same state at the same byte go on alike, so they are kept as one, with the higher
+  # count, and at most one read per state is kept.
   @doc false
   @spec prescan(binary) :: :ok | :tags | :attributes
   def prescan(bytes) do

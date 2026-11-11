@@ -9,12 +9,12 @@ defmodule Apiary.Artifacts.Type do
   # Markdown file of up to 256 KiB, PNG, JPEG, GIF, WebP or SVG images beside it, and at
   # most one `sources.json`, up to 10 files and 5 MiB together
   # (`Apiary.Artifacts.Format`). A `mockup` is pictures, or, pushed by a run with a
-  # `screens.json`, HTML pages of its screens (`Apiary.Artifacts.Mockup`). A `questions` document holds every question of a work
-  # item and its answers, each question with a context of up to 20,000 characters, so it
-  # takes up to 1 MiB. A `review-comments` document holds every review comment of a work
-  # item, on a version of an artifact such as the proposal, with its replies, up to
-  # 1 MiB. A workspace can hide
-  # a standard type unless it is always on (`always_on/0`); `shown` is whether the
+  # `screens.json`, HTML pages of its screens (`Apiary.Artifacts.Mockup`). A
+  # `questions` document holds every question of a work item and its answers, each
+  # question with a context of up to 20,000 characters, so it takes up to 1 MiB. A
+  # `review-comments` document holds every review comment of a work item, on a version
+  # of an artifact such as the proposal, with its replies, up to 1 MiB. A workspace can
+  # hide a standard type unless it is always on (`always_on/0`); `shown` is whether the
   # workspace shows the type, as `Apiary.Artifacts.all_types/1` sets it.
   #
   # `name` is lowercase letters and digits in groups joined by single hyphens, 1 to 64

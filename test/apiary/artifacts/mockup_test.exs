@@ -160,6 +160,24 @@ defmodule Apiary.Artifacts.MockupTest do
       assert {:error, _message} = check(many.(String.duplicate("é", 1_048)))
     end
 
+    test "a <use> with href and xlink:href draws the target of href alone" do
+      # 1,000 `<use>` of a `<g>` with 99 paths draw 100,000 elements, the limit; each
+      # `xlink:href` to the other `<g>` adds none.
+      uses = fn attributes ->
+        page(
+          "",
+          ~s(<svg xmlns:xlink="http://www.w3.org/1999/xlink"><defs><g id="a">) <>
+            String.duplicate(~s(<path d="M0 0"/>), 99) <>
+            ~s(</g><g id="b"><path d="M0 0"/></g></defs>) <>
+            String.duplicate("<use #{attributes}/>", 1_000) <> "</svg>"
+        )
+      end
+
+      assert {:ok, _linked} = check(uses.(~s(href="#a" xlink:href="#b")))
+      assert {:ok, _linked} = check(uses.(~s(xlink:href="#b" href="#a")))
+      assert {:ok, _linked} = check(uses.(~s(href="#b" xlink:href="#a")))
+    end
+
     test "a gradient has only stops, and a clip path no url( on itself" do
       assert {:error,
               "Remove the SVG `<rect>` element from the `<linearGradient>` in `start.html` " <>
@@ -296,6 +314,48 @@ defmodule Apiary.Artifacts.MockupTest do
                ])
     end
 
+    test "whose screens.json fails the schema has the failing limit's message", context do
+      [start, next] = screens()["screens"]
+      long = String.duplicate("x", 201)
+      label = %{start | "links" => [%{"to" => "next", "label" => "Next\n"}]}
+      screen = fn n -> %{next | "id" => "s#{n}", "file" => "s#{n}.html", "links" => []} end
+
+      for {document, path, error} <- [
+            {screens(screens: [%{start | "title" => long}, next]), "#/screens/0/title",
+             "value does not conform to pattern"},
+            {screens(screens: [label, next]), "#/screens/0/links/0/label",
+             "value does not conform to pattern"},
+            {screens(screens: [start, next | Enum.map(1..8, screen)]), "#/screens",
+             "value should have at most 9 items"},
+            {screens(screens: [%{start | "criteria" => ["ac-1", "ac-1"]}, next]),
+             "#/screens/0/criteria", "value must contain unique items"}
+          ] do
+        assert {:error, {:schema, 0, %{path: ^path, error: message}}} =
+                 version(context, [{"screens.json", document} | pages()])
+
+        assert String.starts_with?(message, error), message
+        refute message =~ "did not conform", message
+      end
+    end
+
+    test "whose screens.json has a title with spaces no page can match is refused at it",
+         context do
+      [start, next] = screens()["screens"]
+
+      for title <- [" Start", "Start ", "Sta  rt"] do
+        assert {:error, {:schema, 0, %{path: "#/screens/0/title", error: error}}} =
+                 version(context, [
+                   {"screens.json", screens(screens: [%{start | "title" => title}, next])}
+                   | pages()
+                 ])
+
+        assert error ==
+                 "write the title with no space at its start or end and one space between " <>
+                   "words: a page's <title> is compared with its white space collapsed, so " <>
+                   "this title matches no page"
+      end
+    end
+
     test "whose screens.json has a key twice is refused at it", context do
       bytes = ~s|{"start":"a","start":"a","screens":[]}|
 
@@ -319,15 +379,16 @@ defmodule Apiary.Artifacts.MockupTest do
       [start, next] = screens()["screens"]
 
       for {document, path, error} <- [
-            {screens(start: "gone"), "#/start", "the start gone is not the id of a screen"},
+            {screens(start: "gone"), "#/start", "use the id of a screen, not gone"},
             {screens(screens: [start, %{next | "id" => "start", "file" => "start.html"}]),
-             "#/screens/1/id", "the id start is the id of an earlier screen"},
+             "#/screens/1/id",
+             "use an id that no earlier screen has: start is the id of an earlier screen"},
             {screens(screens: [start, %{next | "file" => "other.html"}]), "#/screens/1/file",
-             "the file is not next.html, the screen's id and .html"},
+             "use next.html, the screen's id and .html"},
             {screens(screens: [%{start | "links" => [%{"to" => "gone", "label" => "x"}]}, next]),
-             "#/screens/0/links/0/to", "the to gone is not the id of a screen"},
+             "#/screens/0/links/0/to", "use the id of a screen, not gone"},
             {screens(screens: [%{start | "links" => []}, next]), "#/screens/1",
-             "the screen next cannot be reached from the start screen through links"}
+             "add a link to next on the start screen, or on a screen that its links reach: they do not reach next"}
           ] do
         assert {:error, {:schema, 0, %{path: ^path, error: ^error}}} =
                  version(context, [{"screens.json", document} | pages()])
@@ -477,6 +538,73 @@ defmodule Apiary.Artifacts.MockupTest do
       assert {:ok, _linked} =
                check(page(~s|<style>.a{stroke-dashoffset:2;border:1px dashed #333}</style>|, ""))
     end
+
+    test "for CSS read as tokens: names and functions where the contract has them" do
+      # A property name only at the start of a declaration, a function and `url(` only
+      # outside a string; a `\'` outside a string is a character of a name.
+      for css <- [
+            ~s|.stroke-dasharray:hover{}|,
+            ~s|.a::after{content:"Seat tr(ow)"}|,
+            ~s|.a::after{content:"url(x)"}|,
+            ~s|.a::after{content:"mail@importantco.com"}|,
+            ~s|.a::after{content:"@import"}|,
+            ~s|.a{scroll-behavior:smooth}|,
+            ~s|a{x:\\''Element('}|
+          ] do
+        assert {:ok, _linked} = check(page("<style>#{css}</style>", "")), css
+      end
+
+      assert {:ok, _linked} = check(page("", ~s|<div style='content:"url(x)"'>x</div>|))
+
+      # The attribute value rule alone has `vbscript:` and `data:text`: in a `<style>`
+      # element they are text.
+      assert {:ok, _linked} = check(page(~s|<style>.a::after{content:"vbscript:"}</style>|, ""))
+
+      assert {:error, "Remove `vbscript:` from the `style` attribute" <> _rest} =
+               check(page("", ~s|<div style='content:"vbscript:"'>x</div>|))
+
+      # In a clip path, `url(` as written: an escape is not decoded there.
+      assert {:ok, _linked} =
+               check(
+                 page(
+                   "",
+                   ~s|<svg><defs><clipPath id="u\\72l("><rect width="1" height="1"/>| <>
+                     "</clipPath></defs></svg>"
+                 )
+               )
+
+      for {css, message} <- [
+            {~s|@document url-prefix("data:image/png;base64,AA=="){a{color:red}}|,
+             "Remove `@document` from a `<style>` element in `start.html` (screen `start`): " <>
+               "a mockup page loads nothing from outside the version."},
+            {~s|@\\49mport "a.css";|, "Remove `@import`"},
+            {~s|a{background:src("https://example.com/a.png")}|,
+             "Use only a base64 `data:` image in a `<style>` element in `start.html` " <>
+               "(screen `start`), and a base64 `data:` font only inside `@font-face`: a " <>
+               "mockup page loads nothing from outside the version, and a `url(#…)` goes " <>
+               "only in the SVG attributes `fill`, `stroke` and `clip-path`. It has " <>
+               "`https://example.com/a.png`."},
+            {~s|a{content:"/*"}b{content:"expression("}c{content:"*/"}|,
+             "Remove `expression()` from a `<style>` element in `start.html` (screen " <>
+               "`start`): a mockup page runs no script."},
+            {~s|a{background:-webkit-image-set("data:image/png;base64,AA==" 1x)}|,
+             "Remove `-webkit-image-set()` from a `<style>` element in `start.html` (screen " <>
+               "`start`): a mockup page loads nothing from outside the version."}
+          ] do
+        assert {:error, refused} = check(page("<style>#{css}</style>", "")), css
+        assert String.starts_with?(refused, message), refused
+      end
+
+      # A `url(` with a `data:` font only inside `@font-face`, nested in another block too.
+      font = "url(data:font/woff2;base64,AA==)"
+      assert {:ok, _linked} = check(page("<style>@font-face{src:#{font}}</style>", ""))
+
+      assert {:ok, _linked} =
+               check(page("<style>@media print{@font-face{src:#{font}}}</style>", ""))
+
+      assert {:error, _message} = check(page("<style>@font-face{}a{src:#{font}}</style>", ""))
+      assert {:error, _message} = check(page("", ~s|<div style="x:#{font}">x</div>|))
+    end
   end
 
   # Inputs that a parse by the HTML5 algorithm takes long on, each within 1 MiB: the check
@@ -567,6 +695,22 @@ defmodule Apiary.Artifacts.MockupTest do
     test "10,000 nested elements, the most tags, are checked in time" do
       bytes = page("", Enum.map_join(1..9_990, &~s|<b id="b#{&1}">|))
       assert {:ok, _linked} = timed(bytes)
+    end
+
+    test "a <style> of 16,000 @font-face{ and a srcset of 20,000 addresses take under 1 s" do
+      for bytes <- [
+            page("<style>" <> String.duplicate("@font-face{", 16_000) <> "</style>", ""),
+            page(
+              "",
+              ~s(<img alt="x" srcset=") <>
+                String.duplicate("data:image/png;base64,AA== 1x, ", 20_000) <> ~s(">)
+            )
+          ] do
+        assert byte_size(bytes) <= 1_048_576
+        {microseconds, result} = :timer.tc(fn -> check(bytes) end)
+        assert microseconds < 1_000_000, "took #{div(microseconds, 1000)} ms"
+        assert {:ok, _linked} = result
+      end
     end
 
     test "a page of 1 MiB with many < inside a quoted value is counted in time" do
