@@ -44,8 +44,8 @@ the restart, for example to watch a long migration.
   then upgrade Qory Apiary to a release with several model keys per run. That release
   adds `pause_for_s` to each model key in a run configuration, a member that the run
   configuration schema of an earlier gateway does not define. A run registered before
-  the upgrade keeps its one key and its run configuration, and goes on across the
-  deploy.
+  the upgrade keeps its one key and goes on across the deploy; its run configuration
+  gains `pause_for_s`, the key's Pause for when the upgrade runs.
 <!-- /feature -->
 
 ## How migrations are written

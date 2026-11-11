@@ -528,7 +528,7 @@ of any other window or of a credential the run does not have. A `resets_at` or a
 `cooldown_until` more than 31 days after its `observed_at` is stored as that bound. A
 state is replaced only by one with a later `observed_at`, whichever gateway sent it.
 
-The answers, after the refusals every signed request gets (`413` at 32 KiB, `415`, a
+The answers, after the refusals every signed request gets (`413` over 32 KiB, `415`, a
 header sent twice, `401`, `429` from the run endpoint's bucket, the instance id, the
 contract version); the first that applies is the answer:
 
@@ -536,8 +536,8 @@ contract version); the first that applies is the answer:
 |---|---|---|
 | `400` | the body is not a report, has a member twice, or has an `observed_at` more than 300 seconds after the server's clock | `{"error":"invalid_request","names":["<member>"]}` |
 | `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
-| `404` | the instance does not have the features `factory` and `secrets`; or the run is not one this gateway holds: through this gateway, its run key listing the key, reloadable by this key and instance, of a workspace the gateway may still serve, whose events the key may post (`run.post_events`) | `{"error":"not_found"}` |
-| `410` | the run has ended; a report that arrives at most 60 seconds after the run's `dev.qory.run.exited` is recorded first | empty |
+| `404` | the instance does not have the features `factory` and `secrets`; or the run is not attached to the gateway that sends the report: through this gateway, its run key listing the key, reloadable by this key and instance, of a workspace the gateway may still serve, whose events the key may post (`run.post_events`) | `{"error":"not_found"}` |
+| `410` | the run has ended; a report that arrives at most 60 seconds after the run ended, by its `dev.qory.run.exited` or by Qory Apiary, is recorded first | empty |
 | `503` | the report could not be stored | `{"error":"unavailable"}` |
 | `200` | recorded | `{"version":1,"keys":[…]}` |
 
@@ -548,7 +548,8 @@ key that a run on another machine found at its limit.
 
 ### A paused run's transcript: `GET /v1/runs/<run_id>/resume/transcript`
 
-A signed GET, under a key of the gateway that holds the run: the session of a run that
+A signed GET, under a key of the gateway to which the run is attached: the session of a
+run that
 continues a paused run reads the paused run's transcript with it before its runtime
 starts, to resume the agent's session. `<run_id>` is the continuing run's id. A run that
 continues a paused run has `resume` in its run configuration: the paused run's id, its
@@ -557,12 +558,12 @@ the run endpoint's.
 
 | Status | When | Body |
 |---|---|---|
-| `404` | the run is not one this gateway holds, or it ended, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, or is over 64 MiB | `{"error":"not_found"}` |
+| `404` | the run is not attached to the gateway that sends the request, or it ended, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has 100,000 chunks or more | `{"error":"not_found"}` |
 | `503` | the transcript could not be read | `{"error":"unavailable"}` |
 | `200` | found | the transcript, `application/x-ndjson` |
 
-The `200` is sent in chunks, the paused run's chunks of the transcript in the order they
-arrived, and signed over their SHA-256. A failure while the chunks are sent ends the
+The `200` is sent in chunks, the paused run's chunks of the transcript in sequence
+order, and signed over their SHA-256. A failure while the chunks are sent ends the
 answer there, short of its signed length. No byte of a transcript is logged.
 
 <!-- /feature -->

@@ -560,7 +560,7 @@ under the choice's action: `model_choice.write` of the workspace or the target, 
 and admins', of the feature `factory`.
 
 Two requests of the run endpoint are a gateway's for a run, signed by its access key, and
-have no action of their own:
+no action of the access model covers them:
 
 - **The model keys report**, `POST /v1/runs/<run_id>/model-keys`, needs the features
   `factory` and `secrets`. The run must be, as for the gateway's secrets request, a run

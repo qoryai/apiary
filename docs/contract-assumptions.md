@@ -873,8 +873,10 @@ order is the start key, `model_credential`, never a key in cooldown. `credential
 the keys in the order the contract has the server send them: the chosen key while it is
 out of cooldown, then the other keys out of cooldown in tie order, then the keys in
 cooldown in tie order. Each entry has `pause_for_s`, the key's Pause for, else 60 for an
-API key and 3600 for a subscription, and, where the claim had them, `resets_at`,
-`schedule_resets_at`, `cooldown_until` and `chosen`. The entries are fixed for the run: a
+API key and 3600 for a subscription, written into the run once: by its claim, or, for a
+run claimed before runs kept several keys, by the upgrade (20261111090000). Where the
+claim had them, an entry also has `resets_at`, `schedule_resets_at`, `cooldown_until` and
+`chosen`. The entries are fixed for the run: a
 later state reaches the gateway in the answer to its model keys report (The model keys
 report, below). Where every key of the provider is in cooldown, the claim takes the
 first of the choice's fallbacks, in their order, with a key out of cooldown, and the
@@ -893,7 +895,8 @@ paused it (How a run ends) queues, in the same transaction, the run that continu
 (`Apiary.Dispatches.requeue_for_pause/2`): of the same work item, take in and stage, at
 the paused run's place in the queue, its `continues_id` the paused run. It queues none for
 a prebuild, for a work item no longer in Explore, at another take in or placed at another
-stage, or while another run of the take in has not ended. The paused run keeps
+stage, when the work item's stage does not run, such as one that waits for a person, or
+while another run of the take in has not ended. The paused run keeps
 `paused_until`, the earliest end of a cooldown among its provider's keys, when every one
 of them is in cooldown then. The claim of the continuation stores its `resume`
 (`Apiary.Runs.Transcript.resume_at_claim/1`): the paused run's id, and `session_id` and
@@ -1049,8 +1052,10 @@ without the features `factory` and `secrets`, and for any run but one that goes 
 the key's gateway, whose run key lists the key, that the key and the request's instance
 may reload, of a workspace the gateway may still serve, and whose events `Apiary.Access`
 lets the key post, `404 {"error":"not_found"}`. A run that
-has ended is `410`, empty, but a report that arrives at most 60 seconds after this server
-took the run's `dev.qory.run.exited` is recorded first. A report that cannot be stored is
+has ended is `410`, empty, but a report that arrives at most 60 seconds after the run
+ended is recorded first: after this server took the run's `dev.qory.run.exited`, or
+after it ended the run by another path, such as the lost-run check, before that event
+came. A report that cannot be stored is
 `503 {"error":"unavailable"}`. Else Qory Apiary records each item of a credential the run
 has, by the key's row and not its name, for a window of the contract's list:
 `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, `overage`, `requests`,
@@ -1074,7 +1079,8 @@ Each of these is `404 {"error":"not_found"}`: a run the run API would not find, 
 that ended, a run with no `resume`, a paused run that is no longer the one the run
 continues (of the same organisation, workspace, work item and stage, registered, and
 ended with `model_key_limit`), and a transcript that is gone, has a gap in its offsets,
-or is over 64 MiB. Else the answer is `200`, `application/x-ndjson`, the paused run's
+is over 64 MiB, or has 100,000 chunks or more. Else the answer is `200`,
+`application/x-ndjson`, the paused run's
 chunks of the path in the run's `resume`, in sequence order, sent in chunks and signed
 over their SHA-256. An exception before the answer starts is
 `503 {"error":"unavailable"}`; one while the chunks are sent ends the answer there. No
@@ -1217,8 +1223,8 @@ the run's `session_chunks`, keyed by the event's sequence (`Apiary.Runs.Transcri
 `Apiary.Runs.SessionChunk`): its `session`, `session_id`, `path`, `offset` and bytes, as
 `events/session.transcript.schema.json` has them. A run's transcript of a path is its
 chunks of that path in sequence order, and it can be restored only when they start at
-offset 0, each starts where the one before it ends, and they are at most 64 MiB
-together. The projection keeps
+offset 0, each starts where the one before it ends, they are at most 64 MiB together,
+and they are fewer than 100,000. The projection keeps
 no more chunks of a path once the stored ones pass 64 MiB, once 100,000 are stored, or
 once the chunks up to the run's projected sequence have a gap in `offset`, and logs the
 chunks it left out, one line per pass and path. Qory Apiary scans each chunk for keys of
@@ -1794,9 +1800,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   it as Paused with any `state`, or none (How a run ends), so a run that paused is never
   read as a person's cancel or a failure.
 - Model keys: the contract has the gateway send its last report within 10 seconds of the
-  run's end. Qory Apiary records a report that arrives at most 60 seconds after it took
-  the run's `dev.qory.run.exited`, then returns `410`, so a report that a gateway sent
-  as the run ended is not lost.
+  run's end. Qory Apiary records a report that arrives at most 60 seconds after the run
+  ended, by its `dev.qory.run.exited` or by another path of the server, then returns
+  `410`, so a report that a gateway sent as the run ended is not lost.
 - The transcript of a paused run: the contract lists `GET /resume/transcript` among the
   run API's requests. Qory Apiary serves it with the feature `observability`, the run
   endpoint's, not `workflow_model`, the other run API requests' feature: a run

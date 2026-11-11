@@ -90,10 +90,11 @@ random part of an hour, and prunes every workspace that has a setting.
 - Under the same lock, on every workspace whatever its settings, the job deletes the
   transcripts of agent sessions that no run continues any more. A run's transcript is
   kept outside the two settings, because a run that continues a paused run reads it when
-  it starts, and a key's cooldown can last 7 days: when the days for events pass, the
-  run's transcript events go and its transcript stays. The job deletes a run's transcript
-  once the run's work item is closed or undone, and the transcript of an ended run of no
-  work item, at most 10,000 runs a job. A workspace or an organisation marked for
+  it starts, and a key's cooldown can last up to 31 days: when the days for events pass,
+  the run's transcript events go and its transcript stays. The job deletes a run's
+  transcript once the run's work item is closed or undone, or once the run has ended
+  when it has no work item, at most 10,000 runs a job. A workspace or an organisation
+  marked for
   deletion is left alone. The log line is `retention pruned transcripts=<count>`, the
   chunks deleted, on a day that deleted any. A dry run deletes no transcript.
 <!-- /feature -->

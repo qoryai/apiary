@@ -1900,9 +1900,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   page, while every key of its provider was in cooldown as it ended and that time is
   still to come, the time as a key's row on Model providers shows it; else "Paused: a
   key of Northwind Claude reached its limit. It continues in run 15."; "Paused: a key of
-  Northwind Claude reached its limit." where no run continues it; and "Paused: a model
-  key reached its limit.", with or without the run that continues it, once the provider
-  is deleted. On the work item's page, the run's row on Explore and the stage's round
+  Northwind Claude reached its limit." where no run continues it; and, once the provider
+  is deleted, "Paused: a model key reached its limit. It continues in run 15.", or
+  "Paused: a model key reached its limit." where no run continues it. On the work item's
+  page, the run's row on Explore and the stage's round
   show the same line in place of the run's state, the number a link where the reader may
   read the workspace of the run that continues it. For a run that a failed step of its preparation
   stopped, the line states what happened at that step, with no advice, such as "Start the
@@ -2071,8 +2072,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      start machine type large", under the fold, where the run has no spec.
   4. "Waiting for a model key: every key of Northwind Claude is in cooldown until
      14:00." while every key of each of the run's model providers, its model choice's
-     provider and its fallbacks as they were when the run was queued, is in cooldown
-     (`dispatch_runs.model_provider_ids`, `Apiary.ModelKeys.first_to_leave/2`): the
+     provider and its fallbacks, is in cooldown: a claim that leaves the run waiting
+     stores the providers it checked (`dispatch_runs.model_provider_ids`,
+     `Apiary.ModelKeys.first_to_leave/2`), and the line reads them: the
      provider whose key leaves its cooldown first, and when, the time as a key's row on
      Model providers shows it. Nothing runs when the cooldown ends: the first claim after
      that time takes the run.
@@ -2425,7 +2427,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason;
   "Run lost: stopped responding." for a run whose exit said it was lost, and "Run lost.
   No heartbeat for 90 s." for one the lost-run check marked; a paused run in the words
-  of its paused line, "Paused: a model key reached its limit."; and "Heartbeats
+  of its paused line, "Paused: every key of Northwind Claude is in cooldown until Fri
+  14:00. It continues in run 15."; and "Heartbeats
   resumed." when a quiet run is heard again. A state stored under an older name is said as its new
   state.
 - **A run through a gateway** looks as any run: its Machine or pool is the machine or pool that registered it,

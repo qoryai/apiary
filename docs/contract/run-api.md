@@ -460,7 +460,8 @@ run).
 The checks are 1 and 3 of the order of checks, then: a run that is no longer pending or
 running, whose sending has ended, or whose run of the workspace's queue has ended, a run
 with no `resume`, a paused run that is no longer the one the run continues, and a
-transcript that is gone, has a gap in its offsets or is over 64 MiB, are each `404`
+transcript that is gone, has a gap in its offsets, is over 64 MiB or has 100,000 chunks
+or more, are each `404`
 `not_found`. Else the answer is `200`, `application/x-ndjson`, the paused run's chunks of
 the transcript at the path of `resume`, in sequence order, sent in chunks and signed over
 their SHA-256. A failure before the answer starts is `503` `unavailable`; one while the
