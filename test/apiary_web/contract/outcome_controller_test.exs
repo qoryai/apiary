@@ -190,6 +190,21 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
         assert %Run{state: "failed", reason: nil, outcome_reason: nil} = run(run_id)
       end
     end
+
+    # Only Forager's exit may give `model_key_limit`, the reason that pauses a run.
+    test "with the reason model_key_limit is stored with no reason, and the run is not paused",
+         ctx do
+      body = outcome(%{"state" => "cancelled", "reason" => "model_key_limit"})
+      assert response(give(ctx.key, ctx.run_id, body), 200) == @answer
+
+      assert %Run{
+               state: "cancelled",
+               reason: nil,
+               outcome_state: "cancelled",
+               outcome_reason: nil
+             } =
+               run(ctx.run_id)
+    end
   end
 
   describe "the same outcome again" do

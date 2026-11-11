@@ -1312,9 +1312,9 @@ Every `dev.qory.run.exited` carries `state`, how the run ended: `succeeded`, it 
 code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 (`^[a-z][a-z0-9_]{0,63}$`, matched from `\A` to `\z`). Forager's codes are reserved:
 `timeout`, `interrupted`, `no_session`, `stopped`, `session_lost`, `gateway_lost`,
-`batch_refused`, `run_closed`, `image_missing`, `image_access_denied`, `image_rate_limited` and
-`image_registry_unreachable`, and so are old names Forager no longer writes, which
-records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
+`batch_refused`, `run_closed`, `image_missing`, `image_access_denied`, `image_rate_limited`,
+`image_registry_unreachable` and `model_key_limit`, and so are old names Forager no longer
+writes, which records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's
 starter gave, carried as given. qory gives `workflow_not_in_harness` when the harness it
