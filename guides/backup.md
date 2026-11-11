@@ -251,8 +251,8 @@ are taken, restore the newest dump on another machine:
    when it has them, its mail settings, `SMTP_RELAY` and the variables beside it. Nobody
    else signs in to it.
 3. Restore as under "The compose installation" above, the keys first.
-4. `curl http://localhost:4100/health` answers `200`. The restored instance is set up
-   already, so its log has no set-up link.
+4. `curl http://localhost:4100/health` returns `200` with `"set_up":true`. The restored
+   instance is set up already, so its log has no set-up link.
 5. Log in at `http://localhost:4100/users/log-in` with your email address: without mail,
    with your password; with mail, with the log-in link the email brings, or with your
    password if your account has one. Without mail and without your password, this prints

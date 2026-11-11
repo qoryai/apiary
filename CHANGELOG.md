@@ -1005,6 +1005,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   support with run rn_….” where the instance's pool serves the workspace. **Queue the
   run** shows the run's **Machine type** by name and key.
 <!-- /feature -->
+- `GET /health` returns `set_up` in its `200`: `false` until the instance's first set-up
+  and `true` after it, for a deploy script or an instance admin. The `503` has no
+  `set_up`, and a `200` has no `set_up` when the lookup fails.
 
 ### Changed
 
