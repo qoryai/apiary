@@ -6,6 +6,9 @@ defmodule Apiary.ModelKeysRacesTest do
   # test while they run, and the organisation they make is deleted again before they end.
   use ExUnit.Case, async: false
 
+  # A list in `needs:` is read by this hook (`Apiary.TestSetup`).
+  @before_compile Apiary.TestSetup
+
   import Ecto.Query
   import Apiary.Races
 
