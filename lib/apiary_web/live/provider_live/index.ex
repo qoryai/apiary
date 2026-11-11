@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.ProviderLive.Index do
   # Organisation settings › Model providers, with the features `factory` and `secrets`:
   # the list of the organisation's model providers (`:index`), each by its name with how
-  # many keys it has, its name leading to its page (`ApiaryWeb.ProviderLive.Show`), and
+  # many keys it has and how many of them are in cooldown (`Apiary.ModelKeys`), its name
+  # leading to its page (`ApiaryWeb.ProviderLive.Show`), and
   # New model provider (`:new`), a separate page that adds one with its key
   # (`Apiary.Connections.create_provider/3`): Provider, Key, and an Address for a
   # provider whose description has an address setting, such as LiteLLM, then, where the
@@ -33,7 +34,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   on_mount {ApiaryWeb.Features, :secrets}
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
-  alias Apiary.{Access, Connections}
+  alias Apiary.{Access, Connections, ModelKeys}
   alias Apiary.Kinds.{Provider, Providers}
   alias ApiaryWeb.IntegrationLive.Common
   alias ApiaryWeb.{SettingsComponents, UserAuth}
@@ -54,6 +55,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
      |> assign(
        sections: SettingsComponents.sections(scope, :organisation),
        providers: providers,
+       cooling: cooling(providers, DateTime.utc_now()),
        writes: writes,
        needs_workspace: needs_workspace?(scope),
        attempt: 0,
@@ -199,6 +201,39 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
   defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
   defp keys(_provider), do: 0
+
+  # How many keys of each provider are in cooldown at `now`, by the provider's row id: a
+  # key whose latest `cooldown_until` across its windows is after `now`
+  # (`Apiary.ModelKeys.in_cooldown?/2`).
+  defp cooling(providers, now) do
+    Map.new(providers, fn provider ->
+      count =
+        provider
+        |> ModelKeys.provider_states(now)
+        |> Enum.count(fn {_key, states} ->
+          Enum.any?(
+            states,
+            &(&1.cooldown_until && DateTime.compare(&1.cooldown_until, now) == :gt)
+          )
+        end)
+
+      {provider.id, count}
+    end)
+  end
+
+  # "3 keys, 1 in cooldown"; without ", 1 in cooldown" when none is.
+  defp keys_words(count, 0),
+    do: ngettext("%{number} key", "%{number} keys", count, number: Format.number(count))
+
+  defp keys_words(count, cooling),
+    do:
+      gettext("%{keys}, %{cooling}",
+        keys: keys_words(count, 0),
+        cooling:
+          ngettext("%{number} in cooldown", "%{number} in cooldown", cooling,
+            number: Format.number(cooling)
+          )
+      )
 
   # Who adds a model provider, to a person who may not.
   defp who_adds(scope) do
@@ -366,7 +401,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
           </:col>
           <:col :let={provider} label={gettext("Keys")}>
             <span id={"provider-#{provider.public_id}-keys"} class="text-muted">
-              {Format.number(keys(provider))}
+              {keys_words(keys(provider), Map.get(@cooling, provider.id, 0))}
             </span>
           </:col>
         </.table>

@@ -34,9 +34,11 @@ defmodule ApiaryWeb.SecretLive.Index do
     added for this workspace alone, in the Secrets tab among the others, each with its
     provider's name, "Model provider key", and a mask on each value's line, never the key.
     Add value, Change value, Rename value and Delete value write them as the provider's
-    keys (`Apiary.Connections.add_provider_key/3` to
-    `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Delete secret is
-    refused while the provider links the secret, and Edit name and note is not offered.
+    keys (`Apiary.Connections.add_provider_key/4` to
+    `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Add value and
+    Change value also take the key's settings, Resets and Pause for
+    (`Apiary.ModelKeys.Setting`), written with it. Delete secret is refused while the
+    provider links the secret, and Edit name and note is not offered.
   - **Variables** (`Apiary.Variables`): the workspace's variables, each with its value, which
     is plain configuration, its lock, and the targets that override the value or whose
     value a lock sets aside, from their resolution
@@ -54,11 +56,12 @@ defmodule ApiaryWeb.SecretLive.Index do
   use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"secret.read"}
 
-  alias Apiary.{Access, Connections, Secrets, Variables}
+  alias Apiary.{Access, Connections, ModelKeys, Secrets, Variables}
   alias Apiary.Connections.Connection
+  alias Apiary.ModelKeys.Setting
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.Variables.{Denied, Variable}
-  alias ApiaryWeb.{People, SettingsComponents, UserAuth}
+  alias ApiaryWeb.{ModelKeyComponents, People, SettingsComponents, UserAuth}
   alias ApiaryWeb.SecretLive.Query
 
   # The acts of each view, each at a path of its own.
@@ -1034,6 +1037,12 @@ defmodule ApiaryWeb.SecretLive.Index do
         phx-mounted={!@unnamed && JS.focus()}
       />
       <.value_field form={@form} />
+      <ModelKeyComponents.settings_fields
+        :if={@key_form}
+        form={@key_form}
+        errors={@key_errors}
+        subscription={@subscription}
+      />
       <.page_form_foot
         id="secret-save"
         cancel={list_path(@current_scope, :secrets, @query)}
@@ -1051,6 +1060,12 @@ defmodule ApiaryWeb.SecretLive.Index do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
       <.value_field form={@form} label={gettext("New value")} focus />
+      <ModelKeyComponents.settings_fields
+        :if={@key_form}
+        form={@key_form}
+        errors={@key_errors}
+        subscription={@subscription}
+      />
       <.page_form_foot
         id="secret-save"
         cancel={list_path(@current_scope, :secrets, @query)}
@@ -1753,6 +1768,9 @@ defmodule ApiaryWeb.SecretLive.Index do
         value: nil,
         variable: nil,
         form: nil,
+        key_form: nil,
+        key_errors: %{},
+        subscription: false,
         warning: nil,
         refusal: nil,
         target_q: ""
@@ -1847,6 +1865,8 @@ defmodule ApiaryWeb.SecretLive.Index do
         value: nil,
         variable: nil,
         form: nil,
+        key_form: nil,
+        key_errors: %{},
         warning: nil,
         refusal: nil
       )
@@ -1916,22 +1936,26 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp open(socket, :add_value, %{"id" => id}) do
     with_secret(socket, id, nil, fn socket, secret, _value ->
-      assign(socket,
+      socket
+      |> assign(
         act: :add_value,
         secret: secret,
         form: value_form(Ecto.Changeset.change(%Value{}))
       )
+      |> key_settings(nil)
     end)
   end
 
   defp open(socket, :change_value, %{"id" => id} = params) do
     with_secret(socket, id, {:value, params["value_id"]}, fn socket, secret, value ->
-      assign(socket,
+      socket
+      |> assign(
         act: :change_value,
         secret: secret,
         value: value,
         form: value_form(Ecto.Changeset.change(%Value{}))
       )
+      |> key_settings(value)
     end)
   end
 
@@ -2003,6 +2027,21 @@ defmodule ApiaryWeb.SecretLive.Index do
       assign(socket, act: :delete_variable, variable: variable)
     end)
   end
+
+  # A model provider's key has its settings too, Resets and Pause for
+  # (`ApiaryWeb.ModelKeyComponents`), in the same form: those `value` has, none for a
+  # new key. Another secret's value has none.
+  defp key_settings(%{assigns: %{provider: %Connection{} = provider}} = socket, value) do
+    subscription = ModelKeyComponents.subscription?(provider)
+    setting = value && ModelKeys.setting(value.id)
+    params = ModelKeyComponents.params(setting, socket.assigns.current_scope, subscription)
+    assign(socket, key_form: key_form(params), key_errors: %{}, subscription: subscription)
+  end
+
+  defp key_settings(socket, _value), do: socket
+
+  defp key_form(params),
+    do: params |> Map.take(ModelKeyComponents.fields()) |> to_form(as: "secret_value")
 
   # The secret of the path, read as the reader sees it, and the value it names: `nil` for
   # none, `{:value, nil}` for the secret's one value without a value id. With `keys`, a
@@ -2199,12 +2238,23 @@ defmodule ApiaryWeb.SecretLive.Index do
        )
        when is_map(params) do
     %{current_scope: scope, secret: secret, provider: provider} = socket.assigns
+    sent = params
     params = Map.take(params, ~w(value_id value first_value_id))
 
     added =
       if provider,
-        do: Connections.add_provider_key(scope, provider, Map.delete(params, "first_value_id")),
+        do:
+          with_key_settings(sent, fn settings ->
+            Connections.add_provider_key(
+              scope,
+              provider,
+              Map.delete(params, "first_value_id"),
+              settings
+            )
+          end),
         else: Secrets.add_value(scope, secret, params)
+
+    socket = if provider, do: assign(socket, :key_form, key_form(sent)), else: socket
 
     case added do
       {:ok, _secret_or_provider} ->
@@ -2217,8 +2267,18 @@ defmodule ApiaryWeb.SecretLive.Index do
            )
          )}
 
+      {:settings, errors} ->
+        {:noreply,
+         assign(socket,
+           form: value_form(Value.changeset(%Value{}, params, value_id: :required)),
+           key_errors: errors
+         )}
+
+      {:error, %Ecto.Changeset{data: %Setting{}} = changeset} ->
+        {:noreply, assign(socket, :key_errors, ModelKeyComponents.errors(changeset))}
+
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :form, value_form(changeset))}
+        {:noreply, assign(socket, form: value_form(changeset), key_errors: %{})}
 
       {:error, reason} ->
         {:noreply, refusal(socket, reason)}
@@ -2235,8 +2295,19 @@ defmodule ApiaryWeb.SecretLive.Index do
 
     set =
       if provider,
-        do: Connections.set_provider_key(scope, provider, value.value_id, params["value"]),
+        do:
+          with_key_settings(params, fn settings ->
+            Connections.set_provider_key(
+              scope,
+              provider,
+              value.value_id,
+              params["value"],
+              settings
+            )
+          end),
         else: Secrets.set_value(scope, secret, value.value_id, params["value"])
+
+    socket = if provider, do: assign(socket, :key_form, key_form(params)), else: socket
 
     case set do
       {:ok, _secret_or_provider} ->
@@ -2253,8 +2324,18 @@ defmodule ApiaryWeb.SecretLive.Index do
            )
          )}
 
+      {:settings, errors} ->
+        {:noreply,
+         assign(socket,
+           form: value_form(Value.changeset(%Value{}, Map.take(params, ["value"]))),
+           key_errors: errors
+         )}
+
+      {:error, %Ecto.Changeset{data: %Setting{}} = changeset} ->
+        {:noreply, assign(socket, :key_errors, ModelKeyComponents.errors(changeset))}
+
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :form, value_form(changeset))}
+        {:noreply, assign(socket, form: value_form(changeset), key_errors: %{})}
 
       {:error, reason} ->
         {:noreply, refusal(socket, reason)}
@@ -2535,6 +2616,16 @@ defmodule ApiaryWeb.SecretLive.Index do
   ## After a change, and its refusals
 
   # Saved: the list read again, back on the view, the page and its field gone.
+  # The write of a model provider's key with the settings its form sent
+  # (`ApiaryWeb.ModelKeyComponents.read_settings/1`); none is written while they cannot
+  # be saved, and their errors come back as `{:settings, errors}`.
+  defp with_key_settings(params, fun) do
+    case ModelKeyComponents.read_settings(params) do
+      {:ok, settings} -> fun.(settings)
+      {:error, errors} -> {:settings, errors}
+    end
+  end
+
   defp saved(socket, words, view \\ :secrets) do
     socket
     |> put_flash(:info, words)

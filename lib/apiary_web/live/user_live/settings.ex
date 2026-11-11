@@ -563,8 +563,10 @@ defmodule ApiaryWeb.UserLive.Settings do
 
   # The zones by region, as the zone database names them: UTC first, then each region's
   # zones under its name, the city as the reader would write it. A known zone chosen
-  # outside the list, a link name such as `UTC`, stays on top so the select shows it.
-  defp time_zone_options(current) do
+  # outside the list, a link name such as `UTC`, stays on top so the select shows it. A
+  # model key's Resets offers the same (`ApiaryWeb.ModelKeyComponents`).
+  @doc false
+  def time_zone_options(current) do
     zones = Preferences.time_zones()
     [utc | regional] = zones
     # Only a zone the database knows: a refused one, sent by a crafted form, is not shown.

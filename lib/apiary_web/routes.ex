@@ -765,10 +765,17 @@ defmodule ApiaryWeb.Routes do
               live "/settings/integrations/:adapter_id", AdapterLive.Show, :collections
               # Organisation settings › Model providers, with the features `factory` and
               # `secrets`: the list, New model provider a separate page, and a provider's
-              # page with its keys, by its public id (`con_…`). The fixed path goes first.
+              # page with its keys, by its public id (`con_…`), with Add key and a key's
+              # Edit key, a key by its value id, each a separate page. The fixed paths go
+              # first.
               live "/settings/model-providers", ProviderLive.Index, :index
               live "/settings/model-providers/new", ProviderLive.Index, :new
               live "/settings/model-providers/:provider_id", ProviderLive.Show, :show
+              live "/settings/model-providers/:provider_id/keys/new", ProviderLive.Key, :new
+
+              live "/settings/model-providers/:provider_id/keys/:value_id/edit",
+                   ProviderLive.Key,
+                   :edit
             end
 
             unquote(@block)
