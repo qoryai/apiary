@@ -1817,7 +1817,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   earliest end of a cooldown among the keys of a paused run's provider, when every one of
   them was in cooldown as the run ended. It changes no row. Rolling back makes each
   paused run Cancelled.
-- `runs` and `dispatch_runs` (20261111090000): `runs.model_keys`, a run's keys in the
+- `runs` and `dispatch_runs` (20261111100000): `runs.model_keys`, a run's keys in the
   order of its run configuration, at most 6, in place of `runs.provider_value_id`, which
   is dropped; and `dispatch_runs.model_provider_ids`, the model providers a queued run
   waits for, with a constant default, an empty list, which rewrites no row. Each run with

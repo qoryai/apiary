@@ -21,7 +21,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
   alias Apiary.Runs.{ProviderCredential, Run}
   alias Apiary.Secrets.Value
 
-  @version 20_261_111_090_000
+  @version 20_261_111_100_000
   @migration Apiary.Repo.Migrations.KeepARunSModelKeys
   @name "keep_a_run_s_model_keys"
   @options [log: false, migration_lock: false]

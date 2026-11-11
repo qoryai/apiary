@@ -24,7 +24,7 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   @name "keep_a_run_s_model_settings"
   # The later migration that keeps a run's model keys in place of `provider_value_id`:
   # run down first and up last, around this one.
-  @keys_version 20_261_111_090_000
+  @keys_version 20_261_111_100_000
   @keys_migration Apiary.Repo.Migrations.KeepARunSModelKeys
   @keys_name "keep_a_run_s_model_keys"
   @options [log: false, migration_lock: false]

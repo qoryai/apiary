@@ -874,7 +874,7 @@ the keys in the order the contract has the server send them: the chosen key whil
 out of cooldown, then the other keys out of cooldown in tie order, then the keys in
 cooldown in tie order. Each entry has `pause_for_s`, the key's Pause for, else 60 for an
 API key and 3600 for a subscription, written into the run once: by its claim, or, for a
-run claimed before runs kept several keys, by the upgrade (20261111090000). Where the
+run claimed before runs kept several keys, by the upgrade (20261111100000). Where the
 claim had them, an entry also has `resets_at`, `schedule_resets_at`, `cooldown_until` and
 `chosen`. The entries are fixed for the run: a
 later state reaches the gateway in the answer to its model keys report (The model keys

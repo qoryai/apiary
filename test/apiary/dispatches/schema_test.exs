@@ -76,7 +76,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @declined Apiary.Repo.Migrations.CloseEveryDeclinedWorkItem
   # The later migration that keeps a run's model keys in place of the column the migration
   # that keeps a run whose start failed clears: down first, up last.
-  @model_keys_version 20_261_111_090_000
+  @model_keys_version 20_261_111_100_000
   @model_keys Apiary.Repo.Migrations.KeepARunSModelKeys
 
   setup_all do
