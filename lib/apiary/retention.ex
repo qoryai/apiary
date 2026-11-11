@@ -52,10 +52,11 @@ defmodule Apiary.Retention do
 
   **A session's transcript.** A run's `session_chunks` (`Apiary.Runs.Transcript`) are in
   neither phase. A phase that deletes the run's events deletes the
-  `dev.qory.session.transcript` events with them, and the chunks stay. Under the same
+  `dev.qory.session.transcript` events with them, but not the chunks. Under the same
   lock, but in a workspace or an organisation marked for deletion, as for the phases, the
-  job deletes the chunks of a run that is due by the log cut-off and the age test of the
-  `:log` phase, and a workspace with no `log_retention_days` keeps them. A paused run
+  job deletes the chunks of a run that is due by the cut-off of its log output and the
+  age test of the `:log` phase: the log cut-off, else the events cut-off, whose phase
+  deletes the log output too. A workspace with neither setting keeps them. A paused run
   keeps its chunks, past the cut-off too, while the run that continues it has not ended:
   that run reads them whenever it starts, and a cooldown can last up to 31 days. The job
   deletes at most `:max_runs` runs a job (10,000), each a batch at a time under the run's
@@ -765,9 +766,11 @@ defmodule Apiary.Retention do
   end
 
   # The runs with chunks of a transcript, or rows of its paths, past the cut-off of their
-  # workspace's `log_retention_days`, by the age test of the `:log` phase (`due/6`): a run
-  # not alive, last heard from before the cut-off, and a lost run only `Run.lost_days/0`
-  # days after it was lost. A workspace with no log setting keeps every transcript. A run
+  # run's log output, by the age test of the `:log` phase (`due/6`): a run not alive, last
+  # heard from before the cut-off, and a lost run only `Run.lost_days/0` days after it was
+  # lost. The cut-off is the workspace's `log_retention_days`, else its
+  # `events_retention_days`, whose phase deletes the log output with the events. A
+  # workspace with neither setting keeps every transcript. A run
   # still alive keeps its transcript, as its gateway may still send chunks, and so does a
   # paused run while the run that continues it has not ended: the continuation reads the
   # transcript whenever it starts. A run whose chunks a job deleted before it deleted the
@@ -788,18 +791,19 @@ defmodule Apiary.Retention do
         on: h.id == r.workspace_id and h.organisation_id == r.organisation_id,
         join: o in assoc(h, :organisation),
         where: is_nil(h.deletion_marked_at) and is_nil(o.deletion_marked_at),
-        where: not is_nil(h.log_retention_days),
+        where: not is_nil(h.log_retention_days) or not is_nil(h.events_retention_days),
         where:
           r.id in subquery(from(c in SessionChunk, distinct: true, select: c.run_id)) or
             r.id in subquery(from(t in TranscriptPath, distinct: true, select: t.run_id)),
         where: r.state not in ^Run.alive_states(),
         where:
           fragment(
-            "COALESCE(?, ?) < ? - make_interval(days => ?)",
+            "COALESCE(?, ?) < ? - make_interval(days => COALESCE(?, ?))",
             r.last_event_at,
             r.inserted_at,
             type(^now, :utc_datetime_usec),
-            h.log_retention_days
+            h.log_retention_days,
+            h.events_retention_days
           ),
         where:
           r.state != "lost" or

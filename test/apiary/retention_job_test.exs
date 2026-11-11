@@ -252,24 +252,27 @@ defmodule Apiary.RetentionJobTest do
       assert Enum.map([marked, in_marked_organisation, kept_out], &chunks/1) == [1, 1, 0]
     end
 
-    test "stays without a log setting, when a phase deletes the run's events", %{
-      scope: scope
-    } do
+    test "goes by the events setting when the log setting is empty", %{scope: scope} do
       %{run: run} = handed_over_run(scope)
       events_fixture(run, record())
       {:ok, _run} = Projector.project(run)
 
       {1, _rows} =
         Repo.update_all(from(r in Run, where: r.id == ^run.id),
-          set: [state: "paused", last_event_at: days_ago(4000), event_count: 15]
+          set: [state: "completed", last_event_at: days_ago(40), event_count: 15]
         )
 
-      chunk!(run)
+      young = run_fixture(scope, %{state: "completed"})
+      Enum.each([run, young], &chunk!/1)
+      age!(young, 5, "completed")
       retain(scope, events_retention_days: 10)
 
+      # The events phase deletes the run's log output with its events, and the transcript
+      # goes with the log output.
       assert {:ok, [_]} = Retention.prune_all(now: @now)
       assert count(Event, run) == 0
-      assert chunks(run) == 1
+      assert Enum.map([run, young], &chunks/1) == [0, 1]
+      assert Enum.map([run, young], &paths/1) == [0, 1]
     end
   end
 

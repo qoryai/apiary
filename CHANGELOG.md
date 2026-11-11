@@ -1098,7 +1098,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   each file. It scans the transcript for keys of a known form, as it scans the run's
   events, and the diagnostics leave the transcript out. The daily retention job
   deletes a run's transcript with the run's log output, by **Keep a run's log output
-  for**; a paused run's transcript stays until the run that continues it ends.
+  for**, or by **Keep a run's events for** when the log setting is empty; a paused
+  run's transcript stays until the run that continues it ends.
 <!-- /feature -->
 
 ### Changed
