@@ -225,7 +225,7 @@ defmodule Apiary.ModelKeys do
   @doc """
   Keeps, for the run `run_id`, which value of each of its keys a secrets request sealed:
   `copies`, `[{secret_value_id, value_set_at}]`, each the key's row id and when the
-  sealed value was set (`Apiary.Secrets.reveal_key_and_set_at/2`), read with the value.
+  sealed value was set, read from the row the value was read from.
   One row per run and key (`Apiary.ModelKeys.Copy`), the last request's. Each statement
   takes the run's row and the key's row `FOR KEY SHARE`, in the order of the keys' ids,
   then the copy's row: a key or a run deleted since the request is left out, as a copy

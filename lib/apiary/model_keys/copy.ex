@@ -1,10 +1,10 @@
 defmodule Apiary.ModelKeys.Copy do
   @moduledoc """
   Which value of a model key a run has: one row per run and key that a gateway's secrets
-  request sealed for the run (`Apiary.Runs.SecretsRequest`), with `value_set_at`, when the
-  value it sealed last was set (`secret_values.value_set_at`). A report of the run's keys
-  leaves out a key whose value was set after the run's value (`Apiary.ModelKeys.record/3`).
-  The row goes with the run and with the key.
+  request (`POST /v1/secrets`) sealed for the run, with `value_set_at`, when the value it
+  sealed last was set (`secret_values.value_set_at`). A report of the run's keys leaves
+  out a key whose value was set after the run's value (`Apiary.ModelKeys.record/3`). The
+  row goes with the run and with the key.
   """
 
   use Ecto.Schema
